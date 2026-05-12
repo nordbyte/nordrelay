@@ -28,6 +28,9 @@ const mockOperations = vi.hoisted(() => ({
     piCli: "path (/usr/local/bin/pi)",
     piCliPath: "/usr/local/bin/pi",
     piCliVersion: "0.73.1",
+    hermesCli: "path (/usr/local/bin/hermes)",
+    hermesCliPath: "/usr/local/bin/hermes",
+    hermesCliVersion: "hermes 1.2.3",
     stateFile: "/tmp/state.json",
     logFile: "/tmp/nordrelay.log",
     databasePath: null,
@@ -57,6 +60,14 @@ const mockOperations = vi.hoisted(() => ({
       installedVersion: null,
       latestVersion: null,
       status: "not-installed",
+    },
+    hermes: {
+      label: "Hermes",
+      packageName: "hermes-agent",
+      installedLabel: "hermes 1.2.3",
+      installedVersion: "1.2.3",
+      latestVersion: null,
+      status: "unknown",
     },
   })),
   readConnectorState: vi.fn(async () => ({ status: "ready" })),
@@ -139,6 +150,7 @@ function createConfig(overrides: Partial<ConnectorConfig> = {}): ConnectorConfig
     artifactIgnoreDirs: [],
     artifactIgnoreGlobs: [],
     telegramAutoSendArtifacts: false,
+    codexEnabled: true,
     codexApiKey: "codex-key",
     codexModel: "o3",
     codexSyncIntervalMs: 0,
@@ -149,6 +161,23 @@ function createConfig(overrides: Partial<ConnectorConfig> = {}): ConnectorConfig
     launchProfiles: [createDefaultLaunchProfile("workspace-write", "never")],
     defaultLaunchProfileId: "default",
     enableUnsafeLaunchProfiles: false,
+    piEnabled: false,
+    piCliPath: undefined,
+    piSessionDir: undefined,
+    piDefaultModel: undefined,
+    piDefaultThinking: "medium",
+    piDefaultLaunchProfileId: "default",
+    hermesEnabled: false,
+    hermesCliPath: undefined,
+    hermesHome: undefined,
+    hermesStateDbPath: undefined,
+    hermesApiBaseUrl: "http://127.0.0.1:8642",
+    hermesApiKey: undefined,
+    hermesDefaultModel: undefined,
+    hermesDefaultReasoning: undefined,
+    hermesDefaultLaunchProfileId: "default",
+    defaultAgent: "codex",
+    stateBackend: "json",
     toolVerbosity: "summary",
     logFormat: "text",
     showTurnTokenUsage: false,
@@ -323,6 +352,9 @@ describe("bot flow integration", () => {
       piCli: "path (/usr/local/bin/pi)",
       piCliPath: "/usr/local/bin/pi",
       piCliVersion: "0.73.1",
+      hermesCli: "path (/usr/local/bin/hermes)",
+      hermesCliPath: "/usr/local/bin/hermes",
+      hermesCliVersion: "hermes 1.2.3",
       stateFile: "/tmp/state.json",
       logFile: "/tmp/nordrelay.log",
       databasePath: null,
@@ -353,6 +385,14 @@ describe("bot flow integration", () => {
         installedVersion: null,
         latestVersion: null,
         status: "not-installed",
+      },
+      hermes: {
+        label: "Hermes",
+        packageName: "hermes-agent",
+        installedLabel: "hermes 1.2.3",
+        installedVersion: "1.2.3",
+        latestVersion: null,
+        status: "unknown",
       },
     });
     mockOperations.readConnectorState.mockReset();
@@ -585,7 +625,7 @@ describe("bot flow integration", () => {
     expect(api.sentMessages.at(-1)?.text).not.toContain("<code>Something needs attention</code>");
   });
 
-  it("renders version freshness for NordRelay, Codex, and Pi", async () => {
+  it("renders version freshness for NordRelay, Codex, Pi, and Hermes", async () => {
     const { registry } = createFakeRegistry();
     const bot = createBot(createConfig(), registry as any);
     const api = installFakeApi(bot);
@@ -601,6 +641,8 @@ describe("bot flow integration", () => {
     expect(api.sentMessages.at(-1)?.text).toContain("latest 0.131.0");
     expect(api.sentMessages.at(-1)?.text).toContain("<b>Pi version:</b> ⚠️");
     expect(api.sentMessages.at(-1)?.text).toContain("not installed");
+    expect(api.sentMessages.at(-1)?.text).toContain("<b>Hermes CLI path:</b> <code>/usr/local/bin/hermes</code>");
+    expect(api.sentMessages.at(-1)?.text).toContain("<b>Hermes version:</b> ⚠️");
   });
 
   it("renders workspace guardrails", async () => {

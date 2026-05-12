@@ -60,11 +60,10 @@ import {
 } from "./bot-preferences.js";
 import { listChannelDescriptors } from "./channel-adapter.js";
 import {
-  CODEX_REASONING_EFFORTS,
   CODEX_AGENT_CAPABILITIES,
-  PI_THINKING_LEVELS,
   agentLabel,
   agentReasoningLabel,
+  agentReasoningOptions,
   type AgentActivityEvent,
   type AgentExternalActivity,
   type AgentExternalSnapshot,
@@ -102,6 +101,7 @@ import {
   type VersionCheck,
 } from "./operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
+import { checkHermesAuthStatus } from "./hermes-auth.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
 import { configureRedaction, redactText } from "./redaction.js";
 import { canWriteWithLock, SessionLockStore, type SessionLock } from "./session-locks.js";
@@ -426,8 +426,18 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     registry.updateMetadata(contextKey, session);
   };
 
-  const checkAgentAuthStatus = async (info: AgentSessionInfo) =>
-    idOf(info) === "pi" ? checkPiAuthStatus(info.model) : checkAuthStatus(config.codexApiKey);
+  const checkAgentAuthStatus = async (info: AgentSessionInfo) => {
+    if (idOf(info) === "pi") {
+      return checkPiAuthStatus(info.model);
+    }
+    if (idOf(info) === "hermes") {
+      return checkHermesAuthStatus({
+        baseUrl: config.hermesApiBaseUrl,
+        apiKey: config.hermesApiKey,
+      });
+    }
+    return checkAuthStatus(config.codexApiKey);
+  };
 
   const isTopicContext = (contextKey: TelegramContextKey): boolean => isTopicContextKey(contextKey);
 
@@ -1535,9 +1545,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
               "",
               `<code>${escapeHTML(authStatus.detail)}</code>`,
               "",
-              idOf(sessionInfo) === "pi"
-                ? "Configure the required Pi provider environment variable on the host."
-                : "Use /login to start authentication, or set CODEX_API_KEY on the host.",
+              authHelpText(sessionInfo),
             ].join("\n"),
             {
               fallbackText: [
@@ -1545,9 +1553,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
                 "",
                 authStatus.detail,
                 "",
-                idOf(sessionInfo) === "pi"
-                  ? "Configure the required Pi provider environment variable on the host."
-                  : "Use /login to start authentication, or set CODEX_API_KEY on the host.",
+                authHelpText(sessionInfo),
               ].join("\n"),
             },
           );
@@ -1561,6 +1567,17 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
           "<b>⚠️ Pi is disabled.</b>\nEnable it with <code>NORDRELAY_PI_ENABLED=true</code>.",
           {
             fallbackText: "⚠️ Pi is disabled.\nEnable it with NORDRELAY_PI_ENABLED=true.",
+          },
+        );
+        return;
+      }
+
+      if (idOf(sessionInfo) === "hermes" && !config.hermesEnabled) {
+        await safeReply(
+          ctx,
+          "<b>⚠️ Hermes is disabled.</b>\nEnable it with <code>NORDRELAY_HERMES_ENABLED=true</code>.",
+          {
+            fallbackText: "⚠️ Hermes is disabled.\nEnable it with NORDRELAY_HERMES_ENABLED=true.",
           },
         );
         return;
@@ -2077,7 +2094,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
           ? config.codexEnabled
           : descriptor.id === "pi"
             ? config.piEnabled
-            : false;
+            : descriptor.id === "hermes"
+              ? config.hermesEnabled
+              : false;
         return `${descriptor.label}: ${descriptor.status}${descriptor.status === "available" ? ` · ${enabled ? "enabled" : "disabled"}` : ""}`;
       }),
     ].join("\n");
@@ -2088,7 +2107,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
           ? config.codexEnabled
           : descriptor.id === "pi"
             ? config.piEnabled
-            : false;
+            : descriptor.id === "hermes"
+              ? config.hermesEnabled
+              : false;
         const status = descriptor.status === "available" ? `${enabled ? "enabled" : "disabled"}` : "planned";
         const notes = descriptor.notes ? `\n  ${escapeHTML(descriptor.notes)}` : "";
         return `${descriptor.status === "available" ? "✅" : "🟡"} <b>${escapeHTML(descriptor.label)}</b> <code>${escapeHTML(status)}</code>${notes}`;
@@ -2488,7 +2509,10 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
   bot.command(["status", "health"], async (ctx) => {
     const health = await getConnectorHealth();
-    const authStatus = await checkAuthStatus(config.codexApiKey);
+    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
+    const authStatus = contextSession
+      ? await checkAgentAuthStatus(contextSession.session.getInfo())
+      : await checkAuthStatus(config.codexApiKey);
     const html = renderHealthHTML(health, authStatus.authenticated, getUserRole(ctx));
     const plain = renderHealthPlain(health, authStatus.authenticated, getUserRole(ctx));
     await safeReply(ctx, html, { fallbackText: plain });
@@ -2497,7 +2521,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   bot.command("version", async (ctx) => {
     const health = await getConnectorHealth();
     const state = await readConnectorState();
-    const versions = await getVersionChecks({ piCliPath: config.piCliPath });
+    const versions = await getVersionChecks({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath });
     const plain = [
       renderVersionCheckPlain(versions.nordrelay),
       `Runtime status: ${state.status ?? "unknown"}`,
@@ -2505,6 +2529,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       renderVersionCheckPlain(versions.codex),
       formatCliPathPlain("Pi CLI", health.piCliPath, health.piCli),
       renderVersionCheckPlain(versions.pi),
+      formatCliPathPlain("Hermes CLI", health.hermesCliPath, health.hermesCli),
+      renderVersionCheckPlain(versions.hermes),
     ].join("\n");
     const html = [
       renderVersionCheckHTML(versions.nordrelay),
@@ -2513,6 +2539,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       renderVersionCheckHTML(versions.codex),
       formatCliPathHTML("Pi CLI", health.piCliPath, health.piCli),
       renderVersionCheckHTML(versions.pi),
+      formatCliPathHTML("Hermes CLI", health.hermesCliPath, health.hermesCli),
+      renderVersionCheckHTML(versions.hermes),
     ].join("\n");
     await safeReply(ctx, html, { fallbackText: plain });
   });
@@ -3689,7 +3717,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       await safeReply(ctx, escapeHTML(text), { fallbackText: text });
       return;
     }
-    const efforts = idOf(info) === "pi" ? PI_THINKING_LEVELS : CODEX_REASONING_EFFORTS;
+    const efforts = agentReasoningOptions(idOf(info));
     const current = info.reasoningEffort;
     const effortButtons = efforts.map((effort) => ({
       label: effort === current ? `${effort} ✓` : effort,
@@ -3709,7 +3737,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
   bot.command(["effort", "reasoning"], openReasoningPicker);
 
-  bot.callbackQuery(/^agent_(codex|pi)$/, async (ctx) => {
+  bot.callbackQuery(/^agent_(codex|pi|hermes)$/, async (ctx) => {
     const chatId = ctx.chat?.id;
     const messageId = ctx.callbackQuery.message?.message_id;
     const selectedAgent = ctx.match?.[1] as AgentId | undefined;
@@ -4314,7 +4342,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
   });
 
-  bot.callbackQuery(/^effort_(off|minimal|low|medium|high|xhigh)$/, async (ctx) => {
+  bot.callbackQuery(/^effort_(off|none|minimal|low|medium|high|xhigh)$/, async (ctx) => {
     const chatId = ctx.chat?.id;
     const messageId = ctx.callbackQuery.message?.message_id;
     const effort = ctx.match?.[1];
@@ -5334,6 +5362,8 @@ function renderDiagnosticsPlain(
     `Telegram transport: ${config.telegramTransport}`,
     `Codex CLI: ${health.codexCli}`,
     `Pi CLI: ${health.piCli}`,
+    `Hermes CLI: ${health.hermesCli}`,
+    `Hermes API: ${config.hermesApiBaseUrl}`,
     `Enabled agents/default: ${enabledAgents(config).join(", ")} / ${config.defaultAgent}`,
     `State DB: ${health.databasePath ?? "-"}`,
     `Log file: ${health.logFile}`,
@@ -5384,6 +5414,8 @@ function renderDiagnosticsHTML(
     `<b>Telegram transport:</b> <code>${escapeHTML(config.telegramTransport)}</code>`,
     `<b>Codex CLI:</b> <code>${escapeHTML(health.codexCli)}</code>`,
     `<b>Pi CLI:</b> <code>${escapeHTML(health.piCli)}</code>`,
+    `<b>Hermes CLI:</b> <code>${escapeHTML(health.hermesCli)}</code>`,
+    `<b>Hermes API:</b> <code>${escapeHTML(config.hermesApiBaseUrl)}</code>`,
     `<b>Enabled agents/default:</b> <code>${escapeHTML(`${enabledAgents(config).join(", ")} / ${config.defaultAgent}`)}</code>`,
     `<b>State DB:</b> <code>${escapeHTML(health.databasePath ?? "-")}</code>`,
     `<b>Log file:</b> <code>${escapeHTML(health.logFile)}</code>`,
@@ -5426,6 +5458,7 @@ function renderHealthPlain(
     `Workspace: ${health.state.workspace ?? "-"}`,
     `Codex CLI: ${health.codexCli}`,
     `Pi CLI: ${health.piCli}`,
+    `Hermes CLI: ${health.hermesCli}`,
     `Codex state DB: ${health.databasePath ?? "-"}`,
     `Log: ${health.logFile}`,
   ].join("\n");
@@ -5447,6 +5480,7 @@ function renderHealthHTML(
     `<b>Workspace:</b> <code>${escapeHTML(health.state.workspace ?? "-")}</code>`,
     `<b>Codex CLI:</b> <code>${escapeHTML(health.codexCli)}</code>`,
     `<b>Pi CLI:</b> <code>${escapeHTML(health.piCli)}</code>`,
+    `<b>Hermes CLI:</b> <code>${escapeHTML(health.hermesCli)}</code>`,
     `<b>Codex state DB:</b> <code>${escapeHTML(health.databasePath ?? "-")}</code>`,
     `<b>Log:</b> <code>${escapeHTML(health.logFile)}</code>`,
   ].join("\n");
@@ -5523,6 +5557,17 @@ function labelOf(info: AgentSessionInfo): string {
 
 function idOf(info: AgentSessionInfo): AgentId {
   return info.agentId ?? "codex";
+}
+
+function authHelpText(info: AgentSessionInfo): string {
+  const agentId = idOf(info);
+  if (agentId === "pi") {
+    return "Configure the required Pi provider environment variable on the host.";
+  }
+  if (agentId === "hermes") {
+    return "Start the Hermes API Server and configure HERMES_API_KEY when the server requires one.";
+  }
+  return "Use /login to start authentication, or set CODEX_API_KEY on the host.";
 }
 
 function requiresTurnApproval(info: AgentSessionInfo): boolean {

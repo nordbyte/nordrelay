@@ -33,6 +33,7 @@ export interface SettingsUpdateResult {
 const SECRET_KEYS = new Set([
   "TELEGRAM_BOT_TOKEN",
   "CODEX_API_KEY",
+  "HERMES_API_KEY",
   "OPENAI_API_KEY",
   "TELEGRAM_WEBHOOK_SECRET",
   "NORDRELAY_DASHBOARD_TOKEN",
@@ -56,7 +57,8 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
 
   setting("NORDRELAY_CODEX_ENABLED", "Enable Codex", "Agents", "boolean", "Allow Codex sessions.", true),
   setting("NORDRELAY_PI_ENABLED", "Enable Pi", "Agents", "boolean", "Allow Pi sessions.", true),
-  setting("NORDRELAY_DEFAULT_AGENT", "Default agent", "Agents", "string", "codex or pi.", true, ["codex", "pi"]),
+  setting("NORDRELAY_HERMES_ENABLED", "Enable Hermes", "Agents", "boolean", "Allow Hermes sessions through the Hermes API Server.", true),
+  setting("NORDRELAY_DEFAULT_AGENT", "Default agent", "Agents", "string", "codex, pi, or hermes.", true, ["codex", "pi", "hermes"]),
   setting("CODEX_API_KEY", "Codex API key", "Codex", "secret", "Optional Codex SDK API key.", true),
   setting("CODEX_CLI_PATH", "Codex CLI path", "Codex", "string", "Optional explicit Codex executable path.", true),
   setting("CODEX_USE_BUNDLED_CLI", "Use bundled Codex CLI", "Codex", "boolean", "Force SDK-bundled CLI instead of host CLI.", true),
@@ -75,6 +77,15 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   setting("PI_DEFAULT_MODEL", "Default Pi model", "Pi", "string", "Default Pi model slug.", false),
   setting("PI_DEFAULT_THINKING", "Default Pi thinking", "Pi", "string", "off, minimal, low, medium, high, or xhigh.", false, ["off", "minimal", "low", "medium", "high", "xhigh"]),
   setting("PI_DEFAULT_PROFILE", "Default Pi profile", "Pi", "string", "default, readonly, no-tools, offline, or safe-offline.", true, ["default", "readonly", "no-tools", "offline", "safe-offline"]),
+
+  setting("HERMES_CLI_PATH", "Hermes CLI path", "Hermes", "string", "Optional Hermes executable path.", true),
+  setting("HERMES_HOME", "Hermes home", "Hermes", "string", "Optional Hermes home directory. Defaults to ~/.hermes.", true),
+  setting("HERMES_STATE_DB_PATH", "Hermes state DB path", "Hermes", "string", "Optional explicit Hermes state.db path.", true),
+  setting("HERMES_API_BASE_URL", "Hermes API base URL", "Hermes", "string", "Hermes API Server base URL.", true),
+  setting("HERMES_API_KEY", "Hermes API key", "Hermes", "secret", "Bearer token for the Hermes API Server.", true),
+  setting("HERMES_DEFAULT_MODEL", "Default Hermes model", "Hermes", "string", "Default model label sent to Hermes API runs.", false),
+  setting("HERMES_DEFAULT_REASONING", "Default Hermes reasoning", "Hermes", "string", "none, minimal, low, medium, high, or xhigh.", false, ["none", "minimal", "low", "medium", "high", "xhigh"]),
+  setting("HERMES_DEFAULT_PROFILE", "Default Hermes profile", "Hermes", "string", "default, safe, readonly, or yolo.", true, ["default", "safe", "readonly", "yolo"]),
 
   setting("CONNECTOR_LOG_FORMAT", "Log format", "Operations", "string", "text or json.", true, ["text", "json"]),
   setting("TOOL_VERBOSITY", "Tool verbosity", "Operations", "string", "all, summary, errors-only, or none.", false, ["all", "summary", "errors-only", "none"]),

@@ -21,10 +21,9 @@ import {
 } from "./attachments.js";
 import {
   CODEX_AGENT_CAPABILITIES,
-  CODEX_REASONING_EFFORTS,
-  PI_THINKING_LEVELS,
   agentLabel,
   agentReasoningLabel,
+  agentReasoningOptions,
   type AgentCapabilities,
   type AgentExternalSnapshot,
   type AgentId,
@@ -45,7 +44,9 @@ import { enabledAgents } from "./agent-factory.js";
 import { checkAuthStatus } from "./codex-auth.js";
 import type { ConnectorConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
+import { checkHermesAuthStatus } from "./hermes-auth.js";
 import { getConnectorHealth, getVersionChecks, readFormattedLogTail, spawnConnectorRestart } from "./operations.js";
+import { checkPiAuthStatus } from "./pi-auth.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
 import { renderSessionInfoPlain } from "./session-format.js";
 import { SessionRegistry } from "./session-registry.js";
@@ -243,7 +244,7 @@ export class RelayRuntime {
   async status(): Promise<Record<string, unknown>> {
     return {
       health: await getConnectorHealth(),
-      versionChecks: await getVersionChecks({ piCliPath: this.config.piCliPath }),
+      versionChecks: await getVersionChecks({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath }),
       snapshot: await this.snapshot(),
     };
   }
@@ -251,7 +252,7 @@ export class RelayRuntime {
   async diagnostics(): Promise<WebDiagnosticsDto> {
     return {
       health: await getConnectorHealth(),
-      versionChecks: await getVersionChecks({ piCliPath: this.config.piCliPath }),
+      versionChecks: await getVersionChecks({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath }),
       snapshot: await this.snapshot(),
       runtime: {
         stateBackend: this.config.stateBackend,
@@ -270,7 +271,7 @@ export class RelayRuntime {
     return {
       models: capabilities.modelSelection ? session.listModels() : [],
       reasoningLabel: agentReasoningLabel(info.agentId),
-      reasoningOptions: info.agentId === "pi" ? PI_THINKING_LEVELS : CODEX_REASONING_EFFORTS,
+      reasoningOptions: agentReasoningOptions(info.agentId),
       launchProfiles: capabilities.launchProfiles ? session.listLaunchProfiles() : [],
       workspaces: filterAllowedWorkspaces(session.listWorkspaces(), this.config),
       capabilities,
@@ -359,7 +360,7 @@ export class RelayRuntime {
     const session = options.agentId ? await this.registry.switchAgent(WEB_CONTEXT_KEY, options.agentId) : await this.getSession(true);
     this.ensureIdle(session);
     if (options.reasoningEffort) {
-      const reasoningOptions = session.getInfo().agentId === "pi" ? PI_THINKING_LEVELS : CODEX_REASONING_EFFORTS;
+      const reasoningOptions = agentReasoningOptions(session.getInfo().agentId);
       if (!reasoningOptions.includes(options.reasoningEffort as never)) {
         throw new Error(`Invalid ${agentReasoningLabel(session.getInfo().agentId)} value: ${options.reasoningEffort}`);
       }
@@ -418,7 +419,7 @@ export class RelayRuntime {
   async setReasoningEffort(effort: string): Promise<AgentSessionInfo> {
     const session = await this.getSession(true);
     this.ensureIdle(session);
-    const options = session.getInfo().agentId === "pi" ? PI_THINKING_LEVELS : CODEX_REASONING_EFFORTS;
+    const options = agentReasoningOptions(session.getInfo().agentId);
     if (!options.includes(effort as never)) {
       throw new Error(`Invalid ${agentReasoningLabel(session.getInfo().agentId)} value: ${effort}`);
     }
@@ -863,6 +864,19 @@ export class RelayRuntime {
     }
   }
 
+  private async checkAgentAuth(info: AgentSessionInfo): Promise<{ authenticated: boolean; detail: string }> {
+    if (info.agentId === "pi") {
+      return checkPiAuthStatus(info.model);
+    }
+    if (info.agentId === "hermes") {
+      return checkHermesAuthStatus({
+        baseUrl: this.config.hermesApiBaseUrl,
+        apiKey: this.config.hermesApiKey,
+      });
+    }
+    return checkAuthStatus(this.config.codexApiKey);
+  }
+
   private ensureIdle(session: AgentSessionService): void {
     if (session.isProcessing()) {
       throw new Error("The active session is still processing a turn.");
@@ -873,9 +887,9 @@ export class RelayRuntime {
     await this.ensureActiveThread(session);
     const info = session.getInfo();
     if ((info.capabilities ?? CODEX_AGENT_CAPABILITIES).auth && info.agentId !== "pi") {
-      const auth = await checkAuthStatus(this.config.codexApiKey);
+      const auth = await this.checkAgentAuth(info);
       if (!auth.authenticated) {
-        throw new Error(`Codex is not authenticated: ${auth.detail}`);
+        throw new Error(`${agentLabel(info.agentId)} is not authenticated: ${auth.detail}`);
       }
     }
     const workspacePolicy = evaluateWorkspacePolicy(session.getInfo().workspace, this.config);

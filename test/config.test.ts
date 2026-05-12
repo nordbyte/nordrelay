@@ -56,11 +56,21 @@ describe("loadConfig", () => {
     delete process.env.TELEGRAM_AUTO_SEND_ARTIFACTS;
     delete process.env.NORDRELAY_CODEX_ENABLED;
     delete process.env.NORDRELAY_PI_ENABLED;
+    delete process.env.NORDRELAY_HERMES_ENABLED;
     delete process.env.NORDRELAY_DEFAULT_AGENT;
     delete process.env.PI_CLI_PATH;
     delete process.env.PI_SESSION_DIR;
     delete process.env.PI_DEFAULT_MODEL;
     delete process.env.PI_DEFAULT_THINKING;
+    delete process.env.PI_DEFAULT_PROFILE;
+    delete process.env.HERMES_CLI_PATH;
+    delete process.env.HERMES_HOME;
+    delete process.env.HERMES_STATE_DB_PATH;
+    delete process.env.HERMES_API_BASE_URL;
+    delete process.env.HERMES_API_KEY;
+    delete process.env.HERMES_DEFAULT_MODEL;
+    delete process.env.HERMES_DEFAULT_REASONING;
+    delete process.env.HERMES_DEFAULT_PROFILE;
     delete process.env.WORKSPACE_ALLOWED_ROOTS;
     delete process.env.WORKSPACE_WARN_ROOTS;
     delete process.env.NORDRELAY_STATE_BACKEND;
@@ -193,6 +203,15 @@ describe("loadConfig", () => {
       piDefaultModel: undefined,
       piDefaultThinking: "medium",
       piDefaultLaunchProfileId: "default",
+      hermesEnabled: false,
+      hermesCliPath: undefined,
+      hermesHome: undefined,
+      hermesStateDbPath: undefined,
+      hermesApiBaseUrl: "http://127.0.0.1:8642",
+      hermesApiKey: undefined,
+      hermesDefaultModel: undefined,
+      hermesDefaultReasoning: undefined,
+      hermesDefaultLaunchProfileId: "default",
       defaultAgent: "codex",
       toolVerbosity: "all",
       logFormat: "text",
@@ -223,6 +242,15 @@ describe("loadConfig", () => {
     expect(config.piDefaultModel).toBeUndefined();
     expect(config.piDefaultThinking).toBe("medium");
     expect(config.piDefaultLaunchProfileId).toBe("default");
+    expect(config.hermesEnabled).toBe(false);
+    expect(config.hermesCliPath).toBeUndefined();
+    expect(config.hermesHome).toBeUndefined();
+    expect(config.hermesStateDbPath).toBeUndefined();
+    expect(config.hermesApiBaseUrl).toBe("http://127.0.0.1:8642");
+    expect(config.hermesApiKey).toBeUndefined();
+    expect(config.hermesDefaultModel).toBeUndefined();
+    expect(config.hermesDefaultReasoning).toBeUndefined();
+    expect(config.hermesDefaultLaunchProfileId).toBe("default");
     expect(config.codexModel).toBeUndefined();
     expect(config.codexSyncIntervalMs).toBe(10_000);
     expect(config.codexExternalBusyCheckMs).toBe(5_000);
@@ -557,6 +585,37 @@ describe("loadConfig", () => {
     expect(config.piDefaultLaunchProfileId).toBe("safe-offline");
   });
 
+  it("parses Hermes agent settings", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
+    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
+    process.env.NORDRELAY_CODEX_ENABLED = "false";
+    process.env.NORDRELAY_HERMES_ENABLED = "true";
+    process.env.NORDRELAY_DEFAULT_AGENT = "hermes";
+    process.env.HERMES_CLI_PATH = "/usr/local/bin/hermes";
+    process.env.HERMES_HOME = "/home/user/.hermes-test";
+    process.env.HERMES_STATE_DB_PATH = "/tmp/hermes-state.db";
+    process.env.HERMES_API_BASE_URL = "http://127.0.0.1:9999";
+    process.env.HERMES_API_KEY = "hermes-secret";
+    process.env.HERMES_DEFAULT_MODEL = "openai/gpt-5.5";
+    process.env.HERMES_DEFAULT_REASONING = "xhigh";
+    process.env.HERMES_DEFAULT_PROFILE = "yolo";
+
+    const config = loadConfig();
+
+    expect(config.codexEnabled).toBe(false);
+    expect(config.hermesEnabled).toBe(true);
+    expect(config.defaultAgent).toBe("hermes");
+    expect(config.hermesCliPath).toBe("/usr/local/bin/hermes");
+    expect(config.hermesHome).toBe("/home/user/.hermes-test");
+    expect(config.hermesStateDbPath).toBe("/tmp/hermes-state.db");
+    expect(config.hermesApiBaseUrl).toBe("http://127.0.0.1:9999");
+    expect(config.hermesApiKey).toBe("hermes-secret");
+    expect(config.hermesDefaultModel).toBe("openai/gpt-5.5");
+    expect(config.hermesDefaultReasoning).toBe("xhigh");
+    expect(config.hermesDefaultLaunchProfileId).toBe("yolo");
+  });
+
   it("rejects a default agent that is not enabled", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
     process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
@@ -568,6 +627,9 @@ describe("loadConfig", () => {
 
     process.env.NORDRELAY_PI_ENABLED = "true";
     expect(() => loadConfig()).toThrow("NORDRELAY_DEFAULT_AGENT=codex requires NORDRELAY_CODEX_ENABLED=true");
+
+    process.env.NORDRELAY_DEFAULT_AGENT = "hermes";
+    expect(() => loadConfig()).toThrow("NORDRELAY_DEFAULT_AGENT=hermes requires NORDRELAY_HERMES_ENABLED=true");
   });
 
   it("parses CONNECTOR_LOG_FORMAT", () => {

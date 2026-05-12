@@ -1,5 +1,6 @@
 import {
   CODEX_AGENT_CAPABILITIES,
+  HERMES_AGENT_CAPABILITIES,
   PI_AGENT_CAPABILITIES,
   type AgentCapabilities,
   type AgentId,
@@ -32,6 +33,14 @@ export const BUILTIN_AGENT_ADAPTERS: AgentAdapterDescriptor[] = [
     envFlag: "NORDRELAY_PI_ENABLED",
   },
   {
+    id: "hermes",
+    label: "Hermes",
+    status: "available",
+    capabilities: HERMES_AGENT_CAPABILITIES,
+    envFlag: "NORDRELAY_HERMES_ENABLED",
+    notes: "Uses the Hermes API Server for streaming runs, stop, session continuity, and tool lifecycle events.",
+  },
+  {
     id: "claude-code",
     label: "Claude Code",
     status: "planned",
@@ -41,12 +50,6 @@ export const BUILTIN_AGENT_ADAPTERS: AgentAdapterDescriptor[] = [
   {
     id: "openclaw",
     label: "OpenClaw",
-    status: "planned",
-    capabilities: plannedCapabilities(),
-  },
-  {
-    id: "hermes",
-    label: "Hermes",
     status: "planned",
     capabilities: plannedCapabilities(),
   },

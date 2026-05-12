@@ -50,6 +50,7 @@ function parseArgs(argv) {
     else if (arg === "--admin-id") options.telegramAdminUserIds = requireValue(copy, ++i, arg);
     else if (arg === "--state-backend") options.stateBackend = requireValue(copy, ++i, arg);
     else if (arg === "--enable-pi") options.enablePi = true;
+    else if (arg === "--enable-hermes") options.enableHermes = true;
     else if (arg === "--disable-codex") options.disableCodex = true;
   }
 
@@ -259,6 +260,8 @@ async function commandStatus(options) {
   console.log(`Mode: ${state.sessionMode || "per Telegram context"}`);
   console.log(`Auth: ${state.authenticated === undefined ? "-" : state.authenticated ? "yes" : "no"}`);
   console.log(`Codex CLI: ${state.codexCli || "-"}`);
+  console.log(`Pi CLI: ${state.piCli || "-"}`);
+  console.log(`Hermes CLI: ${state.hermesCli || "-"}`);
   console.log(`Log: ${options.logFile}`);
   if (state.error) console.log(`Error: ${state.error}`);
 }
@@ -284,11 +287,13 @@ async function commandInit(options) {
       await ask(rl, "Telegram admin user id", "");
     const enableCodex = options.disableCodex ? "false" : await askChoice(rl, "Enable Codex", "true");
     const enablePi = options.enablePi ? "true" : await askChoice(rl, "Enable Pi", "false");
+    const enableHermes = options.enableHermes ? "true" : await askChoice(rl, "Enable Hermes", "false");
     const stateBackend = options.stateBackend || await askChoice(rl, "State backend (json/sqlite)", "json");
 
     if (!telegramBotToken) throw new Error("Telegram bot token is required.");
     if (!telegramAdminUserIds) throw new Error("Telegram admin user id is required.");
-    if (enableCodex !== "true" && enablePi !== "true") throw new Error("At least one agent must be enabled.");
+    if (enableCodex !== "true" && enablePi !== "true" && enableHermes !== "true") throw new Error("At least one agent must be enabled.");
+    const defaultAgent = enableCodex === "true" ? "codex" : enablePi === "true" ? "pi" : "hermes";
 
     const lines = [
       "# NordRelay local runtime config.",
@@ -298,8 +303,11 @@ async function commandInit(options) {
       "TELEGRAM_ALLOW_ANY_CHAT=false",
       `NORDRELAY_CODEX_ENABLED=${enableCodex}`,
       `NORDRELAY_PI_ENABLED=${enablePi}`,
-      `NORDRELAY_DEFAULT_AGENT=${enableCodex === "true" ? "codex" : "pi"}`,
+      `NORDRELAY_HERMES_ENABLED=${enableHermes}`,
+      `NORDRELAY_DEFAULT_AGENT=${defaultAgent}`,
       "PI_DEFAULT_PROFILE=default",
+      "HERMES_API_BASE_URL=http://127.0.0.1:8642",
+      "HERMES_DEFAULT_PROFILE=default",
       `NORDRELAY_STATE_BACKEND=${stateBackend === "sqlite" ? "sqlite" : "json"}`,
       "TELEGRAM_TRANSPORT=polling",
       "TELEGRAM_AUTO_SEND_ARTIFACTS=false",
@@ -325,8 +333,12 @@ async function commandDoctor(options) {
   checks.push(check("Private by default", process.env.TELEGRAM_ALLOW_ANY_CHAT !== "true", "TELEGRAM_ALLOW_ANY_CHAT is not true"));
   checks.push(check("Codex enabled flag", process.env.NORDRELAY_CODEX_ENABLED !== "false", `NORDRELAY_CODEX_ENABLED=${process.env.NORDRELAY_CODEX_ENABLED ?? "true"}`));
   checks.push(check("Pi enabled flag", process.env.NORDRELAY_PI_ENABLED === "true" || process.env.NORDRELAY_PI_ENABLED === undefined, `NORDRELAY_PI_ENABLED=${process.env.NORDRELAY_PI_ENABLED ?? "false"}`, process.env.NORDRELAY_PI_ENABLED === "true" ? "pass" : "warn"));
+  checks.push(check("Hermes enabled flag", process.env.NORDRELAY_HERMES_ENABLED === "true", `NORDRELAY_HERMES_ENABLED=${process.env.NORDRELAY_HERMES_ENABLED ?? "false"}`, process.env.NORDRELAY_HERMES_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("Codex CLI", Boolean(findExecutable(process.env.CODEX_CLI_PATH || "codex")), process.env.CODEX_CLI_PATH || findExecutable("codex") || "not found", process.env.NORDRELAY_CODEX_ENABLED === "false" ? "warn" : "fail"));
   checks.push(check("Pi CLI", Boolean(findExecutable(process.env.PI_CLI_PATH || "pi")), process.env.PI_CLI_PATH || findExecutable("pi") || "not found", process.env.NORDRELAY_PI_ENABLED === "true" ? "fail" : "warn"));
+  checks.push(check("Hermes CLI", Boolean(findExecutable(process.env.HERMES_CLI_PATH || "hermes")), process.env.HERMES_CLI_PATH || findExecutable("hermes") || "not found", process.env.NORDRELAY_HERMES_ENABLED === "true" ? "fail" : "warn"));
+  const hermesApiCheck = await checkHermesApiServer();
+  checks.push(check("Hermes API Server", hermesApiCheck.ok, hermesApiCheck.detail, process.env.NORDRELAY_HERMES_ENABLED === "true" ? "fail" : "warn"));
   checks.push(check("ffmpeg", Boolean(findExecutable("ffmpeg")), findExecutable("ffmpeg") || "not found", "warn"));
   const stateBackendCheck = validateStateBackend();
   checks.push(check("State backend", stateBackendCheck.ok, stateBackendCheck.detail));
@@ -340,6 +352,23 @@ async function commandDoctor(options) {
   const warned = checks.filter((item) => item.status === "warn" && !item.ok);
   console.log(`\nSummary: ${failed.length} failed, ${warned.length} warnings.`);
   if (failed.length > 0) process.exitCode = 1;
+}
+
+async function checkHermesApiServer() {
+  const baseUrl = (process.env.HERMES_API_BASE_URL || "http://127.0.0.1:8642").replace(/\/+$/, "");
+  const headers = process.env.HERMES_API_KEY ? { authorization: `Bearer ${process.env.HERMES_API_KEY}` } : {};
+  try {
+    const response = await fetch(`${baseUrl}/health`, { headers, signal: AbortSignal.timeout(2000) });
+    return {
+      ok: response.ok,
+      detail: response.ok ? `${baseUrl}/health ok` : `${baseUrl}/health HTTP ${response.status}`,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      detail: `${baseUrl}/health failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
 async function commandWeb(options) {

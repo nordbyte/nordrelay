@@ -10,6 +10,7 @@ import { describeCodexCli, resolveCodexCli } from "./codex-cli.js";
 import { findLaunchProfile, formatLaunchProfileBehavior } from "./codex-launch.js";
 import { enabledAgents } from "./agent-factory.js";
 import { loadConfig, type ConnectorConfig } from "./config.js";
+import { describeHermesCli, resolveHermesCli } from "./hermes-cli.js";
 import { installConsoleLogger } from "./logger.js";
 import { describePiCli, resolvePiCli } from "./pi-cli.js";
 import { configureRedaction } from "./redaction.js";
@@ -46,8 +47,13 @@ try {
   }
   const codexCli = resolveCodexCli();
   const piCli = resolvePiCli(process.env, config.piCliPath);
+  const hermesCli = resolveHermesCli(process.env, config.hermesCliPath);
   console.log(`Codex CLI: ${describeCodexCli(codexCli)}`);
   console.log(`Pi CLI: ${describePiCli(piCli)}`);
+  console.log(`Hermes CLI: ${describeHermesCli(hermesCli)}`);
+  if (config.hermesEnabled) {
+    console.log(`Hermes API: ${config.hermesApiBaseUrl}`);
+  }
   const defaultLaunchProfile = findLaunchProfile(config.launchProfiles, config.defaultLaunchProfileId);
   if (defaultLaunchProfile) {
     console.log(
@@ -69,6 +75,7 @@ try {
     authMethod: authStatus.method,
     codexCli: describeCodexCli(codexCli),
     piCli: describePiCli(piCli),
+    hermesCli: describeHermesCli(hermesCli),
     telegramTransport: config.telegramTransport,
   });
 } catch (error) {

@@ -260,7 +260,7 @@ function resolveLaunchProfileId(
     return undefined;
   }
 
-  if (meta.agentId === "pi") {
+  if (meta.agentId === "pi" || meta.agentId === "hermes") {
     return meta.launchProfileId;
   }
 

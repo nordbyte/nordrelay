@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { describeCodexCli, resolveCodexCli } from "./codex-cli.js";
 import { findLatestDatabase } from "./codex-state.js";
+import { describeHermesCli, resolveHermesCli } from "./hermes-cli.js";
 import { describePiCli, resolvePiCli } from "./pi-cli.js";
 
 export interface ConnectorRuntimeState {
@@ -18,6 +19,7 @@ export interface ConnectorRuntimeState {
   authMethod?: string;
   codexCli?: string;
   piCli?: string;
+  hermesCli?: string;
   error?: string;
   updatedAt?: string;
 }
@@ -33,6 +35,9 @@ export interface ConnectorHealth {
   piCli: string;
   piCliPath: string | null;
   piCliVersion: string;
+  hermesCli: string;
+  hermesCliPath: string | null;
+  hermesCliVersion: string;
   stateFile: string;
   logFile: string;
   databasePath: string | null;
@@ -55,6 +60,7 @@ export interface VersionChecks {
   nordrelay: VersionCheck;
   codex: VersionCheck;
   pi: VersionCheck;
+  hermes: VersionCheck;
 }
 
 export type SelfUpdateMethod = "git" | "npm";
@@ -78,6 +84,7 @@ const APP_NAME = "nordrelay";
 const PACKAGE_NAME = "@nordbyte/nordrelay";
 const CODEX_PACKAGE_NAME = "@openai/codex";
 const PI_PACKAGE_NAME = "@mariozechner/pi-coding-agent";
+const HERMES_PACKAGE_NAME = "hermes-agent";
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 const SECRET_RE = /(bot|token|api[_-]?key|authorization|bearer|password|secret)(["'=: ]+)([^\s"',]+)/gi;
 const DEFAULT_VERSION_CACHE_TTL_MS = 60 * 60 * 1000;
@@ -151,14 +158,16 @@ export async function getPackageVersion(): Promise<string> {
   }
 }
 
-export async function getVersionChecks(options: { piCliPath?: string } = {}): Promise<VersionChecks> {
+export async function getVersionChecks(options: { piCliPath?: string; hermesCliPath?: string } = {}): Promise<VersionChecks> {
   const nordrelayVersion = await getPackageVersion();
   const codexCli = resolveCodexCli();
   const piCli = resolvePiCli(process.env, options.piCliPath);
+  const hermesCli = resolveHermesCli(process.env, options.hermesCliPath);
   const codexVersionLabel = codexCli.path
     ? detectCliVersion(codexCli.path)
     : readInstalledPackageVersion(CODEX_PACKAGE_NAME) ?? "not installed";
   const piVersionLabel = piCli.path ? detectCliVersion(piCli.path) : "not installed";
+  const hermesVersionLabel = hermesCli.path ? detectCliVersion(hermesCli.path) : "not installed";
 
   return {
     nordrelay: buildVersionCheck({
@@ -181,6 +190,14 @@ export async function getVersionChecks(options: { piCliPath?: string } = {}): Pr
       installedVersion: extractVersion(piVersionLabel),
       notInstalled: piVersionLabel === "not installed",
     }),
+    hermes: buildVersionCheck({
+      label: "Hermes",
+      packageName: HERMES_PACKAGE_NAME,
+      installedLabel: hermesVersionLabel,
+      installedVersion: extractVersion(hermesVersionLabel),
+      notInstalled: hermesVersionLabel === "not installed",
+      skipLatest: true,
+    }),
   };
 }
 
@@ -191,6 +208,7 @@ export async function getConnectorHealth(): Promise<ConnectorHealth> {
   const appPidRunning = isProcessRunning(state.appPid);
   const codexCli = resolveCodexCli();
   const piCli = resolvePiCli();
+  const hermesCli = resolveHermesCli();
 
   return {
     version,
@@ -203,6 +221,9 @@ export async function getConnectorHealth(): Promise<ConnectorHealth> {
     piCli: describePiCli(piCli),
     piCliPath: piCli.path ?? null,
     piCliVersion: detectCliVersion(piCli.path),
+    hermesCli: describeHermesCli(hermesCli),
+    hermesCliPath: hermesCli.path ?? null,
+    hermesCliVersion: detectCliVersion(hermesCli.path),
     stateFile: getConnectorStatePath(),
     logFile: getConnectorLogPath(),
     databasePath: findLatestDatabase(),
@@ -348,6 +369,7 @@ function buildVersionCheck(options: {
   installedLabel: string;
   installedVersion: string | null;
   notInstalled?: boolean;
+  skipLatest?: boolean;
 }): VersionCheck {
   if (options.notInstalled) {
     return {
@@ -357,6 +379,18 @@ function buildVersionCheck(options: {
       installedVersion: null,
       latestVersion: null,
       status: "not-installed",
+    };
+  }
+
+  if (options.skipLatest) {
+    return {
+      label: options.label,
+      packageName: options.packageName,
+      installedLabel: options.installedLabel,
+      installedVersion: options.installedVersion,
+      latestVersion: null,
+      status: options.installedVersion ? "unknown" : "unknown",
+      detail: "Latest-version lookup is not available for this package source",
     };
   }
 

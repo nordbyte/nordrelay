@@ -1,15 +1,15 @@
 # NordRelay
 
-NordRelay is a remote control plane for coding agents across messaging channels. The current implementation connects Codex and Pi coding-agent sessions to Telegram, keeps independent sessions per chat or forum topic, streams replies and tool activity back to Telegram, supports files, photos, voice input, model controls, session browsing, retry/abort, and CLI handback.
+NordRelay is a remote control plane for coding agents across messaging channels. The current implementation connects Codex, Pi, and Hermes coding-agent sessions to Telegram, keeps independent sessions per chat or forum topic, streams replies and tool activity back to Telegram, supports files, photos, voice input, model controls, session browsing, retry/abort, and CLI handback.
 
-The repo is both a local Codex marketplace and a standalone Node app. The plugin lives in `plugins/nordrelay/`; the full bot runtime lives in `src/` and uses `@openai/codex-sdk` for Codex plus Pi RPC mode for Pi.
+The repo is both a local Codex marketplace and a standalone Node app. The plugin lives in `plugins/nordrelay/`; the full bot runtime lives in `src/` and uses `@openai/codex-sdk` for Codex, Pi RPC mode for Pi, and the Hermes API Server for Hermes.
 
 ## Features
 
 Session control:
 
 - Independent coding-agent sessions per Telegram private chat, group chat, and forum topic.
-- `/agent` switches a Telegram context between enabled agents such as Codex and Pi.
+- `/agent` switches a Telegram context between enabled agents such as Codex, Pi, and Hermes.
 - Persistent Telegram context metadata in the active workspace under `.nordrelay/contexts.json`.
 - `/new` starts a fresh thread, with workspace selection when known workspaces are available.
 - `/session` shows thread id, workspace, launch profile, launch behavior, model, reasoning, fast mode, context usage, token totals, and subscription limit remaining percentages.
@@ -27,8 +27,8 @@ Session control:
 - `/queue later <minutes> <prompt>` schedules a prompt for later execution, and `/queue inspect <queue-id>` shows full queue metadata.
 - `/abort`, `/stop`, and the inline Abort button cancel the active agent turn.
 - Busy prompts are queued per Telegram context instead of being dropped.
-- If the attached thread is currently active in the local Codex CLI, Telegram prompts are queued until that CLI task finishes.
-- Active Codex and Pi CLI turns are mirrored into Telegram with configurable `off`, `status`, `final`, or `full` modes.
+- If the attached thread is currently active in the local agent CLI, Telegram prompts are queued until that CLI task finishes.
+- Active Codex, Pi, and Hermes CLI/API turns are mirrored into Telegram with configurable `off`, `status`, `final`, or `full` modes.
 - `/mirror` controls CLI mirroring per Telegram context.
 - Queues survive connector restarts and are resumed automatically when the external CLI turn becomes idle.
 - `/notify` controls completion/status notifications and quiet hours per Telegram context.
@@ -44,8 +44,8 @@ Adapter architecture:
 
 - Telegram is implemented as the first channel adapter with text, typing, streaming edits, inline buttons, files, photos, voice, topics, and webhook capability metadata.
 - `/channels` shows available and planned messaging adapters for Discord, WhatsApp, Slack, and Matrix.
-- Codex and Pi are implemented as agent adapters, with descriptors for future Claude Code, OpenClaw, and Hermes support.
-- `/agents` shows available/planned agent adapters and whether Codex/Pi are enabled.
+- Codex, Pi, and Hermes are implemented as agent adapters, with descriptors for future Claude Code and OpenClaw support.
+- `/agents` shows available/planned agent adapters and whether Codex, Pi, and Hermes are enabled.
 
 Codex runtime:
 
@@ -67,7 +67,7 @@ Codex runtime:
 Pi runtime:
 
 - Pi support is opt-in with `NORDRELAY_PI_ENABLED=true`.
-- The default Telegram agent is selected with `NORDRELAY_DEFAULT_AGENT=codex` or `pi`.
+- The default Telegram agent is selected with `NORDRELAY_DEFAULT_AGENT=codex`, `pi`, or `hermes`.
 - Pi sessions are driven through official `pi --mode rpc` JSONL commands and events.
 - Existing Pi sessions are discovered from `~/.pi/agent/sessions/` or `PI_SESSION_DIR`.
 - `/sessions`, `/switch`, `/attach`, `/new`, `/session`, `/handback`, `/model`, `/reasoning`, `/abort`, `/stop`, `/retry`, `/queue`, files, photos, and voice input work for Pi contexts.
@@ -79,6 +79,21 @@ Pi runtime:
 - Pi CLI turns can be mirrored into Telegram/WebUI with status, tool activity, final answers, activity timelines, diagnostics, and generated artifact discovery.
 - Pi provider auth checks report the environment variables expected for the selected provider.
 - Codex-only subscription limit percentages remain Codex-specific; Pi reports token/context stats when available.
+
+Hermes runtime:
+
+- Hermes support is opt-in with `NORDRELAY_HERMES_ENABLED=true`.
+- The default Telegram agent can be set with `NORDRELAY_DEFAULT_AGENT=hermes`.
+- Hermes turns are executed through the Hermes API Server `/v1/runs` endpoint and streamed through `/v1/runs/{run_id}/events`.
+- `/abort` and `/stop` use the Hermes run stop endpoint when a NordRelay-started Hermes run is active.
+- Existing Hermes sessions are discovered from `~/.hermes/state.db`, or from `HERMES_STATE_DB_PATH` when configured.
+- `/sessions`, `/switch`, `/attach`, `/new`, `/session`, `/handback`, `/model`, `/reasoning`, `/abort`, `/stop`, `/retry`, `/queue`, files, photos, and voice input work for Hermes contexts.
+- Hermes model selection uses `/v1/models` when the API Server is reachable and falls back to the selected/default model.
+- Hermes reasoning uses `/reasoning` and supports `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`.
+- Hermes launch profiles include `default`, `safe`, `readonly`, and `yolo`; profiles map to run instructions and Hermes approval responses.
+- Hermes external activity is detected from `state.db`, so Telegram/WebUI prompts queue while the same Hermes session has an unfinished CLI turn.
+- Hermes CLI/API turns can be mirrored into Telegram/WebUI with status, tool activity, final answers, activity timelines, diagnostics, and generated artifact discovery.
+- `/auth` checks that the Hermes API Server is reachable and that `HERMES_API_KEY` is usable when configured.
 
 Telegram input:
 
@@ -103,7 +118,7 @@ Telegram output:
 - Command execution, web search, file changes, MCP tool calls, error items, and todo-list updates are surfaced.
 - Todo-list updates are rendered as a live plan/status message.
 - Generated artifacts from `.nordrelay/turns/<turn-id>/out/` are retained for manual retrieval with `/artifacts`.
-- Workspace files detected after mirrored Codex or Pi CLI turns are indexed as `/artifacts` entries, even when automatic artifact delivery is disabled.
+- Workspace files detected after mirrored Codex, Pi, or Hermes CLI/API turns are indexed as `/artifacts` entries, even when automatic artifact delivery is disabled.
 - Automatic artifact summaries and file uploads are disabled by default; set `TELEGRAM_AUTO_SEND_ARTIFACTS=true` to send them after turns.
 - Workspace artifact detection sorts by modification time and supports configurable ignored directories and globs.
 - Image artifacts are sent with Telegram previews; large multi-file outputs are bundled into one ZIP when possible.
@@ -201,6 +216,7 @@ TELEGRAM_BOT_TOKEN=123456789:replace-me
 TELEGRAM_ADMIN_USER_IDS=123456789
 NORDRELAY_CODEX_ENABLED=true
 NORDRELAY_PI_ENABLED=false
+NORDRELAY_HERMES_ENABLED=false
 NORDRELAY_DEFAULT_AGENT=codex
 CODEX_SANDBOX_MODE=workspace-write
 CODEX_APPROVAL_POLICY=never
@@ -227,6 +243,17 @@ Pi setup:
 - Keep `NORDRELAY_DEFAULT_AGENT=codex` to start chats in Codex, or set `NORDRELAY_DEFAULT_AGENT=pi` to start chats in Pi.
 - Optional: set `PI_SESSION_DIR` if your Pi sessions are not stored in `~/.pi/agent/sessions/`.
 - Optional: set `PI_DEFAULT_MODEL=openai-codex/gpt-5.5` and `PI_DEFAULT_THINKING=medium`.
+
+Hermes setup:
+
+- Install Hermes Agent and confirm `hermes --help` works on the host.
+- Start the Hermes API Server locally and confirm `GET http://127.0.0.1:8642/health` returns OK.
+- Set `NORDRELAY_HERMES_ENABLED=true` in `~/.nordrelay/nordrelay.env`.
+- Keep `NORDRELAY_DEFAULT_AGENT=codex` to start chats in Codex, or set `NORDRELAY_DEFAULT_AGENT=hermes` to start chats in Hermes.
+- Set `HERMES_API_BASE_URL` if the API Server is not listening on `http://127.0.0.1:8642`.
+- Set `HERMES_API_KEY` when the Hermes API Server is protected with `API_SERVER_KEY`.
+- Optional: set `HERMES_STATE_DB_PATH` if your Hermes session database is not stored at `~/.hermes/state.db`.
+- Optional: set `HERMES_DEFAULT_MODEL`, `HERMES_DEFAULT_REASONING`, and `HERMES_DEFAULT_PROFILE`.
 
 Register the local Codex marketplace:
 
@@ -407,8 +434,8 @@ Run NordRelay behind your reverse proxy so the public URL forwards to `http://12
 - `/voice transcribe_only on|off` controls whether voice is only transcribed or also sent to Codex.
 - `/tasks` or `/progress` reports the current turn and queue progress.
 - `/status` reports connector runtime status.
-- `/health` reports runtime health, auth, PIDs, Codex CLI, Pi CLI, and state DB.
-- `/version` reports connector, Codex CLI, and Pi CLI paths plus installed/latest NordRelay, Codex, and Pi versions with status icons.
+- `/health` reports runtime health, auth, PIDs, Codex CLI, Pi CLI, Hermes CLI, and state DB.
+- `/version` reports connector, Codex CLI, Pi CLI, and Hermes CLI paths plus installed/latest NordRelay, Codex, Pi, and Hermes versions with status icons.
 - `/logs [lines]` shows a redacted, timestamped connector log tail. Admin only.
 - `/logs update [lines]` shows the self-update log. Admin only.
 - `/logs all [lines]` shows connector and self-update logs together. Admin only.
@@ -456,6 +483,12 @@ For Pi sessions the command looks like:
 cd ~/projects/my-workspace && pi --session ~/.pi/agent/sessions/.../session.jsonl
 ```
 
+For Hermes sessions the command looks like:
+
+```bash
+cd ~/projects/my-workspace && hermes --resume 20260512_181422_ab12cd34
+```
+
 Change model:
 
 ```text
@@ -470,7 +503,7 @@ Change reasoning effort:
 /reasoning
 ```
 
-For Codex choose one of `minimal`, `low`, `medium`, `high`, or `xhigh`. For Pi choose one of `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`.
+For Codex choose one of `minimal`, `low`, `medium`, `high`, or `xhigh`. For Pi choose one of `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`. For Hermes choose one of `none`, `minimal`, `low`, `medium`, `high`, or `xhigh`.
 
 Toggle fast mode:
 
@@ -609,7 +642,8 @@ Agent selection:
 
 - `NORDRELAY_CODEX_ENABLED`: enables Codex contexts. Defaults to `true`.
 - `NORDRELAY_PI_ENABLED`: enables Pi contexts. Defaults to `false`.
-- `NORDRELAY_DEFAULT_AGENT`: `codex` or `pi`, used for new Telegram contexts. Defaults to the first enabled agent.
+- `NORDRELAY_HERMES_ENABLED`: enables Hermes contexts through the Hermes API Server. Defaults to `false`.
+- `NORDRELAY_DEFAULT_AGENT`: `codex`, `pi`, or `hermes`, used for new Telegram contexts. Defaults to the first enabled agent.
 - `NORDRELAY_STATE_BACKEND`: `json` or `sqlite`. JSON is the default; SQLite requires `better-sqlite3`.
 - `NORDRELAY_AUDIT_MAX_EVENTS`: maximum audit events retained. Defaults to `1000`.
 - `NORDRELAY_SESSION_LOCK_TTL_MS`: session write-lock TTL. Defaults to `1800000`.
@@ -646,6 +680,17 @@ Pi:
 - `PI_DEFAULT_MODEL`: optional default model pattern for new Pi sessions, for example `openai-codex/gpt-5.5`.
 - `PI_DEFAULT_THINKING`: default Pi thinking level: `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`. Defaults to `medium`.
 - `PI_DEFAULT_PROFILE`: default Pi launch profile: `default`, `readonly`, `no-tools`, `offline`, or `safe-offline`. Defaults to `default`.
+
+Hermes:
+
+- `HERMES_CLI_PATH`: optional explicit path to the Hermes CLI executable. Defaults to `hermes` on `PATH`.
+- `HERMES_HOME`: optional Hermes home directory. Defaults to `~/.hermes`.
+- `HERMES_STATE_DB_PATH`: optional explicit Hermes `state.db` path. Overrides `HERMES_HOME`.
+- `HERMES_API_BASE_URL`: Hermes API Server base URL. Defaults to `http://127.0.0.1:8642`.
+- `HERMES_API_KEY`: optional bearer token for the Hermes API Server.
+- `HERMES_DEFAULT_MODEL`: optional model label sent with new Hermes API runs.
+- `HERMES_DEFAULT_REASONING`: default Hermes reasoning effort: `none`, `minimal`, `low`, `medium`, `high`, or `xhigh`.
+- `HERMES_DEFAULT_PROFILE`: default Hermes launch profile: `default`, `safe`, `readonly`, or `yolo`. Defaults to `default`.
 
 Telegram output:
 
@@ -730,8 +775,8 @@ Unsafe profiles are intentionally gated. Telegram asks for confirmation before a
 - Do not leave `TELEGRAM_ALLOW_ANY_CHAT=true` enabled after setup.
 - Treat `danger-full-access` as equivalent to shell access on the host.
 - Treat uploaded files as untrusted input. They are staged inside the active workspace so the selected sandbox policy still matters.
-- Keep `CODEX_API_KEY` and `OPENAI_API_KEY` in `~/.nordrelay/nordrelay.env` or host secret management.
-- In group chats, remember that any allowed user can prompt Codex in that chat context.
+- Keep `CODEX_API_KEY`, `HERMES_API_KEY`, and `OPENAI_API_KEY` in `~/.nordrelay/nordrelay.env` or host secret management.
+- In group chats, remember that any allowed user can prompt the selected agent in that chat context.
 - Use `TOOL_VERBOSITY=summary` or `errors-only` when command output may include sensitive data.
 - Review and unsafe launch profiles add a Telegram approve/deny gate before each turn starts.
 
@@ -770,12 +815,14 @@ No sessions listed:
 - Symptom: `/sessions` says no recent threads found.
 - Cause for Codex: `~/.codex/state_*.sqlite` is missing, unreadable, or has no active threads.
 - Cause for Pi: `~/.pi/agent/sessions/` or `PI_SESSION_DIR` is missing, unreadable, or has no session JSONL files.
+- Cause for Hermes: `~/.hermes/state.db` or `HERMES_STATE_DB_PATH` is missing, unreadable, or has no session rows.
 - Fix: run the selected agent locally once, resume or create a session, then try `/sessions` again.
 
 Wrong model, reasoning, or fast mode after switching:
 
 - The connector reads model, reasoning, sandbox, and approval policy from Codex state on `/sessions`, `/switch`, `/attach`, and `/session`; fast mode is read from `~/.codex/config.toml`.
 - For Pi, the connector reads model/thinking from Pi JSONL sessions and refreshes active RPC state when a session is running.
+- For Hermes, the connector reads model, reasoning, token usage, and message activity from Hermes `state.db`; `/model` and `/reasoning` values are sent with future API runs.
 - If values look stale, make sure the selected local CLI has finished writing session state.
 
 Pi not available:
@@ -783,6 +830,12 @@ Pi not available:
 - Symptom: `/agent` cannot switch to Pi, or startup says Pi CLI is missing.
 - Fix: install Pi from https://pi.dev/, ensure `pi` is on `PATH`, or set `PI_CLI_PATH`.
 - Enable Pi with `NORDRELAY_PI_ENABLED=true`.
+
+Hermes not available:
+
+- Symptom: `/agent` cannot switch to Hermes, `/auth` fails, or prompt execution says the Hermes API request failed.
+- Fix: start the Hermes API Server, ensure `HERMES_API_BASE_URL` points to it, and set `HERMES_API_KEY` if the server requires a key.
+- Enable Hermes with `NORDRELAY_HERMES_ENABLED=true`.
 
 Voice not working:
 
@@ -872,9 +925,14 @@ npm run build
 - `src/workspace-policy.ts`: workspace allow/warn root evaluation.
 - `src/access-control.ts`: Telegram role permissions and command/callback permission mapping.
 - `src/codex-session.ts`: Codex SDK service for new/resumed threads, streaming events, abort, model, reasoning, launch profiles, and handback.
+- `src/pi-session.ts`: Pi RPC service for JSONL RPC sessions, streaming events, abort, model, thinking, launch profiles, and handback.
+- `src/hermes-session.ts`: Hermes API Server service for streamed runs, stop, model, reasoning, launch profiles, attachments, and handback.
 - `src/session-registry.ts`: per-chat/topic session registry and persisted context metadata.
 - `src/session-format.ts`: compact Telegram rendering for session details, token usage, and limits.
 - `src/codex-state.ts`: reader for Codex `~/.codex/state_*.sqlite` thread, workspace, model, reasoning, sandbox, and approval metadata.
+- `src/pi-state.ts`: reader for Pi session JSONL files, activity timelines, diagnostics, and external busy detection.
+- `src/hermes-state.ts`: reader for Hermes `state.db` sessions, messages, token usage, activity timelines, diagnostics, and external busy detection.
+- `src/hermes-api.ts`: Hermes API Server client for health, capabilities, models, runs, events, approvals, and stop.
 - `src/attachments.ts`: inbound file staging and artifact output path construction.
 - `src/artifacts.ts`: generated artifact discovery, ZIP bundling, retention, and Telegram delivery filtering.
 - `src/voice.ts`: audio decoding and transcription backend selection.

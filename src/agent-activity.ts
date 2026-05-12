@@ -15,6 +15,12 @@ import {
 } from "./codex-state.js";
 import type { ConnectorConfig } from "./config.js";
 import {
+  getHermesSessionActivity,
+  getHermesSessionActivityLog,
+  getHermesSessionDiagnostics,
+  getHermesSessionSnapshot,
+} from "./hermes-state.js";
+import {
   getPiSessionActivity,
   getPiSessionActivityLog,
   getPiSessionDiagnostics,
@@ -37,6 +43,14 @@ export function getExternalActivityForSession(
   if (info.agentId === "pi") {
     return getPiSessionActivity(info.sessionPath ?? threadId, {
       sessionDir: config.piSessionDir,
+      staleAfterMs: config.codexExternalBusyStaleMs,
+    });
+  }
+  if (info.agentId === "hermes") {
+    return getHermesSessionActivity(threadId, {
+      hermesHome: config.hermesHome,
+      stateDbPath: config.hermesStateDbPath,
+      workspace: info.workspace,
       staleAfterMs: config.codexExternalBusyStaleMs,
     });
   }
@@ -80,6 +94,16 @@ export function getExternalSnapshotForSession(
       staleAfterMs: config.codexExternalBusyStaleMs,
     });
   }
+  if (info.agentId === "hermes") {
+    return getHermesSessionSnapshot(threadId, {
+      hermesHome: config.hermesHome,
+      stateDbPath: config.hermesStateDbPath,
+      workspace: info.workspace,
+      afterLine: options.afterLine,
+      maxEvents: options.maxEvents,
+      staleAfterMs: config.codexExternalBusyStaleMs,
+    });
+  }
 
   const snapshot = getThreadRolloutSnapshot(threadId, {
     afterLine: options.afterLine,
@@ -101,6 +125,13 @@ export function getAgentActivityLog(
   }
   if (info.agentId === "pi") {
     return getPiSessionActivityLog(info.sessionPath ?? threadId, limit, { sessionDir: config.piSessionDir });
+  }
+  if (info.agentId === "hermes") {
+    return getHermesSessionActivityLog(threadId, limit, {
+      hermesHome: config.hermesHome,
+      stateDbPath: config.hermesStateDbPath,
+      workspace: info.workspace,
+    });
   }
   return getThreadActivityLog(threadId, limit).map(codexEventToAgentEvent);
 }
@@ -126,6 +157,27 @@ export function getAgentDiagnostics(
         { label: "Pi JSONL lines", value: String(diagnostics.lineCount) },
         { label: "Pi updated", value: diagnostics.updatedAt?.toISOString() ?? "-" },
         { label: "Pi RPC active", value: session.isProcessing() ? "yes" : "idle" },
+      ],
+    };
+  }
+  if (info.agentId === "hermes") {
+    const diagnostics = getHermesSessionDiagnostics(info.threadId, {
+      hermesHome: config.hermesHome,
+      stateDbPath: config.hermesStateDbPath,
+      workspace: info.workspace,
+      staleAfterMs: config.codexExternalBusyStaleMs,
+    });
+    return {
+      agentId: "hermes",
+      agentLabel: "Hermes",
+      lines: [
+        { label: "Hermes API", value: config.hermesApiBaseUrl },
+        { label: "Hermes state DB", value: diagnostics.stateDbPath },
+        { label: "Hermes session status", value: diagnostics.status },
+        { label: "Hermes status reason", value: diagnostics.reason },
+        { label: "Hermes messages", value: String(diagnostics.lineCount) },
+        { label: "Hermes updated", value: diagnostics.updatedAt?.toISOString() ?? "-" },
+        { label: "Hermes API run active", value: session.isProcessing() ? "yes" : "idle" },
       ],
     };
   }

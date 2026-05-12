@@ -12,7 +12,13 @@ import {
   type CodexLaunchProfile,
   type CodexSandboxMode,
 } from "./codex-launch.js";
-import { isAgentId, PI_THINKING_LEVELS, type AgentId, type AgentReasoningEffort } from "./agent.js";
+import {
+  HERMES_REASONING_EFFORTS,
+  isAgentId,
+  PI_THINKING_LEVELS,
+  type AgentId,
+  type AgentReasoningEffort,
+} from "./agent.js";
 import {
   parseRolePoliciesJson,
   type TelegramRolePolicies,
@@ -85,6 +91,15 @@ export interface ConnectorConfig {
   piDefaultModel?: string;
   piDefaultThinking: AgentReasoningEffort;
   piDefaultLaunchProfileId: string;
+  hermesEnabled: boolean;
+  hermesCliPath?: string;
+  hermesHome?: string;
+  hermesStateDbPath?: string;
+  hermesApiBaseUrl: string;
+  hermesApiKey?: string;
+  hermesDefaultModel?: string;
+  hermesDefaultReasoning?: AgentReasoningEffort;
+  hermesDefaultLaunchProfileId: string;
   defaultAgent: AgentId;
   toolVerbosity: ToolVerbosity;
   logFormat: ConnectorLogFormat;
@@ -183,16 +198,26 @@ export function loadConfig(): ConnectorConfig {
     launchProfiles,
   );
   const piEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_PI_ENABLED), false);
-  ensureAtLeastOneAgentEnabled(codexEnabled, piEnabled);
   const piCliPath = optionalString(process.env.PI_CLI_PATH);
   const piSessionDir = optionalString(process.env.PI_SESSION_DIR);
   const piDefaultModel = optionalString(process.env.PI_DEFAULT_MODEL);
   const piDefaultThinking = parsePiThinkingLevel(optionalString(process.env.PI_DEFAULT_THINKING));
   const piDefaultLaunchProfileId = optionalString(process.env.PI_DEFAULT_PROFILE) ?? "default";
+  const hermesEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_HERMES_ENABLED), false);
+  ensureAtLeastOneAgentEnabled(codexEnabled, piEnabled, hermesEnabled);
+  const hermesCliPath = optionalString(process.env.HERMES_CLI_PATH);
+  const hermesHome = optionalString(process.env.HERMES_HOME);
+  const hermesStateDbPath = optionalString(process.env.HERMES_STATE_DB_PATH);
+  const hermesApiBaseUrl = optionalString(process.env.HERMES_API_BASE_URL) ?? "http://127.0.0.1:8642";
+  const hermesApiKey = optionalString(process.env.HERMES_API_KEY);
+  const hermesDefaultModel = optionalString(process.env.HERMES_DEFAULT_MODEL);
+  const hermesDefaultReasoning = parseHermesReasoningEffort(optionalString(process.env.HERMES_DEFAULT_REASONING));
+  const hermesDefaultLaunchProfileId = optionalString(process.env.HERMES_DEFAULT_PROFILE) ?? "default";
   const defaultAgent = parseDefaultAgent(
     optionalString(process.env.NORDRELAY_DEFAULT_AGENT),
     codexEnabled,
     piEnabled,
+    hermesEnabled,
   );
   const toolVerbosity = parseToolVerbosity(optionalString(process.env.TOOL_VERBOSITY));
   const logFormat = parseLogFormat(optionalString(process.env.CONNECTOR_LOG_FORMAT));
@@ -265,6 +290,15 @@ export function loadConfig(): ConnectorConfig {
     piDefaultModel,
     piDefaultThinking,
     piDefaultLaunchProfileId,
+    hermesEnabled,
+    hermesCliPath,
+    hermesHome,
+    hermesStateDbPath,
+    hermesApiBaseUrl,
+    hermesApiKey,
+    hermesDefaultModel,
+    hermesDefaultReasoning,
+    hermesDefaultLaunchProfileId,
     defaultAgent,
     toolVerbosity,
     logFormat,
@@ -630,9 +664,9 @@ function parseDefaultLaunchProfileId(
   return profile.id;
 }
 
-function ensureAtLeastOneAgentEnabled(codexEnabled: boolean, piEnabled: boolean): void {
-  if (!codexEnabled && !piEnabled) {
-    throw new Error("At least one agent must be enabled: set NORDRELAY_CODEX_ENABLED=true or NORDRELAY_PI_ENABLED=true");
+function ensureAtLeastOneAgentEnabled(codexEnabled: boolean, piEnabled: boolean, hermesEnabled = false): void {
+  if (!codexEnabled && !piEnabled && !hermesEnabled) {
+    throw new Error("At least one agent must be enabled: set NORDRELAY_CODEX_ENABLED=true, NORDRELAY_PI_ENABLED=true, or NORDRELAY_HERMES_ENABLED=true");
   }
 }
 
@@ -640,19 +674,25 @@ function parseDefaultAgent(
   raw: string | undefined,
   codexEnabled: boolean,
   piEnabled: boolean,
+  hermesEnabled: boolean,
 ): AgentId {
   if (!raw) {
-    return codexEnabled ? "codex" : "pi";
+    if (codexEnabled) return "codex";
+    if (piEnabled) return "pi";
+    return "hermes";
   }
 
   if (!isAgentId(raw)) {
-    throw new Error(`Invalid NORDRELAY_DEFAULT_AGENT: ${raw}. Expected codex or pi`);
+    throw new Error(`Invalid NORDRELAY_DEFAULT_AGENT: ${raw}. Expected codex, pi, or hermes`);
   }
   if (raw === "codex" && !codexEnabled) {
     throw new Error("NORDRELAY_DEFAULT_AGENT=codex requires NORDRELAY_CODEX_ENABLED=true");
   }
   if (raw === "pi" && !piEnabled) {
     throw new Error("NORDRELAY_DEFAULT_AGENT=pi requires NORDRELAY_PI_ENABLED=true");
+  }
+  if (raw === "hermes" && !hermesEnabled) {
+    throw new Error("NORDRELAY_DEFAULT_AGENT=hermes requires NORDRELAY_HERMES_ENABLED=true");
   }
   return raw;
 }
@@ -668,4 +708,18 @@ function parsePiThinkingLevel(raw: string | undefined): AgentReasoningEffort {
     `Invalid PI_DEFAULT_THINKING value: "${raw}". Expected one of: ${PI_THINKING_LEVELS.join(", ")}. Falling back to "medium".`,
   );
   return "medium";
+}
+
+function parseHermesReasoningEffort(raw: string | undefined): AgentReasoningEffort | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  const normalized = raw === "off" ? "none" : raw;
+  if (HERMES_REASONING_EFFORTS.includes(normalized as AgentReasoningEffort)) {
+    return normalized as AgentReasoningEffort;
+  }
+  console.warn(
+    `Invalid HERMES_DEFAULT_REASONING value: "${raw}". Expected one of: ${HERMES_REASONING_EFFORTS.join(", ")}. Falling back to model default.`,
+  );
+  return undefined;
 }

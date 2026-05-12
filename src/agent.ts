@@ -1,10 +1,10 @@
 import type { CodexLaunchProfile } from "./codex-launch.js";
 import type { CodexSessionUsage } from "./codex-state.js";
 
-export const AGENT_IDS = ["codex", "pi"] as const;
+export const AGENT_IDS = ["codex", "pi", "hermes"] as const;
 export type AgentId = typeof AGENT_IDS[number];
 
-export type AgentReasoningEffort = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type AgentReasoningEffort = "off" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export const CODEX_REASONING_EFFORTS: AgentReasoningEffort[] = [
   "minimal",
@@ -16,6 +16,15 @@ export const CODEX_REASONING_EFFORTS: AgentReasoningEffort[] = [
 
 export const PI_THINKING_LEVELS: AgentReasoningEffort[] = [
   "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+];
+
+export const HERMES_REASONING_EFFORTS: AgentReasoningEffort[] = [
+  "none",
   "minimal",
   "low",
   "medium",
@@ -58,6 +67,23 @@ export const CODEX_AGENT_CAPABILITIES: AgentCapabilities = {
 };
 
 export const PI_AGENT_CAPABILITIES: AgentCapabilities = {
+  launchProfiles: true,
+  fastMode: false,
+  externalActivity: true,
+  cliMirror: true,
+  activityLog: true,
+  auth: true,
+  login: false,
+  logout: false,
+  usageLimits: true,
+  workspaces: true,
+  attachments: true,
+  modelSelection: true,
+  reasoningSelection: true,
+  handback: true,
+};
+
+export const HERMES_AGENT_CAPABILITIES: AgentCapabilities = {
   launchProfiles: true,
   fastMode: false,
   externalActivity: true,
@@ -283,13 +309,29 @@ export interface AgentSessionService {
 }
 
 export function isAgentId(value: string | undefined): value is AgentId {
-  return value === "codex" || value === "pi";
+  return value === "codex" || value === "pi" || value === "hermes";
 }
 
 export function agentLabel(agentId: AgentId): string {
-  return agentId === "pi" ? "Pi" : "Codex";
+  if (agentId === "pi") {
+    return "Pi";
+  }
+  if (agentId === "hermes") {
+    return "Hermes";
+  }
+  return "Codex";
 }
 
 export function agentReasoningLabel(agentId: AgentId): string {
   return agentId === "pi" ? "Thinking" : "Reasoning";
+}
+
+export function agentReasoningOptions(agentId: AgentId): AgentReasoningEffort[] {
+  if (agentId === "pi") {
+    return PI_THINKING_LEVELS;
+  }
+  if (agentId === "hermes") {
+    return HERMES_REASONING_EFFORTS;
+  }
+  return CODEX_REASONING_EFFORTS;
 }
