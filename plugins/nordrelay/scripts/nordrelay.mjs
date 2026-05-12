@@ -363,6 +363,11 @@ async function commandWeb(options) {
   });
   await new Promise((resolve) => server.listen(port, host, resolve));
   console.log(`NordRelay dashboard: http://${host}:${port}/`);
+  await new Promise((resolve) => {
+    const shutdown = () => server.close(resolve);
+    process.once("SIGINT", shutdown);
+    process.once("SIGTERM", shutdown);
+  });
 }
 
 async function commandForeground(options) {
