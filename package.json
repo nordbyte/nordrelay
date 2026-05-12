@@ -30,7 +30,6 @@
     "dist/",
     "plugins/",
     "launchd/",
-    "CHANGELOG.md",
     ".env.example",
     "Dockerfile",
     "docker-compose.yml"
