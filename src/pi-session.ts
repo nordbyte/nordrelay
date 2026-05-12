@@ -8,6 +8,7 @@ import {
   type AgentCreateOptions,
   type AgentFastModeResult,
   type AgentHandbackResult,
+  type AgentLaunchProfileRecord,
   type AgentModelRecord,
   type AgentPromptInput,
   type AgentSessionCallbacks,
@@ -17,8 +18,9 @@ import {
   type AgentSyncResult,
   type AgentThreadRecord,
 } from "./agent.js";
-import { createDefaultLaunchProfile, type CodexLaunchProfile } from "./codex-launch.js";
+import type { CodexLaunchProfile } from "./codex-launch.js";
 import type { ConnectorConfig } from "./config.js";
+import { findPiLaunchProfile, listPiLaunchProfiles, piProfileAsLaunchProfile, type PiLaunchProfile } from "./pi-launch.js";
 import { resolvePiCli } from "./pi-cli.js";
 import { PiRpcClient, type PiRpcEvent } from "./pi-rpc.js";
 import {
@@ -57,7 +59,7 @@ type PiImageContent = {
 export class PiSessionService implements AgentSessionService {
   private readonly sessionDir: string;
   private readonly cliPath: string;
-  private readonly launchProfile: CodexLaunchProfile;
+  private currentLaunchProfile: PiLaunchProfile;
   private rpc: PiRpcClient | null = null;
   private currentWorkspace: string;
   private currentThreadId: string | null = null;
@@ -81,7 +83,7 @@ export class PiSessionService implements AgentSessionService {
     this.currentWorkspace = config.workspace;
     this.currentModel = config.piDefaultModel;
     this.currentThinking = config.piDefaultThinking;
-    this.launchProfile = createDefaultLaunchProfile("workspace-write", "never");
+    this.currentLaunchProfile = findPiLaunchProfile(config.piDefaultLaunchProfileId);
   }
 
   static async create(config: ConnectorConfig, options?: AgentCreateOptions): Promise<PiSessionService> {
@@ -89,6 +91,7 @@ export class PiSessionService implements AgentSessionService {
     service.currentWorkspace = options?.workspace ?? config.workspace;
     service.currentModel = options?.model ?? config.piDefaultModel;
     service.currentThinking = options?.reasoningEffort ?? config.piDefaultThinking;
+    service.currentLaunchProfile = findPiLaunchProfile(options?.launchProfileId ?? config.piDefaultLaunchProfileId);
 
     if (options?.sessionPath) {
       await service.switchSession(options.sessionPath);
@@ -112,9 +115,9 @@ export class PiSessionService implements AgentSessionService {
       workspace: this.currentWorkspace,
       model: this.currentModel,
       reasoningEffort: this.currentThinking,
-      launchProfileId: "pi-rpc",
-      launchProfileLabel: "Pi RPC",
-      launchProfileBehavior: "rpc / host",
+      launchProfileId: this.currentLaunchProfile.id,
+      launchProfileLabel: this.currentLaunchProfile.label,
+      launchProfileBehavior: this.currentLaunchProfile.behavior,
       sandboxMode: "host",
       approvalPolicy: "never",
       fastMode: false,
@@ -315,11 +318,17 @@ export class PiSessionService implements AgentSessionService {
         continue;
       }
       const slug = `${provider}/${model}`;
-      const maxInputTokens = parseCompactTokenCount(parts[2]);
+      const contextWindow = parseCompactTokenCount(parts[2]);
+      const maxOutputTokens = parseCompactTokenCount(parts[3]);
+      const supportsThinking = parseYesNo(parts[4]);
+      const supportsImages = parseYesNo(parts[5]);
       records.push({
         slug,
         displayName: slug,
-        ...(maxInputTokens !== undefined ? { maxInputTokens } : {}),
+        ...(contextWindow !== undefined ? { maxInputTokens: contextWindow, contextWindow } : {}),
+        ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
+        ...(supportsThinking !== undefined ? { supportsThinking } : {}),
+        ...(supportsImages !== undefined ? { supportsImages } : {}),
       });
     }
 
@@ -327,6 +336,10 @@ export class PiSessionService implements AgentSessionService {
       records.unshift({ slug: this.currentModel, displayName: this.currentModel });
     }
     return records;
+  }
+
+  listLaunchProfiles(): AgentLaunchProfileRecord[] {
+    return listPiLaunchProfiles();
   }
 
   getSessionRecord(threadId: string): AgentThreadRecord | null {
@@ -374,8 +387,11 @@ export class PiSessionService implements AgentSessionService {
     return { value: level, appliedToActiveThread };
   }
 
-  setLaunchProfile(): CodexLaunchProfile {
-    throw new Error("Launch profiles are only supported by Codex sessions");
+  setLaunchProfile(profileId: string): CodexLaunchProfile {
+    this.ensureIdle("change Pi profile");
+    this.currentLaunchProfile = findPiLaunchProfile(profileId);
+    this.restartRpcIfIdle();
+    return piProfileAsLaunchProfile(this.currentLaunchProfile);
   }
 
   setFastMode(): AgentFastModeResult {
@@ -383,7 +399,7 @@ export class PiSessionService implements AgentSessionService {
   }
 
   getSelectedLaunchProfile(): CodexLaunchProfile {
-    return this.launchProfile;
+    return piProfileAsLaunchProfile(this.currentLaunchProfile);
   }
 
   syncFromCodexState(): AgentSyncResult {
@@ -438,6 +454,7 @@ export class PiSessionService implements AgentSessionService {
       sessionPath: this.currentSessionPath,
       model: this.currentModel,
       thinking: this.currentThinking,
+      ...this.currentLaunchProfile.cli,
       env: { PI_CODING_AGENT_SESSION_DIR: this.sessionDir },
     });
   }
@@ -527,10 +544,25 @@ export class PiSessionService implements AgentSessionService {
       data: (await readFile(imagePath)).toString("base64"),
       mimeType: mimeTypeForImage(imagePath),
     })));
+    if (images.length > 0) {
+      const imageSupport = this.currentModelSupportsImages();
+      if (imageSupport === false) {
+        throw new Error(`Current Pi model does not support image input: ${this.currentModel}`);
+      }
+    }
     return {
       message: textParts.join("\n\n") || "Please inspect the attached file(s).",
       ...(images.length > 0 ? { images } : {}),
     };
+  }
+
+  private currentModelSupportsImages(): boolean | null {
+    const model = this.currentModel;
+    if (!model) {
+      return null;
+    }
+    const record = this.listModels().find((candidate) => candidate.slug === model || candidate.slug.endsWith(`/${model}`));
+    return record?.supportsImages ?? null;
   }
 
   private refreshFromTurnEnd(event: PiRpcEvent, callbacks: AgentSessionCallbacks): void {
@@ -658,6 +690,20 @@ function parseCompactTokenCount(value: string | undefined): number | undefined {
   const unit = match[2]?.toUpperCase();
   const multiplier = unit === "M" ? 1_000_000 : unit === "K" ? 1_000 : unit === "B" ? 1_000_000_000 : 1;
   return Math.round(number * multiplier);
+}
+
+function parseYesNo(value: string | undefined): boolean | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = value.toLowerCase();
+  if (["yes", "true", "1"].includes(normalized)) {
+    return true;
+  }
+  if (["no", "false", "0"].includes(normalized)) {
+    return false;
+  }
+  return undefined;
 }
 
 function mimeTypeForImage(filePath: string): string {

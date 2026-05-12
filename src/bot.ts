@@ -65,28 +65,27 @@ import {
   PI_THINKING_LEVELS,
   agentLabel,
   agentReasoningLabel,
+  type AgentActivityEvent,
+  type AgentExternalActivity,
+  type AgentExternalSnapshot,
   type AgentId,
+  type AgentLaunchProfileRecord,
+  type AgentModelRecord,
   type AgentPromptInput,
   type AgentSessionCallbacks,
   type AgentSessionInfo,
   type AgentSessionService,
   type AgentThreadRecord,
 } from "./agent.js";
+import {
+  getAgentActivityLog,
+  getAgentDiagnostics,
+  getExternalActivityForSession,
+  getExternalSnapshotForSession,
+} from "./agent-activity.js";
 import { enabledAgents } from "./agent-factory.js";
 import { checkAuthStatus, clearAuthCache, startLogin, startLogout } from "./codex-auth.js";
-import {
-  findLaunchProfile,
-  formatLaunchProfileBehavior,
-  formatLaunchProfileLabel,
-} from "./codex-launch.js";
-import {
-  getThreadActivity,
-  getThreadActivityLog,
-  getThreadRolloutSnapshot,
-  type CodexActivityEvent,
-  type CodexRolloutSnapshot,
-  type CodexThreadActivity,
-} from "./codex-state.js";
+import { formatLaunchProfileBehavior } from "./codex-launch.js";
 import type { ConnectorConfig, ToolVerbosity } from "./config.js";
 import { contextKeyFromCtx, isTelegramContextKey, isTopicContextKey, parseContextKey, type TelegramContextKey } from "./context-key.js";
 import { friendlyErrorText } from "./error-messages.js";
@@ -103,6 +102,7 @@ import {
   type VersionCheck,
 } from "./operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
+import { checkPiAuthStatus } from "./pi-auth.js";
 import { configureRedaction, redactText } from "./redaction.js";
 import { canWriteWithLock, SessionLockStore, type SessionLock } from "./session-locks.js";
 import {
@@ -212,7 +212,7 @@ type BusyState = {
 type BusyReason =
   | { busy: false; kind: "idle" }
   | { busy: true; kind: "connector"; state: BusyState }
-  | { busy: true; kind: "external"; activity: CodexThreadActivity };
+  | { busy: true; kind: "external"; activity: AgentExternalActivity };
 
 type ExternalMirrorState = {
   threadId: string;
@@ -387,20 +387,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     return state;
   };
 
-  const getExternalActivity = (session: AgentSessionService | undefined): CodexThreadActivity | null => {
-    const info = session?.getInfo();
-    if (!info || !capabilitiesOf(info).externalActivity) {
-      return null;
-    }
-    const threadId = session?.getActiveThreadId();
-    if (!threadId) {
-      return null;
-    }
-
-    return getThreadActivity(threadId, {
-      staleAfterMs: config.codexExternalBusyStaleMs,
-    });
-  };
+  const getExternalActivity = (session: AgentSessionService | undefined): AgentExternalActivity | null =>
+    getExternalActivityForSession(session, config);
 
   const getBusyReason = (contextKey: TelegramContextKey): BusyReason => {
     const state = contextBusy.get(contextKey);
@@ -437,6 +425,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const updateSessionMetadata = (contextKey: TelegramContextKey, session: AgentSessionService): void => {
     registry.updateMetadata(contextKey, session);
   };
+
+  const checkAgentAuthStatus = async (info: AgentSessionInfo) =>
+    idOf(info) === "pi" ? checkPiAuthStatus(info.model) : checkAuthStatus(config.codexApiKey);
 
   const isTopicContext = (contextKey: TelegramContextKey): boolean => isTopicContextKey(contextKey);
 
@@ -670,11 +661,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const previous = externalMirrors.get(contextKey);
-    const snapshot = getThreadRolloutSnapshot(threadId, {
+    const snapshot = getExternalSnapshotForSession(session, config, {
       afterLine: previous?.lastLine ?? Number.MAX_SAFE_INTEGER,
-      staleAfterMs: config.codexExternalBusyStaleMs,
-    }) ?? getThreadRolloutSnapshot(threadId, {
-      staleAfterMs: config.codexExternalBusyStaleMs,
+    }) ?? getExternalSnapshotForSession(session, config, {
       maxEvents: 0,
     });
 
@@ -693,7 +682,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     if (activity.active && queueLength > 0) {
       await updateQueueStatusMessage(
         contextKey,
-        `Waiting for Codex CLI task... ${queueLength} queued${paused ? " (paused)" : ""}.`,
+        `Waiting for ${info.agentLabel} CLI task... ${queueLength} queued${paused ? " (paused)" : ""}.`,
       );
       return;
     }
@@ -708,15 +697,15 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     contextKey: TelegramContextKey,
     chatId: TelegramChatId,
     session: AgentSessionService,
-    snapshot: CodexRolloutSnapshot,
+    snapshot: AgentExternalSnapshot,
   ): Promise<void> => {
     const parsed = parseContextKey(contextKey);
     const previous = externalMirrors.get(contextKey);
     let state = previous;
-    if (!state || state.threadId !== snapshot.threadId || state.rolloutPath !== snapshot.rolloutPath) {
+    if (!state || state.threadId !== snapshot.threadId || state.rolloutPath !== snapshot.sourcePath) {
       state = {
         threadId: snapshot.threadId,
-        rolloutPath: snapshot.rolloutPath,
+        rolloutPath: snapshot.sourcePath,
         lastLine: snapshot.lineCount,
         turnId: snapshot.activity.turnId,
         startedAt: snapshot.activity.startedAt,
@@ -779,7 +768,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const terminalEvent = [...snapshot.events].reverse().find((event) => event.kind === "task" && event.status && event.status !== "started");
     if (terminalEvent) {
       if (mirrorMode !== "off") {
-        const doneText = `Codex CLI task ${terminalEvent.status}.`;
+        const doneText = `${snapshot.agentLabel} CLI task ${terminalEvent.status}.`;
         if (state.statusMessageId) {
           await safeEditMessage(bot, chatId, state.statusMessageId, escapeHTML(doneText), {
             fallbackText: doneText,
@@ -794,8 +783,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
       const finalAgent = snapshot.events.filter((event) => event.kind === "agent" && event.text).at(-1);
       if (mirrorMode !== "off" && mirrorMode !== "status" && finalAgent?.text && finalAgent.lineNumber !== state.latestAgentLine) {
-        await sendTextMessage(bot.api, chatId, "<b>Codex CLI final answer:</b>", {
-          fallbackText: "Codex CLI final answer:",
+        await sendTextMessage(bot.api, chatId, `<b>${escapeHTML(snapshot.agentLabel)} CLI final answer:</b>`, {
+          fallbackText: `${snapshot.agentLabel} CLI final answer:`,
           messageThreadId: parsed.messageThreadId,
         });
         for (const chunk of splitMarkdownForTelegram(finalAgent.text)) {
@@ -885,9 +874,10 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
         const busy = getBusyReason(contextKey);
         if (busy.kind === "external") {
+          const label = busy.activity.agentLabel;
           await updateQueueStatusMessage(
             contextKey,
-            `Waiting for Codex CLI task... ${promptStore.list(contextKey).length} queued${promptStore.isPaused(contextKey) ? " (paused)" : ""}.`,
+            `Waiting for ${label} CLI task... ${promptStore.list(contextKey).length} queued${promptStore.isPaused(contextKey) ? " (paused)" : ""}.`,
           );
           scheduleExternalQueueDrain(ctx, contextKey, chatId, session);
           return;
@@ -899,7 +889,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         await updateQueueStatusMessage(contextKey, `CLI task finished, running queued prompt 1/${promptStore.list(contextKey).length}.`);
         await drainQueuedPrompts(ctx, contextKey, chatId, session);
       })().catch((error) => {
-        console.error("Failed to drain queue after external Codex activity:", error);
+      console.error("Failed to drain queue after external CLI activity:", error);
       });
     }, config.codexExternalBusyCheckMs);
 
@@ -1535,8 +1525,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
     try {
       const sessionInfo = session.getInfo();
-      if (capabilitiesOf(sessionInfo).auth) {
-        const authStatus = await checkAuthStatus(config.codexApiKey);
+      if (capabilitiesOf(sessionInfo).auth && idOf(sessionInfo) !== "pi") {
+        const authStatus = await checkAgentAuthStatus(sessionInfo);
         if (!authStatus.authenticated) {
           await safeReply(
             ctx,
@@ -1545,7 +1535,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
               "",
               `<code>${escapeHTML(authStatus.detail)}</code>`,
               "",
-              "Use /login to start authentication, or set CODEX_API_KEY on the host.",
+              idOf(sessionInfo) === "pi"
+                ? "Configure the required Pi provider environment variable on the host."
+                : "Use /login to start authentication, or set CODEX_API_KEY on the host.",
             ].join("\n"),
             {
               fallbackText: [
@@ -1553,7 +1545,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
                 "",
                 authStatus.detail,
                 "",
-                "Use /login to start authentication, or set CODEX_API_KEY on the host.",
+                idOf(sessionInfo) === "pi"
+                  ? "Configure the required Pi provider environment variable on the host."
+                  : "Use /login to start authentication, or set CODEX_API_KEY on the host.",
               ].join("\n"),
             },
           );
@@ -1586,12 +1580,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       const finalExternalActivity = getExternalActivity(session);
       if (finalExternalActivity?.active) {
         const item = maybeRequeuePromptAtFront(contextKey, envelope);
-        const message = `Queued prompt ${item.id} at position 1. The Codex session became active in Codex CLI and is processing another task.`;
+        const label = finalExternalActivity.agentLabel;
+        const message = `Queued prompt ${item.id} at position 1. The ${label} session became active in ${label} CLI and is processing another task.`;
         await safeReply(ctx, escapeHTML(message), {
           fallbackText: message,
           replyMarkup: createQueuedPromptCancelKeyboard(contextKey, item.id),
         });
-        await updateQueueStatusMessage(contextKey, `Waiting for Codex CLI task... ${promptStore.list(contextKey).length} queued.`);
+        await updateQueueStatusMessage(contextKey, `Waiting for ${label} CLI task... ${promptStore.list(contextKey).length} queued.`);
         scheduleExternalQueueDrain(ctx, contextKey, chatId, session);
         turnProgress.delete(contextKey);
         return;
@@ -1603,9 +1598,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         status: "ok",
         description: envelope.description,
       });
+      const artifactStartedAt = new Date();
+      const artifactTurnId = envelope.artifactOutDir
+        ? path.basename(path.dirname(envelope.artifactOutDir))
+        : randomUUID().slice(0, 12);
       await session.prompt(envelope.input, callbacks);
       updateSessionMetadata(contextKey, session);
       await finalizeResponse();
+      await deliverCliGeneratedArtifacts(contextKey, chatId, session, artifactStartedAt, artifactTurnId, messageThreadId);
       if (envelope.artifactOutDir) {
         if (config.telegramAutoSendArtifacts) {
           await deliverArtifacts(ctx, chatId, envelope.artifactOutDir, session.getInfo().workspace, messageThreadId);
@@ -2024,7 +2024,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
     const { contextKey, session } = contextSession;
     const info = session.getInfo();
-    const authStatus = capabilitiesOf(info).auth ? await checkAuthStatus(config.codexApiKey) : null;
+    const authStatus = capabilitiesOf(info).auth ? await checkAgentAuthStatus(info) : null;
     const authWarning = authStatus && !authStatus.authenticated
       ? "Not authenticated. Use /login or set CODEX_API_KEY."
       : undefined;
@@ -2151,7 +2151,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
-    const authStatus = await checkAuthStatus(config.codexApiKey);
+    const authStatus = info ? await checkAgentAuthStatus(info) : await checkAuthStatus(config.codexApiKey);
     const icon = authStatus.authenticated ? "✅" : "❌";
     const html = [
       `<b>${icon} Auth status:</b> ${authStatus.authenticated ? "authenticated" : "not authenticated"}`,
@@ -2556,7 +2556,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const options = parseActivityOptions((ctx.message?.text ?? "").replace(/^\/activity(?:@\w+)?\s*/i, "").trim());
-    const events = filterActivityEvents(getThreadActivityLog(threadId, options.exportFile ? 200 : options.limit), options);
+    const events = filterActivityEvents(getAgentActivityLog(contextSession.session, config, options.exportFile ? 200 : options.limit), options);
     const rendered = renderActivityTimeline(threadId, events, options);
     if (options.exportFile && ctx.chat) {
       const exportPath = path.join(tmpdir(), `codex-activity-${threadId}-${randomUUID().slice(0, 8)}.txt`);
@@ -2636,14 +2636,16 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
   bot.command("diagnostics", async (ctx) => {
     const health = await getConnectorHealth();
-    const authStatus = await checkAuthStatus(config.codexApiKey);
     const contextKey = contextKeyFromCtx(ctx);
     const queueLength = contextKey ? promptStore.list(contextKey).length : 0;
     const progress = contextKey ? turnProgress.get(contextKey) : undefined;
     const contextSession = contextKey ? await getContextSession(ctx, { deferThreadStart: true }) : null;
-    const rolloutDiagnostics = contextSession && capabilitiesOf(contextSession.session.getInfo()).externalActivity
-      ? renderRolloutDiagnostics(contextSession.session.getActiveThreadId(), config.codexExternalBusyStaleMs)
-      : { plain: "Rollout: no context", html: "<b>Rollout:</b> <code>no context</code>" };
+    const authStatus = contextSession
+      ? await checkAgentAuthStatus(contextSession.session.getInfo())
+      : await checkAuthStatus(config.codexApiKey);
+    const agentDiagnostics = contextSession
+      ? renderAgentDiagnostics(getAgentDiagnostics(contextSession.session, config))
+      : { plain: "Agent state: no context", html: "<b>Agent state:</b> <code>no context</code>" };
     const runtime: RuntimeDiagnostics = {
       rateLimit: getTelegramRateLimitMetrics(),
       externalMirrors: externalMirrors.size,
@@ -2656,8 +2658,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       voiceLanguage: contextKey ? getEffectiveVoiceLanguage(contextKey) ?? "auto" : config.voiceDefaultLanguage ?? "auto",
       voiceTranscribeOnly: contextKey ? isVoiceTranscribeOnly(contextKey) : config.voiceTranscribeOnly,
     };
-    const plain = `${renderDiagnosticsPlain(config, registry, health, authStatus.authenticated, getUserRole(ctx), queueLength, progress, runtime)}\n${rolloutDiagnostics.plain}`;
-    const html = `${renderDiagnosticsHTML(config, registry, health, authStatus.authenticated, getUserRole(ctx), queueLength, progress, runtime)}\n${rolloutDiagnostics.html}`;
+    const plain = `${renderDiagnosticsPlain(config, registry, health, authStatus.authenticated, getUserRole(ctx), queueLength, progress, runtime)}\n${agentDiagnostics.plain}`;
+    const html = `${renderDiagnosticsHTML(config, registry, health, authStatus.authenticated, getUserRole(ctx), queueLength, progress, runtime)}\n${agentDiagnostics.html}`;
     await safeReply(ctx, html, { fallbackText: plain });
   });
 
@@ -2813,8 +2815,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
-    const { session } = contextSession;
+    const { contextKey, session } = contextSession;
     try {
+      const busy = getBusyReason(contextKey);
+      if (busy.kind === "external") {
+        const text = `Cannot abort the external ${busy.activity.agentLabel} CLI task from NordRelay. Stop it in the terminal where it is running; queued Telegram messages will wait.`;
+        await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+        return;
+      }
       await session.abort();
       await safeReply(ctx, escapeHTML("Aborted current operation"), {
         fallbackText: "Aborted current operation",
@@ -3157,34 +3165,35 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
-    const selectedLaunchProfile = session.getSelectedLaunchProfile();
-    const launchButtons = config.launchProfiles.map((profile, index) => ({
-      label: formatLaunchProfileLabel(profile, profile.id === selectedLaunchProfile.id),
+    const profiles = session.listLaunchProfiles();
+    const selectedLaunchProfile = session.getInfo();
+    const launchButtons = profiles.map((profile, index) => ({
+      label: formatAgentLaunchProfileLabel(profile, profile.id === selectedLaunchProfile.launchProfileId),
       callbackData: `launch_${index}`,
     }));
 
     pendingLaunchPicks.set(
       contextKey,
-      config.launchProfiles.map((profile) => profile.id),
+      profiles.map((profile) => profile.id),
     );
     pendingLaunchButtons.set(contextKey, launchButtons);
     pendingUnsafeLaunchConfirmations.delete(contextKey);
 
     const keyboard = paginateKeyboard(launchButtons, 0, "launch");
     const htmlLines = [
-      `<b>Selected launch profile:</b> <code>${escapeHTML(selectedLaunchProfile.label)}</code>`,
-      `<b>Behavior:</b> <code>${escapeHTML(formatLaunchProfileBehavior(selectedLaunchProfile))}</code>`,
+      `<b>Selected launch profile:</b> <code>${escapeHTML(selectedLaunchProfile.launchProfileLabel)}</code>`,
+      `<b>Behavior:</b> <code>${escapeHTML(selectedLaunchProfile.launchProfileBehavior)}</code>`,
       "",
       "Select a profile for new or reattached threads:",
     ];
     const plainLines = [
-      `Selected launch profile: ${selectedLaunchProfile.label}`,
-      `Behavior: ${formatLaunchProfileBehavior(selectedLaunchProfile)}`,
+      `Selected launch profile: ${selectedLaunchProfile.launchProfileLabel}`,
+      `Behavior: ${selectedLaunchProfile.launchProfileBehavior}`,
       "",
       "Select a profile for new or reattached threads:",
     ];
 
-    if (selectedLaunchProfile.unsafe) {
+    if (selectedLaunchProfile.unsafeLaunch) {
       htmlLines.splice(2, 0, "⚠️ <i>Selected profile uses danger-full-access.</i>");
       plainLines.splice(2, 0, "⚠️ Selected profile uses danger-full-access.");
     }
@@ -3581,7 +3590,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
     const currentModel = session.getInfo().model ?? "(default)";
     const modelButtons = models.map((model) => ({
-      label: `${model.displayName}${model.slug === currentModel ? " ✓" : ""}`,
+      label: formatModelButtonLabel(model, model.slug === currentModel),
       callbackData: `model_${model.slug}`,
     }));
     pendingModelButtons.set(contextKey, modelButtons);
@@ -4093,7 +4102,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
-    const profile = findLaunchProfile(config.launchProfiles, profileId);
+    const profile = session.listLaunchProfiles().find((candidate) => candidate.id === profileId);
     if (!profile) {
       clearLaunchSelectionState(contextKey);
       await ctx.answerCallbackQuery({ text: "Launch profile no longer exists" });
@@ -4112,14 +4121,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         .text("Cancel", `launchconfirm_no:${profile.id}`);
       const html = [
         `<b>Confirm launch profile:</b> <code>${escapeHTML(profile.label)}</code>`,
-        `<b>Behavior:</b> <code>${escapeHTML(formatLaunchProfileBehavior(profile))}</code>`,
+        `<b>Behavior:</b> <code>${escapeHTML(profile.behavior)}</code>`,
         "",
         "⚠️ <b>This profile uses danger-full-access.</b>",
         "It will apply to new or reattached threads in this Telegram context.",
       ].join("\n");
       const plain = [
         `Confirm launch profile: ${profile.label}`,
-        `Behavior: ${formatLaunchProfileBehavior(profile)}`,
+        `Behavior: ${profile.behavior}`,
         "",
         "WARNING: This profile uses danger-full-access.",
         "It will apply to new or reattached threads in this Telegram context.",
@@ -4141,18 +4150,19 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
     await ctx.answerCallbackQuery({ text: `Launch set to ${profile.label}` });
     clearLaunchSelectionState(contextKey);
-    const selectedProfile = session.setLaunchProfile(profile.id);
+    session.setLaunchProfile(profile.id);
     updateSessionMetadata(contextKey, session);
+    const info = session.getInfo();
 
     const html = [
-      `<b>Launch profile set to</b> <code>${escapeHTML(selectedProfile.label)}</code>`,
-      `<b>Behavior:</b> <code>${escapeHTML(formatLaunchProfileBehavior(selectedProfile))}</code>`,
+      `<b>Launch profile set to</b> <code>${escapeHTML(info.launchProfileLabel)}</code>`,
+      `<b>Behavior:</b> <code>${escapeHTML(info.launchProfileBehavior)}</code>`,
       "",
       "Applies to new or reattached threads.",
     ].join("\n");
     const plain = [
-      `Launch profile set to ${selectedProfile.label}`,
-      `Behavior: ${formatLaunchProfileBehavior(selectedProfile)}`,
+      `Launch profile set to ${info.launchProfileLabel}`,
+      `Behavior: ${info.launchProfileBehavior}`,
       "",
       "Applies to new or reattached threads.",
     ].join("\n");
@@ -4206,7 +4216,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
-    const profile = findLaunchProfile(config.launchProfiles, profileId);
+    const profile = session.listLaunchProfiles().find((candidate) => candidate.id === profileId);
     if (!profile) {
       clearLaunchSelectionState(contextKey);
       await ctx.answerCallbackQuery({ text: "Launch profile no longer exists" });
@@ -4223,19 +4233,20 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     clearLaunchSelectionState(contextKey);
-    const selectedProfile = session.setLaunchProfile(profile.id);
+    session.setLaunchProfile(profile.id);
     updateSessionMetadata(contextKey, session);
-    await ctx.answerCallbackQuery({ text: `Launch set to ${selectedProfile.label}` });
+    const info = session.getInfo();
+    await ctx.answerCallbackQuery({ text: `Launch set to ${info.launchProfileLabel}` });
 
     const html = [
-      `<b>Launch profile set to</b> <code>${escapeHTML(selectedProfile.label)}</code>`,
-      `<b>Behavior:</b> <code>${escapeHTML(formatLaunchProfileBehavior(selectedProfile))}</code>`,
+      `<b>Launch profile set to</b> <code>${escapeHTML(info.launchProfileLabel)}</code>`,
+      `<b>Behavior:</b> <code>${escapeHTML(info.launchProfileBehavior)}</code>`,
       "",
       "⚠️ <i>danger-full-access confirmed for new or reattached threads.</i>",
     ].join("\n");
     const plain = [
-      `Launch profile set to ${selectedProfile.label}`,
-      `Behavior: ${formatLaunchProfileBehavior(selectedProfile)}`,
+      `Launch profile set to ${info.launchProfileLabel}`,
+      `Behavior: ${info.launchProfileBehavior}`,
       "",
       "danger-full-access confirmed for new or reattached threads.",
     ].join("\n");
@@ -5099,7 +5110,7 @@ function renderProgressHTML(
 }
 
 function renderExternalMirrorStatus(
-  snapshot: CodexRolloutSnapshot,
+  snapshot: AgentExternalSnapshot,
   queueLength: number,
 ): { plain: string; html: string } {
   const prompt = trimLine(snapshot.latestUserMessage ?? "-", 180);
@@ -5107,7 +5118,7 @@ function renderExternalMirrorStatus(
     ? formatDurationSeconds((Date.now() - snapshot.activity.startedAt.getTime()) / 1000)
     : "-";
   const lines = [
-    "Codex CLI task running.",
+    `${snapshot.agentLabel} CLI task running.`,
     `Thread: ${snapshot.threadId}`,
     `Elapsed: ${elapsed}`,
     `Prompt: ${prompt}`,
@@ -5117,7 +5128,7 @@ function renderExternalMirrorStatus(
   return {
     plain: lines.join("\n"),
     html: [
-      "<b>Codex CLI task running.</b>",
+      `<b>${escapeHTML(snapshot.agentLabel)} CLI task running.</b>`,
       `<b>Thread:</b> <code>${escapeHTML(snapshot.threadId)}</code>`,
       `<b>Elapsed:</b> <code>${escapeHTML(elapsed)}</code>`,
       `<b>Prompt:</b> <code>${escapeHTML(prompt)}</code>`,
@@ -5127,7 +5138,7 @@ function renderExternalMirrorStatus(
   };
 }
 
-function renderExternalMirrorEvent(event: CodexActivityEvent): { plain: string; html: string } | null {
+function renderExternalMirrorEvent(event: AgentActivityEvent): { plain: string; html: string } | null {
   if (event.kind === "task") {
     const status = event.status ?? event.type;
     const plain = `CLI task: ${status}`;
@@ -5153,13 +5164,13 @@ function renderExternalMirrorEvent(event: CodexActivityEvent): { plain: string; 
 
 function renderActivityTimeline(
   threadId: string,
-  events: CodexActivityEvent[],
+  events: AgentActivityEvent[],
   options: ActivityOptions = { limit: 16, filter: "all", exportFile: false },
 ): { plain: string; html: string } {
   if (events.length === 0) {
     return {
-      plain: `Activity:\nThread: ${threadId}\nFilter: ${options.filter}\nNo rollout events found.`,
-      html: `<b>Activity:</b>\n<b>Thread:</b> <code>${escapeHTML(threadId)}</code>\n<b>Filter:</b> <code>${escapeHTML(options.filter)}</code>\n<code>No rollout events found.</code>`,
+      plain: `Activity:\nThread: ${threadId}\nFilter: ${options.filter}\nNo activity events found.`,
+      html: `<b>Activity:</b>\n<b>Thread:</b> <code>${escapeHTML(threadId)}</code>\n<b>Filter:</b> <code>${escapeHTML(options.filter)}</code>\n<code>No activity events found.</code>`,
     };
   }
 
@@ -5212,7 +5223,7 @@ function parseActivityOptions(argument: string): ActivityOptions {
   return options;
 }
 
-function filterActivityEvents(events: CodexActivityEvent[], options: ActivityOptions): CodexActivityEvent[] {
+function filterActivityEvents(events: AgentActivityEvent[], options: ActivityOptions): AgentActivityEvent[] {
   const cutoff = options.sinceMs ? Date.now() - options.sinceMs : undefined;
   return events
     .filter((event) => {
@@ -5241,60 +5252,41 @@ function isActivityFilter(value: string): value is ActivityFilter {
   return value === "all" || value === "tools" || value === "errors" || value === "user" || value === "agent" || value === "tasks";
 }
 
-function renderRolloutDiagnostics(
-  threadId: string | null,
-  staleAfterMs: number,
-): { plain: string; html: string } {
-  if (!threadId) {
-    return {
-      plain: "Rollout: no active thread",
-      html: "<b>Rollout:</b> <code>no active thread</code>",
-    };
-  }
+function formatAgentLaunchProfileLabel(profile: AgentLaunchProfileRecord, selected: boolean): string {
+  const prefix = selected ? "✅" : profile.unsafe ? "⚠️" : "🚀";
+  return `${prefix} ${profile.label} · ${trimLine(profile.behavior, 24)}`;
+}
 
-  const snapshot = getThreadRolloutSnapshot(threadId, { staleAfterMs, maxEvents: 0 });
-  if (!snapshot) {
-    return {
-      plain: `Rollout:\nThread: ${threadId}\nStatus: unavailable`,
-      html: [
-        "<b>Rollout:</b>",
-        `<b>Thread:</b> <code>${escapeHTML(threadId)}</code>`,
-        "<b>Status:</b> <code>unavailable</code>",
-      ].join("\n"),
-    };
-  }
+function formatModelButtonLabel(model: AgentModelRecord, selected: boolean): string {
+  const meta = [
+    model.contextWindow ? formatCompactNumber(model.contextWindow) : undefined,
+    model.supportsImages === true ? "img" : model.supportsImages === false ? "text" : undefined,
+    model.supportsThinking === true ? "think" : undefined,
+  ].filter(Boolean).join(" ");
+  return trimLine(`${selected ? "✅ " : ""}${model.displayName}${meta ? ` · ${meta}` : ""}`, 58);
+}
 
-  const activity = snapshot.activity;
-  const status = activity.active ? "active" : activity.stale ? "stale" : "idle";
-  const reason = activity.active
-    ? "open task without terminal event"
-    : activity.stale
-      ? "open task exceeded stale timeout"
-      : "no open task";
-  const lines = [
-    "Rollout:",
-    `Path: ${snapshot.rolloutPath}`,
-    `Status: ${status}`,
-    `Reason: ${reason}`,
-    `Turn: ${activity.turnId ?? "-"}`,
-    `Lines: ${snapshot.lineCount}`,
-    `Updated: ${activity.updatedAt?.toISOString() ?? "-"}`,
-  ];
+function formatCompactNumber(value: number): string {
+  if (value >= 1_000_000_000) return `${Math.round(value / 100_000_000) / 10}B`;
+  if (value >= 1_000_000) return `${Math.round(value / 100_000) / 10}M`;
+  if (value >= 1_000) return `${Math.round(value / 100) / 10}K`;
+  return String(value);
+}
+
+function renderAgentDiagnostics(diagnostics: ReturnType<typeof getAgentDiagnostics>): { plain: string; html: string } {
   return {
-    plain: lines.join("\n"),
+    plain: [
+      `${diagnostics.agentLabel} state:`,
+      ...diagnostics.lines.map((line) => `${line.label}: ${line.value}`),
+    ].join("\n"),
     html: [
-      "<b>Rollout:</b>",
-      `<b>Path:</b> <code>${escapeHTML(snapshot.rolloutPath)}</code>`,
-      `<b>Status:</b> <code>${escapeHTML(status)}</code>`,
-      `<b>Reason:</b> <code>${escapeHTML(reason)}</code>`,
-      `<b>Turn:</b> <code>${escapeHTML(activity.turnId ?? "-")}</code>`,
-      `<b>Lines:</b> <code>${snapshot.lineCount}</code>`,
-      `<b>Updated:</b> <code>${escapeHTML(activity.updatedAt?.toISOString() ?? "-")}</code>`,
+      `<b>${escapeHTML(diagnostics.agentLabel)} state:</b>`,
+      ...diagnostics.lines.map((line) => `<b>${escapeHTML(line.label)}:</b> <code>${escapeHTML(line.value)}</code>`),
     ].join("\n"),
   };
 }
 
-function activityEventLabel(event: CodexActivityEvent): string {
+function activityEventLabel(event: AgentActivityEvent): string {
   if (event.kind === "task") {
     return `task ${event.status ?? event.type}`;
   }

@@ -4,7 +4,14 @@ import path from "node:path";
 
 import { describe, expect, it, afterEach, beforeEach } from "vitest";
 
-import { getPiSession, listPiSessions, listPiWorkspaces } from "../src/pi-state.js";
+import {
+  getPiSession,
+  getPiSessionActivity,
+  getPiSessionActivityLog,
+  getPiSessionDiagnostics,
+  listPiSessions,
+  listPiWorkspaces,
+} from "../src/pi-state.js";
 
 describe("pi-state", () => {
   let tempDir: string;
@@ -68,5 +75,53 @@ describe("pi-state", () => {
     });
     expect(getPiSession("019e1111", { sessionDir: tempDir })?.sessionPath).toBe(sessionPath);
     expect(listPiWorkspaces({ sessionDir: tempDir })).toEqual(["/home/user/project"]);
+  });
+
+  it("detects active Pi CLI turns from JSONL sessions", () => {
+    const workspaceDir = path.join(tempDir, "--home-user-project--");
+    mkdirSync(workspaceDir, { recursive: true });
+    const sessionPath = path.join(workspaceDir, "2026-05-12T08-00-00-000Z_pi-active.jsonl");
+    writeFileSync(
+      sessionPath,
+      [
+        JSON.stringify({
+          type: "session",
+          id: "pi-active",
+          timestamp: "2026-05-12T08:00:00.000Z",
+          cwd: "/home/user/project",
+        }),
+        JSON.stringify({
+          type: "message",
+          timestamp: "2026-05-12T08:00:03.000Z",
+          message: {
+            role: "user",
+            content: "Still running",
+          },
+        }),
+      ].join("\n"),
+    );
+
+    const activity = getPiSessionActivity("pi-active", {
+      sessionDir: tempDir,
+      nowMs: Date.parse("2026-05-12T08:00:05.000Z"),
+      staleAfterMs: 60_000,
+    });
+    const events = getPiSessionActivityLog("pi-active", 10, { sessionDir: tempDir });
+    const diagnostics = getPiSessionDiagnostics("pi-active", {
+      sessionDir: tempDir,
+      nowMs: Date.parse("2026-05-12T08:00:05.000Z"),
+      staleAfterMs: 60_000,
+    });
+
+    expect(activity).toMatchObject({
+      agentId: "pi",
+      active: true,
+      stale: false,
+      threadId: "pi-active",
+      sourcePath: sessionPath,
+    });
+    expect(events.map((event) => event.kind)).toEqual(["task", "user"]);
+    expect(diagnostics.status).toBe("active");
+    expect(diagnostics.lineCount).toBe(2);
   });
 });

@@ -192,6 +192,7 @@ describe("loadConfig", () => {
       piSessionDir: undefined,
       piDefaultModel: undefined,
       piDefaultThinking: "medium",
+      piDefaultLaunchProfileId: "default",
       defaultAgent: "codex",
       toolVerbosity: "all",
       logFormat: "text",
@@ -221,6 +222,7 @@ describe("loadConfig", () => {
     expect(config.piSessionDir).toBeUndefined();
     expect(config.piDefaultModel).toBeUndefined();
     expect(config.piDefaultThinking).toBe("medium");
+    expect(config.piDefaultLaunchProfileId).toBe("default");
     expect(config.codexModel).toBeUndefined();
     expect(config.codexSyncIntervalMs).toBe(10_000);
     expect(config.codexExternalBusyCheckMs).toBe(5_000);
@@ -542,6 +544,7 @@ describe("loadConfig", () => {
     process.env.PI_SESSION_DIR = "/tmp/pi-sessions";
     process.env.PI_DEFAULT_MODEL = "openai-codex/gpt-5.5";
     process.env.PI_DEFAULT_THINKING = "xhigh";
+    process.env.PI_DEFAULT_PROFILE = "safe-offline";
 
     const config = loadConfig();
 
@@ -551,6 +554,7 @@ describe("loadConfig", () => {
     expect(config.piSessionDir).toBe("/tmp/pi-sessions");
     expect(config.piDefaultModel).toBe("openai-codex/gpt-5.5");
     expect(config.piDefaultThinking).toBe("xhigh");
+    expect(config.piDefaultLaunchProfileId).toBe("safe-offline");
   });
 
   it("rejects a default agent that is not enabled", () => {

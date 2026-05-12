@@ -12,6 +12,12 @@ export interface PiRpcClientOptions {
   sessionPath?: string;
   model?: string;
   thinking?: string;
+  tools?: string;
+  noTools?: boolean;
+  noBuiltinTools?: boolean;
+  offline?: boolean;
+  noExtensions?: boolean;
+  noSkills?: boolean;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -106,6 +112,24 @@ export class PiRpcClient {
     }
     if (this.options.thinking) {
       args.push("--thinking", this.options.thinking);
+    }
+    if (this.options.tools) {
+      args.push("--tools", this.options.tools);
+    }
+    if (this.options.noTools) {
+      args.push("--no-tools");
+    }
+    if (this.options.noBuiltinTools) {
+      args.push("--no-builtin-tools");
+    }
+    if (this.options.offline) {
+      args.push("--offline");
+    }
+    if (this.options.noExtensions) {
+      args.push("--no-extensions");
+    }
+    if (this.options.noSkills) {
+      args.push("--no-skills");
     }
 
     const child = spawn(this.options.commandPath, args, {

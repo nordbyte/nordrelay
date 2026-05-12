@@ -58,15 +58,15 @@ export const CODEX_AGENT_CAPABILITIES: AgentCapabilities = {
 };
 
 export const PI_AGENT_CAPABILITIES: AgentCapabilities = {
-  launchProfiles: false,
+  launchProfiles: true,
   fastMode: false,
-  externalActivity: false,
-  cliMirror: false,
-  activityLog: false,
-  auth: false,
+  externalActivity: true,
+  cliMirror: true,
+  activityLog: true,
+  auth: true,
   login: false,
   logout: false,
-  usageLimits: false,
+  usageLimits: true,
   workspaces: true,
   attachments: true,
   modelSelection: true,
@@ -145,6 +145,17 @@ export interface AgentModelRecord {
   slug: string;
   displayName: string;
   maxInputTokens?: number;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  supportsThinking?: boolean;
+  supportsImages?: boolean;
+}
+
+export interface AgentLaunchProfileRecord {
+  id: string;
+  label: string;
+  behavior: string;
+  unsafe: boolean;
 }
 
 export interface AgentThreadRecord {
@@ -186,6 +197,53 @@ export interface AgentHandbackResult {
   label?: string;
 }
 
+export type AgentActivityEventKind = "task" | "user" | "agent" | "tool";
+
+export interface AgentActivityEvent {
+  lineNumber: number;
+  kind: AgentActivityEventKind;
+  timestamp: Date | null;
+  type: string;
+  turnId: string | null;
+  status: string | null;
+  text: string | null;
+  toolName: string | null;
+  phase: string | null;
+}
+
+export interface AgentExternalActivity {
+  agentId: AgentId;
+  agentLabel: string;
+  threadId: string;
+  sourcePath: string;
+  sourceLabel: string;
+  active: boolean;
+  stale: boolean;
+  turnId: string | null;
+  startedAt: Date | null;
+  updatedAt: Date | null;
+}
+
+export interface AgentExternalSnapshot {
+  agentId: AgentId;
+  agentLabel: string;
+  threadId: string;
+  sourcePath: string;
+  sourceLabel: string;
+  lineCount: number;
+  activity: AgentExternalActivity;
+  events: AgentActivityEvent[];
+  latestAgentMessage: string | null;
+  latestUserMessage: string | null;
+  latestToolName: string | null;
+}
+
+export interface AgentDiagnostics {
+  agentId: AgentId;
+  agentLabel: string;
+  lines: Array<{ label: string; value: string }>;
+}
+
 export interface AgentCreateOptions {
   workspace?: string;
   model?: string;
@@ -210,6 +268,7 @@ export interface AgentSessionService {
   listAllSessions(limit?: number): AgentThreadRecord[];
   listWorkspaces(): string[];
   listModels(): AgentModelRecord[];
+  listLaunchProfiles(): AgentLaunchProfileRecord[];
   getSessionRecord(threadId: string): AgentThreadRecord | null;
   setModel(slug: string): string;
   setModelForCurrentSession(slug: string): AgentSettingResult | Promise<AgentSettingResult>;

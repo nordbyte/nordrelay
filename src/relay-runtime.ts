@@ -4,9 +4,11 @@ import path from "node:path";
 
 import {
   createArtifactZipBundle,
+  collectRecentWorkspaceArtifacts,
   getArtifactTurnReport,
   ensureOutDir,
   listRecentArtifactReports,
+  persistWorkspaceArtifactReport,
   removeArtifactTurn,
   totalArtifactSize,
   type ArtifactTurnReport,
@@ -24,6 +26,7 @@ import {
   agentLabel,
   agentReasoningLabel,
   type AgentCapabilities,
+  type AgentExternalSnapshot,
   type AgentId,
   type AgentModelRecord,
   type AgentPromptInput,
@@ -34,13 +37,12 @@ import {
   type AgentSessionService,
   type AgentThreadRecord,
 } from "./agent.js";
+import {
+  getAgentDiagnostics,
+  getExternalSnapshotForSession,
+} from "./agent-activity.js";
 import { enabledAgents } from "./agent-factory.js";
 import { checkAuthStatus } from "./codex-auth.js";
-import {
-  getThreadRolloutSnapshot,
-  type CodexActivityEvent,
-  type CodexRolloutSnapshot,
-} from "./codex-state.js";
 import type { ConnectorConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { getConnectorHealth, getVersionChecks, readFormattedLogTail, spawnConnectorRestart } from "./operations.js";
@@ -168,6 +170,7 @@ export interface WebDiagnosticsDto {
     sourceWorkspace: string;
     queuePaused: boolean;
     externalMirror: ExternalMirrorState | null;
+    agentDiagnostics: ReturnType<typeof getAgentDiagnostics>;
   };
 }
 
@@ -255,6 +258,7 @@ export class RelayRuntime {
         sourceWorkspace: this.config.workspace,
         queuePaused: this.promptStore.isPaused(WEB_CONTEXT_KEY),
         externalMirror: this.externalMirror ? { ...this.externalMirror } : null,
+        agentDiagnostics: getAgentDiagnostics(await this.getSession(true), this.config),
       },
     };
   }
@@ -267,14 +271,7 @@ export class RelayRuntime {
       models: capabilities.modelSelection ? session.listModels() : [],
       reasoningLabel: agentReasoningLabel(info.agentId),
       reasoningOptions: info.agentId === "pi" ? PI_THINKING_LEVELS : CODEX_REASONING_EFFORTS,
-      launchProfiles: capabilities.launchProfiles
-        ? this.config.launchProfiles.map((profile) => ({
-          id: profile.id,
-          label: profile.label,
-          behavior: `${profile.sandboxMode} / ${profile.approvalPolicy}`,
-          unsafe: profile.unsafe,
-        }))
-        : [],
+      launchProfiles: capabilities.launchProfiles ? session.listLaunchProfiles() : [],
       workspaces: filterAllowedWorkspaces(session.listWorkspaces(), this.config),
       capabilities,
     };
@@ -459,6 +456,16 @@ export class RelayRuntime {
 
   async abort(): Promise<void> {
     const session = await this.getSession(true);
+    const snapshot = getExternalSnapshotForSession(session, this.config, { maxEvents: 0 });
+    if (snapshot?.activity.active && !session.isProcessing()) {
+      this.broadcast({
+        type: "status",
+        level: "warn",
+        message: `Cannot abort the external ${snapshot.agentLabel} CLI task from NordRelay. Stop it in the terminal where it is running.`,
+        at: new Date().toISOString(),
+      });
+      return;
+    }
     await session.abort();
     this.broadcast({ type: "status", level: "warn", message: "Current operation aborted.", at: new Date().toISOString() });
   }
@@ -547,7 +554,8 @@ export class RelayRuntime {
 
   private async sendEnvelope(envelope: PromptEnvelope): Promise<{ queued: boolean; queueId?: string }> {
     const session = await this.getSession(false);
-    if (session.isProcessing()) {
+    const external = getExternalSnapshotForSession(session, this.config, { maxEvents: 0 });
+    if (session.isProcessing() || external?.activity.active) {
       const queued = this.promptStore.enqueue(WEB_CONTEXT_KEY, envelope);
       const info = this.publicInfo(session);
       this.appendActivity({
@@ -558,8 +566,13 @@ export class RelayRuntime {
         workspace: info.workspace,
         agentId: info.agentId,
         prompt: envelope.description,
-        detail: `Queued at position ${this.promptStore.list(WEB_CONTEXT_KEY).length}.`,
+        detail: external?.activity.active
+          ? `Queued because ${external.agentLabel} CLI is still processing another task.`
+          : `Queued at position ${this.promptStore.list(WEB_CONTEXT_KEY).length}.`,
       });
+      if (external?.activity.active) {
+        this.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${this.promptStore.list(WEB_CONTEXT_KEY).length} queued.`, "info");
+      }
       this.broadcastQueue();
       return { queued: true, queueId: queued.id };
     }
@@ -696,25 +709,23 @@ export class RelayRuntime {
   private async monitorExternalActivity(): Promise<void> {
     const session = await this.getSession(true);
     const info = this.publicInfo(session);
-    if (!info.capabilities.externalActivity || info.agentId !== "codex" || !info.threadId || session.isProcessing()) {
+    if (!info.capabilities.externalActivity || !info.threadId || session.isProcessing()) {
       return;
     }
 
-    const snapshot = getThreadRolloutSnapshot(info.threadId, {
+    const snapshot = getExternalSnapshotForSession(session, this.config, {
       afterLine: this.externalMirror?.threadId === info.threadId ? this.externalMirror.lastLine : Number.MAX_SAFE_INTEGER,
-      staleAfterMs: this.config.codexExternalBusyStaleMs,
-    }) ?? getThreadRolloutSnapshot(info.threadId, {
-      staleAfterMs: this.config.codexExternalBusyStaleMs,
+    }) ?? getExternalSnapshotForSession(session, this.config, {
       maxEvents: 0,
     });
     if (!snapshot) {
       return;
     }
 
-    if (!this.externalMirror || this.externalMirror.threadId !== snapshot.threadId || this.externalMirror.rolloutPath !== snapshot.rolloutPath) {
+    if (!this.externalMirror || this.externalMirror.threadId !== snapshot.threadId || this.externalMirror.rolloutPath !== snapshot.sourcePath) {
       this.externalMirror = {
         threadId: snapshot.threadId,
-        rolloutPath: snapshot.rolloutPath,
+        rolloutPath: snapshot.sourcePath,
         lastLine: snapshot.lineCount,
         turnId: snapshot.activity.turnId,
         startedAt: snapshot.activity.startedAt?.toISOString() ?? null,
@@ -770,20 +781,24 @@ export class RelayRuntime {
         workspace: info.workspace,
         agentId: info.agentId,
         prompt: snapshot.latestUserMessage ?? undefined,
-        detail: `Codex CLI task ${terminalEvent.status ?? "finished"}.`,
+        detail: `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`,
         durationMs: durationFromDates(externalStartedAt, terminalEvent.timestamp),
       });
+      if (externalStartedAt && terminalEvent.turnId) {
+        await this.persistWorkspaceArtifactsForTurn(info.workspace, terminalEvent.turnId, externalStartedAt);
+      }
       this.broadcastStatus(
-        `Codex CLI task ${terminalEvent.status ?? "finished"}.`,
+        `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`,
         terminalEvent.status === "failed" ? "error" : terminalEvent.status === "aborted" ? "warn" : "info",
       );
       this.broadcast({ type: "chat_history", messages: await this.chatHistory() });
+      await this.drainQueue();
     }
     mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);
   }
 
-  private startExternalTurn(snapshot: CodexRolloutSnapshot): void {
-    const prompt = snapshot.latestUserMessage ?? "Codex CLI task";
+  private startExternalTurn(snapshot: AgentExternalSnapshot): void {
+    const prompt = snapshot.latestUserMessage ?? `${snapshot.agentLabel} CLI task`;
     this.chatStore.append({
       threadId: snapshot.threadId,
       role: "user",
@@ -805,11 +820,11 @@ export class RelayRuntime {
       type: "cli_turn_started",
       threadId: snapshot.threadId,
       prompt,
-      detail: `Rollout: ${snapshot.rolloutPath}`,
+      detail: `${snapshot.sourceLabel}: ${snapshot.sourcePath}`,
     });
   }
 
-  private broadcastExternalEvents(snapshot: CodexRolloutSnapshot, events: CodexActivityEvent[]): void {
+  private broadcastExternalEvents(snapshot: AgentExternalSnapshot, events: AgentExternalSnapshot["events"]): void {
     for (const event of events) {
       if (event.kind === "tool" && event.status === "started") {
         this.broadcast({
@@ -857,7 +872,7 @@ export class RelayRuntime {
   private async runPrompt(session: AgentSessionService, envelope: PromptEnvelope): Promise<void> {
     await this.ensureActiveThread(session);
     const info = session.getInfo();
-    if ((info.capabilities ?? CODEX_AGENT_CAPABILITIES).auth) {
+    if ((info.capabilities ?? CODEX_AGENT_CAPABILITIES).auth && info.agentId !== "pi") {
       const auth = await checkAuthStatus(this.config.codexApiKey);
       if (!auth.authenticated) {
         throw new Error(`Codex is not authenticated: ${auth.detail}`);
@@ -873,7 +888,8 @@ export class RelayRuntime {
     this.currentTurnStartedAt = Date.now();
     this.accumulatedText = "";
     this.promptStore.setLastPrompt(WEB_CONTEXT_KEY, envelope);
-    const startedAt = new Date().toISOString();
+    const startedDate = new Date();
+    const startedAt = startedDate.toISOString();
     this.chatStore.append({
       threadId: info.threadId ?? "pending",
       role: "user",
@@ -909,6 +925,7 @@ export class RelayRuntime {
     try {
       await session.prompt(envelope.input as AgentPromptInput, callbacks);
       this.updateSession(session);
+      await this.persistWorkspaceArtifactsForTurn(session.getInfo().workspace, turnId, startedDate);
       if (this.accumulatedText.trim()) {
         this.chatStore.append({
           threadId: info.threadId ?? "pending",
@@ -967,6 +984,11 @@ export class RelayRuntime {
     try {
       const session = await this.getSession(false);
       while (!session.isProcessing()) {
+        const external = getExternalSnapshotForSession(session, this.config, { maxEvents: 0 });
+        if (external?.activity.active) {
+          this.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${this.queue().length} queued.`, "info");
+          return;
+        }
         const next = this.promptStore.dequeue(WEB_CONTEXT_KEY);
         this.broadcastQueue();
         if (!next) {
@@ -1018,6 +1040,21 @@ export class RelayRuntime {
       capabilities: info.capabilities ?? CODEX_AGENT_CAPABILITIES,
     };
   }
+
+  private async persistWorkspaceArtifactsForTurn(workspace: string, turnId: string, startedAt: Date): Promise<void> {
+    const report = await collectRecentWorkspaceArtifacts(workspace, {
+      since: startedAt,
+      until: new Date(),
+      maxFileSize: this.config.maxFileSize,
+      limit: 20,
+      ignoreDirs: this.config.artifactIgnoreDirs,
+      ignoreGlobs: this.config.artifactIgnoreGlobs,
+    });
+    if (report.artifacts.length === 0 && report.skippedCount === 0 && !report.omittedCount) {
+      return;
+    }
+    await persistWorkspaceArtifactReport(workspace, turnId, report);
+  }
 }
 
 function queueItemDto(item: QueuedPrompt): QueueItemDto {
@@ -1048,12 +1085,12 @@ function artifactDto(report: ArtifactTurnReport): ArtifactReportDto {
   };
 }
 
-function externalStatusLine(snapshot: CodexRolloutSnapshot, queueLength: number): string {
+function externalStatusLine(snapshot: AgentExternalSnapshot, queueLength: number): string {
   const elapsed = snapshot.activity.startedAt
     ? formatDuration((Date.now() - snapshot.activity.startedAt.getTime()) / 1000)
     : "-";
   const tool = snapshot.latestToolName ?? "-";
-  return `Codex CLI running · ${elapsed} · tool ${tool} · ${queueLength} queued`;
+  return `${snapshot.agentLabel} CLI running · ${elapsed} · tool ${tool} · ${queueLength} queued`;
 }
 
 function durationFromDates(start: Date | null, end: Date | null): number | undefined {

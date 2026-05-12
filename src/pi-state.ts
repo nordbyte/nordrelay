@@ -2,12 +2,21 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { AgentThreadRecord } from "./agent.js";
+import type { AgentActivityEvent, AgentExternalActivity, AgentExternalSnapshot, AgentThreadRecord } from "./agent.js";
 
 export interface PiSessionRecord extends AgentThreadRecord {
   agentId: "pi";
   sessionPath: string;
   messageCount: number;
+}
+
+export interface PiSessionDiagnostics {
+  sessionDir: string;
+  sessionPath: string | null;
+  lineCount: number;
+  status: "active" | "stale" | "idle" | "unavailable";
+  reason: string;
+  updatedAt: Date | null;
 }
 
 export interface PiSessionStateOptions {
@@ -78,6 +87,80 @@ export function getPiSession(
     path.basename(record.sessionPath, ".jsonl").endsWith(`_${normalized}`),
   );
   return matches[0] ?? null;
+}
+
+export function getPiSessionActivity(
+  idOrPath: string,
+  options: PiSessionStateOptions & { staleAfterMs?: number; nowMs?: number } = {},
+): AgentExternalActivity | null {
+  return getPiSessionSnapshot(idOrPath, { ...options, maxEvents: 0 })?.activity ?? null;
+}
+
+export function getPiSessionActivityLog(
+  idOrPath: string,
+  limit = 50,
+  options: PiSessionStateOptions = {},
+): AgentActivityEvent[] {
+  const snapshot = getPiSessionSnapshot(idOrPath, { ...options, maxEvents: Math.max(1, limit) });
+  return snapshot?.events.slice(-Math.max(1, limit)) ?? [];
+}
+
+export function getPiSessionSnapshot(
+  idOrPath: string,
+  options: PiSessionStateOptions & {
+    afterLine?: number;
+    maxEvents?: number;
+    staleAfterMs?: number;
+    nowMs?: number;
+  } = {},
+): AgentExternalSnapshot | null {
+  const record = getPiSession(idOrPath, options);
+  if (!record) {
+    return null;
+  }
+  return readPiSessionSnapshot(record, options);
+}
+
+export function getPiSessionDiagnostics(
+  idOrPath: string | null | undefined,
+  options: PiSessionStateOptions & { staleAfterMs?: number; nowMs?: number } = {},
+): PiSessionDiagnostics {
+  const sessionDir = resolvePiSessionDir(options);
+  if (!idOrPath) {
+    return {
+      sessionDir,
+      sessionPath: null,
+      lineCount: 0,
+      status: "unavailable",
+      reason: "no active Pi session",
+      updatedAt: null,
+    };
+  }
+  const snapshot = getPiSessionSnapshot(idOrPath, { ...options, maxEvents: 0 });
+  if (!snapshot) {
+    return {
+      sessionDir,
+      sessionPath: null,
+      lineCount: 0,
+      status: "unavailable",
+      reason: "session file not found or unreadable",
+      updatedAt: null,
+    };
+  }
+  const status = snapshot.activity.active ? "active" : snapshot.activity.stale ? "stale" : "idle";
+  const reason = snapshot.activity.active
+    ? "latest Pi user turn has no assistant response yet"
+    : snapshot.activity.stale
+      ? "open Pi turn exceeded stale timeout"
+      : "latest Pi turn has a terminal response";
+  return {
+    sessionDir,
+    sessionPath: snapshot.sourcePath,
+    lineCount: snapshot.lineCount,
+    status,
+    reason,
+    updatedAt: snapshot.activity.updatedAt,
+  };
 }
 
 export function listPiWorkspaces(options: PiSessionStateOptions = {}): string[] {
@@ -167,6 +250,200 @@ export function readPiSessionRecord(
     };
   } catch {
     return null;
+  }
+}
+
+function readPiSessionSnapshot(
+  record: PiSessionRecord,
+  options: {
+    afterLine?: number;
+    maxEvents?: number;
+    staleAfterMs?: number;
+    nowMs?: number;
+  } = {},
+): AgentExternalSnapshot | null {
+  try {
+    const fileStat = statSync(record.sessionPath);
+    const lines = readFileSync(record.sessionPath, "utf8")
+      .split(/\r?\n/)
+      .filter(Boolean);
+    const parsed = parsePiActivityEvents(lines, record.id, 0);
+    const staleAfterMs = options.staleAfterMs ?? 5 * 60 * 1000;
+    const nowMs = options.nowMs ?? Date.now();
+    const latestUser = [...parsed.events].reverse().find((event) => event.kind === "user");
+    const latestAgent = [...parsed.events].reverse().find((event) => event.kind === "agent");
+    const latestTerminal = [...parsed.events].reverse().find((event) => event.kind === "task" && event.status && event.status !== "started");
+    const latestTool = [...parsed.events].reverse().find((event) => event.kind === "tool" && event.toolName);
+    const latestTimestamp = parsed.latestTimestamp ?? fileStat.mtime;
+    const activeStartedAt = latestUser?.timestamp ?? null;
+    const hasAssistantAfterUser = Boolean(
+      latestUser && latestAgent && latestAgent.lineNumber > latestUser.lineNumber,
+    );
+    const terminalAfterUser = Boolean(
+      latestUser && latestTerminal && latestTerminal.lineNumber > latestUser.lineNumber,
+    );
+    const openTurn = Boolean(latestUser && !hasAssistantAfterUser && !terminalAfterUser);
+    const stale = openTurn && nowMs - latestTimestamp.getTime() > staleAfterMs;
+    const active = openTurn && !stale;
+    const turnId = latestUser?.turnId ?? latestTerminal?.turnId ?? null;
+    const maxEvents = options.maxEvents ?? 50;
+    const afterLine = options.afterLine ?? 0;
+    const events = maxEvents <= 0 ? [] : parsed.events.filter((event) => event.lineNumber > afterLine).slice(-maxEvents);
+
+    return {
+      agentId: "pi",
+      agentLabel: "Pi",
+      threadId: record.id,
+      sourcePath: record.sessionPath,
+      sourceLabel: "Pi session",
+      lineCount: lines.length,
+      activity: {
+        agentId: "pi",
+        agentLabel: "Pi",
+        threadId: record.id,
+        sourcePath: record.sessionPath,
+        sourceLabel: "Pi session",
+        active,
+        stale,
+        turnId,
+        startedAt: activeStartedAt,
+        updatedAt: latestTimestamp,
+      },
+      events,
+      latestAgentMessage: latestAgent?.text ?? null,
+      latestUserMessage: latestUser?.text ?? null,
+      latestToolName: latestTool?.toolName ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parsePiActivityEvents(
+  lines: string[],
+  sessionId: string,
+  afterLine: number,
+): { events: AgentActivityEvent[]; latestTimestamp: Date | null } {
+  const events: AgentActivityEvent[] = [];
+  let latestTimestamp: Date | null = null;
+  let currentTurnId: string | null = null;
+
+  for (const [index, line] of lines.entries()) {
+    const lineNumber = index + 1;
+    const entry = safeJsonParse(line);
+    if (!entry) {
+      continue;
+    }
+    const timestamp = dateValue(entry.timestamp) ?? dateValue(objectValue(entry.message)?.timestamp);
+    if (timestamp && (!latestTimestamp || timestamp > latestTimestamp)) {
+      latestTimestamp = timestamp;
+    }
+    const type = stringValue(entry.type) ?? "entry";
+
+    if (type === "message") {
+      const message = objectValue(entry.message);
+      const role = stringValue(message?.role);
+      const text = message ? extractMessageText(message) : null;
+      if (role === "user") {
+        currentTurnId = `pi-${sessionId}-${lineNumber}`;
+        pushEvent(events, afterLine, {
+          lineNumber,
+          kind: "task",
+          timestamp,
+          type: "turn",
+          turnId: currentTurnId,
+          status: "started",
+          text,
+          toolName: null,
+          phase: null,
+        });
+        pushEvent(events, afterLine, {
+          lineNumber,
+          kind: "user",
+          timestamp,
+          type,
+          turnId: currentTurnId,
+          status: null,
+          text,
+          toolName: null,
+          phase: null,
+        });
+      } else if (role === "assistant") {
+        pushEvent(events, afterLine, {
+          lineNumber,
+          kind: "agent",
+          timestamp,
+          type,
+          turnId: currentTurnId,
+          status: "completed",
+          text,
+          toolName: null,
+          phase: null,
+        });
+        pushEvent(events, afterLine, {
+          lineNumber,
+          kind: "task",
+          timestamp,
+          type: "turn",
+          turnId: currentTurnId,
+          status: "completed",
+          text: null,
+          toolName: null,
+          phase: null,
+        });
+      } else if (role === "tool") {
+        pushEvent(events, afterLine, {
+          lineNumber,
+          kind: "tool",
+          timestamp,
+          type,
+          turnId: currentTurnId,
+          status: "finished",
+          text,
+          toolName: stringValue(message?.name) ?? extractToolName(message) ?? "tool",
+          phase: null,
+        });
+      }
+      continue;
+    }
+
+    if (/tool/i.test(type)) {
+      const status = /start/i.test(type) ? "started" : /error|fail/i.test(type) ? "failed" : /end|finish|complete/i.test(type) ? "finished" : null;
+      pushEvent(events, afterLine, {
+        lineNumber,
+        kind: "tool",
+        timestamp,
+        type,
+        turnId: currentTurnId,
+        status,
+        text: extractContentText(entry),
+        toolName: stringValue(entry.toolName) ?? stringValue(entry.name) ?? "tool",
+        phase: null,
+      });
+      continue;
+    }
+
+    if (/error|fail/i.test(type)) {
+      pushEvent(events, afterLine, {
+        lineNumber,
+        kind: "task",
+        timestamp,
+        type,
+        turnId: currentTurnId,
+        status: "failed",
+        text: stringValue(entry.error) ?? stringValue(entry.message),
+        toolName: null,
+        phase: null,
+      });
+    }
+  }
+
+  return { events, latestTimestamp };
+}
+
+function pushEvent(events: AgentActivityEvent[], afterLine: number, event: AgentActivityEvent): void {
+  if (event.lineNumber > afterLine) {
+    events.push(event);
   }
 }
 
@@ -262,6 +539,37 @@ function extractMessageText(message: JsonObject): string | null {
     })
     .filter(Boolean);
   return parts.join("\n").trim() || null;
+}
+
+function extractContentText(container: JsonObject): string | null {
+  const direct = stringValue(container.text) ?? stringValue(container.error);
+  if (direct) {
+    return direct;
+  }
+  const content = container.content;
+  if (typeof content === "string") {
+    return content.trim() || null;
+  }
+  if (!Array.isArray(content)) {
+    return null;
+  }
+  const text = content
+    .map((entry) => {
+      const block = objectValue(entry);
+      return block ? stringValue(block.text) ?? stringValue(block.content) ?? "" : "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  return text || null;
+}
+
+function extractToolName(message: JsonObject | null): string | null {
+  if (!message) {
+    return null;
+  }
+  const toolCall = objectValue(message.toolCall) ?? objectValue(message.tool_call);
+  return stringValue(toolCall?.name) ?? stringValue(toolCall?.toolName) ?? stringValue(message.toolName);
 }
 
 function summarizeTitle(text: string | null): string | null {

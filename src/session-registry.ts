@@ -15,6 +15,7 @@ export interface ContextMetadata {
   launchProfileId?: string;
   sessionPath?: string;
   pinnedThreadIds?: string[];
+  pinnedThreadIdsByAgent?: Partial<Record<AgentId, string[]>>;
   updatedAt: number;
 }
 
@@ -95,7 +96,7 @@ export class SessionRegistry {
       agentId,
       threadId: null,
       workspace: previous?.workspace ?? this.config.workspace,
-      pinnedThreadIds: previous?.pinnedThreadIds,
+      pinnedThreadIdsByAgent: previous?.pinnedThreadIdsByAgent,
       updatedAt: Date.now(),
     };
     this.metadata.set(contextKey, next);
@@ -106,7 +107,9 @@ export class SessionRegistry {
   updateMetadata(contextKey: TelegramContextKey, session: AgentSessionService): void {
     const info = session.getInfo();
     const previous = this.metadata.get(contextKey);
-    const pinnedThreadIds = previous?.pinnedThreadIds ?? [];
+    const agentId = info.agentId ?? "codex";
+    const previousPinnedByAgent = previous?.pinnedThreadIdsByAgent ?? {};
+    const pinnedThreadIds = previousPinnedByAgent[agentId] ?? previous?.pinnedThreadIds ?? [];
     const next: ContextMetadata = {
       contextKey,
       threadId: info.threadId,
@@ -116,14 +119,20 @@ export class SessionRegistry {
       launchProfileId: info.nextLaunchProfileId ?? info.launchProfileId,
       updatedAt: Date.now(),
     };
-    if (info.agentId && info.agentId !== "codex") {
-      next.agentId = info.agentId;
+    if (agentId !== "codex") {
+      next.agentId = agentId;
     }
     if (info.sessionPath) {
       next.sessionPath = info.sessionPath;
     }
+    const nextPinnedByAgent = { ...previousPinnedByAgent };
     if (pinnedThreadIds.length > 0) {
-      next.pinnedThreadIds = pinnedThreadIds;
+      nextPinnedByAgent[agentId] = pinnedThreadIds;
+    } else {
+      delete nextPinnedByAgent[agentId];
+    }
+    if (Object.keys(nextPinnedByAgent).length > 0) {
+      next.pinnedThreadIdsByAgent = nextPinnedByAgent;
     }
     this.metadata.set(contextKey, next);
     this.persistMetadata();
@@ -131,26 +140,37 @@ export class SessionRegistry {
 
   pinThread(contextKey: TelegramContextKey, threadId: string): string[] {
     const meta = this.metadata.get(contextKey) ?? this.createEmptyMetadata(contextKey);
-    const pinned = new Set(meta.pinnedThreadIds ?? []);
+    const agentId = meta.agentId ?? this.config.defaultAgent ?? "codex";
+    const pinnedByAgent = meta.pinnedThreadIdsByAgent ?? {};
+    const pinned = new Set(pinnedByAgent[agentId] ?? meta.pinnedThreadIds ?? []);
     pinned.add(threadId);
-    meta.pinnedThreadIds = [...pinned];
+    meta.pinnedThreadIdsByAgent = { ...pinnedByAgent, [agentId]: [...pinned] };
+    delete meta.pinnedThreadIds;
     meta.updatedAt = Date.now();
     this.metadata.set(contextKey, meta);
     this.persistMetadata();
-    return meta.pinnedThreadIds;
+    return meta.pinnedThreadIdsByAgent[agentId] ?? [];
   }
 
   unpinThread(contextKey: TelegramContextKey, threadId: string): string[] {
     const meta = this.metadata.get(contextKey) ?? this.createEmptyMetadata(contextKey);
-    meta.pinnedThreadIds = (meta.pinnedThreadIds ?? []).filter((id) => id !== threadId);
+    const agentId = meta.agentId ?? this.config.defaultAgent ?? "codex";
+    const pinnedByAgent = meta.pinnedThreadIdsByAgent ?? {};
+    meta.pinnedThreadIdsByAgent = {
+      ...pinnedByAgent,
+      [agentId]: (pinnedByAgent[agentId] ?? meta.pinnedThreadIds ?? []).filter((id) => id !== threadId),
+    };
+    delete meta.pinnedThreadIds;
     meta.updatedAt = Date.now();
     this.metadata.set(contextKey, meta);
     this.persistMetadata();
-    return meta.pinnedThreadIds;
+    return meta.pinnedThreadIdsByAgent[agentId] ?? [];
   }
 
   listPinnedThreadIds(contextKey: TelegramContextKey): string[] {
-    return [...(this.metadata.get(contextKey)?.pinnedThreadIds ?? [])];
+    const meta = this.metadata.get(contextKey);
+    const agentId = meta?.agentId ?? this.config.defaultAgent ?? "codex";
+    return [...(meta?.pinnedThreadIdsByAgent?.[agentId] ?? meta?.pinnedThreadIds ?? [])];
   }
 
   listContexts(): ContextMetadata[] {
@@ -238,6 +258,10 @@ function resolveLaunchProfileId(
 ): string | undefined {
   if (!meta?.launchProfileId) {
     return undefined;
+  }
+
+  if (meta.agentId === "pi") {
+    return meta.launchProfileId;
   }
 
   if (findLaunchProfile(config.launchProfiles, meta.launchProfileId)) {

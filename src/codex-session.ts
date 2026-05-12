@@ -31,6 +31,7 @@ import {
 import {
   CODEX_AGENT_CAPABILITIES,
   type AgentFastModeResult,
+  type AgentLaunchProfileRecord,
   type AgentModelRecord,
   type AgentPromptInput,
   type AgentSessionCallbacks,
@@ -402,6 +403,15 @@ export class CodexSessionService {
 
   listModels(): AgentModelRecord[] {
     return listModels();
+  }
+
+  listLaunchProfiles(): AgentLaunchProfileRecord[] {
+    return this.config.launchProfiles.map((profile) => ({
+      id: profile.id,
+      label: profile.label,
+      behavior: formatLaunchProfileBehavior(profile),
+      unsafe: profile.unsafe,
+    }));
   }
 
   getSessionRecord(threadId: string): AgentThreadRecord | null {

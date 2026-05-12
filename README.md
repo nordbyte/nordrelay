@@ -28,7 +28,7 @@ Session control:
 - `/abort`, `/stop`, and the inline Abort button cancel the active agent turn.
 - Busy prompts are queued per Telegram context instead of being dropped.
 - If the attached thread is currently active in the local Codex CLI, Telegram prompts are queued until that CLI task finishes.
-- Active Codex CLI turns are mirrored into Telegram with configurable `off`, `status`, `final`, or `full` modes.
+- Active Codex and Pi CLI turns are mirrored into Telegram with configurable `off`, `status`, `final`, or `full` modes.
 - `/mirror` controls CLI mirroring per Telegram context.
 - Queues survive connector restarts and are resumed automatically when the external CLI turn becomes idle.
 - `/notify` controls completion/status notifications and quiet hours per Telegram context.
@@ -74,7 +74,11 @@ Pi runtime:
 - Pi model selection uses `pi --list-models` and sends `set_model` through RPC for active sessions.
 - Pi thinking levels use `/reasoning` and support `off`, `minimal`, `low`, `medium`, `high`, and `xhigh`.
 - Pi token and context stats are read through `get_session_stats` when an RPC session is active.
-- Codex-specific features such as launch profiles, fast mode, Codex auth, rollout mirroring, Codex activity timelines, and subscription limit percentages are hidden or reported as unsupported for Pi contexts.
+- Pi launch profiles expose CLI safety modes such as default, read-only tools, no tools, offline, and safe offline.
+- Pi external CLI activity is detected from Pi session JSONL files so Telegram/WebUI prompts queue while the same Pi session is busy.
+- Pi CLI turns can be mirrored into Telegram/WebUI with status, tool activity, final answers, activity timelines, diagnostics, and generated artifact discovery.
+- Pi provider auth checks report the environment variables expected for the selected provider.
+- Codex-only subscription limit percentages remain Codex-specific; Pi reports token/context stats when available.
 
 Telegram input:
 
@@ -99,7 +103,7 @@ Telegram output:
 - Command execution, web search, file changes, MCP tool calls, error items, and todo-list updates are surfaced.
 - Todo-list updates are rendered as a live plan/status message.
 - Generated artifacts from `.nordrelay/turns/<turn-id>/out/` are retained for manual retrieval with `/artifacts`.
-- Workspace files detected after mirrored Codex CLI turns are indexed as `/artifacts` entries, even when automatic artifact delivery is disabled.
+- Workspace files detected after mirrored Codex or Pi CLI turns are indexed as `/artifacts` entries, even when automatic artifact delivery is disabled.
 - Automatic artifact summaries and file uploads are disabled by default; set `TELEGRAM_AUTO_SEND_ARTIFACTS=true` to send them after turns.
 - Workspace artifact detection sorts by modification time and supports configurable ignored directories and globs.
 - Image artifacts are sent with Telegram previews; large multi-file outputs are bundled into one ZIP when possible.
@@ -118,7 +122,7 @@ Authentication and safety:
 - `TELEGRAM_ADMIN_USER_IDS` restricts admin-only commands such as `/logs`, `/restart`, and `/update`.
 - `TELEGRAM_READONLY_USER_IDS` can inspect status and sessions but cannot send prompts or run mutating commands by default.
 - `TELEGRAM_ROLE_POLICIES_JSON` can override role permissions for `admin`, `operator`, and `readonly`.
-- `/auth` reports Codex authentication status.
+- `/auth` reports Codex authentication status or Pi provider environment health for the selected agent.
 - `/login` starts Codex CLI device auth from Telegram when enabled.
 - `/logout` signs out of CLI auth when not using `CODEX_API_KEY`.
 - `CODEX_API_KEY` can be used for host-side Codex authentication.
@@ -394,7 +398,7 @@ Run NordRelay behind your reverse proxy so the public URL forwards to `http://12
 - `/mirror [off|status|final|full]` controls local CLI mirroring for this Telegram context.
 - `/notify [off|minimal|all]` controls Telegram notifications.
 - `/notify quiet HH-HH` sets quiet hours; `/notify quiet off` disables them.
-- `/auth` reports Codex authentication status, or explains that the selected agent uses host-side CLI auth.
+- `/auth` reports Codex authentication status or Pi provider environment health for the selected agent.
 - `/login` starts Telegram-initiated Codex CLI login when Codex is selected.
 - `/logout` signs out from Codex CLI auth unless `CODEX_API_KEY` is active.
 - `/voice` reports voice transcription backends and current voice preferences.
@@ -641,6 +645,7 @@ Pi:
 - `PI_SESSION_DIR`: optional Pi session directory. Defaults to `~/.pi/agent/sessions/` or `PI_CODING_AGENT_SESSION_DIR`.
 - `PI_DEFAULT_MODEL`: optional default model pattern for new Pi sessions, for example `openai-codex/gpt-5.5`.
 - `PI_DEFAULT_THINKING`: default Pi thinking level: `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`. Defaults to `medium`.
+- `PI_DEFAULT_PROFILE`: default Pi launch profile: `default`, `readonly`, `no-tools`, `offline`, or `safe-offline`. Defaults to `default`.
 
 Telegram output:
 

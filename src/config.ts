@@ -84,6 +84,7 @@ export interface ConnectorConfig {
   piSessionDir?: string;
   piDefaultModel?: string;
   piDefaultThinking: AgentReasoningEffort;
+  piDefaultLaunchProfileId: string;
   defaultAgent: AgentId;
   toolVerbosity: ToolVerbosity;
   logFormat: ConnectorLogFormat;
@@ -187,6 +188,7 @@ export function loadConfig(): ConnectorConfig {
   const piSessionDir = optionalString(process.env.PI_SESSION_DIR);
   const piDefaultModel = optionalString(process.env.PI_DEFAULT_MODEL);
   const piDefaultThinking = parsePiThinkingLevel(optionalString(process.env.PI_DEFAULT_THINKING));
+  const piDefaultLaunchProfileId = optionalString(process.env.PI_DEFAULT_PROFILE) ?? "default";
   const defaultAgent = parseDefaultAgent(
     optionalString(process.env.NORDRELAY_DEFAULT_AGENT),
     codexEnabled,
@@ -262,6 +264,7 @@ export function loadConfig(): ConnectorConfig {
     piSessionDir,
     piDefaultModel,
     piDefaultThinking,
+    piDefaultLaunchProfileId,
     defaultAgent,
     toolVerbosity,
     logFormat,

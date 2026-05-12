@@ -299,6 +299,7 @@ async function commandInit(options) {
       `NORDRELAY_CODEX_ENABLED=${enableCodex}`,
       `NORDRELAY_PI_ENABLED=${enablePi}`,
       `NORDRELAY_DEFAULT_AGENT=${enableCodex === "true" ? "codex" : "pi"}`,
+      "PI_DEFAULT_PROFILE=default",
       `NORDRELAY_STATE_BACKEND=${stateBackend === "sqlite" ? "sqlite" : "json"}`,
       "TELEGRAM_TRANSPORT=polling",
       "TELEGRAM_AUTO_SEND_ARTIFACTS=false",

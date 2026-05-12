@@ -74,6 +74,7 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   setting("PI_SESSION_DIR", "Pi session dir", "Pi", "string", "Optional Pi session directory.", true),
   setting("PI_DEFAULT_MODEL", "Default Pi model", "Pi", "string", "Default Pi model slug.", false),
   setting("PI_DEFAULT_THINKING", "Default Pi thinking", "Pi", "string", "off, minimal, low, medium, high, or xhigh.", false, ["off", "minimal", "low", "medium", "high", "xhigh"]),
+  setting("PI_DEFAULT_PROFILE", "Default Pi profile", "Pi", "string", "default, readonly, no-tools, offline, or safe-offline.", true, ["default", "readonly", "no-tools", "offline", "safe-offline"]),
 
   setting("CONNECTOR_LOG_FORMAT", "Log format", "Operations", "string", "text or json.", true, ["text", "json"]),
   setting("TOOL_VERBOSITY", "Tool verbosity", "Operations", "string", "all, summary, errors-only, or none.", false, ["all", "summary", "errors-only", "none"]),
