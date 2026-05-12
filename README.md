@@ -307,14 +307,18 @@ http://127.0.0.1:31878/
 The dashboard is a second NordRelay client next to Telegram. It can:
 
 - Start a new Codex or Pi session.
-- Switch or attach existing sessions.
+- Start a new session from a modal with agent, workspace, model, reasoning/thinking, fast mode, and launch-profile choices.
+- Switch or attach existing sessions, and copy thread IDs from the session list.
 - Send prompts and receive streamed text/tool/plan updates through Server-Sent Events.
 - Upload images, documents, and audio files from the chat composer. Images are passed as image inputs, documents are staged for the agent, and audio is transcribed through the configured voice backend.
+- Keep a persistent per-thread WebUI chat history across page reloads.
+- Control the active session model, reasoning/thinking, fast mode, and launch profile directly from the chat view.
 - Abort turns, hand sessions back to the native CLI, and inspect the active session.
-- Manage queued prompts.
-- Browse, download, ZIP, and delete artifacts.
-- Edit all supported runtime settings from tabbed Settings groups.
-- View logs, diagnostics, enabled channels, and agent adapters.
+- Manage queued prompts with pause/resume, run, cancel, reorder buttons, and drag-and-drop prioritization.
+- Browse, preview, download, ZIP, and delete artifacts.
+- Inspect the activity timeline for WebUI and mirrored CLI turns.
+- Edit all supported runtime settings from tabbed Settings groups with option selects, validation feedback, and restart actions.
+- View filtered logs, structured diagnostics, enabled channels, and agent adapters.
 
 Dashboard API endpoints are served under `/api/*`. Streaming uses `GET /api/events`.
 

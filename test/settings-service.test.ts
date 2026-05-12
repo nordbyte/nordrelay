@@ -26,6 +26,7 @@ describe("SettingsService", () => {
         CODEX_MODEL: "gpt-5.5",
       });
 
+      expect(result.errors).toEqual([]);
       expect(result.changedKeys).toEqual(["NORDRELAY_PI_ENABLED", "CODEX_MODEL"]);
       await expect(readFile(envPath, "utf8")).resolves.toContain("NORDRELAY_PI_ENABLED=true");
       await expect(readFile(envPath, "utf8")).resolves.toContain("CODEX_MODEL=gpt-5.5");
@@ -49,5 +50,25 @@ describe("SettingsService", () => {
   it("masks short and long secrets", () => {
     expect(maskSecret("short")).toBe("********");
     expect(maskSecret("abcdefghijkl")).toBe("abcd...ijkl");
+  });
+
+  it("validates dashboard setting values before writing", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "nordrelay-settings-validation-"));
+    try {
+      const envPath = path.join(dir, "nordrelay.env");
+      writeFileSync(envPath, "NORDRELAY_STATE_BACKEND=json\n", "utf8");
+      const service = new SettingsService(envPath);
+
+      const result = await service.update({
+        NORDRELAY_STATE_BACKEND: "bad",
+        TELEGRAM_WEBHOOK_PORT: "not-a-number",
+      });
+
+      expect(result.changedKeys).toEqual([]);
+      expect(result.errors.map((error) => error.key)).toEqual(["NORDRELAY_STATE_BACKEND", "TELEGRAM_WEBHOOK_PORT"]);
+      await expect(readFile(envPath, "utf8")).resolves.toContain("NORDRELAY_STATE_BACKEND=json");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
