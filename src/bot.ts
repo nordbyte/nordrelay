@@ -91,11 +91,13 @@ import { escapeHTML, formatTelegramHTML } from "./format.js";
 import {
   getConnectorHealth,
   getUpdateLogPath,
+  getVersionChecks,
   readConnectorState,
   readFormattedLogTail,
   spawnConnectorRestart,
   spawnSelfUpdate,
   type FormattedLogTail,
+  type VersionCheck,
 } from "./operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
 import { configureRedaction, redactText } from "./redaction.js";
@@ -2356,21 +2358,22 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   bot.command("version", async (ctx) => {
     const health = await getConnectorHealth();
     const state = await readConnectorState();
+    const versions = await getVersionChecks({ piCliPath: config.piCliPath });
     const plain = [
-      `NordRelay ${health.version}`,
+      renderVersionCheckPlain(versions.nordrelay),
       `Runtime status: ${state.status ?? "unknown"}`,
       `Codex CLI: ${health.codexCli}`,
-      `Codex version: ${health.codexCliVersion}`,
+      renderVersionCheckPlain(versions.codex),
       `Pi CLI: ${health.piCli}`,
-      `Pi version: ${health.piCliVersion}`,
+      renderVersionCheckPlain(versions.pi),
     ].join("\n");
     const html = [
-      `<b>NordRelay</b> <code>${escapeHTML(health.version)}</code>`,
+      renderVersionCheckHTML(versions.nordrelay),
       `<b>Runtime status:</b> <code>${escapeHTML(state.status ?? "unknown")}</code>`,
       `<b>Codex CLI:</b> <code>${escapeHTML(health.codexCli)}</code>`,
-      `<b>Codex version:</b> <code>${escapeHTML(health.codexCliVersion)}</code>`,
+      renderVersionCheckHTML(versions.codex),
       `<b>Pi CLI:</b> <code>${escapeHTML(health.piCli)}</code>`,
-      `<b>Pi version:</b> <code>${escapeHTML(health.piCliVersion)}</code>`,
+      renderVersionCheckHTML(versions.pi),
     ].join("\n");
     await safeReply(ctx, html, { fallbackText: plain });
   });
@@ -4482,6 +4485,48 @@ function renderArtifactReports(reports: ArtifactTurnReport[]): { html: string; p
   const plain = ["Recent artifacts:", ...lines, "", usage].join("\n");
   const html = ["<b>Recent artifacts:</b>", ...lines.map(escapeHTML), "", escapeHTML(usage)].join("\n");
   return { html, plain };
+}
+
+function renderVersionCheckPlain(check: VersionCheck): string {
+  const icon = versionStatusIcon(check);
+  const label = check.label === "NordRelay" ? "NordRelay" : `${check.label} version`;
+  return `${label}: ${icon} ${formatVersionCheckDetailPlain(check)}`;
+}
+
+function renderVersionCheckHTML(check: VersionCheck): string {
+  const icon = versionStatusIcon(check);
+  const label = check.label === "NordRelay" ? "NordRelay" : `${check.label} version`;
+  return `<b>${escapeHTML(label)}:</b> ${icon} ${formatVersionCheckDetailHTML(check)}`;
+}
+
+function formatVersionCheckDetailPlain(check: VersionCheck): string {
+  if (check.status === "not-installed") {
+    return "not installed";
+  }
+  if (check.status === "outdated") {
+    return `${check.installedLabel} (latest ${check.latestVersion ?? "unknown"})`;
+  }
+  if (check.status === "current") {
+    return `${check.installedLabel} (latest)`;
+  }
+  return `${check.installedLabel} (latest unknown${check.detail ? `: ${check.detail}` : ""})`;
+}
+
+function formatVersionCheckDetailHTML(check: VersionCheck): string {
+  if (check.status === "not-installed") {
+    return "<code>not installed</code>";
+  }
+  if (check.status === "outdated") {
+    return `<code>${escapeHTML(check.installedLabel)}</code> <i>(latest ${escapeHTML(check.latestVersion ?? "unknown")})</i>`;
+  }
+  if (check.status === "current") {
+    return `<code>${escapeHTML(check.installedLabel)}</code> <i>(latest)</i>`;
+  }
+  return `<code>${escapeHTML(check.installedLabel)}</code> <i>(latest unknown${check.detail ? `: ${escapeHTML(check.detail)}` : ""})</i>`;
+}
+
+function versionStatusIcon(check: VersionCheck): string {
+  return check.status === "current" ? "✅" : "⚠️";
 }
 
 type LogTarget = "connector" | "update" | "all";

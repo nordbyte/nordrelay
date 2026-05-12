@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { closeSync, existsSync, openSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -37,6 +37,24 @@ export interface ConnectorHealth {
   uptimeSeconds: number;
 }
 
+export type VersionFreshness = "current" | "outdated" | "unknown" | "not-installed";
+
+export interface VersionCheck {
+  label: string;
+  packageName: string;
+  installedLabel: string;
+  installedVersion: string | null;
+  latestVersion: string | null;
+  status: VersionFreshness;
+  detail?: string;
+}
+
+export interface VersionChecks {
+  nordrelay: VersionCheck;
+  codex: VersionCheck;
+  pi: VersionCheck;
+}
+
 export type SelfUpdateMethod = "git" | "npm";
 
 export interface SelfUpdateResult {
@@ -56,6 +74,8 @@ export interface FormattedLogTail {
 
 const APP_NAME = "nordrelay";
 const PACKAGE_NAME = "@nordbyte/nordrelay";
+const CODEX_PACKAGE_NAME = "@openai/codex";
+const PI_PACKAGE_NAME = "@mariozechner/pi-coding-agent";
 const DEFAULT_HOME = path.join(os.homedir(), ".codex", "nordrelay");
 const SECRET_RE = /(bot|token|api[_-]?key|authorization|bearer|password|secret)(["'=: ]+)([^\s"',]+)/gi;
 
@@ -126,6 +146,39 @@ export async function getPackageVersion(): Promise<string> {
   } catch {
     return "unknown";
   }
+}
+
+export async function getVersionChecks(options: { piCliPath?: string } = {}): Promise<VersionChecks> {
+  const nordrelayVersion = await getPackageVersion();
+  const codexCli = resolveCodexCli();
+  const piCli = resolvePiCli(process.env, options.piCliPath);
+  const codexVersionLabel = codexCli.path
+    ? detectCliVersion(codexCli.path)
+    : readInstalledPackageVersion(CODEX_PACKAGE_NAME) ?? "not installed";
+  const piVersionLabel = piCli.path ? detectCliVersion(piCli.path) : "not installed";
+
+  return {
+    nordrelay: buildVersionCheck({
+      label: "NordRelay",
+      packageName: PACKAGE_NAME,
+      installedLabel: nordrelayVersion,
+      installedVersion: extractVersion(nordrelayVersion),
+    }),
+    codex: buildVersionCheck({
+      label: "Codex",
+      packageName: CODEX_PACKAGE_NAME,
+      installedLabel: codexVersionLabel,
+      installedVersion: extractVersion(codexVersionLabel),
+      notInstalled: codexVersionLabel === "not installed",
+    }),
+    pi: buildVersionCheck({
+      label: "Pi",
+      packageName: PI_PACKAGE_NAME,
+      installedLabel: piVersionLabel,
+      installedVersion: extractVersion(piVersionLabel),
+      notInstalled: piVersionLabel === "not installed",
+    }),
+  };
 }
 
 export async function getConnectorHealth(): Promise<ConnectorHealth> {
@@ -282,6 +335,99 @@ function detectCliVersion(commandPath: string | undefined): string {
     return output ? `unavailable (${output})` : `unavailable (exit ${result.status ?? "unknown"})`;
   }
   return output || "unknown";
+}
+
+function buildVersionCheck(options: {
+  label: string;
+  packageName: string;
+  installedLabel: string;
+  installedVersion: string | null;
+  notInstalled?: boolean;
+}): VersionCheck {
+  if (options.notInstalled) {
+    return {
+      label: options.label,
+      packageName: options.packageName,
+      installedLabel: "not installed",
+      installedVersion: null,
+      latestVersion: null,
+      status: "not-installed",
+    };
+  }
+
+  const latest = detectLatestNpmVersion(options.packageName);
+  if (!options.installedVersion || !latest.version) {
+    return {
+      label: options.label,
+      packageName: options.packageName,
+      installedLabel: options.installedLabel,
+      installedVersion: options.installedVersion,
+      latestVersion: latest.version,
+      status: "unknown",
+      detail: latest.error ?? "Could not parse installed version",
+    };
+  }
+
+  return {
+    label: options.label,
+    packageName: options.packageName,
+    installedLabel: options.installedLabel,
+    installedVersion: options.installedVersion,
+    latestVersion: latest.version,
+    status: compareVersions(options.installedVersion, latest.version) < 0 ? "outdated" : "current",
+    detail: latest.error,
+  };
+}
+
+function detectLatestNpmVersion(packageName: string): { version: string | null; error?: string } {
+  const result = spawnSync("npm", ["view", packageName, "version", "--registry=https://registry.npmjs.org"], {
+    encoding: "utf8",
+    timeout: 5000,
+    windowsHide: true,
+  });
+  const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+  if (result.error) {
+    return { version: null, error: result.error.message };
+  }
+  if (result.status !== 0) {
+    return { version: null, error: output || `npm exited ${result.status ?? "unknown"}` };
+  }
+  return { version: output.split(/\r?\n/).at(-1)?.trim() || null };
+}
+
+function readInstalledPackageVersion(packageName: string): string | null {
+  try {
+    const packagePath = path.join(getSourceRoot(), "node_modules", ...packageName.split("/"), "package.json");
+    const pkg = JSON.parse(readFileSyncUtf8(packagePath)) as { version?: unknown };
+    return typeof pkg.version === "string" ? pkg.version : null;
+  } catch {
+    return null;
+  }
+}
+
+function readFileSyncUtf8(filePath: string): string {
+  return readFileSync(filePath, "utf8");
+}
+
+function extractVersion(value: string): string | null {
+  const match = value.match(/\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/);
+  return match?.[0] ?? null;
+}
+
+function compareVersions(left: string, right: string): number {
+  const leftParts = parseVersionParts(left);
+  const rightParts = parseVersionParts(right);
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const diff = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (diff !== 0) {
+      return diff;
+    }
+  }
+  return 0;
+}
+
+function parseVersionParts(value: string): number[] {
+  return value.split(/[.-]/).slice(0, 3).map((part) => Number.parseInt(part, 10) || 0);
 }
 
 function shellQuote(value: string): string {

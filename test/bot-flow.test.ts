@@ -17,6 +17,47 @@ const mockCodexState = vi.hoisted(() => ({
 }));
 
 const mockOperations = vi.hoisted(() => ({
+  getConnectorHealth: vi.fn(async () => ({
+    version: "0.2.1",
+    state: { status: "ready" },
+    pidRunning: true,
+    appPidRunning: true,
+    codexCli: "path (/usr/local/bin/codex)",
+    codexCliVersion: "codex-cli 0.130.0",
+    piCli: "path (/usr/local/bin/pi)",
+    piCliVersion: "0.73.1",
+    stateFile: "/tmp/state.json",
+    logFile: "/tmp/nordrelay.log",
+    databasePath: null,
+    uptimeSeconds: 1,
+  })),
+  getVersionChecks: vi.fn(async () => ({
+    nordrelay: {
+      label: "NordRelay",
+      packageName: "@nordbyte/nordrelay",
+      installedLabel: "0.2.1",
+      installedVersion: "0.2.1",
+      latestVersion: "0.2.1",
+      status: "current",
+    },
+    codex: {
+      label: "Codex",
+      packageName: "@openai/codex",
+      installedLabel: "codex-cli 0.130.0",
+      installedVersion: "0.130.0",
+      latestVersion: "0.131.0",
+      status: "outdated",
+    },
+    pi: {
+      label: "Pi",
+      packageName: "@mariozechner/pi-coding-agent",
+      installedLabel: "not installed",
+      installedVersion: null,
+      latestVersion: null,
+      status: "not-installed",
+    },
+  })),
+  readConnectorState: vi.fn(async () => ({ status: "ready" })),
   readFormattedLogTail: vi.fn(async () => ({
     filePath: "/tmp/nordrelay.log",
     requestedLines: 80,
@@ -51,6 +92,9 @@ vi.mock("../src/operations.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/operations.js")>();
   return {
     ...actual,
+    getConnectorHealth: mockOperations.getConnectorHealth,
+    getVersionChecks: mockOperations.getVersionChecks,
+    readConnectorState: mockOperations.readConnectorState,
     readFormattedLogTail: mockOperations.readFormattedLogTail,
   };
 });
@@ -265,6 +309,50 @@ describe("bot flow integration", () => {
     mockCodexState.getThreadActivityLog.mockReturnValue([]);
     mockCodexState.getThreadRolloutSnapshot.mockReset();
     mockCodexState.getThreadRolloutSnapshot.mockReturnValue(null);
+    mockOperations.getConnectorHealth.mockReset();
+    mockOperations.getConnectorHealth.mockResolvedValue({
+      version: "0.2.1",
+      state: { status: "ready" },
+      pidRunning: true,
+      appPidRunning: true,
+      codexCli: "path (/usr/local/bin/codex)",
+      codexCliVersion: "codex-cli 0.130.0",
+      piCli: "path (/usr/local/bin/pi)",
+      piCliVersion: "0.73.1",
+      stateFile: "/tmp/state.json",
+      logFile: "/tmp/nordrelay.log",
+      databasePath: null,
+      uptimeSeconds: 1,
+    });
+    mockOperations.getVersionChecks.mockReset();
+    mockOperations.getVersionChecks.mockResolvedValue({
+      nordrelay: {
+        label: "NordRelay",
+        packageName: "@nordbyte/nordrelay",
+        installedLabel: "0.2.1",
+        installedVersion: "0.2.1",
+        latestVersion: "0.2.1",
+        status: "current",
+      },
+      codex: {
+        label: "Codex",
+        packageName: "@openai/codex",
+        installedLabel: "codex-cli 0.130.0",
+        installedVersion: "0.130.0",
+        latestVersion: "0.131.0",
+        status: "outdated",
+      },
+      pi: {
+        label: "Pi",
+        packageName: "@mariozechner/pi-coding-agent",
+        installedLabel: "not installed",
+        installedVersion: null,
+        latestVersion: null,
+        status: "not-installed",
+      },
+    });
+    mockOperations.readConnectorState.mockReset();
+    mockOperations.readConnectorState.mockResolvedValue({ status: "ready" });
     mockOperations.readFormattedLogTail.mockReset();
     mockOperations.readFormattedLogTail.mockResolvedValue({
       filePath: "/tmp/nordrelay.log",
@@ -470,6 +558,21 @@ describe("bot flow integration", () => {
     expect(api.sentMessages.at(-1)?.text).toContain("Started &lt;ok&gt;");
     expect(api.sentMessages.at(-1)?.text).not.toContain("<code>Started &lt;ok&gt;</code>");
     expect(api.sentMessages.at(-1)?.text).not.toContain("<code>Something needs attention</code>");
+  });
+
+  it("renders version freshness for NordRelay, Codex, and Pi", async () => {
+    const { registry } = createFakeRegistry();
+    const bot = createBot(createConfig(), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("/version") as any);
+
+    expect(mockOperations.getVersionChecks).toHaveBeenCalled();
+    expect(api.sentMessages.at(-1)?.text).toContain("<b>NordRelay:</b> ✅");
+    expect(api.sentMessages.at(-1)?.text).toContain("<b>Codex version:</b> ⚠️");
+    expect(api.sentMessages.at(-1)?.text).toContain("latest 0.131.0");
+    expect(api.sentMessages.at(-1)?.text).toContain("<b>Pi version:</b> ⚠️");
+    expect(api.sentMessages.at(-1)?.text).toContain("not installed");
   });
 
   it("renders workspace guardrails", async () => {

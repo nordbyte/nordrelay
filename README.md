@@ -312,7 +312,7 @@ Runtime files:
 - `/tasks` or `/progress` reports the current turn and queue progress.
 - `/status` reports connector runtime status.
 - `/health` reports runtime health, auth, PIDs, Codex CLI, Pi CLI, and state DB.
-- `/version` reports connector, Codex CLI, and Pi CLI paths plus installed Codex/Pi versions when available.
+- `/version` reports connector, Codex CLI, and Pi CLI paths plus installed/latest NordRelay, Codex, and Pi versions with status icons.
 - `/logs [lines]` shows a redacted, timestamped connector log tail. Admin only.
 - `/logs update [lines]` shows the self-update log. Admin only.
 - `/logs all [lines]` shows connector and self-update logs together. Admin only.
