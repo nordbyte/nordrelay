@@ -2,14 +2,20 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import {
-  collectArtifactReport,
   createArtifactZipBundle,
   getArtifactTurnReport,
+  ensureOutDir,
   listRecentArtifactReports,
   removeArtifactTurn,
   totalArtifactSize,
   type ArtifactTurnReport,
 } from "./artifacts.js";
+import {
+  buildFileInstructions,
+  outboxPath,
+  stageFile,
+  type StagedFile,
+} from "./attachments.js";
 import {
   CODEX_AGENT_CAPABILITIES,
   CODEX_REASONING_EFFORTS,
@@ -18,6 +24,7 @@ import {
   agentReasoningLabel,
   type AgentId,
   type AgentPromptInput,
+  type AgentPromptObject,
   type AgentSessionCallbacks,
   type AgentSessionInfo,
   type AgentSessionService,
@@ -31,6 +38,7 @@ import { getConnectorHealth, getVersionChecks, readFormattedLogTail } from "./op
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
 import { renderSessionInfoPlain } from "./session-format.js";
 import { SessionRegistry } from "./session-registry.js";
+import { transcribeAudio, type TranscriptionBackend } from "./voice.js";
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "./workspace-policy.js";
 
 export type RelayEvent =
@@ -80,7 +88,36 @@ export interface ArtifactReportDto {
   }>;
 }
 
+export interface SessionPageDto {
+  sessions: AgentThreadRecord[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    hasPrevious: boolean;
+    hasNext: boolean;
+  };
+}
+
+export interface UploadPromptFile {
+  name: string;
+  mimeType?: string;
+  data: Buffer;
+}
+
+export interface UploadPromptResult {
+  queued: boolean;
+  queueId?: string;
+  transcript?: string;
+  transcribeOnly?: boolean;
+  files: Array<{
+    name: string;
+    mimeType: string;
+    sizeBytes: number;
+  }>;
+}
+
 const WEB_CONTEXT_KEY = "0";
+const MAX_WEB_SESSION_PAGE_SIZE = 50;
 
 export class RelayRuntime {
   private readonly registry: SessionRegistry;
@@ -123,9 +160,30 @@ export class RelayRuntime {
   }
 
   async listSessions(limit = 80, query = ""): Promise<AgentThreadRecord[]> {
+    return this.filteredSessions(await this.getSession(true), query, Math.max(1, limit * 3)).slice(0, limit);
+  }
+
+  async listSessionsPage(page = 1, pageSize = MAX_WEB_SESSION_PAGE_SIZE, query = ""): Promise<SessionPageDto> {
     const session = await this.getSession(true);
+    const effectivePage = Math.max(1, Math.floor(page));
+    const effectivePageSize = Math.min(MAX_WEB_SESSION_PAGE_SIZE, Math.max(1, Math.floor(pageSize)));
+    const offset = (effectivePage - 1) * effectivePageSize;
+    const requested = Math.min(5_000, Math.max(100, (offset + effectivePageSize + 1) * 3));
+    const records = this.filteredSessions(session, query, requested);
+    return {
+      sessions: records.slice(offset, offset + effectivePageSize),
+      pagination: {
+        page: effectivePage,
+        pageSize: effectivePageSize,
+        hasPrevious: effectivePage > 1,
+        hasNext: records.length > offset + effectivePageSize,
+      },
+    };
+  }
+
+  private filteredSessions(session: AgentSessionService, query: string, limit: number): AgentThreadRecord[] {
     const normalized = query.trim().toLowerCase();
-    return session.listAllSessions(limit * 2)
+    return session.listAllSessions(limit)
       .filter((record) => evaluateWorkspacePolicy(record.cwd, this.config).allowed)
       .filter((record) => {
         if (!normalized) {
@@ -139,8 +197,7 @@ export class RelayRuntime {
           record.reasoningEffort,
           record.firstUserMessage,
         ].some((value) => value?.toLowerCase().includes(normalized));
-      })
-      .slice(0, limit);
+      });
   }
 
   async listModels(): Promise<ReturnType<AgentSessionService["listModels"]>> {
@@ -234,8 +291,85 @@ export class RelayRuntime {
     if (!trimmed) {
       throw new Error("Prompt is empty.");
     }
+    return this.sendEnvelope(toPromptEnvelope(trimmed));
+  }
+
+  async sendUploadPrompt(options: { text?: string; files: UploadPromptFile[] }): Promise<UploadPromptResult> {
+    const text = options.text?.trim() ?? "";
+    const files = options.files.filter((file) => file.data.byteLength > 0);
+    if (!text && files.length === 0) {
+      throw new Error("Prompt is empty.");
+    }
+
     const session = await this.getSession(false);
-    const envelope = toPromptEnvelope(trimmed);
+    const workspace = session.getInfo().workspace;
+    const turnId = randomUUID().slice(0, 12);
+    const outDir = outboxPath(workspace, turnId);
+    await ensureOutDir(outDir);
+
+    const stagedFiles: StagedFile[] = [];
+    const imagePaths: string[] = [];
+    const transcriptParts: string[] = [];
+
+    for (const [index, file] of files.entries()) {
+      const mimeType = normalizeMimeType(file.mimeType, file.name);
+      const staged = await stageFile(file.data, file.name || `upload-${index + 1}`, mimeType, {
+        workspace,
+        turnId,
+        maxFileSize: this.config.maxFileSize,
+      });
+      stagedFiles.push(staged);
+
+      if (mimeType.startsWith("image/")) {
+        imagePaths.push(staged.localPath);
+      }
+
+      if (mimeType.startsWith("audio/")) {
+        const result = await transcribeAudio(staged.localPath, {
+          preferredBackend: this.config.voicePreferredBackend === "auto"
+            ? undefined
+            : this.config.voicePreferredBackend as TranscriptionBackend,
+          language: this.config.voiceDefaultLanguage,
+        });
+        const transcript = result.text.trim();
+        if (transcript) {
+          transcriptParts.push(`Audio transcript (${staged.safeName}, via ${result.backend}):\n${transcript}`);
+        }
+      }
+    }
+
+    const audioOnly = stagedFiles.length > 0 && stagedFiles.every((file) => file.mimeType.startsWith("audio/"));
+    if (this.config.voiceTranscribeOnly && audioOnly && !text) {
+      return {
+        queued: false,
+        transcript: transcriptParts.join("\n\n"),
+        transcribeOnly: true,
+        files: uploadFileDtos(stagedFiles),
+      };
+    }
+
+    const promptInput: AgentPromptObject = {};
+    const textParts = [text, ...transcriptParts].filter(Boolean);
+    if (textParts.length > 0) {
+      promptInput.text = textParts.join("\n\n");
+    }
+    if (imagePaths.length > 0) {
+      promptInput.imagePaths = imagePaths;
+    }
+    if (stagedFiles.length > 0) {
+      promptInput.stagedFileInstructions = buildFileInstructions(stagedFiles, outDir);
+    }
+
+    const result = await this.sendEnvelope(toPromptEnvelope(promptInput, outDir));
+    return {
+      ...result,
+      transcript: transcriptParts.join("\n\n") || undefined,
+      files: uploadFileDtos(stagedFiles),
+    };
+  }
+
+  private async sendEnvelope(envelope: PromptEnvelope): Promise<{ queued: boolean; queueId?: string }> {
+    const session = await this.getSession(false);
     if (session.isProcessing()) {
       const queued = this.promptStore.enqueue(WEB_CONTEXT_KEY, envelope);
       this.broadcastQueue();
@@ -453,4 +587,30 @@ function artifactDto(report: ArtifactTurnReport): ArtifactReportDto {
       sizeBytes: artifact.sizeBytes,
     })),
   };
+}
+
+function normalizeMimeType(value: string | undefined, name: string): string {
+  const configured = value?.trim();
+  if (configured) {
+    return configured;
+  }
+  const extension = path.extname(name).toLowerCase();
+  if ([".jpg", ".jpeg"].includes(extension)) return "image/jpeg";
+  if (extension === ".png") return "image/png";
+  if (extension === ".gif") return "image/gif";
+  if (extension === ".webp") return "image/webp";
+  if (extension === ".mp3") return "audio/mpeg";
+  if (extension === ".wav") return "audio/wav";
+  if (extension === ".ogg" || extension === ".oga") return "audio/ogg";
+  if (extension === ".m4a") return "audio/mp4";
+  if (extension === ".webm") return "audio/webm";
+  return "application/octet-stream";
+}
+
+function uploadFileDtos(files: StagedFile[]): UploadPromptResult["files"] {
+  return files.map((file) => ({
+    name: file.safeName,
+    mimeType: file.mimeType,
+    sizeBytes: file.sizeBytes,
+  }));
 }

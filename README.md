@@ -140,6 +140,7 @@ Operations:
 - Runtime state and logs are written under `~/.codex/nordrelay/`.
 - `nordrelay init` creates a private runtime config, `nordrelay doctor` validates host prerequisites, and `nordrelay web` starts a full local WebUI dashboard.
 - The WebUI has responsive header/sidebar/footer navigation, live chat streaming, session controls, queue/artifact/log/diagnostic views, and settings management.
+- The WebUI supports light and dark themes, tabbed settings groups, paginated session browsing, and chat uploads for images, documents, and audio transcription.
 - The WebUI exposes REST and SSE endpoints for chat streaming, sessions, settings, queue, artifacts, logs, health, and diagnostics.
 - Binding the dashboard to `0.0.0.0` is refused unless `NORDRELAY_DASHBOARD_TOKEN` or `NORDRELAY_DASHBOARD_USER` plus `NORDRELAY_DASHBOARD_PASSWORD` is configured.
 - Telegram can run with long polling or an HTTP webhook via `TELEGRAM_TRANSPORT=webhook`.
@@ -306,10 +307,11 @@ The dashboard is a second NordRelay client next to Telegram. It can:
 - Start a new Codex or Pi session.
 - Switch or attach existing sessions.
 - Send prompts and receive streamed text/tool/plan updates through Server-Sent Events.
+- Upload images, documents, and audio files from the chat composer. Images are passed as image inputs, documents are staged for the agent, and audio is transcribed through the configured voice backend.
 - Abort turns, hand sessions back to the native CLI, and inspect the active session.
 - Manage queued prompts.
 - Browse, download, ZIP, and delete artifacts.
-- Edit all supported runtime settings from the Settings page.
+- Edit all supported runtime settings from tabbed Settings groups.
 - View logs, diagnostics, enabled channels, and agent adapters.
 
 Dashboard API endpoints are served under `/api/*`. Streaming uses `GET /api/events`.

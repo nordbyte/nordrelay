@@ -140,9 +140,15 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
   }
 
   if (req.method === "GET" && url.pathname === "/api/sessions") {
-    sendJson(res, 200, {
-      sessions: await runtime.listSessions(numberParam(url, "limit", 80), url.searchParams.get("query") ?? ""),
-    });
+    sendJson(
+      res,
+      200,
+      await runtime.listSessionsPage(
+        numberParam(url, "page", 1),
+        numberParam(url, "limit", 50),
+        url.searchParams.get("query") ?? "",
+      ),
+    );
     return;
   }
 
@@ -211,6 +217,15 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
   if (req.method === "POST" && url.pathname === "/api/prompt") {
     const body = await readJsonBody(req);
     sendJson(res, 202, await runtime.sendPrompt(stringField(body, "text")));
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/prompt/upload") {
+    const body = await readJsonBody(req);
+    sendJson(res, 202, await runtime.sendUploadPrompt({
+      text: optionalStringField(body, "text"),
+      files: parseUploadFiles(body.files),
+    }));
     return;
   }
 
@@ -484,6 +499,30 @@ function objectRecord(value: unknown): Record<string, string> {
   return value as Record<string, string>;
 }
 
+function parseUploadFiles(value: unknown): Array<{ name: string; mimeType?: string; data: Buffer }> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error(`files[${index}] must be an object`);
+    }
+    const record = item as Record<string, unknown>;
+    const name = typeof record.name === "string" && record.name.trim() ? record.name.trim() : `upload-${index + 1}`;
+    const mimeType = typeof record.mimeType === "string" ? record.mimeType.trim() : undefined;
+    const dataBase64 = typeof record.dataBase64 === "string" ? record.dataBase64 : "";
+    if (!dataBase64) {
+      throw new Error(`files[${index}].dataBase64 is required`);
+    }
+    return { name, mimeType, data: Buffer.from(stripDataUrlPrefix(dataBase64), "base64") };
+  });
+}
+
+function stripDataUrlPrefix(value: string): string {
+  const comma = value.indexOf(",");
+  return value.startsWith("data:") && comma !== -1 ? value.slice(comma + 1) : value;
+}
+
 function numberParam(url: URL, key: string, fallback: number): number {
   const value = Number(url.searchParams.get(key));
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
@@ -570,6 +609,7 @@ function renderDashboardApp(options: { authRequired: boolean }): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NordRelay Dashboard</title>
+  <script>document.documentElement.dataset.theme = localStorage.getItem('nordrelayTheme') || 'light';</script>
   <style>${dashboardCss()}</style>
 </head>
 <body>
@@ -596,14 +636,17 @@ function renderDashboardApp(options: { authRequired: boolean }): string {
         </div>
         <div class="header-actions">
           <select id="agentSelect"></select>
+          <button id="themeBtn" class="secondary" title="Toggle dark theme">Dark</button>
           <button id="refreshBtn">Refresh</button>
         </div>
       </header>
 
       <section class="page active" id="page-overview">
         <div class="metrics" id="metrics"></div>
-        <div class="panel"><h2>Current Session</h2><pre id="sessionText"></pre></div>
-        <div class="panel"><h2>Adapters</h2><div id="adapters"></div></div>
+        <div class="stack">
+          <div class="panel"><h2>Current Session</h2><pre id="sessionText"></pre></div>
+          <div class="panel"><h2>Adapters</h2><div id="adapters"></div></div>
+        </div>
       </section>
 
       <section class="page" id="page-chat">
@@ -616,7 +659,15 @@ function renderDashboardApp(options: { authRequired: boolean }): string {
             </div>
             <div id="messages" class="messages"></div>
             <form id="promptForm" class="composer">
-              <textarea id="promptInput" placeholder="Send a message to the active coding agent..." rows="3"></textarea>
+              <div class="composer-fields">
+                <textarea id="promptInput" placeholder="Send a message to the active coding agent..." rows="3"></textarea>
+                <div class="attachment-row">
+                  <label class="file-button" for="fileInput">Attach files</label>
+                  <input id="fileInput" type="file" multiple>
+                  <span id="fileSummary">No files selected</span>
+                  <button type="button" id="clearFilesBtn" class="secondary">Clear</button>
+                </div>
+              </div>
               <button>Send</button>
             </form>
           </div>
@@ -629,6 +680,7 @@ function renderDashboardApp(options: { authRequired: boolean }): string {
           <div class="row"><input id="sessionSearch" placeholder="Search sessions"><button id="sessionSearchBtn">Search</button></div>
           <div class="row"><input id="attachInput" placeholder="Thread ID to attach/switch"><button id="attachBtn">Attach</button></div>
           <div id="sessionsList" class="list"></div>
+          <div id="sessionsPager" class="pager"></div>
         </div>
       </section>
 
@@ -649,6 +701,7 @@ function renderDashboardApp(options: { authRequired: boolean }): string {
       <section class="page" id="page-settings">
         <div class="panel">
           <div class="row"><button id="saveSettingsBtn">Save settings</button><span id="settingsStatus"></span></div>
+          <div id="settingsTabs" class="tabs"></div>
           <div id="settingsForm" class="settings-grid"></div>
         </div>
       </section>
@@ -679,14 +732,16 @@ function renderDashboardApp(options: { authRequired: boolean }): string {
 
 function dashboardCss(): string {
   return `
-*{box-sizing:border-box}body{margin:0;background:#f4f6f2;color:#18201b;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}.app{min-height:100vh;display:grid;grid-template-columns:260px 1fr}.sidebar{background:#17251d;color:#f4f8f2;padding:18px;display:flex;flex-direction:column;gap:22px}.brand{display:flex;align-items:center;gap:12px}.mark{display:grid;place-items:center;width:38px;height:38px;border-radius:8px;background:#d7ffe5;color:#173d29;font-weight:800}.brand small{display:block;color:#aebcaf}nav{display:flex;flex-direction:column;gap:6px}nav button,.menu{border:0;border-radius:6px;padding:10px 12px;background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer}nav button.active,nav button:hover{background:#254033}main{min-width:0;display:flex;flex-direction:column}header{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;gap:16px;align-items:center;padding:16px 22px;background:rgba(255,255,252,.92);backdrop-filter:blur(12px);border-bottom:1px solid #dfe5db}h1{font-size:24px;margin:0}h2{font-size:16px;margin:0 0 12px}p{margin:4px 0 0;color:#5c675f}.header-actions,.row,.chat-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.menu{display:none;background:#e8eee5;color:#1f2c23}.page{display:none;padding:22px}.page.active{display:block}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}.metric,.panel{background:white;border:1px solid #dce3d9;border-radius:8px;padding:16px;box-shadow:0 8px 24px rgba(24,32,27,.04)}.metric .label{font-size:12px;text-transform:uppercase;color:#627068}.metric .value{font-size:22px;font-weight:750;margin-top:4px}button,select,input,textarea{border:1px solid #cbd5cb;border-radius:6px;background:white;color:#18201b;font:inherit}button{height:36px;padding:0 12px;background:#235c42;color:white;border-color:#235c42;cursor:pointer}button.secondary{background:white;color:#1d3e2d}input,select{height:36px;padding:0 10px}textarea{width:100%;padding:10px;resize:vertical}.chat-layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px}.chat-panel{min-height:calc(100vh - 170px);display:flex;flex-direction:column}.messages{flex:1;min-height:360px;overflow:auto;border:1px solid #edf1ea;border-radius:8px;padding:12px;background:#fbfcf8}.message{margin:0 0 12px;padding:10px 12px;border-radius:8px;max-width:92%;white-space:pre-wrap;word-break:break-word}.message.user{margin-left:auto;background:#dff5e8}.message.agent{background:#eef2ea}.message.system{background:#fff7da}.composer{display:grid;grid-template-columns:1fr auto;gap:10px;margin-top:12px}.composer button{height:auto;min-width:90px}.tool-stream{display:flex;flex-direction:column;gap:8px}.tool{border:1px solid #e3e8df;border-radius:6px;padding:8px;background:#fafbf8}.list{display:flex;flex-direction:column;gap:8px}.item{border:1px solid #e0e6dd;border-radius:8px;padding:12px;background:#fbfcf8}.item strong{display:block}.item small{color:#657066}.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.setting{border:1px solid #e1e7de;border-radius:8px;padding:12px}.setting label{display:block;font-size:13px;font-weight:700;margin-bottom:6px}.setting small{display:block;color:#657066;margin-top:6px}.setting input,.setting textarea,.setting select{width:100%}pre{white-space:pre-wrap;word-break:break-word;background:#111812;color:#f3f7ef;border-radius:8px;padding:14px;overflow:auto}footer{margin-top:auto;display:flex;gap:18px;flex-wrap:wrap;padding:14px 22px;border-top:1px solid #dfe5db;color:#657066;background:#fff}#toast{position:fixed;right:18px;bottom:18px;display:none;background:#173d29;color:white;border-radius:8px;padding:12px 14px;max-width:360px}.danger{background:#9b1c1c;border-color:#9b1c1c}@media(max-width:860px){.app{display:block}.sidebar{position:fixed;inset:0 auto 0 0;width:270px;transform:translateX(-100%);transition:.18s transform;z-index:20}.sidebar.open{transform:translateX(0)}.menu{display:inline-block}.header-actions{justify-content:flex-end}.page{padding:14px}.chat-layout{grid-template-columns:1fr}.composer{grid-template-columns:1fr}.composer button{height:40px}.side-panel{order:-1}header{align-items:flex-start}.metrics{grid-template-columns:1fr 1fr}}@media(max-width:560px){.metrics{grid-template-columns:1fr}.row{align-items:stretch}.row>*{width:100%}header{display:grid;grid-template-columns:auto 1fr}.header-actions{grid-column:1/3}.message{max-width:100%}}
+:root{color-scheme:light;--bg:#f4f6f2;--surface:#ffffff;--surface-soft:#fbfcf8;--text:#18201b;--muted:#5d675f;--border:#dce3d9;--border-soft:#e7ede4;--sidebar:#17251d;--sidebar-text:#f4f8f2;--sidebar-muted:#aebcaf;--accent:#235c42;--accent-strong:#17452f;--accent-soft:#dff5e8;--warn:#fff7da;--danger:#9b1c1c;--pre:#111812;--pre-text:#f3f7ef;--shadow:0 8px 24px rgba(24,32,27,.04);--link:#1d6a4c}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#101411;--surface:#171d19;--surface-soft:#1d251f;--text:#edf4ee;--muted:#a7b3aa;--border:#2d3830;--border-soft:#263128;--sidebar:#0c120f;--sidebar-text:#edf7ef;--sidebar-muted:#8da091;--accent:#4fa876;--accent-strong:#64bd89;--accent-soft:#173d2a;--warn:#3b3216;--danger:#cc4b4b;--pre:#070a08;--pre-text:#e8f1ea;--shadow:0 10px 28px rgba(0,0,0,.22);--link:#75c99a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}.app{min-height:100vh;display:grid;grid-template-columns:260px 1fr}.sidebar{background:var(--sidebar);color:var(--sidebar-text);padding:18px;display:flex;flex-direction:column;gap:22px}.brand{display:flex;align-items:center;gap:12px}.mark{display:grid;place-items:center;width:38px;height:38px;border-radius:8px;background:#d7ffe5;color:#173d29;font-weight:800}.brand small{display:block;color:var(--sidebar-muted)}nav{display:flex;flex-direction:column;gap:6px}nav button,.menu{border:0;border-radius:6px;padding:10px 12px;background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer}nav button.active,nav button:hover{background:color-mix(in srgb,var(--accent) 35%,transparent)}main{min-width:0;display:flex;flex-direction:column}header{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;gap:16px;align-items:center;padding:16px 22px;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}h1{font-size:24px;margin:0}h2{font-size:16px;margin:0 0 12px}p{margin:4px 0 0;color:var(--muted)}a{color:var(--link)}.header-actions,.row,.chat-toolbar,.attachment-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.menu{display:none;background:var(--surface-soft);color:var(--text)}.page{display:none;padding:22px}.page.active{display:block}.stack{display:flex;flex-direction:column;gap:16px}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}.metric,.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;box-shadow:var(--shadow)}.metric .label{font-size:12px;text-transform:uppercase;color:var(--muted)}.metric .value{font-size:22px;font-weight:750;margin-top:4px;overflow:hidden;text-overflow:ellipsis}button,select,input,textarea{border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font:inherit}button{height:36px;padding:0 12px;background:var(--accent);color:white;border-color:var(--accent);cursor:pointer}button:hover{background:var(--accent-strong)}button.secondary{background:var(--surface);color:var(--text)}input,select{height:36px;padding:0 10px}textarea{width:100%;padding:10px;resize:vertical}.chat-layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px}.chat-panel{min-height:calc(100vh - 170px);display:flex;flex-direction:column}.messages{flex:1;min-height:360px;overflow:auto;border:1px solid var(--border-soft);border-radius:8px;padding:12px;background:var(--surface-soft)}.message{margin:0 0 12px;padding:10px 12px;border-radius:8px;max-width:92%;white-space:pre-wrap;word-break:break-word}.message.user{margin-left:auto;background:var(--accent-soft)}.message.agent{background:color-mix(in srgb,var(--surface-soft) 80%,var(--border))}.message.system{background:var(--warn)}.composer{display:grid;grid-template-columns:1fr auto;gap:10px;margin-top:12px}.composer-fields{min-width:0}.composer button{height:auto;min-width:90px}.attachment-row{margin-top:8px;color:var(--muted);font-size:13px}.file-button{display:inline-flex;align-items:center;height:34px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer}input[type=file]{display:none}.tool-stream{display:flex;flex-direction:column;gap:8px}.tool{border:1px solid var(--border-soft);border-radius:6px;padding:8px;background:var(--surface-soft)}.list{display:flex;flex-direction:column;gap:8px;margin-top:12px}.item{border:1px solid var(--border-soft);border-radius:8px;padding:12px;background:var(--surface-soft)}.item strong{display:block;overflow-wrap:anywhere}.item small{display:block;color:var(--muted);overflow-wrap:anywhere}.settings-grid{display:block}.setting{border:1px solid var(--border-soft);border-radius:8px;padding:12px;margin-bottom:10px;background:var(--surface-soft)}.setting label{display:block;font-size:13px;font-weight:700;margin-bottom:6px}.setting small{display:block;color:var(--muted);margin-top:6px}.setting input,.setting textarea,.setting select{width:100%}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.tabs button{background:var(--surface);color:var(--text);border-color:var(--border);height:34px}.tabs button.active{background:var(--accent);color:white;border-color:var(--accent)}.pager{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;color:var(--muted)}.pager-actions{display:flex;gap:8px}.pager button:disabled{opacity:.45;cursor:not-allowed}pre{white-space:pre-wrap;word-break:break-word;background:var(--pre);color:var(--pre-text);border-radius:8px;padding:14px;overflow:auto}footer{margin-top:auto;display:flex;gap:18px;flex-wrap:wrap;padding:14px 22px;border-top:1px solid var(--border);color:var(--muted);background:var(--surface)}#toast{position:fixed;right:18px;bottom:18px;display:none;background:var(--accent);color:white;border-radius:8px;padding:12px 14px;max-width:360px}.danger{background:var(--danger);border-color:var(--danger);color:white}@media(max-width:860px){.app{display:block}.sidebar{position:fixed;inset:0 auto 0 0;width:270px;transform:translateX(-100%);transition:.18s transform;z-index:20}.sidebar.open{transform:translateX(0)}.menu{display:inline-block}.header-actions{justify-content:flex-end}.page{padding:14px}.chat-layout{grid-template-columns:1fr}.composer{grid-template-columns:1fr}.composer button{height:40px}.side-panel{order:-1}header{align-items:flex-start}.metrics{grid-template-columns:1fr 1fr}}@media(max-width:560px){.metrics{grid-template-columns:1fr}.row{align-items:stretch}.row>*{width:100%}header{display:grid;grid-template-columns:auto 1fr}.header-actions{grid-column:1/3}.message{max-width:100%}.pager{align-items:stretch}.pager-actions,.pager button{width:100%}.attachment-row>*{width:100%}}
 `;
 }
 
 function dashboardJs(): string {
   return `
 const token = localStorage.getItem('nordrelayDashboardToken') || '';
-const state = { snapshot:null, settings:[], currentPage:'overview', currentAgent:null };
+const state = { snapshot:null, settings:[], currentPage:'overview', currentAgent:null, settingsGroup:null };
 const authHeaders = () => token ? { authorization: 'Bearer ' + token } : {};
 async function api(path, options={}) {
   const headers = { ...(options.body ? {'content-type':'application/json'} : {}), ...authHeaders(), ...(options.headers||{}) };
@@ -699,12 +754,37 @@ async function api(path, options={}) {
 }
 function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.style.display='block';setTimeout(()=>el.style.display='none',3500)}
 function esc(s){return String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function attr(s){return esc(s).replace(/"/g,'&quot;')}
+function short(s,max=250){const text=String(s??'');return text.length>max?text.slice(0,max-1)+'...':text}
 function fmtDate(s){return s?new Date(s).toLocaleString(): '-'}
 function fmtBytes(n){if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixed(1).replace(/\\.0$/,'')+' KB';return (n/1048576).toFixed(1).replace(/\\.0$/,'')+' MB'}
+function applyTheme(theme){document.documentElement.dataset.theme=theme;localStorage.setItem('nordrelayTheme',theme);document.getElementById('themeBtn').textContent=theme==='dark'?'Light':'Dark'}
+function toggleTheme(){applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark')}
 function page(name){state.currentPage=name;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+name));document.getElementById('pageTitle').textContent=name[0].toUpperCase()+name.slice(1);document.getElementById('sidebar').classList.remove('open'); if(name==='sessions') loadSessions(); if(name==='settings') loadSettings(); if(name==='logs') loadLogs(); if(name==='diagnostics') loadDiagnostics(); if(name==='artifacts') loadArtifacts();}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>page(b.dataset.page));
 document.getElementById('menuBtn').onclick=()=>document.getElementById('sidebar').classList.toggle('open');
 document.getElementById('refreshBtn').onclick=()=>loadBootstrap();
+document.getElementById('themeBtn').onclick=toggleTheme;
+applyTheme(localStorage.getItem('nordrelayTheme') || 'light');
+
+function createPaginator(containerId, onChange, pageSize=50){
+  const container=document.getElementById(containerId);
+  return {
+    page:1,
+    pageSize,
+    reset(){this.page=1},
+    render(meta={}){
+      const hasPrevious=Boolean(meta.hasPrevious);
+      const hasNext=Boolean(meta.hasNext);
+      container.innerHTML='<span>Page '+this.page+' / '+this.pageSize+' per page</span><div class="pager-actions"><button data-page-action="prev" '+(!hasPrevious?'disabled':'')+'>Previous</button><button data-page-action="next" '+(!hasNext?'disabled':'')+'>Next</button></div>';
+      const prev=container.querySelector('[data-page-action="prev"]');
+      const next=container.querySelector('[data-page-action="next"]');
+      prev.onclick=()=>{if(hasPrevious){this.page-=1;onChange()}};
+      next.onclick=()=>{if(hasNext){this.page+=1;onChange()}};
+    }
+  };
+}
+const sessionsPager=createPaginator('sessionsPager',()=>loadSessions(false),50);
 
 async function loadBootstrap(){
   const data = await api('/api/bootstrap');
@@ -749,17 +829,24 @@ function connectEvents(){
   events.onerror=()=>{};
 }
 function tool(cls,text){const div=document.createElement('div');div.className='tool '+(cls==='danger'?'danger':'');div.textContent=text;document.getElementById('toolStream').prepend(div)}
-document.getElementById('promptForm').onsubmit=async e=>{e.preventDefault();const input=document.getElementById('promptInput');const text=input.value.trim();if(!text)return;input.value='';const r=await api('/api/prompt',{method:'POST',body:JSON.stringify({text})});if(r.queued)appendMessage('system','Queued prompt '+r.queueId)};
+let selectedFiles=[];
+function renderSelectedFiles(){const summary=document.getElementById('fileSummary');if(selectedFiles.length===0){summary.textContent='No files selected';return}const names=selectedFiles.slice(0,3).map(f=>f.name || 'file').join(', ');const more=selectedFiles.length>3?' +'+(selectedFiles.length-3)+' more':'';const bytes=selectedFiles.reduce((sum,file)=>sum+file.size,0);summary.textContent=names+more+' ('+fmtBytes(bytes)+')'}
+async function filePayload(file){return {name:file.name || 'upload',mimeType:file.type || 'application/octet-stream',dataBase64:await fileToBase64(file)}}
+async function fileToBase64(file){const buffer=await file.arrayBuffer();const bytes=new Uint8Array(buffer);let binary='';const chunk=0x8000;for(let i=0;i<bytes.length;i+=chunk){binary+=String.fromCharCode(...bytes.subarray(i,i+chunk))}return btoa(binary)}
+document.getElementById('fileInput').onchange=e=>{selectedFiles=Array.from(e.target.files||[]);renderSelectedFiles()};
+document.getElementById('clearFilesBtn').onclick=()=>{selectedFiles=[];document.getElementById('fileInput').value='';renderSelectedFiles()};
+document.getElementById('promptForm').onsubmit=async e=>{e.preventDefault();const input=document.getElementById('promptInput');const text=input.value.trim();if(!text&&selectedFiles.length===0)return;const files=selectedFiles;input.value='';selectedFiles=[];document.getElementById('fileInput').value='';renderSelectedFiles();const payloadFiles=files.length?await Promise.all(files.map(filePayload)):[];const r=files.length?await api('/api/prompt/upload',{method:'POST',body:JSON.stringify({text,files:payloadFiles})}):await api('/api/prompt',{method:'POST',body:JSON.stringify({text})});if(r.transcribeOnly)appendMessage('system','Transcribed audio:\\n'+(r.transcript||'(empty)'));else if(r.queued)appendMessage('system','Queued prompt '+r.queueId)};
 document.getElementById('newSessionBtn').onclick=async()=>{await api('/api/sessions/new',{method:'POST',body:'{}'});toast('New session started');loadBootstrap()};
 document.getElementById('abortBtn').onclick=async()=>{await api('/api/abort',{method:'POST'});toast('Abort sent')};
 document.getElementById('handbackBtn').onclick=async()=>{const r=await api('/api/handback',{method:'POST'});appendMessage('system','Handback command:\\n'+(r.command||'No command available'))};
-async function loadSessions(){const q=document.getElementById('sessionSearch').value||'';const data=await api('/api/sessions?query='+encodeURIComponent(q));document.getElementById('sessionsList').innerHTML=data.sessions.map(s=>'<div class="item"><strong>'+esc(s.title||s.firstUserMessage||s.id)+'</strong><small>'+esc(s.id)+' / '+esc(s.cwd)+' / '+fmtDate(s.updatedAt)+'</small><div class="row"><button data-switch="'+esc(s.id)+'">Switch</button></div></div>').join('')||'<div class="item">No sessions found.</div>';document.querySelectorAll('[data-switch]').forEach(b=>b.onclick=async()=>{await api('/api/sessions/switch',{method:'POST',body:JSON.stringify({threadId:b.dataset.switch})});toast('Session switched');loadBootstrap()})}
-document.getElementById('sessionSearchBtn').onclick=loadSessions;document.getElementById('attachBtn').onclick=async()=>{const threadId=document.getElementById('attachInput').value.trim();if(threadId){await api('/api/sessions/attach',{method:'POST',body:JSON.stringify({threadId})});toast('Session attached');loadBootstrap()}};
+async function loadSessions(reset=true){if(reset)sessionsPager.reset();const q=document.getElementById('sessionSearch').value||'';const data=await api('/api/sessions?query='+encodeURIComponent(q)+'&page='+sessionsPager.page+'&limit='+sessionsPager.pageSize);document.getElementById('sessionsList').innerHTML=data.sessions.map(s=>'<div class="item"><strong title="'+attr(s.title||s.firstUserMessage||s.id)+'">'+esc(short(s.title||s.firstUserMessage||s.id))+'</strong><small>'+esc(short(s.id+' / '+(s.cwd||'')+' / '+fmtDate(s.updatedAt)))+'</small><div class="row"><button data-switch="'+attr(s.id)+'">Switch</button></div></div>').join('')||'<div class="item">No sessions found.</div>';sessionsPager.render(data.pagination||{});document.querySelectorAll('[data-switch]').forEach(b=>b.onclick=async()=>{await api('/api/sessions/switch',{method:'POST',body:JSON.stringify({threadId:b.dataset.switch})});toast('Session switched');loadBootstrap()})}
+document.getElementById('sessionSearchBtn').onclick=()=>loadSessions(true);document.getElementById('sessionSearch').addEventListener('keydown',e=>{if(e.key==='Enter')loadSessions(true)});document.getElementById('attachBtn').onclick=async()=>{const threadId=document.getElementById('attachInput').value.trim();if(threadId){await api('/api/sessions/attach',{method:'POST',body:JSON.stringify({threadId})});toast('Session attached');loadBootstrap()}};
 function renderQueue(queue){document.getElementById('queueList').innerHTML=(queue||[]).map(q=>'<div class="item"><strong>'+esc(q.id)+' - '+esc(q.description)+'</strong><small>Created '+fmtDate(q.createdAt)+' / attempts '+q.attempts+'</small><div class="row"><button data-q="run" data-id="'+q.id+'">Run</button><button data-q="top" data-id="'+q.id+'">Top</button><button data-q="cancel" data-id="'+q.id+'" class="danger">Cancel</button></div></div>').join('')||'<div class="item">Queue is empty.</div>';document.querySelectorAll('[data-q]').forEach(b=>b.onclick=async()=>{const queue=(await api('/api/queue',{method:'POST',body:JSON.stringify({action:b.dataset.q,id:b.dataset.id})})).queue;renderQueue(queue)})}
 document.querySelectorAll('[data-queue]').forEach(b=>b.onclick=async()=>renderQueue((await api('/api/queue',{method:'POST',body:JSON.stringify({action:b.dataset.queue})})).queue));
 async function loadArtifacts(){const data=await api('/api/artifacts');document.getElementById('artifactList').innerHTML=data.reports.map(r=>'<div class="item"><strong>'+esc(r.turnId)+' - '+r.fileCount+' files - '+fmtBytes(r.totalSizeBytes)+'</strong><small>'+fmtDate(r.updatedAt)+'</small><div class="row"><a href="/api/artifacts/zip?turnId='+encodeURIComponent(r.turnId)+(token?'&token='+encodeURIComponent(token):'')+'">Download ZIP</a><button data-del-art="'+esc(r.turnId)+'" class="danger">Delete</button></div>'+r.artifacts.slice(0,8).map(a=>'<small><a href="/api/artifacts/file?turnId='+encodeURIComponent(r.turnId)+'&path='+encodeURIComponent(a.relativePath)+(token?'&token='+encodeURIComponent(token):'')+'">'+esc(a.name)+'</a> '+fmtBytes(a.sizeBytes)+'</small>').join('')+'</div>').join('')||'<div class="item">No artifacts.</div>';document.querySelectorAll('[data-del-art]').forEach(b=>b.onclick=async()=>{await api('/api/artifacts?turnId='+encodeURIComponent(b.dataset.delArt),{method:'DELETE'});loadArtifacts()})}
 document.getElementById('reloadArtifactsBtn').onclick=loadArtifacts;
-async function loadSettings(){const data=await api('/api/settings');state.settings=data.settings;const groups={};data.settings.forEach(s=>(groups[s.group]??=[]).push(s));document.getElementById('settingsForm').innerHTML=Object.entries(groups).map(([g,items])=>'<div class="panel"><h2>'+esc(g)+'</h2>'+items.map(s=>'<div class="setting"><label>'+esc(s.label)+'</label>'+settingInput(s)+'<small>'+esc(s.key)+' - '+esc(s.description)+(s.restartRequired?' Restart required.':'')+'</small></div>').join('')+'</div>').join('')}
+async function loadSettings(){const data=await api('/api/settings');state.settings=data.settings;renderSettings()}
+function renderSettings(){const groups={};state.settings.forEach(s=>(groups[s.group]??=[]).push(s));const names=Object.keys(groups);if(!state.settingsGroup||!groups[state.settingsGroup])state.settingsGroup=names[0];document.getElementById('settingsTabs').innerHTML=names.map(name=>'<button data-setting-tab="'+attr(name)+'" class="'+(name===state.settingsGroup?'active':'')+'">'+esc(name)+' ('+groups[name].length+')</button>').join('');document.querySelectorAll('[data-setting-tab]').forEach(b=>b.onclick=()=>{state.settingsGroup=b.dataset.settingTab;renderSettings()});const items=groups[state.settingsGroup]||[];document.getElementById('settingsForm').innerHTML='<div class="settings-section"><h2>'+esc(state.settingsGroup||'Settings')+'</h2>'+items.map(s=>'<div class="setting"><label>'+esc(s.label)+'</label>'+settingInput(s)+'<small>'+esc(s.key)+' - '+esc(s.description)+(s.restartRequired?' Restart required.':'')+'</small></div>').join('')+'</div>'}
 function settingInput(s){const value=esc(s.value||''); if(s.kind==='boolean')return '<select data-setting="'+s.key+'"><option value=""></option><option '+(s.value==='true'?'selected':'')+'>true</option><option '+(s.value==='false'?'selected':'')+'>false</option></select>'; if(s.kind==='json')return '<textarea rows="4" data-setting="'+s.key+'">'+value+'</textarea>'; return '<input data-setting="'+s.key+'" value="'+value+'" '+(s.kind==='secret'?'type="password"':'')+'>'}
 document.getElementById('saveSettingsBtn').onclick=async()=>{const patch={};document.querySelectorAll('[data-setting]').forEach(el=>patch[el.dataset.setting]=el.value);const r=await api('/api/settings',{method:'PATCH',body:JSON.stringify({settings:patch})});document.getElementById('settingsStatus').textContent=r.changedKeys.length?'Saved '+r.changedKeys.length+' setting(s)'+(r.restartRequired?' - restart required':''):'No changes';toast('Settings saved')};
 async function loadLogs(){const target=document.getElementById('logTarget').value;const lines=document.getElementById('logLines').value;const data=await api('/api/logs?target='+target+'&lines='+lines);document.getElementById('logs').textContent=data.plain||'(empty)'}document.getElementById('loadLogsBtn').onclick=loadLogs;
