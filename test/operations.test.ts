@@ -40,6 +40,7 @@ describe("operations", () => {
     expect(tail.lineCount).toBe(4);
     expect(tail.plain).toContain("no timestamp");
     expect(tail.plain).toContain("Starting git connector self-update");
+    expect(tail.plain).not.toContain("+02:00");
     expect(tail.plain).toContain("WARN");
     expect(tail.plain).toContain("token=[redacted]");
     expect(tail.plain).toContain("ERROR");

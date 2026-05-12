@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { closeSync, existsSync, openSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import os from "node:os";
@@ -28,7 +28,9 @@ export interface ConnectorHealth {
   pidRunning: boolean;
   appPidRunning: boolean;
   codexCli: string;
+  codexCliVersion: string;
   piCli: string;
+  piCliVersion: string;
   stateFile: string;
   logFile: string;
   databasePath: string | null;
@@ -131,14 +133,18 @@ export async function getConnectorHealth(): Promise<ConnectorHealth> {
   const version = await getPackageVersion();
   const pidRunning = isProcessRunning(state.pid);
   const appPidRunning = isProcessRunning(state.appPid);
+  const codexCli = resolveCodexCli();
+  const piCli = resolvePiCli();
 
   return {
     version,
     state,
     pidRunning,
     appPidRunning,
-    codexCli: describeCodexCli(resolveCodexCli()),
-    piCli: describePiCli(resolvePiCli()),
+    codexCli: describeCodexCli(codexCli),
+    codexCliVersion: detectCliVersion(codexCli.path),
+    piCli: describePiCli(piCli),
+    piCliVersion: detectCliVersion(piCli.path),
     stateFile: getConnectorStatePath(),
     logFile: getConnectorLogPath(),
     databasePath: findLatestDatabase(),
@@ -257,6 +263,27 @@ function resolveNpmCommand(): string {
   return "npm";
 }
 
+function detectCliVersion(commandPath: string | undefined): string {
+  if (!commandPath) {
+    return "not installed";
+  }
+
+  const result = spawnSync(commandPath, ["--version"], {
+    encoding: "utf8",
+    timeout: 3000,
+    windowsHide: true,
+  });
+
+  const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+  if (result.error) {
+    return `unavailable (${result.error.message})`;
+  }
+  if (result.status !== 0) {
+    return output ? `unavailable (${output})` : `unavailable (exit ${result.status ?? "unknown"})`;
+  }
+  return output || "unknown";
+}
+
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
@@ -331,15 +358,9 @@ function formatLogTimestamp(value: string | null | undefined): string {
 }
 
 function formatLocalTimestamp(date: Date): string {
-  const offsetMinutes = -date.getTimezoneOffset();
-  const sign = offsetMinutes >= 0 ? "+" : "-";
-  const absoluteOffset = Math.abs(offsetMinutes);
-  const offsetHours = Math.floor(absoluteOffset / 60);
-  const offsetRemainder = absoluteOffset % 60;
   return [
     `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
     `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`,
-    `${sign}${pad(offsetHours)}:${pad(offsetRemainder)}`,
   ].join(" ");
 }
 

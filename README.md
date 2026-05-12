@@ -121,7 +121,7 @@ Operations:
 - Manual process commands support `start`, `stop`, `restart`, `status`, and `foreground`.
 - Telegram admin commands support `/logs`, `/diagnostics`, `/restart`, and `/update`.
 - `/update` detects the install type: npm installs update with `npm install -g @nordbyte/nordrelay@latest`; source checkouts pull `origin/main`, install dependencies, run check, tests, and build, then restart.
-- `/logs` renders redacted connector and update logs with timestamps, levels, file path, and last-modified time.
+- `/logs` renders redacted connector and update logs with local-time timestamps, levels, file path, last-modified time, and highlighted warnings/errors.
 - Logs can be emitted as timestamped plain text or JSON records with `CONNECTOR_LOG_FORMAT`.
 - Telegram sends/edits/documents are routed through a rate-limit queue that honors Telegram retry-after responses.
 - Context metadata, queues, and preferences are written atomically with backup recovery.
@@ -312,7 +312,7 @@ Runtime files:
 - `/tasks` or `/progress` reports the current turn and queue progress.
 - `/status` reports connector runtime status.
 - `/health` reports runtime health, auth, PIDs, Codex CLI, Pi CLI, and state DB.
-- `/version` reports connector, Codex CLI, and Pi CLI version context.
+- `/version` reports connector, Codex CLI, and Pi CLI paths plus installed Codex/Pi versions when available.
 - `/logs [lines]` shows a redacted, timestamped connector log tail. Admin only.
 - `/logs update [lines]` shows the self-update log. Admin only.
 - `/logs all [lines]` shows connector and self-update logs together. Admin only.

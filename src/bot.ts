@@ -2360,13 +2360,17 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       `NordRelay ${health.version}`,
       `Runtime status: ${state.status ?? "unknown"}`,
       `Codex CLI: ${health.codexCli}`,
+      `Codex version: ${health.codexCliVersion}`,
       `Pi CLI: ${health.piCli}`,
+      `Pi version: ${health.piCliVersion}`,
     ].join("\n");
     const html = [
       `<b>NordRelay</b> <code>${escapeHTML(health.version)}</code>`,
       `<b>Runtime status:</b> <code>${escapeHTML(state.status ?? "unknown")}</code>`,
       `<b>Codex CLI:</b> <code>${escapeHTML(health.codexCli)}</code>`,
+      `<b>Codex version:</b> <code>${escapeHTML(health.codexCliVersion)}</code>`,
       `<b>Pi CLI:</b> <code>${escapeHTML(health.piCli)}</code>`,
+      `<b>Pi version:</b> <code>${escapeHTML(health.piCliVersion)}</code>`,
     ].join("\n");
     await safeReply(ctx, html, { fallbackText: plain });
   });
@@ -4523,27 +4527,44 @@ function renderLogTailPlain(title: string, tail: FormattedLogTail): string {
 }
 
 function renderLogTailHTML(title: string, tail: FormattedLogTail): string {
+  const body = tail.plain
+    ? tail.plain.split("\n").map(renderLogLineHTML).join("\n")
+    : "<code>(empty)</code>";
   return [
     `<b>${escapeHTML(title)} log tail</b>`,
     `<b>File:</b> <code>${escapeHTML(tail.filePath)}</code>`,
     `<b>Updated:</b> <code>${escapeHTML(tail.updatedAt ? formatLogDate(tail.updatedAt) : "-")}</code>`,
     `<b>Lines:</b> <code>${tail.lineCount}/${tail.requestedLines}</code>`,
     "",
-    `<pre>${escapeHTML(tail.plain || "(empty)")}</pre>`,
+    body,
   ].join("\n");
 }
 
 function formatLogDate(date: Date): string {
-  const offsetMinutes = -date.getTimezoneOffset();
-  const sign = offsetMinutes >= 0 ? "+" : "-";
-  const absoluteOffset = Math.abs(offsetMinutes);
-  const offsetHours = Math.floor(absoluteOffset / 60);
-  const offsetRemainder = absoluteOffset % 60;
   return [
     `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`,
     `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`,
-    `${sign}${pad2(offsetHours)}:${pad2(offsetRemainder)}`,
   ].join(" ");
+}
+
+function renderLogLineHTML(line: string): string {
+  const structured = line.match(/^(?<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}|unknown time\s*)\s+(?<level>INFO|WARN|ERROR)\s+(?<message>.*)$/);
+  if (structured?.groups) {
+    const level = structured.groups.level;
+    const levelHtml = level === "INFO" ? `<code>${level}</code>` : `<b>${level}</b>`;
+    return [
+      `<code>${escapeHTML(structured.groups.timestamp.trim())}</code>`,
+      levelHtml,
+      `<code>${escapeHTML(structured.groups.message)}</code>`,
+    ].join(" ");
+  }
+
+  const legacy = line.match(/^(?<timestamp>no timestamp)\s+(?<message>.*)$/);
+  if (legacy?.groups) {
+    return `<code>${escapeHTML(legacy.groups.timestamp)}</code> <code>${escapeHTML(legacy.groups.message)}</code>`;
+  }
+
+  return `<code>${escapeHTML(line)}</code>`;
 }
 
 function pad2(value: number): string {

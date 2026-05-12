@@ -22,7 +22,8 @@ describe("logger", () => {
     }
 
     expect(output).toHaveLength(1);
-    expect(output[0]).toMatch(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{2}:\d{2}\] INFO hello {"id":1}$/);
+    expect(output[0]).toMatch(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] INFO hello {"id":1}$/);
+    expect(output[0]).not.toMatch(/[+-]\d{2}:\d{2}/);
   });
 
   it("can emit console output as JSON records", () => {
