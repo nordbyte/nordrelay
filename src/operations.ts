@@ -28,8 +28,10 @@ export interface ConnectorHealth {
   pidRunning: boolean;
   appPidRunning: boolean;
   codexCli: string;
+  codexCliPath: string | null;
   codexCliVersion: string;
   piCli: string;
+  piCliPath: string | null;
   piCliVersion: string;
   stateFile: string;
   logFile: string;
@@ -195,8 +197,10 @@ export async function getConnectorHealth(): Promise<ConnectorHealth> {
     pidRunning,
     appPidRunning,
     codexCli: describeCodexCli(codexCli),
+    codexCliPath: codexCli.path ?? null,
     codexCliVersion: detectCliVersion(codexCli.path),
     piCli: describePiCli(piCli),
+    piCliPath: piCli.path ?? null,
     piCliVersion: detectCliVersion(piCli.path),
     stateFile: getConnectorStatePath(),
     logFile: getConnectorLogPath(),

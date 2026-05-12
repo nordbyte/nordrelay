@@ -23,8 +23,10 @@ const mockOperations = vi.hoisted(() => ({
     pidRunning: true,
     appPidRunning: true,
     codexCli: "path (/usr/local/bin/codex)",
+    codexCliPath: "/usr/local/bin/codex",
     codexCliVersion: "codex-cli 0.130.0",
     piCli: "path (/usr/local/bin/pi)",
+    piCliPath: "/usr/local/bin/pi",
     piCliVersion: "0.73.1",
     stateFile: "/tmp/state.json",
     logFile: "/tmp/nordrelay.log",
@@ -316,8 +318,10 @@ describe("bot flow integration", () => {
       pidRunning: true,
       appPidRunning: true,
       codexCli: "path (/usr/local/bin/codex)",
+      codexCliPath: "/usr/local/bin/codex",
       codexCliVersion: "codex-cli 0.130.0",
       piCli: "path (/usr/local/bin/pi)",
+      piCliPath: "/usr/local/bin/pi",
       piCliVersion: "0.73.1",
       stateFile: "/tmp/state.json",
       logFile: "/tmp/nordrelay.log",
@@ -569,6 +573,9 @@ describe("bot flow integration", () => {
 
     expect(mockOperations.getVersionChecks).toHaveBeenCalled();
     expect(api.sentMessages.at(-1)?.text).toContain("<b>NordRelay:</b> ✅");
+    expect(api.sentMessages.at(-1)?.text).toContain("<b>Codex CLI path:</b> <code>/usr/local/bin/codex</code>");
+    expect(api.sentMessages.at(-1)?.text).toContain("<b>Pi CLI path:</b> <code>/usr/local/bin/pi</code>");
+    expect(api.sentMessages.at(-1)?.text).not.toContain("<code>path (/usr/local/bin/codex)</code>");
     expect(api.sentMessages.at(-1)?.text).toContain("<b>Codex version:</b> ⚠️");
     expect(api.sentMessages.at(-1)?.text).toContain("latest 0.131.0");
     expect(api.sentMessages.at(-1)?.text).toContain("<b>Pi version:</b> ⚠️");

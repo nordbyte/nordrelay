@@ -2362,17 +2362,17 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const plain = [
       renderVersionCheckPlain(versions.nordrelay),
       `Runtime status: ${state.status ?? "unknown"}`,
-      `Codex CLI: ${health.codexCli}`,
+      formatCliPathPlain("Codex CLI", health.codexCliPath, health.codexCli),
       renderVersionCheckPlain(versions.codex),
-      `Pi CLI: ${health.piCli}`,
+      formatCliPathPlain("Pi CLI", health.piCliPath, health.piCli),
       renderVersionCheckPlain(versions.pi),
     ].join("\n");
     const html = [
       renderVersionCheckHTML(versions.nordrelay),
       `<b>Runtime status:</b> <code>${escapeHTML(state.status ?? "unknown")}</code>`,
-      `<b>Codex CLI:</b> <code>${escapeHTML(health.codexCli)}</code>`,
+      formatCliPathHTML("Codex CLI", health.codexCliPath, health.codexCli),
       renderVersionCheckHTML(versions.codex),
-      `<b>Pi CLI:</b> <code>${escapeHTML(health.piCli)}</code>`,
+      formatCliPathHTML("Pi CLI", health.piCliPath, health.piCli),
       renderVersionCheckHTML(versions.pi),
     ].join("\n");
     await safeReply(ctx, html, { fallbackText: plain });
@@ -4497,6 +4497,16 @@ function renderVersionCheckHTML(check: VersionCheck): string {
   const icon = versionStatusIcon(check);
   const label = check.label === "NordRelay" ? "NordRelay" : `${check.label} version`;
   return `<b>${escapeHTML(label)}:</b> ${icon} ${formatVersionCheckDetailHTML(check)}`;
+}
+
+function formatCliPathPlain(label: string, cliPath: string | null, fallback: string): string {
+  return cliPath ? `${label} path: ${cliPath}` : `${label}: ${fallback}`;
+}
+
+function formatCliPathHTML(label: string, cliPath: string | null, fallback: string): string {
+  return cliPath
+    ? `<b>${escapeHTML(label)} path:</b> <code>${escapeHTML(cliPath)}</code>`
+    : `<b>${escapeHTML(label)}:</b> <code>${escapeHTML(fallback)}</code>`;
 }
 
 function formatVersionCheckDetailPlain(check: VersionCheck): string {
