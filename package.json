@@ -41,6 +41,8 @@
     "foreground": "node plugins/nordrelay/scripts/nordrelay.mjs foreground",
     "prepack": "npm run build",
     "prepublishOnly": "npm run check && npm test && npm run build",
+    "security:audit": "npm audit --audit-level=high",
+    "sbom": "npm sbom --json > sbom.json",
     "status": "node plugins/nordrelay/scripts/nordrelay.mjs status",
     "start": "node plugins/nordrelay/scripts/nordrelay.mjs start",
     "stop": "node plugins/nordrelay/scripts/nordrelay.mjs stop",

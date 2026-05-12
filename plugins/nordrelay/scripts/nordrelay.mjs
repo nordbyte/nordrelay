@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import fsp from "node:fs/promises";
+import http from "node:http";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import readline from "node:readline/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const VERSION = "0.2.1";
+const require = createRequire(import.meta.url);
 const APP_NAME = "nordrelay";
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const PLUGIN_ROOT = path.resolve(path.dirname(SCRIPT_PATH), "..");
@@ -31,12 +35,23 @@ function parseArgs(argv) {
     rawFlags: copy,
     home: process.env.NORDRELAY_HOME || DEFAULT_HOME,
     dropPendingUpdates: !envFlag("NORDRELAY_KEEP_PENDING_UPDATES"),
+    force: false,
+    host: process.env.NORDRELAY_DASHBOARD_HOST || "127.0.0.1",
+    port: Number.parseInt(process.env.NORDRELAY_DASHBOARD_PORT || "31878", 10),
   };
 
   for (let i = 0; i < copy.length; i += 1) {
     const arg = copy[i];
     if (arg === "--home") options.home = requireValue(copy, ++i, arg);
     else if (arg === "--keep-pending-updates") options.dropPendingUpdates = false;
+    else if (arg === "--force") options.force = true;
+    else if (arg === "--host") options.host = requireValue(copy, ++i, arg);
+    else if (arg === "--port") options.port = Number.parseInt(requireValue(copy, ++i, arg), 10);
+    else if (arg === "--token") options.telegramBotToken = requireValue(copy, ++i, arg);
+    else if (arg === "--admin-id") options.telegramAdminUserIds = requireValue(copy, ++i, arg);
+    else if (arg === "--state-backend") options.stateBackend = requireValue(copy, ++i, arg);
+    else if (arg === "--enable-pi") options.enablePi = true;
+    else if (arg === "--disable-codex") options.disableCodex = true;
   }
 
   options.pidFile = path.join(options.home, "nordrelay.pid");
@@ -254,6 +269,102 @@ async function commandStatus(options) {
   if (state.error) console.log(`Error: ${state.error}`);
 }
 
+async function commandInit(options) {
+  await mkdirp(options.home);
+  const envPath = path.join(options.home, "nordrelay.env");
+  if (fs.existsSync(envPath) && !options.force) {
+    console.log(`Config already exists: ${envPath}`);
+    console.log("Run with --force to overwrite.");
+    return;
+  }
+
+  const rl = process.stdin.isTTY
+    ? readline.createInterface({ input: process.stdin, output: process.stdout })
+    : null;
+  try {
+    const telegramBotToken = options.telegramBotToken ||
+      process.env.TELEGRAM_BOT_TOKEN ||
+      await ask(rl, "Telegram bot token", "");
+    const telegramAdminUserIds = options.telegramAdminUserIds ||
+      process.env.TELEGRAM_ADMIN_USER_IDS ||
+      await ask(rl, "Telegram admin user id", "");
+    const enableCodex = options.disableCodex ? "false" : await askChoice(rl, "Enable Codex", "true");
+    const enablePi = options.enablePi ? "true" : await askChoice(rl, "Enable Pi", "false");
+    const stateBackend = options.stateBackend || await askChoice(rl, "State backend (json/sqlite)", "json");
+
+    if (!telegramBotToken) throw new Error("Telegram bot token is required.");
+    if (!telegramAdminUserIds) throw new Error("Telegram admin user id is required.");
+    if (enableCodex !== "true" && enablePi !== "true") throw new Error("At least one agent must be enabled.");
+
+    const lines = [
+      "# NordRelay local runtime config.",
+      "# Keep this file private; it contains bot credentials.",
+      `TELEGRAM_BOT_TOKEN=${telegramBotToken}`,
+      `TELEGRAM_ADMIN_USER_IDS=${telegramAdminUserIds}`,
+      "TELEGRAM_ALLOW_ANY_CHAT=false",
+      `NORDRELAY_CODEX_ENABLED=${enableCodex}`,
+      `NORDRELAY_PI_ENABLED=${enablePi}`,
+      `NORDRELAY_DEFAULT_AGENT=${enableCodex === "true" ? "codex" : "pi"}`,
+      `NORDRELAY_STATE_BACKEND=${stateBackend === "sqlite" ? "sqlite" : "json"}`,
+      "TELEGRAM_TRANSPORT=polling",
+      "TELEGRAM_AUTO_SEND_ARTIFACTS=false",
+      "",
+    ];
+
+    await fsp.writeFile(envPath, lines.join("\n"), { mode: 0o600 });
+    await fsp.chmod(envPath, 0o600).catch(() => {});
+    console.log(`Wrote ${envPath}`);
+    console.log("Run `nordrelay doctor` to validate the setup.");
+  } finally {
+    rl?.close();
+  }
+}
+
+async function commandDoctor(options) {
+  await mkdirp(options.home);
+  loadEnvFiles(options.home);
+  const checks = [];
+  checks.push(check("Node.js >= 22", Number.parseInt(process.versions.node.split(".")[0], 10) >= 22, process.version));
+  checks.push(check("Telegram bot token", Boolean(process.env.TELEGRAM_BOT_TOKEN), process.env.TELEGRAM_BOT_TOKEN ? "configured" : "missing"));
+  checks.push(check("Telegram admin ids", Boolean(process.env.TELEGRAM_ADMIN_USER_IDS), process.env.TELEGRAM_ADMIN_USER_IDS ? "configured" : "missing"));
+  checks.push(check("Private by default", process.env.TELEGRAM_ALLOW_ANY_CHAT !== "true", "TELEGRAM_ALLOW_ANY_CHAT is not true"));
+  checks.push(check("Codex enabled flag", process.env.NORDRELAY_CODEX_ENABLED !== "false", `NORDRELAY_CODEX_ENABLED=${process.env.NORDRELAY_CODEX_ENABLED ?? "true"}`));
+  checks.push(check("Pi enabled flag", process.env.NORDRELAY_PI_ENABLED === "true" || process.env.NORDRELAY_PI_ENABLED === undefined, `NORDRELAY_PI_ENABLED=${process.env.NORDRELAY_PI_ENABLED ?? "false"}`, process.env.NORDRELAY_PI_ENABLED === "true" ? "pass" : "warn"));
+  checks.push(check("Codex CLI", Boolean(findExecutable(process.env.CODEX_CLI_PATH || "codex")), process.env.CODEX_CLI_PATH || findExecutable("codex") || "not found", process.env.NORDRELAY_CODEX_ENABLED === "false" ? "warn" : "fail"));
+  checks.push(check("Pi CLI", Boolean(findExecutable(process.env.PI_CLI_PATH || "pi")), process.env.PI_CLI_PATH || findExecutable("pi") || "not found", process.env.NORDRELAY_PI_ENABLED === "true" ? "fail" : "warn"));
+  checks.push(check("ffmpeg", Boolean(findExecutable("ffmpeg")), findExecutable("ffmpeg") || "not found", "warn"));
+  checks.push(check("State backend", validateStateBackend(), `NORDRELAY_STATE_BACKEND=${process.env.NORDRELAY_STATE_BACKEND ?? "json"}`));
+  checks.push(check("Runtime entry", Boolean(await resolveRuntimeEntry()), RUNTIME_ROOT));
+
+  for (const item of checks) {
+    console.log(`${item.icon} ${item.name}: ${item.detail}`);
+  }
+
+  const failed = checks.filter((item) => item.status === "fail" && !item.ok);
+  const warned = checks.filter((item) => item.status === "warn" && !item.ok);
+  console.log(`\nSummary: ${failed.length} failed, ${warned.length} warnings.`);
+  if (failed.length > 0) process.exitCode = 1;
+}
+
+async function commandWeb(options) {
+  await mkdirp(options.home);
+  loadEnvFiles(options.home);
+  const host = options.host || "127.0.0.1";
+  const port = Number.isFinite(options.port) ? options.port : 31878;
+  const server = http.createServer(async (req, res) => {
+    if (req.url === "/healthz") {
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end("ok\n");
+      return;
+    }
+    const html = await renderDashboard(options);
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end(html);
+  });
+  await new Promise((resolve) => server.listen(port, host, resolve));
+  console.log(`NordRelay dashboard: http://${host}:${port}/`);
+}
+
 async function commandForeground(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
@@ -366,6 +477,148 @@ function findRuntimeRoot() {
   return DEFAULT_MARKETPLACE_ROOT;
 }
 
+async function ask(rl, label, defaultValue) {
+  if (!rl) return defaultValue;
+  const suffix = defaultValue ? ` [${defaultValue}]` : "";
+  const answer = (await rl.question(`${label}${suffix}: `)).trim();
+  return answer || defaultValue;
+}
+
+async function askChoice(rl, label, defaultValue) {
+  const value = (await ask(rl, label, defaultValue)).toLowerCase();
+  if (["1", "yes", "y", "true", "on"].includes(value)) return "true";
+  if (["0", "no", "n", "false", "off"].includes(value)) return "false";
+  return value || defaultValue;
+}
+
+function check(name, ok, detail, status = "fail") {
+  return {
+    name,
+    ok,
+    detail,
+    status,
+    icon: ok ? "✅" : status === "warn" ? "⚠️" : "❌",
+  };
+}
+
+function findExecutable(command) {
+  if (!command) return null;
+  if (command.includes(path.sep) && fs.existsSync(command)) return command;
+  const paths = (process.env.PATH || "").split(path.delimiter);
+  for (const dir of paths) {
+    const candidate = path.join(dir, command);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function validateStateBackend() {
+  const backend = process.env.NORDRELAY_STATE_BACKEND || "json";
+  if (backend === "json") return true;
+  if (backend !== "sqlite") return false;
+  try {
+    require("better-sqlite3");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function renderDashboard(options) {
+  const state = await readJson(options.stateFile, {});
+  const workspace = state.workspace || process.cwd();
+  const contexts = readStateDocument(workspace, "contexts.json", "contexts", []);
+  const prompts = readStateDocument(workspace, "prompts.json", "prompts", {});
+  const audit = readStateDocument(workspace, "audit.json", "audit", {});
+  const logTail = await readTextTail(options.logFile, 80);
+  const queueCount = Object.values(prompts.queues || {}).reduce((sum, queue) => sum + (Array.isArray(queue) ? queue.length : 0), 0);
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NordRelay Dashboard</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f7f7f4;color:#181818}
+    main{max-width:1100px;margin:0 auto;padding:32px}
+    h1{font-size:28px;margin:0 0 18px}
+    section{margin:18px 0;padding:18px;border:1px solid #d9d9d2;background:#fff;border-radius:8px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+    .metric{padding:12px;border:1px solid #ecece6;border-radius:6px;background:#fbfbf8}
+    .label{color:#5f625c;font-size:12px;text-transform:uppercase}
+    .value{font-size:20px;margin-top:4px}
+    pre{white-space:pre-wrap;word-break:break-word;max-height:360px;overflow:auto;background:#111;color:#f1f1ed;padding:14px;border-radius:6px}
+    code{background:#efefea;padding:2px 4px;border-radius:4px}
+  </style>
+</head>
+<body>
+<main>
+  <h1>NordRelay Dashboard</h1>
+  <section class="grid">
+    ${metric("Status", state.status || "unknown")}
+    ${metric("Workspace", workspace)}
+    ${metric("Contexts", Array.isArray(contexts) ? contexts.length : 0)}
+    ${metric("Queued prompts", queueCount)}
+    ${metric("Audit events", Array.isArray(audit.events) ? audit.events.length : 0)}
+  </section>
+  <section><h2>Runtime</h2><pre>${escapeHtml(JSON.stringify(state, null, 2))}</pre></section>
+  <section><h2>Recent contexts</h2><pre>${escapeHtml(JSON.stringify(Array.isArray(contexts) ? contexts.slice(0, 20) : contexts, null, 2))}</pre></section>
+  <section><h2>Log tail</h2><pre>${escapeHtml(logTail)}</pre></section>
+</main>
+</body>
+</html>`;
+}
+
+function readStateDocument(workspace, fileName, sqliteKey, fallback) {
+  if ((process.env.NORDRELAY_STATE_BACKEND || "json") === "sqlite") {
+    const sqlite = readSqliteDocument(path.join(workspace, ".nordrelay", "state.sqlite"), sqliteKey);
+    if (sqlite !== undefined) return sqlite;
+  }
+  return readJsonSync(path.join(workspace, ".nordrelay", fileName), fallback);
+}
+
+function readJsonSync(filePath, fallback) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+function readSqliteDocument(filePath, sqliteKey) {
+  if (!fs.existsSync(filePath)) return undefined;
+  try {
+    const Database = require("better-sqlite3");
+    const db = new Database(filePath, { readonly: true, fileMustExist: true });
+    const row = db.prepare("SELECT json FROM documents WHERE key = ?").get(sqliteKey);
+    db.close?.();
+    return typeof row?.json === "string" ? JSON.parse(row.json) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function metric(label, value) {
+  return `<div class="metric"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(String(value))}</div></div>`;
+}
+
+async function readTextTail(filePath, lines) {
+  try {
+    const text = await fsp.readFile(filePath, "utf8");
+    return text.split(/\r?\n/).slice(-lines).join("\n").trim();
+  } catch (error) {
+    return `Cannot read ${filePath}: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -375,6 +628,9 @@ async function main() {
   if (options.command === "start") return commandStart(options);
   if (options.command === "stop") return commandStop(options);
   if (options.command === "status") return commandStatus(options);
+  if (options.command === "init") return commandInit(options);
+  if (options.command === "doctor") return commandDoctor(options);
+  if (options.command === "web" || options.command === "dashboard") return commandWeb(options);
   if (options.command === "restart") {
     await commandStop(options);
     return commandStart(options);
@@ -386,7 +642,7 @@ async function main() {
   }
 
   console.error(`Unknown command: ${options.command}`);
-  console.error("Usage: nordrelay [start|stop|restart|status|foreground]");
+  console.error("Usage: nordrelay [init|doctor|web|start|stop|restart|status|foreground|version]");
   process.exitCode = 2;
 }
 

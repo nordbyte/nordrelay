@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -80,6 +80,7 @@ const CODEX_PACKAGE_NAME = "@openai/codex";
 const PI_PACKAGE_NAME = "@mariozechner/pi-coding-agent";
 const DEFAULT_HOME = path.join(os.homedir(), ".codex", "nordrelay");
 const SECRET_RE = /(bot|token|api[_-]?key|authorization|bearer|password|secret)(["'=: ]+)([^\s"',]+)/gi;
+const DEFAULT_VERSION_CACHE_TTL_MS = 60 * 60 * 1000;
 
 export function getConnectorHome(): string {
   return process.env.NORDRELAY_HOME || DEFAULT_HOME;
@@ -384,6 +385,11 @@ function buildVersionCheck(options: {
 }
 
 function detectLatestNpmVersion(packageName: string): { version: string | null; error?: string } {
+  const cached = readVersionCache(packageName);
+  if (cached) {
+    return cached;
+  }
+
   const result = spawnSync("npm", ["view", packageName, "version", "--registry=https://registry.npmjs.org"], {
     encoding: "utf8",
     timeout: 5000,
@@ -396,7 +402,62 @@ function detectLatestNpmVersion(packageName: string): { version: string | null; 
   if (result.status !== 0) {
     return { version: null, error: output || `npm exited ${result.status ?? "unknown"}` };
   }
-  return { version: output.split(/\r?\n/).at(-1)?.trim() || null };
+  const resolved = { version: output.split(/\r?\n/).at(-1)?.trim() || null };
+  writeVersionCache(packageName, resolved.version);
+  return resolved;
+}
+
+function readVersionCache(packageName: string): { version: string | null; error?: string } | null {
+  const ttlMs = parseVersionCacheTtlMs();
+  if (ttlMs <= 0) {
+    return null;
+  }
+  try {
+    const payload = JSON.parse(readFileSync(getVersionCachePath(), "utf8")) as {
+      packages?: Record<string, { version?: unknown; checkedAt?: unknown }>;
+    };
+    const entry = payload.packages?.[packageName];
+    if (!entry || typeof entry.version !== "string" || typeof entry.checkedAt !== "number") {
+      return null;
+    }
+    if (Date.now() - entry.checkedAt > ttlMs) {
+      return null;
+    }
+    return { version: entry.version };
+  } catch {
+    return null;
+  }
+}
+
+function writeVersionCache(packageName: string, version: string | null): void {
+  if (!version || parseVersionCacheTtlMs() <= 0) {
+    return;
+  }
+  const filePath = getVersionCachePath();
+  try {
+    const existing = existsSync(filePath)
+      ? JSON.parse(readFileSync(filePath, "utf8")) as { packages?: Record<string, { version: string; checkedAt: number }> }
+      : {};
+    const packages = existing.packages ?? {};
+    packages[packageName] = { version, checkedAt: Date.now() };
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    writeFileSync(filePath, `${JSON.stringify({ packages }, null, 2)}\n`, "utf8");
+  } catch {
+    // Best-effort cache only.
+  }
+}
+
+function getVersionCachePath(): string {
+  return path.join(getConnectorHome(), "version-cache.json");
+}
+
+function parseVersionCacheTtlMs(): number {
+  const raw = process.env.NORDRELAY_VERSION_CACHE_TTL_MS;
+  if (!raw) {
+    return DEFAULT_VERSION_CACHE_TTL_MS;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : DEFAULT_VERSION_CACHE_TTL_MS;
 }
 
 function readInstalledPackageVersion(packageName: string): string | null {

@@ -1,0 +1,93 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+import { listAgentAdapterDescriptors } from "../src/agent-adapter.js";
+import { TelegramChannelAdapter, listChannelDescriptors, type ChannelInboundMessage } from "../src/channel-adapter.js";
+import { AuditLogStore } from "../src/audit-log.js";
+import { SessionLockStore, canWriteWithLock } from "../src/session-locks.js";
+import { createDocumentStore } from "../src/state-backend.js";
+
+describe("adapter and e2e harness primitives", () => {
+  it("exposes Telegram as the available channel and future channels as planned adapters", () => {
+    const channels = listChannelDescriptors();
+
+    expect(channels.find((channel) => channel.id === "telegram")?.status).toBe("available");
+    expect(channels.find((channel) => channel.id === "discord")?.status).toBe("planned");
+    expect(new TelegramChannelAdapter().capabilities.has("typing")).toBe(true);
+  });
+
+  it("exposes Codex and Pi agent adapter descriptors", () => {
+    const agents = listAgentAdapterDescriptors();
+
+    expect(agents.find((agent) => agent.id === "codex")?.status).toBe("available");
+    expect(agents.find((agent) => agent.id === "pi")?.status).toBe("available");
+    expect(agents.find((agent) => agent.id === "claude-code")?.status).toBe("planned");
+  });
+
+  it("can run a fake channel message through an end-to-end harness", async () => {
+    const harness = new FakeRelayHarness();
+    await harness.receive({
+      id: "m1",
+      context: { channelId: "telegram", chatId: "123", userId: "42" },
+      text: "hello",
+    });
+
+    expect(harness.outbox).toEqual(["typing:123", "reply:HELLO"]);
+  });
+});
+
+describe("state, audit, and lock stores", () => {
+  it("persists JSON documents through the document store", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-state-"));
+    try {
+      const store = createDocumentStore<{ value: number }>({
+        workspace,
+        fileName: "sample.json",
+        sqliteKey: "sample",
+        backend: "json",
+      });
+
+      store.write({ value: 7 });
+      expect(store.read()).toEqual({ value: 7 });
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("records audit events and enforces session locks", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-audit-"));
+    try {
+      const audit = new AuditLogStore(workspace, "json", 5);
+      const event = audit.append({
+        action: "prompt_started",
+        status: "ok",
+        contextKey: "123",
+        actorId: 42,
+        description: "test",
+      });
+      expect(event.id).toHaveLength(12);
+      expect(audit.list(1)[0]?.description).toBe("test");
+
+      const locks = new SessionLockStore(workspace, "json");
+      const lock = locks.set("123", 42, "Ricardo", 60_000);
+      expect(canWriteWithLock(lock, 42, false)).toBe(true);
+      expect(canWriteWithLock(lock, 7, false)).toBe(false);
+      expect(canWriteWithLock(lock, 7, true)).toBe(true);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+});
+
+class FakeRelayHarness {
+  readonly outbox: string[] = [];
+
+  async receive(message: ChannelInboundMessage): Promise<void> {
+    this.outbox.push(`typing:${message.context.chatId}`);
+    const text = message.text ?? "";
+    this.outbox.push(`reply:${text.toUpperCase()}`);
+  }
+}

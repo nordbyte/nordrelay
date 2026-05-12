@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import path from "node:path";
-
 import type { AgentPromptInput } from "./agent.js";
 import type { TelegramContextKey } from "./context-key.js";
-import { readJsonFileWithBackup, writeJsonFileAtomic } from "./persistence.js";
+import { createDocumentStore, type DocumentStore, type StateBackendKind } from "./state-backend.js";
 
 export interface PromptEnvelope {
   input: AgentPromptInput;
@@ -16,6 +13,7 @@ export interface QueuedPrompt extends PromptEnvelope {
   id: string;
   contextKey: TelegramContextKey;
   createdAt: number;
+  notBefore?: number;
   updatedAt?: number;
   attempts?: number;
   lastError?: string;
@@ -28,13 +26,18 @@ interface PersistedPromptStore {
 }
 
 export class PromptStore {
-  private readonly persistPath: string;
+  private readonly store: DocumentStore<PersistedPromptStore>;
   private lastPrompts = new Map<TelegramContextKey, PromptEnvelope>();
   private queues = new Map<TelegramContextKey, QueuedPrompt[]>();
   private pausedContexts = new Set<TelegramContextKey>();
 
-  constructor(workspace: string) {
-    this.persistPath = path.join(workspace, ".nordrelay", "prompts.json");
+  constructor(workspace: string, backend: StateBackendKind = "json") {
+    this.store = createDocumentStore<PersistedPromptStore>({
+      workspace,
+      fileName: "prompts.json",
+      sqliteKey: "prompts",
+      backend,
+    });
     this.load();
   }
 
@@ -47,12 +50,13 @@ export class PromptStore {
     return this.lastPrompts.get(contextKey);
   }
 
-  enqueue(contextKey: TelegramContextKey, prompt: PromptEnvelope): QueuedPrompt {
+  enqueue(contextKey: TelegramContextKey, prompt: PromptEnvelope, options: { notBefore?: number } = {}): QueuedPrompt {
     const item: QueuedPrompt = {
       ...prompt,
       id: createQueueId(),
       contextKey,
       createdAt: Date.now(),
+      notBefore: options.notBefore,
     };
     const queue = this.queues.get(contextKey) ?? [];
     queue.push(item);
@@ -70,7 +74,15 @@ export class PromptStore {
 
   dequeue(contextKey: TelegramContextKey): QueuedPrompt | undefined {
     const queue = this.queues.get(contextKey);
-    const item = queue?.shift();
+    if (!queue || queue.length === 0) {
+      return undefined;
+    }
+    const now = Date.now();
+    const index = queue.findIndex((queued) => !queued.notBefore || queued.notBefore <= now);
+    if (index === -1) {
+      return undefined;
+    }
+    const [item] = queue.splice(index, 1);
     if (!queue || queue.length === 0) {
       this.queues.delete(contextKey);
     }
@@ -84,6 +96,18 @@ export class PromptStore {
 
   list(contextKey: TelegramContextKey): QueuedPrompt[] {
     return [...(this.queues.get(contextKey) ?? [])];
+  }
+
+  get(contextKey: TelegramContextKey, id: string): QueuedPrompt | undefined {
+    return this.queues.get(contextKey)?.find((item) => item.id === id);
+  }
+
+  nextRunnableAt(contextKey: TelegramContextKey): number | null {
+    const timestamps = (this.queues.get(contextKey) ?? [])
+      .map((item) => item.notBefore)
+      .filter((value): value is number => typeof value === "number")
+      .sort((left, right) => left - right);
+    return timestamps[0] ?? null;
   }
 
   listContextKeys(): TelegramContextKey[] {
@@ -190,13 +214,12 @@ export class PromptStore {
 
   private persist(): void {
     try {
-      mkdirSync(path.dirname(this.persistPath), { recursive: true });
       const payload: PersistedPromptStore = {
         lastPrompts: Object.fromEntries(this.lastPrompts.entries()),
         queues: Object.fromEntries(this.queues.entries()),
         pausedContexts: [...this.pausedContexts],
       };
-      writeJsonFileAtomic(this.persistPath, payload);
+      this.store.write(payload);
     } catch (error) {
       console.warn("Failed to persist prompt store:", error instanceof Error ? error.message : String(error));
     }
@@ -204,7 +227,7 @@ export class PromptStore {
 
   private load(): void {
     try {
-      const payload = readJsonFileWithBackup<Partial<PersistedPromptStore>>(this.persistPath).value;
+      const payload = this.store.read();
       if (!payload) {
         return;
       }
@@ -272,6 +295,7 @@ function isQueuedPrompt(value: unknown): value is QueuedPrompt {
     typeof (value as QueuedPrompt).id === "string" &&
     typeof (value as QueuedPrompt).contextKey === "string" &&
     typeof (value as QueuedPrompt).createdAt === "number" &&
+    ((value as QueuedPrompt).notBefore === undefined || typeof (value as QueuedPrompt).notBefore === "number") &&
     ((value as QueuedPrompt).updatedAt === undefined || typeof (value as QueuedPrompt).updatedAt === "number") &&
     ((value as QueuedPrompt).attempts === undefined || typeof (value as QueuedPrompt).attempts === "number") &&
     ((value as QueuedPrompt).lastError === undefined || typeof (value as QueuedPrompt).lastError === "string");

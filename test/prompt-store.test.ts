@@ -70,6 +70,23 @@ describe("PromptStore", () => {
     }
   });
 
+  it("skips scheduled prompts until they are due", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "prompt-store-"));
+    try {
+      const store = new PromptStore(workspace);
+      const scheduled = store.enqueue("123", toPromptEnvelope("later"), { notBefore: Date.now() + 60_000 });
+      const ready = store.enqueue("123", toPromptEnvelope("now"));
+
+      expect(store.nextRunnableAt("123")).toBe(scheduled.notBefore);
+      expect(store.get("123", scheduled.id)?.description).toBe("later");
+      expect(store.dequeue("123")?.id).toBe(ready.id);
+      expect(store.dequeue("123")).toBeUndefined();
+      expect(store.list("123").map((item) => item.id)).toEqual([scheduled.id]);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("recovers persisted prompts from the atomic-write backup", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "prompt-store-"));
     try {

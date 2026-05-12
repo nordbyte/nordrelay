@@ -37,6 +37,8 @@ import {
   type ArtifactReport,
   type ArtifactTurnReport,
 } from "./artifacts.js";
+import { listAgentAdapterDescriptors } from "./agent-adapter.js";
+import { AuditLogStore, type AuditEvent } from "./audit-log.js";
 import {
   formatSessionLabel,
   renderHelpMessage,
@@ -56,6 +58,7 @@ import {
   type TelegramNotifyMode,
   type VoiceBackendPreference,
 } from "./bot-preferences.js";
+import { listChannelDescriptors } from "./channel-adapter.js";
 import {
   CODEX_REASONING_EFFORTS,
   CODEX_AGENT_CAPABILITIES,
@@ -101,6 +104,7 @@ import {
 } from "./operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
 import { configureRedaction, redactText } from "./redaction.js";
+import { canWriteWithLock, SessionLockStore, type SessionLock } from "./session-locks.js";
 import {
   formatFileSize,
   renderLaunchSummaryHTML,
@@ -313,8 +317,10 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const pendingAgentPicks = new Map<TelegramContextKey, AgentId[]>();
   const pendingMediaGroups = new Map<string, PendingMediaGroup>();
   const turnProgress = new Map<TelegramContextKey, TurnProgress>();
-  const promptStore = new PromptStore(config.workspace);
-  const preferencesStore = new BotPreferencesStore(config.workspace);
+  const promptStore = new PromptStore(config.workspace, config.stateBackend);
+  const preferencesStore = new BotPreferencesStore(config.workspace, config.stateBackend);
+  const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
+  const lockStore = new SessionLockStore(config.workspace, config.stateBackend);
   const drainingQueues = new Set<TelegramContextKey>();
   const externalQueueTimers = new Map<TelegramContextKey, NodeJS.Timeout>();
   const externalMirrors = new Map<TelegramContextKey, ExternalMirrorState>();
@@ -545,7 +551,10 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       const age = formatRelativeTime(new Date(item.createdAt));
       const attempts = item.attempts && item.attempts > 0 ? ` · attempts ${item.attempts}` : "";
       const error = item.lastError ? ` · last error: ${trimLine(item.lastError, 80)}` : "";
-      const eta = index === 0 ? "next" : `after ${index} queued item${index === 1 ? "" : "s"}`;
+      const scheduled = item.notBefore && item.notBefore > Date.now()
+        ? `scheduled ${formatLocalDateTime(new Date(item.notBefore))}`
+        : index === 0 ? "next" : `after ${index} queued item${index === 1 ? "" : "s"}`;
+      const eta = scheduled;
       return `${index + 1}. ${item.id} · ${age} · ${eta}${attempts}${error} · ${item.description}`;
     });
     const keyboard = new InlineKeyboard();
@@ -929,6 +938,54 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     return permissionForCommand(command);
   };
 
+  const audit = (event: Omit<AuditEvent, "id" | "timestamp" | "channelId">): void => {
+    try {
+      auditLog.append(event);
+    } catch (error) {
+      console.warn("Failed to write audit event:", error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const auditContext = (
+    ctx: Context,
+    contextKey: TelegramContextKey,
+    session: AgentSessionService,
+    patch: Omit<AuditEvent, "id" | "timestamp" | "channelId" | "contextKey" | "actorId" | "actorRole" | "agentId" | "threadId" | "workspace">,
+  ): void => {
+    const info = session.getInfo();
+    audit({
+      contextKey,
+      actorId: ctx.from?.id,
+      actorRole: getUserRole(ctx),
+      agentId: idOf(info),
+      threadId: info.threadId,
+      workspace: info.workspace,
+      ...patch,
+    });
+  };
+
+  const denyIfLocked = async (
+    ctx: Context,
+    contextKey: TelegramContextKey,
+    session: AgentSessionService,
+  ): Promise<boolean> => {
+    const lock = lockStore.get(contextKey);
+    const isAdmin = getUserRole(ctx) === "admin";
+    if (canWriteWithLock(lock, ctx.from?.id, isAdmin)) {
+      return false;
+    }
+
+    const owner = formatLockOwner(lock);
+    const text = `Session is locked by ${owner}. Use /locks to inspect or ask an admin to /unlock.`;
+    auditContext(ctx, contextKey, session, {
+      action: "prompt_started",
+      status: "denied",
+      detail: text,
+    });
+    await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+    return true;
+  };
+
   const setReaction = async (ctx: Context, emoji: "👀" | "👍" | "❤" | "🔥" | "👏"): Promise<void> => {
     if (!config.enableTelegramReactions) {
       return;
@@ -1040,6 +1097,10 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const messageThreadId = parsed.messageThreadId;
     const envelope = isPromptEnvelopeLike(prompt) ? prompt : toPromptEnvelope(prompt);
 
+    if (!options.fromQueue && await denyIfLocked(ctx, contextKey, session)) {
+      return;
+    }
+
     const busy = getBusyReason(contextKey);
     if (busy.busy) {
       if (options.fromQueue) {
@@ -1060,6 +1121,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       await safeReply(ctx, escapeHTML(queuedMessage), {
         fallbackText: queuedMessage,
         replyMarkup: createQueuedPromptCancelKeyboard(contextKey, item.id),
+      });
+      auditContext(ctx, contextKey, session, {
+        action: "prompt_queued",
+        status: "ok",
+        promptId: item.id,
+        description: item.description,
+        detail: busy.kind,
       });
       if (busy.kind === "external") {
         scheduleExternalQueueDrain(ctx, contextKey, chatId, session);
@@ -1526,6 +1594,11 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       }
 
       promptStore.setLastPrompt(contextKey, envelope);
+      auditContext(ctx, contextKey, session, {
+        action: "prompt_started",
+        status: "ok",
+        description: envelope.description,
+      });
       await session.prompt(envelope.input, callbacks);
       updateSessionMetadata(contextKey, session);
       await finalizeResponse();
@@ -1539,9 +1612,20 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       progress.status = "completed";
       progress.completedAt = Date.now();
       progress.updatedAt = progress.completedAt;
+      auditContext(ctx, contextKey, session, {
+        action: "prompt_completed",
+        status: "ok",
+        description: envelope.description,
+      });
     } catch (error) {
       progress.status = "failed";
       progress.error = friendlyErrorText(error);
+      auditContext(ctx, contextKey, session, {
+        action: "prompt_failed",
+        status: "failed",
+        description: envelope.description,
+        detail: progress.error,
+      });
       progress.completedAt = Date.now();
       progress.updatedAt = progress.completedAt;
       stopTyping();
@@ -1605,6 +1689,11 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
         const next = promptStore.dequeue(contextKey);
         if (!next) {
+          const nextRunnableAt = promptStore.nextRunnableAt(contextKey);
+          const queued = promptStore.list(contextKey).length;
+          if (nextRunnableAt && queued > 0) {
+            await updateQueueStatusMessage(contextKey, `Next queued prompt is scheduled for ${formatLocalDateTime(new Date(nextRunnableAt))}. ${queued} queued.`);
+          }
           return;
         }
 
@@ -1956,6 +2045,52 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   bot.command("help", async (ctx) => {
     const help = renderHelpMessage();
     await safeReply(ctx, help.html, { fallbackText: help.plain });
+  });
+
+  bot.command("channels", async (ctx) => {
+    const descriptors = listChannelDescriptors();
+    const lines = descriptors.map((descriptor) => {
+      const status = descriptor.status === "available" ? "available" : "planned";
+      return `${descriptor.label}: ${status} · ${descriptor.capabilities.join(", ")}`;
+    });
+    const html = [
+      "<b>Channel adapters:</b>",
+      ...descriptors.map((descriptor) => {
+        const statusIcon = descriptor.status === "available" ? "✅" : "🟡";
+        const notes = descriptor.notes ? `\n  ${escapeHTML(descriptor.notes)}` : "";
+        return `${statusIcon} <b>${escapeHTML(descriptor.label)}</b> <code>${escapeHTML(descriptor.status)}</code>\n  <code>${escapeHTML(descriptor.capabilities.join(", "))}</code>${notes}`;
+      }),
+    ].join("\n");
+    await safeReply(ctx, html, { fallbackText: ["Channel adapters:", ...lines].join("\n") });
+  });
+
+  bot.command("agents", async (ctx) => {
+    const descriptors = listAgentAdapterDescriptors();
+    const plain = [
+      "Agent adapters:",
+      ...descriptors.map((descriptor) => {
+        const enabled = descriptor.id === "codex"
+          ? config.codexEnabled
+          : descriptor.id === "pi"
+            ? config.piEnabled
+            : false;
+        return `${descriptor.label}: ${descriptor.status}${descriptor.status === "available" ? ` · ${enabled ? "enabled" : "disabled"}` : ""}`;
+      }),
+    ].join("\n");
+    const html = [
+      "<b>Agent adapters:</b>",
+      ...descriptors.map((descriptor) => {
+        const enabled = descriptor.id === "codex"
+          ? config.codexEnabled
+          : descriptor.id === "pi"
+            ? config.piEnabled
+            : false;
+        const status = descriptor.status === "available" ? `${enabled ? "enabled" : "disabled"}` : "planned";
+        const notes = descriptor.notes ? `\n  ${escapeHTML(descriptor.notes)}` : "";
+        return `${descriptor.status === "available" ? "✅" : "🟡"} <b>${escapeHTML(descriptor.label)}</b> <code>${escapeHTML(status)}</code>${notes}`;
+      }),
+    ].join("\n");
+    await safeReply(ctx, html, { fallbackText: plain });
   });
 
   bot.command("agent", async (ctx) => {
@@ -2436,6 +2571,65 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
   });
 
+  bot.command("audit", async (ctx) => {
+    const rawText = ctx.message?.text ?? "";
+    const limitArg = rawText.replace(/^\/audit(?:@\w+)?\s*/i, "").trim();
+    const limit = /^\d+$/.test(limitArg) ? Number(limitArg) : 20;
+    const events = auditLog.list(limit);
+    const rendered = renderAuditEvents(events);
+    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+  });
+
+  bot.command("lock", async (ctx) => {
+    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
+    if (!contextSession || !ctx.from) {
+      return;
+    }
+    const { contextKey, session } = contextSession;
+    const existing = lockStore.get(contextKey);
+    if (existing && existing.ownerId !== ctx.from.id && getUserRole(ctx) !== "admin") {
+      const text = `Session is already locked by ${formatLockOwner(existing)}.`;
+      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+      return;
+    }
+    const lock = lockStore.set(contextKey, ctx.from.id, formatTelegramName(ctx), config.sessionLockTtlMs);
+    auditContext(ctx, contextKey, session, {
+      action: "lock_updated",
+      status: "ok",
+      detail: `locked by ${lock.ownerId}`,
+    });
+    const text = `Session locked by ${formatLockOwner(lock)}${lock.expiresAt ? ` until ${formatLocalDateTime(new Date(lock.expiresAt))}` : ""}.`;
+    await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+  });
+
+  bot.command("unlock", async (ctx) => {
+    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
+    if (!contextSession) {
+      return;
+    }
+    const { contextKey, session } = contextSession;
+    const lock = lockStore.get(contextKey);
+    if (lock && lock.ownerId !== ctx.from?.id && getUserRole(ctx) !== "admin") {
+      const text = `Only ${formatLockOwner(lock)} or an admin can unlock this session.`;
+      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+      return;
+    }
+    const removed = lockStore.clear(contextKey);
+    auditContext(ctx, contextKey, session, {
+      action: "lock_updated",
+      status: "ok",
+      detail: removed ? "unlocked" : "no lock",
+    });
+    const text = removed ? "Session lock released." : "No active lock for this session.";
+    await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+  });
+
+  bot.command("locks", async (ctx) => {
+    const locks = lockStore.list();
+    const rendered = renderSessionLocks(locks);
+    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+  });
+
   bot.command("diagnostics", async (ctx) => {
     const health = await getConnectorHealth();
     const authStatus = await checkAuthStatus(config.codexApiKey);
@@ -2672,6 +2866,41 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const rawText = ctx.message?.text ?? "";
     const argument = rawText.replace(/^\/queue(?:@\w+)?\s*/i, "").trim();
 
+    const laterMatch = argument.match(/^later\s+(\d+)(?:m|min|minutes?)?\s+([\s\S]+)$/i);
+    if (laterMatch) {
+      const minutes = Math.min(7 * 24 * 60, Math.max(1, Number(laterMatch[1])));
+      const text = laterMatch[2]!.trim();
+      const notBefore = Date.now() + minutes * 60 * 1000;
+      const item = promptStore.enqueue(contextKey, toPromptEnvelope(text), { notBefore });
+      const message = `Queued prompt ${item.id} for ${formatLocalDateTime(new Date(notBefore))}.`;
+      await safeReply(ctx, escapeHTML(message), {
+        fallbackText: message,
+        replyMarkup: createQueuedPromptCancelKeyboard(contextKey, item.id),
+      });
+      auditContext(ctx, contextKey, session, {
+        action: "prompt_queued",
+        status: "ok",
+        promptId: item.id,
+        description: item.description,
+        detail: "scheduled",
+      });
+      return;
+    }
+
+    const inspectMatch = argument.match(/^inspect\s+([a-z0-9]+)$/i);
+    if (inspectMatch) {
+      const item = promptStore.get(contextKey, inspectMatch[1]!);
+      if (!item) {
+        await safeReply(ctx, escapeHTML(`No queued prompt found with id ${inspectMatch[1]}.`), {
+          fallbackText: `No queued prompt found with id ${inspectMatch[1]}.`,
+        });
+        return;
+      }
+      const rendered = renderQueuedPromptDetail(item);
+      await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+      return;
+    }
+
     if (/^pause$/i.test(argument)) {
       promptStore.pause(contextKey);
       const message = `Queue paused. ${promptStore.list(contextKey).length} queued.`;
@@ -2744,8 +2973,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     if (argument) {
-      await safeReply(ctx, escapeHTML("Usage: /queue, /queue pause, /queue resume, /queue move <id> top|up|down, /queue run <id>"), {
-        fallbackText: "Usage: /queue, /queue pause, /queue resume, /queue move <id> top|up|down, /queue run <id>",
+      await safeReply(ctx, escapeHTML("Usage: /queue, /queue pause, /queue resume, /queue later <minutes> <prompt>, /queue inspect <id>, /queue move <id> top|up|down, /queue run <id>"), {
+        fallbackText: "Usage: /queue, /queue pause, /queue resume, /queue later <minutes> <prompt>, /queue inspect <id>, /queue move <id> top|up|down, /queue run <id>",
       });
       return;
     }
@@ -2823,6 +3052,36 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
     if (argument) {
       const parts = argument.split(/\s+/).filter(Boolean);
+      if (parts[0]?.toLowerCase() === "delete" && parts[1]) {
+        const selected = reports.find((report) => report.turnId === parts[1] || report.turnId.startsWith(parts[1]!));
+        if (!selected) {
+          await safeReply(ctx, escapeHTML(`No artifact turn found for "${parts[1]}".`), {
+            fallbackText: `No artifact turn found for "${parts[1]}".`,
+          });
+          return;
+        }
+        const removed = await removeArtifactTurn(workspace, selected.turnId);
+        const text = removed ? `Deleted artifact turn: ${selected.turnId}` : `Artifact turn not found: ${selected.turnId}`;
+        await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+        return;
+      }
+
+      const filtered = filterArtifactReports(reports, argument);
+      if (filtered) {
+        if (filtered.length === 0) {
+          await safeReply(ctx, escapeHTML(`No artifacts matched "${argument}".`), {
+            fallbackText: `No artifacts matched "${argument}".`,
+          });
+          return;
+        }
+        const rendered = renderArtifactReports(filtered);
+        await safeReply(ctx, rendered.html, {
+          fallbackText: rendered.plain,
+          replyMarkup: buildArtifactActionsKeyboard(filtered),
+        });
+        return;
+      }
+
       const shouldZip = parts[0]?.toLowerCase() === "zip";
       const requestedTurn = shouldZip ? parts[1] : parts[0];
       const selected =
@@ -4433,6 +4692,8 @@ export async function registerCommands(bot: Bot<Context>): Promise<void> {
   await bot.api.setMyCommands([
     { command: "start", description: "Welcome & status" },
     { command: "help", description: "Command reference" },
+    { command: "channels", description: "Messaging adapter status" },
+    { command: "agents", description: "Agent adapter status" },
     { command: "agent", description: "Select Codex or Pi" },
     { command: "new", description: "Start a new thread" },
     { command: "session", description: "Current thread details" },
@@ -4462,11 +4723,15 @@ export async function registerCommands(bot: Bot<Context>): Promise<void> {
     { command: "tasks", description: "Current turn progress" },
     { command: "progress", description: "Current turn progress" },
     { command: "activity", description: "Thread activity timeline" },
+    { command: "audit", description: "Admin: recent audit events" },
     { command: "status", description: "Connector runtime status" },
     { command: "health", description: "Connector health report" },
     { command: "version", description: "Connector version" },
     { command: "logs", description: "Admin: show connector logs" },
     { command: "diagnostics", description: "Admin: connector diagnostics" },
+    { command: "lock", description: "Lock session writes to you" },
+    { command: "unlock", description: "Release session write lock" },
+    { command: "locks", description: "List session write locks" },
     { command: "restart", description: "Admin: restart connector" },
     { command: "update", description: "Admin: update connector" },
     { command: "handback", description: "Hand session back to CLI" },
@@ -4481,7 +4746,7 @@ function renderArtifactReports(reports: ArtifactTurnReport[]): { html: string; p
     const skipped = report.skippedCount > 0 ? `, ${report.skippedCount} skipped` : "";
     return `${index + 1}. ${report.turnId} · ${formatRelativeTime(report.updatedAt)} · ${report.artifacts.length} file${report.artifacts.length === 1 ? "" : "s"} · ${size}${skipped}`;
   });
-  const usage = "Tap an action below, or use /artifacts latest, /artifacts zip latest, or /artifacts <turn-id>.";
+  const usage = "Tap an action below, or use /artifacts latest, /artifacts zip latest, /artifacts images, /artifacts docs, /artifacts search <text>, or /artifacts delete <turn-id>.";
   const plain = ["Recent artifacts:", ...lines, "", usage].join("\n");
   const html = ["<b>Recent artifacts:</b>", ...lines.map(escapeHTML), "", escapeHTML(usage)].join("\n");
   return { html, plain };
@@ -4617,6 +4882,100 @@ function renderLogLineHTML(line: string): string {
   return escapeHTML(line);
 }
 
+function renderAuditEvents(events: AuditEvent[]): { plain: string; html: string } {
+  if (events.length === 0) {
+    return {
+      plain: "Audit log is empty.",
+      html: escapeHTML("Audit log is empty."),
+    };
+  }
+
+  const lines = events.map((event) => {
+    const time = formatLocalDateTime(new Date(event.timestamp));
+    const actor = event.actorId ? `user ${event.actorId}` : "system";
+    const prompt = event.promptId ? ` · ${event.promptId}` : "";
+    const detail = event.detail ? ` · ${trimLine(event.detail, 90)}` : "";
+    const description = event.description ? ` · ${trimLine(event.description, 90)}` : "";
+    return `${time} · ${event.status.toUpperCase()} · ${event.action} · ${actor}${prompt}${description}${detail}`;
+  });
+
+  return {
+    plain: ["Audit:", ...lines].join("\n"),
+    html: [
+      "<b>Audit:</b>",
+      ...lines.map((line) => escapeHTML(line)),
+    ].join("\n"),
+  };
+}
+
+function renderSessionLocks(locks: SessionLock[]): { plain: string; html: string } {
+  if (locks.length === 0) {
+    return {
+      plain: "No active session locks.",
+      html: escapeHTML("No active session locks."),
+    };
+  }
+
+  const lines = locks.map((lock) => {
+    const expires = lock.expiresAt ? ` · expires ${formatLocalDateTime(new Date(lock.expiresAt))}` : "";
+    return `${lock.contextKey} · ${formatLockOwner(lock)}${expires}`;
+  });
+
+  return {
+    plain: ["Session locks:", ...lines].join("\n"),
+    html: ["<b>Session locks:</b>", ...lines.map((line) => escapeHTML(line))].join("\n"),
+  };
+}
+
+function renderQueuedPromptDetail(item: QueuedPrompt): { plain: string; html: string } {
+  const lines = [
+    "Queued prompt:",
+    `ID: ${item.id}`,
+    `Created: ${formatLocalDateTime(new Date(item.createdAt))}`,
+    item.notBefore ? `Scheduled: ${formatLocalDateTime(new Date(item.notBefore))}` : undefined,
+    `Attempts: ${item.attempts ?? 0}`,
+    item.lastError ? `Last error: ${item.lastError}` : undefined,
+    `Description: ${item.description}`,
+  ].filter((line): line is string => Boolean(line));
+  return {
+    plain: lines.join("\n"),
+    html: [
+      "<b>Queued prompt:</b>",
+      `<b>ID:</b> <code>${escapeHTML(item.id)}</code>`,
+      `<b>Created:</b> <code>${escapeHTML(formatLocalDateTime(new Date(item.createdAt)))}</code>`,
+      item.notBefore ? `<b>Scheduled:</b> <code>${escapeHTML(formatLocalDateTime(new Date(item.notBefore)))}</code>` : undefined,
+      `<b>Attempts:</b> <code>${item.attempts ?? 0}</code>`,
+      item.lastError ? `<b>Last error:</b> ${escapeHTML(item.lastError)}` : undefined,
+      `<b>Description:</b> ${escapeHTML(item.description)}`,
+    ].filter((line): line is string => Boolean(line)).join("\n"),
+  };
+}
+
+function formatLockOwner(lock: SessionLock | null): string {
+  if (!lock) {
+    return "nobody";
+  }
+  return lock.ownerName ? `${lock.ownerName} (${lock.ownerId})` : `user ${lock.ownerId}`;
+}
+
+function formatTelegramName(ctx: Context): string | undefined {
+  const firstName = ctx.from?.first_name?.trim();
+  const lastName = ctx.from?.last_name?.trim();
+  const username = ctx.from?.username?.trim();
+  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+  return fullName || (username ? `@${username}` : undefined);
+}
+
+function formatLocalDateTime(date: Date): string {
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+  return [
+    `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`,
+    `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`,
+  ].join(" ");
+}
+
 function pad2(value: number): string {
   return String(value).padStart(2, "0");
 }
@@ -4632,6 +4991,37 @@ function buildArtifactActionsKeyboard(reports: ArtifactTurnReport[]): InlineKeyb
       .row();
   }
   return keyboard;
+}
+
+function filterArtifactReports(reports: ArtifactTurnReport[], argument: string): ArtifactTurnReport[] | null {
+  const normalized = argument.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  let predicate: ((artifact: Artifact) => boolean) | null = null;
+  if (normalized === "images" || normalized === "image" || normalized === "photos") {
+    predicate = (artifact) => isTelegramImagePreview(artifact);
+  } else if (normalized === "docs" || normalized === "documents" || normalized === "files") {
+    predicate = (artifact) => !isTelegramImagePreview(artifact);
+  } else if (normalized.startsWith("search ")) {
+    const query = normalized.slice("search ".length).trim();
+    if (!query) {
+      return [];
+    }
+    predicate = (artifact) => artifact.name.toLowerCase().includes(query);
+  }
+
+  if (!predicate) {
+    return null;
+  }
+
+  return reports
+    .map((report) => ({
+      ...report,
+      artifacts: report.artifacts.filter(predicate),
+    }))
+    .filter((report) => report.artifacts.length > 0);
 }
 
 function renderProgressPlain(
@@ -4944,6 +5334,8 @@ function renderDiagnosticsPlain(
     `PID: ${health.state.pid ?? "-"} (${health.pidRunning ? "running" : "not running"})`,
     `App PID: ${health.state.appPid ?? "-"} (${health.appPidRunning ? "running" : "not running"})`,
     `Workspace: ${config.workspace}`,
+    `State backend: ${config.stateBackend}`,
+    `Telegram transport: ${config.telegramTransport}`,
     `Codex CLI: ${health.codexCli}`,
     `Pi CLI: ${health.piCli}`,
     `Enabled agents/default: ${enabledAgents(config).join(", ")} / ${config.defaultAgent}`,
@@ -4964,6 +5356,8 @@ function renderDiagnosticsPlain(
     `Artifact retention: ${config.artifactRetentionDays}d / ${config.artifactMaxTurnDirs} turns / ${config.artifactMaxInboxDirs} inbox dirs`,
     `Workspace allowed/warn roots: ${config.workspaceAllowedRoots.length}/${config.workspaceWarnRoots.length}`,
     `Allowed users/chats/admins/readonly: ${config.telegramAllowedUserIds.length}/${config.telegramAllowedChatIds.length}/${config.telegramAdminUserIds.length}/${config.telegramReadOnlyUserIds.length}`,
+    `Session lock TTL: ${config.sessionLockTtlMs} ms`,
+    `Audit max events: ${config.auditMaxEvents}`,
     `Loaded sessions: ${contexts.length}`,
     `Current queue: ${queueLength}`,
     `Current progress: ${progress?.status ?? "idle"}`,
@@ -4990,6 +5384,8 @@ function renderDiagnosticsHTML(
     `<b>PID:</b> <code>${escapeHTML(String(health.state.pid ?? "-"))} (${health.pidRunning ? "running" : "not running"})</code>`,
     `<b>App PID:</b> <code>${escapeHTML(String(health.state.appPid ?? "-"))} (${health.appPidRunning ? "running" : "not running"})</code>`,
     `<b>Workspace:</b> <code>${escapeHTML(config.workspace)}</code>`,
+    `<b>State backend:</b> <code>${escapeHTML(config.stateBackend)}</code>`,
+    `<b>Telegram transport:</b> <code>${escapeHTML(config.telegramTransport)}</code>`,
     `<b>Codex CLI:</b> <code>${escapeHTML(health.codexCli)}</code>`,
     `<b>Pi CLI:</b> <code>${escapeHTML(health.piCli)}</code>`,
     `<b>Enabled agents/default:</b> <code>${escapeHTML(`${enabledAgents(config).join(", ")} / ${config.defaultAgent}`)}</code>`,
@@ -5010,6 +5406,8 @@ function renderDiagnosticsHTML(
     `<b>Artifact retention:</b> <code>${config.artifactRetentionDays}d / ${config.artifactMaxTurnDirs} turns / ${config.artifactMaxInboxDirs} inbox dirs</code>`,
     `<b>Workspace allowed/warn roots:</b> <code>${config.workspaceAllowedRoots.length}/${config.workspaceWarnRoots.length}</code>`,
     `<b>Allowed users/chats/admins/readonly:</b> <code>${config.telegramAllowedUserIds.length}/${config.telegramAllowedChatIds.length}/${config.telegramAdminUserIds.length}/${config.telegramReadOnlyUserIds.length}</code>`,
+    `<b>Session lock TTL:</b> <code>${config.sessionLockTtlMs} ms</code>`,
+    `<b>Audit max events:</b> <code>${config.auditMaxEvents}</code>`,
     `<b>Loaded sessions:</b> <code>${contexts.length}</code>`,
     `<b>Current queue:</b> <code>${queueLength}</code>`,
     `<b>Current progress:</b> <code>${escapeHTML(progress?.status ?? "idle")}</code>`,

@@ -24,6 +24,7 @@ Session control:
 - `/handback` returns a ready-to-run CLI command for continuing in the native agent CLI.
 - `/retry` resends the last prompt for the current Telegram context.
 - `/queue`, inline run/top/up/down/cancel buttons, `/cancel <queue-id>`, and `/clearqueue` manage queued prompts for a busy Telegram context.
+- `/queue later <minutes> <prompt>` schedules a prompt for later execution, and `/queue inspect <queue-id>` shows full queue metadata.
 - `/abort`, `/stop`, and the inline Abort button cancel the active agent turn.
 - Busy prompts are queued per Telegram context instead of being dropped.
 - If the attached thread is currently active in the local Codex CLI, Telegram prompts are queued until that CLI task finishes.
@@ -36,6 +37,15 @@ Session control:
 - `/tasks` and `/progress` show the current turn status, queue length, active tool, elapsed time, and last error.
 - `/activity` shows a compact timeline of recent rollout events for the active thread, with filters and export.
 - `/diagnostics` reports redacted runtime, config, role, Telegram rate-limit, mirror, voice, session, queue, and progress details for admins.
+- `/lock`, `/unlock`, and `/locks` provide a team write-lock for shared sessions so one user can operate while others watch.
+- `/audit` shows recent prompt, queue, lock, and command audit events for admins.
+
+Adapter architecture:
+
+- Telegram is implemented as the first channel adapter with text, typing, streaming edits, inline buttons, files, photos, voice, topics, and webhook capability metadata.
+- `/channels` shows available and planned messaging adapters for Discord, WhatsApp, Slack, and Matrix.
+- Codex and Pi are implemented as agent adapters, with descriptors for future Claude Code, OpenClaw, and Hermes support.
+- `/agents` shows available/planned agent adapters and whether Codex/Pi are enabled.
 
 Codex runtime:
 
@@ -95,6 +105,7 @@ Telegram output:
 - Image artifacts are sent with Telegram previews; large multi-file outputs are bundled into one ZIP when possible.
 - `/artifacts` lists recent generated files and can resend the latest or a specific artifact turn.
 - `/artifacts` includes inline actions to resend, ZIP, or delete artifact turns.
+- `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, and `/artifacts delete <turn-id>` filter, find, and clean up artifacts from Telegram.
 - Old artifact and inbox turn directories are pruned automatically with configurable retention.
 - Optional Telegram message reactions can acknowledge work start and completion with `ENABLE_TELEGRAM_REACTIONS=true`.
 
@@ -125,7 +136,12 @@ Operations:
 - Logs can be emitted as timestamped plain text or JSON records with `CONNECTOR_LOG_FORMAT`.
 - Telegram sends/edits/documents are routed through a rate-limit queue that honors Telegram retry-after responses.
 - Context metadata, queues, and preferences are written atomically with backup recovery.
+- Context metadata, queues, preferences, audit events, and locks can use JSON files or the optional SQLite state backend with `NORDRELAY_STATE_BACKEND=sqlite`.
 - Runtime state and logs are written under `~/.codex/nordrelay/`.
+- `nordrelay init` creates a private runtime config, `nordrelay doctor` validates host prerequisites, and `nordrelay web` starts a local dashboard.
+- Telegram can run with long polling or an HTTP webhook via `TELEGRAM_TRANSPORT=webhook`.
+- Version freshness checks are cached with `NORDRELAY_VERSION_CACHE_TTL_MS` to keep `/version` responsive.
+- CI includes typecheck, tests, package dry run, npm audit, and a separate secret-scan workflow.
 - `npm run dev`, `npm run build`, `npm run check`, `npm test`, `npm start`, `npm stop`, and `npm run status` are available.
 - Dockerfile and `docker-compose.yml` are included for containerized operation.
 - A `launchd/start.sh` helper is included for host-managed startup.
@@ -136,20 +152,18 @@ Recommended npm setup:
 
 ```bash
 npm install -g @nordbyte/nordrelay
-mkdir -p ~/.codex/nordrelay
-cat > ~/.codex/nordrelay/nordrelay.env <<'EOF'
-TELEGRAM_BOT_TOKEN=123456789:replace-me
-TELEGRAM_ADMIN_USER_IDS=123456789
-NORDRELAY_CODEX_ENABLED=true
-NORDRELAY_PI_ENABLED=false
-NORDRELAY_DEFAULT_AGENT=codex
-CODEX_SANDBOX_MODE=workspace-write
-CODEX_APPROVAL_POLICY=never
-EOF
+nordrelay init
+nordrelay doctor
 nordrelay start
 ```
 
 npm is the fastest install path and is the recommended default for normal use. For package installs, put runtime configuration in a directory-local `.env` before running `nordrelay`, or in `~/.codex/nordrelay/nordrelay.env`.
+
+Non-interactive setup is also supported:
+
+```bash
+nordrelay init --token 123456789:replace-me --admin-id 123456789
+```
 
 Source checkout setup:
 
@@ -231,11 +245,14 @@ The old unnamespaced `/remote` command is no longer required and current Codex T
 Manual process commands:
 
 ```bash
+nordrelay init
+nordrelay doctor
 nordrelay start
 nordrelay status
 nordrelay restart
 nordrelay stop
 nordrelay foreground
+nordrelay web
 ```
 
 Source checkout process commands:
@@ -246,6 +263,8 @@ node plugins/nordrelay/scripts/nordrelay.mjs status
 node plugins/nordrelay/scripts/nordrelay.mjs restart
 node plugins/nordrelay/scripts/nordrelay.mjs stop
 node plugins/nordrelay/scripts/nordrelay.mjs foreground
+node plugins/nordrelay/scripts/nordrelay.mjs doctor
+node plugins/nordrelay/scripts/nordrelay.mjs web
 ```
 
 NPM shortcuts:
@@ -263,11 +282,27 @@ Runtime files:
 - State file: `~/.codex/nordrelay/state.json`
 - Log file: `~/.codex/nordrelay/nordrelay.log`
 - Home override: `NORDRELAY_HOME=/custom/path`
+- Local dashboard: `nordrelay web --host 127.0.0.1 --port 31878`
+
+Webhook mode:
+
+```dotenv
+TELEGRAM_TRANSPORT=webhook
+TELEGRAM_WEBHOOK_URL=https://relay.example
+TELEGRAM_WEBHOOK_HOST=127.0.0.1
+TELEGRAM_WEBHOOK_PORT=8080
+TELEGRAM_WEBHOOK_PATH=/telegram/webhook
+TELEGRAM_WEBHOOK_SECRET=replace-with-random-secret
+```
+
+Run NordRelay behind your reverse proxy so the public URL forwards to `http://127.0.0.1:8080/telegram/webhook`. `GET /healthz` returns a simple health check.
 
 ## Telegram Commands
 
 - `/start` shows welcome text and the selected launch profile.
 - `/help` shows the grouped command reference.
+- `/channels` shows available and planned messaging adapters.
+- `/agents` shows available and planned coding-agent adapters.
 - `/agent` selects the active agent for this Telegram context.
 - `/new` starts a new thread. If the selected agent knows multiple workspaces, Telegram shows a workspace picker.
 - `/session` shows current thread details.
@@ -284,13 +319,19 @@ Runtime files:
 - `/queue` shows queued prompts for this Telegram context with inline run/top/up/down/cancel buttons.
 - `/queue pause` pauses automatic queued prompt execution.
 - `/queue resume` resumes automatic queued prompt execution.
+- `/queue later <minutes> <prompt>` schedules a prompt for later execution.
+- `/queue inspect <queue-id>` shows one queued prompt with created time, schedule time, attempts, and last error.
 - `/queue move <queue-id> top|up|down` changes queued prompt priority.
 - `/queue run <queue-id>` resumes the queue and runs that prompt next when the session is idle.
 - Queued prompt replies include a cancel button while the prompt is still waiting.
 - `/cancel <queue-id>` removes one queued prompt; the queue id is the short code shown in messages such as `Queued prompt 332kmt`.
 - `/clearqueue` clears queued prompts for this Telegram context.
 - `/activity [all|tools|errors|user|agent|tasks] [limit] [since 1h] [export]` shows or exports rollout activity for the active thread.
-- `/artifacts [latest|zip latest|turn-id]` lists or resends generated artifacts for the current workspace.
+- `/audit [limit]` shows recent audit events. Admin only.
+- `/lock` locks writes for this Telegram session to the current user.
+- `/unlock` releases the current session write lock.
+- `/locks` lists active write locks.
+- `/artifacts [latest|zip latest|turn-id|images|docs|search <text>|delete <turn-id>]` lists, filters, resends, zips, searches, or deletes generated artifacts for the current workspace.
 - `/workspaces` lists workspaces known to the selected agent and allowed by the workspace policy.
 - `/abort` cancels the current operation.
 - `/stop` is an alias for `/abort`.
@@ -436,6 +477,8 @@ Artifacts:
 - When more than five artifacts are sent, the connector tries to send one ZIP bundle instead of many separate files.
 - Use `/artifacts` to list recent artifact turns with inline Send/ZIP/Delete actions.
 - Use `/artifacts latest`, `/artifacts zip latest`, or `/artifacts <turn-id>` from text commands.
+- Use `/artifacts images`, `/artifacts docs`, or `/artifacts search <text>` to narrow large artifact histories.
+- Use `/artifacts delete <turn-id>` to delete an artifact turn without opening the inline confirmation flow.
 - Telegram file delivery is capped at the configured `MAX_FILE_SIZE` per artifact or ZIP bundle.
 - Old turn and inbox directories are pruned automatically to keep workspace state compact.
 
@@ -489,6 +532,12 @@ Telegram:
 - `TELEGRAM_ROLE_POLICIES_JSON`: optional JSON object mapping roles to permissions. Permissions are `inspect`, `sessions`, `prompt`, `files`, `settings`, `auth`, and `admin`.
 - `TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS`: minimum interval for normal Telegram API sends. Defaults to `80`.
 - `TELEGRAM_EDIT_MIN_INTERVAL_MS`: minimum interval for Telegram message edits. Defaults to `1200`.
+- `TELEGRAM_TRANSPORT`: `polling` or `webhook`. Defaults to `polling`.
+- `TELEGRAM_WEBHOOK_URL`: public base URL for webhook mode, for example `https://relay.example`.
+- `TELEGRAM_WEBHOOK_HOST`: local bind host for webhook mode. Defaults to `127.0.0.1`.
+- `TELEGRAM_WEBHOOK_PORT`: local bind port for webhook mode. Defaults to `8080`.
+- `TELEGRAM_WEBHOOK_PATH`: webhook request path. Defaults to `/telegram/webhook`.
+- `TELEGRAM_WEBHOOK_SECRET`: optional Telegram webhook secret token.
 - `TELEGRAM_CLI_MIRROR_MODE`: default CLI mirror mode: `off`, `status`, `final`, or `full`. Defaults to `status`.
 - `TELEGRAM_CLI_MIRROR_MIN_UPDATE_MS`: minimum interval for mirrored CLI status edits. Defaults to `4000`.
 - `TELEGRAM_NOTIFY_MODE`: default notification mode: `off`, `minimal`, or `all`. Defaults to `minimal`.
@@ -506,6 +555,10 @@ Agent selection:
 - `NORDRELAY_CODEX_ENABLED`: enables Codex contexts. Defaults to `true`.
 - `NORDRELAY_PI_ENABLED`: enables Pi contexts. Defaults to `false`.
 - `NORDRELAY_DEFAULT_AGENT`: `codex` or `pi`, used for new Telegram contexts. Defaults to the first enabled agent.
+- `NORDRELAY_STATE_BACKEND`: `json` or `sqlite`. JSON is the default; SQLite requires `better-sqlite3`.
+- `NORDRELAY_AUDIT_MAX_EVENTS`: maximum audit events retained. Defaults to `1000`.
+- `NORDRELAY_SESSION_LOCK_TTL_MS`: session write-lock TTL. Defaults to `1800000`.
+- `NORDRELAY_VERSION_CACHE_TTL_MS`: npm version freshness cache TTL. Defaults to `3600000`; set `0` to disable.
 
 Codex:
 

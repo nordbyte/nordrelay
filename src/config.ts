@@ -28,6 +28,7 @@ import {
   type VoiceBackendPreference,
 } from "./bot-preferences.js";
 import type { ConnectorLogFormat } from "./logger.js";
+import type { StateBackendKind } from "./state-backend.js";
 
 export type ToolVerbosity = "all" | "summary" | "errors-only" | "none";
 
@@ -50,9 +51,16 @@ export interface ConnectorConfig {
   telegramNotifyMode: TelegramNotifyMode;
   telegramQuietHours: QuietHours | null;
   telegramRedactPatterns: string[];
+  telegramTransport: "polling" | "webhook";
+  telegramWebhookUrl?: string;
+  telegramWebhookHost: string;
+  telegramWebhookPort: number;
+  telegramWebhookPath: string;
+  telegramWebhookSecret?: string;
   workspace: string;
   workspaceAllowedRoots: string[];
   workspaceWarnRoots: string[];
+  stateBackend: StateBackendKind;
   maxFileSize: number;
   artifactRetentionDays: number;
   artifactMaxTurnDirs: number;
@@ -85,6 +93,8 @@ export interface ConnectorConfig {
   voicePreferredBackend: VoiceBackendPreference;
   voiceDefaultLanguage?: string;
   voiceTranscribeOnly: boolean;
+  auditMaxEvents: number;
+  sessionLockTtlMs: number;
 }
 
 export function loadConfig(): ConnectorConfig {
@@ -124,9 +134,16 @@ export function loadConfig(): ConnectorConfig {
   const telegramNotifyMode = parseNotifyMode(optionalString(process.env.TELEGRAM_NOTIFY_MODE), "minimal");
   const telegramQuietHours = parseQuietHours(optionalString(process.env.TELEGRAM_QUIET_HOURS));
   const telegramRedactPatterns = parseOptionalStringList(optionalString(process.env.TELEGRAM_REDACT_PATTERNS));
+  const telegramTransport = parseTelegramTransport(optionalString(process.env.TELEGRAM_TRANSPORT));
+  const telegramWebhookUrl = optionalString(process.env.TELEGRAM_WEBHOOK_URL);
+  const telegramWebhookHost = optionalString(process.env.TELEGRAM_WEBHOOK_HOST) ?? "127.0.0.1";
+  const telegramWebhookPort = parsePositiveIntegerEnv(optionalString(process.env.TELEGRAM_WEBHOOK_PORT), 8080, "TELEGRAM_WEBHOOK_PORT");
+  const telegramWebhookPath = parseWebhookPath(optionalString(process.env.TELEGRAM_WEBHOOK_PATH));
+  const telegramWebhookSecret = optionalString(process.env.TELEGRAM_WEBHOOK_SECRET);
   const workspace = resolveWorkspace();
   const workspaceAllowedRoots = parsePathList(optionalString(process.env.WORKSPACE_ALLOWED_ROOTS));
   const workspaceWarnRoots = parsePathList(optionalString(process.env.WORKSPACE_WARN_ROOTS));
+  const stateBackend = parseStateBackend(optionalString(process.env.NORDRELAY_STATE_BACKEND));
   const maxFileSize = parseMaxFileSize(optionalString(process.env.MAX_FILE_SIZE));
   const artifactRetentionDays = parsePositiveNumberEnv(optionalString(process.env.ARTIFACT_RETENTION_DAYS), 7, "ARTIFACT_RETENTION_DAYS");
   const artifactMaxTurnDirs = parsePositiveIntegerEnv(optionalString(process.env.ARTIFACT_MAX_TURNS), 30, "ARTIFACT_MAX_TURNS");
@@ -186,6 +203,12 @@ export function loadConfig(): ConnectorConfig {
   const voicePreferredBackend = parseVoiceBackendPreference(optionalString(process.env.VOICE_PREFERRED_BACKEND));
   const voiceDefaultLanguage = optionalString(process.env.VOICE_DEFAULT_LANGUAGE);
   const voiceTranscribeOnly = parseBooleanEnv(optionalString(process.env.VOICE_TRANSCRIBE_ONLY), false);
+  const auditMaxEvents = parsePositiveIntegerEnv(optionalString(process.env.NORDRELAY_AUDIT_MAX_EVENTS), 1000, "NORDRELAY_AUDIT_MAX_EVENTS");
+  const sessionLockTtlMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_SESSION_LOCK_TTL_MS), 30 * 60 * 1000, "NORDRELAY_SESSION_LOCK_TTL_MS");
+
+  if (telegramTransport === "webhook" && !telegramWebhookUrl) {
+    throw new Error("TELEGRAM_TRANSPORT=webhook requires TELEGRAM_WEBHOOK_URL");
+  }
 
   return {
     telegramBotToken,
@@ -206,9 +229,16 @@ export function loadConfig(): ConnectorConfig {
     telegramNotifyMode,
     telegramQuietHours,
     telegramRedactPatterns,
+    telegramTransport,
+    telegramWebhookUrl,
+    telegramWebhookHost,
+    telegramWebhookPort,
+    telegramWebhookPath,
+    telegramWebhookSecret,
     workspace,
     workspaceAllowedRoots,
     workspaceWarnRoots,
+    stateBackend,
     maxFileSize,
     artifactRetentionDays,
     artifactMaxTurnDirs,
@@ -241,6 +271,8 @@ export function loadConfig(): ConnectorConfig {
     voicePreferredBackend,
     voiceDefaultLanguage,
     voiceTranscribeOnly,
+    auditMaxEvents,
+    sessionLockTtlMs,
   };
 }
 
@@ -503,6 +535,37 @@ function parseLogFormat(raw: string | undefined): ConnectorLogFormat {
 
   console.warn(`Invalid CONNECTOR_LOG_FORMAT value: "${raw}". Expected text or json. Falling back to "text".`);
   return "text";
+}
+
+function parseTelegramTransport(raw: string | undefined): "polling" | "webhook" {
+  if (!raw) {
+    return "polling";
+  }
+  if (raw === "polling" || raw === "webhook") {
+    return raw;
+  }
+  console.warn(`Invalid TELEGRAM_TRANSPORT value: "${raw}". Expected polling or webhook. Falling back to polling.`);
+  return "polling";
+}
+
+function parseWebhookPath(raw: string | undefined): string {
+  if (!raw) {
+    return "/telegram/webhook";
+  }
+  return raw.startsWith("/") ? raw : `/${raw}`;
+}
+
+function parseStateBackend(raw: string | undefined): StateBackendKind {
+  if (!raw) {
+    return "json";
+  }
+
+  if (raw === "json" || raw === "sqlite") {
+    return raw;
+  }
+
+  console.warn(`Invalid NORDRELAY_STATE_BACKEND value: "${raw}". Expected json or sqlite. Falling back to json.`);
+  return "json";
 }
 
 function parseLaunchProfiles(

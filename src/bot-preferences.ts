@@ -1,7 +1,5 @@
-import path from "node:path";
-
 import type { TelegramContextKey } from "./context-key.js";
-import { readJsonFileWithBackup, writeJsonFileAtomic } from "./persistence.js";
+import { createDocumentStore, type DocumentStore, type StateBackendKind } from "./state-backend.js";
 
 export type TelegramMirrorMode = "off" | "status" | "final" | "full";
 export type TelegramNotifyMode = "off" | "minimal" | "all";
@@ -27,11 +25,16 @@ interface PersistedPreferences {
 }
 
 export class BotPreferencesStore {
-  private readonly persistPath: string;
+  private readonly store: DocumentStore<PersistedPreferences>;
   private readonly contexts = new Map<TelegramContextKey, ContextPreferences>();
 
-  constructor(workspace: string) {
-    this.persistPath = path.join(workspace, ".nordrelay", "preferences.json");
+  constructor(workspace: string, backend: StateBackendKind = "json") {
+    this.store = createDocumentStore<PersistedPreferences>({
+      workspace,
+      fileName: "preferences.json",
+      sqliteKey: "preferences",
+      backend,
+    });
     this.load();
   }
 
@@ -60,15 +63,15 @@ export class BotPreferencesStore {
       version: 1,
       contexts: Object.fromEntries(this.contexts.entries()),
     };
-    writeJsonFileAtomic(this.persistPath, payload);
+    this.store.write(payload);
   }
 
   private load(): void {
-    const result = readJsonFileWithBackup<Partial<PersistedPreferences>>(this.persistPath);
-    if (!result.value?.contexts || typeof result.value.contexts !== "object") {
+    const payload = this.store.read();
+    if (!payload?.contexts || typeof payload.contexts !== "object") {
       return;
     }
-    for (const [contextKey, rawPreferences] of Object.entries(result.value.contexts)) {
+    for (const [contextKey, rawPreferences] of Object.entries(payload.contexts)) {
       const preferences = normalizePreferences(rawPreferences);
       if (preferences) {
         this.contexts.set(contextKey, preferences);

@@ -57,12 +57,15 @@ export function renderHelpMessage(): DualText {
       commands: [
         ["/start", "Welcome & status"],
         ["/help", "This reference"],
+        ["/channels", "Messaging adapter status"],
+        ["/agents", "Agent adapter status"],
         ["/voice", "Voice transcription status"],
         ["/status", "Connector runtime status"],
         ["/health", "Connector health report"],
         ["/version", "Connector version"],
         ["/tasks", "Current turn progress"],
         ["/activity", "Thread activity timeline"],
+        ["/audit", "Recent audit events"],
       ],
     },
     {
@@ -70,6 +73,9 @@ export function renderHelpMessage(): DualText {
       commands: [
         ["/logs", "Show connector log tail"],
         ["/diagnostics", "Connector diagnostics"],
+        ["/lock", "Lock session writes to you"],
+        ["/unlock", "Release session write lock"],
+        ["/locks", "List active write locks"],
         ["/restart", "Restart connector"],
         ["/update", "Pull, build, and restart"],
       ],

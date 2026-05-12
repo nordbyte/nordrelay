@@ -1,11 +1,9 @@
-import path from "node:path";
-
 import { createAgentSessionService } from "./agent-factory.js";
 import { CODEX_AGENT_CAPABILITIES, type AgentId, type AgentSessionService, type AgentSyncResult } from "./agent.js";
 import { findLaunchProfile } from "./codex-launch.js";
 import type { ConnectorConfig } from "./config.js";
 import type { TelegramContextKey } from "./context-key.js";
-import { readJsonFileWithBackup, writeJsonFileAtomic } from "./persistence.js";
+import { createDocumentStore, type DocumentStore } from "./state-backend.js";
 
 export interface ContextMetadata {
   contextKey: TelegramContextKey;
@@ -23,11 +21,16 @@ export interface ContextMetadata {
 export class SessionRegistry {
   private readonly sessions = new Map<TelegramContextKey, AgentSessionService>();
   private readonly metadata = new Map<TelegramContextKey, ContextMetadata>();
-  private readonly persistPath: string;
+  private readonly store: DocumentStore<ContextMetadata[]>;
   private onRemoveCallback?: (contextKey: TelegramContextKey) => void;
 
   constructor(private readonly config: ConnectorConfig) {
-    this.persistPath = path.join(config.workspace, ".nordrelay", "contexts.json");
+    this.store = createDocumentStore<ContextMetadata[]>({
+      workspace: config.workspace,
+      fileName: "contexts.json",
+      sqliteKey: "contexts",
+      backend: config.stateBackend,
+    });
     this.loadPersistedMetadata();
   }
 
@@ -187,7 +190,7 @@ export class SessionRegistry {
   private persistMetadata(): void {
     try {
       const data = [...this.metadata.values()];
-      writeJsonFileAtomic(this.persistPath, data);
+      this.store.write(data);
     } catch (error) {
       console.warn(
         "Failed to persist context metadata:",
@@ -198,7 +201,7 @@ export class SessionRegistry {
 
   private loadPersistedMetadata(): void {
     try {
-      const data = readJsonFileWithBackup<ContextMetadata[]>(this.persistPath).value;
+      const data = this.store.read();
       if (!Array.isArray(data)) {
         return;
       }

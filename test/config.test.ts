@@ -28,6 +28,12 @@ describe("loadConfig", () => {
     delete process.env.TELEGRAM_NOTIFY_MODE;
     delete process.env.TELEGRAM_QUIET_HOURS;
     delete process.env.TELEGRAM_REDACT_PATTERNS;
+    delete process.env.TELEGRAM_TRANSPORT;
+    delete process.env.TELEGRAM_WEBHOOK_URL;
+    delete process.env.TELEGRAM_WEBHOOK_HOST;
+    delete process.env.TELEGRAM_WEBHOOK_PORT;
+    delete process.env.TELEGRAM_WEBHOOK_PATH;
+    delete process.env.TELEGRAM_WEBHOOK_SECRET;
     delete process.env.CODEX_API_KEY;
     delete process.env.CODEX_MODEL;
     delete process.env.CODEX_SYNC_INTERVAL_MS;
@@ -57,6 +63,9 @@ describe("loadConfig", () => {
     delete process.env.PI_DEFAULT_THINKING;
     delete process.env.WORKSPACE_ALLOWED_ROOTS;
     delete process.env.WORKSPACE_WARN_ROOTS;
+    delete process.env.NORDRELAY_STATE_BACKEND;
+    delete process.env.NORDRELAY_AUDIT_MAX_EVENTS;
+    delete process.env.NORDRELAY_SESSION_LOCK_TTL_MS;
     delete process.env.ENABLE_TELEGRAM_LOGIN;
     delete process.env.ENABLE_TELEGRAM_REACTIONS;
     delete process.env.VOICE_PREFERRED_BACKEND;
@@ -128,9 +137,16 @@ describe("loadConfig", () => {
       telegramNotifyMode: "minimal",
       telegramQuietHours: null,
       telegramRedactPatterns: [],
+      telegramTransport: "polling",
+      telegramWebhookUrl: undefined,
+      telegramWebhookHost: "127.0.0.1",
+      telegramWebhookPort: 8080,
+      telegramWebhookPath: "/telegram/webhook",
+      telegramWebhookSecret: undefined,
       workspace: process.cwd(),
       workspaceAllowedRoots: [],
       workspaceWarnRoots: [],
+      stateBackend: "json",
       maxFileSize: 20 * 1024 * 1024,
       artifactRetentionDays: 7,
       artifactMaxTurnDirs: 30,
@@ -185,6 +201,8 @@ describe("loadConfig", () => {
       voicePreferredBackend: "auto",
       voiceDefaultLanguage: undefined,
       voiceTranscribeOnly: false,
+      auditMaxEvents: 1000,
+      sessionLockTtlMs: 1_800_000,
     });
   });
 
@@ -214,6 +232,12 @@ describe("loadConfig", () => {
     expect(config.telegramNotifyMode).toBe("minimal");
     expect(config.telegramQuietHours).toBeNull();
     expect(config.telegramRedactPatterns).toEqual([]);
+    expect(config.telegramTransport).toBe("polling");
+    expect(config.telegramWebhookUrl).toBeUndefined();
+    expect(config.telegramWebhookHost).toBe("127.0.0.1");
+    expect(config.telegramWebhookPort).toBe(8080);
+    expect(config.telegramWebhookPath).toBe("/telegram/webhook");
+    expect(config.telegramWebhookSecret).toBeUndefined();
     expect(config.maxFileSize).toBe(20 * 1024 * 1024);
     expect(config.artifactRetentionDays).toBe(7);
     expect(config.artifactMaxTurnDirs).toBe(30);
@@ -221,6 +245,9 @@ describe("loadConfig", () => {
     expect(config.artifactIgnoreDirs).toEqual([]);
     expect(config.artifactIgnoreGlobs).toEqual([]);
     expect(config.telegramAutoSendArtifacts).toBe(false);
+    expect(config.stateBackend).toBe("json");
+    expect(config.auditMaxEvents).toBe(1000);
+    expect(config.sessionLockTtlMs).toBe(1_800_000);
     expect(config.codexSandboxMode).toBe("workspace-write");
     expect(config.codexApprovalPolicy).toBe("never");
     expect(config.launchProfiles).toEqual([
@@ -262,6 +289,36 @@ describe("loadConfig", () => {
     expect(config.workspaceAllowedRoots).toEqual([]);
     expect(config.workspaceWarnRoots).toEqual([]);
     expect(config.workspace).toBe(process.cwd());
+  });
+
+  it("parses webhook transport settings", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
+    process.env.TELEGRAM_TRANSPORT = "webhook";
+    process.env.TELEGRAM_WEBHOOK_URL = "https://relay.example";
+    process.env.TELEGRAM_WEBHOOK_HOST = "0.0.0.0";
+    process.env.TELEGRAM_WEBHOOK_PORT = "9443";
+    process.env.TELEGRAM_WEBHOOK_PATH = "telegram";
+    process.env.TELEGRAM_WEBHOOK_SECRET = "secret";
+    process.env.NORDRELAY_STATE_BACKEND = "sqlite";
+
+    const config = loadConfig();
+
+    expect(config.telegramTransport).toBe("webhook");
+    expect(config.telegramWebhookUrl).toBe("https://relay.example");
+    expect(config.telegramWebhookHost).toBe("0.0.0.0");
+    expect(config.telegramWebhookPort).toBe(9443);
+    expect(config.telegramWebhookPath).toBe("/telegram");
+    expect(config.telegramWebhookSecret).toBe("secret");
+    expect(config.stateBackend).toBe("sqlite");
+  });
+
+  it("requires a webhook URL when webhook transport is enabled", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
+    process.env.TELEGRAM_TRANSPORT = "webhook";
+
+    expect(() => loadConfig()).toThrow("TELEGRAM_TRANSPORT=webhook requires TELEGRAM_WEBHOOK_URL");
   });
 
   it("throws when a user id is invalid", () => {

@@ -52,11 +52,7 @@ jobs:
             exit 0
           fi
 
-          if [ -n "${NODE_AUTH_TOKEN:-}" ]; then
-            npm publish --access public --ignore-scripts --registry=https://registry.npmjs.org
-          else
-            npm publish --access public --ignore-scripts --provenance --registry=https://registry.npmjs.org
-          fi
+          npm publish --access public --ignore-scripts --provenance --registry=https://registry.npmjs.org
 
   github-packages:
     name: GitHub Packages
