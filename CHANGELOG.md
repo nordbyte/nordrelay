@@ -4,6 +4,7 @@
 
 Commits since `v0.3.0`:
 
+- Move runtime home to .nordrelay.
 - Improve dashboard live status handling.
 - Separate dashboard contexts from Telegram sessions.
 - Expand dashboard controls and activity views.
