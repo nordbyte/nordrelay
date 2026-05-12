@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import fsp from "node:fs/promises";
-import http from "node:http";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -351,23 +350,40 @@ async function commandWeb(options) {
   loadEnvFiles(options.home);
   const host = options.host || "127.0.0.1";
   const port = Number.isFinite(options.port) ? options.port : 31878;
-  const server = http.createServer(async (req, res) => {
-    if (req.url === "/healthz") {
-      res.writeHead(200, { "content-type": "text/plain" });
-      res.end("ok\n");
-      return;
+  const entry = await resolveWebRuntimeEntry();
+  if (!entry) {
+    throw new Error(`Missing dashboard runtime. Run \`npm install\` and \`npm run build\` in ${RUNTIME_ROOT}.`);
+  }
+
+  const env = {
+    ...process.env,
+    NORDRELAY_HOME: options.home,
+    NORDRELAY_SOURCE_ROOT: RUNTIME_ROOT,
+    NORDRELAY_DASHBOARD_HOST: host,
+    NORDRELAY_DASHBOARD_PORT: String(port),
+  };
+  const child = spawn(entry.command, [...entry.args, "--host", host, "--port", String(port), "--home", options.home], {
+    cwd: RUNTIME_ROOT,
+    env,
+    stdio: "inherit",
+  });
+
+  const forwardSignal = (signal) => {
+    if (isProcessRunning(child.pid)) {
+      child.kill(signal);
     }
-    const html = await renderDashboard(options);
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end(html);
+  };
+  process.once("SIGINT", () => forwardSignal("SIGINT"));
+  process.once("SIGTERM", () => forwardSignal("SIGTERM"));
+
+  const exit = await new Promise((resolve) => {
+    child.once("exit", (code, signal) => resolve({ code, signal }));
   });
-  await new Promise((resolve) => server.listen(port, host, resolve));
-  console.log(`NordRelay dashboard: http://${host}:${port}/`);
-  await new Promise((resolve) => {
-    const shutdown = () => server.close(resolve);
-    process.once("SIGINT", shutdown);
-    process.once("SIGTERM", shutdown);
-  });
+  if (exit.signal) {
+    process.kill(process.pid, exit.signal);
+    return;
+  }
+  process.exit(exit.code ?? 0);
 }
 
 async function commandForeground(options) {
@@ -454,6 +470,21 @@ async function resolveRuntimeEntry() {
   return null;
 }
 
+async function resolveWebRuntimeEntry() {
+  const distEntry = path.join(RUNTIME_ROOT, "dist", "web-dashboard.js");
+  if (fs.existsSync(distEntry)) {
+    return { command: process.execPath, args: [distEntry] };
+  }
+
+  const tsEntry = path.join(RUNTIME_ROOT, "src", "web-dashboard.ts");
+  const tsxBin = path.join(RUNTIME_ROOT, "node_modules", ".bin", process.platform === "win32" ? "tsx.cmd" : "tsx");
+  if (fs.existsSync(tsEntry) && fs.existsSync(tsxBin)) {
+    return { command: tsxBin, args: [tsEntry] };
+  }
+
+  return null;
+}
+
 function findRuntimeRoot() {
   const candidates = [
     process.env.NORDRELAY_SOURCE_ROOT,
@@ -527,101 +558,6 @@ function validateStateBackend() {
   } catch {
     return false;
   }
-}
-
-async function renderDashboard(options) {
-  const state = await readJson(options.stateFile, {});
-  const workspace = state.workspace || process.cwd();
-  const contexts = readStateDocument(workspace, "contexts.json", "contexts", []);
-  const prompts = readStateDocument(workspace, "prompts.json", "prompts", {});
-  const audit = readStateDocument(workspace, "audit.json", "audit", {});
-  const logTail = await readTextTail(options.logFile, 80);
-  const queueCount = Object.values(prompts.queues || {}).reduce((sum, queue) => sum + (Array.isArray(queue) ? queue.length : 0), 0);
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NordRelay Dashboard</title>
-  <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f7f7f4;color:#181818}
-    main{max-width:1100px;margin:0 auto;padding:32px}
-    h1{font-size:28px;margin:0 0 18px}
-    section{margin:18px 0;padding:18px;border:1px solid #d9d9d2;background:#fff;border-radius:8px}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
-    .metric{padding:12px;border:1px solid #ecece6;border-radius:6px;background:#fbfbf8}
-    .label{color:#5f625c;font-size:12px;text-transform:uppercase}
-    .value{font-size:20px;margin-top:4px}
-    pre{white-space:pre-wrap;word-break:break-word;max-height:360px;overflow:auto;background:#111;color:#f1f1ed;padding:14px;border-radius:6px}
-    code{background:#efefea;padding:2px 4px;border-radius:4px}
-  </style>
-</head>
-<body>
-<main>
-  <h1>NordRelay Dashboard</h1>
-  <section class="grid">
-    ${metric("Status", state.status || "unknown")}
-    ${metric("Workspace", workspace)}
-    ${metric("Contexts", Array.isArray(contexts) ? contexts.length : 0)}
-    ${metric("Queued prompts", queueCount)}
-    ${metric("Audit events", Array.isArray(audit.events) ? audit.events.length : 0)}
-  </section>
-  <section><h2>Runtime</h2><pre>${escapeHtml(JSON.stringify(state, null, 2))}</pre></section>
-  <section><h2>Recent contexts</h2><pre>${escapeHtml(JSON.stringify(Array.isArray(contexts) ? contexts.slice(0, 20) : contexts, null, 2))}</pre></section>
-  <section><h2>Log tail</h2><pre>${escapeHtml(logTail)}</pre></section>
-</main>
-</body>
-</html>`;
-}
-
-function readStateDocument(workspace, fileName, sqliteKey, fallback) {
-  if ((process.env.NORDRELAY_STATE_BACKEND || "json") === "sqlite") {
-    const sqlite = readSqliteDocument(path.join(workspace, ".nordrelay", "state.sqlite"), sqliteKey);
-    if (sqlite !== undefined) return sqlite;
-  }
-  return readJsonSync(path.join(workspace, ".nordrelay", fileName), fallback);
-}
-
-function readJsonSync(filePath, fallback) {
-  try {
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch {
-    return fallback;
-  }
-}
-
-function readSqliteDocument(filePath, sqliteKey) {
-  if (!fs.existsSync(filePath)) return undefined;
-  try {
-    const Database = require("better-sqlite3");
-    const db = new Database(filePath, { readonly: true, fileMustExist: true });
-    const row = db.prepare("SELECT json FROM documents WHERE key = ?").get(sqliteKey);
-    db.close?.();
-    return typeof row?.json === "string" ? JSON.parse(row.json) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function metric(label, value) {
-  return `<div class="metric"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(String(value))}</div></div>`;
-}
-
-async function readTextTail(filePath, lines) {
-  try {
-    const text = await fsp.readFile(filePath, "utf8");
-    return text.split(/\r?\n/).slice(-lines).join("\n").trim();
-  } catch (error) {
-    return `Cannot read ${filePath}: ${error instanceof Error ? error.message : String(error)}`;
-  }
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function sleep(ms) {

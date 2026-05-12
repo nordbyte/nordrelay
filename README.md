@@ -138,7 +138,10 @@ Operations:
 - Context metadata, queues, and preferences are written atomically with backup recovery.
 - Context metadata, queues, preferences, audit events, and locks can use JSON files or the optional SQLite state backend with `NORDRELAY_STATE_BACKEND=sqlite`.
 - Runtime state and logs are written under `~/.codex/nordrelay/`.
-- `nordrelay init` creates a private runtime config, `nordrelay doctor` validates host prerequisites, and `nordrelay web` starts a local dashboard.
+- `nordrelay init` creates a private runtime config, `nordrelay doctor` validates host prerequisites, and `nordrelay web` starts a full local WebUI dashboard.
+- The WebUI has responsive header/sidebar/footer navigation, live chat streaming, session controls, queue/artifact/log/diagnostic views, and settings management.
+- The WebUI exposes REST and SSE endpoints for chat streaming, sessions, settings, queue, artifacts, logs, health, and diagnostics.
+- Binding the dashboard to `0.0.0.0` is refused unless `NORDRELAY_DASHBOARD_TOKEN` or `NORDRELAY_DASHBOARD_USER` plus `NORDRELAY_DASHBOARD_PASSWORD` is configured.
 - Telegram can run with long polling or an HTTP webhook via `TELEGRAM_TRANSPORT=webhook`.
 - Version freshness checks are cached with `NORDRELAY_VERSION_CACHE_TTL_MS` to keep `/version` responsive.
 - CI includes typecheck, tests, package dry run, npm audit, and a separate secret-scan workflow.
@@ -283,6 +286,46 @@ Runtime files:
 - Log file: `~/.codex/nordrelay/nordrelay.log`
 - Home override: `NORDRELAY_HOME=/custom/path`
 - Local dashboard: `nordrelay web --host 127.0.0.1 --port 31878`
+
+## WebUI Dashboard
+
+Start the local WebUI:
+
+```bash
+nordrelay web
+```
+
+Open:
+
+```text
+http://127.0.0.1:31878/
+```
+
+The dashboard is a second NordRelay client next to Telegram. It can:
+
+- Start a new Codex or Pi session.
+- Switch or attach existing sessions.
+- Send prompts and receive streamed text/tool/plan updates through Server-Sent Events.
+- Abort turns, hand sessions back to the native CLI, and inspect the active session.
+- Manage queued prompts.
+- Browse, download, ZIP, and delete artifacts.
+- Edit all supported runtime settings from the Settings page.
+- View logs, diagnostics, enabled channels, and agent adapters.
+
+Dashboard API endpoints are served under `/api/*`. Streaming uses `GET /api/events`.
+
+Dashboard auth:
+
+```dotenv
+NORDRELAY_DASHBOARD_HOST=127.0.0.1
+NORDRELAY_DASHBOARD_PORT=31878
+NORDRELAY_DASHBOARD_TOKEN=replace-with-random-token
+# or:
+NORDRELAY_DASHBOARD_USER=admin
+NORDRELAY_DASHBOARD_PASSWORD=replace-with-random-password
+```
+
+When `NORDRELAY_DASHBOARD_HOST=0.0.0.0`, NordRelay refuses to start the dashboard unless token or basic auth is configured. Login cookies use `SameSite=Strict`, and every dashboard route, API endpoint, SSE stream, artifact download, and health endpoint requires the same auth.
 
 Webhook mode:
 
@@ -559,6 +602,15 @@ Agent selection:
 - `NORDRELAY_AUDIT_MAX_EVENTS`: maximum audit events retained. Defaults to `1000`.
 - `NORDRELAY_SESSION_LOCK_TTL_MS`: session write-lock TTL. Defaults to `1800000`.
 - `NORDRELAY_VERSION_CACHE_TTL_MS`: npm version freshness cache TTL. Defaults to `3600000`; set `0` to disable.
+
+Dashboard:
+
+- `NORDRELAY_DASHBOARD_HOST`: dashboard bind host. Defaults to `127.0.0.1`.
+- `NORDRELAY_DASHBOARD_PORT`: dashboard bind port. Defaults to `31878`.
+- `NORDRELAY_DASHBOARD_TOKEN`: optional dashboard bearer/login token. Required when binding to `0.0.0.0` unless basic auth is configured.
+- `NORDRELAY_DASHBOARD_USER`: optional dashboard basic-auth user.
+- `NORDRELAY_DASHBOARD_PASSWORD`: optional dashboard basic-auth password. Required with `NORDRELAY_DASHBOARD_USER`.
+- `NORDRELAY_ENV_FILE`: optional env file edited by the dashboard settings page. Defaults to `~/.codex/nordrelay/nordrelay.env` when present, otherwise `.env` in the runtime root.
 
 Codex:
 
