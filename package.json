@@ -1,6 +1,6 @@
 {
   "name": "@nordbyte/nordrelay",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Remote control plane for coding agents across messaging channels.",
   "type": "module",
   "author": "Ricardo",
@@ -30,6 +30,7 @@
     "dist/",
     "plugins/",
     "launchd/",
+    "CHANGELOG.md",
     ".env.example",
     "Dockerfile",
     "docker-compose.yml"

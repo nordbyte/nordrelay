@@ -9,7 +9,7 @@ import readline from "node:readline/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const VERSION = "0.2.1";
+const VERSION = "0.3.0";
 const require = createRequire(import.meta.url);
 const APP_NAME = "nordrelay";
 const SCRIPT_PATH = fileURLToPath(import.meta.url);

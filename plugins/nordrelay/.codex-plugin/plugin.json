@@ -1,6 +1,6 @@
 {
   "name": "nordrelay",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Run a remote-control bridge for coding agents. The current adapter connects Codex sessions to Telegram with streaming replies, multi-session controls, attachments, voice input, model selection, thread browsing, and handback.",
   "author": {
     "name": "Ricardo",
