@@ -2,12 +2,12 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-import type { CodexPromptInput } from "./codex-session.js";
+import type { AgentPromptInput } from "./agent.js";
 import type { TelegramContextKey } from "./context-key.js";
 import { readJsonFileWithBackup, writeJsonFileAtomic } from "./persistence.js";
 
 export interface PromptEnvelope {
-  input: CodexPromptInput;
+  input: AgentPromptInput;
   description: string;
   artifactOutDir?: string;
 }
@@ -229,7 +229,7 @@ export class PromptStore {
   }
 }
 
-export function describePromptInput(input: CodexPromptInput): string {
+export function describePromptInput(input: AgentPromptInput): string {
   if (typeof input === "string") {
     return trimDescription(input);
   }
@@ -247,7 +247,7 @@ export function describePromptInput(input: CodexPromptInput): string {
   return parts.join(" · ") || "prompt";
 }
 
-export function toPromptEnvelope(input: CodexPromptInput, artifactOutDir?: string): PromptEnvelope {
+export function toPromptEnvelope(input: AgentPromptInput, artifactOutDir?: string): PromptEnvelope {
   return {
     input,
     artifactOutDir,
@@ -277,7 +277,7 @@ function isQueuedPrompt(value: unknown): value is QueuedPrompt {
     ((value as QueuedPrompt).lastError === undefined || typeof (value as QueuedPrompt).lastError === "string");
 }
 
-function isCodexPromptInput(value: unknown): value is CodexPromptInput {
+function isCodexPromptInput(value: unknown): value is AgentPromptInput {
   if (typeof value === "string") {
     return true;
   }

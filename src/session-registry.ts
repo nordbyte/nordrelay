@@ -1,24 +1,27 @@
 import path from "node:path";
 
+import { createAgentSessionService } from "./agent-factory.js";
+import { CODEX_AGENT_CAPABILITIES, type AgentId, type AgentSessionService, type AgentSyncResult } from "./agent.js";
 import { findLaunchProfile } from "./codex-launch.js";
-import { CodexSessionService, type CodexSyncResult } from "./codex-session.js";
 import type { ConnectorConfig } from "./config.js";
 import type { TelegramContextKey } from "./context-key.js";
 import { readJsonFileWithBackup, writeJsonFileAtomic } from "./persistence.js";
 
 export interface ContextMetadata {
   contextKey: TelegramContextKey;
+  agentId?: AgentId;
   threadId: string | null;
   workspace: string;
   model?: string;
   reasoningEffort?: string;
   launchProfileId?: string;
+  sessionPath?: string;
   pinnedThreadIds?: string[];
   updatedAt: number;
 }
 
 export class SessionRegistry {
-  private readonly sessions = new Map<TelegramContextKey, CodexSessionService>();
+  private readonly sessions = new Map<TelegramContextKey, AgentSessionService>();
   private readonly metadata = new Map<TelegramContextKey, ContextMetadata>();
   private readonly persistPath: string;
   private onRemoveCallback?: (contextKey: TelegramContextKey) => void;
@@ -30,29 +33,35 @@ export class SessionRegistry {
 
   async getOrCreate(
     contextKey: TelegramContextKey,
-    options?: { deferThreadStart?: boolean },
-  ): Promise<CodexSessionService> {
+    options?: { deferThreadStart?: boolean; agentId?: AgentId },
+  ): Promise<AgentSessionService> {
     let session = this.sessions.get(contextKey);
-    if (session) {
+    if (session && (!options?.agentId || session.getInfo().agentId === options.agentId)) {
       return session;
+    }
+    if (session && options?.agentId && session.getInfo().agentId !== options.agentId) {
+      session.dispose();
+      this.sessions.delete(contextKey);
     }
 
     const meta = this.metadata.get(contextKey);
+    const agentId = options?.agentId ?? meta?.agentId ?? this.config.defaultAgent ?? "codex";
     const launchProfileId = resolveLaunchProfileId(this.config, meta);
-    session = await CodexSessionService.create(this.config, {
+    session = await createAgentSessionService(this.config, agentId, {
       workspace: meta?.workspace,
       model: meta?.model,
       reasoningEffort: meta?.reasoningEffort,
       launchProfileId,
       deferThreadStart: options?.deferThreadStart && !meta?.threadId,
       resumeThreadId: meta?.threadId ?? undefined,
+      sessionPath: meta?.sessionPath,
     });
 
     this.sessions.set(contextKey, session);
     return session;
   }
 
-  get(contextKey: TelegramContextKey): CodexSessionService | undefined {
+  get(contextKey: TelegramContextKey): AgentSessionService | undefined {
     return this.sessions.get(contextKey);
   }
 
@@ -64,7 +73,29 @@ export class SessionRegistry {
     return this.metadata.has(contextKey);
   }
 
-  updateMetadata(contextKey: TelegramContextKey, session: CodexSessionService): void {
+  async switchAgent(contextKey: TelegramContextKey, agentId: AgentId): Promise<AgentSessionService> {
+    const current = this.sessions.get(contextKey);
+    if (current?.getInfo().agentId === agentId) {
+      return current;
+    }
+    current?.dispose();
+    this.sessions.delete(contextKey);
+
+    const previous = this.metadata.get(contextKey);
+    const next: ContextMetadata = {
+      contextKey,
+      agentId,
+      threadId: null,
+      workspace: previous?.workspace ?? this.config.workspace,
+      pinnedThreadIds: previous?.pinnedThreadIds,
+      updatedAt: Date.now(),
+    };
+    this.metadata.set(contextKey, next);
+    this.persistMetadata();
+    return this.getOrCreate(contextKey, { deferThreadStart: true, agentId });
+  }
+
+  updateMetadata(contextKey: TelegramContextKey, session: AgentSessionService): void {
     const info = session.getInfo();
     const previous = this.metadata.get(contextKey);
     const pinnedThreadIds = previous?.pinnedThreadIds ?? [];
@@ -77,6 +108,12 @@ export class SessionRegistry {
       launchProfileId: info.nextLaunchProfileId ?? info.launchProfileId,
       updatedAt: Date.now(),
     };
+    if (info.agentId && info.agentId !== "codex") {
+      next.agentId = info.agentId;
+    }
+    if (info.sessionPath) {
+      next.sessionPath = info.sessionPath;
+    }
     if (pinnedThreadIds.length > 0) {
       next.pinnedThreadIds = pinnedThreadIds;
     }
@@ -112,9 +149,12 @@ export class SessionRegistry {
     return [...this.metadata.values()].sort((left, right) => right.updatedAt - left.updatedAt);
   }
 
-  syncAllFromCodexState(options: { reattach?: boolean } = {}): Array<{ contextKey: TelegramContextKey; result: CodexSyncResult }> {
-    const results: Array<{ contextKey: TelegramContextKey; result: CodexSyncResult }> = [];
+  syncAllFromCodexState(options: { reattach?: boolean } = {}): Array<{ contextKey: TelegramContextKey; result: AgentSyncResult }> {
+    const results: Array<{ contextKey: TelegramContextKey; result: AgentSyncResult }> = [];
     for (const [contextKey, session] of this.sessions.entries()) {
+      if (!(session.getInfo().capabilities ?? CODEX_AGENT_CAPABILITIES).externalActivity) {
+        continue;
+      }
       const result = session.syncFromCodexState(options);
       if (result.changed) {
         this.updateMetadata(contextKey, session);

@@ -48,6 +48,13 @@ describe("loadConfig", () => {
     delete process.env.ARTIFACT_IGNORE_DIRS;
     delete process.env.ARTIFACT_IGNORE_GLOBS;
     delete process.env.TELEGRAM_AUTO_SEND_ARTIFACTS;
+    delete process.env.NORDRELAY_CODEX_ENABLED;
+    delete process.env.NORDRELAY_PI_ENABLED;
+    delete process.env.NORDRELAY_DEFAULT_AGENT;
+    delete process.env.PI_CLI_PATH;
+    delete process.env.PI_SESSION_DIR;
+    delete process.env.PI_DEFAULT_MODEL;
+    delete process.env.PI_DEFAULT_THINKING;
     delete process.env.WORKSPACE_ALLOWED_ROOTS;
     delete process.env.WORKSPACE_WARN_ROOTS;
     delete process.env.ENABLE_TELEGRAM_LOGIN;
@@ -131,6 +138,7 @@ describe("loadConfig", () => {
       artifactIgnoreDirs: [],
       artifactIgnoreGlobs: [],
       telegramAutoSendArtifacts: false,
+      codexEnabled: true,
       codexApiKey: "secret-key",
       codexModel: "o3",
       codexSyncIntervalMs: 10_000,
@@ -163,6 +171,12 @@ describe("loadConfig", () => {
       ],
       defaultLaunchProfileId: "default",
       enableUnsafeLaunchProfiles: false,
+      piEnabled: false,
+      piCliPath: undefined,
+      piSessionDir: undefined,
+      piDefaultModel: undefined,
+      piDefaultThinking: "medium",
+      defaultAgent: "codex",
       toolVerbosity: "all",
       logFormat: "text",
       showTurnTokenUsage: false,
@@ -182,6 +196,13 @@ describe("loadConfig", () => {
     const config = loadConfig();
 
     expect(config.codexApiKey).toBeUndefined();
+    expect(config.codexEnabled).toBe(true);
+    expect(config.piEnabled).toBe(false);
+    expect(config.defaultAgent).toBe("codex");
+    expect(config.piCliPath).toBeUndefined();
+    expect(config.piSessionDir).toBeUndefined();
+    expect(config.piDefaultModel).toBeUndefined();
+    expect(config.piDefaultThinking).toBe("medium");
     expect(config.codexModel).toBeUndefined();
     expect(config.codexSyncIntervalMs).toBe(10_000);
     expect(config.codexExternalBusyCheckMs).toBe(5_000);
@@ -452,6 +473,40 @@ describe("loadConfig", () => {
 
     expect(config.codexExternalBusyCheckMs).toBe(1500);
     expect(config.codexExternalBusyStaleMs).toBe(600_000);
+  });
+
+  it("parses Pi agent settings", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
+    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
+    process.env.NORDRELAY_PI_ENABLED = "true";
+    process.env.NORDRELAY_DEFAULT_AGENT = "pi";
+    process.env.PI_CLI_PATH = "/usr/local/bin/pi";
+    process.env.PI_SESSION_DIR = "/tmp/pi-sessions";
+    process.env.PI_DEFAULT_MODEL = "openai-codex/gpt-5.5";
+    process.env.PI_DEFAULT_THINKING = "xhigh";
+
+    const config = loadConfig();
+
+    expect(config.piEnabled).toBe(true);
+    expect(config.defaultAgent).toBe("pi");
+    expect(config.piCliPath).toBe("/usr/local/bin/pi");
+    expect(config.piSessionDir).toBe("/tmp/pi-sessions");
+    expect(config.piDefaultModel).toBe("openai-codex/gpt-5.5");
+    expect(config.piDefaultThinking).toBe("xhigh");
+  });
+
+  it("rejects a default agent that is not enabled", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
+    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
+    process.env.NORDRELAY_CODEX_ENABLED = "false";
+    process.env.NORDRELAY_DEFAULT_AGENT = "codex";
+
+    expect(() => loadConfig()).toThrow("At least one agent must be enabled");
+
+    process.env.NORDRELAY_PI_ENABLED = "true";
+    expect(() => loadConfig()).toThrow("NORDRELAY_DEFAULT_AGENT=codex requires NORDRELAY_CODEX_ENABLED=true");
   });
 
   it("parses CONNECTOR_LOG_FORMAT", () => {

@@ -20,7 +20,6 @@ import {
   listThreads,
   listWorkspaces,
   type CodexSessionUsage,
-  type CodexModelRecord,
   type CodexThreadRecord,
 } from "./codex-state.js";
 import {
@@ -29,19 +28,23 @@ import {
   formatLaunchProfileBehavior,
   type CodexLaunchProfile,
 } from "./codex-launch.js";
+import {
+  CODEX_AGENT_CAPABILITIES,
+  type AgentFastModeResult,
+  type AgentModelRecord,
+  type AgentPromptInput,
+  type AgentSessionCallbacks,
+  type AgentSessionInfo,
+  type AgentSettingResult,
+  type AgentSyncResult,
+  type AgentThreadRecord,
+} from "./agent.js";
 
-export interface FastModeResult {
-  enabled: boolean;
-  profile: CodexLaunchProfile;
-  appliedToActiveThread: boolean;
-}
+export type FastModeResult = AgentFastModeResult;
 
-export interface SessionSettingResult<TValue extends string = string> {
-  value: TValue;
-  appliedToActiveThread: boolean;
-}
+export type SessionSettingResult<TValue extends string = string> = AgentSettingResult<TValue>;
 
-export interface CodexSyncResult {
+export interface CodexSyncResult extends AgentSyncResult {
   threadId: string | null;
   changed: boolean;
   reattached: boolean;
@@ -49,21 +52,11 @@ export interface CodexSyncResult {
   info: CodexSessionInfo;
 }
 
-export interface CodexSessionCallbacks {
-  onTextDelta: (delta: string) => void;
-  onToolStart: (toolName: string, toolCallId: string) => void;
-  onToolUpdate: (toolCallId: string, partialResult: string) => void;
-  onToolEnd: (toolCallId: string, isError: boolean) => void;
-  onAgentEnd: () => void;
-  onTodoUpdate?: (items: Array<{ text: string; completed: boolean }>) => void;
-  onTurnComplete?: (usage: {
-    inputTokens: number;
-    cachedInputTokens: number;
-    outputTokens: number;
-  }) => void;
-}
+export type CodexSessionCallbacks = AgentSessionCallbacks;
 
-export interface CodexSessionInfo {
+export interface CodexSessionInfo extends AgentSessionInfo {
+  agentId: "codex";
+  agentLabel: "Codex";
   threadId: string | null;
   workspace: string;
   model?: string;
@@ -96,7 +89,7 @@ export interface CreateOptions {
   resumeThreadId?: string;
 }
 
-export type CodexPromptInput = string | { text?: string; imagePaths?: string[]; stagedFileInstructions?: string };
+export type CodexPromptInput = AgentPromptInput;
 
 export class CodexSessionService {
   private codex: Codex | null = null;
@@ -150,6 +143,8 @@ export class CodexSessionService {
     const codexFastMode = readCodexFastMode();
     this.lastObservedFastMode = codexFastMode;
     const info: CodexSessionInfo = {
+      agentId: "codex",
+      agentLabel: "Codex",
       threadId: activeThreadId,
       workspace: this.currentWorkspace,
       model: this.currentModel ?? this.config.codexModel,
@@ -160,7 +155,13 @@ export class CodexSessionService {
       approvalPolicy: effectiveLaunchProfile.approvalPolicy,
       fastMode: codexFastMode ?? (effectiveLaunchProfile.approvalPolicy === "never"),
       unsafeLaunch: effectiveLaunchProfile.unsafe,
+      capabilities: CODEX_AGENT_CAPABILITIES,
     };
+    Object.defineProperties(info, {
+      agentId: { value: "codex", enumerable: false },
+      agentLabel: { value: "Codex", enumerable: false },
+      capabilities: { value: CODEX_AGENT_CAPABILITIES, enumerable: false },
+    });
 
     if (this.currentReasoningEffort) {
       info.reasoningEffort = this.currentReasoningEffort;
@@ -388,16 +389,21 @@ export class CodexSessionService {
     return this.getInfo();
   }
 
-  listAllSessions(limit?: number): CodexThreadRecord[] {
-    return listThreads(limit ?? 20);
+  listAllSessions(limit?: number): AgentThreadRecord[] {
+    return listThreads(limit ?? 20).map(toAgentThreadRecord);
   }
 
   listWorkspaces(): string[] {
     return listWorkspaces();
   }
 
-  listModels(): CodexModelRecord[] {
+  listModels(): AgentModelRecord[] {
     return listModels();
+  }
+
+  getSessionRecord(threadId: string): AgentThreadRecord | null {
+    const record = getThread(threadId);
+    return record ? toAgentThreadRecord(record) : null;
   }
 
   setModel(slug: string): string {
@@ -412,13 +418,13 @@ export class CodexSessionService {
     return { value: slug, appliedToActiveThread };
   }
 
-  setReasoningEffort(effort: ModelReasoningEffort): void {
-    this.currentReasoningEffort = effort;
+  setReasoningEffort(effort: string): void {
+    this.currentReasoningEffort = effort as ModelReasoningEffort;
   }
 
-  setReasoningEffortForCurrentSession(effort: ModelReasoningEffort): SessionSettingResult<ModelReasoningEffort> {
+  setReasoningEffortForCurrentSession(effort: string): SessionSettingResult {
     this.ensureIdle("change reasoning effort");
-    this.currentReasoningEffort = effort;
+    this.currentReasoningEffort = effort as ModelReasoningEffort;
     const appliedToActiveThread = this.reattachActiveThread();
     return { value: effort, appliedToActiveThread };
   }
@@ -730,6 +736,13 @@ function getLaunchProfile(config: ConnectorConfig, profileId: string): CodexLaun
     throw new Error(`Unknown launch profile: ${profileId}`);
   }
   return profile;
+}
+
+function toAgentThreadRecord(record: CodexThreadRecord): AgentThreadRecord {
+  return {
+    ...record,
+    agentId: "codex",
+  };
 }
 
 function buildCodexEnv(apiKey?: string): Record<string, string> {

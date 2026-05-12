@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { autoRetry } from "@grammyjs/auto-retry";
-import type { ModelReasoningEffort } from "@openai/codex-sdk";
 import { Bot, InlineKeyboard, InputFile, type Context } from "grammy";
 
 import {
@@ -58,11 +57,19 @@ import {
   type VoiceBackendPreference,
 } from "./bot-preferences.js";
 import {
-  type CodexPromptInput,
-  type CodexSessionCallbacks,
-  type CodexSessionInfo,
-  type CodexSessionService,
-} from "./codex-session.js";
+  CODEX_REASONING_EFFORTS,
+  CODEX_AGENT_CAPABILITIES,
+  PI_THINKING_LEVELS,
+  agentLabel,
+  agentReasoningLabel,
+  type AgentId,
+  type AgentPromptInput,
+  type AgentSessionCallbacks,
+  type AgentSessionInfo,
+  type AgentSessionService,
+  type AgentThreadRecord,
+} from "./agent.js";
+import { enabledAgents } from "./agent-factory.js";
 import { checkAuthStatus, clearAuthCache, startLogin, startLogout } from "./codex-auth.js";
 import {
   findLaunchProfile,
@@ -70,7 +77,6 @@ import {
   formatLaunchProfileLabel,
 } from "./codex-launch.js";
 import {
-  getThread,
   getThreadActivity,
   getThreadActivityLog,
   getThreadRolloutSnapshot,
@@ -169,7 +175,7 @@ type PendingMediaGroup = {
   ctx: Context;
   contextKey: TelegramContextKey;
   chatId: TelegramChatId;
-  session: CodexSessionService;
+  session: AgentSessionService;
   messageThreadId?: number;
   parts: MediaGroupPart[];
   timer: NodeJS.Timeout;
@@ -301,6 +307,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const pendingUnsafeLaunchConfirmations = new Map<TelegramContextKey, string>();
   const pendingModelButtons = new Map<TelegramContextKey, KeyboardItem[]>();
   const pendingEffortButtons = new Map<TelegramContextKey, KeyboardItem[]>();
+  const pendingAgentPicks = new Map<TelegramContextKey, AgentId[]>();
   const pendingMediaGroups = new Map<string, PendingMediaGroup>();
   const turnProgress = new Map<TelegramContextKey, TurnProgress>();
   const promptStore = new PromptStore(config.workspace);
@@ -344,6 +351,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     pendingLaunchPicks.delete(key);
     pendingLaunchButtons.delete(key);
     pendingUnsafeLaunchConfirmations.delete(key);
+    pendingAgentPicks.delete(key);
     for (const [mediaGroupKey, mediaGroup] of pendingMediaGroups.entries()) {
       if (mediaGroup.contextKey === key) {
         clearTimeout(mediaGroup.timer);
@@ -370,7 +378,11 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     return state;
   };
 
-  const getExternalActivity = (session: CodexSessionService | undefined): CodexThreadActivity | null => {
+  const getExternalActivity = (session: AgentSessionService | undefined): CodexThreadActivity | null => {
+    const info = session?.getInfo();
+    if (!info || !capabilitiesOf(info).externalActivity) {
+      return null;
+    }
     const threadId = session?.getActiveThreadId();
     if (!threadId) {
       return null;
@@ -403,7 +415,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const getContextSession = async (
     ctx: Context,
     options?: { deferThreadStart?: boolean },
-  ): Promise<{ contextKey: TelegramContextKey; session: CodexSessionService } | null> => {
+  ): Promise<{ contextKey: TelegramContextKey; session: AgentSessionService } | null> => {
     const contextKey = contextKeyFromCtx(ctx);
     if (!contextKey) {
       return null;
@@ -413,7 +425,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     return { contextKey, session };
   };
 
-  const updateSessionMetadata = (contextKey: TelegramContextKey, session: CodexSessionService): void => {
+  const updateSessionMetadata = (contextKey: TelegramContextKey, session: AgentSessionService): void => {
     registry.updateMetadata(contextKey, session);
   };
 
@@ -619,6 +631,16 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
+    const info = session.getInfo();
+    if (!capabilitiesOf(info).externalActivity) {
+      const parsed = parseContextKey(contextKey);
+      const queueLength = promptStore.list(contextKey).length;
+      if (queueLength > 0 && !promptStore.isPaused(contextKey) && !session.isProcessing()) {
+        await drainQueuedPrompts(createSystemContext(contextKey), contextKey, parsed.chatId, session);
+      }
+      return;
+    }
+
     const threadId = session.getActiveThreadId();
     const parsed = parseContextKey(contextKey);
     const queueLength = promptStore.list(contextKey).length;
@@ -669,7 +691,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const mirrorExternalSnapshot = async (
     contextKey: TelegramContextKey,
     chatId: TelegramChatId,
-    session: CodexSessionService,
+    session: AgentSessionService,
     snapshot: CodexRolloutSnapshot,
   ): Promise<void> => {
     const parsed = parseContextKey(contextKey);
@@ -779,7 +801,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const deliverCliGeneratedArtifacts = async (
     contextKey: TelegramContextKey,
     chatId: TelegramChatId,
-    session: CodexSessionService,
+    session: AgentSessionService,
     startedAt: Date | null | undefined,
     turnId: string | null,
     messageThreadId?: number,
@@ -832,7 +854,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     ctx: Context,
     contextKey: TelegramContextKey,
     chatId: TelegramChatId,
-    session: CodexSessionService,
+    session: AgentSessionService,
   ): void => {
     if (externalQueueTimers.has(contextKey)) {
       return;
@@ -937,7 +959,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const ensureActiveThread = async (
     ctx: Context,
     contextKey: TelegramContextKey,
-    session: CodexSessionService,
+    session: AgentSessionService,
   ): Promise<boolean> => {
     if (session.hasActiveThread()) {
       return true;
@@ -1007,8 +1029,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     ctx: Context,
     contextKey: TelegramContextKey,
     chatId: TelegramChatId,
-    session: CodexSessionService,
-    prompt: CodexPromptInput | PromptEnvelope,
+    session: AgentSessionService,
+    prompt: AgentPromptInput | PromptEnvelope,
     options: { fromQueue?: boolean; approved?: boolean } = {},
   ): Promise<void> => {
     const parsed = parseContextKey(contextKey);
@@ -1028,8 +1050,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
       const item = promptStore.enqueue(contextKey, envelope);
       const position = promptStore.list(contextKey).findIndex((queued) => queued.id === item.id) + 1;
+      const label = labelOf(session.getInfo());
       const queuedMessage = busy.kind === "external"
-        ? `Queued prompt ${item.id} at position ${position}. The Codex session is still active and is processing a previous task.`
+        ? `Queued prompt ${item.id} at position ${position}. The ${label} session is still active and is processing a previous task.`
         : `Queued prompt ${item.id} at position ${position}.`;
       await safeReply(ctx, escapeHTML(queuedMessage), {
         fallbackText: queuedMessage,
@@ -1058,7 +1081,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     };
     turnProgress.set(contextKey, progress);
 
-    const abortKeyboard = new InlineKeyboard().text("⏹ Abort", `codex_abort:${contextKey}`);
+    const abortKeyboard = new InlineKeyboard().text("⏹ Abort", `agent_abort:${contextKey}`);
     const toolVerbosity: ToolVerbosity = config.toolVerbosity;
     const toolStates = new Map<string, ToolState>();
     const toolCounts = new Map<string, number>();
@@ -1280,7 +1303,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       await deliverRenderedChunks(splitMarkdownForTelegram(finalText));
     };
 
-    const callbacks: CodexSessionCallbacks = {
+    const callbacks: AgentSessionCallbacks = {
       onTextDelta: (delta: string) => {
         accumulatedText += delta;
         progress.textCharacters += delta.length;
@@ -1436,25 +1459,39 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     };
 
     try {
-      const authStatus = await checkAuthStatus(config.codexApiKey);
-      if (!authStatus.authenticated) {
-        await safeReply(
-          ctx,
-          [
-            "<b>⚠️ Codex is not authenticated.</b>",
-            "",
-            `<code>${escapeHTML(authStatus.detail)}</code>`,
-            "",
-            "Use /login to start authentication, or set CODEX_API_KEY on the host.",
-          ].join("\n"),
-          {
-            fallbackText: [
-              "⚠️ Codex is not authenticated.",
+      const sessionInfo = session.getInfo();
+      if (capabilitiesOf(sessionInfo).auth) {
+        const authStatus = await checkAuthStatus(config.codexApiKey);
+        if (!authStatus.authenticated) {
+          await safeReply(
+            ctx,
+            [
+              `<b>⚠️ ${escapeHTML(labelOf(sessionInfo))} is not authenticated.</b>`,
               "",
-              authStatus.detail,
+              `<code>${escapeHTML(authStatus.detail)}</code>`,
               "",
               "Use /login to start authentication, or set CODEX_API_KEY on the host.",
             ].join("\n"),
+            {
+              fallbackText: [
+                `⚠️ ${labelOf(sessionInfo)} is not authenticated.`,
+                "",
+                authStatus.detail,
+                "",
+                "Use /login to start authentication, or set CODEX_API_KEY on the host.",
+              ].join("\n"),
+            },
+          );
+          return;
+        }
+      }
+
+      if (idOf(sessionInfo) === "pi" && !config.piEnabled) {
+        await safeReply(
+          ctx,
+          "<b>⚠️ Pi is disabled.</b>\nEnable it with <code>NORDRELAY_PI_ENABLED=true</code>.",
+          {
+            fallbackText: "⚠️ Pi is disabled.\nEnable it with NORDRELAY_PI_ENABLED=true.",
           },
         );
         return;
@@ -1541,7 +1578,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     ctx: Context,
     contextKey: TelegramContextKey,
     chatId: TelegramChatId,
-    session: CodexSessionService,
+    session: AgentSessionService,
   ): Promise<void> => {
     if (drainingQueues.has(contextKey)) {
       return;
@@ -1719,7 +1756,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     ctx: Context,
     contextKey: TelegramContextKey,
     chatId: TelegramChatId,
-    session: CodexSessionService,
+    session: AgentSessionService,
     mediaGroupId: string,
     part: MediaGroupPart,
   ): void => {
@@ -1832,7 +1869,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     await safeReply(pending.ctx, escapeHTML(receivedText), { fallbackText: receivedText });
     await sendChatActionSafe(pending.ctx.api, pending.chatId, "typing", pending.messageThreadId).catch(() => {});
 
-    const promptInput: CodexPromptInput = {
+    const promptInput: AgentPromptInput = {
       stagedFileInstructions: buildFileInstructions(stagedFiles, outDir),
     };
     if (imagePaths.length > 0) {
@@ -1890,12 +1927,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const { contextKey, session } = contextSession;
-    const authStatus = await checkAuthStatus(config.codexApiKey);
-    const authWarning = authStatus.authenticated ? undefined : "Not authenticated. Use /login or set CODEX_API_KEY.";
+    const info = session.getInfo();
+    const authStatus = capabilitiesOf(info).auth ? await checkAuthStatus(config.codexApiKey) : null;
+    const authWarning = authStatus && !authStatus.authenticated
+      ? "Not authenticated. Use /login or set CODEX_API_KEY."
+      : undefined;
     const isReturning = registry.hasMetadata(contextKey);
 
     if (isReturning) {
-      const info = session.getInfo();
       const welcome = renderWelcomeReturning(
         renderSessionInfoHTML(info),
         renderSessionInfoPlain(info),
@@ -1905,7 +1944,6 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       await safeReply(ctx, welcome.html, { fallbackText: welcome.plain });
     } else {
       const welcome = renderWelcomeFirstTime(authWarning);
-      const info = session.getInfo();
       await safeReply(ctx, [welcome.html, "", renderLaunchSummaryHTML(info)].join("\n"), {
         fallbackText: [welcome.plain, "", renderLaunchSummaryPlain(info)].join("\n"),
       });
@@ -1917,8 +1955,57 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     await safeReply(ctx, help.html, { fallbackText: help.plain });
   });
 
+  bot.command("agent", async (ctx) => {
+    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
+    if (!contextSession) {
+      return;
+    }
+
+    const { contextKey, session } = contextSession;
+    if (!capabilitiesOf(session.getInfo()).modelSelection) {
+      const text = `Model selection is not supported for ${labelOf(session.getInfo())}.`;
+      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+      return;
+    }
+    if (isBusy(contextKey)) {
+      await safeReply(ctx, escapeHTML("Cannot switch agent while a prompt is running."), {
+        fallbackText: "Cannot switch agent while a prompt is running.",
+      });
+      return;
+    }
+
+    const availableAgents = enabledAgents(config);
+    const currentAgent = idOf(session.getInfo());
+    if (availableAgents.length <= 1) {
+      const only = agentLabel(availableAgents[0] ?? currentAgent);
+      await safeReply(ctx, `<b>Current agent:</b> <code>${escapeHTML(only)}</code>\nNo other agents are enabled.`, {
+        fallbackText: `Current agent: ${only}\nNo other agents are enabled.`,
+      });
+      return;
+    }
+
+    pendingAgentPicks.set(contextKey, availableAgents);
+    const keyboard = new InlineKeyboard();
+    for (const availableAgent of availableAgents) {
+      keyboard.text(`${agentLabel(availableAgent)}${availableAgent === currentAgent ? " ✓" : ""}`, `agent_${availableAgent}`).row();
+    }
+
+    await safeReply(ctx, `<b>Current agent:</b> <code>${escapeHTML(agentLabel(currentAgent))}</code>\nSelect agent for this Telegram context:`, {
+      fallbackText: `Current agent: ${agentLabel(currentAgent)}\nSelect agent for this Telegram context:`,
+      replyMarkup: keyboard,
+    });
+  });
+
   bot.command("auth", async (ctx) => {
     if (!ctx.chat) {
+      return;
+    }
+
+    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
+    const info = contextSession?.session.getInfo();
+    if (info && !capabilitiesOf(info).auth) {
+      const text = `${labelOf(info)} uses its local CLI authentication. Run its login flow on the host if needed.`;
+      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
       return;
     }
 
@@ -1940,6 +2027,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
   bot.command("login", async (ctx) => {
     if (!ctx.chat) {
+      return;
+    }
+
+    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
+    const info = contextSession?.session.getInfo();
+    if (info && !capabilitiesOf(info).login) {
+      const text = `${labelOf(info)} login is not managed by NordRelay. Run the CLI login flow on the host.`;
+      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
       return;
     }
 
@@ -1985,6 +2080,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
   bot.command("logout", async (ctx) => {
     if (!ctx.chat) {
+      return;
+    }
+
+    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
+    const info = contextSession?.session.getInfo();
+    if (info && !capabilitiesOf(info).logout) {
+      const text = `${labelOf(info)} logout is not managed by NordRelay. Run the CLI logout flow on the host.`;
+      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
       return;
     }
 
@@ -2048,7 +2151,12 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     if (!contextSession) {
       return;
     }
-    const { contextKey } = contextSession;
+    const { contextKey, session } = contextSession;
+    if (!capabilitiesOf(session.getInfo()).cliMirror) {
+      const text = `CLI mirroring is not supported for ${labelOf(session.getInfo())} yet.`;
+      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+      return;
+    }
     const argument = (ctx.message?.text ?? "").replace(/^\/mirror(?:@\w+)?\s*/i, "").trim();
     if (argument) {
       const mode = parseMirrorMode(argument, getEffectiveMirrorMode(contextKey));
@@ -2128,6 +2236,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
     const { session } = contextSession;
+    const agentName = labelOf(session.getInfo());
     const workspaces = filterAllowedWorkspaces(session.listWorkspaces(), config);
     const currentWorkspace = session.getInfo().workspace;
     const lines = workspaces.slice(0, 20).map((workspace, index) => {
@@ -2143,14 +2252,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       config.workspaceAllowedRoots.length > 0 ? `Allowed roots: ${config.workspaceAllowedRoots.join(", ")}` : "Allowed roots: unrestricted",
       "",
     ].filter((line): line is string => Boolean(line));
-    const plain = [...header, ...(lines.length > 0 ? lines : ["No workspaces found in Codex state."])].join("\n");
+    const plain = [...header, ...(lines.length > 0 ? lines : [`No workspaces found in ${agentName} state.`])].join("\n");
     const html = [
       "<b>Workspaces:</b>",
       `<b>Current:</b> <code>${escapeHTML(currentWorkspace)}</code>`,
       currentPolicy.warning ? `<b>Current warning:</b> <code>${escapeHTML(currentPolicy.warning)}</code>` : undefined,
       `<b>Allowed roots:</b> <code>${escapeHTML(config.workspaceAllowedRoots.length > 0 ? config.workspaceAllowedRoots.join(", ") : "unrestricted")}</code>`,
       "",
-      ...(lines.length > 0 ? lines.map((line) => `<code>${escapeHTML(line)}</code>`) : ["<code>No workspaces found in Codex state.</code>"]),
+      ...(lines.length > 0 ? lines.map((line) => `<code>${escapeHTML(line)}</code>`) : [`<code>No workspaces found in ${escapeHTML(agentName)} state.</code>`]),
     ].filter((line): line is string => Boolean(line)).join("\n");
     await safeReply(ctx, html, { fallbackText: plain });
   });
@@ -2250,11 +2359,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       `NordRelay ${health.version}`,
       `Runtime status: ${state.status ?? "unknown"}`,
       `Codex CLI: ${health.codexCli}`,
+      `Pi CLI: ${health.piCli}`,
     ].join("\n");
     const html = [
       `<b>NordRelay</b> <code>${escapeHTML(health.version)}</code>`,
       `<b>Runtime status:</b> <code>${escapeHTML(state.status ?? "unknown")}</code>`,
       `<b>Codex CLI:</b> <code>${escapeHTML(health.codexCli)}</code>`,
+      `<b>Pi CLI:</b> <code>${escapeHTML(health.piCli)}</code>`,
     ].join("\n");
     await safeReply(ctx, html, { fallbackText: plain });
   });
@@ -2281,6 +2392,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   bot.command("activity", async (ctx) => {
     const contextSession = await getContextSession(ctx, { deferThreadStart: true });
     if (!contextSession) {
+      return;
+    }
+
+    const info = contextSession.session.getInfo();
+    if (!capabilitiesOf(info).activityLog) {
+      const text = `${labelOf(info)} activity timelines are not available yet.`;
+      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
       return;
     }
 
@@ -2317,7 +2435,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const queueLength = contextKey ? promptStore.list(contextKey).length : 0;
     const progress = contextKey ? turnProgress.get(contextKey) : undefined;
     const contextSession = contextKey ? await getContextSession(ctx, { deferThreadStart: true }) : null;
-    const rolloutDiagnostics = contextSession
+    const rolloutDiagnostics = contextSession && capabilitiesOf(contextSession.session.getInfo()).externalActivity
       ? renderRolloutDiagnostics(contextSession.session.getActiveThreadId(), config.codexExternalBusyStaleMs)
       : { plain: "Rollout: no context", html: "<b>Rollout:</b> <code>no context</code>" };
     const runtime: RuntimeDiagnostics = {
@@ -2343,20 +2461,28 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
+    const sessionInfo = contextSession.session.getInfo();
+    if (!capabilitiesOf(sessionInfo).externalActivity) {
+      const plain = [`${labelOf(sessionInfo)} has no external CLI state watcher to sync.`, "", renderSessionInfoPlain(sessionInfo)].join("\n");
+      const html = [`<b>${escapeHTML(labelOf(sessionInfo))} has no external CLI state watcher to sync.</b>`, "", renderSessionInfoHTML(sessionInfo)].join("\n");
+      await safeReply(ctx, html, { fallbackText: plain });
+      return;
+    }
+
     const result = contextSession.session.syncFromCodexState({ reattach: true });
     if (result.changed) {
       updateSessionMetadata(contextSession.contextKey, contextSession.session);
     }
     const fields = result.changedFields.length > 0 ? result.changedFields.join(", ") : "none";
     const plain = [
-      result.changed ? "Synced from Codex state." : "Already in sync.",
+      result.changed ? `Synced from ${labelOf(sessionInfo)} state.` : "Already in sync.",
       `Changed: ${fields}`,
       `Reattached: ${result.reattached ? "yes" : "no"}`,
       "",
       renderSessionInfoPlain(result.info),
     ].join("\n");
     const html = [
-      result.changed ? "<b>Synced from Codex state.</b>" : "<b>Already in sync.</b>",
+      result.changed ? `<b>Synced from ${escapeHTML(labelOf(sessionInfo))} state.</b>` : "<b>Already in sync.</b>",
       `<b>Changed:</b> <code>${escapeHTML(fields)}</code>`,
       `<b>Reattached:</b> <code>${result.reattached ? "yes" : "no"}</code>`,
       "",
@@ -2733,6 +2859,12 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const { contextKey, session } = contextSession;
+    const info = session.getInfo();
+    if (!capabilitiesOf(info).launchProfiles) {
+      const text = `Launch profiles are not supported for ${labelOf(info)}.`;
+      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+      return;
+    }
     if (isBusy(contextKey)) {
       await safeReply(ctx, escapeHTML("Cannot change launch profile while a prompt is running."), {
         fallbackText: "Cannot change launch profile while a prompt is running.",
@@ -2740,7 +2872,6 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
-    const info = session.getInfo();
     const selectedLaunchProfile = session.getSelectedLaunchProfile();
     const launchButtons = config.launchProfiles.map((profile, index) => ({
       label: formatLaunchProfileLabel(profile, profile.id === selectedLaunchProfile.id),
@@ -2827,7 +2958,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       }
 
       const shellEscape = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
-      const resumeCommand = `cd ${shellEscape(info.workspace)} && codex resume ${shellEscape(info.threadId)}`;
+      const resumeCommand = info.command ?? `cd ${shellEscape(info.workspace)} && codex resume ${shellEscape(info.threadId)}`;
+      const handbackLabel = info.label ?? "Codex CLI";
 
       let copiedToClipboard = false;
       if (process.platform === "darwin") {
@@ -2845,7 +2977,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       }
 
       const plainText = [
-        "🔄 Thread handed back to Codex CLI.",
+        `🔄 Thread handed back to ${handbackLabel}.`,
         "",
         "Run this in your terminal:",
         resumeCommand,
@@ -2858,7 +2990,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         .join("\n");
 
       const html = [
-        "<b>🔄 Thread handed back to Codex CLI.</b>",
+        `<b>🔄 Thread handed back to ${escapeHTML(handbackLabel)}.</b>`,
         "",
         "Run this in your terminal:",
         `<pre>${escapeHTML(resumeCommand)}</pre>`,
@@ -2902,10 +3034,10 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
-    const requestedThread = getThread(threadId);
+    const requestedThread = session.getSessionRecord(threadId);
     if (!requestedThread) {
-      await safeReply(ctx, `<b>Failed:</b> ${escapeHTML(`Unknown Codex thread: ${threadId}`)}`, {
-        fallbackText: `Failed: Unknown Codex thread: ${threadId}`,
+      await safeReply(ctx, `<b>Failed:</b> ${escapeHTML(`Unknown ${labelOf(session.getInfo())} session: ${threadId}`)}`, {
+        fallbackText: `Failed: Unknown ${labelOf(session.getInfo())} session: ${threadId}`,
       });
       return;
     }
@@ -2957,7 +3089,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const rawText = ctx.message?.text ?? "";
     const threadId = rawText.replace(/^\/(?:sessions|switch)(?:@\w+)?\s*/, "").trim();
 
-    const requestedThread = threadId ? getThread(threadId) : null;
+    const requestedThread = threadId ? session.getSessionRecord(threadId) : null;
     if (threadId && requestedThread) {
       const workspacePolicy = evaluateWorkspacePolicy(requestedThread.cwd, config);
       if (!workspacePolicy.allowed) {
@@ -3061,9 +3193,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       });
       return;
     }
-    if (!getThread(threadId)) {
-      await safeReply(ctx, `<b>Failed:</b> ${escapeHTML(`Unknown Codex thread: ${threadId}`)}`, {
-        fallbackText: `Failed: Unknown Codex thread: ${threadId}`,
+    if (!session.getSessionRecord(threadId)) {
+      await safeReply(ctx, `<b>Failed:</b> ${escapeHTML(`Unknown ${labelOf(session.getInfo())} session: ${threadId}`)}`, {
+        fallbackText: `Failed: Unknown ${labelOf(session.getInfo())} session: ${threadId}`,
       });
       return;
     }
@@ -3108,8 +3240,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const { contextKey, session } = contextSession;
     const pinnedThreadIds = registry.listPinnedThreadIds(contextKey);
     const pinnedSessions = pinnedThreadIds
-      .map((threadId) => getThread(threadId))
-      .filter((record): record is NonNullable<ReturnType<typeof getThread>> => Boolean(record));
+      .map((threadId) => session.getSessionRecord(threadId))
+      .filter((record): record is AgentThreadRecord => Boolean(record));
     if (pinnedSessions.length === 0) {
       await safeReply(ctx, escapeHTML("No pinned threads."), { fallbackText: "No pinned threads." });
       return;
@@ -3192,6 +3324,11 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const { contextKey, session } = contextSession;
+    if (!capabilitiesOf(session.getInfo()).fastMode) {
+      const text = `Fast mode is not supported for ${labelOf(session.getInfo())}.`;
+      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+      return;
+    }
     if (isBusy(contextKey)) {
       await safeReply(ctx, escapeHTML("Cannot change fast mode while a prompt is running."), {
         fallbackText: "Cannot change fast mode while a prompt is running.",
@@ -3252,17 +3389,24 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const { contextKey, session } = contextSession;
-    const efforts: ModelReasoningEffort[] = ["minimal", "low", "medium", "high", "xhigh"];
-    const current = session.getInfo().reasoningEffort;
+    const info = session.getInfo();
+    if (!capabilitiesOf(info).reasoningSelection) {
+      const text = `${agentReasoningLabel(idOf(info))} selection is not supported for ${labelOf(info)}.`;
+      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+      return;
+    }
+    const efforts = idOf(info) === "pi" ? PI_THINKING_LEVELS : CODEX_REASONING_EFFORTS;
+    const current = info.reasoningEffort;
     const effortButtons = efforts.map((effort) => ({
       label: effort === current ? `${effort} ✓` : effort,
       callbackData: `effort_${effort}`,
     }));
     pendingEffortButtons.set(contextKey, effortButtons);
     const keyboard = paginateKeyboard(effortButtons, 0, "effort");
+    const label = agentReasoningLabel(idOf(info));
     const text = current
-      ? `<b>Reasoning effort:</b> <code>${escapeHTML(current)}</code>\n\nSelect for new threads:`
-      : "<b>Reasoning effort:</b> not set (model default)\n\nSelect for new threads:";
+      ? `<b>${escapeHTML(label)}:</b> <code>${escapeHTML(current)}</code>\n\nSelect for new threads:`
+      : `<b>${escapeHTML(label)}:</b> not set (model default)\n\nSelect for new threads:`;
     await safeReply(ctx, text, {
       fallbackText: text.replace(/<[^>]+>/g, ""),
       replyMarkup: keyboard,
@@ -3270,6 +3414,49 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   };
 
   bot.command(["effort", "reasoning"], openReasoningPicker);
+
+  bot.callbackQuery(/^agent_(codex|pi)$/, async (ctx) => {
+    const chatId = ctx.chat?.id;
+    const messageId = ctx.callbackQuery.message?.message_id;
+    const selectedAgent = ctx.match?.[1] as AgentId | undefined;
+    const contextKey = contextKeyFromCtx(ctx);
+    if (!chatId || !contextKey || !selectedAgent) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+
+    const picks = pendingAgentPicks.get(contextKey);
+    if (!picks?.includes(selectedAgent)) {
+      await ctx.answerCallbackQuery({ text: "Expired, run /agent again" });
+      return;
+    }
+    if (isBusy(contextKey)) {
+      await ctx.answerCallbackQuery({ text: "Wait for the current prompt to finish" });
+      return;
+    }
+
+    await ctx.answerCallbackQuery({ text: `Switching to ${agentLabel(selectedAgent)}...` });
+    pendingAgentPicks.delete(contextKey);
+    try {
+      const session = await registry.switchAgent(contextKey, selectedAgent);
+      const info = session.getInfo();
+      const html = [`<b>Agent switched to ${escapeHTML(labelOf(info))}.</b>`, "", renderSessionInfoHTML(info)].join("\n");
+      const plain = [`Agent switched to ${labelOf(info)}.`, "", renderSessionInfoPlain(info)].join("\n");
+      if (messageId) {
+        await safeEditMessage(bot, chatId, messageId, html, { fallbackText: plain });
+      } else {
+        await safeReply(ctx, html, { fallbackText: plain });
+      }
+    } catch (error) {
+      const html = `<b>Failed:</b> ${escapeHTML(friendlyErrorText(error))}`;
+      const plain = `Failed: ${friendlyErrorText(error)}`;
+      if (messageId) {
+        await safeEditMessage(bot, chatId, messageId, html, { fallbackText: plain });
+      } else {
+        await safeReply(ctx, html, { fallbackText: plain });
+      }
+    }
+  });
 
   bot.callbackQuery(NOOP_PAGE_CALLBACK_DATA, async (ctx) => {
     await ctx.answerCallbackQuery();
@@ -3285,7 +3472,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   handlePageCallback(/^model_page_(\d+)$/, "model", pendingModelButtons, "Expired, run /model again");
   handlePageCallback(/^effort_page_(\d+)$/, "effort", pendingEffortButtons, "Expired, run /reasoning again");
 
-  bot.callbackQuery(/^codex_abort:(.+)$/, async (ctx) => {
+  bot.callbackQuery(/^(?:codex_abort|agent_abort):(.+)$/, async (ctx) => {
     const contextKey = ctx.match?.[1];
     if (!contextKey) {
       await ctx.answerCallbackQuery();
@@ -3481,7 +3668,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       await ctx.answerCallbackQuery({ text: "Session expired, run /sessions again" });
       return;
     }
-    const threadRecord = getThread(threadId);
+    const threadRecord = session.getSessionRecord(threadId);
     const workspacePolicy = evaluateWorkspacePolicy(threadRecord?.cwd ?? session.getCurrentWorkspace(), config);
     if (!workspacePolicy.allowed) {
       await ctx.answerCallbackQuery({ text: "Workspace blocked" });
@@ -3807,7 +3994,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     pendingModelButtons.delete(contextKey);
 
     try {
-      const result = session.setModelForCurrentSession(slug);
+      const result = await session.setModelForCurrentSession(slug);
       updateSessionMetadata(contextKey, session);
       const scope = result.appliedToActiveThread
         ? "applied to the current idle thread and future threads"
@@ -3831,10 +4018,10 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
   });
 
-  bot.callbackQuery(/^effort_(minimal|low|medium|high|xhigh)$/, async (ctx) => {
+  bot.callbackQuery(/^effort_(off|minimal|low|medium|high|xhigh)$/, async (ctx) => {
     const chatId = ctx.chat?.id;
     const messageId = ctx.callbackQuery.message?.message_id;
-    const effort = ctx.match?.[1] as ModelReasoningEffort | undefined;
+    const effort = ctx.match?.[1];
 
     if (!chatId || !messageId || !effort) {
       return;
@@ -3859,14 +4046,15 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
     await ctx.answerCallbackQuery({ text: `Effort set to ${effort}` });
     pendingEffortButtons.delete(contextKey);
-    const result = session.setReasoningEffortForCurrentSession(effort);
+    const result = await session.setReasoningEffortForCurrentSession(effort);
     updateSessionMetadata(contextKey, session);
+    const label = agentReasoningLabel(idOf(session.getInfo()));
     const scope = result.appliedToActiveThread
       ? "applied to the current idle thread and future threads"
       : "applies to new threads";
-    const html = `⚡ Reasoning effort set to <code>${escapeHTML(effort)}</code> — ${escapeHTML(scope)}.`;
+    const html = `⚡ ${escapeHTML(label)} set to <code>${escapeHTML(effort)}</code> — ${escapeHTML(scope)}.`;
     await safeEditMessage(bot, chatId, messageId, html, {
-      fallbackText: `⚡ Reasoning effort set to ${effort} — ${scope}.`,
+      fallbackText: `⚡ ${label} set to ${effort} — ${scope}.`,
     });
   });
 
@@ -4093,7 +4281,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const caption = ctx.message.caption?.trim();
-    const promptInput: CodexPromptInput = {
+    const promptInput: AgentPromptInput = {
       imagePaths: [stagedPhoto.localPath],
       stagedFileInstructions: buildFileInstructions([stagedPhoto], outDir),
     };
@@ -4194,7 +4382,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const outDir = outboxPath(workspace, turnId);
     await ensureOutDir(outDir);
 
-    const promptInput: CodexPromptInput = {
+    const promptInput: AgentPromptInput = {
       stagedFileInstructions: buildFileInstructions([stagedFile], outDir),
     };
     const caption = ctx.message.caption?.trim();
@@ -4223,10 +4411,11 @@ export async function registerCommands(bot: Bot<Context>): Promise<void> {
   await bot.api.setMyCommands([
     { command: "start", description: "Welcome & status" },
     { command: "help", description: "Command reference" },
+    { command: "agent", description: "Select Codex or Pi" },
     { command: "new", description: "Start a new thread" },
     { command: "session", description: "Current thread details" },
     { command: "sessions", description: "Browse & switch threads" },
-    { command: "sync", description: "Sync active session from Codex" },
+    { command: "sync", description: "Sync active session from CLI state" },
     { command: "pinned", description: "Show pinned threads" },
     { command: "pin", description: "Pin current or given thread" },
     { command: "unpin", description: "Unpin current or given thread" },
@@ -4258,8 +4447,8 @@ export async function registerCommands(bot: Bot<Context>): Promise<void> {
     { command: "diagnostics", description: "Admin: connector diagnostics" },
     { command: "restart", description: "Admin: restart connector" },
     { command: "update", description: "Admin: update connector" },
-    { command: "handback", description: "Hand thread to Codex CLI" },
-    { command: "attach", description: "Bind a Codex thread to this topic" },
+    { command: "handback", description: "Hand session back to CLI" },
+    { command: "attach", description: "Bind a session to this topic" },
     { command: "switch", description: "Switch to a thread by ID" },
   ]);
 }
@@ -4293,7 +4482,7 @@ function renderProgressPlain(
   progress: TurnProgress | undefined,
   queueLength: number,
   busyState: BusyState,
-  info: CodexSessionInfo,
+  info: AgentSessionInfo,
 ): string {
   const busyFlags = formatBusyFlags(busyState);
   if (!progress) {
@@ -4328,7 +4517,7 @@ function renderProgressHTML(
   progress: TurnProgress | undefined,
   queueLength: number,
   busyState: BusyState,
-  info: CodexSessionInfo,
+  info: AgentSessionInfo,
 ): string {
   const busyFlags = formatBusyFlags(busyState);
   if (!progress) {
@@ -4600,6 +4789,8 @@ function renderDiagnosticsPlain(
     `App PID: ${health.state.appPid ?? "-"} (${health.appPidRunning ? "running" : "not running"})`,
     `Workspace: ${config.workspace}`,
     `Codex CLI: ${health.codexCli}`,
+    `Pi CLI: ${health.piCli}`,
+    `Enabled agents/default: ${enabledAgents(config).join(", ")} / ${config.defaultAgent}`,
     `State DB: ${health.databasePath ?? "-"}`,
     `Log file: ${health.logFile}`,
     `Log format: ${config.logFormat}`,
@@ -4644,6 +4835,8 @@ function renderDiagnosticsHTML(
     `<b>App PID:</b> <code>${escapeHTML(String(health.state.appPid ?? "-"))} (${health.appPidRunning ? "running" : "not running"})</code>`,
     `<b>Workspace:</b> <code>${escapeHTML(config.workspace)}</code>`,
     `<b>Codex CLI:</b> <code>${escapeHTML(health.codexCli)}</code>`,
+    `<b>Pi CLI:</b> <code>${escapeHTML(health.piCli)}</code>`,
+    `<b>Enabled agents/default:</b> <code>${escapeHTML(`${enabledAgents(config).join(", ")} / ${config.defaultAgent}`)}</code>`,
     `<b>State DB:</b> <code>${escapeHTML(health.databasePath ?? "-")}</code>`,
     `<b>Log file:</b> <code>${escapeHTML(health.logFile)}</code>`,
     `<b>Log format:</b> <code>${escapeHTML(config.logFormat)}</code>`,
@@ -4682,6 +4875,7 @@ function renderHealthPlain(
     `Uptime: ${formatDuration(health.uptimeSeconds)}`,
     `Workspace: ${health.state.workspace ?? "-"}`,
     `Codex CLI: ${health.codexCli}`,
+    `Pi CLI: ${health.piCli}`,
     `Codex state DB: ${health.databasePath ?? "-"}`,
     `Log: ${health.logFile}`,
   ].join("\n");
@@ -4702,6 +4896,7 @@ function renderHealthHTML(
     `<b>Uptime:</b> <code>${escapeHTML(formatDuration(health.uptimeSeconds))}</code>`,
     `<b>Workspace:</b> <code>${escapeHTML(health.state.workspace ?? "-")}</code>`,
     `<b>Codex CLI:</b> <code>${escapeHTML(health.codexCli)}</code>`,
+    `<b>Pi CLI:</b> <code>${escapeHTML(health.piCli)}</code>`,
     `<b>Codex state DB:</b> <code>${escapeHTML(health.databasePath ?? "-")}</code>`,
     `<b>Log:</b> <code>${escapeHTML(health.logFile)}</code>`,
   ].join("\n");
@@ -4755,7 +4950,7 @@ function extractCommandName(text: string): string | undefined {
   return match?.[1]?.toLowerCase();
 }
 
-function isPromptEnvelopeLike(value: CodexPromptInput | PromptEnvelope): value is PromptEnvelope {
+function isPromptEnvelopeLike(value: AgentPromptInput | PromptEnvelope): value is PromptEnvelope {
   return typeof value === "object" && value !== null && "input" in value && "description" in value;
 }
 
@@ -4768,7 +4963,19 @@ function isQueuedPromptLike(value: PromptEnvelope): value is QueuedPrompt {
     typeof (value as QueuedPrompt).createdAt === "number";
 }
 
-function requiresTurnApproval(info: CodexSessionInfo): boolean {
+function capabilitiesOf(info: AgentSessionInfo) {
+  return info.capabilities ?? CODEX_AGENT_CAPABILITIES;
+}
+
+function labelOf(info: AgentSessionInfo): string {
+  return info.agentLabel ?? agentLabel(info.agentId ?? "codex");
+}
+
+function idOf(info: AgentSessionInfo): AgentId {
+  return info.agentId ?? "codex";
+}
+
+function requiresTurnApproval(info: AgentSessionInfo): boolean {
   return info.unsafeLaunch || info.approvalPolicy !== "never";
 }
 
@@ -5224,10 +5431,10 @@ function formatRelativeTime(date: Date): string {
 
 function filterSessions<T extends {
   id: string;
-  title: string;
+  title: string | null;
   cwd: string;
   model: string | null;
-  firstUserMessage: string;
+  firstUserMessage: string | null;
 }>(sessions: T[], query: string): T[] {
   const normalized = query.trim().toLowerCase();
   if (!normalized) {
@@ -5237,10 +5444,10 @@ function filterSessions<T extends {
   return sessions.filter((session) =>
     [
       session.id,
-      session.title,
+      session.title ?? "",
       session.cwd,
       session.model ?? "",
-      session.firstUserMessage,
+      session.firstUserMessage ?? "",
     ].some((value) => value.toLowerCase().includes(normalized)),
   );
 }

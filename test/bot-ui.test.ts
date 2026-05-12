@@ -36,10 +36,10 @@ describe("bot-ui", () => {
       expect(plain).toContain("/diagnostics");
     });
 
-    it("lists all 38 commands", () => {
+    it("lists all 39 commands", () => {
       const { plain } = renderHelpMessage();
       const commandMatches = plain.match(/\/\w+/g) ?? [];
-      expect(commandMatches.length).toBe(38);
+      expect(commandMatches.length).toBe(39);
     });
 
     it("returns valid HTML with bold tags", () => {

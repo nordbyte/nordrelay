@@ -35,6 +35,7 @@ const COMMAND_PERMISSIONS = new Map<string, TelegramPermission>([
   ["notify", "settings"],
   ["workspaces", "sessions"],
   ["voice", "inspect"],
+  ["agent", "settings"],
   ["session", "sessions"],
   ["sessions", "sessions"],
   ["switch", "sessions"],
@@ -134,10 +135,10 @@ export function permissionForCallbackData(callbackData: string | undefined): Tel
   if (/^(sess_|ws_)/.test(callbackData)) {
     return "sessions";
   }
-  if (/^(launch_|launchconfirm_|model_|effort_)/.test(callbackData)) {
+  if (/^(launch_|launchconfirm_|model_|effort_|agent_)/.test(callbackData)) {
     return "settings";
   }
-  if (callbackData.startsWith("approval_") || callbackData.startsWith("codex_abort:")) {
+  if (callbackData.startsWith("approval_") || callbackData.startsWith("codex_abort:") || callbackData.startsWith("agent_abort:")) {
     return "prompt";
   }
   if (callbackData.startsWith("queue_")) {

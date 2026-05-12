@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { describeCodexCli, resolveCodexCli } from "./codex-cli.js";
 import { findLatestDatabase } from "./codex-state.js";
+import { describePiCli, resolvePiCli } from "./pi-cli.js";
 
 export interface ConnectorRuntimeState {
   status?: string;
@@ -16,6 +17,7 @@ export interface ConnectorRuntimeState {
   authenticated?: boolean;
   authMethod?: string;
   codexCli?: string;
+  piCli?: string;
   error?: string;
   updatedAt?: string;
 }
@@ -26,6 +28,7 @@ export interface ConnectorHealth {
   pidRunning: boolean;
   appPidRunning: boolean;
   codexCli: string;
+  piCli: string;
   stateFile: string;
   logFile: string;
   databasePath: string | null;
@@ -93,6 +96,7 @@ export async function getConnectorHealth(): Promise<ConnectorHealth> {
     pidRunning,
     appPidRunning,
     codexCli: describeCodexCli(resolveCodexCli()),
+    piCli: describePiCli(resolvePiCli()),
     stateFile: getConnectorStatePath(),
     logFile: getConnectorLogPath(),
     databasePath: findLatestDatabase(),

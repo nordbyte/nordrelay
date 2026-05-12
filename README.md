@@ -1,29 +1,30 @@
 # NordRelay
 
-NordRelay is a remote control plane for coding agents across messaging channels. The current implementation connects Codex sessions to Telegram, keeps independent sessions per chat or forum topic, streams replies and tool activity back to Telegram, supports files, photos, voice input, model controls, thread browsing, login, retry/abort, and CLI handback.
+NordRelay is a remote control plane for coding agents across messaging channels. The current implementation connects Codex and Pi coding-agent sessions to Telegram, keeps independent sessions per chat or forum topic, streams replies and tool activity back to Telegram, supports files, photos, voice input, model controls, session browsing, retry/abort, and CLI handback.
 
-The repo is both a local Codex marketplace and a standalone Node app. The plugin lives in `plugins/nordrelay/`; the full bot runtime lives in `src/` and uses `@openai/codex-sdk`.
+The repo is both a local Codex marketplace and a standalone Node app. The plugin lives in `plugins/nordrelay/`; the full bot runtime lives in `src/` and uses `@openai/codex-sdk` for Codex plus Pi RPC mode for Pi.
 
 ## Features
 
 Session control:
 
-- Independent Codex sessions per Telegram private chat, group chat, and forum topic.
+- Independent coding-agent sessions per Telegram private chat, group chat, and forum topic.
+- `/agent` switches a Telegram context between enabled agents such as Codex and Pi.
 - Persistent Telegram context metadata in the active workspace under `.nordrelay/contexts.json`.
 - `/new` starts a fresh thread, with workspace selection when known workspaces are available.
 - `/session` shows thread id, workspace, launch profile, launch behavior, model, reasoning, fast mode, context usage, token totals, and subscription limit remaining percentages.
-- `/sessions` opens a paginated browser for recent Codex threads from `~/.codex`.
-- `/sessions <query>` filters recent threads by id, title, workspace, model, or first message.
-- `/sync` manually refreshes the active Telegram session from Codex CLI state and reattaches idle threads when needed.
+- `/sessions` opens a paginated browser for recent sessions from the selected agent.
+- `/sessions <query>` filters recent sessions by id, title, workspace, model, or first message.
+- `/sync` manually refreshes the active Telegram session from local CLI state when the selected agent supports state watching.
 - `/pin`, `/unpin`, and `/pinned` keep important threads at the top of Telegram session browsing.
-- `/switch <thread-id>` switches directly to an existing thread.
-- `/attach <thread-id>` binds an existing Codex thread to the current chat or topic.
+- `/switch <session-id>` switches directly to an existing session.
+- `/attach <session-id>` binds an existing agent session to the current chat or topic.
 - Existing thread metadata is imported on switch/attach, including model, reasoning effort, sandbox mode, and approval policy.
 - Codex session usage is read from local rollout JSONL files, including context-used percent, total input/output tokens, 5h limit remaining, and weekly limit remaining.
-- `/handback` returns a ready-to-run `codex resume <thread-id>` command for continuing in the Codex CLI.
+- `/handback` returns a ready-to-run CLI command for continuing in the native agent CLI.
 - `/retry` resends the last prompt for the current Telegram context.
 - `/queue`, inline run/top/up/down/cancel buttons, `/cancel <queue-id>`, and `/clearqueue` manage queued prompts for a busy Telegram context.
-- `/abort`, `/stop`, and the inline Abort button cancel the active Codex turn.
+- `/abort`, `/stop`, and the inline Abort button cancel the active agent turn.
 - Busy prompts are queued per Telegram context instead of being dropped.
 - If the attached thread is currently active in the local Codex CLI, Telegram prompts are queued until that CLI task finishes.
 - Active Codex CLI turns are mirrored into Telegram with configurable `off`, `status`, `final`, or `full` modes.
@@ -53,23 +54,35 @@ Codex runtime:
 - `/diagnostics` includes rollout path, activity status, stale/idle reason, line count, and last update time.
 - Optional per-turn token usage footer with `SHOW_TURN_TOKEN_USAGE=true`.
 
+Pi runtime:
+
+- Pi support is opt-in with `NORDRELAY_PI_ENABLED=true`.
+- The default Telegram agent is selected with `NORDRELAY_DEFAULT_AGENT=codex` or `pi`.
+- Pi sessions are driven through official `pi --mode rpc` JSONL commands and events.
+- Existing Pi sessions are discovered from `~/.pi/agent/sessions/` or `PI_SESSION_DIR`.
+- `/sessions`, `/switch`, `/attach`, `/new`, `/session`, `/handback`, `/model`, `/reasoning`, `/abort`, `/stop`, `/retry`, `/queue`, files, photos, and voice input work for Pi contexts.
+- Pi model selection uses `pi --list-models` and sends `set_model` through RPC for active sessions.
+- Pi thinking levels use `/reasoning` and support `off`, `minimal`, `low`, `medium`, `high`, and `xhigh`.
+- Pi token and context stats are read through `get_session_stats` when an RPC session is active.
+- Codex-specific features such as launch profiles, fast mode, Codex auth, rollout mirroring, Codex activity timelines, and subscription limit percentages are hidden or reported as unsupported for Pi contexts.
+
 Telegram input:
 
-- Plain text messages become Codex prompts.
-- Voice and audio messages are transcribed before being sent to Codex.
+- Plain text messages become prompts for the selected agent.
+- Voice and audio messages are transcribed before being sent to the selected agent.
 - Voice transcription uses local `faster-whisper` on Linux, local `parakeet-coreml` on macOS Apple Silicon, or OpenAI Whisper when `OPENAI_API_KEY` is set.
 - `/voice` can select backend preference, language, and transcribe-only mode.
-- Photo messages are passed to Codex as local image input.
+- Photo messages are passed to the selected agent as local image input when supported.
 - Document messages are downloaded, sanitized, size-checked, and staged under `.nordrelay/inbox/<turn-id>/`.
 - Telegram media groups and albums are combined into one Codex turn with all photos and documents staged together.
-- Uploaded documents include prompt instructions telling Codex where files were staged.
+- Uploaded documents include prompt instructions telling the selected agent where files were staged.
 - Staged document and photo prompts are persisted so `/retry` and queued execution can replay them after a restart.
 - Telegram forum topics are treated as separate work contexts.
 
 Telegram output:
 
 - Assistant replies stream back to Telegram with debounced message edits.
-- Telegram `typing` status is sent while Codex is working.
+- Telegram `typing` status is sent while the selected agent is working.
 - Markdown is converted to Telegram HTML where possible, with fallback to plain text.
 - Long replies are split to respect Telegram message limits.
 - Tool activity can be displayed as summary, full output, errors only, or hidden with `TOOL_VERBOSITY`.
@@ -140,6 +153,9 @@ Minimal private-bot `.env`:
 ```dotenv
 TELEGRAM_BOT_TOKEN=123456789:replace-me
 TELEGRAM_ADMIN_USER_IDS=123456789
+NORDRELAY_CODEX_ENABLED=true
+NORDRELAY_PI_ENABLED=false
+NORDRELAY_DEFAULT_AGENT=codex
 CODEX_SANDBOX_MODE=workspace-write
 CODEX_APPROVAL_POLICY=never
 ```
@@ -157,6 +173,14 @@ Codex authentication:
 - Preferred local setup: run `codex login` on the host before starting the connector.
 - Remote setup: use `/auth` and `/login` in Telegram if `ENABLE_TELEGRAM_LOGIN=true`.
 - API-key setup: set `CODEX_API_KEY`; `/logout` is disabled while `CODEX_API_KEY` is in use.
+
+Pi setup:
+
+- Install Pi from https://pi.dev/ and confirm `pi --help` works on the host.
+- Set `NORDRELAY_PI_ENABLED=true` in `.env`.
+- Keep `NORDRELAY_DEFAULT_AGENT=codex` to start chats in Codex, or set `NORDRELAY_DEFAULT_AGENT=pi` to start chats in Pi.
+- Optional: set `PI_SESSION_DIR` if your Pi sessions are not stored in `~/.pi/agent/sessions/`.
+- Optional: set `PI_DEFAULT_MODEL=openai-codex/gpt-5.5` and `PI_DEFAULT_THINKING=medium`.
 
 Register the local Codex marketplace:
 
@@ -212,17 +236,18 @@ Runtime files:
 
 - `/start` shows welcome text and the selected launch profile.
 - `/help` shows the grouped command reference.
-- `/new` starts a new thread. If Codex knows multiple workspaces, Telegram shows a workspace picker.
+- `/agent` selects the active agent for this Telegram context.
+- `/new` starts a new thread. If the selected agent knows multiple workspaces, Telegram shows a workspace picker.
 - `/session` shows current thread details.
-- `/sessions` opens a paginated recent-thread picker.
-- `/sessions <query>` searches recent threads.
-- `/sync` syncs the active session from local Codex state.
+- `/sessions` opens a paginated recent-session picker.
+- `/sessions <query>` searches recent sessions.
+- `/sync` syncs the active session from local CLI state when supported.
 - `/pinned` opens a pinned-thread picker.
 - `/pin [thread-id]` pins a thread for this Telegram context; defaults to the active thread.
 - `/unpin [thread-id]` unpins a thread for this Telegram context; defaults to the active thread.
-- `/switch <thread-id>` switches directly to a known Codex thread.
-- `/attach <thread-id>` binds a known Codex thread to the current chat or forum topic.
-- `/handback` detaches the active thread and prints a `codex resume <thread-id>` command.
+- `/switch <session-id>` switches directly to a known session.
+- `/attach <session-id>` binds a known session to the current chat or forum topic.
+- `/handback` detaches the active session and prints the native CLI resume command.
 - `/retry` resends the last prompt for this Telegram context.
 - `/queue` shows queued prompts for this Telegram context with inline run/top/up/down/cancel buttons.
 - `/queue pause` pauses automatic queued prompt execution.
@@ -234,28 +259,28 @@ Runtime files:
 - `/clearqueue` clears queued prompts for this Telegram context.
 - `/activity [all|tools|errors|user|agent|tasks] [limit] [since 1h] [export]` shows or exports rollout activity for the active thread.
 - `/artifacts [latest|zip latest|turn-id]` lists or resends generated artifacts for the current workspace.
-- `/workspaces` lists Codex workspaces allowed by the workspace policy.
+- `/workspaces` lists workspaces known to the selected agent and allowed by the workspace policy.
 - `/abort` cancels the current operation.
 - `/stop` is an alias for `/abort`.
 - `/launch_profiles` or `/launch` opens the launch profile picker.
-- `/fast [on|off]` toggles fast mode. Without an argument it flips the current state.
+- `/fast [on|off]` toggles Codex fast mode. Without an argument it flips the current state.
 - `/model` opens the model picker.
-- `/reasoning` opens the reasoning effort picker.
+- `/reasoning` opens the Codex reasoning or Pi thinking picker.
 - `/effort` is a backward-compatible alias for `/reasoning`.
 - `/mirror [off|status|final|full]` controls local CLI mirroring for this Telegram context.
 - `/notify [off|minimal|all]` controls Telegram notifications.
 - `/notify quiet HH-HH` sets quiet hours; `/notify quiet off` disables them.
-- `/auth` reports Codex authentication status.
-- `/login` starts Telegram-initiated Codex CLI login.
-- `/logout` signs out from CLI auth unless `CODEX_API_KEY` is active.
+- `/auth` reports Codex authentication status, or explains that the selected agent uses host-side CLI auth.
+- `/login` starts Telegram-initiated Codex CLI login when Codex is selected.
+- `/logout` signs out from Codex CLI auth unless `CODEX_API_KEY` is active.
 - `/voice` reports voice transcription backends and current voice preferences.
 - `/voice backend auto|parakeet|faster-whisper|openai` selects backend preference.
 - `/voice language auto|<code>` selects transcription language.
 - `/voice transcribe_only on|off` controls whether voice is only transcribed or also sent to Codex.
 - `/tasks` or `/progress` reports the current turn and queue progress.
 - `/status` reports connector runtime status.
-- `/health` reports runtime health, auth, PIDs, Codex CLI, and state DB.
-- `/version` reports connector and Codex CLI version context.
+- `/health` reports runtime health, auth, PIDs, Codex CLI, Pi CLI, and state DB.
+- `/version` reports connector, Codex CLI, and Pi CLI version context.
 - `/logs [lines]` shows a redacted connector log tail. Admin only.
 - `/diagnostics` shows redacted connector diagnostics. Admin only.
 - `/restart` restarts the connector process. Admin only.
@@ -269,21 +294,21 @@ Switching to an existing thread:
 /sessions
 ```
 
-Tap a listed thread. The connector imports that thread's workspace, model, reasoning effort, sandbox mode, and approval mode from Codex state.
+Tap a listed thread/session. The connector imports workspace, model, reasoning/thinking, and provider-specific metadata from the selected agent.
 
-Direct thread switch:
+Direct session switch:
 
 ```text
 /switch 019e178a-f275-7d01-95d6-c244ff3e30ed
 ```
 
-Attach an existing CLI thread to the current Telegram topic:
+Attach an existing CLI session to the current Telegram topic:
 
 ```text
 /attach 019e178a-f275-7d01-95d6-c244ff3e30ed
 ```
 
-Hand a thread back to the Codex CLI:
+Hand a session back to the native CLI:
 
 ```text
 /handback
@@ -293,6 +318,12 @@ The bot replies with a command like:
 
 ```bash
 cd ~/projects/my-workspace && codex resume 019e178a-f275-7d01-95d6-c244ff3e30ed
+```
+
+For Pi sessions the command looks like:
+
+```bash
+cd ~/projects/my-workspace && pi --session ~/.pi/agent/sessions/.../session.jsonl
 ```
 
 Change model:
@@ -309,7 +340,7 @@ Change reasoning effort:
 /reasoning
 ```
 
-Choose one of `minimal`, `low`, `medium`, `high`, or `xhigh`.
+For Codex choose one of `minimal`, `low`, `medium`, `high`, or `xhigh`. For Pi choose one of `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`.
 
 Toggle fast mode:
 
@@ -333,16 +364,16 @@ Tap the profile. Unsafe profiles require confirmation before they become active.
 
 Text:
 
-- Any non-command text message becomes a Codex prompt.
-- While Codex works, Telegram shows `typing`.
+- Any non-command text message becomes a prompt for the selected agent.
+- While the selected agent works, Telegram shows `typing`.
 - Replies stream back into the same chat or topic.
 
 Photos:
 
 - Send a photo with or without a caption.
-- The connector downloads it and passes it to Codex as local image input.
+- The connector downloads it and passes it to the selected agent as local image input.
 - The caption becomes the text prompt when present.
-- Sending multiple photos as a Telegram album creates one combined Codex prompt.
+- Sending multiple photos as a Telegram album creates one combined agent prompt.
 
 Documents:
 
@@ -353,13 +384,13 @@ Documents:
 <workspace>/.nordrelay/inbox/<turn-id>/
 ```
 
-- Codex receives prompt instructions with the staged file paths.
+- The selected agent receives prompt instructions with the staged file paths.
 - The caption becomes the text prompt when present.
 - Document albums and mixed media groups are processed as one turn; oversized files are skipped and reported.
 
 Artifacts:
 
-- For generated files that should be returned to Telegram, tell Codex to write them to:
+- For generated files that should be returned to Telegram, tell the selected agent to write them to:
 
 ```text
 <workspace>/.nordrelay/turns/<turn-id>/out/
@@ -436,6 +467,12 @@ Role policy example:
 TELEGRAM_ROLE_POLICIES_JSON={"readonly":["inspect","sessions"],"operator":["inspect","sessions","prompt","files"],"admin":"*"}
 ```
 
+Agent selection:
+
+- `NORDRELAY_CODEX_ENABLED`: enables Codex contexts. Defaults to `true`.
+- `NORDRELAY_PI_ENABLED`: enables Pi contexts. Defaults to `false`.
+- `NORDRELAY_DEFAULT_AGENT`: `codex` or `pi`, used for new Telegram contexts. Defaults to the first enabled agent.
+
 Codex:
 
 - `CODEX_API_KEY`: optional API key for Codex SDK auth.
@@ -450,6 +487,13 @@ Codex:
 - `CODEX_LAUNCH_PROFILES_JSON`: JSON array of additional launch profiles.
 - `CODEX_DEFAULT_LAUNCH_PROFILE`: profile id used by default. Defaults to `default`.
 - `ENABLE_UNSAFE_LAUNCH_PROFILES`: set `true` to expose `danger-full-access` profiles.
+
+Pi:
+
+- `PI_CLI_PATH`: optional explicit path to the Pi CLI executable. Defaults to `pi` on `PATH`.
+- `PI_SESSION_DIR`: optional Pi session directory. Defaults to `~/.pi/agent/sessions/` or `PI_CODING_AGENT_SESSION_DIR`.
+- `PI_DEFAULT_MODEL`: optional default model pattern for new Pi sessions, for example `openai-codex/gpt-5.5`.
+- `PI_DEFAULT_THINKING`: default Pi thinking level: `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`. Defaults to `medium`.
 
 Telegram output:
 
@@ -571,13 +615,21 @@ Auth failures:
 No sessions listed:
 
 - Symptom: `/sessions` says no recent threads found.
-- Cause: `~/.codex/state_*.sqlite` is missing, unreadable, or has no active threads.
-- Fix: run Codex locally once, resume or create a thread, then try `/sessions` again.
+- Cause for Codex: `~/.codex/state_*.sqlite` is missing, unreadable, or has no active threads.
+- Cause for Pi: `~/.pi/agent/sessions/` or `PI_SESSION_DIR` is missing, unreadable, or has no session JSONL files.
+- Fix: run the selected agent locally once, resume or create a session, then try `/sessions` again.
 
 Wrong model, reasoning, or fast mode after switching:
 
 - The connector reads model, reasoning, sandbox, and approval policy from Codex state on `/sessions`, `/switch`, `/attach`, and `/session`; fast mode is read from `~/.codex/config.toml`.
-- If values look stale, make sure the local Codex CLI has finished writing thread state.
+- For Pi, the connector reads model/thinking from Pi JSONL sessions and refreshes active RPC state when a session is running.
+- If values look stale, make sure the selected local CLI has finished writing session state.
+
+Pi not available:
+
+- Symptom: `/agent` cannot switch to Pi, or startup says Pi CLI is missing.
+- Fix: install Pi from https://pi.dev/, ensure `pi` is on `PATH`, or set `PI_CLI_PATH`.
+- Enable Pi with `NORDRELAY_PI_ENABLED=true`.
 
 Voice not working:
 

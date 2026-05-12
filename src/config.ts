@@ -12,6 +12,7 @@ import {
   type CodexLaunchProfile,
   type CodexSandboxMode,
 } from "./codex-launch.js";
+import { isAgentId, PI_THINKING_LEVELS, type AgentId, type AgentReasoningEffort } from "./agent.js";
 import {
   parseRolePoliciesJson,
   type TelegramRolePolicies,
@@ -59,6 +60,7 @@ export interface ConnectorConfig {
   artifactIgnoreDirs: string[];
   artifactIgnoreGlobs: string[];
   telegramAutoSendArtifacts: boolean;
+  codexEnabled: boolean;
   codexApiKey?: string;
   codexModel?: string;
   codexSyncIntervalMs: number;
@@ -69,6 +71,12 @@ export interface ConnectorConfig {
   launchProfiles: CodexLaunchProfile[];
   defaultLaunchProfileId: string;
   enableUnsafeLaunchProfiles: boolean;
+  piEnabled: boolean;
+  piCliPath?: string;
+  piSessionDir?: string;
+  piDefaultModel?: string;
+  piDefaultThinking: AgentReasoningEffort;
+  defaultAgent: AgentId;
   toolVerbosity: ToolVerbosity;
   logFormat: ConnectorLogFormat;
   showTurnTokenUsage: boolean;
@@ -126,6 +134,7 @@ export function loadConfig(): ConnectorConfig {
   const artifactIgnoreDirs = parseOptionalStringList(optionalString(process.env.ARTIFACT_IGNORE_DIRS));
   const artifactIgnoreGlobs = parseOptionalStringList(optionalString(process.env.ARTIFACT_IGNORE_GLOBS));
   const telegramAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.TELEGRAM_AUTO_SEND_ARTIFACTS), false);
+  const codexEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_CODEX_ENABLED), true);
   const codexApiKey = optionalString(process.env.CODEX_API_KEY);
   const codexModel = optionalString(process.env.CODEX_MODEL);
   const codexSyncIntervalMs = parseNonNegativeIntegerEnv(optionalString(process.env.CODEX_SYNC_INTERVAL_MS), 10_000, "CODEX_SYNC_INTERVAL_MS");
@@ -154,6 +163,17 @@ export function loadConfig(): ConnectorConfig {
   const defaultLaunchProfileId = parseDefaultLaunchProfileId(
     optionalString(process.env.CODEX_DEFAULT_LAUNCH_PROFILE),
     launchProfiles,
+  );
+  const piEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_PI_ENABLED), false);
+  ensureAtLeastOneAgentEnabled(codexEnabled, piEnabled);
+  const piCliPath = optionalString(process.env.PI_CLI_PATH);
+  const piSessionDir = optionalString(process.env.PI_SESSION_DIR);
+  const piDefaultModel = optionalString(process.env.PI_DEFAULT_MODEL);
+  const piDefaultThinking = parsePiThinkingLevel(optionalString(process.env.PI_DEFAULT_THINKING));
+  const defaultAgent = parseDefaultAgent(
+    optionalString(process.env.NORDRELAY_DEFAULT_AGENT),
+    codexEnabled,
+    piEnabled,
   );
   const toolVerbosity = parseToolVerbosity(optionalString(process.env.TOOL_VERBOSITY));
   const logFormat = parseLogFormat(optionalString(process.env.CONNECTOR_LOG_FORMAT));
@@ -196,6 +216,7 @@ export function loadConfig(): ConnectorConfig {
     artifactIgnoreDirs,
     artifactIgnoreGlobs,
     telegramAutoSendArtifacts,
+    codexEnabled,
     codexApiKey,
     codexModel,
     codexSyncIntervalMs,
@@ -206,6 +227,12 @@ export function loadConfig(): ConnectorConfig {
     launchProfiles,
     defaultLaunchProfileId,
     enableUnsafeLaunchProfiles,
+    piEnabled,
+    piCliPath,
+    piSessionDir,
+    piDefaultModel,
+    piDefaultThinking,
+    defaultAgent,
     toolVerbosity,
     logFormat,
     showTurnTokenUsage,
@@ -535,4 +562,44 @@ function parseDefaultLaunchProfileId(
   }
 
   return profile.id;
+}
+
+function ensureAtLeastOneAgentEnabled(codexEnabled: boolean, piEnabled: boolean): void {
+  if (!codexEnabled && !piEnabled) {
+    throw new Error("At least one agent must be enabled: set NORDRELAY_CODEX_ENABLED=true or NORDRELAY_PI_ENABLED=true");
+  }
+}
+
+function parseDefaultAgent(
+  raw: string | undefined,
+  codexEnabled: boolean,
+  piEnabled: boolean,
+): AgentId {
+  if (!raw) {
+    return codexEnabled ? "codex" : "pi";
+  }
+
+  if (!isAgentId(raw)) {
+    throw new Error(`Invalid NORDRELAY_DEFAULT_AGENT: ${raw}. Expected codex or pi`);
+  }
+  if (raw === "codex" && !codexEnabled) {
+    throw new Error("NORDRELAY_DEFAULT_AGENT=codex requires NORDRELAY_CODEX_ENABLED=true");
+  }
+  if (raw === "pi" && !piEnabled) {
+    throw new Error("NORDRELAY_DEFAULT_AGENT=pi requires NORDRELAY_PI_ENABLED=true");
+  }
+  return raw;
+}
+
+function parsePiThinkingLevel(raw: string | undefined): AgentReasoningEffort {
+  if (!raw) {
+    return "medium";
+  }
+  if (PI_THINKING_LEVELS.includes(raw as AgentReasoningEffort)) {
+    return raw as AgentReasoningEffort;
+  }
+  console.warn(
+    `Invalid PI_DEFAULT_THINKING value: "${raw}". Expected one of: ${PI_THINKING_LEVELS.join(", ")}. Falling back to "medium".`,
+  );
+  return "medium";
 }

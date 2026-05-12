@@ -5,8 +5,10 @@ import { createBot, registerCommands } from "./bot.js";
 import { checkAuthStatus } from "./codex-auth.js";
 import { describeCodexCli, resolveCodexCli } from "./codex-cli.js";
 import { findLaunchProfile, formatLaunchProfileBehavior } from "./codex-launch.js";
+import { enabledAgents } from "./agent-factory.js";
 import { loadConfig } from "./config.js";
 import { installConsoleLogger } from "./logger.js";
+import { describePiCli, resolvePiCli } from "./pi-cli.js";
 import { configureRedaction } from "./redaction.js";
 import { SessionRegistry } from "./session-registry.js";
 
@@ -22,17 +24,24 @@ try {
   await registerCommands(bot);
 
   console.log("NordRelay running");
-  const authStatus = await checkAuthStatus(config.codexApiKey);
-  console.log(`Auth: ${authStatus.authenticated ? "authenticated" : "not authenticated"} (${authStatus.method})`);
-  if (!authStatus.authenticated) {
-    console.warn("Warning: Codex is not authenticated. Use /login or set CODEX_API_KEY.");
+  const authStatus = config.codexEnabled
+    ? await checkAuthStatus(config.codexApiKey)
+    : { authenticated: true, method: "codex-disabled" };
+  if (config.codexEnabled) {
+    console.log(`Auth: ${authStatus.authenticated ? "authenticated" : "not authenticated"} (${authStatus.method})`);
+    if (!authStatus.authenticated) {
+      console.warn("Warning: Codex is not authenticated. Use /login or set CODEX_API_KEY.");
+    }
   }
   console.log(`Workspace: ${config.workspace}`);
+  console.log(`Enabled agents: ${enabledAgents(config).join(", ")} (default: ${config.defaultAgent})`);
   if (config.codexModel) {
     console.log(`Default model: ${config.codexModel}`);
   }
   const codexCli = resolveCodexCli();
+  const piCli = resolvePiCli(process.env, config.piCliPath);
   console.log(`Codex CLI: ${describeCodexCli(codexCli)}`);
+  console.log(`Pi CLI: ${describePiCli(piCli)}`);
   const defaultLaunchProfile = findLaunchProfile(config.launchProfiles, config.defaultLaunchProfileId);
   if (defaultLaunchProfile) {
     console.log(
@@ -52,6 +61,7 @@ try {
     authenticated: authStatus.authenticated,
     authMethod: authStatus.method,
     codexCli: describeCodexCli(codexCli),
+    piCli: describePiCli(piCli),
   });
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
