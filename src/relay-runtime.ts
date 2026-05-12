@@ -773,6 +773,10 @@ export class RelayRuntime {
         detail: `Codex CLI task ${terminalEvent.status ?? "finished"}.`,
         durationMs: durationFromDates(externalStartedAt, terminalEvent.timestamp),
       });
+      this.broadcastStatus(
+        `Codex CLI task ${terminalEvent.status ?? "finished"}.`,
+        terminalEvent.status === "failed" ? "error" : terminalEvent.status === "aborted" ? "warn" : "info",
+      );
       this.broadcast({ type: "chat_history", messages: await this.chatHistory() });
     }
     mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);

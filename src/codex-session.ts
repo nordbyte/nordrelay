@@ -142,6 +142,9 @@ export class CodexSessionService {
     const effectiveLaunchProfile = this.activeThreadLaunchProfile ?? this.currentLaunchProfile;
     const codexFastMode = readCodexFastMode();
     this.lastObservedFastMode = codexFastMode;
+    const attachedThreadFastMode =
+      effectiveLaunchProfile.id === "attached-thread" &&
+      effectiveLaunchProfile.approvalPolicy === "never";
     const info: CodexSessionInfo = {
       agentId: "codex",
       agentLabel: "Codex",
@@ -153,7 +156,7 @@ export class CodexSessionService {
       launchProfileBehavior: formatLaunchProfileBehavior(effectiveLaunchProfile),
       sandboxMode: effectiveLaunchProfile.sandboxMode,
       approvalPolicy: effectiveLaunchProfile.approvalPolicy,
-      fastMode: codexFastMode ?? (effectiveLaunchProfile.approvalPolicy === "never"),
+      fastMode: attachedThreadFastMode || (codexFastMode ?? (effectiveLaunchProfile.approvalPolicy === "never")),
       unsafeLaunch: effectiveLaunchProfile.unsafe,
       capabilities: CODEX_AGENT_CAPABILITIES,
     };

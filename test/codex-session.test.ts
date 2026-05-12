@@ -443,6 +443,32 @@ describe("CodexSessionService", () => {
     }));
   });
 
+  it("reports attached no-approval Codex threads as fast even when the default is off", async () => {
+    mockCodexConfig.readCodexFastMode.mockReturnValue(false);
+    const service = await CodexSessionService.create(createConfig(), {
+      resumeThreadId: "thread-full-access",
+    });
+    mockCodexState.getThread.mockReturnValue({
+      id: "thread-full-access",
+      title: "Full access thread",
+      cwd: "/workspace/from-cli",
+      model: "gpt-5.5",
+      reasoningEffort: "xhigh",
+      sandboxMode: "danger-full-access",
+      approvalPolicy: "never",
+      createdAt: new Date("2026-05-11T00:00:00.000Z"),
+      updatedAt: new Date("2026-05-11T01:00:00.000Z"),
+      firstUserMessage: "hello",
+    });
+
+    expect(service.getInfo()).toEqual(expect.objectContaining({
+      launchProfileId: "attached-thread",
+      approvalPolicy: "never",
+      fastMode: true,
+      unsafeLaunch: true,
+    }));
+  });
+
   it("syncFromCodexState imports changed thread metadata and reattaches idle threads", async () => {
     const service = await CodexSessionService.create(createConfig(), {
       resumeThreadId: "thread-sync",
