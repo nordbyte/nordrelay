@@ -18,17 +18,22 @@ export interface ContextMetadata {
   updatedAt: number;
 }
 
+export interface SessionRegistryOptions {
+  fileName?: string;
+  sqliteKey?: string;
+}
+
 export class SessionRegistry {
   private readonly sessions = new Map<TelegramContextKey, AgentSessionService>();
   private readonly metadata = new Map<TelegramContextKey, ContextMetadata>();
   private readonly store: DocumentStore<ContextMetadata[]>;
   private onRemoveCallback?: (contextKey: TelegramContextKey) => void;
 
-  constructor(private readonly config: ConnectorConfig) {
+  constructor(private readonly config: ConnectorConfig, options: SessionRegistryOptions = {}) {
     this.store = createDocumentStore<ContextMetadata[]>({
       workspace: config.workspace,
-      fileName: "contexts.json",
-      sqliteKey: "contexts",
+      fileName: options.fileName ?? "contexts.json",
+      sqliteKey: options.sqliteKey ?? "contexts",
       backend: config.stateBackend,
     });
     this.loadPersistedMetadata();

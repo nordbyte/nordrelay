@@ -1,6 +1,6 @@
 import type { Context } from "grammy";
 
-import { contextKeyFromCtx, contextKeyFromMessage, isTopicContextKey, parseContextKey } from "../src/context-key.js";
+import { contextKeyFromCtx, contextKeyFromMessage, isTelegramContextKey, isTopicContextKey, parseContextKey } from "../src/context-key.js";
 
 describe("context-key", () => {
   it("uses only chat id for private chats", () => {
@@ -54,5 +54,15 @@ describe("context-key", () => {
   it("identifies topic context keys", () => {
     expect(isTopicContextKey("67890:42")).toBe(true);
     expect(isTopicContextKey("12345")).toBe(false);
+  });
+
+  it("identifies only real Telegram context keys", () => {
+    expect(isTelegramContextKey("12345")).toBe(true);
+    expect(isTelegramContextKey("-1003929308812")).toBe(true);
+    expect(isTelegramContextKey("-1003929308812:2")).toBe(true);
+    expect(isTelegramContextKey("0")).toBe(false);
+    expect(isTelegramContextKey("web:dashboard")).toBe(false);
+    expect(isTelegramContextKey("123:dashboard")).toBe(false);
+    expect(isTelegramContextKey("123:0")).toBe(false);
   });
 });

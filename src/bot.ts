@@ -88,7 +88,7 @@ import {
   type CodexThreadActivity,
 } from "./codex-state.js";
 import type { ConnectorConfig, ToolVerbosity } from "./config.js";
-import { contextKeyFromCtx, isTopicContextKey, parseContextKey, type TelegramContextKey } from "./context-key.js";
+import { contextKeyFromCtx, isTelegramContextKey, isTopicContextKey, parseContextKey, type TelegramContextKey } from "./context-key.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { escapeHTML, formatTelegramHTML } from "./format.js";
 import {
@@ -630,7 +630,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const contextKeys = new Set<TelegramContextKey>([
       ...registry.listContexts().map((context) => context.contextKey),
       ...promptStore.listContextKeys(),
-    ]);
+    ].filter(isTelegramContextKey));
 
     for (const contextKey of contextKeys) {
       await monitorExternalContext(contextKey);
@@ -638,6 +638,10 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   };
 
   const monitorExternalContext = async (contextKey: TelegramContextKey): Promise<void> => {
+    if (!isTelegramContextKey(contextKey)) {
+      return;
+    }
+
     const session = await registry.getOrCreate(contextKey, { deferThreadStart: true }).catch(() => null);
     if (!session) {
       return;

@@ -181,7 +181,7 @@ export interface ExternalMirrorState {
   latestStatus?: string;
 }
 
-const WEB_CONTEXT_KEY = "0";
+const WEB_CONTEXT_KEY = "web:dashboard";
 const MAX_WEB_SESSION_PAGE_SIZE = 50;
 const MAX_CHAT_HISTORY = 250;
 const MAX_TEXT_PREVIEW_BYTES = 256 * 1024;
@@ -200,7 +200,10 @@ export class RelayRuntime {
   private externalMirror: ExternalMirrorState | null = null;
 
   constructor(private readonly config: ConnectorConfig) {
-    this.registry = new SessionRegistry(config);
+    this.registry = new SessionRegistry(config, {
+      fileName: "web-contexts.json",
+      sqliteKey: "web-contexts",
+    });
     this.promptStore = new PromptStore(config.workspace, config.stateBackend);
     this.chatStore = new WebChatStore(config.workspace, config.stateBackend, MAX_CHAT_HISTORY);
     this.activityStore = new WebActivityStore(config.workspace, config.stateBackend, config.auditMaxEvents);

@@ -371,6 +371,7 @@ describe("bot flow integration", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     while (tempDirs.length > 0) {
       rmSync(tempDirs.pop()!, { recursive: true, force: true });
     }
@@ -474,6 +475,26 @@ describe("bot flow integration", () => {
     expect(button.text).toBe("Cancel queued message");
     expect(button.callback_data).toMatch(/^queue_cancel:123:[a-z0-9]+$/);
     expect(session.prompt).not.toHaveBeenCalled();
+  });
+
+  it("ignores non-Telegram contexts while monitoring external activity", async () => {
+    vi.useFakeTimers();
+    const { registry } = createFakeRegistry();
+    registry.listContexts.mockReturnValue([
+      {
+        contextKey: "web:dashboard",
+        threadId: "thread-web",
+        workspace: "/workspace/web",
+        updatedAt: 1,
+      },
+    ]);
+    const bot = createBot(createConfig({ codexExternalBusyCheckMs: 1_000 }), registry as any);
+    installFakeApi(bot);
+
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(registry.listContexts).toHaveBeenCalled();
+    expect(registry.getOrCreate).not.toHaveBeenCalled();
   });
 
   it("cancels a queued prompt from the queued-message button", async () => {

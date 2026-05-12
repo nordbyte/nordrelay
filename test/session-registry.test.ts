@@ -547,6 +547,34 @@ describe("SessionRegistry", () => {
     ]);
   });
 
+  it("supports separate metadata stores for dashboard contexts", async () => {
+    const config = createConfig();
+    const telegramPath = path.join(config.workspace, ".nordrelay", "contexts.json");
+    const dashboardPath = path.join(config.workspace, ".nordrelay", "web-contexts.json");
+    const registry = new SessionRegistry(config, {
+      fileName: "web-contexts.json",
+      sqliteKey: "web-contexts",
+    });
+    const session = (await registry.getOrCreate("web:dashboard")) as any;
+
+    session.setInfo({
+      threadId: "thread-web",
+      workspace: "/workspace/web",
+      model: "gpt-5.5",
+      reasoningEffort: "xhigh",
+      launchProfileId: "default",
+      launchProfileLabel: "Default",
+      launchProfileBehavior: "workspace-write / never",
+      sandboxMode: "workspace-write",
+      approvalPolicy: "never",
+      unsafeLaunch: false,
+    });
+    registry.updateMetadata("web:dashboard", session as any);
+
+    expect(mockFsState.files.get(dashboardPath)).toContain("thread-web");
+    expect(mockFsState.files.has(telegramPath)).toBe(false);
+  });
+
   it("disposeAll disposes all sessions and clears the map", async () => {
     const registry = new SessionRegistry(createConfig());
 

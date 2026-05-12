@@ -28,3 +28,32 @@ export function parseContextKey(key: TelegramContextKey): { chatId: number; mess
 export function isTopicContextKey(key: TelegramContextKey): boolean {
   return key.includes(":");
 }
+
+export function isTelegramContextKey(key: TelegramContextKey): boolean {
+  const parts = key.split(":");
+  if (parts.length < 1 || parts.length > 2) {
+    return false;
+  }
+
+  const chatIdText = parts[0];
+  if (!chatIdText || !/^-?\d+$/.test(chatIdText)) {
+    return false;
+  }
+
+  const chatId = Number(chatIdText);
+  if (!Number.isSafeInteger(chatId) || chatId === 0) {
+    return false;
+  }
+
+  const threadIdText = parts[1];
+  if (threadIdText === undefined) {
+    return true;
+  }
+
+  if (!/^\d+$/.test(threadIdText)) {
+    return false;
+  }
+
+  const threadId = Number(threadIdText);
+  return Number.isSafeInteger(threadId) && threadId > 0;
+}
