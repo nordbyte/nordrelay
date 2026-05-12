@@ -1,0 +1,457 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { createDefaultRolePolicies } from "../src/access-control.js";
+import { createBot } from "../src/bot.js";
+import { createDefaultLaunchProfile } from "../src/codex-launch.js";
+import type { ConnectorConfig } from "../src/config.js";
+
+const mockCodexState = vi.hoisted(() => ({
+  getThread: vi.fn(() => null),
+  getThreadActivity: vi.fn(() => null),
+  getThreadActivityLog: vi.fn(() => []),
+  getThreadRolloutSnapshot: vi.fn(() => null),
+}));
+
+vi.mock("../src/codex-auth.js", () => ({
+  checkAuthStatus: vi.fn(async () => ({
+    authenticated: true,
+    method: "api-key",
+    detail: "authenticated",
+  })),
+  clearAuthCache: vi.fn(),
+  startLogin: vi.fn(),
+  startLogout: vi.fn(),
+}));
+
+vi.mock("../src/codex-state.js", () => ({
+  getThread: mockCodexState.getThread,
+  getThreadActivity: mockCodexState.getThreadActivity,
+  getThreadActivityLog: mockCodexState.getThreadActivityLog,
+  getThreadRolloutSnapshot: mockCodexState.getThreadRolloutSnapshot,
+}));
+
+const tempDirs: string[] = [];
+
+function createTempWorkspace(): string {
+  const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-flow-"));
+  tempDirs.push(workspace);
+  return workspace;
+}
+
+function createConfig(overrides: Partial<ConnectorConfig> = {}): ConnectorConfig {
+  return {
+    telegramBotToken: "123:token",
+    telegramAllowedUserIds: [123, 999],
+    telegramAllowedUserIdSet: new Set([123, 999]),
+    telegramAllowedChatIds: [],
+    telegramAllowedChatIdSet: new Set(),
+    telegramAdminUserIds: [123],
+    telegramAdminUserIdSet: new Set([123]),
+    telegramReadOnlyUserIds: [999],
+    telegramReadOnlyUserIdSet: new Set([999]),
+    telegramRolePolicies: createDefaultRolePolicies(),
+    telegramAllowAnyChat: false,
+    telegramRateLimitMinIntervalMs: 0,
+    telegramEditMinIntervalMs: 0,
+    telegramMirrorMode: "status",
+    telegramMirrorMinUpdateMs: 0,
+    telegramNotifyMode: "minimal",
+    telegramQuietHours: null,
+    telegramRedactPatterns: [],
+    workspace: createTempWorkspace(),
+    workspaceAllowedRoots: [],
+    workspaceWarnRoots: [],
+    maxFileSize: 20 * 1024 * 1024,
+    artifactRetentionDays: 7,
+    artifactMaxTurnDirs: 30,
+    artifactMaxInboxDirs: 30,
+    artifactIgnoreDirs: [],
+    artifactIgnoreGlobs: [],
+    telegramAutoSendArtifacts: false,
+    codexApiKey: "codex-key",
+    codexModel: "o3",
+    codexSyncIntervalMs: 0,
+    codexExternalBusyCheckMs: 60_000,
+    codexExternalBusyStaleMs: 300_000,
+    codexSandboxMode: "workspace-write",
+    codexApprovalPolicy: "never",
+    launchProfiles: [createDefaultLaunchProfile("workspace-write", "never")],
+    defaultLaunchProfileId: "default",
+    enableUnsafeLaunchProfiles: false,
+    toolVerbosity: "summary",
+    logFormat: "text",
+    showTurnTokenUsage: false,
+    enableTelegramLogin: true,
+    enableTelegramReactions: false,
+    voicePreferredBackend: "auto",
+    voiceDefaultLanguage: undefined,
+    voiceTranscribeOnly: false,
+    ...overrides,
+  };
+}
+
+function createFakeRegistry() {
+  const session = {
+    getInfo: vi.fn(() => ({
+      threadId: "thread-1",
+      workspace: "/workspace/base",
+      model: "o3",
+      launchProfileId: "default",
+      launchProfileLabel: "Default",
+      launchProfileBehavior: "workspace-write / never",
+      sandboxMode: "workspace-write",
+      approvalPolicy: "never",
+      fastMode: true,
+      unsafeLaunch: false,
+    })),
+    getActiveThreadId: vi.fn(() => "thread-1"),
+    syncFromCodexState: vi.fn(() => ({
+      threadId: "thread-1",
+      changed: true,
+      reattached: true,
+      changedFields: ["model"],
+      info: session.getInfo(),
+    })),
+    hasActiveThread: vi.fn(() => true),
+    isProcessing: vi.fn(() => false),
+    prompt: vi.fn(),
+    listAllSessions: vi.fn(() => []),
+    listWorkspaces: vi.fn(() => []),
+  };
+
+  return {
+    session,
+    registry: {
+      onRemove: vi.fn(),
+      getOrCreate: vi.fn(async () => session),
+      get: vi.fn(() => session),
+      hasMetadata: vi.fn(() => true),
+      updateMetadata: vi.fn(),
+      listPinnedThreadIds: vi.fn(() => []),
+      listContexts: vi.fn(() => []),
+      syncAllFromCodexState: vi.fn(() => []),
+    },
+  };
+}
+
+function installFakeApi(bot: ReturnType<typeof createBot>) {
+  const sentMessages: Array<{ chatId: number | string; text: string; options: unknown }> = [];
+  const editedMessages: Array<{ chatId: number | string; messageId: number; text: string; options: unknown }> = [];
+  const answeredCallbacks: string[] = [];
+  let nextMessageId = 100;
+
+  bot.botInfo = {
+    id: 123,
+    is_bot: true,
+    first_name: "Connector",
+    username: "connector_bot",
+    can_join_groups: true,
+    can_read_all_group_messages: false,
+    supports_inline_queries: false,
+    can_connect_to_business: false,
+    has_main_web_app: false,
+  };
+
+  bot.api.config.use(async (_prev, method, payload) => {
+    switch (method) {
+      case "sendMessage": {
+        const data = payload as { chat_id: number | string; text: string };
+        sentMessages.push({ chatId: data.chat_id, text: data.text, options: payload });
+        return { ok: true, result: { message_id: nextMessageId++, date: 0, chat: { id: data.chat_id, type: "private" }, text: data.text } };
+      }
+      case "answerCallbackQuery": {
+        const data = payload as { text?: string };
+        answeredCallbacks.push(data.text ?? "");
+        return { ok: true, result: true };
+      }
+      case "editMessageText": {
+        const data = payload as { chat_id: number | string; message_id: number; text: string };
+        editedMessages.push({ chatId: data.chat_id, messageId: data.message_id, text: data.text, options: payload });
+        return { ok: true, result: true };
+      }
+      case "editMessageReplyMarkup":
+      case "sendChatAction":
+        return { ok: true, result: true };
+      default:
+        return { ok: true, result: true };
+    }
+  });
+
+  return { sentMessages, editedMessages, answeredCallbacks };
+}
+
+function getFirstInlineButton(payload: unknown): { text: string; callback_data: string } {
+  const replyMarkup = (payload as { reply_markup?: { inline_keyboard?: Array<Array<{ text: string; callback_data: string }>> } }).reply_markup;
+  const button = replyMarkup?.inline_keyboard?.[0]?.[0];
+  if (!button) {
+    throw new Error("Expected inline keyboard button");
+  }
+  return button;
+}
+
+function findInlineButton(payload: unknown, predicate: (button: { text: string; callback_data: string }) => boolean): { text: string; callback_data: string } {
+  const replyMarkup = (payload as { reply_markup?: { inline_keyboard?: Array<Array<{ text: string; callback_data: string }>> } }).reply_markup;
+  const buttons = replyMarkup?.inline_keyboard?.flat() ?? [];
+  const button = buttons.find(predicate);
+  if (!button) {
+    throw new Error("Expected inline keyboard button");
+  }
+  return button;
+}
+
+function messageUpdate(text: string, fromId = 123) {
+  return {
+    update_id: Math.floor(Math.random() * 1_000_000),
+    message: {
+      message_id: 1,
+      date: 0,
+      chat: { id: fromId, type: "private" },
+      from: { id: fromId, is_bot: false, first_name: "User" },
+      text,
+      entities: text.startsWith("/") ? [{ offset: 0, length: text.split(/\s+/)[0]!.length, type: "bot_command" }] : undefined,
+    },
+  };
+}
+
+function callbackUpdate(data: string, fromId = 123) {
+  return {
+    update_id: Math.floor(Math.random() * 1_000_000),
+    callback_query: {
+      id: `callback-${Math.random()}`,
+      from: { id: fromId, is_bot: false, first_name: "User" },
+      chat_instance: "chat-instance",
+      data,
+      message: {
+        message_id: 1,
+        date: 0,
+        chat: { id: fromId, type: "private" },
+      },
+    },
+  };
+}
+
+describe("bot flow integration", () => {
+  beforeEach(() => {
+    mockCodexState.getThread.mockReset();
+    mockCodexState.getThread.mockReturnValue(null);
+    mockCodexState.getThreadActivity.mockReset();
+    mockCodexState.getThreadActivity.mockReturnValue(null);
+    mockCodexState.getThreadActivityLog.mockReset();
+    mockCodexState.getThreadActivityLog.mockReturnValue([]);
+    mockCodexState.getThreadRolloutSnapshot.mockReset();
+    mockCodexState.getThreadRolloutSnapshot.mockReturnValue(null);
+  });
+
+  afterEach(() => {
+    while (tempDirs.length > 0) {
+      rmSync(tempDirs.pop()!, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks readonly users from prompt messages before Codex is touched", async () => {
+    const { registry } = createFakeRegistry();
+    const bot = createBot(createConfig(), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("run tests", 999) as any);
+
+    expect(api.sentMessages.at(-1)?.text).toContain("Access denied: prompt permission required.");
+    expect(registry.getOrCreate).not.toHaveBeenCalled();
+  });
+
+  it("handles /tasks through middleware and reports idle progress", async () => {
+    const { registry } = createFakeRegistry();
+    const bot = createBot(createConfig(), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("/tasks") as any);
+
+    expect(api.sentMessages.at(-1)?.text).toContain("Progress:");
+    expect(api.sentMessages.at(-1)?.text).toContain("Status:");
+    expect(registry.getOrCreate).toHaveBeenCalled();
+  });
+
+  it("syncs the active session from Codex state", async () => {
+    const { registry, session } = createFakeRegistry();
+    const bot = createBot(createConfig(), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("/sync") as any);
+
+    expect(session.syncFromCodexState).toHaveBeenCalledWith({ reattach: true });
+    expect(registry.updateMetadata).toHaveBeenCalled();
+    expect(api.sentMessages.at(-1)?.text).toContain("Synced from Codex state.");
+  });
+
+  it("renders thread activity from rollout events", async () => {
+    mockCodexState.getThreadActivityLog.mockReturnValue([
+      {
+        lineNumber: 1,
+        kind: "user",
+        timestamp: new Date("2026-05-12T04:00:00Z"),
+        type: "user_message",
+        turnId: "turn-1",
+        status: null,
+        text: "do work",
+        toolName: null,
+        phase: null,
+      },
+      {
+        lineNumber: 2,
+        kind: "agent",
+        timestamp: new Date("2026-05-12T04:00:05Z"),
+        type: "agent_message",
+        turnId: "turn-1",
+        status: null,
+        text: "done",
+        toolName: null,
+        phase: "final_answer",
+      },
+    ]);
+    const { registry } = createFakeRegistry();
+    const bot = createBot(createConfig(), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("/activity") as any);
+
+    expect(mockCodexState.getThreadActivityLog).toHaveBeenCalledWith("thread-1", 16);
+    expect(api.sentMessages.at(-1)?.text).toContain("Activity:");
+    expect(api.sentMessages.at(-1)?.text).toContain("user");
+    expect(api.sentMessages.at(-1)?.text).toContain("agent final_answer");
+  });
+
+  it("queues prompt messages while the attached Codex CLI session is active", async () => {
+    mockCodexState.getThreadActivity.mockReturnValue({
+      threadId: "thread-1",
+      rolloutPath: "/home/tester/.codex/sessions/rollout-thread-1.jsonl",
+      active: true,
+      stale: false,
+      turnId: "turn-1",
+      startedAt: new Date("2026-05-12T04:00:00Z"),
+      updatedAt: new Date("2026-05-12T04:00:10Z"),
+    });
+    const { registry, session } = createFakeRegistry();
+    const bot = createBot(createConfig(), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("next task") as any);
+
+    expect(mockCodexState.getThreadActivity).toHaveBeenCalledWith("thread-1", {
+      staleAfterMs: 300_000,
+    });
+    expect(api.sentMessages.at(-1)?.text).toContain("Queued prompt");
+    expect(api.sentMessages.at(-1)?.text).toContain("Codex session is still active");
+    expect(api.sentMessages.at(-1)?.text).toContain("processing a previous task");
+    const button = getFirstInlineButton(api.sentMessages.at(-1)?.options);
+    expect(button.text).toBe("Cancel queued message");
+    expect(button.callback_data).toMatch(/^queue_cancel:123:[a-z0-9]+$/);
+    expect(session.prompt).not.toHaveBeenCalled();
+  });
+
+  it("cancels a queued prompt from the queued-message button", async () => {
+    const { registry, session } = createFakeRegistry();
+    session.isProcessing.mockReturnValue(true);
+    const bot = createBot(createConfig(), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("queued from button") as any);
+    const button = getFirstInlineButton(api.sentMessages.at(-1)?.options);
+
+    await bot.handleUpdate(callbackUpdate(button.callback_data) as any);
+    await bot.handleUpdate(messageUpdate("/queue") as any);
+
+    expect(api.answeredCallbacks.at(-1)).toContain("Cancelled queued prompt");
+    expect(api.editedMessages.at(-1)?.text).toContain("Cancelled queued prompt");
+    expect(api.sentMessages.at(-1)?.text).toBe("Queue is empty.");
+  });
+
+  it("lists queued prompts with cancel buttons and removes the selected item", async () => {
+    const { registry, session } = createFakeRegistry();
+    session.isProcessing.mockReturnValue(true);
+    const bot = createBot(createConfig(), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("first queued") as any);
+    await bot.handleUpdate(messageUpdate("second queued") as any);
+    await bot.handleUpdate(messageUpdate("/queue") as any);
+
+    const button = findInlineButton(api.sentMessages.at(-1)?.options, (candidate) => candidate.callback_data.startsWith("queue_remove:"));
+    expect(button.text).toBe("Cancel");
+    expect(button.callback_data).toMatch(/^queue_remove:123:[a-z0-9]+$/);
+
+    await bot.handleUpdate(callbackUpdate(button.callback_data) as any);
+
+    expect(api.answeredCallbacks.at(-1)).toContain("Cancelled queued prompt");
+    expect(api.editedMessages.at(-1)?.text).toContain("Queued prompts:");
+    expect(api.editedMessages.at(-1)?.text).toContain("second queued");
+    expect(api.editedMessages.at(-1)?.text).not.toContain("first queued");
+  });
+
+  it("supports queue priority and pause controls", async () => {
+    const { registry, session } = createFakeRegistry();
+    session.isProcessing.mockReturnValue(true);
+    const bot = createBot(createConfig(), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("first queued") as any);
+    const firstId = getFirstInlineButton(api.sentMessages.at(-1)?.options).callback_data.split(":").at(-1)!;
+    await bot.handleUpdate(messageUpdate("second queued") as any);
+    const secondId = getFirstInlineButton(api.sentMessages.at(-1)?.options).callback_data.split(":").at(-1)!;
+
+    await bot.handleUpdate(messageUpdate(`/queue move ${secondId} top`) as any);
+    await bot.handleUpdate(messageUpdate("/queue pause") as any);
+    await bot.handleUpdate(messageUpdate("/queue") as any);
+
+    expect(api.sentMessages.some((message) => message.text.includes(`Moved queued prompt ${secondId} top.`))).toBe(true);
+    expect(api.sentMessages.some((message) => message.text.includes("Queue paused."))).toBe(true);
+    expect(api.sentMessages.at(-1)?.text).toContain("Queued prompts:");
+    expect(api.sentMessages.at(-1)?.text).toContain("paused");
+    expect(api.sentMessages.at(-1)?.text.indexOf(secondId)).toBeLessThan(api.sentMessages.at(-1)!.text.indexOf(firstId));
+  });
+
+  it("stores mirror and notification preferences per context", async () => {
+    const { registry } = createFakeRegistry();
+    const bot = createBot(createConfig(), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("/mirror full") as any);
+    await bot.handleUpdate(messageUpdate("/notify all") as any);
+    await bot.handleUpdate(messageUpdate("/notify quiet 22-7") as any);
+
+    expect(api.sentMessages.some((message) => message.text.includes("CLI mirroring:") && message.text.includes("full"))).toBe(true);
+    expect(api.sentMessages.some((message) => message.text.includes("Notifications:") && message.text.includes("all"))).toBe(true);
+    expect(api.sentMessages.at(-1)?.text).toContain("22-07");
+  });
+
+  it("renders workspace guardrails", async () => {
+    const { registry, session } = createFakeRegistry();
+    session.listWorkspaces.mockReturnValue(["/workspace/base", "/workspace/base/project-a", "/outside"]);
+    const bot = createBot(createConfig({
+      workspaceAllowedRoots: ["/workspace/base"],
+      workspaceWarnRoots: ["/workspace/base"],
+    }), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("/workspaces") as any);
+
+    expect(api.sentMessages.at(-1)?.text).toContain("Allowed roots:");
+    expect(api.sentMessages.at(-1)?.text).toContain("/workspace/base/project-a");
+    expect(api.sentMessages.at(-1)?.text).not.toContain("/outside");
+    expect(api.sentMessages.at(-1)?.text).toContain("Current warning:");
+  });
+
+  it("enforces file permission on artifact callbacks", async () => {
+    const { registry } = createFakeRegistry();
+    const bot = createBot(createConfig(), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(callbackUpdate("artifact_delete:turn-a", 999) as any);
+
+    expect(api.answeredCallbacks.at(-1)).toBe("Access denied: files permission required.");
+    expect(registry.getOrCreate).not.toHaveBeenCalled();
+  });
+});

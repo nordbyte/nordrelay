@@ -1,0 +1,677 @@
+# NordRelay
+
+NordRelay is a remote control plane for coding agents across messaging channels. The current implementation connects Codex sessions to Telegram, keeps independent sessions per chat or forum topic, streams replies and tool activity back to Telegram, supports files, photos, voice input, model controls, thread browsing, login, retry/abort, and CLI handback.
+
+The repo is both a local Codex marketplace and a standalone Node app. The plugin lives in `plugins/nordrelay/`; the full bot runtime lives in `src/` and uses `@openai/codex-sdk`.
+
+## Features
+
+Session control:
+
+- Independent Codex sessions per Telegram private chat, group chat, and forum topic.
+- Persistent Telegram context metadata in the active workspace under `.nordrelay/contexts.json`.
+- `/new` starts a fresh thread, with workspace selection when known workspaces are available.
+- `/session` shows thread id, workspace, launch profile, launch behavior, model, reasoning, fast mode, context usage, token totals, and subscription limit remaining percentages.
+- `/sessions` opens a paginated browser for recent Codex threads from `~/.codex`.
+- `/sessions <query>` filters recent threads by id, title, workspace, model, or first message.
+- `/sync` manually refreshes the active Telegram session from Codex CLI state and reattaches idle threads when needed.
+- `/pin`, `/unpin`, and `/pinned` keep important threads at the top of Telegram session browsing.
+- `/switch <thread-id>` switches directly to an existing thread.
+- `/attach <thread-id>` binds an existing Codex thread to the current chat or topic.
+- Existing thread metadata is imported on switch/attach, including model, reasoning effort, sandbox mode, and approval policy.
+- Codex session usage is read from local rollout JSONL files, including context-used percent, total input/output tokens, 5h limit remaining, and weekly limit remaining.
+- `/handback` returns a ready-to-run `codex resume <thread-id>` command for continuing in the Codex CLI.
+- `/retry` resends the last prompt for the current Telegram context.
+- `/queue`, inline run/top/up/down/cancel buttons, `/cancel <queue-id>`, and `/clearqueue` manage queued prompts for a busy Telegram context.
+- `/abort`, `/stop`, and the inline Abort button cancel the active Codex turn.
+- Busy prompts are queued per Telegram context instead of being dropped.
+- If the attached thread is currently active in the local Codex CLI, Telegram prompts are queued until that CLI task finishes.
+- Active Codex CLI turns are mirrored into Telegram with configurable `off`, `status`, `final`, or `full` modes.
+- `/mirror` controls CLI mirroring per Telegram context.
+- Queues survive connector restarts and are resumed automatically when the external CLI turn becomes idle.
+- `/notify` controls completion/status notifications and quiet hours per Telegram context.
+- `/workspaces` lists allowed workspaces and shows workspace guardrail warnings.
+- `/status`, `/health`, and `/version` report connector runtime health from Telegram.
+- `/tasks` and `/progress` show the current turn status, queue length, active tool, elapsed time, and last error.
+- `/activity` shows a compact timeline of recent rollout events for the active thread, with filters and export.
+- `/diagnostics` reports redacted runtime, config, role, Telegram rate-limit, mirror, voice, session, queue, and progress details for admins.
+
+Codex runtime:
+
+- Uses `@openai/codex-sdk` to start, resume, and stream Codex threads.
+- Prefers the host `codex` executable on `PATH`, so Codex CLI updates are picked up automatically; the SDK-bundled CLI is used only as fallback.
+- Supports model selection through `/model`, using Codex model cache when available and fallback models otherwise.
+- Supports reasoning effort selection through `/reasoning` and the backward-compatible `/effort` alias: `minimal`, `low`, `medium`, `high`, `xhigh`.
+- Supports launch profiles through `/launch_profiles` and `/launch`.
+- Built-in launch profiles include Default, Read Only, Review, and optional Full Access.
+- Custom launch profiles can be configured with `CODEX_LAUNCH_PROFILES_JSON`.
+- Unsafe `danger-full-access` profiles require `ENABLE_UNSAFE_LAUNCH_PROFILES=true` and Telegram confirmation.
+- Review or unsafe launch profiles require an inline Telegram approval before each prompt is executed.
+- Fast mode can be toggled with `/fast` and mirrors Codex's `fast_default_opt_out` setting from `~/.codex/config.toml`.
+- Active Telegram sessions periodically sync model, reasoning, workspace, launch metadata, and fast-mode defaults from local Codex state.
+- Active local Codex CLI tasks are detected from rollout JSONL files so Telegram does not race the CLI on the same thread.
+- `/diagnostics` includes rollout path, activity status, stale/idle reason, line count, and last update time.
+- Optional per-turn token usage footer with `SHOW_TURN_TOKEN_USAGE=true`.
+
+Telegram input:
+
+- Plain text messages become Codex prompts.
+- Voice and audio messages are transcribed before being sent to Codex.
+- Voice transcription uses local `faster-whisper` on Linux, local `parakeet-coreml` on macOS Apple Silicon, or OpenAI Whisper when `OPENAI_API_KEY` is set.
+- `/voice` can select backend preference, language, and transcribe-only mode.
+- Photo messages are passed to Codex as local image input.
+- Document messages are downloaded, sanitized, size-checked, and staged under `.nordrelay/inbox/<turn-id>/`.
+- Telegram media groups and albums are combined into one Codex turn with all photos and documents staged together.
+- Uploaded documents include prompt instructions telling Codex where files were staged.
+- Staged document and photo prompts are persisted so `/retry` and queued execution can replay them after a restart.
+- Telegram forum topics are treated as separate work contexts.
+
+Telegram output:
+
+- Assistant replies stream back to Telegram with debounced message edits.
+- Telegram `typing` status is sent while Codex is working.
+- Markdown is converted to Telegram HTML where possible, with fallback to plain text.
+- Long replies are split to respect Telegram message limits.
+- Tool activity can be displayed as summary, full output, errors only, or hidden with `TOOL_VERBOSITY`.
+- Command execution, web search, file changes, MCP tool calls, error items, and todo-list updates are surfaced.
+- Todo-list updates are rendered as a live plan/status message.
+- Generated artifacts from `.nordrelay/turns/<turn-id>/out/` are retained for manual retrieval with `/artifacts`.
+- Workspace files detected after mirrored Codex CLI turns are indexed as `/artifacts` entries, even when automatic artifact delivery is disabled.
+- Automatic artifact summaries and file uploads are disabled by default; set `TELEGRAM_AUTO_SEND_ARTIFACTS=true` to send them after turns.
+- Workspace artifact detection sorts by modification time and supports configurable ignored directories and globs.
+- Image artifacts are sent with Telegram previews; large multi-file outputs are bundled into one ZIP when possible.
+- `/artifacts` lists recent generated files and can resend the latest or a specific artifact turn.
+- `/artifacts` includes inline actions to resend, ZIP, or delete artifact turns.
+- Old artifact and inbox turn directories are pruned automatically with configurable retention.
+- Optional Telegram message reactions can acknowledge work start and completion with `ENABLE_TELEGRAM_REACTIONS=true`.
+
+Authentication and safety:
+
+- Telegram access requires `TELEGRAM_ADMIN_USER_IDS` by default; a fresh install only accepts those admin user ids.
+- `TELEGRAM_ALLOWED_USER_IDS` can add non-admin operators.
+- `TELEGRAM_ALLOWED_CHAT_IDS` is supported for private chats, groups, and backward compatibility.
+- `TELEGRAM_ALLOW_ANY_CHAT=true` is an explicit unsafe override for temporary local setup only.
+- `TELEGRAM_ADMIN_USER_IDS` restricts admin-only commands such as `/logs`, `/restart`, and `/update`.
+- `TELEGRAM_READONLY_USER_IDS` can inspect status and sessions but cannot send prompts or run mutating commands by default.
+- `TELEGRAM_ROLE_POLICIES_JSON` can override role permissions for `admin`, `operator`, and `readonly`.
+- `/auth` reports Codex authentication status.
+- `/login` starts Codex CLI device auth from Telegram when enabled.
+- `/logout` signs out of CLI auth when not using `CODEX_API_KEY`.
+- `CODEX_API_KEY` can be used for host-side Codex authentication.
+- Friendly error messages are returned for auth, network, model, rate-limit, timeout, and context-length failures.
+- Outgoing Telegram messages and logs redact common token/API-key patterns, with optional custom redaction patterns.
+- Workspace allow/warn roots can prevent accidental operation in the wrong project directory.
+
+Operations:
+
+- Plugin command/skill starts, stops, restarts, and inspects the connector process.
+- Manual process commands support `start`, `stop`, `restart`, `status`, and `foreground`.
+- Telegram admin commands support `/logs`, `/diagnostics`, `/restart`, and `/update`.
+- `/update` pulls changes, installs dependencies, runs check, tests, and build, and restarts only after all steps pass.
+- Logs can be emitted as plain text or JSON records with `CONNECTOR_LOG_FORMAT`.
+- Telegram sends/edits/documents are routed through a rate-limit queue that honors Telegram retry-after responses.
+- Context metadata, queues, and preferences are written atomically with backup recovery.
+- Runtime state and logs are written under `~/.codex/nordrelay/`.
+- `npm run dev`, `npm run build`, `npm run check`, `npm test`, `npm start`, `npm stop`, and `npm run status` are available.
+- Dockerfile and `docker-compose.yml` are included for containerized operation.
+- A `launchd/start.sh` helper is included for host-managed startup.
+
+## First Run Setup
+
+Install dependencies and build the runtime:
+
+```bash
+npm install
+npm run build
+cp .env.example .env
+```
+
+Create the Telegram bot:
+
+1. Open Telegram and talk to `@BotFather`.
+2. Run `/newbot`.
+3. Choose a display name and bot username.
+4. Copy the bot token into `TELEGRAM_BOT_TOKEN` in `.env`.
+5. Find your Telegram user id with a trusted id helper bot, for example `@userinfobot`, or from Telegram API tooling.
+6. Put your user id into `TELEGRAM_ADMIN_USER_IDS`.
+
+Minimal private-bot `.env`:
+
+```dotenv
+TELEGRAM_BOT_TOKEN=123456789:replace-me
+TELEGRAM_ADMIN_USER_IDS=123456789
+CODEX_SANDBOX_MODE=workspace-write
+CODEX_APPROVAL_POLICY=never
+```
+
+Optional non-admin operators can be added with:
+
+```dotenv
+TELEGRAM_ALLOWED_USER_IDS=234567890,345678901
+```
+
+Do not use `TELEGRAM_ALLOW_ANY_CHAT=true` for normal coding sessions. It makes the bot reachable from any Telegram chat that can message it.
+
+Codex authentication:
+
+- Preferred local setup: run `codex login` on the host before starting the connector.
+- Remote setup: use `/auth` and `/login` in Telegram if `ENABLE_TELEGRAM_LOGIN=true`.
+- API-key setup: set `CODEX_API_KEY`; `/logout` is disabled while `CODEX_API_KEY` is in use.
+
+Register the local Codex marketplace:
+
+```bash
+codex plugin marketplace add ~/projects/nordrelay
+```
+
+An example local marketplace entry is available at `docs/nordrelay-marketplace.example.json`. Keep personal `.agents/` marketplace files outside the public repo.
+
+## Running
+
+From Codex, ask:
+
+```text
+Starte Telegram Remote
+```
+
+Where Codex exposes namespaced plugin commands, this also works:
+
+```text
+/nordrelay:remote
+```
+
+The old unnamespaced `/remote` command is no longer required and current Codex TUI builds do not register it as a top-level plugin slash command. The command is only a process-manager shortcut; Telegram contains the actual controls.
+
+Manual process commands:
+
+```bash
+node plugins/nordrelay/scripts/nordrelay.mjs start
+node plugins/nordrelay/scripts/nordrelay.mjs status
+node plugins/nordrelay/scripts/nordrelay.mjs restart
+node plugins/nordrelay/scripts/nordrelay.mjs stop
+node plugins/nordrelay/scripts/nordrelay.mjs foreground
+```
+
+NPM shortcuts:
+
+```bash
+npm start
+npm run status
+npm stop
+npm run foreground
+```
+
+Runtime files:
+
+- PID file: `~/.codex/nordrelay/nordrelay.pid`
+- State file: `~/.codex/nordrelay/state.json`
+- Log file: `~/.codex/nordrelay/nordrelay.log`
+- Home override: `NORDRELAY_HOME=/custom/path`
+
+## Telegram Commands
+
+- `/start` shows welcome text and the selected launch profile.
+- `/help` shows the grouped command reference.
+- `/new` starts a new thread. If Codex knows multiple workspaces, Telegram shows a workspace picker.
+- `/session` shows current thread details.
+- `/sessions` opens a paginated recent-thread picker.
+- `/sessions <query>` searches recent threads.
+- `/sync` syncs the active session from local Codex state.
+- `/pinned` opens a pinned-thread picker.
+- `/pin [thread-id]` pins a thread for this Telegram context; defaults to the active thread.
+- `/unpin [thread-id]` unpins a thread for this Telegram context; defaults to the active thread.
+- `/switch <thread-id>` switches directly to a known Codex thread.
+- `/attach <thread-id>` binds a known Codex thread to the current chat or forum topic.
+- `/handback` detaches the active thread and prints a `codex resume <thread-id>` command.
+- `/retry` resends the last prompt for this Telegram context.
+- `/queue` shows queued prompts for this Telegram context with inline run/top/up/down/cancel buttons.
+- `/queue pause` pauses automatic queued prompt execution.
+- `/queue resume` resumes automatic queued prompt execution.
+- `/queue move <queue-id> top|up|down` changes queued prompt priority.
+- `/queue run <queue-id>` resumes the queue and runs that prompt next when the session is idle.
+- Queued prompt replies include a cancel button while the prompt is still waiting.
+- `/cancel <queue-id>` removes one queued prompt; the queue id is the short code shown in messages such as `Queued prompt 332kmt`.
+- `/clearqueue` clears queued prompts for this Telegram context.
+- `/activity [all|tools|errors|user|agent|tasks] [limit] [since 1h] [export]` shows or exports rollout activity for the active thread.
+- `/artifacts [latest|zip latest|turn-id]` lists or resends generated artifacts for the current workspace.
+- `/workspaces` lists Codex workspaces allowed by the workspace policy.
+- `/abort` cancels the current operation.
+- `/stop` is an alias for `/abort`.
+- `/launch_profiles` or `/launch` opens the launch profile picker.
+- `/fast [on|off]` toggles fast mode. Without an argument it flips the current state.
+- `/model` opens the model picker.
+- `/reasoning` opens the reasoning effort picker.
+- `/effort` is a backward-compatible alias for `/reasoning`.
+- `/mirror [off|status|final|full]` controls local CLI mirroring for this Telegram context.
+- `/notify [off|minimal|all]` controls Telegram notifications.
+- `/notify quiet HH-HH` sets quiet hours; `/notify quiet off` disables them.
+- `/auth` reports Codex authentication status.
+- `/login` starts Telegram-initiated Codex CLI login.
+- `/logout` signs out from CLI auth unless `CODEX_API_KEY` is active.
+- `/voice` reports voice transcription backends and current voice preferences.
+- `/voice backend auto|parakeet|faster-whisper|openai` selects backend preference.
+- `/voice language auto|<code>` selects transcription language.
+- `/voice transcribe_only on|off` controls whether voice is only transcribed or also sent to Codex.
+- `/tasks` or `/progress` reports the current turn and queue progress.
+- `/status` reports connector runtime status.
+- `/health` reports runtime health, auth, PIDs, Codex CLI, and state DB.
+- `/version` reports connector and Codex CLI version context.
+- `/logs [lines]` shows a redacted connector log tail. Admin only.
+- `/diagnostics` shows redacted connector diagnostics. Admin only.
+- `/restart` restarts the connector process. Admin only.
+- `/update` pulls `origin/main`, installs dependencies, checks, tests, builds, and restarts only on success. Admin only.
+
+## Command Examples
+
+Switching to an existing thread:
+
+```text
+/sessions
+```
+
+Tap a listed thread. The connector imports that thread's workspace, model, reasoning effort, sandbox mode, and approval mode from Codex state.
+
+Direct thread switch:
+
+```text
+/switch 019e178a-f275-7d01-95d6-c244ff3e30ed
+```
+
+Attach an existing CLI thread to the current Telegram topic:
+
+```text
+/attach 019e178a-f275-7d01-95d6-c244ff3e30ed
+```
+
+Hand a thread back to the Codex CLI:
+
+```text
+/handback
+```
+
+The bot replies with a command like:
+
+```bash
+cd ~/projects/my-workspace && codex resume 019e178a-f275-7d01-95d6-c244ff3e30ed
+```
+
+Change model:
+
+```text
+/model
+```
+
+Tap the model to use for new or reattached threads.
+
+Change reasoning effort:
+
+```text
+/reasoning
+```
+
+Choose one of `minimal`, `low`, `medium`, `high`, or `xhigh`.
+
+Toggle fast mode:
+
+```text
+/fast
+/fast on
+/fast off
+```
+
+Fast mode maps to launch profiles: `on` selects an approval policy of `never`, while `off` selects an approval-requesting profile such as Review. If a thread is idle, `/fast` reattaches the current thread with the selected launch behavior immediately.
+
+Choose launch profile:
+
+```text
+/launch_profiles
+```
+
+Tap the profile. Unsafe profiles require confirmation before they become active.
+
+## File, Photo, Voice, and Artifact Workflow
+
+Text:
+
+- Any non-command text message becomes a Codex prompt.
+- While Codex works, Telegram shows `typing`.
+- Replies stream back into the same chat or topic.
+
+Photos:
+
+- Send a photo with or without a caption.
+- The connector downloads it and passes it to Codex as local image input.
+- The caption becomes the text prompt when present.
+- Sending multiple photos as a Telegram album creates one combined Codex prompt.
+
+Documents:
+
+- Send a document with or without a caption.
+- The connector downloads it, sanitizes the filename, enforces `MAX_FILE_SIZE`, and stages it under:
+
+```text
+<workspace>/.nordrelay/inbox/<turn-id>/
+```
+
+- Codex receives prompt instructions with the staged file paths.
+- The caption becomes the text prompt when present.
+- Document albums and mixed media groups are processed as one turn; oversized files are skipped and reported.
+
+Artifacts:
+
+- For generated files that should be returned to Telegram, tell Codex to write them to:
+
+```text
+<workspace>/.nordrelay/turns/<turn-id>/out/
+```
+
+- The connector stores files in that directory and keeps them available for `/artifacts`.
+- Automatic Telegram artifact delivery is off by default. Set `TELEGRAM_AUTO_SEND_ARTIFACTS=true` to collect and send files right after a turn.
+- When automatic delivery or explicit `/artifacts` sending is used, image outputs are sent with Telegram previews and other outputs are sent as documents.
+- When more than five artifacts are sent, the connector tries to send one ZIP bundle instead of many separate files.
+- Use `/artifacts` to list recent artifact turns with inline Send/ZIP/Delete actions.
+- Use `/artifacts latest`, `/artifacts zip latest`, or `/artifacts <turn-id>` from text commands.
+- Telegram file delivery is capped at the configured `MAX_FILE_SIZE` per artifact or ZIP bundle.
+- Old turn and inbox directories are pruned automatically to keep workspace state compact.
+
+Voice and audio:
+
+- Send a Telegram voice note or audio file.
+- The connector transcribes it, then sends the transcript to Codex.
+- Local transcription is tried first with `parakeet-coreml` or `faster-whisper` when installed.
+- OpenAI Whisper is used when `OPENAI_API_KEY` is set.
+
+Voice prerequisites:
+
+```bash
+# macOS Apple Silicon
+brew install ffmpeg
+npm install parakeet-coreml
+```
+
+```bash
+# Debian/Ubuntu
+sudo apt-get install ffmpeg
+python3 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install faster-whisper
+```
+
+```dotenv
+FASTER_WHISPER_PYTHON=.venv/bin/python
+FASTER_WHISPER_MODEL=base
+FASTER_WHISPER_COMPUTE_TYPE=int8
+```
+
+Whisper fallback:
+
+```dotenv
+OPENAI_API_KEY=sk-...
+```
+
+Voice transcription uses `OPENAI_API_KEY`, not `CODEX_API_KEY`.
+
+## Environment Reference
+
+Telegram:
+
+- `TELEGRAM_BOT_TOKEN`: required BotFather token.
+- `TELEGRAM_ADMIN_USER_IDS`: required comma-separated Telegram user ids allowed to use admin commands. Admin ids are automatically allowed to use the bot.
+- `TELEGRAM_ALLOWED_USER_IDS`: optional comma-separated non-admin Telegram user ids allowed to use the bot.
+- `TELEGRAM_READONLY_USER_IDS`: comma-separated Telegram user ids that can inspect status and sessions but cannot run prompts or mutating commands.
+- `TELEGRAM_ALLOWED_CHAT_IDS`: comma-separated chat ids allowed to use the bot. Group ids may be negative.
+- `TELEGRAM_ALLOW_ANY_CHAT`: allows all chats when `true`. Keep `false` unless you intentionally want an open bot.
+- `TELEGRAM_ROLE_POLICIES_JSON`: optional JSON object mapping roles to permissions. Permissions are `inspect`, `sessions`, `prompt`, `files`, `settings`, `auth`, and `admin`.
+- `TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS`: minimum interval for normal Telegram API sends. Defaults to `80`.
+- `TELEGRAM_EDIT_MIN_INTERVAL_MS`: minimum interval for Telegram message edits. Defaults to `1200`.
+- `TELEGRAM_CLI_MIRROR_MODE`: default CLI mirror mode: `off`, `status`, `final`, or `full`. Defaults to `status`.
+- `TELEGRAM_CLI_MIRROR_MIN_UPDATE_MS`: minimum interval for mirrored CLI status edits. Defaults to `4000`.
+- `TELEGRAM_NOTIFY_MODE`: default notification mode: `off`, `minimal`, or `all`. Defaults to `minimal`.
+- `TELEGRAM_QUIET_HOURS`: optional quiet-hour range in `HH-HH` format, for example `22-7`.
+- `TELEGRAM_REDACT_PATTERNS`: comma-separated regular expressions for additional Telegram/log redaction.
+
+Role policy example:
+
+```dotenv
+TELEGRAM_ROLE_POLICIES_JSON={"readonly":["inspect","sessions"],"operator":["inspect","sessions","prompt","files"],"admin":"*"}
+```
+
+Codex:
+
+- `CODEX_API_KEY`: optional API key for Codex SDK auth.
+- `CODEX_CLI_PATH`: optional explicit path to the Codex CLI executable.
+- `CODEX_USE_BUNDLED_CLI`: set `true` to force the SDK-bundled Codex CLI instead of the host `codex` executable.
+- `CODEX_MODEL`: default model for new threads.
+- `CODEX_SYNC_INTERVAL_MS`: periodic local Codex-state sync interval for active Telegram sessions. Defaults to `10000`; set `0` to disable.
+- `CODEX_EXTERNAL_BUSY_CHECK_MS`: how often queued Telegram prompts re-check an active local Codex CLI task. Defaults to `5000`.
+- `CODEX_EXTERNAL_BUSY_STALE_MS`: maximum age for an unclosed rollout task before it is treated as stale instead of active. Defaults to `300000`.
+- `CODEX_SANDBOX_MODE`: default sandbox mode, one of `read-only`, `workspace-write`, `danger-full-access`.
+- `CODEX_APPROVAL_POLICY`: default approval policy, one of `never`, `on-request`, `on-failure`, `untrusted`.
+- `CODEX_LAUNCH_PROFILES_JSON`: JSON array of additional launch profiles.
+- `CODEX_DEFAULT_LAUNCH_PROFILE`: profile id used by default. Defaults to `default`.
+- `ENABLE_UNSAFE_LAUNCH_PROFILES`: set `true` to expose `danger-full-access` profiles.
+
+Telegram output:
+
+- `CONNECTOR_LOG_FORMAT`: `text` or `json`. Defaults to `text`.
+- `TOOL_VERBOSITY`: `all`, `summary`, `errors-only`, or `none`.
+- `SHOW_TURN_TOKEN_USAGE`: appends per-turn token usage when `true`.
+- `ENABLE_TELEGRAM_REACTIONS`: enables Telegram reactions when `true`.
+- `MAX_FILE_SIZE`: maximum inbound Telegram document size in bytes. Defaults to 20 MB.
+- `ARTIFACT_RETENTION_DAYS`: artifact/inbox turn age before pruning. Defaults to `7`.
+- `ARTIFACT_MAX_TURNS`: maximum artifact turn directories to keep per workspace. Defaults to `30`.
+- `ARTIFACT_MAX_INBOX_DIRS`: maximum staged inbox directories to keep per workspace. Defaults to `30`.
+- `ARTIFACT_IGNORE_DIRS`: comma-separated extra directory names or relative paths ignored during workspace artifact scans.
+- `ARTIFACT_IGNORE_GLOBS`: comma-separated glob patterns ignored during workspace artifact scans.
+- `TELEGRAM_AUTO_SEND_ARTIFACTS`: automatically post generated artifact summaries/files after Telegram turns and mirrored CLI turns. Defaults to `false`.
+
+Workspace policy:
+
+- `WORKSPACE_ALLOWED_ROOTS`: comma-separated root directories allowed for session switching and workspace selection. Empty means unrestricted.
+- `WORKSPACE_WARN_ROOTS`: comma-separated broad roots that should be allowed but warned about in `/session` and `/workspaces`.
+
+Auth and voice:
+
+- `ENABLE_TELEGRAM_LOGIN`: enables `/login` and `/logout`. Defaults to `true`.
+- `FASTER_WHISPER_PYTHON`: Python executable for local Linux voice transcription. Example: `.venv/bin/python`.
+- `FASTER_WHISPER_MODEL`: faster-whisper model name. Defaults to `base`.
+- `FASTER_WHISPER_DEVICE`: faster-whisper device. Defaults to `cpu`.
+- `FASTER_WHISPER_COMPUTE_TYPE`: faster-whisper compute type. Defaults to `int8`.
+- `FASTER_WHISPER_LANGUAGE`: optional fixed transcription language.
+- `FASTER_WHISPER_TIMEOUT_MS`: local transcription timeout. Defaults to `600000`.
+- `OPENAI_API_KEY`: enables Whisper transcription fallback for voice/audio.
+- `VOICE_PREFERRED_BACKEND`: `auto`, `parakeet`, `faster-whisper`, or `openai`. Defaults to `auto`.
+- `VOICE_DEFAULT_LANGUAGE`: optional default language code, for example `de` or `en`.
+- `VOICE_TRANSCRIBE_ONLY`: when `true`, voice/audio messages are transcribed but not sent to Codex.
+
+NordRelay wrapper:
+
+- `NORDRELAY_HOME`: state/log directory override. Defaults to `~/.codex/nordrelay`.
+- `NORDRELAY_SOURCE_ROOT`: runtime source root override. Useful when the plugin is launched from Codex cache.
+- `NORDRELAY_KEEP_PENDING_UPDATES`: set true to avoid dropping pending Telegram updates on start.
+- `NORDRELAY_FORWARD_TOOL_OUTPUT`: backward-compatible alias that sets `TOOL_VERBOSITY=all` when `TOOL_VERBOSITY` is unset.
+- `NORDRELAY_STATE_FILE`: internal state-file path passed by the wrapper.
+- `NORDRELAY_WRAPPER_PID`: internal wrapper PID passed to the runtime.
+- `NORDRELAY_DROP_PENDING_UPDATES`: internal polling startup flag.
+
+## Launch Profiles
+
+Built-in profiles:
+
+- `default`: uses `CODEX_SANDBOX_MODE` and `CODEX_APPROVAL_POLICY`.
+- `readonly`: `read-only` with `never`.
+- `review`: `workspace-write` with `on-request`.
+- `full-access`: `danger-full-access` with `never`, only when unsafe profiles are enabled.
+
+Custom profile example:
+
+```dotenv
+CODEX_LAUNCH_PROFILES_JSON=[{"id":"review-safe","label":"Review Safe","sandboxMode":"workspace-write","approvalPolicy":"on-request"}]
+CODEX_DEFAULT_LAUNCH_PROFILE=review-safe
+```
+
+Multiple profiles:
+
+```dotenv
+CODEX_LAUNCH_PROFILES_JSON=[{"id":"readonly-audit","label":"Readonly Audit","sandboxMode":"read-only","approvalPolicy":"never"},{"id":"interactive","label":"Interactive","sandboxMode":"workspace-write","approvalPolicy":"on-request"}]
+```
+
+Unsafe full-access profile:
+
+```dotenv
+ENABLE_UNSAFE_LAUNCH_PROFILES=true
+CODEX_LAUNCH_PROFILES_JSON=[{"id":"host-full","label":"Host Full Access","sandboxMode":"danger-full-access","approvalPolicy":"never"}]
+```
+
+Unsafe profiles are intentionally gated. Telegram asks for confirmation before applying them.
+
+## Security Notes
+
+- Always set `TELEGRAM_ADMIN_USER_IDS`; a fresh install refuses to start without at least one admin user id.
+- Prefer `TELEGRAM_ADMIN_USER_IDS` and `TELEGRAM_ALLOWED_USER_IDS` over `TELEGRAM_ALLOWED_CHAT_IDS` for private bots.
+- Use `TELEGRAM_ALLOWED_CHAT_IDS` for groups or forum topics only when you trust the entire chat.
+- Do not leave `TELEGRAM_ALLOW_ANY_CHAT=true` enabled after setup.
+- Treat `danger-full-access` as equivalent to shell access on the host.
+- Treat uploaded files as untrusted input. They are staged inside the active workspace so the selected sandbox policy still matters.
+- Keep `CODEX_API_KEY` and `OPENAI_API_KEY` in `.env` or host secret management; `.env` is gitignored.
+- In group chats, remember that any allowed user can prompt Codex in that chat context.
+- Use `TOOL_VERBOSITY=summary` or `errors-only` when command output may include sensitive data.
+- Review and unsafe launch profiles add a Telegram approve/deny gate before each turn starts.
+
+## Troubleshooting
+
+Polling conflict:
+
+- Symptom: Telegram reports conflict or only one connector receives messages.
+- Cause: the same bot token is being polled by another process.
+- Fix: stop the other process or run `npm stop`, then `npm start`.
+
+Stale plugin cache:
+
+- Symptom: Codex uses old command or skill text after a repo update.
+- Fix: reinstall/update the local marketplace or copy the plugin directory into the Codex plugin cache.
+- Current local cache path: `~/.codex/plugins/cache/nordrelay-local/nordrelay/0.1.0/`.
+
+Missing dependencies:
+
+- Symptom: startup says runtime is missing.
+- Fix:
+
+```bash
+npm install
+npm run build
+```
+
+Auth failures:
+
+- Symptom: prompt execution says Codex is not authenticated.
+- Fix: run `codex login` on the host, use `/login`, or set `CODEX_API_KEY`.
+- Use `/auth` to check the current auth method.
+
+No sessions listed:
+
+- Symptom: `/sessions` says no recent threads found.
+- Cause: `~/.codex/state_*.sqlite` is missing, unreadable, or has no active threads.
+- Fix: run Codex locally once, resume or create a thread, then try `/sessions` again.
+
+Wrong model, reasoning, or fast mode after switching:
+
+- The connector reads model, reasoning, sandbox, and approval policy from Codex state on `/sessions`, `/switch`, `/attach`, and `/session`; fast mode is read from `~/.codex/config.toml`.
+- If values look stale, make sure the local Codex CLI has finished writing thread state.
+
+Voice not working:
+
+- Run `/voice` to list available backends.
+- Install `ffmpeg` and `faster-whisper` on Linux, install `parakeet-coreml` on macOS Apple Silicon, or set `OPENAI_API_KEY`.
+- Check `~/.codex/nordrelay/nordrelay.log` for transcription errors.
+
+Files not returned:
+
+- Ensure Codex writes generated files to `.nordrelay/turns/<turn-id>/out/`.
+- Files over 50 MB are skipped.
+- Hidden files, temp files, and directories are ignored.
+- Use `ARTIFACT_IGNORE_DIRS` and `ARTIFACT_IGNORE_GLOBS` to suppress project-specific build/cache output.
+- Automatic artifact sending stays off unless `TELEGRAM_AUTO_SEND_ARTIFACTS=true`; `/artifacts` can still list and resend indexed outputs.
+
+## Deployment
+
+Foreground debugging:
+
+```bash
+npm run foreground
+```
+
+Background process:
+
+```bash
+npm start
+npm run status
+npm stop
+```
+
+Docker Compose:
+
+```bash
+docker compose up -d --build
+docker compose logs -f
+docker compose down
+```
+
+The compose file mounts:
+
+- `${HOME}/.codex` into the container for Codex auth and thread state.
+- `./workspace` as `/workspace` for container workspaces.
+
+launchd helper:
+
+```bash
+NORDRELAY_SOURCE_ROOT=~/projects/nordrelay launchd/start.sh
+```
+
+Linux systemd example:
+
+```ini
+[Unit]
+Description=NordRelay
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/nordrelay
+Environment=NORDRELAY_SOURCE_ROOT=/opt/nordrelay
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Build before starting a service:
+
+```bash
+npm install
+npm run build
+```
+
+## Architecture
+
+- `plugins/nordrelay/`: Codex plugin bundle with manifest, skill, command, icon, and process wrapper.
+- `plugins/nordrelay/scripts/nordrelay.mjs`: process manager for `start`, `stop`, `restart`, `status`, and `foreground`.
+- `src/index.ts`: runtime entrypoint, config load, auth check, state-file writes, polling lifecycle, shutdown.
+- `src/bot.ts`: Telegram command handlers, callbacks, message streaming, file/photo/voice handling, artifacts, and error handling.
+- `src/bot-preferences.ts`: per-context mirror, notification, quiet-hour, and voice preference persistence.
+- `src/telegram-rate-limit.ts`: centralized Telegram API send/edit/document rate limiting and retry-after tracking.
+- `src/persistence.ts`: atomic JSON/text writes with backup recovery.
+- `src/redaction.ts`: common secret redaction and custom redaction pattern support.
+- `src/workspace-policy.ts`: workspace allow/warn root evaluation.
+- `src/access-control.ts`: Telegram role permissions and command/callback permission mapping.
+- `src/codex-session.ts`: Codex SDK service for new/resumed threads, streaming events, abort, model, reasoning, launch profiles, and handback.
+- `src/session-registry.ts`: per-chat/topic session registry and persisted context metadata.
+- `src/session-format.ts`: compact Telegram rendering for session details, token usage, and limits.
+- `src/codex-state.ts`: reader for Codex `~/.codex/state_*.sqlite` thread, workspace, model, reasoning, sandbox, and approval metadata.
+- `src/attachments.ts`: inbound file staging and artifact output path construction.
+- `src/artifacts.ts`: generated artifact discovery, ZIP bundling, retention, and Telegram delivery filtering.
+- `src/voice.ts`: audio decoding and transcription backend selection.
+- `src/format.ts`: Telegram-safe HTML formatting and markdown conversion.
+- `src/error-messages.ts`: user-facing error translation.

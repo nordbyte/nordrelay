@@ -1,0 +1,68 @@
+{
+  "name": "nordrelay",
+  "version": "0.2.0",
+  "description": "Remote control plane for coding agents across messaging channels.",
+  "type": "module",
+  "author": "Ricardo",
+  "homepage": "https://github.com/nordbyte",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nordbyte/nordrelay.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nordbyte/nordrelay/issues"
+  },
+  "keywords": [
+    "coding-agents",
+    "messaging",
+    "remote-control",
+    "codex",
+    "telegram",
+    "bot",
+    "automation"
+  ],
+  "main": "./dist/index.js",
+  "bin": {
+    "nordrelay": "./plugins/nordrelay/scripts/nordrelay.mjs"
+  },
+  "files": [
+    "dist/",
+    "plugins/",
+    "launchd/",
+    ".env.example",
+    "Dockerfile",
+    "docker-compose.yml"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "check": "node --check plugins/nordrelay/scripts/nordrelay.mjs && tsc --noEmit",
+    "dev": "tsx src/index.ts",
+    "foreground": "node plugins/nordrelay/scripts/nordrelay.mjs foreground",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run check && npm test && npm run build",
+    "status": "node plugins/nordrelay/scripts/nordrelay.mjs status",
+    "start": "node plugins/nordrelay/scripts/nordrelay.mjs start",
+    "stop": "node plugins/nordrelay/scripts/nordrelay.mjs stop",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@grammyjs/auto-retry": "^2.0.2",
+    "@openai/codex-sdk": "^0.130.0",
+    "grammy": "^1.41.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^25.5.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.0.0",
+    "parakeet-coreml": "^2.2.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,720 @@
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+export interface Artifact {
+  name: string;
+  relativePath: string;
+  localPath: string;
+  sizeBytes: number;
+  modifiedAtMs?: number;
+}
+
+export interface ArtifactReport {
+  artifacts: Artifact[];
+  skippedCount: number;
+  omittedCount?: number;
+}
+
+export interface ArtifactTurnReport extends ArtifactReport {
+  turnId: string;
+  outDir: string;
+  updatedAt: Date;
+  totalSizeBytes: number;
+  source?: "turn" | "workspace";
+}
+
+export interface ArtifactZipOptions {
+  bundleName?: string;
+  maxFileSize?: number;
+  zipCommand?: string;
+}
+
+export interface ArtifactRetentionOptions {
+  maxAgeMs?: number;
+  maxTurnDirs?: number;
+  maxInboxDirs?: number;
+  now?: number;
+}
+
+export interface ArtifactPruneReport {
+  removedTurnDirs: number;
+  removedInboxDirs: number;
+}
+
+export interface WorkspaceArtifactScanOptions {
+  since: Date;
+  until?: Date;
+  maxFileSize?: number;
+  limit?: number;
+  ignoreDirs?: string[];
+  ignoreGlobs?: string[];
+}
+
+interface ArtifactTurnManifest {
+  version: 1;
+  source: "workspace";
+  turnId: string;
+  outDir: string;
+  updatedAt: string;
+  skippedCount: number;
+  omittedCount?: number;
+  artifacts: Artifact[];
+}
+
+const MAX_TELEGRAM_FILE_SIZE = 50 * 1024 * 1024;
+const DEFAULT_RETENTION_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const DEFAULT_MAX_TURN_DIRS = 30;
+const DEFAULT_MAX_INBOX_DIRS = 30;
+const MAX_ARTIFACT_DEPTH = 8;
+const IGNORED_PATTERNS = [/^\./, /^__pycache__$/, /\.tmp$/i, /~$/];
+const WORKSPACE_ARTIFACT_IGNORED_DIRS = new Set([
+  ".git",
+  ".nordrelay",
+  ".cache",
+  ".next",
+  ".pytest_cache",
+  ".turbo",
+  ".venv",
+  ".vite",
+  "node_modules",
+  "dist",
+  "build",
+  "coverage",
+  "target",
+  "tmp",
+  "temp",
+]);
+
+export async function ensureOutDir(outDir: string): Promise<void> {
+  await mkdir(outDir, { recursive: true });
+}
+
+export async function collectArtifacts(outDir: string, maxFileSize?: number): Promise<Artifact[]> {
+  return (await collectArtifactReport(outDir, maxFileSize)).artifacts;
+}
+
+export async function collectArtifactReport(outDir: string, maxFileSize?: number): Promise<ArtifactReport> {
+  if (!existsSync(outDir)) {
+    return { artifacts: [], skippedCount: 0 };
+  }
+
+  const maxSize = maxFileSize ?? MAX_TELEGRAM_FILE_SIZE;
+  const report = await collectArtifactReportFromDir(outDir, outDir, maxSize, 0);
+  report.artifacts.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+
+  return report;
+}
+
+export async function collectRecentWorkspaceArtifacts(
+  workspace: string,
+  options: WorkspaceArtifactScanOptions,
+): Promise<ArtifactReport> {
+  if (!existsSync(workspace)) {
+    return { artifacts: [], skippedCount: 0 };
+  }
+
+  const report = await collectRecentWorkspaceArtifactsFromDir(
+    workspace,
+    workspace,
+    options.since.getTime(),
+    options.until?.getTime() ?? Date.now() + 1000,
+    options.maxFileSize ?? MAX_TELEGRAM_FILE_SIZE,
+    new Set([...(options.ignoreDirs ?? [])]),
+    options.ignoreGlobs ?? [],
+    0,
+  );
+  report.artifacts.sort((left, right) => {
+    const timeDelta = (right.modifiedAtMs ?? 0) - (left.modifiedAtMs ?? 0);
+    return timeDelta !== 0 ? timeDelta : left.relativePath.localeCompare(right.relativePath);
+  });
+  const limit = options.limit ?? 5;
+  return {
+    artifacts: report.artifacts.slice(0, limit),
+    skippedCount: report.skippedCount,
+    omittedCount: Math.max(0, report.artifacts.length - limit),
+  };
+}
+
+export async function persistWorkspaceArtifactReport(
+  workspace: string,
+  turnId: string,
+  report: ArtifactReport,
+): Promise<ArtifactTurnReport | null> {
+  const safeTurnId = sanitizeTurnId(turnId);
+  if (!safeTurnId || (report.artifacts.length === 0 && report.skippedCount === 0 && !report.omittedCount)) {
+    return null;
+  }
+
+  const turnDir = artifactTurnDir(workspace, safeTurnId);
+  await mkdir(turnDir, { recursive: true });
+  const manifest: ArtifactTurnManifest = {
+    version: 1,
+    source: "workspace",
+    turnId: safeTurnId,
+    outDir: workspace,
+    updatedAt: new Date().toISOString(),
+    skippedCount: report.skippedCount,
+    omittedCount: report.omittedCount,
+    artifacts: report.artifacts,
+  };
+  await writeFile(artifactManifestPath(workspace, safeTurnId), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+  return {
+    turnId: safeTurnId,
+    outDir: workspace,
+    updatedAt: new Date(manifest.updatedAt),
+    artifacts: report.artifacts,
+    skippedCount: report.skippedCount,
+    omittedCount: report.omittedCount,
+    totalSizeBytes: totalArtifactSize(report.artifacts),
+    source: "workspace",
+  };
+}
+
+export async function listRecentArtifactReports(
+  workspace: string,
+  limit = 5,
+  maxFileSize?: number,
+): Promise<ArtifactTurnReport[]> {
+  const turnsDir = artifactTurnsDir(workspace);
+  const entries = await readdir(turnsDir, { withFileTypes: true }).catch(() => []);
+  const reports: ArtifactTurnReport[] = [];
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || shouldIgnoreEntry(entry.name)) {
+      continue;
+    }
+
+    const manifestReport = await readWorkspaceArtifactManifest(workspace, entry.name, maxFileSize);
+    if (manifestReport) {
+      reports.push(manifestReport);
+      continue;
+    }
+
+    const outDir = path.join(turnsDir, entry.name, "out");
+    const fileStat = await stat(outDir).catch(() => null);
+    if (!fileStat?.isDirectory()) {
+      continue;
+    }
+
+    const report = await collectArtifactReport(outDir, maxFileSize);
+    if (report.artifacts.length === 0 && report.skippedCount === 0) {
+      continue;
+    }
+
+    reports.push({
+      turnId: entry.name,
+      outDir,
+      updatedAt: fileStat.mtime,
+      artifacts: report.artifacts,
+      skippedCount: report.skippedCount,
+      omittedCount: report.omittedCount,
+      totalSizeBytes: totalArtifactSize(report.artifacts),
+      source: "turn",
+    });
+  }
+
+  reports.sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime());
+  return reports.slice(0, Math.max(0, limit));
+}
+
+export async function getArtifactTurnReport(
+  workspace: string,
+  turnId: string,
+  maxFileSize?: number,
+): Promise<ArtifactTurnReport | null> {
+  const safeTurnId = sanitizeTurnId(turnId);
+  if (!safeTurnId) {
+    return null;
+  }
+
+  const manifestReport = await readWorkspaceArtifactManifest(workspace, safeTurnId, maxFileSize);
+  if (manifestReport) {
+    return manifestReport;
+  }
+
+  const outDir = artifactOutDirForTurn(workspace, safeTurnId);
+  const fileStat = await stat(outDir).catch(() => null);
+  if (!fileStat?.isDirectory()) {
+    return null;
+  }
+
+  const report = await collectArtifactReport(outDir, maxFileSize);
+  if (report.artifacts.length === 0 && report.skippedCount === 0) {
+    return null;
+  }
+
+  return {
+    turnId: safeTurnId,
+    outDir,
+    updatedAt: fileStat.mtime,
+    artifacts: report.artifacts,
+    skippedCount: report.skippedCount,
+    omittedCount: report.omittedCount,
+    totalSizeBytes: totalArtifactSize(report.artifacts),
+    source: "turn",
+  };
+}
+
+export async function removeArtifactTurn(workspace: string, turnId: string): Promise<boolean> {
+  const safeTurnId = sanitizeTurnId(turnId);
+  if (!safeTurnId) {
+    return false;
+  }
+
+  const turnDir = path.join(artifactTurnsDir(workspace), safeTurnId);
+  const fileStat = await stat(turnDir).catch(() => null);
+  if (!fileStat?.isDirectory()) {
+    return false;
+  }
+
+  await rm(turnDir, { recursive: true, force: true });
+  return true;
+}
+
+export function artifactOutDirForTurn(workspace: string, turnId: string): string {
+  return path.join(artifactTurnsDir(workspace), sanitizeTurnId(turnId) ?? "", "out");
+}
+
+export async function createArtifactZipBundle(
+  artifacts: Artifact[],
+  outDir: string,
+  options: ArtifactZipOptions = {},
+): Promise<Artifact | null> {
+  if (artifacts.length === 0) {
+    return null;
+  }
+
+  const sourcePaths = artifacts
+    .map((artifact) => artifact.relativePath)
+    .filter((relativePath) => relativePath && !relativePath.includes("\n"));
+
+  if (sourcePaths.length !== artifacts.length) {
+    return null;
+  }
+
+  const bundleDir = path.join(outDir, ".telegram-artifacts");
+  await mkdir(bundleDir, { recursive: true });
+
+  const bundleName = options.bundleName ?? `codex-artifacts-${sanitizeZipStem(path.basename(path.dirname(outDir)))}.zip`;
+  const bundlePath = path.join(bundleDir, bundleName);
+  await rm(bundlePath, { force: true }).catch(() => {});
+
+  try {
+    await runZip(options.zipCommand ?? "zip", bundlePath, sourcePaths, outDir);
+  } catch {
+    return null;
+  }
+
+  const fileStat = await stat(bundlePath).catch(() => null);
+  if (!fileStat?.isFile()) {
+    return null;
+  }
+
+  const maxFileSize = options.maxFileSize ?? MAX_TELEGRAM_FILE_SIZE;
+  if (fileStat.size > maxFileSize) {
+    await rm(bundlePath, { force: true }).catch(() => {});
+    return null;
+  }
+
+  return {
+    name: bundleName,
+    relativePath: path.relative(outDir, bundlePath).split(path.sep).join("/"),
+    localPath: bundlePath,
+    sizeBytes: fileStat.size,
+  };
+}
+
+export async function pruneConnectorTurnDirs(
+  workspace: string,
+  options: ArtifactRetentionOptions = {},
+): Promise<ArtifactPruneReport> {
+  const maxAgeMs = options.maxAgeMs ?? DEFAULT_RETENTION_AGE_MS;
+  const now = options.now ?? Date.now();
+  const connectorDir = path.join(workspace, ".nordrelay");
+
+  const removedTurnDirs = await pruneChildDirs(path.join(connectorDir, "turns"), {
+    maxAgeMs,
+    maxDirs: options.maxTurnDirs ?? DEFAULT_MAX_TURN_DIRS,
+    now,
+  });
+  const removedInboxDirs = await pruneChildDirs(path.join(connectorDir, "inbox"), {
+    maxAgeMs,
+    maxDirs: options.maxInboxDirs ?? DEFAULT_MAX_INBOX_DIRS,
+    now,
+  });
+
+  return { removedTurnDirs, removedInboxDirs };
+}
+
+export function formatArtifactSummary(artifacts: Artifact[], skippedCount: number, omittedCount = 0): string {
+  if (artifacts.length === 0 && skippedCount === 0 && omittedCount === 0) {
+    return "";
+  }
+
+  const lines: string[] = [];
+  if (artifacts.length > 0) {
+    lines.push(`📎 ${artifacts.length} artifact${artifacts.length === 1 ? "" : "s"} generated (${formatBytes(totalArtifactSize(artifacts))})`);
+    for (const artifact of artifacts.slice(0, 5)) {
+      lines.push(`- ${artifact.name} (${formatBytes(artifact.sizeBytes)})`);
+    }
+    if (artifacts.length > 5) {
+      lines.push(`- ${artifacts.length - 5} more`);
+    }
+  }
+  if (skippedCount > 0) {
+    lines.push(`⚠️ ${skippedCount} file${skippedCount === 1 ? "" : "s"} too large to send`);
+  }
+  if (omittedCount > 0) {
+    lines.push(`- ${omittedCount} more not shown`);
+  }
+
+  return lines.join("\n");
+}
+
+export function totalArtifactSize(artifacts: Artifact[]): number {
+  return artifacts.reduce((total, artifact) => total + artifact.sizeBytes, 0);
+}
+
+export function telegramArtifactFilename(artifact: Artifact): string {
+  return artifact.name.replace(/[\\/]+/g, "__");
+}
+
+export function isTelegramImagePreview(artifact: Artifact): boolean {
+  return /\.(?:png|jpe?g|webp|gif)$/i.test(artifact.name);
+}
+
+async function collectArtifactReportFromDir(
+  currentDir: string,
+  rootDir: string,
+  maxFileSize: number,
+  depth: number,
+): Promise<ArtifactReport> {
+  if (depth > MAX_ARTIFACT_DEPTH) {
+    return { artifacts: [], skippedCount: 0 };
+  }
+
+  const entries = await readdir(currentDir, { withFileTypes: true }).catch(() => []);
+  const artifacts: Artifact[] = [];
+  let skippedCount = 0;
+
+  for (const entry of entries) {
+    if (shouldIgnoreEntry(entry.name) || entry.isSymbolicLink()) {
+      continue;
+    }
+
+    const fullPath = path.join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      const nested = await collectArtifactReportFromDir(fullPath, rootDir, maxFileSize, depth + 1);
+      artifacts.push(...nested.artifacts);
+      skippedCount += nested.skippedCount;
+      continue;
+    }
+
+    const fileStat = await stat(fullPath).catch(() => null);
+    if (!fileStat?.isFile()) {
+      continue;
+    }
+
+    if (fileStat.size > maxFileSize) {
+      skippedCount += 1;
+      continue;
+    }
+
+    const relativePath = path.relative(rootDir, fullPath).split(path.sep).join("/");
+    artifacts.push({
+      name: relativePath,
+      relativePath,
+      localPath: fullPath,
+      sizeBytes: fileStat.size,
+      modifiedAtMs: fileStat.mtimeMs,
+    });
+  }
+
+  return { artifacts, skippedCount };
+}
+
+async function collectRecentWorkspaceArtifactsFromDir(
+  currentDir: string,
+  rootDir: string,
+  sinceMs: number,
+  untilMs: number,
+  maxFileSize: number,
+  ignoreDirs: Set<string>,
+  ignoreGlobs: string[],
+  depth: number,
+): Promise<ArtifactReport> {
+  if (depth > MAX_ARTIFACT_DEPTH) {
+    return { artifacts: [], skippedCount: 0 };
+  }
+
+  const entries = await readdir(currentDir, { withFileTypes: true }).catch(() => []);
+  const artifacts: Artifact[] = [];
+  let skippedCount = 0;
+
+  for (const entry of entries) {
+    if (shouldIgnoreEntry(entry.name) || entry.isSymbolicLink()) {
+      continue;
+    }
+
+    const fullPath = path.join(currentDir, entry.name);
+    const relativeEntryPath = path.relative(rootDir, fullPath).split(path.sep).join("/");
+    if (entry.isDirectory()) {
+      if (WORKSPACE_ARTIFACT_IGNORED_DIRS.has(entry.name) || ignoreDirs.has(entry.name) || ignoreDirs.has(relativeEntryPath)) {
+        continue;
+      }
+      const nested = await collectRecentWorkspaceArtifactsFromDir(fullPath, rootDir, sinceMs, untilMs, maxFileSize, ignoreDirs, ignoreGlobs, depth + 1);
+      artifacts.push(...nested.artifacts);
+      skippedCount += nested.skippedCount;
+      continue;
+    }
+
+    const fileStat = await stat(fullPath).catch(() => null);
+    if (!fileStat?.isFile()) {
+      continue;
+    }
+    if (fileStat.mtimeMs < sinceMs || fileStat.mtimeMs > untilMs) {
+      continue;
+    }
+    if (fileStat.size > maxFileSize) {
+      skippedCount += 1;
+      continue;
+    }
+
+    const relativePath = path.relative(rootDir, fullPath).split(path.sep).join("/");
+    if (ignoreGlobs.some((pattern) => matchesGlob(relativePath, pattern))) {
+      continue;
+    }
+    artifacts.push({
+      name: relativePath,
+      relativePath,
+      localPath: fullPath,
+      sizeBytes: fileStat.size,
+      modifiedAtMs: fileStat.mtimeMs,
+    });
+  }
+
+  return { artifacts, skippedCount };
+}
+
+async function pruneChildDirs(
+  rootDir: string,
+  options: { maxAgeMs: number; maxDirs: number; now: number },
+): Promise<number> {
+  const entries = await readdir(rootDir, { withFileTypes: true }).catch(() => []);
+  const dirs = [];
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || shouldIgnoreEntry(entry.name)) {
+      continue;
+    }
+    const fullPath = path.join(rootDir, entry.name);
+    const fileStat = await stat(fullPath).catch(() => null);
+    if (fileStat?.isDirectory()) {
+      dirs.push({ fullPath, mtimeMs: fileStat.mtimeMs });
+    }
+  }
+
+  dirs.sort((left, right) => right.mtimeMs - left.mtimeMs);
+  let removed = 0;
+
+  for (const [index, dir] of dirs.entries()) {
+    const expired = options.now - dir.mtimeMs > options.maxAgeMs;
+    const aboveLimit = index >= options.maxDirs;
+    if (!expired && !aboveLimit) {
+      continue;
+    }
+
+    await rm(dir.fullPath, { recursive: true, force: true }).catch(() => {});
+    removed += 1;
+  }
+
+  return removed;
+}
+
+function shouldIgnoreEntry(name: string): boolean {
+  return IGNORED_PATTERNS.some((pattern) => pattern.test(name));
+}
+
+function artifactTurnsDir(workspace: string): string {
+  return path.join(workspace, ".nordrelay", "turns");
+}
+
+function artifactTurnDir(workspace: string, turnId: string): string {
+  return path.join(artifactTurnsDir(workspace), turnId);
+}
+
+function artifactManifestPath(workspace: string, turnId: string): string {
+  return path.join(artifactTurnDir(workspace, turnId), "manifest.json");
+}
+
+async function readWorkspaceArtifactManifest(
+  workspace: string,
+  turnId: string,
+  maxFileSize?: number,
+): Promise<ArtifactTurnReport | null> {
+  const safeTurnId = sanitizeTurnId(turnId);
+  if (!safeTurnId) {
+    return null;
+  }
+
+  const manifest = await readArtifactTurnManifest(artifactManifestPath(workspace, safeTurnId)).catch(() => null);
+  if (!manifest || manifest.source !== "workspace") {
+    return null;
+  }
+
+  const normalized = await normalizeManifestArtifacts(workspace, manifest, maxFileSize ?? MAX_TELEGRAM_FILE_SIZE);
+  if (normalized.artifacts.length === 0 && normalized.skippedCount === 0 && !normalized.omittedCount) {
+    return null;
+  }
+
+  return {
+    turnId: safeTurnId,
+    outDir: workspace,
+    updatedAt: parseDate(manifest.updatedAt) ?? new Date(0),
+    artifacts: normalized.artifacts,
+    skippedCount: normalized.skippedCount,
+    omittedCount: normalized.omittedCount,
+    totalSizeBytes: totalArtifactSize(normalized.artifacts),
+    source: "workspace",
+  };
+}
+
+async function readArtifactTurnManifest(filePath: string): Promise<ArtifactTurnManifest | null> {
+  const payload = JSON.parse(await readFile(filePath, "utf8")) as Partial<ArtifactTurnManifest>;
+  if (payload.version !== 1 || payload.source !== "workspace" || !Array.isArray(payload.artifacts)) {
+    return null;
+  }
+  return {
+    version: 1,
+    source: "workspace",
+    turnId: typeof payload.turnId === "string" ? payload.turnId : path.basename(path.dirname(filePath)),
+    outDir: typeof payload.outDir === "string" ? payload.outDir : "",
+    updatedAt: typeof payload.updatedAt === "string" ? payload.updatedAt : new Date(0).toISOString(),
+    skippedCount: typeof payload.skippedCount === "number" ? payload.skippedCount : 0,
+    omittedCount: typeof payload.omittedCount === "number" ? payload.omittedCount : 0,
+    artifacts: payload.artifacts,
+  };
+}
+
+async function normalizeManifestArtifacts(
+  workspace: string,
+  manifest: ArtifactTurnManifest,
+  maxFileSize: number,
+): Promise<ArtifactReport> {
+  const workspaceRoot = path.resolve(workspace);
+  const artifacts: Artifact[] = [];
+  let skippedCount = manifest.skippedCount;
+
+  for (const artifact of manifest.artifacts) {
+    const relativePath = normalizeRelativePath(artifact.relativePath || artifact.name);
+    if (!relativePath) {
+      skippedCount += 1;
+      continue;
+    }
+
+    const localPath = path.resolve(workspaceRoot, relativePath);
+    if (!isPathInside(localPath, workspaceRoot)) {
+      skippedCount += 1;
+      continue;
+    }
+
+    const fileStat = await stat(localPath).catch(() => null);
+    if (!fileStat?.isFile()) {
+      skippedCount += 1;
+      continue;
+    }
+    if (fileStat.size > maxFileSize) {
+      skippedCount += 1;
+      continue;
+    }
+
+    artifacts.push({
+      name: relativePath,
+      relativePath,
+      localPath,
+      sizeBytes: fileStat.size,
+      modifiedAtMs: fileStat.mtimeMs,
+    });
+  }
+
+  return {
+    artifacts,
+    skippedCount,
+    omittedCount: manifest.omittedCount,
+  };
+}
+
+function normalizeRelativePath(value: string): string | null {
+  const normalized = value.split(/[\\/]+/).filter(Boolean).join("/");
+  if (!normalized || normalized.startsWith("../") || normalized === "..") {
+    return null;
+  }
+  return normalized;
+}
+
+function isPathInside(candidate: string, root: string): boolean {
+  return candidate === root || candidate.startsWith(`${root}${path.sep}`);
+}
+
+function parseDate(value: string): Date | null {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function sanitizeTurnId(turnId: string): string | null {
+  const trimmed = turnId.trim();
+  if (!/^[a-zA-Z0-9._-]+$/.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+function runZip(zipCommand: string, bundlePath: string, sourcePaths: string[], cwd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(zipCommand, ["-q", "-@", bundlePath], {
+      cwd,
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+    let stderr = "";
+
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(stderr.trim() || `zip exited with code ${code}`));
+      }
+    });
+
+    child.stdin.end(`${sourcePaths.join("\n")}\n`);
+  });
+}
+
+function sanitizeZipStem(stem: string): string {
+  const cleaned = stem.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return cleaned || "turn";
+}
+
+function matchesGlob(value: string, pattern: string): boolean {
+  const escaped = pattern
+    .split("*")
+    .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+    .join(".*");
+  return new RegExp(`^${escaped}$`).test(value);
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}

@@ -1,0 +1,48 @@
+{
+  "name": "nordrelay",
+  "version": "0.2.0",
+  "description": "Run a remote-control bridge for coding agents. The current adapter connects Codex sessions to Telegram with streaming replies, multi-session controls, attachments, voice input, model selection, thread browsing, and handback.",
+  "author": {
+    "name": "Ricardo",
+    "url": "https://github.com/nordbyte"
+  },
+  "homepage": "https://github.com/nordbyte",
+  "repository": "https://github.com/nordbyte/nordrelay",
+  "license": "MIT",
+  "keywords": [
+    "coding-agents",
+    "messaging",
+    "remote-control",
+    "codex",
+    "telegram",
+    "bot",
+    "app-server"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "NordRelay",
+    "shortDescription": "Remote-control bridge for coding agents",
+    "longDescription": "Starts NordRelay, a messaging bridge for coding agents. The current runtime connects Codex sessions to Telegram: messages become Codex turns, replies and tool activity stream back to Telegram, each chat or forum topic has its own session, and commands provide thread browsing, model and reasoning controls, launch profiles, attachments, voice transcription, artifacts, login, abort, retry, and CLI handback.",
+    "developerName": "Ricardo",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/nordbyte",
+    "privacyPolicyURL": "https://github.com/nordbyte/nordrelay",
+    "termsOfServiceURL": "https://github.com/nordbyte/nordrelay",
+    "defaultPrompt": [
+      "Start NordRelay remote control",
+      "Show NordRelay status",
+      "Stop NordRelay",
+      "Show Telegram session browser",
+      "Select Codex model"
+    ],
+    "brandColor": "#229ED9",
+    "composerIcon": "./assets/nordrelay.svg",
+    "logo": "./assets/nordrelay.svg",
+    "screenshots": []
+  }
+}

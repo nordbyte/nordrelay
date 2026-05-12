@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.venv/
+.env
+.agents/
+*.log
+.nordrelay/
+workspace/
+coverage/
+.DS_Store

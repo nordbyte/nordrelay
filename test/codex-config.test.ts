@@ -1,0 +1,71 @@
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { readCodexFastMode, writeCodexFastMode } from "../src/codex-config.js";
+
+describe("codex-config", () => {
+  const originalHome = process.env.HOME;
+  let home: string;
+  let configPath: string;
+
+  beforeEach(() => {
+    home = mkdtempSync(path.join(tmpdir(), "codex-config-"));
+    configPath = path.join(home, ".codex", "config.toml");
+    mkdirSync(path.dirname(configPath), { recursive: true });
+    process.env.HOME = home;
+  });
+
+  afterEach(() => {
+    rmSync(home, { recursive: true, force: true });
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+  });
+
+  it("reads fast mode from fast_default_opt_out", () => {
+    writeFileSync(configPath, "[notice]\nfast_default_opt_out = true\n", "utf8");
+
+    expect(readCodexFastMode()).toBe(false);
+
+    writeFileSync(configPath, "[notice]\nfast_default_opt_out = false\n", "utf8");
+
+    expect(readCodexFastMode()).toBe(true);
+  });
+
+  it("returns null when fast mode is not configured", () => {
+    writeFileSync(configPath, "[notice]\nhide_full_access_warning = true\n", "utf8");
+
+    expect(readCodexFastMode()).toBeNull();
+  });
+
+  it("updates an existing fast mode setting", () => {
+    writeFileSync(configPath, "[notice]\nfast_default_opt_out = true # comment\n", "utf8");
+
+    writeCodexFastMode(true);
+
+    expect(readFileSync(configPath, "utf8")).toBe("[notice]\nfast_default_opt_out = false # comment\n");
+  });
+
+  it("adds fast mode under an existing notice section", () => {
+    writeFileSync(configPath, "[notice]\nhide_full_access_warning = true\n", "utf8");
+
+    writeCodexFastMode(false);
+
+    expect(readFileSync(configPath, "utf8")).toBe(
+      "[notice]\nfast_default_opt_out = true\nhide_full_access_warning = true\n",
+    );
+  });
+
+  it("creates the notice section when the config file is missing", () => {
+    rmSync(configPath, { force: true });
+
+    writeCodexFastMode(true);
+
+    expect(readFileSync(configPath, "utf8")).toBe("[notice]\nfast_default_opt_out = false\n");
+  });
+});
