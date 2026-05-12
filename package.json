@@ -24,7 +24,7 @@
   ],
   "main": "./dist/index.js",
   "bin": {
-    "nordrelay": "./plugins/nordrelay/scripts/nordrelay.mjs"
+    "nordrelay": "plugins/nordrelay/scripts/nordrelay.mjs"
   },
   "files": [
     "dist/",
