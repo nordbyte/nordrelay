@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 
 import { readJsonFileWithBackup, writeJsonFileAtomic } from "./persistence.js";
@@ -71,14 +72,24 @@ function tryCreateSqliteDocumentStore<TValue>(options: DocumentStoreOptions): Do
   }
 
   const filePath = stateBackendPath(options.workspace, "sqlite");
-  const db = new Database(filePath);
-  db.exec([
-    "CREATE TABLE IF NOT EXISTS documents (",
-    "key TEXT PRIMARY KEY,",
-    "json TEXT NOT NULL,",
-    "updated_at TEXT NOT NULL",
-    ")",
-  ].join(" "));
+  let db: SqliteDatabase;
+  try {
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    db = new Database(filePath);
+    db.exec([
+      "CREATE TABLE IF NOT EXISTS documents (",
+      "key TEXT PRIMARY KEY,",
+      "json TEXT NOT NULL,",
+      "updated_at TEXT NOT NULL",
+      ")",
+    ].join(" "));
+  } catch (error) {
+    console.warn(
+      `SQLite state backend failed at ${filePath}:`,
+      error instanceof Error ? error.message : String(error),
+    );
+    return null;
+  }
 
   return {
     kind: "sqlite",

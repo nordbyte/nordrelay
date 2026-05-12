@@ -3,7 +3,7 @@ services:
     build: .
     env_file: .env
     volumes:
-      - ${HOME}/.codex:/home/nordrelay/.codex:rw
+      - ${HOME}/.nordrelay:/home/nordrelay/.nordrelay:rw
       - ./workspace:/workspace:rw
     cap_drop:
       - ALL

@@ -28,7 +28,7 @@ interface DashboardAuth {
   password?: string;
 }
 
-const DEFAULT_HOME = path.join(os.homedir(), ".codex", "nordrelay");
+const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 
 const options = parseOptions(process.argv.slice(2));

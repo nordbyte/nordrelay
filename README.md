@@ -137,7 +137,7 @@ Operations:
 - Telegram sends/edits/documents are routed through a rate-limit queue that honors Telegram retry-after responses.
 - Context metadata, queues, and preferences are written atomically with backup recovery.
 - Context metadata, queues, preferences, audit events, and locks can use JSON files or the optional SQLite state backend with `NORDRELAY_STATE_BACKEND=sqlite`.
-- Runtime state and logs are written under `~/.codex/nordrelay/`.
+- Runtime config, state, and logs are written under `~/.nordrelay/`.
 - `nordrelay init` creates a private runtime config, `nordrelay doctor` validates host prerequisites, and `nordrelay web` starts a full local WebUI dashboard.
 - The WebUI has responsive header/sidebar/footer navigation, live chat streaming, session controls, queue/artifact/log/diagnostic views, and settings management.
 - The WebUI supports light and dark themes, tabbed settings groups, paginated session browsing, and chat uploads for images, documents, and audio transcription.
@@ -161,7 +161,7 @@ nordrelay doctor
 nordrelay start
 ```
 
-npm is the fastest install path and is the recommended default for normal use. For package installs, put runtime configuration in a directory-local `.env` before running `nordrelay`, or in `~/.codex/nordrelay/nordrelay.env`.
+npm is the fastest install path and is the recommended default for normal use. `nordrelay init` writes the private runtime config to `~/.nordrelay/nordrelay.env`.
 
 Non-interactive setup is also supported:
 
@@ -176,7 +176,9 @@ Install dependencies and build the runtime:
 ```bash
 npm install
 npm run build
-cp .env.example .env
+mkdir -p ~/.nordrelay
+cp .env.example ~/.nordrelay/nordrelay.env
+chmod 600 ~/.nordrelay/nordrelay.env
 ```
 
 Create the Telegram bot:
@@ -184,11 +186,11 @@ Create the Telegram bot:
 1. Open Telegram and talk to `@BotFather`.
 2. Run `/newbot`.
 3. Choose a display name and bot username.
-4. Copy the bot token into `TELEGRAM_BOT_TOKEN` in `.env`.
+4. Copy the bot token into `TELEGRAM_BOT_TOKEN` in `~/.nordrelay/nordrelay.env`.
 5. Find your Telegram user id with a trusted id helper bot, for example `@userinfobot`, or from Telegram API tooling.
 6. Put your user id into `TELEGRAM_ADMIN_USER_IDS`.
 
-Minimal private-bot `.env`:
+Minimal private-bot `~/.nordrelay/nordrelay.env`:
 
 ```dotenv
 TELEGRAM_BOT_TOKEN=123456789:replace-me
@@ -217,7 +219,7 @@ Codex authentication:
 Pi setup:
 
 - Install Pi from https://pi.dev/ and confirm `pi --help` works on the host.
-- Set `NORDRELAY_PI_ENABLED=true` in `.env`.
+- Set `NORDRELAY_PI_ENABLED=true` in `~/.nordrelay/nordrelay.env`.
 - Keep `NORDRELAY_DEFAULT_AGENT=codex` to start chats in Codex, or set `NORDRELAY_DEFAULT_AGENT=pi` to start chats in Pi.
 - Optional: set `PI_SESSION_DIR` if your Pi sessions are not stored in `~/.pi/agent/sessions/`.
 - Optional: set `PI_DEFAULT_MODEL=openai-codex/gpt-5.5` and `PI_DEFAULT_THINKING=medium`.
@@ -282,9 +284,9 @@ npm run foreground
 
 Runtime files:
 
-- PID file: `~/.codex/nordrelay/nordrelay.pid`
-- State file: `~/.codex/nordrelay/state.json`
-- Log file: `~/.codex/nordrelay/nordrelay.log`
+- PID file: `~/.nordrelay/nordrelay.pid`
+- State file: `~/.nordrelay/state.json`
+- Log file: `~/.nordrelay/nordrelay.log`
 - Home override: `NORDRELAY_HOME=/custom/path`
 - Local dashboard: `nordrelay web --host 127.0.0.1 --port 31878`
 
@@ -612,7 +614,7 @@ Dashboard:
 - `NORDRELAY_DASHBOARD_TOKEN`: optional dashboard bearer/login token. Required when binding to `0.0.0.0` unless basic auth is configured.
 - `NORDRELAY_DASHBOARD_USER`: optional dashboard basic-auth user.
 - `NORDRELAY_DASHBOARD_PASSWORD`: optional dashboard basic-auth password. Required with `NORDRELAY_DASHBOARD_USER`.
-- `NORDRELAY_ENV_FILE`: optional env file edited by the dashboard settings page. Defaults to `~/.codex/nordrelay/nordrelay.env` when present, otherwise `.env` in the runtime root.
+- `NORDRELAY_ENV_FILE`: optional explicit env-file path used by the wrapper and edited by the dashboard settings page. Defaults to `~/.nordrelay/nordrelay.env`.
 
 Codex:
 
@@ -671,7 +673,7 @@ Auth and voice:
 
 NordRelay wrapper:
 
-- `NORDRELAY_HOME`: state/log directory override. Defaults to `~/.codex/nordrelay`.
+- `NORDRELAY_HOME`: config/state/log directory override. Defaults to `~/.nordrelay`.
 - `NORDRELAY_SOURCE_ROOT`: runtime source root override. Useful when the plugin is launched from Codex cache.
 - `NORDRELAY_UPDATE_METHOD`: optional `auto`, `npm`, or `git` self-update method override. Auto uses git when the runtime root has a `.git` directory and npm otherwise.
 - `NORDRELAY_KEEP_PENDING_UPDATES`: set true to avoid dropping pending Telegram updates on start.
@@ -719,7 +721,7 @@ Unsafe profiles are intentionally gated. Telegram asks for confirmation before a
 - Do not leave `TELEGRAM_ALLOW_ANY_CHAT=true` enabled after setup.
 - Treat `danger-full-access` as equivalent to shell access on the host.
 - Treat uploaded files as untrusted input. They are staged inside the active workspace so the selected sandbox policy still matters.
-- Keep `CODEX_API_KEY` and `OPENAI_API_KEY` in `.env` or host secret management; `.env` is gitignored.
+- Keep `CODEX_API_KEY` and `OPENAI_API_KEY` in `~/.nordrelay/nordrelay.env` or host secret management.
 - In group chats, remember that any allowed user can prompt Codex in that chat context.
 - Use `TOOL_VERBOSITY=summary` or `errors-only` when command output may include sensitive data.
 - Review and unsafe launch profiles add a Telegram approve/deny gate before each turn starts.
@@ -777,7 +779,7 @@ Voice not working:
 
 - Run `/voice` to list available backends.
 - Install `ffmpeg` and `faster-whisper` on Linux, install `parakeet-coreml` on macOS Apple Silicon, or set `OPENAI_API_KEY`.
-- Check `~/.codex/nordrelay/nordrelay.log` for transcription errors.
+- Check `~/.nordrelay/nordrelay.log` for transcription errors.
 
 Files not returned:
 

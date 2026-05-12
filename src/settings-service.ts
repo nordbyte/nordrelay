@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -184,11 +183,8 @@ export function resolveDashboardEnvPath(home: string, cwd = process.cwd()): stri
   if (process.env.NORDRELAY_ENV_FILE) {
     return path.resolve(process.env.NORDRELAY_ENV_FILE);
   }
-  const homeEnv = path.join(home, "nordrelay.env");
-  if (existsSync(homeEnv)) {
-    return homeEnv;
-  }
-  return path.join(cwd, ".env");
+  void cwd;
+  return path.join(home, "nordrelay.env");
 }
 
 export function maskSecret(value: string): string {

@@ -16,7 +16,7 @@ const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const PLUGIN_ROOT = path.resolve(path.dirname(SCRIPT_PATH), "..");
 const DEFAULT_MARKETPLACE_ROOT = path.resolve(PLUGIN_ROOT, "../..");
 const RUNTIME_ROOT = findRuntimeRoot();
-const DEFAULT_HOME = path.join(os.homedir(), ".codex", "nordrelay");
+const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 
 function nowIso() {
   return new Date().toISOString();
@@ -77,16 +77,11 @@ async function mkdirp(dir) {
 }
 
 function loadEnvFiles(home) {
-  const files = [
-    path.join(process.cwd(), ".env"),
-    path.join(RUNTIME_ROOT, ".env"),
-    path.join(PLUGIN_ROOT, ".env"),
-    path.join(home, "nordrelay.env"),
-  ];
+  const envPath = process.env.NORDRELAY_ENV_FILE
+    ? path.resolve(process.env.NORDRELAY_ENV_FILE)
+    : path.join(home, "nordrelay.env");
 
-  for (const envPath of files) {
-    loadEnvFile(envPath);
-  }
+  loadEnvFile(envPath);
 
   normalizeEnvAliases();
 }
@@ -207,7 +202,7 @@ async function commandStart(options) {
       await fsp.rm(options.pidFile, { force: true });
     }
     console.log(`Startup failed. Log: ${options.logFile}`);
-    console.log(state.error || "Unknown error");
+    console.log(state.error || await readStartupError(options.logFile) || "Unknown error");
     process.exitCode = 1;
     return;
   }
@@ -332,7 +327,8 @@ async function commandDoctor(options) {
   checks.push(check("Codex CLI", Boolean(findExecutable(process.env.CODEX_CLI_PATH || "codex")), process.env.CODEX_CLI_PATH || findExecutable("codex") || "not found", process.env.NORDRELAY_CODEX_ENABLED === "false" ? "warn" : "fail"));
   checks.push(check("Pi CLI", Boolean(findExecutable(process.env.PI_CLI_PATH || "pi")), process.env.PI_CLI_PATH || findExecutable("pi") || "not found", process.env.NORDRELAY_PI_ENABLED === "true" ? "fail" : "warn"));
   checks.push(check("ffmpeg", Boolean(findExecutable("ffmpeg")), findExecutable("ffmpeg") || "not found", "warn"));
-  checks.push(check("State backend", validateStateBackend(), `NORDRELAY_STATE_BACKEND=${process.env.NORDRELAY_STATE_BACKEND ?? "json"}`));
+  const stateBackendCheck = validateStateBackend();
+  checks.push(check("State backend", stateBackendCheck.ok, stateBackendCheck.detail));
   checks.push(check("Runtime entry", Boolean(await resolveRuntimeEntry()), RUNTIME_ROOT));
 
   for (const item of checks) {
@@ -439,12 +435,14 @@ async function commandForeground(options) {
     child.once("exit", (code, signal) => resolve({ code, signal }));
   });
 
+  const previousState = await readJson(options.stateFile, {});
   await writeJsonAtomic(options.stateFile, {
     status: exit.code === 0 ? "stopped" : "error",
     pid: process.pid,
     updatedAt: nowIso(),
     exitCode: exit.code,
     signal: exit.signal,
+    error: exit.code === 0 ? undefined : previousState.error,
     logFile: options.logFile,
   });
 
@@ -550,13 +548,40 @@ function findExecutable(command) {
 
 function validateStateBackend() {
   const backend = process.env.NORDRELAY_STATE_BACKEND || "json";
-  if (backend === "json") return true;
-  if (backend !== "sqlite") return false;
+  if (backend === "json") return { ok: true, detail: "NORDRELAY_STATE_BACKEND=json" };
+  if (backend !== "sqlite") return { ok: false, detail: `Invalid NORDRELAY_STATE_BACKEND=${backend}` };
   try {
-    require("better-sqlite3");
-    return true;
+    const Database = require("better-sqlite3");
+    const filePath = path.join(process.cwd(), ".nordrelay", "state.sqlite");
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const db = new Database(filePath);
+    db.exec([
+      "CREATE TABLE IF NOT EXISTS documents (",
+      "key TEXT PRIMARY KEY,",
+      "json TEXT NOT NULL,",
+      "updated_at TEXT NOT NULL",
+      ")",
+    ].join(" "));
+    db.close?.();
+    return { ok: true, detail: `NORDRELAY_STATE_BACKEND=sqlite (${filePath})` };
+  } catch (error) {
+    return {
+      ok: false,
+      detail: `NORDRELAY_STATE_BACKEND=sqlite failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+async function readStartupError(logFile) {
+  try {
+    const lines = (await fsp.readFile(logFile, "utf8")).split(/\r?\n/).filter(Boolean).slice(-80).reverse();
+    const startupLine = lines.find((line) => line.includes("Failed to start NordRelay:"));
+    if (startupLine) return startupLine.replace(/^.*Failed to start NordRelay:\s*/, "");
+    const errorLine = lines.find((line) => /\bERROR\b/i.test(line));
+    if (errorLine) return errorLine;
+    return lines[0] || null;
   } catch {
-    return false;
+    return null;
   }
 }
 

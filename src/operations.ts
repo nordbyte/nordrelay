@@ -78,7 +78,7 @@ const APP_NAME = "nordrelay";
 const PACKAGE_NAME = "@nordbyte/nordrelay";
 const CODEX_PACKAGE_NAME = "@openai/codex";
 const PI_PACKAGE_NAME = "@mariozechner/pi-coding-agent";
-const DEFAULT_HOME = path.join(os.homedir(), ".codex", "nordrelay");
+const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 const SECRET_RE = /(bot|token|api[_-]?key|authorization|bearer|password|secret)(["'=: ]+)([^\s"',]+)/gi;
 const DEFAULT_VERSION_CACHE_TTL_MS = 60 * 60 * 1000;
 

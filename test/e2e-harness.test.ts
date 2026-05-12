@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -9,6 +10,16 @@ import { TelegramChannelAdapter, listChannelDescriptors, type ChannelInboundMess
 import { AuditLogStore } from "../src/audit-log.js";
 import { SessionLockStore, canWriteWithLock } from "../src/session-locks.js";
 import { createDocumentStore } from "../src/state-backend.js";
+
+const require = createRequire(import.meta.url);
+const sqliteAvailable = (() => {
+  try {
+    require("better-sqlite3");
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 describe("adapter and e2e harness primitives", () => {
   it("exposes Telegram as the available channel and future channels as planned adapters", () => {
@@ -52,6 +63,26 @@ describe("state, audit, and lock stores", () => {
 
       store.write({ value: 7 });
       expect(store.read()).toEqual({ value: 7 });
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  (sqliteAvailable ? it : it.skip)("creates the SQLite state directory before opening the database", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-sqlite-state-"));
+    const stateDir = path.join(workspace, ".nordrelay");
+    try {
+      const store = createDocumentStore<{ value: number }>({
+        workspace,
+        fileName: "sample.json",
+        sqliteKey: "sample",
+        backend: "sqlite",
+      });
+
+      expect(store.kind).toBe("sqlite");
+      expect(existsSync(stateDir)).toBe(true);
+      store.write({ value: 9 });
+      expect(store.read()).toEqual({ value: 9 });
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
