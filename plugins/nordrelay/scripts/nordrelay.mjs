@@ -7,7 +7,7 @@ import process from "node:process";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const VERSION = "0.2.0";
+const VERSION = "0.2.1";
 const APP_NAME = "nordrelay";
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const PLUGIN_ROOT = path.resolve(path.dirname(SCRIPT_PATH), "..");
@@ -355,7 +355,7 @@ function findRuntimeRoot() {
 
     try {
       const pkg = JSON.parse(fs.readFileSync(packageJson, "utf8"));
-      if (pkg?.name === APP_NAME || pkg?.name === "nordrelay") {
+      if (pkg?.name === APP_NAME || pkg?.name === "nordrelay" || pkg?.name === "@nordbyte/nordrelay") {
         return root;
       }
     } catch {

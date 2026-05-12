@@ -131,6 +131,16 @@ Operations:
 
 ## First Run Setup
 
+Install the published package:
+
+```bash
+npm install -g @nordbyte/nordrelay
+```
+
+For package installs, put runtime configuration in a directory-local `.env` before running `nordrelay`, or in `~/.codex/nordrelay/nordrelay.env`.
+
+Source checkout setup:
+
 Install dependencies and build the runtime:
 
 ```bash
@@ -207,6 +217,16 @@ Where Codex exposes namespaced plugin commands, this also works:
 The old unnamespaced `/remote` command is no longer required and current Codex TUI builds do not register it as a top-level plugin slash command. The command is only a process-manager shortcut; Telegram contains the actual controls.
 
 Manual process commands:
+
+```bash
+nordrelay start
+nordrelay status
+nordrelay restart
+nordrelay stop
+nordrelay foreground
+```
+
+Source checkout process commands:
 
 ```bash
 node plugins/nordrelay/scripts/nordrelay.mjs start
@@ -594,7 +614,7 @@ Stale plugin cache:
 
 - Symptom: Codex uses old command or skill text after a repo update.
 - Fix: reinstall/update the local marketplace or copy the plugin directory into the Codex plugin cache.
-- Current local cache path: `~/.codex/plugins/cache/nordrelay-local/nordrelay/0.1.0/`.
+- Current local cache path: `~/.codex/plugins/cache/nordrelay-local/nordrelay/<version>/`.
 
 Missing dependencies:
 
