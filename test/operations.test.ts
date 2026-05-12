@@ -24,7 +24,7 @@ describe("operations", () => {
     process.env = originalEnv;
   });
 
-  it("formats log tails with timestamps, levels, and legacy line markers", async () => {
+  it("formats log tails with timestamps, levels, and plain legacy lines", async () => {
     const dir = createTempDir();
     const file = path.join(dir, "nordrelay.log");
     writeFileSync(file, [
@@ -38,7 +38,8 @@ describe("operations", () => {
 
     expect(tail.filePath).toBe(file);
     expect(tail.lineCount).toBe(4);
-    expect(tail.plain).toContain("no timestamp");
+    expect(tail.plain).toContain("legacy startup line");
+    expect(tail.plain).not.toContain("no timestamp");
     expect(tail.plain).toContain("Starting git connector self-update");
     expect(tail.plain).not.toContain("+02:00");
     expect(tail.plain).toContain("WARN");

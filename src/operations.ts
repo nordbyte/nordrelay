@@ -467,7 +467,7 @@ function formatLogLine(line: string): string {
     ].join(" ");
   }
 
-  return `${"no timestamp".padEnd(25)} ${trimmed}`;
+  return trimmed;
 }
 
 function parseJsonLogLine(line: string): string | null {

@@ -4614,11 +4614,6 @@ function renderLogLineHTML(line: string): string {
     ].join(" ");
   }
 
-  const legacy = line.match(/^(?<timestamp>no timestamp)\s+(?<message>.*)$/);
-  if (legacy?.groups) {
-    return `<code>${escapeHTML(legacy.groups.timestamp)}</code> ${escapeHTML(legacy.groups.message)}`;
-  }
-
   return escapeHTML(line);
 }
 
