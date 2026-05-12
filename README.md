@@ -120,8 +120,9 @@ Operations:
 - Plugin command/skill starts, stops, restarts, and inspects the connector process.
 - Manual process commands support `start`, `stop`, `restart`, `status`, and `foreground`.
 - Telegram admin commands support `/logs`, `/diagnostics`, `/restart`, and `/update`.
-- `/update` pulls changes, installs dependencies, runs check, tests, and build, and restarts only after all steps pass.
-- Logs can be emitted as plain text or JSON records with `CONNECTOR_LOG_FORMAT`.
+- `/update` detects the install type: npm installs update with `npm install -g @nordbyte/nordrelay@latest`; source checkouts pull `origin/main`, install dependencies, run check, tests, and build, then restart.
+- `/logs` renders redacted connector and update logs with timestamps, levels, file path, and last-modified time.
+- Logs can be emitted as timestamped plain text or JSON records with `CONNECTOR_LOG_FORMAT`.
 - Telegram sends/edits/documents are routed through a rate-limit queue that honors Telegram retry-after responses.
 - Context metadata, queues, and preferences are written atomically with backup recovery.
 - Runtime state and logs are written under `~/.codex/nordrelay/`.
@@ -131,13 +132,24 @@ Operations:
 
 ## First Run Setup
 
-Install the published package:
+Recommended npm setup:
 
 ```bash
 npm install -g @nordbyte/nordrelay
+mkdir -p ~/.codex/nordrelay
+cat > ~/.codex/nordrelay/nordrelay.env <<'EOF'
+TELEGRAM_BOT_TOKEN=123456789:replace-me
+TELEGRAM_ADMIN_USER_IDS=123456789
+NORDRELAY_CODEX_ENABLED=true
+NORDRELAY_PI_ENABLED=false
+NORDRELAY_DEFAULT_AGENT=codex
+CODEX_SANDBOX_MODE=workspace-write
+CODEX_APPROVAL_POLICY=never
+EOF
+nordrelay start
 ```
 
-For package installs, put runtime configuration in a directory-local `.env` before running `nordrelay`, or in `~/.codex/nordrelay/nordrelay.env`.
+npm is the fastest install path and is the recommended default for normal use. For package installs, put runtime configuration in a directory-local `.env` before running `nordrelay`, or in `~/.codex/nordrelay/nordrelay.env`.
 
 Source checkout setup:
 
@@ -301,10 +313,12 @@ Runtime files:
 - `/status` reports connector runtime status.
 - `/health` reports runtime health, auth, PIDs, Codex CLI, Pi CLI, and state DB.
 - `/version` reports connector, Codex CLI, and Pi CLI version context.
-- `/logs [lines]` shows a redacted connector log tail. Admin only.
+- `/logs [lines]` shows a redacted, timestamped connector log tail. Admin only.
+- `/logs update [lines]` shows the self-update log. Admin only.
+- `/logs all [lines]` shows connector and self-update logs together. Admin only.
 - `/diagnostics` shows redacted connector diagnostics. Admin only.
 - `/restart` restarts the connector process. Admin only.
-- `/update` pulls `origin/main`, installs dependencies, checks, tests, builds, and restarts only on success. Admin only.
+- `/update` updates through npm or git depending on the detected install type, then restarts only on success. Admin only.
 
 ## Command Examples
 
@@ -552,6 +566,7 @@ NordRelay wrapper:
 
 - `NORDRELAY_HOME`: state/log directory override. Defaults to `~/.codex/nordrelay`.
 - `NORDRELAY_SOURCE_ROOT`: runtime source root override. Useful when the plugin is launched from Codex cache.
+- `NORDRELAY_UPDATE_METHOD`: optional `auto`, `npm`, or `git` self-update method override. Auto uses git when the runtime root has a `.git` directory and npm otherwise.
 - `NORDRELAY_KEEP_PENDING_UPDATES`: set true to avoid dropping pending Telegram updates on start.
 - `NORDRELAY_FORWARD_TOOL_OUTPUT`: backward-compatible alias that sets `TOOL_VERBOSITY=all` when `TOOL_VERBOSITY` is unset.
 - `NORDRELAY_STATE_FILE`: internal state-file path passed by the wrapper.

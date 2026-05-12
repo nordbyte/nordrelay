@@ -92,9 +92,10 @@ import {
   getConnectorHealth,
   getUpdateLogPath,
   readConnectorState,
-  readLogTail,
+  readFormattedLogTail,
   spawnConnectorRestart,
   spawnSelfUpdate,
+  type FormattedLogTail,
 } from "./operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
 import { configureRedaction, redactText } from "./redaction.js";
@@ -2494,10 +2495,20 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   bot.command("logs", async (ctx) => {
     const rawText = ctx.message?.text ?? "";
     const argument = rawText.replace(/^\/logs(?:@\w+)?\s*/i, "").trim();
-    const lines = Number.parseInt(argument || "80", 10);
-    const logTail = await readLogTail(Number.isNaN(lines) ? 80 : lines);
-    const plain = `Connector log tail:\n\n${logTail || "(empty)"}`;
-    const html = `<b>Connector log tail:</b>\n\n<pre>${escapeHTML(logTail || "(empty)")}</pre>`;
+    const logRequest = parseLogsCommand(argument);
+    const logs = logRequest.target === "all"
+      ? [
+          { title: "Connector", tail: await readFormattedLogTail(logRequest.lines) },
+          { title: "Update", tail: await readFormattedLogTail(logRequest.lines, getUpdateLogPath()) },
+        ]
+      : [
+          {
+            title: logRequest.target === "update" ? "Update" : "Connector",
+            tail: await readFormattedLogTail(logRequest.lines, logRequest.target === "update" ? getUpdateLogPath() : undefined),
+          },
+        ];
+    const plain = logs.map(({ title, tail }) => renderLogTailPlain(title, tail)).join("\n\n");
+    const html = logs.map(({ title, tail }) => renderLogTailHTML(title, tail)).join("\n\n");
     await safeReply(ctx, html, { fallbackText: plain });
   });
 
@@ -2511,18 +2522,22 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   });
 
   bot.command("update", async (ctx) => {
-    const updateLog = spawnSelfUpdate();
+    const update = spawnSelfUpdate();
     const plain = [
       "Update started.",
-      "The connector will pull main, install dependencies, run check, tests, build, and restart only if all steps pass.",
-      `Log: ${updateLog}`,
-      "Use /logs after the restart or inspect update.log on the host.",
+      `Method: ${update.method}`,
+      update.summary,
+      `Source: ${update.sourceRoot}`,
+      `Log: ${update.logPath}`,
+      "Use /logs update after the restart or inspect update.log on the host.",
     ].join("\n");
     const html = [
       "<b>Update started.</b>",
-      "The connector will pull <code>main</code>, install dependencies, run check, tests, build, and restart only if all steps pass.",
-      `<b>Log:</b> <code>${escapeHTML(updateLog)}</code>`,
-      `Use <code>/logs</code> after the restart or inspect <code>${escapeHTML(getUpdateLogPath())}</code> on the host.`,
+      `<b>Method:</b> <code>${escapeHTML(update.method)}</code>`,
+      escapeHTML(update.summary),
+      `<b>Source:</b> <code>${escapeHTML(update.sourceRoot)}</code>`,
+      `<b>Log:</b> <code>${escapeHTML(update.logPath)}</code>`,
+      `Use <code>/logs update</code> after the restart or inspect <code>${escapeHTML(getUpdateLogPath())}</code> on the host.`,
     ].join("\n");
     await safeReply(ctx, html, { fallbackText: plain });
   });
@@ -4463,6 +4478,76 @@ function renderArtifactReports(reports: ArtifactTurnReport[]): { html: string; p
   const plain = ["Recent artifacts:", ...lines, "", usage].join("\n");
   const html = ["<b>Recent artifacts:</b>", ...lines.map(escapeHTML), "", escapeHTML(usage)].join("\n");
   return { html, plain };
+}
+
+type LogTarget = "connector" | "update" | "all";
+
+function parseLogsCommand(argument: string): { target: LogTarget; lines: number } {
+  const tokens = argument.split(/\s+/).filter(Boolean);
+  let target: LogTarget = "connector";
+  let lines = 80;
+
+  for (const token of tokens) {
+    const normalized = token.toLowerCase();
+    if (normalized === "connector" || normalized === "main") {
+      target = "connector";
+      continue;
+    }
+    if (normalized === "update" || normalized === "updates") {
+      target = "update";
+      continue;
+    }
+    if (normalized === "all") {
+      target = "all";
+      continue;
+    }
+
+    const parsedLines = Number.parseInt(token, 10);
+    if (!Number.isNaN(parsedLines)) {
+      lines = parsedLines;
+    }
+  }
+
+  return { target, lines };
+}
+
+function renderLogTailPlain(title: string, tail: FormattedLogTail): string {
+  return [
+    `${title} log tail`,
+    `File: ${tail.filePath}`,
+    `Updated: ${tail.updatedAt ? formatLogDate(tail.updatedAt) : "-"}`,
+    `Lines: ${tail.lineCount}/${tail.requestedLines}`,
+    "",
+    tail.plain || "(empty)",
+  ].join("\n");
+}
+
+function renderLogTailHTML(title: string, tail: FormattedLogTail): string {
+  return [
+    `<b>${escapeHTML(title)} log tail</b>`,
+    `<b>File:</b> <code>${escapeHTML(tail.filePath)}</code>`,
+    `<b>Updated:</b> <code>${escapeHTML(tail.updatedAt ? formatLogDate(tail.updatedAt) : "-")}</code>`,
+    `<b>Lines:</b> <code>${tail.lineCount}/${tail.requestedLines}</code>`,
+    "",
+    `<pre>${escapeHTML(tail.plain || "(empty)")}</pre>`,
+  ].join("\n");
+}
+
+function formatLogDate(date: Date): string {
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absoluteOffset = Math.abs(offsetMinutes);
+  const offsetHours = Math.floor(absoluteOffset / 60);
+  const offsetRemainder = absoluteOffset % 60;
+  return [
+    `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`,
+    `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`,
+    `${sign}${pad2(offsetHours)}:${pad2(offsetRemainder)}`,
+  ].join(" ");
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
 }
 
 function buildArtifactActionsKeyboard(reports: ArtifactTurnReport[]): InlineKeyboard {
