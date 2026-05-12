@@ -4551,20 +4551,20 @@ function renderLogLineHTML(line: string): string {
   const structured = line.match(/^(?<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}|unknown time\s*)\s+(?<level>INFO|WARN|ERROR)\s+(?<message>.*)$/);
   if (structured?.groups) {
     const level = structured.groups.level;
-    const levelHtml = level === "INFO" ? `<code>${level}</code>` : `<b>${level}</b>`;
+    const levelHtml = level === "INFO" ? escapeHTML(level) : `<b>${escapeHTML(level)}</b>`;
     return [
       `<code>${escapeHTML(structured.groups.timestamp.trim())}</code>`,
       levelHtml,
-      `<code>${escapeHTML(structured.groups.message)}</code>`,
+      escapeHTML(structured.groups.message),
     ].join(" ");
   }
 
   const legacy = line.match(/^(?<timestamp>no timestamp)\s+(?<message>.*)$/);
   if (legacy?.groups) {
-    return `<code>${escapeHTML(legacy.groups.timestamp)}</code> <code>${escapeHTML(legacy.groups.message)}</code>`;
+    return `<code>${escapeHTML(legacy.groups.timestamp)}</code> ${escapeHTML(legacy.groups.message)}`;
   }
 
-  return `<code>${escapeHTML(line)}</code>`;
+  return escapeHTML(line);
 }
 
 function pad2(value: number): string {

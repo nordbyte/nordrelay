@@ -16,6 +16,19 @@ const mockCodexState = vi.hoisted(() => ({
   getThreadRolloutSnapshot: vi.fn(() => null),
 }));
 
+const mockOperations = vi.hoisted(() => ({
+  readFormattedLogTail: vi.fn(async () => ({
+    filePath: "/tmp/nordrelay.log",
+    requestedLines: 80,
+    lineCount: 2,
+    updatedAt: new Date("2026-05-12T12:00:00Z"),
+    plain: [
+      "2026-05-12 14:00:00 INFO  Started <ok>",
+      "2026-05-12 14:00:01 WARN  Something needs attention",
+    ].join("\n"),
+  })),
+}));
+
 vi.mock("../src/codex-auth.js", () => ({
   checkAuthStatus: vi.fn(async () => ({
     authenticated: true,
@@ -33,6 +46,14 @@ vi.mock("../src/codex-state.js", () => ({
   getThreadActivityLog: mockCodexState.getThreadActivityLog,
   getThreadRolloutSnapshot: mockCodexState.getThreadRolloutSnapshot,
 }));
+
+vi.mock("../src/operations.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/operations.js")>();
+  return {
+    ...actual,
+    readFormattedLogTail: mockOperations.readFormattedLogTail,
+  };
+});
 
 const tempDirs: string[] = [];
 
@@ -244,6 +265,17 @@ describe("bot flow integration", () => {
     mockCodexState.getThreadActivityLog.mockReturnValue([]);
     mockCodexState.getThreadRolloutSnapshot.mockReset();
     mockCodexState.getThreadRolloutSnapshot.mockReturnValue(null);
+    mockOperations.readFormattedLogTail.mockReset();
+    mockOperations.readFormattedLogTail.mockResolvedValue({
+      filePath: "/tmp/nordrelay.log",
+      requestedLines: 80,
+      lineCount: 2,
+      updatedAt: new Date("2026-05-12T12:00:00Z"),
+      plain: [
+        "2026-05-12 14:00:00 INFO  Started <ok>",
+        "2026-05-12 14:00:01 WARN  Something needs attention",
+      ].join("\n"),
+    });
   });
 
   afterEach(() => {
@@ -425,6 +457,19 @@ describe("bot flow integration", () => {
     expect(api.sentMessages.some((message) => message.text.includes("CLI mirroring:") && message.text.includes("full"))).toBe(true);
     expect(api.sentMessages.some((message) => message.text.includes("Notifications:") && message.text.includes("all"))).toBe(true);
     expect(api.sentMessages.at(-1)?.text).toContain("22-07");
+  });
+
+  it("renders log messages as normal text while highlighting warning levels", async () => {
+    const { registry } = createFakeRegistry();
+    const bot = createBot(createConfig(), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("/logs") as any);
+
+    expect(api.sentMessages.at(-1)?.text).toContain("<b>WARN</b>");
+    expect(api.sentMessages.at(-1)?.text).toContain("Started &lt;ok&gt;");
+    expect(api.sentMessages.at(-1)?.text).not.toContain("<code>Started &lt;ok&gt;</code>");
+    expect(api.sentMessages.at(-1)?.text).not.toContain("<code>Something needs attention</code>");
   });
 
   it("renders workspace guardrails", async () => {
