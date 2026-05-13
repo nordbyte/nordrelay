@@ -102,7 +102,16 @@ describe("state, audit, and lock stores", () => {
         description: "test",
       });
       expect(event.id).toHaveLength(12);
-      expect(audit.list(1)[0]?.description).toBe("test");
+      expect(event.channelId).toBe("telegram");
+      const webEvent = audit.append({
+        action: "command",
+        status: "ok",
+        contextKey: "web:dashboard",
+        channelId: "web",
+        description: "dashboard",
+      });
+      expect(webEvent.channelId).toBe("web");
+      expect(audit.list(2).map((item) => item.description)).toEqual(["dashboard", "test"]);
 
       const locks = new SessionLockStore(workspace, "json");
       const lock = locks.set("123", 42, "Ricardo", 60_000);

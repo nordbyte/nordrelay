@@ -19,7 +19,7 @@ export interface AuditEvent {
   action: AuditAction;
   status: "ok" | "failed" | "denied";
   contextKey: TelegramContextKey;
-  channelId: "telegram";
+  channelId: "telegram" | "web";
   actorId?: number;
   actorRole?: string;
   agentId?: AgentId;
@@ -49,13 +49,13 @@ export class AuditLogStore {
     this.maxEvents = maxEvents;
   }
 
-  append(event: Omit<AuditEvent, "id" | "timestamp" | "channelId">): AuditEvent {
+  append(event: Omit<AuditEvent, "id" | "timestamp" | "channelId"> & { channelId?: AuditEvent["channelId"] }): AuditEvent {
     const payload = this.readPayload();
     const next: AuditEvent = {
       id: randomUUID().replace(/-/g, "").slice(0, 12),
       timestamp: new Date().toISOString(),
-      channelId: "telegram",
       ...event,
+      channelId: event.channelId ?? "telegram",
     };
     payload.events.push(next);
     if (payload.events.length > this.maxEvents) {

@@ -40,17 +40,20 @@ import {
   getAgentDiagnostics,
   getExternalSnapshotForSession,
 } from "./agent-activity.js";
+import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { createAgentSessionService, enabledAgents } from "./agent-factory.js";
-import { checkAuthStatus } from "./codex-auth.js";
-import { checkClaudeCodeAuthStatus } from "./claude-code-auth.js";
+import { AuditLogStore, type AuditEvent } from "./audit-log.js";
+import { checkAuthStatus, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
+import { checkClaudeCodeAuthStatus, startClaudeCodeLogin, startClaudeCodeLogout } from "./claude-code-auth.js";
 import type { ConnectorConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
-import { checkHermesAuthStatus } from "./hermes-auth.js";
+import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./hermes-auth.js";
 import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
-import { getConnectorHealth, getVersionChecks, readFormattedLogTail, spawnConnectorRestart } from "./operations.js";
+import { getConnectorHealth, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "./operations.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
 import { renderSessionInfoPlain } from "./session-format.js";
+import { SessionLockStore, type SessionLock } from "./session-locks.js";
 import { SessionRegistry } from "./session-registry.js";
 import { transcribeAudio, type TranscriptionBackend } from "./voice.js";
 import {
@@ -177,6 +180,81 @@ export interface WebDiagnosticsDto {
   };
 }
 
+export interface WebTaskDto {
+  id: string;
+  source: WebActivitySource;
+  status: WebActivityStatus;
+  prompt?: string;
+  agentId?: AgentId;
+  agentLabel?: string;
+  threadId: string | null;
+  workspace?: string;
+  startedAt: string;
+  updatedAt: string;
+  durationMs: number;
+  currentTool?: string;
+  lastTool?: string;
+  outputChars: number;
+  tools: Array<{ name: string; count: number }>;
+  detail?: string;
+}
+
+export interface WebTasksDto {
+  current: WebTaskDto | null;
+  external: WebTaskDto | null;
+  queue: QueueItemDto[];
+  queuePaused: boolean;
+  recent: WebActivityEvent[];
+}
+
+export interface WebAdapterHealthDto {
+  id: AgentId;
+  label: string;
+  enabled: boolean;
+  status: "enabled" | "disabled" | "planned";
+  auth: {
+    supported: boolean;
+    authenticated: boolean | null;
+    method?: string;
+    detail?: string;
+  };
+  cli: {
+    path: string | null;
+    label: string;
+    version: string;
+  };
+  version: {
+    installed: string;
+    latest: string | null;
+    status: string;
+    detail?: string;
+  };
+  capabilities: AgentCapabilities;
+  notes?: string;
+}
+
+export interface WebAuthDto {
+  agentId: AgentId;
+  agentLabel: string;
+  supported: boolean;
+  authenticated: boolean | null;
+  method?: string;
+  detail: string;
+  loginSupported: boolean;
+  logoutSupported: boolean;
+  hostLoginCommand?: string;
+  hostLogoutCommand?: string;
+}
+
+export interface WebPermissionsDto {
+  telegramAllowAnyChat: boolean;
+  telegramAdminUserIds: number[];
+  telegramAllowedUserIds: number[];
+  telegramReadOnlyUserIds: number[];
+  telegramAllowedChatIds: number[];
+  telegramRolePolicies: ConnectorConfig["telegramRolePolicies"];
+}
+
 export interface ExternalMirrorState {
   threadId: string;
   rolloutPath: string;
@@ -197,12 +275,15 @@ export class RelayRuntime {
   private readonly promptStore: PromptStore;
   private readonly chatStore: WebChatStore;
   private readonly activityStore: WebActivityStore;
+  private readonly auditStore: AuditLogStore;
+  private readonly lockStore: SessionLockStore;
   private readonly subscribers = new Set<(event: RelayEvent) => void>();
   private readonly externalMonitor?: NodeJS.Timeout;
   private draining = false;
   private currentTurnId: string | null = null;
   private accumulatedText = "";
   private currentTurnStartedAt = 0;
+  private currentProgress: WebTaskDto | null = null;
   private externalMirror: ExternalMirrorState | null = null;
 
   constructor(private readonly config: ConnectorConfig) {
@@ -213,6 +294,8 @@ export class RelayRuntime {
     this.promptStore = new PromptStore(config.workspace, config.stateBackend);
     this.chatStore = new WebChatStore(config.workspace, config.stateBackend, MAX_CHAT_HISTORY);
     this.activityStore = new WebActivityStore(config.workspace, config.stateBackend, config.auditMaxEvents);
+    this.auditStore = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
+    this.lockStore = new SessionLockStore(config.workspace, config.stateBackend);
     if (config.codexExternalBusyCheckMs > 0) {
       this.externalMonitor = setInterval(() => {
         void this.monitorExternalActivity().catch((error) => this.broadcastStatus(friendlyErrorText(error), "error"));
@@ -251,6 +334,35 @@ export class RelayRuntime {
     };
   }
 
+  async version(): Promise<Record<string, unknown>> {
+    return {
+      health: await getConnectorHealth({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath, claudeCodeCliPath: this.config.claudeCodeCliPath }),
+      state: await readConnectorState(),
+      versionChecks: await getVersionChecks({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath, claudeCodeCliPath: this.config.claudeCodeCliPath }),
+    };
+  }
+
+  updateConnector(): ReturnType<typeof spawnSelfUpdate> {
+    const update = spawnSelfUpdate();
+    this.broadcastStatus(`Update started with ${update.method}. Log: ${update.logPath}`, "warn");
+    this.appendActivity({
+      source: "web",
+      status: "info",
+      type: "update_started",
+      threadId: null,
+      workspace: this.config.workspace,
+      detail: `${update.method}: ${update.summary}`,
+    });
+    this.appendAudit({
+      action: "command",
+      status: "ok",
+      contextKey: WEB_CONTEXT_KEY,
+      description: "update",
+      detail: update.summary,
+    });
+    return update;
+  }
+
   async diagnostics(): Promise<WebDiagnosticsDto> {
     return {
       health: await getConnectorHealth({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath, claudeCodeCliPath: this.config.claudeCodeCliPath }),
@@ -264,6 +376,101 @@ export class RelayRuntime {
         agentDiagnostics: getAgentDiagnostics(await this.getSession(true), this.config),
       },
     };
+  }
+
+  async adapterHealth(): Promise<WebAdapterHealthDto[]> {
+    const health = await getConnectorHealth({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath, claudeCodeCliPath: this.config.claudeCodeCliPath });
+    const versions = await getVersionChecks({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath, claudeCodeCliPath: this.config.claudeCodeCliPath });
+    return Promise.all(listAgentAdapterDescriptors().map(async (descriptor) => {
+      const enabled = enabledAgents(this.config).includes(descriptor.id);
+      const auth = descriptor.capabilities.auth && enabled
+        ? await this.authStatus(descriptor.id).catch((error): WebAuthDto => ({
+          agentId: descriptor.id,
+          agentLabel: descriptor.label,
+          supported: descriptor.capabilities.auth,
+          authenticated: false,
+          detail: friendlyErrorText(error),
+          loginSupported: descriptor.capabilities.login,
+          logoutSupported: descriptor.capabilities.logout,
+        }))
+        : null;
+      const cli = cliHealthForAgent(descriptor.id, health);
+      const version = versionCheckForAgent(descriptor.id, versions);
+      return {
+        id: descriptor.id,
+        label: descriptor.label,
+        enabled,
+        status: descriptor.status === "available" ? (enabled ? "enabled" : "disabled") : "planned",
+        auth: {
+          supported: descriptor.capabilities.auth,
+          authenticated: auth ? auth.authenticated : null,
+          method: auth?.method,
+          detail: auth?.detail,
+        },
+        cli,
+        version: {
+          installed: version.installedLabel,
+          latest: version.latestVersion,
+          status: version.status,
+          detail: version.detail,
+        },
+        capabilities: descriptor.capabilities,
+        notes: descriptor.notes,
+      };
+    }));
+  }
+
+  permissions(): WebPermissionsDto {
+    return {
+      telegramAllowAnyChat: this.config.telegramAllowAnyChat,
+      telegramAdminUserIds: this.config.telegramAdminUserIds,
+      telegramAllowedUserIds: this.config.telegramAllowedUserIds,
+      telegramReadOnlyUserIds: this.config.telegramReadOnlyUserIds,
+      telegramAllowedChatIds: this.config.telegramAllowedChatIds,
+      telegramRolePolicies: this.config.telegramRolePolicies,
+    };
+  }
+
+  tasks(): WebTasksDto {
+    return {
+      current: this.currentProgress ? { ...this.currentProgress, tools: [...this.currentProgress.tools] } : null,
+      external: this.externalTask(),
+      queue: this.queue(),
+      queuePaused: this.queuePaused(),
+      recent: this.activity({ limit: 20 }),
+    };
+  }
+
+  audit(limit = 50): AuditEvent[] {
+    return this.auditStore.list(limit);
+  }
+
+  locks(): SessionLock[] {
+    return this.lockStore.list();
+  }
+
+  lockWebSession(ownerName = "Web dashboard"): SessionLock {
+    const lock = this.lockStore.set(WEB_CONTEXT_KEY, 0, ownerName, this.config.sessionLockTtlMs);
+    this.appendAudit({
+      action: "lock_updated",
+      status: "ok",
+      contextKey: WEB_CONTEXT_KEY,
+      description: "lock",
+      detail: `locked by ${ownerName}`,
+    });
+    return lock;
+  }
+
+  unlockWebSession(): { removed: boolean; locks: SessionLock[] } {
+    const removed = this.lockStore.clear(WEB_CONTEXT_KEY);
+    this.appendAudit({
+      action: "lock_updated",
+      status: "ok",
+      contextKey: WEB_CONTEXT_KEY,
+      description: "unlock",
+      detail: removed ? "unlocked" : "no lock",
+    });
+    return { removed, locks: this.locks() };
   }
 
   async controlOptions(agentId?: AgentId): Promise<DashboardControlOptions> {
@@ -293,9 +500,152 @@ export class RelayRuntime {
     }
   }
 
+  async authStatus(agentId?: AgentId): Promise<WebAuthDto> {
+    const { session, dispose } = await this.getControlSession(agentId);
+    try {
+      const info = this.publicInfo(session);
+      const capabilities = info.capabilities ?? CODEX_AGENT_CAPABILITIES;
+      if (!capabilities.auth) {
+        return {
+          agentId: info.agentId,
+          agentLabel: info.agentLabel,
+          supported: false,
+          authenticated: null,
+          detail: `${info.agentLabel} authentication is managed outside NordRelay.`,
+          loginSupported: false,
+          logoutSupported: false,
+          hostLoginCommand: hostLoginCommand(info, this.config),
+          hostLogoutCommand: hostLogoutCommand(info, this.config),
+        };
+      }
+      const status = await this.checkAgentAuth(info);
+      return {
+        agentId: info.agentId,
+        agentLabel: info.agentLabel,
+        supported: true,
+        authenticated: status.authenticated,
+        method: status.method,
+        detail: status.detail,
+        loginSupported: capabilities.login,
+        logoutSupported: capabilities.logout,
+        hostLoginCommand: hostLoginCommand(info, this.config),
+        hostLogoutCommand: hostLogoutCommand(info, this.config),
+      };
+    } finally {
+      if (dispose) {
+        session.dispose();
+      }
+    }
+  }
+
+  async login(agentId?: AgentId): Promise<WebAuthDto & { result: LoginResult | null }> {
+    const { session, dispose } = await this.getControlSession(agentId);
+    try {
+      const info = this.publicInfo(session);
+      const capabilities = info.capabilities ?? CODEX_AGENT_CAPABILITIES;
+      if (!capabilities.login) {
+        return {
+          ...(await this.authStatus(info.agentId)),
+          result: {
+            success: false,
+            message: `${info.agentLabel} login is not managed by NordRelay. Run ${hostLoginCommand(info, this.config)} on the host.`,
+          },
+        };
+      }
+      if (!this.config.enableTelegramLogin) {
+        return {
+          ...(await this.authStatus(info.agentId)),
+          result: {
+            success: false,
+            message: `Remote login is disabled. Run ${hostLoginCommand(info, this.config)} on the host.`,
+          },
+        };
+      }
+      const result = await this.startAgentLogin(info);
+      this.appendAudit({
+        action: "command",
+        status: result.success ? "ok" : "failed",
+        contextKey: WEB_CONTEXT_KEY,
+        agentId: info.agentId,
+        threadId: info.threadId,
+        workspace: info.workspace,
+        description: "login",
+        detail: result.message,
+      });
+      return { ...(await this.authStatus(info.agentId)), result };
+    } finally {
+      if (dispose) {
+        session.dispose();
+      }
+    }
+  }
+
+  async logout(agentId?: AgentId): Promise<WebAuthDto & { result: LoginResult | null }> {
+    const { session, dispose } = await this.getControlSession(agentId);
+    try {
+      const info = this.publicInfo(session);
+      const capabilities = info.capabilities ?? CODEX_AGENT_CAPABILITIES;
+      if (!capabilities.logout) {
+        return {
+          ...(await this.authStatus(info.agentId)),
+          result: {
+            success: false,
+            message: `${info.agentLabel} logout is not managed by NordRelay. Run ${hostLogoutCommand(info, this.config)} on the host.`,
+          },
+        };
+      }
+      if (!this.config.enableTelegramLogin) {
+        return {
+          ...(await this.authStatus(info.agentId)),
+          result: {
+            success: false,
+            message: `Remote auth management is disabled. Run ${hostLogoutCommand(info, this.config)} on the host.`,
+          },
+        };
+      }
+      const current = await this.checkAgentAuth(info);
+      if (current.method === "api-key") {
+        return {
+          ...(await this.authStatus(info.agentId)),
+          result: {
+            success: false,
+            message: "Cannot logout while API-key authentication is configured. Remove the API key from .env to use CLI auth.",
+          },
+        };
+      }
+      const result = await this.startAgentLogout(info);
+      this.appendAudit({
+        action: "command",
+        status: result.success ? "ok" : "failed",
+        contextKey: WEB_CONTEXT_KEY,
+        agentId: info.agentId,
+        threadId: info.threadId,
+        workspace: info.workspace,
+        description: "logout",
+        detail: result.message,
+      });
+      return { ...(await this.authStatus(info.agentId)), result };
+    } finally {
+      if (dispose) {
+        session.dispose();
+      }
+    }
+  }
+
   async chatHistory(limit = 200): Promise<WebChatMessage[]> {
     const session = await this.getSession(true);
     return this.chatStore.list(this.publicInfo(session).threadId, limit);
+  }
+
+  async sessionDetail(threadId: string): Promise<Record<string, unknown>> {
+    const session = await this.getSession(true);
+    const record = session.getSessionRecord(threadId);
+    return {
+      record,
+      active: this.publicInfo(session),
+      messages: this.chatStore.list(threadId, 100),
+      activity: this.activity({ limit: 100 }).filter((event) => event.threadId === threadId),
+    };
   }
 
   async clearChatHistory(): Promise<{ removed: number; messages: WebChatMessage[] }> {
@@ -308,6 +658,53 @@ export class RelayRuntime {
 
   activity(options: { limit?: number; source?: WebActivitySource | "all"; status?: WebActivityStatus | "all" } = {}): WebActivityEvent[] {
     return this.activityStore.list(options);
+  }
+
+  async retry(): Promise<{ queued: boolean; queueId?: string }> {
+    const cached = this.promptStore.getLastPrompt(WEB_CONTEXT_KEY);
+    if (!cached) {
+      throw new Error("Nothing to retry. Send a message first.");
+    }
+    this.appendAudit({
+      action: "command",
+      status: "ok",
+      contextKey: WEB_CONTEXT_KEY,
+      description: "retry",
+      detail: cached.description,
+    });
+    return this.sendEnvelope(cached);
+  }
+
+  async sync(): Promise<ReturnType<AgentSessionService["syncFromAgentState"]>> {
+    const session = await this.getSession(true);
+    const info = this.publicInfo(session);
+    if (!(info.capabilities ?? CODEX_AGENT_CAPABILITIES).externalActivity) {
+      throw new Error(`${info.agentLabel} has no external state watcher to sync.`);
+    }
+    const result = session.syncFromAgentState({ reattach: true });
+    if (result.changed) {
+      this.updateSession(session);
+    }
+    this.appendActivity({
+      source: "web",
+      status: "info",
+      type: "session_sync",
+      threadId: result.info.threadId,
+      workspace: result.info.workspace,
+      agentId: result.info.agentId,
+      detail: result.changedFields.length > 0 ? result.changedFields.join(", ") : "already in sync",
+    });
+    this.appendAudit({
+      action: "command",
+      status: "ok",
+      contextKey: WEB_CONTEXT_KEY,
+      agentId: result.info.agentId,
+      threadId: result.info.threadId,
+      workspace: result.info.workspace,
+      description: "sync",
+      detail: result.changedFields.join(", ") || "none",
+    });
+    return result;
   }
 
   async listSessions(limit = 80, query = ""): Promise<AgentThreadRecord[]> {
@@ -593,6 +990,16 @@ export class RelayRuntime {
           ? `Queued because ${external.agentLabel} CLI is still processing another task.`
           : `Queued at position ${this.promptStore.list(WEB_CONTEXT_KEY).length}.`,
       });
+      this.appendAudit({
+        action: "prompt_queued",
+        status: "ok",
+        contextKey: WEB_CONTEXT_KEY,
+        agentId: info.agentId,
+        threadId: info.threadId,
+        workspace: info.workspace,
+        promptId: queued.id,
+        description: envelope.description,
+      });
       if (external?.activity.active) {
         this.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${this.promptStore.list(WEB_CONTEXT_KEY).length} queued.`, "info");
       }
@@ -634,6 +1041,12 @@ export class RelayRuntime {
       threadId: null,
       workspace: this.config.workspace,
       detail: id ? `${action}: ${id}` : action,
+    });
+    this.appendAudit({
+      action: "queue_updated",
+      status: "ok",
+      contextKey: WEB_CONTEXT_KEY,
+      description: id ? `${action}: ${id}` : action,
     });
     this.broadcastQueue();
     return this.queue();
@@ -810,6 +1223,7 @@ export class RelayRuntime {
       if (externalStartedAt && terminalEvent.turnId) {
         await this.persistWorkspaceArtifactsForTurn(info.workspace, terminalEvent.turnId, externalStartedAt);
       }
+      mirror.latestStatus = `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`;
       this.broadcastStatus(
         `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`,
         terminalEvent.status === "failed" ? "error" : terminalEvent.status === "aborted" ? "warn" : "info",
@@ -902,7 +1316,7 @@ export class RelayRuntime {
     }
   }
 
-  private async checkAgentAuth(info: AgentSessionInfo): Promise<{ authenticated: boolean; detail: string }> {
+  private async checkAgentAuth(info: AgentSessionInfo): Promise<{ authenticated: boolean; detail: string; method?: string }> {
     if (info.agentId === "pi") {
       return checkPiAuthStatus(info.model);
     }
@@ -923,6 +1337,38 @@ export class RelayRuntime {
       return checkClaudeCodeAuthStatus(this.config.claudeCodeCliPath);
     }
     return checkAuthStatus(this.config.codexApiKey);
+  }
+
+  private async startAgentLogin(info: AgentSessionInfo): Promise<LoginResult> {
+    if (info.agentId === "hermes") {
+      return startHermesLogin(this.config.hermesCliPath);
+    }
+    if (info.agentId === "claude-code") {
+      return startClaudeCodeLogin(this.config.claudeCodeCliPath);
+    }
+    if (info.agentId === "codex") {
+      return startCodexLogin();
+    }
+    return {
+      success: false,
+      message: `${info.agentLabel} login is not managed by NordRelay. Run the agent login flow on the host.`,
+    };
+  }
+
+  private async startAgentLogout(info: AgentSessionInfo): Promise<LoginResult> {
+    if (info.agentId === "hermes") {
+      return startHermesLogout(this.config.hermesCliPath);
+    }
+    if (info.agentId === "claude-code") {
+      return startClaudeCodeLogout(this.config.claudeCodeCliPath);
+    }
+    if (info.agentId === "codex") {
+      return startCodexLogout();
+    }
+    return {
+      success: false,
+      message: `${info.agentLabel} logout is not managed by NordRelay. Run the agent logout flow on the host.`,
+    };
   }
 
   private ensureIdle(session: AgentSessionService): void {
@@ -949,6 +1395,21 @@ export class RelayRuntime {
     this.currentTurnId = turnId;
     this.currentTurnStartedAt = Date.now();
     this.accumulatedText = "";
+    this.currentProgress = {
+      id: turnId,
+      source: "web",
+      status: "running",
+      prompt: envelope.description,
+      agentId: info.agentId,
+      agentLabel: info.agentLabel,
+      threadId: info.threadId,
+      workspace: info.workspace,
+      startedAt: new Date(this.currentTurnStartedAt).toISOString(),
+      updatedAt: new Date(this.currentTurnStartedAt).toISOString(),
+      durationMs: 0,
+      outputChars: 0,
+      tools: [],
+    };
     this.promptStore.setLastPrompt(WEB_CONTEXT_KEY, envelope);
     const startedDate = new Date();
     const startedAt = startedDate.toISOString();
@@ -969,17 +1430,39 @@ export class RelayRuntime {
       agentId: info.agentId,
       prompt: envelope.description,
     });
+    this.appendAudit({
+      action: "prompt_started",
+      status: "ok",
+      contextKey: WEB_CONTEXT_KEY,
+      agentId: info.agentId,
+      threadId: info.threadId,
+      workspace: info.workspace,
+      description: envelope.description,
+    });
     this.broadcast({ type: "turn_start", id: turnId, prompt: envelope.description, at: startedAt, source: "web" });
 
     const callbacks: AgentSessionCallbacks = {
       onTextDelta: (delta) => {
         this.accumulatedText += delta;
+        this.updateCurrentProgress({ outputChars: this.accumulatedText.length });
         this.broadcast({ type: "text_delta", id: turnId, delta });
       },
-      onToolStart: (toolName, toolCallId) => this.broadcast({ type: "tool_start", id: turnId, toolCallId, toolName }),
-      onToolUpdate: (toolCallId, partialResult) => this.broadcast({ type: "tool_update", id: turnId, toolCallId, partialResult }),
-      onToolEnd: (toolCallId, isError) => this.broadcast({ type: "tool_end", id: turnId, toolCallId, isError }),
-      onTodoUpdate: (items) => this.broadcast({ type: "todo_update", id: turnId, items }),
+      onToolStart: (toolName, toolCallId) => {
+        this.addCurrentTool(toolName);
+        this.broadcast({ type: "tool_start", id: turnId, toolCallId, toolName });
+      },
+      onToolUpdate: (toolCallId, partialResult) => {
+        this.updateCurrentProgress();
+        this.broadcast({ type: "tool_update", id: turnId, toolCallId, partialResult });
+      },
+      onToolEnd: (toolCallId, isError) => {
+        this.updateCurrentProgress({ currentTool: undefined });
+        this.broadcast({ type: "tool_end", id: turnId, toolCallId, isError });
+      },
+      onTodoUpdate: (items) => {
+        this.updateCurrentProgress({ detail: `Plan: ${items.filter((item) => item.completed).length}/${items.length} done` });
+        this.broadcast({ type: "todo_update", id: turnId, items });
+      },
       onTurnComplete: () => {},
       onAgentEnd: () => this.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString() }),
     };
@@ -1007,6 +1490,16 @@ export class RelayRuntime {
         prompt: envelope.description,
         durationMs: Date.now() - this.currentTurnStartedAt,
       });
+      this.appendAudit({
+        action: "prompt_completed",
+        status: "ok",
+        contextKey: WEB_CONTEXT_KEY,
+        agentId: info.agentId,
+        threadId: info.threadId,
+        workspace: info.workspace,
+        description: envelope.description,
+      });
+      this.updateCurrentProgress({ status: "completed" });
       this.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString() });
       this.broadcast({ type: "chat_history", messages: await this.chatHistory() });
     } catch (error) {
@@ -1029,11 +1522,26 @@ export class RelayRuntime {
         detail: errorText,
         durationMs: Date.now() - this.currentTurnStartedAt,
       });
+      this.appendAudit({
+        action: "prompt_failed",
+        status: "failed",
+        contextKey: WEB_CONTEXT_KEY,
+        agentId: info.agentId,
+        threadId: info.threadId,
+        workspace: info.workspace,
+        description: envelope.description,
+        detail: errorText,
+      });
+      this.updateCurrentProgress({ status: "failed", detail: errorText });
       this.broadcast({ type: "turn_error", id: turnId, error: errorText, at: new Date().toISOString() });
       this.broadcast({ type: "chat_history", messages: await this.chatHistory() });
       throw error;
     } finally {
       this.currentTurnId = null;
+      if (this.currentProgress) {
+        this.currentProgress.durationMs = Date.now() - this.currentTurnStartedAt;
+        this.currentProgress.updatedAt = new Date().toISOString();
+      }
       await this.drainQueue();
     }
   }
@@ -1072,6 +1580,64 @@ export class RelayRuntime {
     const event = this.activityStore.append(input);
     this.broadcast({ type: "activity_update", events: this.activity({ limit: 50 }) });
     return event;
+  }
+
+  private appendAudit(input: Omit<AuditEvent, "id" | "timestamp" | "channelId">): AuditEvent {
+    return this.auditStore.append({ ...input, channelId: "web" });
+  }
+
+  private updateCurrentProgress(patch: Partial<WebTaskDto> = {}): void {
+    if (!this.currentProgress) {
+      return;
+    }
+    if ("currentTool" in patch) {
+      this.currentProgress.currentTool = patch.currentTool;
+      const { currentTool: _currentTool, ...rest } = patch;
+      Object.assign(this.currentProgress, rest);
+    } else {
+      Object.assign(this.currentProgress, patch);
+    }
+    this.currentProgress.durationMs = Date.now() - this.currentTurnStartedAt;
+    this.currentProgress.updatedAt = new Date().toISOString();
+  }
+
+  private addCurrentTool(toolName: string): void {
+    if (!this.currentProgress) {
+      return;
+    }
+    const existing = this.currentProgress.tools.find((tool) => tool.name === toolName);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      this.currentProgress.tools.push({ name: toolName, count: 1 });
+    }
+    this.updateCurrentProgress({ currentTool: toolName, lastTool: toolName });
+  }
+
+  private externalTask(): WebTaskDto | null {
+    if (!this.externalMirror) {
+      return null;
+    }
+    const startedAt = this.externalMirror.startedAt ?? new Date().toISOString();
+    const startedMs = new Date(startedAt).getTime();
+    return {
+      id: this.externalMirror.turnId ?? "cli",
+      source: "cli",
+      status: this.externalMirror.latestStatus?.includes("failed")
+        ? "failed"
+        : this.externalMirror.latestStatus?.includes("aborted")
+          ? "aborted"
+          : this.externalMirror.latestStatus?.includes("finished") || this.externalMirror.latestStatus?.includes("completed")
+            ? "completed"
+            : "running",
+      threadId: this.externalMirror.threadId,
+      startedAt,
+      updatedAt: new Date().toISOString(),
+      durationMs: Number.isFinite(startedMs) ? Math.max(0, Date.now() - startedMs) : 0,
+      outputChars: 0,
+      tools: [],
+      detail: this.externalMirror.latestStatus ?? this.externalMirror.rolloutPath,
+    };
   }
 
   private broadcastQueue(): void {
@@ -1153,6 +1719,62 @@ function externalStatusLine(snapshot: AgentExternalSnapshot, queueLength: number
     : "-";
   const tool = snapshot.latestToolName ?? "-";
   return `${snapshot.agentLabel} CLI running · ${elapsed} · tool ${tool} · ${queueLength} queued`;
+}
+
+function cliHealthForAgent(agentId: AgentId, health: Awaited<ReturnType<typeof getConnectorHealth>>): WebAdapterHealthDto["cli"] {
+  if (agentId === "pi") {
+    return { path: health.piCliPath, label: health.piCli, version: health.piCliVersion };
+  }
+  if (agentId === "hermes") {
+    return { path: health.hermesCliPath, label: health.hermesCli, version: health.hermesCliVersion };
+  }
+  if (agentId === "openclaw") {
+    return { path: health.openClawCliPath, label: health.openClawCli, version: health.openClawCliVersion };
+  }
+  if (agentId === "claude-code") {
+    return { path: health.claudeCodeCliPath, label: health.claudeCodeCli, version: health.claudeCodeCliVersion };
+  }
+  return { path: health.codexCliPath, label: health.codexCli, version: health.codexCliVersion };
+}
+
+function versionCheckForAgent(agentId: AgentId, versions: Awaited<ReturnType<typeof getVersionChecks>>) {
+  if (agentId === "pi") return versions.pi;
+  if (agentId === "hermes") return versions.hermes;
+  if (agentId === "openclaw") return versions.openclaw;
+  if (agentId === "claude-code") return versions.claudeCode;
+  return versions.codex;
+}
+
+function hostLoginCommand(info: AgentSessionInfo, config: ConnectorConfig): string {
+  if (info.agentId === "hermes") {
+    return `${config.hermesCliPath ?? "hermes"} login --no-browser`;
+  }
+  if (info.agentId === "claude-code") {
+    return `${config.claudeCodeCliPath ?? "claude"} auth login`;
+  }
+  if (info.agentId === "pi") {
+    return `${config.piCliPath ?? "pi"} auth login`;
+  }
+  if (info.agentId === "openclaw") {
+    return `${config.openClawCliPath ?? "openclaw"} login`;
+  }
+  return "codex login --device-auth";
+}
+
+function hostLogoutCommand(info: AgentSessionInfo, config: ConnectorConfig): string {
+  if (info.agentId === "hermes") {
+    return `${config.hermesCliPath ?? "hermes"} logout`;
+  }
+  if (info.agentId === "claude-code") {
+    return `${config.claudeCodeCliPath ?? "claude"} auth logout`;
+  }
+  if (info.agentId === "pi") {
+    return `${config.piCliPath ?? "pi"} auth logout`;
+  }
+  if (info.agentId === "openclaw") {
+    return `${config.openClawCliPath ?? "openclaw"} logout`;
+  }
+  return "codex logout";
 }
 
 function durationFromDates(start: Date | null, end: Date | null): number | undefined {
