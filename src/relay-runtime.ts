@@ -769,26 +769,39 @@ export class RelayRuntime {
     return result;
   }
 
-  async listSessions(limit = 80, query = ""): Promise<AgentThreadRecord[]> {
-    return this.filteredSessions(await this.getSession(true), query, Math.max(1, limit * 3)).slice(0, limit);
+  async listSessions(limit = 80, query = "", agentId?: AgentId): Promise<AgentThreadRecord[]> {
+    const { session, dispose } = await this.getControlSession(agentId);
+    try {
+      return this.filteredSessions(session, query, Math.max(1, limit * 3)).slice(0, limit);
+    } finally {
+      if (dispose) {
+        session.dispose();
+      }
+    }
   }
 
-  async listSessionsPage(page = 1, pageSize = MAX_WEB_SESSION_PAGE_SIZE, query = ""): Promise<SessionPageDto> {
-    const session = await this.getSession(true);
-    const effectivePage = Math.max(1, Math.floor(page));
-    const effectivePageSize = Math.min(MAX_WEB_SESSION_PAGE_SIZE, Math.max(1, Math.floor(pageSize)));
-    const offset = (effectivePage - 1) * effectivePageSize;
-    const requested = Math.min(5_000, Math.max(100, (offset + effectivePageSize + 1) * 3));
-    const records = this.filteredSessions(session, query, requested);
-    return {
-      sessions: records.slice(offset, offset + effectivePageSize),
-      pagination: {
-        page: effectivePage,
-        pageSize: effectivePageSize,
-        hasPrevious: effectivePage > 1,
-        hasNext: records.length > offset + effectivePageSize,
-      },
-    };
+  async listSessionsPage(page = 1, pageSize = MAX_WEB_SESSION_PAGE_SIZE, query = "", agentId?: AgentId): Promise<SessionPageDto> {
+    const { session, dispose } = await this.getControlSession(agentId);
+    try {
+      const effectivePage = Math.max(1, Math.floor(page));
+      const effectivePageSize = Math.min(MAX_WEB_SESSION_PAGE_SIZE, Math.max(1, Math.floor(pageSize)));
+      const offset = (effectivePage - 1) * effectivePageSize;
+      const requested = Math.min(5_000, Math.max(100, (offset + effectivePageSize + 1) * 3));
+      const records = this.filteredSessions(session, query, requested);
+      return {
+        sessions: records.slice(offset, offset + effectivePageSize),
+        pagination: {
+          page: effectivePage,
+          pageSize: effectivePageSize,
+          hasPrevious: effectivePage > 1,
+          hasNext: records.length > offset + effectivePageSize,
+        },
+      };
+    } finally {
+      if (dispose) {
+        session.dispose();
+      }
+    }
   }
 
   private filteredSessions(session: AgentSessionService, query: string, limit: number): AgentThreadRecord[] {
