@@ -657,7 +657,7 @@ export class RelayRuntime {
   }
 
   activity(options: { limit?: number; source?: WebActivitySource | "all"; status?: WebActivityStatus | "all" } = {}): WebActivityEvent[] {
-    return this.activityStore.list(options);
+    return this.activityStore.list(options).map((event) => this.enrichActivityEvent(event));
   }
 
   async retry(): Promise<{ queued: boolean; queueId?: string }> {
@@ -1589,8 +1589,30 @@ export class RelayRuntime {
   }
 
   private appendActivity(input: Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }): WebActivityEvent {
-    const event = this.activityStore.append(input);
+    const event = this.activityStore.append(this.enrichActivityInput(input));
     this.broadcast({ type: "activity_update", events: this.activity({ limit: 50 }) });
+    return event;
+  }
+
+  private enrichActivityInput<T extends Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }>(input: T): T {
+    return this.enrichActivityFields(input) as T;
+  }
+
+  private enrichActivityEvent(event: WebActivityEvent): WebActivityEvent {
+    return this.enrichActivityFields(event) as WebActivityEvent;
+  }
+
+  private enrichActivityFields<T extends Pick<WebActivityEvent, "threadId"> & Partial<Pick<WebActivityEvent, "workspace" | "agentId">>>(event: T): T {
+    const info = this.registry.get(WEB_CONTEXT_KEY)?.getInfo();
+    if (!info) {
+      return !event.threadId && !event.workspace ? { ...event, workspace: this.config.workspace } : event;
+    }
+    if (event.threadId && info.threadId && event.threadId === info.threadId) {
+      return { ...event, workspace: event.workspace ?? info.workspace, agentId: event.agentId ?? info.agentId };
+    }
+    if (!event.threadId && !event.workspace) {
+      return { ...event, workspace: this.config.workspace };
+    }
     return event;
   }
 
