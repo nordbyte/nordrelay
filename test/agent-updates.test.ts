@@ -88,17 +88,14 @@ describe("agent updates", () => {
     expect(existsSync(path.join(dir, "updates", "jobs.json"))).toBe(true);
 
     const deleted = reloaded.deleteLog(started.id);
-    expect(deleted.logDeletedAt).toEqual(expect.any(String));
-    expect(deleted.outputTail).toBe("");
+    expect(deleted).toMatchObject({ id: started.id, status: "completed" });
     expect(existsSync(started.logPath)).toBe(false);
-    expect(reloaded.readLog(started.id).plain).toContain("deleted");
+    expect(reloaded.get(started.id)).toBeNull();
+    expect(() => reloaded.readLog(started.id)).toThrow(/unknown update job/i);
 
     const afterDeleteReload = new AgentUpdateManager({ home: dir });
-    expect(afterDeleteReload.get(started.id)).toMatchObject({
-      id: started.id,
-      logDeletedAt: deleted.logDeletedAt,
-      outputTail: "",
-    });
+    expect(afterDeleteReload.get(started.id)).toBeNull();
+    expect(afterDeleteReload.list().some((job) => job.id === started.id)).toBe(false);
   });
 });
 

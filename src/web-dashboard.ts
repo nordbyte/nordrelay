@@ -213,7 +213,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   if (req.method === "DELETE" && agentUpdateLogMatch?.[1]) {
     const id = decodeURIComponent(agentUpdateLogMatch[1]);
     assertAgentUpdateJobScope(authUser, id);
-    sendJson(res, 200, { job: runtime.deleteAgentUpdateLog(id) });
+    sendJson(res, 200, { deletedId: id, job: runtime.deleteAgentUpdateLog(id) });
     return;
   }
 

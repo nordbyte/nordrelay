@@ -114,14 +114,11 @@ export class AgentUpdateManager {
     if (job.status === "running") {
       throw new Error("Cannot delete the update log while the update job is still running.");
     }
+    const snapshot = this.snapshot(job);
     rmSync(job.logPath, { force: true });
-    job.output = "";
-    job.outputTail = "";
-    job.logDeletedAt = new Date().toISOString();
-    job.updatedAt = job.logDeletedAt;
+    this.jobs.delete(id);
     this.persistJobs();
-    this.emit(job);
-    return this.snapshot(job);
+    return snapshot;
   }
 
   start(agentId: AgentId, context: AgentUpdateContext = {}): AgentUpdateJobSnapshot {
@@ -274,6 +271,10 @@ export class AgentUpdateManager {
       const parsed = JSON.parse(readFileSync(this.manifestPath, "utf8")) as AgentUpdateJobSnapshot[];
       let changed = false;
       for (const snapshot of parsed) {
+        if (snapshot.logDeletedAt) {
+          changed = true;
+          continue;
+        }
         const staleRunning = snapshot.status === "running" && !isProcessRunning(snapshot.ownerPid);
         if (staleRunning) {
           changed = true;
