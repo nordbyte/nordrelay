@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { maskSecret, resolveDashboardEnvPath, SettingsService } from "../src/settings-service.js";
+import { maskSecret, resolveDashboardEnvPath, SETTING_DEFINITIONS, SettingsService } from "../src/settings-service.js";
 
 describe("SettingsService", () => {
   it("masks secrets and writes changed settings", async () => {
@@ -99,5 +99,18 @@ describe("SettingsService", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("exposes settings for every available agent adapter", () => {
+    const byKey = new Map(SETTING_DEFINITIONS.map((definition) => [definition.key, definition]));
+
+    expect(byKey.get("NORDRELAY_CODEX_ENABLED")).toMatchObject({ group: "Agents", kind: "boolean" });
+    expect(byKey.get("NORDRELAY_PI_ENABLED")).toMatchObject({ group: "Agents", kind: "boolean" });
+    expect(byKey.get("NORDRELAY_HERMES_ENABLED")).toMatchObject({ group: "Agents", kind: "boolean" });
+    expect(byKey.get("NORDRELAY_OPENCLAW_ENABLED")).toMatchObject({ group: "Agents", kind: "boolean" });
+    expect(byKey.get("NORDRELAY_CLAUDE_CODE_ENABLED")).toMatchObject({ group: "Agents", kind: "boolean" });
+    expect(byKey.get("HERMES_API_BASE_URL")).toMatchObject({ group: "Hermes" });
+    expect(byKey.get("OPENCLAW_GATEWAY_URL")).toMatchObject({ group: "OpenClaw" });
+    expect(byKey.get("CLAUDE_CODE_CLI_PATH")).toMatchObject({ group: "Claude Code" });
   });
 });
