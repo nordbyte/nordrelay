@@ -46,6 +46,7 @@ Adapter architecture:
 - `/channels` shows available and planned messaging adapters for Discord, WhatsApp, Slack, and Matrix.
 - Codex, Pi, Hermes, OpenClaw, and Claude Code are implemented as agent adapters.
 - `/agents` shows available/planned agent adapters and whether Codex, Pi, Hermes, OpenClaw, and Claude Code are enabled.
+- Shared command-action renderers keep channel-neutral responses for adapter lists, queues, artifacts, logs, and update jobs separate from Telegram-specific keyboards and delivery.
 
 Codex runtime:
 
@@ -411,6 +412,7 @@ The dashboard is a second NordRelay client next to Telegram. It can:
 - View filtered connector/update/agent-update logs, structured diagnostics, enabled channels, and agent adapters.
 - Inspect a per-agent capability matrix showing model, reasoning, launch, fast mode, attachments, activity, usage, auth, login/logout, and handback support.
 - Check NordRelay and agent CLI versions, then start Codex, Pi, Hermes, OpenClaw, or Claude Code updates from outdated version rows with live output, cancel, full-log, and stdin response controls for interactive updaters.
+- Load dashboard CSS and client JavaScript as authenticated static assets instead of inline HTML, keeping the server shell, style, and browser client modules separate.
 
 Dashboard API endpoints are served under `/api/*`. Streaming uses `GET /api/events`.
 

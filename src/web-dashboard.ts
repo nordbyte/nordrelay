@@ -13,7 +13,8 @@ import { friendlyErrorText } from "./error-messages.js";
 import { escapeHTML } from "./format.js";
 import { RelayRuntime, type RelayEvent } from "./relay-runtime.js";
 import { resolveDashboardEnvPath, SettingsService } from "./settings-service.js";
-import { dashboardCss, dashboardJs } from "./web-dashboard-assets.js";
+import { dashboardJs } from "./web-dashboard-client.js";
+import { dashboardCss } from "./web-dashboard-style.js";
 import { renderDashboardNav } from "./web-dashboard-ui.js";
 
 interface DashboardOptions {
@@ -92,6 +93,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   if (url.pathname === "/" || url.pathname === "/index.html") {
     sendText(res, 200, renderDashboardApp({ authRequired: auth.required }), "text/html; charset=utf-8");
+    return;
+  }
+
+  if (url.pathname === "/assets/dashboard.css") {
+    sendText(res, 200, dashboardCss(), "text/css; charset=utf-8");
+    return;
+  }
+
+  if (url.pathname === "/assets/dashboard.js") {
+    sendText(res, 200, dashboardJs(), "application/javascript; charset=utf-8");
     return;
   }
 
@@ -919,7 +930,7 @@ function renderDashboardApp(options: { authRequired: boolean }): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NordRelay Dashboard</title>
   <script>document.documentElement.dataset.theme = localStorage.getItem('nordrelayTheme') || 'light';</script>
-  <style>${dashboardCss()}</style>
+  <link rel="stylesheet" href="/assets/dashboard.css">
 </head>
 <body>
   <div class="app">
@@ -1103,7 +1114,7 @@ function renderDashboardApp(options: { authRequired: boolean }): string {
   </dialog>
   <div id="toolTooltip" class="tool-tooltip"></div>
   <div id="toast"></div>
-  <script>${dashboardJs()}</script>
+  <script src="/assets/dashboard.js"></script>
 </body>
 </html>`;
 }

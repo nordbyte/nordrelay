@@ -38,8 +38,7 @@ import {
   type ArtifactTurnReport,
 } from "./artifacts.js";
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
-import { formatAgentFeatureSummaryHTML, formatAgentFeatureSummaryPlain } from "./agent-feature-matrix.js";
-import { AgentUpdateManager, type AgentUpdateJobSnapshot } from "./agent-updates.js";
+import { AgentUpdateManager } from "./agent-updates.js";
 import { AuditLogStore, type AuditEvent } from "./audit-log.js";
 import {
   formatSessionLabel,
@@ -60,6 +59,23 @@ import {
   type TelegramNotifyMode,
   type VoiceBackendPreference,
 } from "./bot-preferences.js";
+import {
+  logTailRequests,
+  parseAgentUpdateId,
+  parseLogsCommand,
+  renderAgentUpdateJobAction,
+  renderAgentUpdateJobsAction,
+  renderAgentUpdateLogAction,
+  renderAgentUpdatePickerAction,
+  renderAgentsAction,
+  renderArtifactReportsAction,
+  renderChannelsAction,
+  renderLogTailsAction,
+  renderQueueListAction,
+  renderQueuedPromptDetailAction,
+  renderSelfUpdateStartedAction,
+  type ChannelActionButton,
+} from "./channel-actions.js";
 import { listChannelDescriptors } from "./channel-adapter.js";
 import {
   CODEX_AGENT_CAPABILITIES,
@@ -94,14 +110,11 @@ import { friendlyErrorText } from "./error-messages.js";
 import { escapeHTML, formatTelegramHTML } from "./format.js";
 import {
   getConnectorHealth,
-  getAgentUpdateLogPath,
-  getUpdateLogPath,
   getVersionChecks,
   readConnectorState,
   readFormattedLogTail,
   spawnConnectorRestart,
   spawnSelfUpdate,
-  type FormattedLogTail,
   type VersionCheck,
 } from "./operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
@@ -111,7 +124,6 @@ import { checkPiAuthStatus } from "./pi-auth.js";
 import { configureRedaction, redactText } from "./redaction.js";
 import { canWriteWithLock, SessionLockStore, type SessionLock } from "./session-locks.js";
 import {
-  formatFileSize,
   renderLaunchSummaryHTML,
   renderLaunchSummaryPlain,
   renderSessionInfoHTML,
@@ -285,6 +297,39 @@ function paginateKeyboard(items: KeyboardItem[], page: number, prefix: string): 
   }
 
   return keyboard;
+}
+
+function actionKeyboard(rows: ChannelActionButton[][] | undefined): InlineKeyboard | undefined {
+  if (!rows || rows.length === 0) {
+    return undefined;
+  }
+  const keyboard = new InlineKeyboard();
+  for (const row of rows) {
+    for (const button of row) {
+      keyboard.text(button.label, telegramActionData(button.action));
+    }
+    keyboard.row();
+  }
+  return keyboard;
+}
+
+function telegramActionData(action: string): string {
+  if (action === "agent-update:jobs") {
+    return "upd_jobs";
+  }
+  const agentUpdateStart = action.match(/^agent-update:start:(.+)$/);
+  if (agentUpdateStart?.[1]) {
+    return `upd_agent:${agentUpdateStart[1]}`;
+  }
+  const agentUpdateLog = action.match(/^agent-update:log:(.+)$/);
+  if (agentUpdateLog?.[1]) {
+    return `upd_log:${agentUpdateLog[1]}`;
+  }
+  const agentUpdateCancel = action.match(/^agent-update:cancel:(.+)$/);
+  if (agentUpdateCancel?.[1]) {
+    return `upd_cancel:${agentUpdateCancel[1]}`;
+  }
+  return action;
 }
 
 export function createBot(config: ConnectorConfig, registry: SessionRegistry): Bot<Context> {
@@ -494,10 +539,10 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
           detail: job.summary,
         });
       }
-      const rendered = renderAgentUpdateJobMessage(job);
+      const rendered = renderAgentUpdateJobAction(job);
       await safeReply(ctx, rendered.html, {
         fallbackText: rendered.plain,
-        replyMarkup: agentUpdateJobKeyboard(job),
+        replyMarkup: actionKeyboard(rendered.buttons),
       });
     } catch (error) {
       const message = `Failed to start ${agentLabel(agentId)} update: ${friendlyErrorText(error)}`;
@@ -651,23 +696,11 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     queue: QueuedPrompt[],
   ): { plain: string; html: string; keyboard?: InlineKeyboard } => {
     const paused = promptStore.isPaused(contextKey);
+    const rendered = renderQueueListAction(queue, paused);
     if (queue.length === 0) {
-      return {
-        plain: paused ? "Queue is empty and paused." : "Queue is empty.",
-        html: escapeHTML(paused ? "Queue is empty and paused." : "Queue is empty."),
-      };
+      return rendered;
     }
 
-    const lines = queue.map((item, index) => {
-      const age = formatRelativeTime(new Date(item.createdAt));
-      const attempts = item.attempts && item.attempts > 0 ? ` · attempts ${item.attempts}` : "";
-      const error = item.lastError ? ` · last error: ${trimLine(item.lastError, 80)}` : "";
-      const scheduled = item.notBefore && item.notBefore > Date.now()
-        ? `scheduled ${formatLocalDateTime(new Date(item.notBefore))}`
-        : index === 0 ? "next" : `after ${index} queued item${index === 1 ? "" : "s"}`;
-      const eta = scheduled;
-      return `${index + 1}. ${item.id} · ${age} · ${eta}${attempts}${error} · ${item.description}`;
-    });
     const keyboard = new InlineKeyboard();
     queue.forEach((item, index) => {
       keyboard
@@ -680,11 +713,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         .text("Down", queueCancelCallbackData("down", contextKey, item.id))
         .row();
     });
-    return {
-      plain: [paused ? "Queued prompts (paused):" : "Queued prompts:", ...lines].join("\n"),
-      html: [paused ? "<b>Queued prompts:</b> <code>paused</code>" : "<b>Queued prompts:</b>", ...lines.map(escapeHTML)].join("\n"),
-      keyboard,
-    };
+    return { ...rendered, keyboard };
   };
 
   const createSystemContext = (contextKey: TelegramContextKey): Context => {
@@ -2201,67 +2230,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   });
 
   bot.command("channels", async (ctx) => {
-    const descriptors = listChannelDescriptors();
-    const lines = descriptors.map((descriptor) => {
-      const status = descriptor.status === "available" ? "available" : "planned";
-      return `${descriptor.label}: ${status} · ${descriptor.capabilities.join(", ")}`;
-    });
-    const html = [
-      "<b>Channel adapters:</b>",
-      ...descriptors.map((descriptor) => {
-        const statusIcon = descriptor.status === "available" ? "✅" : "🟡";
-        const notes = descriptor.notes ? `\n  ${escapeHTML(descriptor.notes)}` : "";
-        return `${statusIcon} <b>${escapeHTML(descriptor.label)}</b> <code>${escapeHTML(descriptor.status)}</code>\n  <code>${escapeHTML(descriptor.capabilities.join(", "))}</code>${notes}`;
-      }),
-    ].join("\n");
-    await safeReply(ctx, html, { fallbackText: ["Channel adapters:", ...lines].join("\n") });
+    const rendered = renderChannelsAction(listChannelDescriptors());
+    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
   });
 
   bot.command("agents", async (ctx) => {
-    const descriptors = listAgentAdapterDescriptors();
-    const plain = [
-      "Agent adapters:",
-      ...descriptors.flatMap((descriptor) => {
-        const enabled = descriptor.id === "codex"
-          ? config.codexEnabled
-          : descriptor.id === "pi"
-            ? config.piEnabled
-            : descriptor.id === "hermes"
-              ? config.hermesEnabled
-              : descriptor.id === "openclaw"
-                ? config.openClawEnabled
-                : descriptor.id === "claude-code"
-                  ? config.claudeCodeEnabled
-                  : false;
-        return [
-          `${descriptor.label}: ${descriptor.status}${descriptor.status === "available" ? ` · ${enabled ? "enabled" : "disabled"}` : ""}`,
-          ...formatAgentFeatureSummaryPlain(descriptor.capabilities).map((line) => `  ${line}`),
-        ];
-      }),
-    ].join("\n");
-    const html = [
-      "<b>Agent adapters:</b>",
-      ...descriptors.map((descriptor) => {
-        const enabled = descriptor.id === "codex"
-          ? config.codexEnabled
-          : descriptor.id === "pi"
-            ? config.piEnabled
-            : descriptor.id === "hermes"
-              ? config.hermesEnabled
-              : descriptor.id === "openclaw"
-                ? config.openClawEnabled
-                : descriptor.id === "claude-code"
-                  ? config.claudeCodeEnabled
-                  : false;
-        const status = descriptor.status === "available" ? `${enabled ? "enabled" : "disabled"}` : "planned";
-        const notes = descriptor.notes ? `\n  ${escapeHTML(descriptor.notes)}` : "";
-        return [
-          `${descriptor.status === "available" ? "✅" : "🟡"} <b>${escapeHTML(descriptor.label)}</b> <code>${escapeHTML(status)}</code>${notes}`,
-          ...formatAgentFeatureSummaryHTML(descriptor.capabilities).map((line) => `  ${line}`),
-        ].join("\n");
-      }),
-    ].join("\n");
-    await safeReply(ctx, html, { fallbackText: plain });
+    const rendered = renderAgentsAction(listAgentAdapterDescriptors(), enabledAgents(config));
+    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
   });
 
   bot.command("agent", async (ctx) => {
@@ -2880,21 +2855,12 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const rawText = ctx.message?.text ?? "";
     const argument = rawText.replace(/^\/logs(?:@\w+)?\s*/i, "").trim();
     const logRequest = parseLogsCommand(argument);
-    const logs = logRequest.target === "all"
-      ? [
-          { title: "Connector", tail: await readFormattedLogTail(logRequest.lines) },
-          { title: "Update", tail: await readFormattedLogTail(logRequest.lines, getUpdateLogPath()) },
-          { title: "Agent updates", tail: await readFormattedLogTail(logRequest.lines, getAgentUpdateLogPath()) },
-        ]
-      : [
-          {
-            title: logTargetTitle(logRequest.target),
-            tail: await readFormattedLogTail(logRequest.lines, logTargetPath(logRequest.target)),
-          },
-        ];
-    const plain = logs.map(({ title, tail }) => renderLogTailPlain(title, tail)).join("\n\n");
-    const html = logs.map(({ title, tail }) => renderLogTailHTML(title, tail)).join("\n\n");
-    await safeReply(ctx, html, { fallbackText: plain });
+    const logs = await Promise.all(logTailRequests(logRequest.target).map(async (request) => ({
+      title: request.title,
+      tail: await readFormattedLogTail(logRequest.lines, request.path),
+    })));
+    const rendered = renderLogTailsAction(logs);
+    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
   });
 
   bot.command("restart", async (ctx) => {
@@ -2913,56 +2879,39 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const subcommand = tokens[0]?.toLowerCase();
 
     if (subcommand === "agents" || subcommand === "agent") {
-      const descriptors = listAgentAdapterDescriptors().filter((descriptor) => descriptor.status === "available");
-      const keyboard = new InlineKeyboard();
-      for (const descriptor of descriptors) {
-        keyboard.text(`Update ${descriptor.label}`, `upd_agent:${descriptor.id}`).row();
-      }
-      keyboard.text("Show update jobs", "upd_jobs");
-      const plain = [
-        "Agent updates:",
-        ...descriptors.map((descriptor) => `${descriptor.label}: /update ${descriptor.id}`),
-        "",
-        "Use /update jobs to list running and recent agent updates.",
-      ].join("\n");
-      const html = [
-        "<b>Agent updates:</b>",
-        ...descriptors.map((descriptor) => `<b>${escapeHTML(descriptor.label)}:</b> <code>/update ${escapeHTML(descriptor.id)}</code>`),
-        "",
-        "Use <code>/update jobs</code> to list running and recent agent updates.",
-      ].join("\n");
-      await safeReply(ctx, html, { fallbackText: plain, replyMarkup: keyboard });
+      const rendered = renderAgentUpdatePickerAction(listAgentAdapterDescriptors());
+      await safeReply(ctx, rendered.html, { fallbackText: rendered.plain, replyMarkup: actionKeyboard(rendered.buttons) });
       return;
     }
 
     if (subcommand === "jobs" || subcommand === "status") {
-      const rendered = renderAgentUpdateJobsMessage(agentUpdates.list());
+      const rendered = renderAgentUpdateJobsAction(agentUpdates.list());
       await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
       return;
     }
 
     if (subcommand === "log" && tokens[1]) {
-      const rendered = renderAgentUpdateLogMessage(agentUpdates.readLog(tokens[1]));
+      const rendered = renderAgentUpdateLogAction(agentUpdates.readLog(tokens[1]));
       await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
       return;
     }
 
     if (subcommand === "cancel" && tokens[1]) {
       const job = agentUpdates.cancel(tokens[1]);
-      const rendered = renderAgentUpdateJobMessage(job);
+      const rendered = renderAgentUpdateJobAction(job);
       await safeReply(ctx, rendered.html, {
         fallbackText: rendered.plain,
-        replyMarkup: agentUpdateJobKeyboard(job),
+        replyMarkup: actionKeyboard(rendered.buttons),
       });
       return;
     }
 
     if ((subcommand === "input" || subcommand === "send") && tokens[1] && tokens.slice(2).join(" ").trim()) {
       const job = agentUpdates.sendInput(tokens[1], tokens.slice(2).join(" "));
-      const rendered = renderAgentUpdateJobMessage(job);
+      const rendered = renderAgentUpdateJobAction(job);
       await safeReply(ctx, rendered.html, {
         fallbackText: rendered.plain,
-        replyMarkup: agentUpdateJobKeyboard(job),
+        replyMarkup: actionKeyboard(rendered.buttons),
       });
       return;
     }
@@ -2980,30 +2929,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const update = spawnSelfUpdate();
-    const plain = [
-      "Update started.",
-      `Method: ${update.method}`,
-      update.summary,
-      `Source: ${update.sourceRoot}`,
-      `Log: ${update.logPath}`,
-      "Use /logs update after the restart or inspect update.log on the host.",
-      "Use /update agents for agent CLI updates.",
-    ].join("\n");
-    const html = [
-      "<b>Update started.</b>",
-      `<b>Method:</b> <code>${escapeHTML(update.method)}</code>`,
-      escapeHTML(update.summary),
-      `<b>Source:</b> <code>${escapeHTML(update.sourceRoot)}</code>`,
-      `<b>Log:</b> <code>${escapeHTML(update.logPath)}</code>`,
-      `Use <code>/logs update</code> after the restart or inspect <code>${escapeHTML(getUpdateLogPath())}</code> on the host.`,
-      `Use <code>/update agents</code> for agent CLI updates.`,
-    ].join("\n");
-    await safeReply(ctx, html, { fallbackText: plain });
+    const rendered = renderSelfUpdateStartedAction(update);
+    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
   });
 
   bot.callbackQuery("upd_jobs", async (ctx) => {
     await ctx.answerCallbackQuery();
-    const rendered = renderAgentUpdateJobsMessage(agentUpdates.list());
+    const rendered = renderAgentUpdateJobsAction(agentUpdates.list());
     await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
   });
 
@@ -3023,7 +2955,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     if (!id) {
       return;
     }
-    const rendered = renderAgentUpdateLogMessage(agentUpdates.readLog(id));
+    const rendered = renderAgentUpdateLogAction(agentUpdates.readLog(id));
     await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
   });
 
@@ -3034,10 +2966,10 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
     const job = agentUpdates.cancel(id);
-    const rendered = renderAgentUpdateJobMessage(job);
+    const rendered = renderAgentUpdateJobAction(job);
     await safeReply(ctx, rendered.html, {
       fallbackText: rendered.plain,
-      replyMarkup: agentUpdateJobKeyboard(job),
+      replyMarkup: actionKeyboard(rendered.buttons),
     });
   });
 
@@ -3200,7 +3132,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         });
         return;
       }
-      const rendered = renderQueuedPromptDetail(item);
+      const rendered = renderQueuedPromptDetailAction(item);
       await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
       return;
     }
@@ -3378,7 +3310,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
           });
           return;
         }
-        const rendered = renderArtifactReports(filtered);
+        const rendered = renderArtifactReportsAction(filtered);
         await safeReply(ctx, rendered.html, {
           fallbackText: rendered.plain,
           replyMarkup: buildArtifactActionsKeyboard(filtered),
@@ -3408,7 +3340,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
-    const { html, plain } = renderArtifactReports(reports);
+    const { html, plain } = renderArtifactReportsAction(reports);
     await safeReply(ctx, html, {
       fallbackText: plain,
       replyMarkup: buildArtifactActionsKeyboard(reports),
@@ -5049,18 +4981,6 @@ export async function registerCommands(bot: Bot<Context>): Promise<void> {
   ]);
 }
 
-function renderArtifactReports(reports: ArtifactTurnReport[]): { html: string; plain: string } {
-  const lines = reports.slice(0, 5).map((report, index) => {
-    const size = formatFileSize(totalArtifactSize(report.artifacts));
-    const skipped = report.skippedCount > 0 ? `, ${report.skippedCount} skipped` : "";
-    return `${index + 1}. ${report.turnId} · ${formatRelativeTime(report.updatedAt)} · ${report.artifacts.length} file${report.artifacts.length === 1 ? "" : "s"} · ${size}${skipped}`;
-  });
-  const usage = "Tap an action below, or use /artifacts latest, /artifacts zip latest, /artifacts images, /artifacts docs, /artifacts search <text>, or /artifacts delete <turn-id>.";
-  const plain = ["Recent artifacts:", ...lines, "", usage].join("\n");
-  const html = ["<b>Recent artifacts:</b>", ...lines.map(escapeHTML), "", escapeHTML(usage)].join("\n");
-  return { html, plain };
-}
-
 function renderVersionCheckPlain(check: VersionCheck): string {
   const icon = versionStatusIcon(check);
   const label = check.label === "NordRelay" ? "NordRelay" : `${check.label} version`;
@@ -5113,213 +5033,6 @@ function versionStatusIcon(check: VersionCheck): string {
   return check.status === "current" ? "✅" : "⚠️";
 }
 
-function parseAgentUpdateId(value: string | undefined): AgentId | null {
-  const normalized = value?.toLowerCase();
-  if (!normalized) {
-    return null;
-  }
-  if (normalized === "claude") {
-    return "claude-code";
-  }
-  return ["codex", "pi", "hermes", "openclaw", "claude-code"].includes(normalized)
-    ? normalized as AgentId
-    : null;
-}
-
-function agentUpdateJobKeyboard(job: AgentUpdateJobSnapshot): InlineKeyboard {
-  const keyboard = new InlineKeyboard().text("Full log", `upd_log:${job.id}`);
-  if (job.canInput) {
-    keyboard.text("Cancel", `upd_cancel:${job.id}`);
-  }
-  return keyboard;
-}
-
-function renderAgentUpdateJobsMessage(jobs: AgentUpdateJobSnapshot[]): { plain: string; html: string } {
-  if (jobs.length === 0) {
-    return {
-      plain: "No agent update jobs yet. Use /update agents to start one.",
-      html: "No agent update jobs yet. Use <code>/update agents</code> to start one.",
-    };
-  }
-  const limited = jobs.slice(0, 10);
-  return {
-    plain: [
-      "Agent update jobs:",
-      ...limited.map((job) => `${job.id}: ${job.agentLabel} · ${job.status} · ${formatLocalDateTime(new Date(job.updatedAt))}`),
-      "",
-      "Use /update log <id>, /update cancel <id>, or /update input <id> <text>.",
-    ].join("\n"),
-    html: [
-      "<b>Agent update jobs:</b>",
-      ...limited.map((job) => `<code>${escapeHTML(job.id)}</code> ${escapeHTML(job.agentLabel)} · <b>${escapeHTML(job.status)}</b> · <code>${escapeHTML(formatLocalDateTime(new Date(job.updatedAt)))}</code>`),
-      "",
-      "Use <code>/update log &lt;id&gt;</code>, <code>/update cancel &lt;id&gt;</code>, or <code>/update input &lt;id&gt; &lt;text&gt;</code>.",
-    ].join("\n"),
-  };
-}
-
-function renderAgentUpdateJobMessage(job: AgentUpdateJobSnapshot): { plain: string; html: string } {
-  const command = [job.command, ...job.args].join(" ");
-  const inputLine = job.canInput
-    ? "If the updater asks a question, reply with /update input " + job.id + " <text>."
-    : "This update job is no longer accepting input.";
-  const tail = trimLine(job.outputTail || "(waiting for output)", 1200);
-  return {
-    plain: [
-      `${job.agentLabel} update ${job.status}.`,
-      `ID: ${job.id}`,
-      `Method: ${job.method}`,
-      `Command: ${command}`,
-      `Started: ${formatLocalDateTime(new Date(job.startedAt))}`,
-      job.finishedAt ? `Finished: ${formatLocalDateTime(new Date(job.finishedAt))}` : undefined,
-      job.error ? `Error: ${job.error}` : undefined,
-      `Log: ${job.logPath}`,
-      `Agent update log: ${getAgentUpdateLogPath()}`,
-      inputLine,
-      "",
-      tail,
-    ].filter(Boolean).join("\n"),
-    html: [
-      `<b>${escapeHTML(job.agentLabel)} update ${escapeHTML(job.status)}.</b>`,
-      `<b>ID:</b> <code>${escapeHTML(job.id)}</code>`,
-      `<b>Method:</b> <code>${escapeHTML(job.method)}</code>`,
-      `<b>Command:</b> <code>${escapeHTML(command)}</code>`,
-      `<b>Started:</b> <code>${escapeHTML(formatLocalDateTime(new Date(job.startedAt)))}</code>`,
-      job.finishedAt ? `<b>Finished:</b> <code>${escapeHTML(formatLocalDateTime(new Date(job.finishedAt)))}</code>` : undefined,
-      job.error ? `<b>Error:</b> ${escapeHTML(job.error)}` : undefined,
-      `<b>Log:</b> <code>${escapeHTML(job.logPath)}</code>`,
-      `<b>Agent update log:</b> <code>${escapeHTML(getAgentUpdateLogPath())}</code>`,
-      escapeHTML(inputLine),
-      "",
-      `<pre>${escapeHTML(tail)}</pre>`,
-    ].filter(Boolean).join("\n"),
-  };
-}
-
-function renderAgentUpdateLogMessage(result: { job: AgentUpdateJobSnapshot; plain: string }): { plain: string; html: string } {
-  const tail = trimLine(result.plain || "(empty)", 3000);
-  return {
-    plain: [
-      `${result.job.agentLabel} update log`,
-      `ID: ${result.job.id}`,
-      `Status: ${result.job.status}`,
-      `File: ${result.job.logPath}`,
-      "",
-      tail,
-    ].join("\n"),
-    html: [
-      `<b>${escapeHTML(result.job.agentLabel)} update log</b>`,
-      `<b>ID:</b> <code>${escapeHTML(result.job.id)}</code>`,
-      `<b>Status:</b> <code>${escapeHTML(result.job.status)}</code>`,
-      `<b>File:</b> <code>${escapeHTML(result.job.logPath)}</code>`,
-      "",
-      `<pre>${escapeHTML(tail)}</pre>`,
-    ].join("\n"),
-  };
-}
-
-type LogTarget = "connector" | "update" | "agent-updates" | "all";
-
-function parseLogsCommand(argument: string): { target: LogTarget; lines: number } {
-  const tokens = argument.split(/\s+/).filter(Boolean);
-  let target: LogTarget = "connector";
-  let lines = 80;
-
-  for (const token of tokens) {
-    const normalized = token.toLowerCase();
-    if (normalized === "connector" || normalized === "main") {
-      target = "connector";
-      continue;
-    }
-    if (normalized === "update" || normalized === "self-update" || normalized === "self") {
-      target = "update";
-      continue;
-    }
-    if (normalized === "agent" || normalized === "agents" || normalized === "agent-update" || normalized === "agent-updates") {
-      target = "agent-updates";
-      continue;
-    }
-    if (normalized === "all") {
-      target = "all";
-      continue;
-    }
-
-    const parsedLines = Number.parseInt(token, 10);
-    if (!Number.isNaN(parsedLines)) {
-      lines = parsedLines;
-    }
-  }
-
-  return { target, lines };
-}
-
-function logTargetTitle(target: LogTarget): string {
-  if (target === "update") {
-    return "Update";
-  }
-  if (target === "agent-updates") {
-    return "Agent updates";
-  }
-  return "Connector";
-}
-
-function logTargetPath(target: LogTarget): string | undefined {
-  if (target === "update") {
-    return getUpdateLogPath();
-  }
-  if (target === "agent-updates") {
-    return getAgentUpdateLogPath();
-  }
-  return undefined;
-}
-
-function renderLogTailPlain(title: string, tail: FormattedLogTail): string {
-  return [
-    `${title} log tail`,
-    `File: ${tail.filePath}`,
-    `Updated: ${tail.updatedAt ? formatLogDate(tail.updatedAt) : "-"}`,
-    `Lines: ${tail.lineCount}/${tail.requestedLines}`,
-    "",
-    tail.plain || "(empty)",
-  ].join("\n");
-}
-
-function renderLogTailHTML(title: string, tail: FormattedLogTail): string {
-  const body = tail.plain
-    ? tail.plain.split("\n").map(renderLogLineHTML).join("\n")
-    : "<code>(empty)</code>";
-  return [
-    `<b>${escapeHTML(title)} log tail</b>`,
-    `<b>File:</b> <code>${escapeHTML(tail.filePath)}</code>`,
-    `<b>Updated:</b> <code>${escapeHTML(tail.updatedAt ? formatLogDate(tail.updatedAt) : "-")}</code>`,
-    `<b>Lines:</b> <code>${tail.lineCount}/${tail.requestedLines}</code>`,
-    "",
-    body,
-  ].join("\n");
-}
-
-function formatLogDate(date: Date): string {
-  return [
-    `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`,
-    `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`,
-  ].join(" ");
-}
-
-function renderLogLineHTML(line: string): string {
-  const structured = line.match(/^(?<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}|unknown time\s*)\s+(?<level>INFO|WARN|ERROR)\s+(?<message>.*)$/);
-  if (structured?.groups) {
-    const level = structured.groups.level;
-    const levelHtml = level === "INFO" ? escapeHTML(level) : `<b>${escapeHTML(level)}</b>`;
-    return [
-      `<code>${escapeHTML(structured.groups.timestamp.trim())}</code>`,
-      levelHtml,
-      escapeHTML(structured.groups.message),
-    ].join(" ");
-  }
-
-  return escapeHTML(line);
-}
-
 function renderAuditEvents(events: AuditEvent[]): { plain: string; html: string } {
   if (events.length === 0) {
     return {
@@ -5362,30 +5075,6 @@ function renderSessionLocks(locks: SessionLock[]): { plain: string; html: string
   return {
     plain: ["Session locks:", ...lines].join("\n"),
     html: ["<b>Session locks:</b>", ...lines.map((line) => escapeHTML(line))].join("\n"),
-  };
-}
-
-function renderQueuedPromptDetail(item: QueuedPrompt): { plain: string; html: string } {
-  const lines = [
-    "Queued prompt:",
-    `ID: ${item.id}`,
-    `Created: ${formatLocalDateTime(new Date(item.createdAt))}`,
-    item.notBefore ? `Scheduled: ${formatLocalDateTime(new Date(item.notBefore))}` : undefined,
-    `Attempts: ${item.attempts ?? 0}`,
-    item.lastError ? `Last error: ${item.lastError}` : undefined,
-    `Description: ${item.description}`,
-  ].filter((line): line is string => Boolean(line));
-  return {
-    plain: lines.join("\n"),
-    html: [
-      "<b>Queued prompt:</b>",
-      `<b>ID:</b> <code>${escapeHTML(item.id)}</code>`,
-      `<b>Created:</b> <code>${escapeHTML(formatLocalDateTime(new Date(item.createdAt)))}</code>`,
-      item.notBefore ? `<b>Scheduled:</b> <code>${escapeHTML(formatLocalDateTime(new Date(item.notBefore)))}</code>` : undefined,
-      `<b>Attempts:</b> <code>${item.attempts ?? 0}</code>`,
-      item.lastError ? `<b>Last error:</b> ${escapeHTML(item.lastError)}` : undefined,
-      `<b>Description:</b> ${escapeHTML(item.description)}`,
-    ].filter((line): line is string => Boolean(line)).join("\n"),
   };
 }
 
