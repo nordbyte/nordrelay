@@ -49,7 +49,7 @@ import type { ConnectorConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./hermes-auth.js";
 import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
-import { clearLogFile, getConnectorHealth, getConnectorLogPath, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "./operations.js";
+import { clearLogFile, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "./operations.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
 import { renderSessionInfoPlain, renderSessionUsageRows } from "./session-format.js";
@@ -330,6 +330,16 @@ export class RelayRuntime {
     return {
       health: await getConnectorHealth({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath, claudeCodeCliPath: this.config.claudeCodeCliPath }),
       versionChecks: await getVersionChecks({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath, claudeCodeCliPath: this.config.claudeCodeCliPath }),
+      snapshot: await this.snapshot(),
+    };
+  }
+
+  async bootstrapStatus(): Promise<Record<string, unknown>> {
+    return {
+      health: {
+        version: await getPackageVersion(),
+        state: await readConnectorState(),
+      },
       snapshot: await this.snapshot(),
     };
   }

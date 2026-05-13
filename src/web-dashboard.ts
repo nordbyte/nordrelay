@@ -115,7 +115,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
       agentAdapters: listAgentAdapterDescriptors(),
       enabledAgents: enabledAgents(config),
       controls: await runtime.controlOptions(),
-      status: await runtime.status(),
+      status: await runtime.bootstrapStatus(),
     });
     return;
   }
@@ -1112,7 +1112,8 @@ function isCliRunningStatus(msg){return / CLI running\\b/.test(String(msg||''))}
 function isCliDoneStatus(msg){return / CLI task\\b/.test(String(msg||''))}
 function applyTheme(theme){document.documentElement.dataset.theme=theme;localStorage.setItem('nordrelayTheme',theme);document.getElementById('themeBtn').textContent=theme==='dark'?'Light':'Dark'}
 function toggleTheme(){applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark')}
-function page(name){state.currentPage=name;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+name));document.getElementById('pageTitle').textContent=name[0].toUpperCase()+name.slice(1);document.getElementById('sidebar').classList.remove('open'); if(name==='chat') scrollChatToBottom(); if(name==='sessions') loadSessions(); if(name==='settings') loadSettings(); if(name==='logs') loadLogs(); if(name==='diagnostics') loadDiagnostics(); if(name==='artifacts') loadArtifacts(); if(name==='activity') loadActivity(); if(name==='tasks') loadTasks(); if(name==='adapters') loadAdapterHealth(); if(name==='access') loadAccess(); if(name==='version') loadVersion();}
+function page(name){state.currentPage=name;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+name));document.getElementById('pageTitle').textContent=name[0].toUpperCase()+name.slice(1);document.getElementById('sidebar').classList.remove('open'); void reloadCurrentPage().catch(err=>toast(err.message||String(err)));}
+async function reloadCurrentPage(){const name=state.currentPage;if(name==='chat'){await loadChatHistory();scrollChatToBottom()} if(name==='sessions') await loadSessions(); if(name==='settings') await loadSettings(); if(name==='logs') await loadLogs(); if(name==='diagnostics') await loadDiagnostics(); if(name==='artifacts') await loadArtifacts(); if(name==='activity') await loadActivity(); if(name==='tasks') await loadTasks(); if(name==='adapters') await loadAdapterHealth(); if(name==='access') await loadAccess(); if(name==='version') await loadVersion();}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>page(b.dataset.page));
 document.getElementById('menuBtn').onclick=()=>document.getElementById('sidebar').classList.toggle('open');
 document.getElementById('refreshBtn').onclick=()=>loadBootstrap();
@@ -1152,7 +1153,7 @@ async function loadBootstrap(){
   const agentSelect=document.getElementById('agentSelect');
   agentSelect.innerHTML=data.enabledAgents.map(a=>'<option value="'+a+'">'+a+'</option>').join('');
   agentSelect.value=state.snapshot.session.agentId;
-  agentSelect.onchange=()=>safe(async()=>{await api('/api/agent',{method:'POST',body:JSON.stringify({agentId:agentSelect.value})});toast('Agent switched');await loadBootstrap();await loadChatHistory()});
+  agentSelect.onchange=()=>safe(async()=>{await api('/api/agent',{method:'POST',body:JSON.stringify({agentId:agentSelect.value})});toast('Agent switched');await loadBootstrap();await reloadCurrentPage()});
 }
 function renderSnapshot(s){
   document.getElementById('sessionLine').textContent=(s.session.agentLabel||'Agent')+' / '+(s.session.model||'default')+' / '+(s.session.threadId||'not started');
@@ -1179,12 +1180,12 @@ function renderSessionControls(){
   const fast=document.getElementById('controlFast'); if(fast) fast.onchange=()=>safe(async()=>{await api('/api/session/fast',{method:'POST',body:JSON.stringify({enabled:fast.checked})});toast('Fast mode updated');loadBootstrap()});
 }
 function renderAdapters(channels, agents){
-  const channelCards=(channels||[]).map(c=>adapterCard(c.label,c.status,c.capabilities.join(', ')));
-  const agentCards=(agents||[]).map(a=>{const available=a.status==='available';const status=available?(state.enabledAgents.includes(a.id)?'enabled':'disabled'):(a.status||'planned');const detail=[available?'integrated':(a.status||'planned'),a.envFlag,a.notes].filter(Boolean).join(' / ');return adapterCard(a.label,status,detail)});
+  const channelCards=(channels||[]).map(c=>adapterCard(c.label,c.status,'',c.capabilities.join(', ')));
+  const agentCards=(agents||[]).map(a=>{const available=a.status==='available';const status=available?(state.enabledAgents.includes(a.id)?'enabled':'disabled'):(a.status||'planned');return adapterCard(a.label,status,'',a.notes||'')});
   document.getElementById('agentAdapters').innerHTML='<div class="list">'+(agentCards.join('')||'<div class="item">No agent adapters.</div>')+'</div>';
   document.getElementById('chatAdapters').innerHTML='<div class="list">'+(channelCards.join('')||'<div class="item">No chat adapters.</div>')+'</div>';
 }
-function adapterCard(label,status,detail){return '<div class="item"><strong>'+esc(label)+' <span class="adapter-status '+esc(status)+'">'+esc(status)+'</span></strong><small>'+esc(detail||'')+'</small></div>'}
+function adapterCard(label,status,detail,tooltip=''){return '<div class="item"><strong title="'+attr(tooltip)+'">'+esc(label)+' <span class="adapter-status '+esc(status)+'">'+esc(status)+'</span></strong>'+(detail?'<small>'+esc(detail)+'</small>':'')+'</div>'}
 function versionStatusLabel(status){if(status==='current')return'Latest';if(status==='outdated')return'Outdated';if(status==='not-installed')return'Not installed';return'Unknown'}
 function versionStatusClass(status){if(status==='current')return'available';if(status==='outdated')return'planned';return'disabled'}
 function scrollChatToBottom(){const box=document.getElementById('messages');if(!box)return;requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight})})}
@@ -1323,6 +1324,6 @@ async function loadDiagnostics(){setLoading('diagnostics','Loading diagnostics..
 function diagnosticsHtml(d){const h=d.health||{};const s=d.snapshot?.session||{};const vc=d.versionChecks||{};const caps=s.capabilities||{};const agentDiag=d.runtime?.agentDiagnostics;return '<div class="list">'+card('Runtime',[['Status',h.state?.status],['PID',h.state?.pid],['App PID',h.state?.appPid],['State',h.stateFile],['Log',h.logFile],['State backend',d.runtime?.stateBackend],['Uptime',h.uptimeSeconds+'s']])+card('Agent',[['Agent',s.agentLabel],['Thread',s.threadId],['Workspace',s.workspace],['Model',s.model],['Reasoning',s.reasoningEffort],['Fast',caps.fastMode?(s.fastMode?'on':'off'):'n/a']])+card('Agent State',(agentDiag?.lines||[]).map(x=>[x.label,x.value]))+card('CLI Versions',Object.values(vc).map(v=>[v.label,(v.status==='current'?'OK ':'WARN ')+(v.installedLabel||'-')+' latest '+(v.latestVersion||'-')]))+card('External Mirror',d.runtime?.externalMirror?Object.entries(d.runtime.externalMirror):[['Status','idle']])+'</div>'}
 function card(title,rows){return '<div class="item"><strong>'+esc(title)+'</strong>'+rows.map(r=>'<small>'+esc(r[0])+': '+esc(r[1]??'-')+'</small>').join('')+'</div>'}
 function safe(fn,event){if(event&&event.preventDefault)event.preventDefault();Promise.resolve().then(fn).catch(err=>toast(err.message||String(err)))}
-loadBootstrap().then(()=>{connectEvents();loadChatHistory();loadSessions();loadArtifacts();loadSettings();loadLogs();loadDiagnostics();loadActivity()}).catch(err=>toast(err.message));
+loadBootstrap().then(()=>connectEvents()).catch(err=>toast(err.message));
 `;
 }
