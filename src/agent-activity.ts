@@ -13,6 +13,12 @@ import {
   type CodexActivityEvent,
   type CodexRolloutSnapshot,
 } from "./codex-state.js";
+import {
+  getClaudeCodeSessionActivity,
+  getClaudeCodeSessionActivityLog,
+  getClaudeCodeSessionDiagnostics,
+  getClaudeCodeSessionSnapshot,
+} from "./claude-code-state.js";
 import type { ConnectorConfig } from "./config.js";
 import {
   getHermesSessionActivity,
@@ -67,6 +73,13 @@ export function getExternalActivityForSession(
       stateDir: config.openClawStateDir,
       workspace: info.workspace,
       openClawAgentId: config.openClawAgentId,
+      staleAfterMs: config.codexExternalBusyStaleMs,
+    });
+  }
+  if (info.agentId === "claude-code") {
+    return getClaudeCodeSessionActivity(threadId, {
+      configDir: config.claudeCodeConfigDir,
+      workspace: info.workspace,
       staleAfterMs: config.codexExternalBusyStaleMs,
     });
   }
@@ -132,6 +145,15 @@ export function getExternalSnapshotForSession(
       staleAfterMs: config.codexExternalBusyStaleMs,
     });
   }
+  if (info.agentId === "claude-code") {
+    return getClaudeCodeSessionSnapshot(threadId, {
+      configDir: config.claudeCodeConfigDir,
+      workspace: info.workspace,
+      afterLine: options.afterLine,
+      maxEvents: options.maxEvents,
+      staleAfterMs: config.codexExternalBusyStaleMs,
+    });
+  }
 
   const snapshot = getThreadRolloutSnapshot(threadId, {
     afterLine: options.afterLine,
@@ -168,6 +190,12 @@ export function getAgentActivityLog(
       stateDir: config.openClawStateDir,
       workspace: info.workspace,
       openClawAgentId: config.openClawAgentId,
+    });
+  }
+  if (info.agentId === "claude-code") {
+    return getClaudeCodeSessionActivityLog(threadId, limit, {
+      configDir: config.claudeCodeConfigDir,
+      workspace: info.workspace,
     });
   }
   return getThreadActivityLog(threadId, limit).map(codexEventToAgentEvent);
@@ -238,6 +266,26 @@ export function getAgentDiagnostics(
         { label: "OpenClaw events", value: String(diagnostics.lineCount) },
         { label: "OpenClaw updated", value: diagnostics.updatedAt?.toISOString() ?? "-" },
         { label: "OpenClaw Gateway run active", value: session.isProcessing() ? "yes" : "idle" },
+      ],
+    };
+  }
+  if (info.agentId === "claude-code") {
+    const diagnostics = getClaudeCodeSessionDiagnostics(info.threadId, {
+      configDir: config.claudeCodeConfigDir,
+      workspace: info.workspace,
+      staleAfterMs: config.codexExternalBusyStaleMs,
+    });
+    return {
+      agentId: "claude-code",
+      agentLabel: "Claude Code",
+      lines: [
+        { label: "Claude projects dir", value: diagnostics.projectsDir },
+        { label: "Claude session file", value: diagnostics.sessionPath ?? "-" },
+        { label: "Claude session status", value: diagnostics.status },
+        { label: "Claude status reason", value: diagnostics.reason },
+        { label: "Claude JSONL lines", value: String(diagnostics.lineCount) },
+        { label: "Claude updated", value: diagnostics.updatedAt?.toISOString() ?? "-" },
+        { label: "Claude SDK run active", value: session.isProcessing() ? "yes" : "idle" },
       ],
     };
   }

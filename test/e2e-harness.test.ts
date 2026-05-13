@@ -30,14 +30,14 @@ describe("adapter and e2e harness primitives", () => {
     expect(new TelegramChannelAdapter().capabilities.has("typing")).toBe(true);
   });
 
-  it("exposes Codex, Pi, Hermes, and OpenClaw agent adapter descriptors", () => {
+  it("exposes Codex, Pi, Hermes, OpenClaw, and Claude Code agent adapter descriptors", () => {
     const agents = listAgentAdapterDescriptors();
 
     expect(agents.find((agent) => agent.id === "codex")?.status).toBe("available");
     expect(agents.find((agent) => agent.id === "pi")?.status).toBe("available");
     expect(agents.find((agent) => agent.id === "hermes")?.status).toBe("available");
     expect(agents.find((agent) => agent.id === "openclaw")?.status).toBe("available");
-    expect(agents.find((agent) => agent.id === "claude-code")?.status).toBe("planned");
+    expect(agents.find((agent) => agent.id === "claude-code")?.status).toBe("available");
   });
 
   it("can run a fake channel message through an end-to-end harness", async () => {

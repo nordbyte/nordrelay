@@ -262,7 +262,7 @@ function resolveLaunchProfileId(
     return undefined;
   }
 
-  if (meta.agentId === "pi" || meta.agentId === "hermes" || meta.agentId === "openclaw") {
+  if (meta.agentId === "pi" || meta.agentId === "hermes" || meta.agentId === "openclaw" || meta.agentId === "claude-code") {
     return meta.launchProfileId;
   }
 

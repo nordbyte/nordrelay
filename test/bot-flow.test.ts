@@ -34,6 +34,9 @@ const mockOperations = vi.hoisted(() => ({
     openClawCli: "path (/usr/local/bin/openclaw)",
     openClawCliPath: "/usr/local/bin/openclaw",
     openClawCliVersion: "openclaw 0.9.0",
+    claudeCodeCli: "path (/usr/local/bin/claude)",
+    claudeCodeCliPath: "/usr/local/bin/claude",
+    claudeCodeCliVersion: "claude 2.1.140",
     stateFile: "/tmp/state.json",
     logFile: "/tmp/nordrelay.log",
     databasePath: null,
@@ -77,6 +80,14 @@ const mockOperations = vi.hoisted(() => ({
       packageName: "openclaw",
       installedLabel: "openclaw 0.9.0",
       installedVersion: "0.9.0",
+      latestVersion: null,
+      status: "unknown",
+    },
+    claudeCode: {
+      label: "Claude Code",
+      packageName: "@anthropic-ai/claude-code",
+      installedLabel: "claude 2.1.140",
+      installedVersion: "2.1.140",
       latestVersion: null,
       status: "unknown",
     },
@@ -198,6 +209,13 @@ function createConfig(overrides: Partial<ConnectorConfig> = {}): ConnectorConfig
     openClawDefaultModel: undefined,
     openClawDefaultThinking: undefined,
     openClawDefaultLaunchProfileId: "default",
+    claudeCodeEnabled: false,
+    claudeCodeCliPath: undefined,
+    claudeCodeConfigDir: undefined,
+    claudeCodeDefaultModel: undefined,
+    claudeCodeDefaultEffort: undefined,
+    claudeCodeDefaultLaunchProfileId: "default",
+    claudeCodeMaxTurns: 100,
     defaultAgent: "codex",
     stateBackend: "json",
     toolVerbosity: "summary",
@@ -383,6 +401,9 @@ describe("bot flow integration", () => {
       openClawCli: "path (/usr/local/bin/openclaw)",
       openClawCliPath: "/usr/local/bin/openclaw",
       openClawCliVersion: "openclaw 0.9.0",
+      claudeCodeCli: "path (/usr/local/bin/claude)",
+      claudeCodeCliPath: "/usr/local/bin/claude",
+      claudeCodeCliVersion: "claude 2.1.140",
       stateFile: "/tmp/state.json",
       logFile: "/tmp/nordrelay.log",
       databasePath: null,
@@ -427,6 +448,14 @@ describe("bot flow integration", () => {
         packageName: "openclaw",
         installedLabel: "openclaw 0.9.0",
         installedVersion: "0.9.0",
+        latestVersion: null,
+        status: "unknown",
+      },
+      claudeCode: {
+        label: "Claude Code",
+        packageName: "@anthropic-ai/claude-code",
+        installedLabel: "claude 2.1.140",
+        installedVersion: "2.1.140",
         latestVersion: null,
         status: "unknown",
       },
@@ -661,7 +690,7 @@ describe("bot flow integration", () => {
     expect(api.sentMessages.at(-1)?.text).not.toContain("<code>Something needs attention</code>");
   });
 
-  it("renders version freshness for NordRelay, Codex, Pi, Hermes, and OpenClaw", async () => {
+  it("renders version freshness for NordRelay, Codex, Pi, Hermes, OpenClaw, and Claude Code", async () => {
     const { registry } = createFakeRegistry();
     const bot = createBot(createConfig(), registry as any);
     const api = installFakeApi(bot);
@@ -681,6 +710,8 @@ describe("bot flow integration", () => {
     expect(api.sentMessages.at(-1)?.text).toContain("<b>Hermes version:</b> ⚠️");
     expect(api.sentMessages.at(-1)?.text).toContain("<b>OpenClaw CLI path:</b> <code>/usr/local/bin/openclaw</code>");
     expect(api.sentMessages.at(-1)?.text).toContain("<b>OpenClaw version:</b> ⚠️");
+    expect(api.sentMessages.at(-1)?.text).toContain("<b>Claude Code CLI path:</b> <code>/usr/local/bin/claude</code>");
+    expect(api.sentMessages.at(-1)?.text).toContain("<b>Claude Code version:</b> ⚠️");
   });
 
   it("renders workspace guardrails", async () => {

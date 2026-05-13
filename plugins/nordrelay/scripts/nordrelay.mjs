@@ -66,6 +66,7 @@ function parseArgs(argv) {
     else if (arg === "--enable-pi") options.enablePi = true;
     else if (arg === "--enable-hermes") options.enableHermes = true;
     else if (arg === "--enable-openclaw") options.enableOpenClaw = true;
+    else if (arg === "--enable-claude-code") options.enableClaudeCode = true;
     else if (arg === "--disable-codex") options.disableCodex = true;
   }
 
@@ -279,6 +280,7 @@ async function commandStatus(options) {
   console.log(`Pi CLI: ${state.piCli || "-"}`);
   console.log(`Hermes CLI: ${state.hermesCli || "-"}`);
   console.log(`OpenClaw CLI: ${state.openClawCli || "-"}`);
+  console.log(`Claude Code CLI: ${state.claudeCodeCli || "-"}`);
   console.log(`OpenClaw Gateway: ${state.openClawGateway || process.env.OPENCLAW_GATEWAY_URL || "-"}`);
   console.log(`Log: ${options.logFile}`);
   if (state.error) console.log(`Error: ${state.error}`);
@@ -307,18 +309,21 @@ async function commandInit(options) {
     const enablePi = options.enablePi ? "true" : await askChoice(rl, "Enable Pi", "false");
     const enableHermes = options.enableHermes ? "true" : await askChoice(rl, "Enable Hermes", "false");
     const enableOpenClaw = options.enableOpenClaw ? "true" : await askChoice(rl, "Enable OpenClaw", "false");
+    const enableClaudeCode = options.enableClaudeCode ? "true" : await askChoice(rl, "Enable Claude Code", "false");
     const stateBackend = options.stateBackend || await askChoice(rl, "State backend (json/sqlite)", "json");
 
     if (!telegramBotToken) throw new Error("Telegram bot token is required.");
     if (!telegramAdminUserIds) throw new Error("Telegram admin user id is required.");
-    if (enableCodex !== "true" && enablePi !== "true" && enableHermes !== "true" && enableOpenClaw !== "true") throw new Error("At least one agent must be enabled.");
+    if (enableCodex !== "true" && enablePi !== "true" && enableHermes !== "true" && enableOpenClaw !== "true" && enableClaudeCode !== "true") throw new Error("At least one agent must be enabled.");
     const defaultAgent = enableCodex === "true"
       ? "codex"
       : enablePi === "true"
         ? "pi"
         : enableHermes === "true"
           ? "hermes"
-          : "openclaw";
+          : enableOpenClaw === "true"
+            ? "openclaw"
+            : "claude-code";
 
     const lines = [
       "# NordRelay local runtime config.",
@@ -330,6 +335,7 @@ async function commandInit(options) {
       `NORDRELAY_PI_ENABLED=${enablePi}`,
       `NORDRELAY_HERMES_ENABLED=${enableHermes}`,
       `NORDRELAY_OPENCLAW_ENABLED=${enableOpenClaw}`,
+      `NORDRELAY_CLAUDE_CODE_ENABLED=${enableClaudeCode}`,
       `NORDRELAY_DEFAULT_AGENT=${defaultAgent}`,
       "PI_DEFAULT_PROFILE=default",
       "HERMES_API_BASE_URL=http://127.0.0.1:8642",
@@ -337,6 +343,8 @@ async function commandInit(options) {
       "OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18789",
       "OPENCLAW_AGENT_ID=main",
       "OPENCLAW_DEFAULT_PROFILE=default",
+      "CLAUDE_CODE_DEFAULT_PROFILE=default",
+      "CLAUDE_CODE_MAX_TURNS=100",
       `NORDRELAY_STATE_BACKEND=${stateBackend === "sqlite" ? "sqlite" : "json"}`,
       "TELEGRAM_TRANSPORT=polling",
       "TELEGRAM_AUTO_SEND_ARTIFACTS=false",
@@ -364,10 +372,12 @@ async function commandDoctor(options) {
   checks.push(check("Pi enabled flag", process.env.NORDRELAY_PI_ENABLED === "true" || process.env.NORDRELAY_PI_ENABLED === undefined, `NORDRELAY_PI_ENABLED=${process.env.NORDRELAY_PI_ENABLED ?? "false"}`, process.env.NORDRELAY_PI_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("Hermes enabled flag", process.env.NORDRELAY_HERMES_ENABLED === "true", `NORDRELAY_HERMES_ENABLED=${process.env.NORDRELAY_HERMES_ENABLED ?? "false"}`, process.env.NORDRELAY_HERMES_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("OpenClaw enabled flag", process.env.NORDRELAY_OPENCLAW_ENABLED === "true", `NORDRELAY_OPENCLAW_ENABLED=${process.env.NORDRELAY_OPENCLAW_ENABLED ?? "false"}`, process.env.NORDRELAY_OPENCLAW_ENABLED === "true" ? "pass" : "warn"));
+  checks.push(check("Claude Code enabled flag", process.env.NORDRELAY_CLAUDE_CODE_ENABLED === "true", `NORDRELAY_CLAUDE_CODE_ENABLED=${process.env.NORDRELAY_CLAUDE_CODE_ENABLED ?? "false"}`, process.env.NORDRELAY_CLAUDE_CODE_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("Codex CLI", Boolean(findExecutable(process.env.CODEX_CLI_PATH || "codex")), process.env.CODEX_CLI_PATH || findExecutable("codex") || "not found", process.env.NORDRELAY_CODEX_ENABLED === "false" ? "warn" : "fail"));
   checks.push(check("Pi CLI", Boolean(findExecutable(process.env.PI_CLI_PATH || "pi")), process.env.PI_CLI_PATH || findExecutable("pi") || "not found", process.env.NORDRELAY_PI_ENABLED === "true" ? "fail" : "warn"));
   checks.push(check("Hermes CLI", Boolean(findExecutable(process.env.HERMES_CLI_PATH || "hermes")), process.env.HERMES_CLI_PATH || findExecutable("hermes") || "not found", process.env.NORDRELAY_HERMES_ENABLED === "true" ? "fail" : "warn"));
   checks.push(check("OpenClaw CLI", Boolean(findExecutable(process.env.OPENCLAW_CLI_PATH || "openclaw")), process.env.OPENCLAW_CLI_PATH || findExecutable("openclaw") || "not found", process.env.NORDRELAY_OPENCLAW_ENABLED === "true" ? "fail" : "warn"));
+  checks.push(check("Claude Code CLI", Boolean(findExecutable(process.env.CLAUDE_CODE_CLI_PATH || "claude")), process.env.CLAUDE_CODE_CLI_PATH || findExecutable("claude") || "SDK bundled runtime", "warn"));
   const hermesApiCheck = await checkHermesApiServer();
   checks.push(check("Hermes API Server", hermesApiCheck.ok, hermesApiCheck.detail, process.env.NORDRELAY_HERMES_ENABLED === "true" ? "fail" : "warn"));
   const openClawGatewayCheck = await checkOpenClawGateway();

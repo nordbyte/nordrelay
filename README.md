@@ -1,15 +1,15 @@
 # NordRelay
 
-NordRelay is a remote control plane for coding agents across messaging channels. The current implementation connects Codex, Pi, Hermes, and OpenClaw coding-agent sessions to Telegram, keeps independent sessions per chat or forum topic, streams replies and tool activity back to Telegram, supports files, photos, voice input, model controls, session browsing, retry/abort, and CLI handback.
+NordRelay is a remote control plane for coding agents across messaging channels. The current implementation connects Codex, Pi, Hermes, OpenClaw, and Claude Code coding-agent sessions to Telegram, keeps independent sessions per chat or forum topic, streams replies and tool activity back to Telegram, supports files, photos, voice input, model controls, session browsing, retry/abort, and CLI handback.
 
-The repo is both a local Codex marketplace and a standalone Node app. The plugin lives in `plugins/nordrelay/`; the full bot runtime lives in `src/` and uses `@openai/codex-sdk` for Codex, Pi RPC mode for Pi, the Hermes API Server for Hermes, and the OpenClaw Gateway WebSocket RPC surface for OpenClaw.
+The repo is both a local Codex marketplace and a standalone Node app. The plugin lives in `plugins/nordrelay/`; the full bot runtime lives in `src/` and uses `@openai/codex-sdk` for Codex, Pi RPC mode for Pi, the Hermes API Server for Hermes, the OpenClaw Gateway WebSocket RPC surface for OpenClaw, and the Claude Agent SDK for Claude Code.
 
 ## Features
 
 Session control:
 
 - Independent coding-agent sessions per Telegram private chat, group chat, and forum topic.
-- `/agent` switches a Telegram context between enabled agents such as Codex, Pi, Hermes, and OpenClaw.
+- `/agent` switches a Telegram context between enabled agents such as Codex, Pi, Hermes, OpenClaw, and Claude Code.
 - Persistent Telegram context metadata in the active workspace under `.nordrelay/contexts.json`.
 - `/new` starts a fresh thread, with workspace selection when known workspaces are available.
 - `/session` shows thread id, workspace, launch profile, launch behavior, model, reasoning, fast mode, context usage, token totals, and subscription limit remaining percentages.
@@ -28,7 +28,7 @@ Session control:
 - `/abort`, `/stop`, and the inline Abort button cancel the active agent turn.
 - Busy prompts are queued per Telegram context instead of being dropped.
 - If the attached thread is currently active in the local agent CLI, Telegram prompts are queued until that CLI task finishes.
-- Active Codex, Pi, Hermes, and OpenClaw CLI/API turns are mirrored into Telegram with configurable `off`, `status`, `final`, or `full` modes.
+- Active Codex, Pi, Hermes, OpenClaw, and Claude Code CLI/API turns are mirrored into Telegram with configurable `off`, `status`, `final`, or `full` modes.
 - `/mirror` controls CLI mirroring per Telegram context.
 - Queues survive connector restarts and are resumed automatically when the external CLI turn becomes idle.
 - `/notify` controls completion/status notifications and quiet hours per Telegram context.
@@ -44,8 +44,8 @@ Adapter architecture:
 
 - Telegram is implemented as the first channel adapter with text, typing, streaming edits, inline buttons, files, photos, voice, topics, and webhook capability metadata.
 - `/channels` shows available and planned messaging adapters for Discord, WhatsApp, Slack, and Matrix.
-- Codex, Pi, Hermes, and OpenClaw are implemented as agent adapters, with descriptors for future Claude Code support.
-- `/agents` shows available/planned agent adapters and whether Codex, Pi, Hermes, and OpenClaw are enabled.
+- Codex, Pi, Hermes, OpenClaw, and Claude Code are implemented as agent adapters.
+- `/agents` shows available/planned agent adapters and whether Codex, Pi, Hermes, OpenClaw, and Claude Code are enabled.
 
 Codex runtime:
 
@@ -67,7 +67,7 @@ Codex runtime:
 Pi runtime:
 
 - Pi support is opt-in with `NORDRELAY_PI_ENABLED=true`.
-- The default Telegram agent is selected with `NORDRELAY_DEFAULT_AGENT=codex`, `pi`, `hermes`, or `openclaw`.
+- The default Telegram agent is selected with `NORDRELAY_DEFAULT_AGENT=codex`, `pi`, `hermes`, `openclaw`, or `claude-code`.
 - Pi sessions are driven through official `pi --mode rpc` JSONL commands and events.
 - Existing Pi sessions are discovered from `~/.pi/agent/sessions/` or `PI_SESSION_DIR`.
 - `/sessions`, `/switch`, `/attach`, `/new`, `/session`, `/handback`, `/model`, `/reasoning`, `/abort`, `/stop`, `/retry`, `/queue`, files, photos, and voice input work for Pi contexts.
@@ -110,6 +110,20 @@ OpenClaw runtime:
 - OpenClaw Gateway turns can be mirrored into Telegram/WebUI with status, tool activity, final answers, activity timelines, diagnostics, and generated artifact discovery.
 - `/auth` checks that the OpenClaw Gateway is reachable and that `OPENCLAW_GATEWAY_TOKEN` or `OPENCLAW_GATEWAY_PASSWORD` is usable when configured.
 
+Claude Code runtime:
+
+- Claude Code support is opt-in with `NORDRELAY_CLAUDE_CODE_ENABLED=true`.
+- The default Telegram agent can be set with `NORDRELAY_DEFAULT_AGENT=claude-code`.
+- Claude Code turns are executed through `@anthropic-ai/claude-agent-sdk`, using the host `claude` executable when available and the SDK bundled runtime otherwise.
+- Existing Claude Code sessions are discovered from `~/.claude/projects/`, or from `CLAUDE_CONFIG_DIR/projects` when configured.
+- `/sessions`, `/switch`, `/attach`, `/new`, `/session`, `/handback`, `/model`, `/reasoning`, `/abort`, `/stop`, `/retry`, `/queue`, files, photos, and voice input work for Claude Code contexts.
+- Claude Code model selection exposes common aliases and model ids; explicit values from existing sessions are preserved.
+- Claude Code effort uses `/reasoning` and supports `off`, `low`, `medium`, `high`, and `xhigh`.
+- Claude Code launch profiles include `default`, `accept-edits`, `plan`, `readonly`, `no-tools`, and optional `bypass-permissions`.
+- Claude Code external activity is detected from transcript JSONL files, so Telegram/WebUI prompts queue while the same Claude Code session has an unfinished CLI turn.
+- Claude Code SDK turns can be mirrored into Telegram/WebUI with status, tool activity, final answers, activity timelines, diagnostics, and generated artifact discovery.
+- `/auth` checks the host Claude Code CLI auth state when `claude auth status` is available.
+
 Telegram input:
 
 - Plain text messages become prompts for the selected agent.
@@ -133,7 +147,7 @@ Telegram output:
 - Command execution, web search, file changes, MCP tool calls, error items, and todo-list updates are surfaced.
 - Todo-list updates are rendered as a live plan/status message.
 - Generated artifacts from `.nordrelay/turns/<turn-id>/out/` are retained for manual retrieval with `/artifacts`.
-- Workspace files detected after mirrored Codex, Pi, Hermes, or OpenClaw CLI/API turns are indexed as `/artifacts` entries, even when automatic artifact delivery is disabled.
+- Workspace files detected after mirrored Codex, Pi, Hermes, OpenClaw, or Claude Code CLI/API turns are indexed as `/artifacts` entries, even when automatic artifact delivery is disabled.
 - Automatic artifact summaries and file uploads are disabled by default; set `TELEGRAM_AUTO_SEND_ARTIFACTS=true` to send them after turns.
 - Workspace artifact detection sorts by modification time and supports configurable ignored directories and globs.
 - Image artifacts are sent with Telegram previews; large multi-file outputs are bundled into one ZIP when possible.
@@ -152,7 +166,7 @@ Authentication and safety:
 - `TELEGRAM_ADMIN_USER_IDS` restricts admin-only commands such as `/logs`, `/restart`, and `/update`.
 - `TELEGRAM_READONLY_USER_IDS` can inspect status and sessions but cannot send prompts or run mutating commands by default.
 - `TELEGRAM_ROLE_POLICIES_JSON` can override role permissions for `admin`, `operator`, and `readonly`.
-- `/auth` reports Codex authentication, Pi provider environment health, Hermes API Server reachability, or OpenClaw Gateway reachability for the selected agent.
+- `/auth` reports Codex authentication, Pi provider environment health, Hermes API Server reachability, OpenClaw Gateway reachability, or Claude Code CLI auth for the selected agent.
 - `/login` starts Codex CLI device auth from Telegram when enabled.
 - `/logout` signs out of CLI auth when not using `CODEX_API_KEY`.
 - `CODEX_API_KEY` can be used for host-side Codex authentication.
@@ -233,6 +247,7 @@ NORDRELAY_CODEX_ENABLED=true
 NORDRELAY_PI_ENABLED=false
 NORDRELAY_HERMES_ENABLED=false
 NORDRELAY_OPENCLAW_ENABLED=false
+NORDRELAY_CLAUDE_CODE_ENABLED=false
 NORDRELAY_DEFAULT_AGENT=codex
 CODEX_SANDBOX_MODE=workspace-write
 CODEX_APPROVAL_POLICY=never
@@ -282,6 +297,16 @@ OpenClaw setup:
 - Optional: set `OPENCLAW_AGENT_ID` if you want a specific OpenClaw agent instead of `main`.
 - Optional: set `OPENCLAW_HOME` or `OPENCLAW_STATE_DIR` if your OpenClaw session state is stored outside `~/.openclaw`.
 - Optional: set `OPENCLAW_DEFAULT_MODEL`, `OPENCLAW_DEFAULT_THINKING`, and `OPENCLAW_DEFAULT_PROFILE`.
+
+Claude Code setup:
+
+- Install Claude Code and confirm `claude --help` works on the host, or use the SDK bundled runtime.
+- Run `claude auth login` on the host when your Claude Code installation requires local auth.
+- Set `NORDRELAY_CLAUDE_CODE_ENABLED=true` in `~/.nordrelay/nordrelay.env`.
+- Keep `NORDRELAY_DEFAULT_AGENT=codex` to start chats in Codex, or set `NORDRELAY_DEFAULT_AGENT=claude-code` to start chats in Claude Code.
+- Optional: set `CLAUDE_CODE_CLI_PATH` if `claude` is not on `PATH`.
+- Optional: set `CLAUDE_CONFIG_DIR` if your Claude Code sessions are not stored under `~/.claude`.
+- Optional: set `CLAUDE_CODE_DEFAULT_MODEL`, `CLAUDE_CODE_DEFAULT_EFFORT`, `CLAUDE_CODE_DEFAULT_PROFILE`, and `CLAUDE_CODE_MAX_TURNS`.
 
 Register the local Codex marketplace:
 
@@ -365,7 +390,7 @@ http://127.0.0.1:31878/
 
 The dashboard is a second NordRelay client next to Telegram. It can:
 
-- Start a new Codex, Pi, Hermes, or OpenClaw session.
+- Start a new Codex, Pi, Hermes, OpenClaw, or Claude Code session.
 - Start a new session from a modal with agent, workspace, model, reasoning/thinking, fast mode, and launch-profile choices.
 - Switch or attach existing sessions, and copy thread IDs from the session list.
 - Send prompts and receive streamed text/tool/plan updates through Server-Sent Events.
@@ -453,7 +478,7 @@ Run NordRelay behind your reverse proxy so the public URL forwards to `http://12
 - `/mirror [off|status|final|full]` controls local CLI mirroring for this Telegram context.
 - `/notify [off|minimal|all]` controls Telegram notifications.
 - `/notify quiet HH-HH` sets quiet hours; `/notify quiet off` disables them.
-- `/auth` reports Codex authentication status, Pi provider environment health, Hermes API Server reachability, or OpenClaw Gateway reachability for the selected agent.
+- `/auth` reports Codex authentication status, Pi provider environment health, Hermes API Server reachability, OpenClaw Gateway reachability, or Claude Code CLI auth for the selected agent.
 - `/login` starts Telegram-initiated Codex CLI login when Codex is selected.
 - `/logout` signs out from Codex CLI auth unless `CODEX_API_KEY` is active.
 - `/voice` reports voice transcription backends and current voice preferences.
@@ -462,8 +487,8 @@ Run NordRelay behind your reverse proxy so the public URL forwards to `http://12
 - `/voice transcribe_only on|off` controls whether voice is only transcribed or also sent to the selected agent.
 - `/tasks` or `/progress` reports the current turn and queue progress.
 - `/status` reports connector runtime status.
-- `/health` reports runtime health, auth, PIDs, Codex CLI, Pi CLI, Hermes CLI, OpenClaw CLI, and state DB.
-- `/version` reports connector, Codex CLI, Pi CLI, Hermes CLI, and OpenClaw CLI paths plus installed/latest NordRelay, Codex, Pi, Hermes, and OpenClaw versions with status icons.
+- `/health` reports runtime health, auth, PIDs, Codex CLI, Pi CLI, Hermes CLI, OpenClaw CLI, Claude Code CLI, and state DB.
+- `/version` reports connector, Codex CLI, Pi CLI, Hermes CLI, OpenClaw CLI, and Claude Code CLI paths plus installed/latest NordRelay, Codex, Pi, Hermes, OpenClaw, and Claude Code versions with status icons.
 - `/logs [lines]` shows a redacted, timestamped connector log tail. Admin only.
 - `/logs update [lines]` shows the self-update log. Admin only.
 - `/logs all [lines]` shows connector and self-update logs together. Admin only.
@@ -523,6 +548,12 @@ For OpenClaw sessions the command looks like:
 cd ~/projects/my-workspace && openclaw agent --agent main --session-id nordrelay-openclaw-a1b2c3d4e5f6 --message '<your next message>'
 ```
 
+For Claude Code sessions the command looks like:
+
+```bash
+cd ~/projects/my-workspace && claude --resume 019e178a-f275-7d01-95d6-c244ff3e30ed
+```
+
 Change model:
 
 ```text
@@ -537,7 +568,7 @@ Change reasoning effort:
 /reasoning
 ```
 
-For Codex choose one of `minimal`, `low`, `medium`, `high`, or `xhigh`. For Pi choose one of `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`. For Hermes choose one of `none`, `minimal`, `low`, `medium`, `high`, or `xhigh`. For OpenClaw choose one of `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`.
+For Codex choose one of `minimal`, `low`, `medium`, `high`, or `xhigh`. For Pi choose one of `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`. For Hermes choose one of `none`, `minimal`, `low`, `medium`, `high`, or `xhigh`. For OpenClaw choose one of `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`. For Claude Code choose one of `off`, `low`, `medium`, `high`, or `xhigh`.
 
 Toggle fast mode:
 
@@ -607,7 +638,7 @@ Artifacts:
 Voice and audio:
 
 - Send a Telegram voice note or audio file.
-- The connector transcribes it, then sends the transcript to Codex.
+- The connector transcribes it, then sends the transcript to the selected agent.
 - Local transcription is tried first with `parakeet-coreml` or `faster-whisper` when installed.
 - OpenAI Whisper is used when `OPENAI_API_KEY` is set.
 
@@ -678,7 +709,8 @@ Agent selection:
 - `NORDRELAY_PI_ENABLED`: enables Pi contexts. Defaults to `false`.
 - `NORDRELAY_HERMES_ENABLED`: enables Hermes contexts through the Hermes API Server. Defaults to `false`.
 - `NORDRELAY_OPENCLAW_ENABLED`: enables OpenClaw contexts through the OpenClaw Gateway. Defaults to `false`.
-- `NORDRELAY_DEFAULT_AGENT`: `codex`, `pi`, `hermes`, or `openclaw`, used for new Telegram contexts. Defaults to the first enabled agent.
+- `NORDRELAY_CLAUDE_CODE_ENABLED`: enables Claude Code contexts through the Claude Agent SDK. Defaults to `false`.
+- `NORDRELAY_DEFAULT_AGENT`: `codex`, `pi`, `hermes`, `openclaw`, or `claude-code`, used for new Telegram contexts. Defaults to the first enabled agent.
 - `NORDRELAY_STATE_BACKEND`: `json` or `sqlite`. JSON is the default; SQLite requires `better-sqlite3`.
 - `NORDRELAY_AUDIT_MAX_EVENTS`: maximum audit events retained. Defaults to `1000`.
 - `NORDRELAY_SESSION_LOCK_TTL_MS`: session write-lock TTL. Defaults to `1800000`.
@@ -739,6 +771,15 @@ OpenClaw:
 - `OPENCLAW_DEFAULT_MODEL`: optional model label sent with new OpenClaw Gateway runs.
 - `OPENCLAW_DEFAULT_THINKING`: default OpenClaw thinking level: `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`.
 - `OPENCLAW_DEFAULT_PROFILE`: default OpenClaw launch profile: `default`, `safe`, `readonly`, `local`, or `deliver`. Defaults to `default`.
+
+Claude Code:
+
+- `CLAUDE_CODE_CLI_PATH`: optional explicit path to the Claude Code CLI executable. Defaults to `claude` on `PATH`, then the SDK bundled runtime.
+- `CLAUDE_CONFIG_DIR`: optional Claude config directory. Defaults to `~/.claude`.
+- `CLAUDE_CODE_DEFAULT_MODEL`: optional default Claude Code model alias or model id.
+- `CLAUDE_CODE_DEFAULT_EFFORT`: default Claude Code effort: `off`, `low`, `medium`, `high`, or `xhigh`.
+- `CLAUDE_CODE_DEFAULT_PROFILE`: default Claude Code launch profile: `default`, `accept-edits`, `plan`, `readonly`, `no-tools`, or `bypass-permissions`. Defaults to `default`.
+- `CLAUDE_CODE_MAX_TURNS`: maximum agentic turns per Claude Code prompt. Defaults to `100`.
 
 Telegram output:
 
@@ -865,6 +906,7 @@ No sessions listed:
 - Cause for Pi: `~/.pi/agent/sessions/` or `PI_SESSION_DIR` is missing, unreadable, or has no session JSONL files.
 - Cause for Hermes: `~/.hermes/state.db` or `HERMES_STATE_DB_PATH` is missing, unreadable, or has no session rows.
 - Cause for OpenClaw: `openclaw sessions --all-agents --json` returns no sessions, or `OPENCLAW_HOME`/`OPENCLAW_STATE_DIR` points at the wrong state location.
+- Cause for Claude Code: `~/.claude/projects/` or `CLAUDE_CONFIG_DIR/projects` is missing, unreadable, or has no session JSONL files.
 - Fix: run the selected agent locally once, resume or create a session, then try `/sessions` again.
 
 Wrong model, reasoning, or fast mode after switching:
@@ -873,6 +915,7 @@ Wrong model, reasoning, or fast mode after switching:
 - For Pi, the connector reads model/thinking from Pi JSONL sessions and refreshes active RPC state when a session is running.
 - For Hermes, the connector reads model, reasoning, token usage, and message activity from Hermes `state.db`; `/model` and `/reasoning` values are sent with future API runs.
 - For OpenClaw, the connector reads model, thinking, token usage, and activity from OpenClaw session state; `/model` and `/reasoning` values are sent with future Gateway runs.
+- For Claude Code, the connector reads model, effort, token usage, and activity from Claude Code transcript JSONL files; `/model` and `/reasoning` values are sent with future SDK runs.
 - If values look stale, make sure the selected local CLI has finished writing session state.
 
 Pi not available:
@@ -892,6 +935,12 @@ OpenClaw not available:
 - Symptom: `/agent` cannot switch to OpenClaw, `/auth` fails, or prompt execution says the OpenClaw Gateway request failed.
 - Fix: start the OpenClaw Gateway, ensure `OPENCLAW_GATEWAY_URL` points to it, and set `OPENCLAW_GATEWAY_TOKEN` or `OPENCLAW_GATEWAY_PASSWORD` if the Gateway requires shared-secret auth.
 - Enable OpenClaw with `NORDRELAY_OPENCLAW_ENABLED=true`.
+
+Claude Code not available:
+
+- Symptom: `/agent` cannot switch to Claude Code, `/auth` fails, or prompt execution says Claude Code auth is missing.
+- Fix: run `claude auth login` on the host, ensure `claude` is on `PATH`, or set `CLAUDE_CODE_CLI_PATH`.
+- Enable Claude Code with `NORDRELAY_CLAUDE_CODE_ENABLED=true`.
 
 Voice not working:
 
@@ -984,6 +1033,7 @@ npm run build
 - `src/pi-session.ts`: Pi RPC service for JSONL RPC sessions, streaming events, abort, model, thinking, launch profiles, and handback.
 - `src/hermes-session.ts`: Hermes API Server service for streamed runs, stop, model, reasoning, launch profiles, attachments, and handback.
 - `src/openclaw-session.ts`: OpenClaw Gateway service for streamed runs, cancel, model, thinking, launch profiles, attachments, and handback.
+- `src/claude-code-session.ts`: Claude Agent SDK service for streamed runs, abort, model, effort, launch profiles, attachments, and handback.
 - `src/session-registry.ts`: per-chat/topic session registry and persisted context metadata.
 - `src/session-format.ts`: compact Telegram rendering for session details, token usage, and limits.
 - `src/codex-state.ts`: reader for Codex `~/.codex/state_*.sqlite` thread, workspace, model, reasoning, sandbox, and approval metadata.
@@ -992,6 +1042,7 @@ npm run build
 - `src/hermes-api.ts`: Hermes API Server client for health, capabilities, models, runs, events, approvals, and stop.
 - `src/openclaw-state.ts`: reader for OpenClaw session metadata, token usage, activity timelines, diagnostics, and external busy detection.
 - `src/openclaw-gateway.ts`: OpenClaw Gateway WebSocket RPC client for health, models, runs, stream events, and cancel.
+- `src/claude-code-state.ts`: reader for Claude Code transcript JSONL files, token usage, activity timelines, diagnostics, and external busy detection.
 - `src/attachments.ts`: inbound file staging and artifact output path construction.
 - `src/artifacts.ts`: generated artifact discovery, ZIP bundling, retention, and Telegram delivery filtering.
 - `src/voice.ts`: audio decoding and transcription backend selection.

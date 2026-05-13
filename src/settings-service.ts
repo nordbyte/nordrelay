@@ -61,7 +61,8 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   setting("NORDRELAY_PI_ENABLED", "Enable Pi", "Agents", "boolean", "Allow Pi sessions.", true),
   setting("NORDRELAY_HERMES_ENABLED", "Enable Hermes", "Agents", "boolean", "Allow Hermes sessions through the Hermes API Server.", true),
   setting("NORDRELAY_OPENCLAW_ENABLED", "Enable OpenClaw", "Agents", "boolean", "Allow OpenClaw sessions through the OpenClaw Gateway.", true),
-  setting("NORDRELAY_DEFAULT_AGENT", "Default agent", "Agents", "string", "codex, pi, hermes, or openclaw.", true, ["codex", "pi", "hermes", "openclaw"]),
+  setting("NORDRELAY_CLAUDE_CODE_ENABLED", "Enable Claude Code", "Agents", "boolean", "Allow Claude Code sessions through the Claude Agent SDK.", true),
+  setting("NORDRELAY_DEFAULT_AGENT", "Default agent", "Agents", "string", "codex, pi, hermes, openclaw, or claude-code.", true, ["codex", "pi", "hermes", "openclaw", "claude-code"]),
   setting("CODEX_API_KEY", "Codex API key", "Codex", "secret", "Optional Codex SDK API key.", true),
   setting("CODEX_CLI_PATH", "Codex CLI path", "Codex", "string", "Optional explicit Codex executable path.", true),
   setting("CODEX_USE_BUNDLED_CLI", "Use bundled Codex CLI", "Codex", "boolean", "Force SDK-bundled CLI instead of host CLI.", true),
@@ -100,6 +101,13 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   setting("OPENCLAW_DEFAULT_MODEL", "Default OpenClaw model", "OpenClaw", "string", "Default OpenClaw model id.", false),
   setting("OPENCLAW_DEFAULT_THINKING", "Default OpenClaw thinking", "OpenClaw", "string", "off, minimal, low, medium, high, or xhigh.", false, ["off", "minimal", "low", "medium", "high", "xhigh"]),
   setting("OPENCLAW_DEFAULT_PROFILE", "Default OpenClaw profile", "OpenClaw", "string", "default, safe, readonly, local, or deliver.", true, ["default", "safe", "readonly", "local", "deliver"]),
+
+  setting("CLAUDE_CODE_CLI_PATH", "Claude Code CLI path", "Claude Code", "string", "Optional Claude Code executable path. Defaults to claude on PATH or the SDK bundled runtime.", true),
+  setting("CLAUDE_CONFIG_DIR", "Claude config dir", "Claude Code", "string", "Optional Claude config directory. Defaults to ~/.claude.", true),
+  setting("CLAUDE_CODE_DEFAULT_MODEL", "Default Claude Code model", "Claude Code", "string", "Default Claude Code model alias or model id.", false),
+  setting("CLAUDE_CODE_DEFAULT_EFFORT", "Default Claude Code effort", "Claude Code", "string", "off, low, medium, high, or xhigh.", false, ["off", "low", "medium", "high", "xhigh"]),
+  setting("CLAUDE_CODE_DEFAULT_PROFILE", "Default Claude Code profile", "Claude Code", "string", "default, accept-edits, plan, readonly, no-tools, or bypass-permissions.", true, ["default", "accept-edits", "plan", "readonly", "no-tools", "bypass-permissions"]),
+  setting("CLAUDE_CODE_MAX_TURNS", "Claude Code max turns", "Claude Code", "number", "Maximum agentic turns for each Claude Code prompt.", false),
 
   setting("CONNECTOR_LOG_FORMAT", "Log format", "Operations", "string", "text or json.", true, ["text", "json"]),
   setting("TOOL_VERBOSITY", "Tool verbosity", "Operations", "string", "all, summary, errors-only, or none.", false, ["all", "summary", "errors-only", "none"]),

@@ -613,6 +613,7 @@ function activeSettingsValues(current: typeof config): Record<string, string | u
     NORDRELAY_PI_ENABLED: boolValue(current.piEnabled),
     NORDRELAY_HERMES_ENABLED: boolValue(current.hermesEnabled),
     NORDRELAY_OPENCLAW_ENABLED: boolValue(current.openClawEnabled),
+    NORDRELAY_CLAUDE_CODE_ENABLED: boolValue(current.claudeCodeEnabled),
     NORDRELAY_DEFAULT_AGENT: current.defaultAgent,
     CODEX_USE_BUNDLED_CLI: process.env.CODEX_USE_BUNDLED_CLI,
     CODEX_MODEL: current.codexModel,
@@ -631,10 +632,17 @@ function activeSettingsValues(current: typeof config): Record<string, string | u
     HERMES_DEFAULT_REASONING: current.hermesDefaultReasoning,
     HERMES_DEFAULT_PROFILE: current.hermesDefaultLaunchProfileId,
     OPENCLAW_GATEWAY_URL: current.openClawGatewayUrl,
+    OPENCLAW_CLI_PATH: current.openClawCliPath,
     OPENCLAW_AGENT_ID: current.openClawAgentId,
     OPENCLAW_DEFAULT_MODEL: current.openClawDefaultModel,
     OPENCLAW_DEFAULT_THINKING: current.openClawDefaultThinking,
     OPENCLAW_DEFAULT_PROFILE: current.openClawDefaultLaunchProfileId,
+    CLAUDE_CODE_CLI_PATH: current.claudeCodeCliPath,
+    CLAUDE_CONFIG_DIR: current.claudeCodeConfigDir,
+    CLAUDE_CODE_DEFAULT_MODEL: current.claudeCodeDefaultModel,
+    CLAUDE_CODE_DEFAULT_EFFORT: current.claudeCodeDefaultEffort,
+    CLAUDE_CODE_DEFAULT_PROFILE: current.claudeCodeDefaultLaunchProfileId,
+    CLAUDE_CODE_MAX_TURNS: String(current.claudeCodeMaxTurns),
     CONNECTOR_LOG_FORMAT: current.logFormat,
     TOOL_VERBOSITY: current.toolVerbosity,
     SHOW_TURN_TOKEN_USAGE: boolValue(current.showTurnTokenUsage),
@@ -1001,7 +1009,7 @@ function renderSessionControls(){
   const fast=document.getElementById('controlFast'); if(fast) fast.onchange=()=>safe(async()=>{await api('/api/session/fast',{method:'POST',body:JSON.stringify({enabled:fast.checked})});toast('Fast mode updated');loadBootstrap()});
 }
 function renderAdapters(channels, agents){
-  const implementedAgents=new Set(['codex','pi','hermes','openclaw']);
+  const implementedAgents=new Set(['codex','pi','hermes','openclaw','claude-code']);
   const channelCards=(channels||[]).map(c=>adapterCard(c.label,c.status,c.capabilities.join(', ')));
   const agentCards=(agents||[]).map(a=>{const integrated=implementedAgents.has(a.id);const status=integrated?(state.enabledAgents.includes(a.id)?'enabled':'disabled'):(a.status||'planned');return adapterCard(a.label,status,a.notes||a.envFlag||'available')});
   document.getElementById('adapters').innerHTML='<div class="list">'+channelCards.concat(agentCards).join('')+'</div>';

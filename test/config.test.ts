@@ -234,6 +234,13 @@ describe("loadConfig", () => {
       openClawDefaultModel: undefined,
       openClawDefaultThinking: undefined,
       openClawDefaultLaunchProfileId: "default",
+      claudeCodeEnabled: false,
+      claudeCodeCliPath: undefined,
+      claudeCodeConfigDir: undefined,
+      claudeCodeDefaultModel: undefined,
+      claudeCodeDefaultEffort: undefined,
+      claudeCodeDefaultLaunchProfileId: "default",
+      claudeCodeMaxTurns: 100,
       defaultAgent: "codex",
       toolVerbosity: "all",
       logFormat: "text",
@@ -284,6 +291,13 @@ describe("loadConfig", () => {
     expect(config.openClawDefaultModel).toBeUndefined();
     expect(config.openClawDefaultThinking).toBeUndefined();
     expect(config.openClawDefaultLaunchProfileId).toBe("default");
+    expect(config.claudeCodeEnabled).toBe(false);
+    expect(config.claudeCodeCliPath).toBeUndefined();
+    expect(config.claudeCodeConfigDir).toBeUndefined();
+    expect(config.claudeCodeDefaultModel).toBeUndefined();
+    expect(config.claudeCodeDefaultEffort).toBeUndefined();
+    expect(config.claudeCodeDefaultLaunchProfileId).toBe("default");
+    expect(config.claudeCodeMaxTurns).toBe(100);
     expect(config.codexModel).toBeUndefined();
     expect(config.codexSyncIntervalMs).toBe(10_000);
     expect(config.codexExternalBusyCheckMs).toBe(5_000);
@@ -684,6 +698,33 @@ describe("loadConfig", () => {
     expect(config.openClawDefaultLaunchProfileId).toBe("local");
   });
 
+  it("parses Claude Code agent settings", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
+    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
+    process.env.NORDRELAY_CODEX_ENABLED = "false";
+    process.env.NORDRELAY_CLAUDE_CODE_ENABLED = "true";
+    process.env.NORDRELAY_DEFAULT_AGENT = "claude-code";
+    process.env.CLAUDE_CODE_CLI_PATH = "/usr/local/bin/claude";
+    process.env.CLAUDE_CONFIG_DIR = "/tmp/claude-config";
+    process.env.CLAUDE_CODE_DEFAULT_MODEL = "sonnet";
+    process.env.CLAUDE_CODE_DEFAULT_EFFORT = "xhigh";
+    process.env.CLAUDE_CODE_DEFAULT_PROFILE = "plan";
+    process.env.CLAUDE_CODE_MAX_TURNS = "12";
+
+    const config = loadConfig();
+
+    expect(config.codexEnabled).toBe(false);
+    expect(config.claudeCodeEnabled).toBe(true);
+    expect(config.defaultAgent).toBe("claude-code");
+    expect(config.claudeCodeCliPath).toBe("/usr/local/bin/claude");
+    expect(config.claudeCodeConfigDir).toBe("/tmp/claude-config");
+    expect(config.claudeCodeDefaultModel).toBe("sonnet");
+    expect(config.claudeCodeDefaultEffort).toBe("xhigh");
+    expect(config.claudeCodeDefaultLaunchProfileId).toBe("plan");
+    expect(config.claudeCodeMaxTurns).toBe(12);
+  });
+
   it("rejects a default agent that is not enabled", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
     process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
@@ -701,6 +742,9 @@ describe("loadConfig", () => {
 
     process.env.NORDRELAY_DEFAULT_AGENT = "openclaw";
     expect(() => loadConfig()).toThrow("NORDRELAY_DEFAULT_AGENT=openclaw requires NORDRELAY_OPENCLAW_ENABLED=true");
+
+    process.env.NORDRELAY_DEFAULT_AGENT = "claude-code";
+    expect(() => loadConfig()).toThrow("NORDRELAY_DEFAULT_AGENT=claude-code requires NORDRELAY_CLAUDE_CODE_ENABLED=true");
   });
 
   it("parses CONNECTOR_LOG_FORMAT", () => {

@@ -1,4 +1,5 @@
 import { CodexSessionService } from "./codex-session.js";
+import { ClaudeCodeSessionService } from "./claude-code-session.js";
 import { HermesSessionService } from "./hermes-session.js";
 import { OpenClawSessionService } from "./openclaw-session.js";
 import { PiSessionService } from "./pi-session.js";
@@ -28,6 +29,12 @@ export async function createAgentSessionService(
     }
     return OpenClawSessionService.create(config, options);
   }
+  if (agentId === "claude-code") {
+    if (config.claudeCodeEnabled !== true) {
+      throw new Error("Claude Code support is disabled. Set NORDRELAY_CLAUDE_CODE_ENABLED=true.");
+    }
+    return ClaudeCodeSessionService.create(config, options);
+  }
 
   if (config.codexEnabled === false) {
     throw new Error("Codex support is disabled. Set NORDRELAY_CODEX_ENABLED=true.");
@@ -41,5 +48,6 @@ export function enabledAgents(config: ConnectorConfig): AgentId[] {
   if (config.piEnabled) agents.push("pi");
   if (config.hermesEnabled) agents.push("hermes");
   if (config.openClawEnabled) agents.push("openclaw");
+  if (config.claudeCodeEnabled) agents.push("claude-code");
   return agents;
 }

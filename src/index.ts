@@ -8,6 +8,8 @@ import { agentLabel, type AgentId } from "./agent.js";
 import { createBot, registerCommands } from "./bot.js";
 import { checkAuthStatus } from "./codex-auth.js";
 import { describeCodexCli, resolveCodexCli } from "./codex-cli.js";
+import { checkClaudeCodeAuthStatus } from "./claude-code-auth.js";
+import { describeClaudeCodeCli, resolveClaudeCodeCli } from "./claude-code-cli.js";
 import { findLaunchProfile, formatLaunchProfileBehavior } from "./codex-launch.js";
 import { enabledAgents } from "./agent-factory.js";
 import { loadConfig, type ConnectorConfig } from "./config.js";
@@ -50,10 +52,12 @@ try {
   const piCli = resolvePiCli(process.env, config.piCliPath);
   const hermesCli = resolveHermesCli(process.env, config.hermesCliPath);
   const openClawCli = resolveOpenClawCli(process.env, config.openClawCliPath);
+  const claudeCodeCli = resolveClaudeCodeCli(process.env, config.claudeCodeCliPath);
   console.log(`Codex CLI: ${describeCodexCli(codexCli)}`);
   console.log(`Pi CLI: ${describePiCli(piCli)}`);
   console.log(`Hermes CLI: ${describeHermesCli(hermesCli)}`);
   console.log(`OpenClaw CLI: ${describeOpenClawCli(openClawCli)}`);
+  console.log(`Claude Code CLI: ${describeClaudeCodeCli(claudeCodeCli)}`);
   if (config.hermesEnabled) {
     console.log(`Hermes API: ${config.hermesApiBaseUrl}`);
   }
@@ -83,6 +87,7 @@ try {
     piCli: describePiCli(piCli),
     hermesCli: describeHermesCli(hermesCli),
     openClawCli: describeOpenClawCli(openClawCli),
+    claudeCodeCli: describeClaudeCodeCli(claudeCodeCli),
     openClawGateway: config.openClawGatewayUrl,
     telegramTransport: config.telegramTransport,
   });
@@ -120,6 +125,9 @@ async function checkDefaultAgentAuth(config: ConnectorConfig): Promise<{
       token: config.openClawGatewayToken,
       password: config.openClawGatewayPassword,
     });
+  }
+  if (agentId === "claude-code") {
+    return checkClaudeCodeAuthStatus(config.claudeCodeCliPath);
   }
   return checkAuthStatus(config.codexApiKey);
 }

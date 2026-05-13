@@ -84,6 +84,7 @@ import {
 } from "./agent-activity.js";
 import { enabledAgents } from "./agent-factory.js";
 import { checkAuthStatus, clearAuthCache, startLogin, startLogout } from "./codex-auth.js";
+import { checkClaudeCodeAuthStatus } from "./claude-code-auth.js";
 import { formatLaunchProfileBehavior } from "./codex-launch.js";
 import type { ConnectorConfig, ToolVerbosity } from "./config.js";
 import { contextKeyFromCtx, isTelegramContextKey, isTopicContextKey, parseContextKey, type TelegramContextKey } from "./context-key.js";
@@ -443,6 +444,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         token: config.openClawGatewayToken,
         password: config.openClawGatewayPassword,
       });
+    }
+    if (idOf(info) === "claude-code") {
+      return checkClaudeCodeAuthStatus(config.claudeCodeCliPath);
     }
     return checkAuthStatus(config.codexApiKey);
   };
@@ -1602,6 +1606,17 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         return;
       }
 
+      if (idOf(sessionInfo) === "claude-code" && !config.claudeCodeEnabled) {
+        await safeReply(
+          ctx,
+          "<b>⚠️ Claude Code is disabled.</b>\nEnable it with <code>NORDRELAY_CLAUDE_CODE_ENABLED=true</code>.",
+          {
+            fallbackText: "⚠️ Claude Code is disabled.\nEnable it with NORDRELAY_CLAUDE_CODE_ENABLED=true.",
+          },
+        );
+        return;
+      }
+
       if (!(await ensureActiveThread(ctx, contextKey, session))) {
         return;
       }
@@ -2117,7 +2132,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
               ? config.hermesEnabled
               : descriptor.id === "openclaw"
                 ? config.openClawEnabled
-                : false;
+                : descriptor.id === "claude-code"
+                  ? config.claudeCodeEnabled
+                  : false;
         return `${descriptor.label}: ${descriptor.status}${descriptor.status === "available" ? ` · ${enabled ? "enabled" : "disabled"}` : ""}`;
       }),
     ].join("\n");
@@ -2132,7 +2149,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
               ? config.hermesEnabled
               : descriptor.id === "openclaw"
                 ? config.openClawEnabled
-                : false;
+                : descriptor.id === "claude-code"
+                  ? config.claudeCodeEnabled
+                  : false;
         const status = descriptor.status === "available" ? `${enabled ? "enabled" : "disabled"}` : "planned";
         const notes = descriptor.notes ? `\n  ${escapeHTML(descriptor.notes)}` : "";
         return `${descriptor.status === "available" ? "✅" : "🟡"} <b>${escapeHTML(descriptor.label)}</b> <code>${escapeHTML(status)}</code>${notes}`;
@@ -2526,7 +2545,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   });
 
   bot.command(["status", "health"], async (ctx) => {
-    const health = await getConnectorHealth({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath, openClawCliPath: config.openClawCliPath });
+    const health = await getConnectorHealth({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath, openClawCliPath: config.openClawCliPath, claudeCodeCliPath: config.claudeCodeCliPath });
     const contextSession = await getContextSession(ctx, { deferThreadStart: true });
     const authStatus = contextSession
       ? await checkAgentAuthStatus(contextSession.session.getInfo())
@@ -2537,9 +2556,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   });
 
   bot.command("version", async (ctx) => {
-    const health = await getConnectorHealth({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath, openClawCliPath: config.openClawCliPath });
+    const health = await getConnectorHealth({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath, openClawCliPath: config.openClawCliPath, claudeCodeCliPath: config.claudeCodeCliPath });
     const state = await readConnectorState();
-    const versions = await getVersionChecks({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath, openClawCliPath: config.openClawCliPath });
+    const versions = await getVersionChecks({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath, openClawCliPath: config.openClawCliPath, claudeCodeCliPath: config.claudeCodeCliPath });
     const plain = [
       renderVersionCheckPlain(versions.nordrelay),
       `Runtime status: ${state.status ?? "unknown"}`,
@@ -2551,6 +2570,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       renderVersionCheckPlain(versions.hermes),
       formatCliPathPlain("OpenClaw CLI", health.openClawCliPath, health.openClawCli),
       renderVersionCheckPlain(versions.openclaw),
+      formatCliPathPlain("Claude Code CLI", health.claudeCodeCliPath, health.claudeCodeCli),
+      renderVersionCheckPlain(versions.claudeCode),
     ].join("\n");
     const html = [
       renderVersionCheckHTML(versions.nordrelay),
@@ -2563,6 +2584,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       renderVersionCheckHTML(versions.hermes),
       formatCliPathHTML("OpenClaw CLI", health.openClawCliPath, health.openClawCli),
       renderVersionCheckHTML(versions.openclaw),
+      formatCliPathHTML("Claude Code CLI", health.claudeCodeCliPath, health.claudeCodeCli),
+      renderVersionCheckHTML(versions.claudeCode),
     ].join("\n");
     await safeReply(ctx, html, { fallbackText: plain });
   });
@@ -2685,7 +2708,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   });
 
   bot.command("diagnostics", async (ctx) => {
-    const health = await getConnectorHealth({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath, openClawCliPath: config.openClawCliPath });
+    const health = await getConnectorHealth({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath, openClawCliPath: config.openClawCliPath, claudeCodeCliPath: config.claudeCodeCliPath });
     const contextKey = contextKeyFromCtx(ctx);
     const queueLength = contextKey ? promptStore.list(contextKey).length : 0;
     const progress = contextKey ? turnProgress.get(contextKey) : undefined;
@@ -3765,7 +3788,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
   bot.command(["effort", "reasoning"], openReasoningPicker);
 
-  bot.callbackQuery(/^agent_(codex|pi|hermes|openclaw)$/, async (ctx) => {
+  bot.callbackQuery(/^agent_(codex|pi|hermes|openclaw|claude-code)$/, async (ctx) => {
     const chatId = ctx.chat?.id;
     const messageId = ctx.callbackQuery.message?.message_id;
     const selectedAgent = ctx.match?.[1] as AgentId | undefined;
@@ -5388,6 +5411,7 @@ function renderDiagnosticsPlain(
     `Pi CLI: ${health.piCli}`,
     `Hermes CLI: ${health.hermesCli}`,
     `OpenClaw CLI: ${health.openClawCli}`,
+    `Claude Code CLI: ${health.claudeCodeCli}`,
     `Hermes API: ${config.hermesApiBaseUrl}`,
     `OpenClaw Gateway: ${config.openClawGatewayUrl}`,
     `Enabled agents/default: ${enabledAgents(config).join(", ")} / ${config.defaultAgent}`,
@@ -5442,6 +5466,7 @@ function renderDiagnosticsHTML(
     `<b>Pi CLI:</b> <code>${escapeHTML(health.piCli)}</code>`,
     `<b>Hermes CLI:</b> <code>${escapeHTML(health.hermesCli)}</code>`,
     `<b>OpenClaw CLI:</b> <code>${escapeHTML(health.openClawCli)}</code>`,
+    `<b>Claude Code CLI:</b> <code>${escapeHTML(health.claudeCodeCli)}</code>`,
     `<b>Hermes API:</b> <code>${escapeHTML(config.hermesApiBaseUrl)}</code>`,
     `<b>OpenClaw Gateway:</b> <code>${escapeHTML(config.openClawGatewayUrl)}</code>`,
     `<b>Enabled agents/default:</b> <code>${escapeHTML(`${enabledAgents(config).join(", ")} / ${config.defaultAgent}`)}</code>`,
@@ -5488,6 +5513,7 @@ function renderHealthPlain(
     `Pi CLI: ${health.piCli}`,
     `Hermes CLI: ${health.hermesCli}`,
     `OpenClaw CLI: ${health.openClawCli}`,
+    `Claude Code CLI: ${health.claudeCodeCli}`,
     `Codex state DB: ${health.databasePath ?? "-"}`,
     `Log: ${health.logFile}`,
   ].join("\n");
@@ -5511,6 +5537,7 @@ function renderHealthHTML(
     `<b>Pi CLI:</b> <code>${escapeHTML(health.piCli)}</code>`,
     `<b>Hermes CLI:</b> <code>${escapeHTML(health.hermesCli)}</code>`,
     `<b>OpenClaw CLI:</b> <code>${escapeHTML(health.openClawCli)}</code>`,
+    `<b>Claude Code CLI:</b> <code>${escapeHTML(health.claudeCodeCli)}</code>`,
     `<b>Codex state DB:</b> <code>${escapeHTML(health.databasePath ?? "-")}</code>`,
     `<b>Log:</b> <code>${escapeHTML(health.logFile)}</code>`,
   ].join("\n");
@@ -5600,6 +5627,9 @@ function authHelpText(info: AgentSessionInfo): string {
   if (agentId === "openclaw") {
     return "Start the OpenClaw Gateway and configure OPENCLAW_GATEWAY_TOKEN or OPENCLAW_GATEWAY_PASSWORD when the gateway requires one.";
   }
+  if (agentId === "claude-code") {
+    return "Run 'claude auth login' on the host, or configure Claude Code provider credentials for the host CLI.";
+  }
   return "Use /login to start authentication, or set CODEX_API_KEY on the host.";
 }
 
@@ -5619,6 +5649,11 @@ function formatAgentSettingScope(info: AgentSessionInfo, appliedToActiveThread: 
     return appliedToActiveThread
       ? "applies to the next OpenClaw run in this session"
       : "applies to new OpenClaw sessions";
+  }
+  if (agentId === "claude-code") {
+    return appliedToActiveThread
+      ? "applies to the next Claude Code run in this session"
+      : "applies to new Claude Code sessions";
   }
   return appliedToActiveThread
     ? "applied to the current idle thread and future threads"

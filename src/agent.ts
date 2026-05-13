@@ -1,7 +1,7 @@
 import type { CodexLaunchProfile } from "./codex-launch.js";
 import type { CodexSessionUsage } from "./codex-state.js";
 
-export const AGENT_IDS = ["codex", "pi", "hermes", "openclaw"] as const;
+export const AGENT_IDS = ["codex", "pi", "hermes", "openclaw", "claude-code"] as const;
 export type AgentId = typeof AGENT_IDS[number];
 
 export type AgentReasoningEffort = "off" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -35,6 +35,14 @@ export const HERMES_REASONING_EFFORTS: AgentReasoningEffort[] = [
 export const OPENCLAW_THINKING_LEVELS: AgentReasoningEffort[] = [
   "off",
   "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+];
+
+export const CLAUDE_CODE_EFFORT_LEVELS: AgentReasoningEffort[] = [
+  "off",
   "low",
   "medium",
   "high",
@@ -119,6 +127,25 @@ export const HERMES_AGENT_CAPABILITIES: AgentCapabilities = {
 };
 
 export const OPENCLAW_AGENT_CAPABILITIES: AgentCapabilities = {
+  launchProfiles: true,
+  fastMode: false,
+  externalActivity: true,
+  cliMirror: true,
+  activityLog: true,
+  auth: true,
+  login: false,
+  logout: false,
+  usageStats: true,
+  subscriptionLimits: false,
+  usageLimits: false,
+  workspaces: true,
+  attachments: true,
+  modelSelection: true,
+  reasoningSelection: true,
+  handback: true,
+};
+
+export const CLAUDE_CODE_AGENT_CAPABILITIES: AgentCapabilities = {
   launchProfiles: true,
   fastMode: false,
   externalActivity: true,
@@ -347,7 +374,7 @@ export interface AgentSessionService {
 }
 
 export function isAgentId(value: string | undefined): value is AgentId {
-  return value === "codex" || value === "pi" || value === "hermes" || value === "openclaw";
+  return AGENT_IDS.includes(value as AgentId);
 }
 
 export function agentLabel(agentId: AgentId): string {
@@ -360,11 +387,20 @@ export function agentLabel(agentId: AgentId): string {
   if (agentId === "openclaw") {
     return "OpenClaw";
   }
+  if (agentId === "claude-code") {
+    return "Claude Code";
+  }
   return "Codex";
 }
 
 export function agentReasoningLabel(agentId: AgentId): string {
-  return agentId === "pi" || agentId === "openclaw" ? "Thinking" : "Reasoning";
+  if (agentId === "pi" || agentId === "openclaw") {
+    return "Thinking";
+  }
+  if (agentId === "claude-code") {
+    return "Effort";
+  }
+  return "Reasoning";
 }
 
 export function agentReasoningOptions(agentId: AgentId): AgentReasoningEffort[] {
@@ -376,6 +412,9 @@ export function agentReasoningOptions(agentId: AgentId): AgentReasoningEffort[] 
   }
   if (agentId === "openclaw") {
     return OPENCLAW_THINKING_LEVELS;
+  }
+  if (agentId === "claude-code") {
+    return CLAUDE_CODE_EFFORT_LEVELS;
   }
   return CODEX_REASONING_EFFORTS;
 }

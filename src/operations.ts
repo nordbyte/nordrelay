@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { describeCodexCli, resolveCodexCli } from "./codex-cli.js";
 import { findLatestDatabase } from "./codex-state.js";
+import { describeClaudeCodeCli, resolveClaudeCodeCli } from "./claude-code-cli.js";
 import { describeHermesCli, resolveHermesCli } from "./hermes-cli.js";
 import { describeOpenClawCli, resolveOpenClawCli } from "./openclaw-cli.js";
 import { describePiCli, resolvePiCli } from "./pi-cli.js";
@@ -22,6 +23,7 @@ export interface ConnectorRuntimeState {
   piCli?: string;
   hermesCli?: string;
   openClawCli?: string;
+  claudeCodeCli?: string;
   error?: string;
   updatedAt?: string;
 }
@@ -43,6 +45,9 @@ export interface ConnectorHealth {
   openClawCli: string;
   openClawCliPath: string | null;
   openClawCliVersion: string;
+  claudeCodeCli: string;
+  claudeCodeCliPath: string | null;
+  claudeCodeCliVersion: string;
   stateFile: string;
   logFile: string;
   databasePath: string | null;
@@ -67,6 +72,7 @@ export interface VersionChecks {
   pi: VersionCheck;
   hermes: VersionCheck;
   openclaw: VersionCheck;
+  claudeCode: VersionCheck;
 }
 
 export type SelfUpdateMethod = "git" | "npm";
@@ -92,6 +98,7 @@ const CODEX_PACKAGE_NAME = "@openai/codex";
 const PI_PACKAGE_NAME = "@mariozechner/pi-coding-agent";
 const HERMES_PACKAGE_NAME = "hermes-agent";
 const OPENCLAW_PACKAGE_NAME = "openclaw";
+const CLAUDE_CODE_PACKAGE_NAME = "@anthropic-ai/claude-code";
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 const SECRET_RE = /(bot|token|api[_-]?key|authorization|bearer|password|secret)(["'=: ]+)([^\s"',]+)/gi;
 const DEFAULT_VERSION_CACHE_TTL_MS = 60 * 60 * 1000;
@@ -165,18 +172,22 @@ export async function getPackageVersion(): Promise<string> {
   }
 }
 
-export async function getVersionChecks(options: { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string } = {}): Promise<VersionChecks> {
+export async function getVersionChecks(options: { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string; claudeCodeCliPath?: string } = {}): Promise<VersionChecks> {
   const nordrelayVersion = await getPackageVersion();
   const codexCli = resolveCodexCli();
   const piCli = resolvePiCli(process.env, options.piCliPath);
   const hermesCli = resolveHermesCli(process.env, options.hermesCliPath);
   const openClawCli = resolveOpenClawCli(process.env, options.openClawCliPath);
+  const claudeCodeCli = resolveClaudeCodeCli(process.env, options.claudeCodeCliPath);
   const codexVersionLabel = codexCli.path
     ? detectCliVersion(codexCli.path)
     : readInstalledPackageVersion(CODEX_PACKAGE_NAME) ?? "not installed";
   const piVersionLabel = piCli.path ? detectCliVersion(piCli.path) : "not installed";
   const hermesVersionLabel = hermesCli.path ? detectCliVersion(hermesCli.path) : "not installed";
   const openClawVersionLabel = openClawCli.path ? detectCliVersion(openClawCli.path) : "not installed";
+  const claudeCodeVersionLabel = claudeCodeCli.path
+    ? detectCliVersion(claudeCodeCli.path)
+    : readInstalledPackageVersion("@anthropic-ai/claude-agent-sdk") ?? "bundled";
 
   return {
     nordrelay: buildVersionCheck({
@@ -215,10 +226,18 @@ export async function getVersionChecks(options: { piCliPath?: string; hermesCliP
       notInstalled: openClawVersionLabel === "not installed",
       skipLatest: true,
     }),
+    claudeCode: buildVersionCheck({
+      label: "Claude Code",
+      packageName: CLAUDE_CODE_PACKAGE_NAME,
+      installedLabel: claudeCodeVersionLabel,
+      installedVersion: extractVersion(claudeCodeVersionLabel),
+      notInstalled: claudeCodeVersionLabel === "not installed",
+      skipLatest: true,
+    }),
   };
 }
 
-export async function getConnectorHealth(options: { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string } = {}): Promise<ConnectorHealth> {
+export async function getConnectorHealth(options: { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string; claudeCodeCliPath?: string } = {}): Promise<ConnectorHealth> {
   const state = await readConnectorState();
   const version = await getPackageVersion();
   const pidRunning = isProcessRunning(state.pid);
@@ -227,6 +246,7 @@ export async function getConnectorHealth(options: { piCliPath?: string; hermesCl
   const piCli = resolvePiCli(process.env, options.piCliPath);
   const hermesCli = resolveHermesCli(process.env, options.hermesCliPath);
   const openClawCli = resolveOpenClawCli(process.env, options.openClawCliPath);
+  const claudeCodeCli = resolveClaudeCodeCli(process.env, options.claudeCodeCliPath);
 
   return {
     version,
@@ -245,6 +265,11 @@ export async function getConnectorHealth(options: { piCliPath?: string; hermesCl
     openClawCli: describeOpenClawCli(openClawCli),
     openClawCliPath: openClawCli.path ?? null,
     openClawCliVersion: detectCliVersion(openClawCli.path),
+    claudeCodeCli: describeClaudeCodeCli(claudeCodeCli),
+    claudeCodeCliPath: claudeCodeCli.path ?? null,
+    claudeCodeCliVersion: claudeCodeCli.path
+      ? detectCliVersion(claudeCodeCli.path)
+      : readInstalledPackageVersion("@anthropic-ai/claude-agent-sdk") ?? "bundled",
     stateFile: getConnectorStatePath(),
     logFile: getConnectorLogPath(),
     databasePath: findLatestDatabase(),

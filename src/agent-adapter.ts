@@ -1,4 +1,5 @@
 import {
+  CLAUDE_CODE_AGENT_CAPABILITIES,
   CODEX_AGENT_CAPABILITIES,
   HERMES_AGENT_CAPABILITIES,
   OPENCLAW_AGENT_CAPABILITIES,
@@ -10,7 +11,7 @@ import {
 export type AgentAdapterStatus = "available" | "planned";
 
 export interface AgentAdapterDescriptor {
-  id: AgentId | "claude-code";
+  id: AgentId;
   label: string;
   status: AgentAdapterStatus;
   capabilities: AgentCapabilities;
@@ -52,9 +53,10 @@ export const BUILTIN_AGENT_ADAPTERS: AgentAdapterDescriptor[] = [
   {
     id: "claude-code",
     label: "Claude Code",
-    status: "planned",
-    capabilities: plannedCapabilities(),
-    notes: "Use this descriptor as the target contract for a future Claude Code session service.",
+    status: "available",
+    capabilities: CLAUDE_CODE_AGENT_CAPABILITIES,
+    envFlag: "NORDRELAY_CLAUDE_CODE_ENABLED",
+    notes: "Uses the Claude Agent SDK with host Claude Code sessions, streaming, tool lifecycle events, session continuity, and handback.",
   },
 ];
 
@@ -63,25 +65,4 @@ export function listAgentAdapterDescriptors(): AgentAdapterDescriptor[] {
     ...descriptor,
     capabilities: { ...descriptor.capabilities },
   }));
-}
-
-function plannedCapabilities(): AgentCapabilities {
-  return {
-    launchProfiles: false,
-    fastMode: false,
-    externalActivity: false,
-    cliMirror: false,
-    activityLog: false,
-    auth: false,
-    login: false,
-    logout: false,
-    usageStats: false,
-    subscriptionLimits: false,
-    usageLimits: false,
-    workspaces: true,
-    attachments: true,
-    modelSelection: true,
-    reasoningSelection: true,
-    handback: true,
-  };
 }

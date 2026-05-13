@@ -13,6 +13,7 @@ import {
   type CodexSandboxMode,
 } from "./codex-launch.js";
 import {
+  CLAUDE_CODE_EFFORT_LEVELS,
   HERMES_REASONING_EFFORTS,
   OPENCLAW_THINKING_LEVELS,
   isAgentId,
@@ -112,6 +113,13 @@ export interface ConnectorConfig {
   openClawDefaultModel?: string;
   openClawDefaultThinking?: AgentReasoningEffort;
   openClawDefaultLaunchProfileId: string;
+  claudeCodeEnabled: boolean;
+  claudeCodeCliPath?: string;
+  claudeCodeConfigDir?: string;
+  claudeCodeDefaultModel?: string;
+  claudeCodeDefaultEffort?: AgentReasoningEffort;
+  claudeCodeDefaultLaunchProfileId: string;
+  claudeCodeMaxTurns: number;
   defaultAgent: AgentId;
   toolVerbosity: ToolVerbosity;
   logFormat: ConnectorLogFormat;
@@ -225,7 +233,6 @@ export function loadConfig(): ConnectorConfig {
   const hermesDefaultReasoning = parseHermesReasoningEffort(optionalString(process.env.HERMES_DEFAULT_REASONING));
   const hermesDefaultLaunchProfileId = optionalString(process.env.HERMES_DEFAULT_PROFILE) ?? "default";
   const openClawEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_OPENCLAW_ENABLED), false);
-  ensureAtLeastOneAgentEnabled(codexEnabled, piEnabled, hermesEnabled, openClawEnabled);
   const openClawCliPath = optionalString(process.env.OPENCLAW_CLI_PATH);
   const openClawGatewayUrl = optionalString(process.env.OPENCLAW_GATEWAY_URL) ?? "ws://127.0.0.1:18789";
   const openClawGatewayToken = optionalString(process.env.OPENCLAW_GATEWAY_TOKEN);
@@ -236,12 +243,21 @@ export function loadConfig(): ConnectorConfig {
   const openClawDefaultModel = optionalString(process.env.OPENCLAW_DEFAULT_MODEL);
   const openClawDefaultThinking = parseOpenClawThinkingLevel(optionalString(process.env.OPENCLAW_DEFAULT_THINKING));
   const openClawDefaultLaunchProfileId = optionalString(process.env.OPENCLAW_DEFAULT_PROFILE) ?? "default";
+  const claudeCodeEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_CLAUDE_CODE_ENABLED), false);
+  ensureAtLeastOneAgentEnabled(codexEnabled, piEnabled, hermesEnabled, openClawEnabled, claudeCodeEnabled);
+  const claudeCodeCliPath = optionalString(process.env.CLAUDE_CODE_CLI_PATH);
+  const claudeCodeConfigDir = optionalString(process.env.CLAUDE_CONFIG_DIR);
+  const claudeCodeDefaultModel = optionalString(process.env.CLAUDE_CODE_DEFAULT_MODEL);
+  const claudeCodeDefaultEffort = parseClaudeCodeEffort(optionalString(process.env.CLAUDE_CODE_DEFAULT_EFFORT));
+  const claudeCodeDefaultLaunchProfileId = optionalString(process.env.CLAUDE_CODE_DEFAULT_PROFILE) ?? "default";
+  const claudeCodeMaxTurns = parsePositiveIntegerEnv(optionalString(process.env.CLAUDE_CODE_MAX_TURNS), 100, "CLAUDE_CODE_MAX_TURNS");
   const defaultAgent = parseDefaultAgent(
     optionalString(process.env.NORDRELAY_DEFAULT_AGENT),
     codexEnabled,
     piEnabled,
     hermesEnabled,
     openClawEnabled,
+    claudeCodeEnabled,
   );
   const toolVerbosity = parseToolVerbosity(optionalString(process.env.TOOL_VERBOSITY));
   const logFormat = parseLogFormat(optionalString(process.env.CONNECTOR_LOG_FORMAT));
@@ -334,6 +350,13 @@ export function loadConfig(): ConnectorConfig {
     openClawDefaultModel,
     openClawDefaultThinking,
     openClawDefaultLaunchProfileId,
+    claudeCodeEnabled,
+    claudeCodeCliPath,
+    claudeCodeConfigDir,
+    claudeCodeDefaultModel,
+    claudeCodeDefaultEffort,
+    claudeCodeDefaultLaunchProfileId,
+    claudeCodeMaxTurns,
     defaultAgent,
     toolVerbosity,
     logFormat,
@@ -699,9 +722,15 @@ function parseDefaultLaunchProfileId(
   return profile.id;
 }
 
-function ensureAtLeastOneAgentEnabled(codexEnabled: boolean, piEnabled: boolean, hermesEnabled = false, openClawEnabled = false): void {
-  if (!codexEnabled && !piEnabled && !hermesEnabled && !openClawEnabled) {
-    throw new Error("At least one agent must be enabled: set NORDRELAY_CODEX_ENABLED=true, NORDRELAY_PI_ENABLED=true, NORDRELAY_HERMES_ENABLED=true, or NORDRELAY_OPENCLAW_ENABLED=true");
+function ensureAtLeastOneAgentEnabled(
+  codexEnabled: boolean,
+  piEnabled: boolean,
+  hermesEnabled = false,
+  openClawEnabled = false,
+  claudeCodeEnabled = false,
+): void {
+  if (!codexEnabled && !piEnabled && !hermesEnabled && !openClawEnabled && !claudeCodeEnabled) {
+    throw new Error("At least one agent must be enabled: set NORDRELAY_CODEX_ENABLED=true, NORDRELAY_PI_ENABLED=true, NORDRELAY_HERMES_ENABLED=true, NORDRELAY_OPENCLAW_ENABLED=true, or NORDRELAY_CLAUDE_CODE_ENABLED=true");
   }
 }
 
@@ -711,16 +740,18 @@ function parseDefaultAgent(
   piEnabled: boolean,
   hermesEnabled: boolean,
   openClawEnabled: boolean,
+  claudeCodeEnabled: boolean,
 ): AgentId {
   if (!raw) {
     if (codexEnabled) return "codex";
     if (piEnabled) return "pi";
     if (hermesEnabled) return "hermes";
-    return "openclaw";
+    if (openClawEnabled) return "openclaw";
+    return "claude-code";
   }
 
   if (!isAgentId(raw)) {
-    throw new Error(`Invalid NORDRELAY_DEFAULT_AGENT: ${raw}. Expected codex, pi, hermes, or openclaw`);
+    throw new Error(`Invalid NORDRELAY_DEFAULT_AGENT: ${raw}. Expected codex, pi, hermes, openclaw, or claude-code`);
   }
   if (raw === "codex" && !codexEnabled) {
     throw new Error("NORDRELAY_DEFAULT_AGENT=codex requires NORDRELAY_CODEX_ENABLED=true");
@@ -733,6 +764,9 @@ function parseDefaultAgent(
   }
   if (raw === "openclaw" && !openClawEnabled) {
     throw new Error("NORDRELAY_DEFAULT_AGENT=openclaw requires NORDRELAY_OPENCLAW_ENABLED=true");
+  }
+  if (raw === "claude-code" && !claudeCodeEnabled) {
+    throw new Error("NORDRELAY_DEFAULT_AGENT=claude-code requires NORDRELAY_CLAUDE_CODE_ENABLED=true");
   }
   return raw;
 }
@@ -773,6 +807,19 @@ function parseOpenClawThinkingLevel(raw: string | undefined): AgentReasoningEffo
   }
   console.warn(
     `Invalid OPENCLAW_DEFAULT_THINKING value: "${raw}". Expected one of: ${OPENCLAW_THINKING_LEVELS.join(", ")}. Falling back to OpenClaw default.`,
+  );
+  return undefined;
+}
+
+function parseClaudeCodeEffort(raw: string | undefined): AgentReasoningEffort | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  if (CLAUDE_CODE_EFFORT_LEVELS.includes(raw as AgentReasoningEffort)) {
+    return raw as AgentReasoningEffort;
+  }
+  console.warn(
+    `Invalid CLAUDE_CODE_DEFAULT_EFFORT value: "${raw}". Expected one of: ${CLAUDE_CODE_EFFORT_LEVELS.join(", ")}. Falling back to Claude Code default.`,
   );
   return undefined;
 }
