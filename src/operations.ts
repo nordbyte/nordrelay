@@ -92,6 +92,11 @@ export interface FormattedLogTail {
   plain: string;
 }
 
+export interface ClearLogResult {
+  filePath: string;
+  clearedAt: Date;
+}
+
 const APP_NAME = "nordrelay";
 const PACKAGE_NAME = "@nordbyte/nordrelay";
 const CODEX_PACKAGE_NAME = "@openai/codex";
@@ -160,6 +165,15 @@ export async function readFormattedLogTail(lines = 80, filePath = getConnectorLo
       plain: `Cannot read log: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
+}
+
+export function clearLogFile(filePath = getConnectorLogPath()): ClearLogResult {
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  writeFileSync(filePath, "", "utf8");
+  return {
+    filePath,
+    clearedAt: new Date(),
+  };
 }
 
 export async function getPackageVersion(): Promise<string> {

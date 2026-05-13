@@ -1,10 +1,10 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { detectSelfUpdateMethod, readFormattedLogTail } from "../src/operations.js";
+import { clearLogFile, detectSelfUpdateMethod, readFormattedLogTail } from "../src/operations.js";
 
 const tempDirs: string[] = [];
 
@@ -58,5 +58,17 @@ describe("operations", () => {
 
     process.env = { ...originalEnv, NORDRELAY_UPDATE_METHOD: "npm" };
     expect(detectSelfUpdateMethod(gitRoot)).toBe("npm");
+  });
+
+  it("clears log files", () => {
+    const dir = createTempDir();
+    const file = path.join(dir, "nordrelay.log");
+    writeFileSync(file, "line one\nline two\n");
+
+    const result = clearLogFile(file);
+
+    expect(result.filePath).toBe(file);
+    expect(result.clearedAt).toBeInstanceOf(Date);
+    expect(readFileSync(file, "utf8")).toBe("");
   });
 });

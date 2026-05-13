@@ -49,7 +49,7 @@ import type { ConnectorConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./hermes-auth.js";
 import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
-import { getConnectorHealth, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "./operations.js";
+import { clearLogFile, getConnectorHealth, getConnectorLogPath, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "./operations.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
 import { renderSessionInfoPlain } from "./session-format.js";
@@ -1114,10 +1114,22 @@ export class RelayRuntime {
 
   async logs(target: "connector" | "update" = "connector", lines = 100): Promise<ReturnType<typeof readFormattedLogTail>> {
     if (target === "update") {
-      const { getUpdateLogPath } = await import("./operations.js");
       return readFormattedLogTail(lines, getUpdateLogPath());
     }
     return readFormattedLogTail(lines);
+  }
+
+  clearLogs(target: "connector" | "update" = "connector"): { ok: true; filePath: string; clearedAt: string } {
+    const result = clearLogFile(target === "update" ? getUpdateLogPath() : getConnectorLogPath());
+    this.appendActivity({
+      source: "web",
+      status: "info",
+      type: "logs_cleared",
+      threadId: null,
+      workspace: this.config.workspace,
+      detail: `Cleared ${target} log.`,
+    });
+    return { ok: true, filePath: result.filePath, clearedAt: result.clearedAt.toISOString() };
   }
 
   restartConnector(): { ok: true; message: string } {
