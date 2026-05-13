@@ -336,76 +336,69 @@ async function commandInit(options) {
     return;
   }
 
-  const rl = process.stdin.isTTY
-    ? readline.createInterface({ input: process.stdin, output: process.stdout })
-    : null;
-  try {
-    const telegramBotToken = options.telegramBotToken ||
-      process.env.TELEGRAM_BOT_TOKEN ||
-      await ask(rl, "Telegram bot token", "");
-    const adminEmail = options.adminEmail || await ask(rl, "Admin email", "");
-    const adminName = options.adminName || await ask(rl, "Admin name", "Admin");
-    const adminPassword = options.adminPassword || await askSecret(rl, "Admin password", "");
-    const telegramUserId = options.telegramUserId || await ask(rl, "Optional Telegram user id to link", "");
-    const enableCodex = options.disableCodex ? "false" : await askChoice(rl, "Enable Codex", "true");
-    const enablePi = options.enablePi ? "true" : await askChoice(rl, "Enable Pi", "false");
-    const enableHermes = options.enableHermes ? "true" : await askChoice(rl, "Enable Hermes", "false");
-    const enableOpenClaw = options.enableOpenClaw ? "true" : await askChoice(rl, "Enable OpenClaw", "false");
-    const enableClaudeCode = options.enableClaudeCode ? "true" : await askChoice(rl, "Enable Claude Code", "false");
-    const stateBackend = options.stateBackend || await askChoice(rl, "State backend (json/sqlite)", "json");
+  const telegramBotToken = options.telegramBotToken ||
+    process.env.TELEGRAM_BOT_TOKEN ||
+    await ask(null, "Telegram bot token", "");
+  const adminEmail = options.adminEmail || await ask(null, "Admin email", "");
+  const adminName = options.adminName || await ask(null, "Admin name", "Admin");
+  const adminPassword = options.adminPassword || await askSecret(null, "Admin password", "");
+  const telegramUserId = options.telegramUserId || await ask(null, "Optional Telegram user id to link", "");
+  const enableCodex = options.disableCodex ? "false" : await askChoice(null, "Enable Codex", "true");
+  const enablePi = options.enablePi ? "true" : await askChoice(null, "Enable Pi", "false");
+  const enableHermes = options.enableHermes ? "true" : await askChoice(null, "Enable Hermes", "false");
+  const enableOpenClaw = options.enableOpenClaw ? "true" : await askChoice(null, "Enable OpenClaw", "false");
+  const enableClaudeCode = options.enableClaudeCode ? "true" : await askChoice(null, "Enable Claude Code", "false");
+  const stateBackend = options.stateBackend || await askChoice(null, "State backend (json/sqlite)", "json");
 
-    if (!telegramBotToken) throw new Error("Telegram bot token is required.");
-    if (!adminEmail) throw new Error("Admin email is required.");
-    if (!adminPassword) throw new Error("Admin password is required.");
-    if (enableCodex !== "true" && enablePi !== "true" && enableHermes !== "true" && enableOpenClaw !== "true" && enableClaudeCode !== "true") throw new Error("At least one agent must be enabled.");
-    const defaultAgent = enableCodex === "true"
-      ? "codex"
-      : enablePi === "true"
-        ? "pi"
-        : enableHermes === "true"
-          ? "hermes"
-          : enableOpenClaw === "true"
-            ? "openclaw"
-            : "claude-code";
+  if (!telegramBotToken) throw new Error("Telegram bot token is required.");
+  if (!adminEmail) throw new Error("Admin email is required.");
+  if (!adminPassword) throw new Error("Admin password is required.");
+  if (enableCodex !== "true" && enablePi !== "true" && enableHermes !== "true" && enableOpenClaw !== "true" && enableClaudeCode !== "true") throw new Error("At least one agent must be enabled.");
+  const defaultAgent = enableCodex === "true"
+    ? "codex"
+    : enablePi === "true"
+      ? "pi"
+      : enableHermes === "true"
+        ? "hermes"
+        : enableOpenClaw === "true"
+          ? "openclaw"
+          : "claude-code";
 
-    const lines = [
-      "# NordRelay local runtime config.",
-      "# Keep this file private; it contains bot credentials.",
-      `TELEGRAM_BOT_TOKEN=${telegramBotToken}`,
-      `NORDRELAY_CODEX_ENABLED=${enableCodex}`,
-      `NORDRELAY_PI_ENABLED=${enablePi}`,
-      `NORDRELAY_HERMES_ENABLED=${enableHermes}`,
-      `NORDRELAY_OPENCLAW_ENABLED=${enableOpenClaw}`,
-      `NORDRELAY_CLAUDE_CODE_ENABLED=${enableClaudeCode}`,
-      `NORDRELAY_DEFAULT_AGENT=${defaultAgent}`,
-      "PI_DEFAULT_PROFILE=default",
-      "HERMES_API_BASE_URL=http://127.0.0.1:8642",
-      "HERMES_DEFAULT_PROFILE=default",
-      "OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18789",
-      "OPENCLAW_AGENT_ID=main",
-      "OPENCLAW_DEFAULT_PROFILE=default",
-      "CLAUDE_CODE_DEFAULT_PROFILE=default",
-      "CLAUDE_CODE_MAX_TURNS=100",
-      `NORDRELAY_STATE_BACKEND=${stateBackend === "sqlite" ? "sqlite" : "json"}`,
-      "TELEGRAM_TRANSPORT=polling",
-      "TELEGRAM_AUTO_SEND_ARTIFACTS=false",
-      "",
-    ];
+  const lines = [
+    "# NordRelay local runtime config.",
+    "# Keep this file private; it contains bot credentials.",
+    `TELEGRAM_BOT_TOKEN=${telegramBotToken}`,
+    `NORDRELAY_CODEX_ENABLED=${enableCodex}`,
+    `NORDRELAY_PI_ENABLED=${enablePi}`,
+    `NORDRELAY_HERMES_ENABLED=${enableHermes}`,
+    `NORDRELAY_OPENCLAW_ENABLED=${enableOpenClaw}`,
+    `NORDRELAY_CLAUDE_CODE_ENABLED=${enableClaudeCode}`,
+    `NORDRELAY_DEFAULT_AGENT=${defaultAgent}`,
+    "PI_DEFAULT_PROFILE=default",
+    "HERMES_API_BASE_URL=http://127.0.0.1:8642",
+    "HERMES_DEFAULT_PROFILE=default",
+    "OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18789",
+    "OPENCLAW_AGENT_ID=main",
+    "OPENCLAW_DEFAULT_PROFILE=default",
+    "CLAUDE_CODE_DEFAULT_PROFILE=default",
+    "CLAUDE_CODE_MAX_TURNS=100",
+    `NORDRELAY_STATE_BACKEND=${stateBackend === "sqlite" ? "sqlite" : "json"}`,
+    "TELEGRAM_TRANSPORT=polling",
+    "TELEGRAM_AUTO_SEND_ARTIFACTS=false",
+    "",
+  ];
 
-    await fsp.writeFile(envPath, lines.join("\n"), { mode: 0o600 });
-    await fsp.chmod(envPath, 0o600).catch(() => {});
-    userStore.createAdmin({
-      email: adminEmail,
-      displayName: adminName || adminEmail,
-      password: adminPassword,
-      telegramUserId: telegramUserId ? Number(telegramUserId) : undefined,
-    });
-    console.log(`Wrote ${envPath}`);
-    console.log(`Created admin user ${adminEmail}.`);
-    console.log("Run `nordrelay doctor` to validate the setup.");
-  } finally {
-    rl?.close();
-  }
+  await fsp.writeFile(envPath, lines.join("\n"), { mode: 0o600 });
+  await fsp.chmod(envPath, 0o600).catch(() => {});
+  userStore.createAdmin({
+    email: adminEmail,
+    displayName: adminName || adminEmail,
+    password: adminPassword,
+    telegramUserId: telegramUserId ? Number(telegramUserId) : undefined,
+  });
+  console.log(`Wrote ${envPath}`);
+  console.log(`Created admin user ${adminEmail}.`);
+  console.log("Run `nordrelay doctor` to validate the setup.");
 }
 
 async function createUserStore(home) {
@@ -438,71 +431,64 @@ async function commandUser(options) {
   loadEnvFiles(options.home);
   const store = await createUserStore(options.home);
   const flags = parseUserFlags(options.rawFlags);
-  const rl = process.stdin.isTTY
-    ? readline.createInterface({ input: process.stdin, output: process.stdout })
-    : null;
-  try {
-    if (flags.subcommand === "list") {
-      const snapshot = store.snapshot();
-      if (snapshot.users.length === 0) {
-        console.log("No users configured.");
-        console.log("Create the first admin with `nordrelay user create-admin --email you@example.com --name YourName`.");
-        return;
-      }
-      for (const user of snapshot.users) {
-        console.log(`${user.email} (${user.displayName}) ${user.active ? "active" : "disabled"} groups=${user.groups.map((group) => group.id).join(",") || "-"}`);
-      }
+  if (flags.subcommand === "list") {
+    const snapshot = store.snapshot();
+    if (snapshot.users.length === 0) {
+      console.log("No users configured.");
+      console.log("Create the first admin with `nordrelay user create-admin --email you@example.com --name YourName`.");
       return;
     }
-
-    if (flags.subcommand === "create-admin" || flags.subcommand === "create") {
-      const email = flags.email || await ask(rl, "Email", "");
-      const name = flags.name || await ask(rl, "Display name", email);
-      const password = flags.password || await askSecret(rl, "Password", "");
-      const groupIds = flags.subcommand === "create-admin"
-        ? ["admin"]
-        : (flags.groups ? flags.groups.split(",").map((item) => item.trim()).filter(Boolean) : ["user"]);
-      const created = flags.subcommand === "create-admin"
-        ? store.createAdmin({ email, displayName: name, password, telegramUserId: flags.telegramUserId })
-        : store.createUser({ email, displayName: name, password, groupIds, telegramUserId: flags.telegramUserId });
-      console.log(`Created user ${created.user.email} (${created.groups.map((group) => group.name).join(", ")}).`);
-      return;
+    for (const user of snapshot.users) {
+      console.log(`${user.email} (${user.displayName}) ${user.active ? "active" : "disabled"} groups=${user.groups.map((group) => group.id).join(",") || "-"}`);
     }
-
-    if (flags.subcommand === "reset-password") {
-      const email = flags.email || await ask(rl, "Email", "");
-      const password = flags.password || await askSecret(rl, "New password", "");
-      const user = store.getUserByEmail(email);
-      if (!user) throw new Error(`User not found: ${email}`);
-      store.setPassword(user.user.id, password);
-      console.log(`Password updated for ${user.user.email}.`);
-      return;
-    }
-
-    if (flags.subcommand === "link-telegram") {
-      const email = flags.email || await ask(rl, "Email", "");
-      const telegramUserId = flags.telegramUserId || Number.parseInt(await ask(rl, "Telegram user id", ""), 10);
-      const user = store.getUserByEmail(email);
-      if (!user) throw new Error(`User not found: ${email}`);
-      store.linkTelegramUser(user.user.id, { telegramUserId });
-      console.log(`Linked Telegram user ${telegramUserId} to ${user.user.email}.`);
-      return;
-    }
-
-    if (flags.subcommand === "link-code") {
-      const email = flags.email || await ask(rl, "Email", "");
-      const user = store.getUserByEmail(email);
-      if (!user) throw new Error(`User not found: ${email}`);
-      const code = store.createTelegramLinkCode(user.user.id);
-      console.log(`Telegram link code for ${user.user.email}: ${code.code}`);
-      console.log(`Expires: ${code.expiresAt}`);
-      return;
-    }
-
-    throw new Error("Usage: nordrelay user [list|create-admin|create|reset-password|link-telegram|link-code]");
-  } finally {
-    rl?.close();
+    return;
   }
+
+  if (flags.subcommand === "create-admin" || flags.subcommand === "create") {
+    const email = flags.email || await ask(null, "Email", "");
+    const name = flags.name || await ask(null, "Display name", email);
+    const password = flags.password || await askSecret(null, "Password", "");
+    const groupIds = flags.subcommand === "create-admin"
+      ? ["admin"]
+      : (flags.groups ? flags.groups.split(",").map((item) => item.trim()).filter(Boolean) : ["user"]);
+    const created = flags.subcommand === "create-admin"
+      ? store.createAdmin({ email, displayName: name, password, telegramUserId: flags.telegramUserId })
+      : store.createUser({ email, displayName: name, password, groupIds, telegramUserId: flags.telegramUserId });
+    console.log(`Created user ${created.user.email} (${created.groups.map((group) => group.name).join(", ")}).`);
+    return;
+  }
+
+  if (flags.subcommand === "reset-password") {
+    const email = flags.email || await ask(null, "Email", "");
+    const password = flags.password || await askSecret(null, "New password", "");
+    const user = store.getUserByEmail(email);
+    if (!user) throw new Error(`User not found: ${email}`);
+    store.setPassword(user.user.id, password);
+    console.log(`Password updated for ${user.user.email}.`);
+    return;
+  }
+
+  if (flags.subcommand === "link-telegram") {
+    const email = flags.email || await ask(null, "Email", "");
+    const telegramUserId = flags.telegramUserId || Number.parseInt(await ask(null, "Telegram user id", ""), 10);
+    const user = store.getUserByEmail(email);
+    if (!user) throw new Error(`User not found: ${email}`);
+    store.linkTelegramUser(user.user.id, { telegramUserId });
+    console.log(`Linked Telegram user ${telegramUserId} to ${user.user.email}.`);
+    return;
+  }
+
+  if (flags.subcommand === "link-code") {
+    const email = flags.email || await ask(null, "Email", "");
+    const user = store.getUserByEmail(email);
+    if (!user) throw new Error(`User not found: ${email}`);
+    const code = store.createTelegramLinkCode(user.user.id);
+    console.log(`Telegram link code for ${user.user.email}: ${code.code}`);
+    console.log(`Expires: ${code.expiresAt}`);
+    return;
+  }
+
+  throw new Error("Usage: nordrelay user [list|create-admin|create|reset-password|link-telegram|link-code]");
 }
 
 async function commandDoctor(options) {
@@ -791,16 +777,25 @@ function findRuntimeRoot() {
 }
 
 async function ask(rl, label, defaultValue) {
-  if (!rl) return defaultValue;
   const suffix = defaultValue ? ` [${defaultValue}]` : "";
-  const answer = (await rl.question(`${label}${suffix}: `)).trim();
-  return answer || defaultValue;
+  if (rl) {
+    const answer = (await rl.question(`${label}${suffix}: `)).trim();
+    return answer || defaultValue;
+  }
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return defaultValue;
+  const prompt = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await prompt.question(`${label}${suffix}: `)).trim();
+    return answer || defaultValue;
+  } finally {
+    prompt.close();
+  }
 }
 
 async function askSecret(rl, label, defaultValue) {
-  if (!rl || !process.stdin.isTTY || !process.stdout.isTTY) return defaultValue;
+  void rl;
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return defaultValue;
   const suffix = defaultValue ? " [hidden default]" : "";
-  rl.pause();
   return await new Promise((resolve) => {
     const input = process.stdin;
     const output = process.stdout;
@@ -809,17 +804,21 @@ async function askSecret(rl, label, defaultValue) {
     output.write(`${label}${suffix}: `);
     input.setRawMode(true);
     input.resume();
-    const finish = () => {
+    const cleanup = () => {
       input.off("data", onData);
       input.setRawMode(Boolean(wasRaw));
+      input.pause();
+    };
+    const finish = () => {
+      cleanup();
       output.write("\n");
-      rl.resume();
       resolve(value || defaultValue);
     };
     const onData = (chunk) => {
       const text = chunk.toString("utf8");
       for (const char of text) {
         if (char === "\u0003") {
+          cleanup();
           output.write("\n");
           process.exit(130);
         }
