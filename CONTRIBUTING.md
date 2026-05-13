@@ -39,8 +39,10 @@ Before opening a pull request:
 
 Be conservative with defaults. Fresh installs must not expose the bot publicly:
 
-- Keep `TELEGRAM_ADMIN_USER_IDS` required.
-- Keep `TELEGRAM_ALLOW_ANY_CHAT=false` by default.
+- Keep WebUI login mandatory for every dashboard and API route.
+- Keep Telegram private-chat access limited to linked active NordRelay users.
+- Keep Telegram group/forum chats disabled until an admin enables the chat.
+- Keep user/group permission checks explicit for new Telegram commands, callbacks, WebUI routes, and background actions.
 - Do not add examples that use real bot tokens, chat ids, API keys, or private paths.
 - Redact secrets in new logs, diagnostics, and Telegram output.
 

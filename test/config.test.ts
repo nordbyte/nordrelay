@@ -2,7 +2,6 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { createDefaultRolePolicies } from "../src/access-control.js";
 import { loadConfig } from "../src/config.js";
 
 describe("loadConfig", () => {
@@ -15,12 +14,6 @@ describe("loadConfig", () => {
     process.chdir(tempDir);
     process.env = { ...originalEnv };
     delete process.env.TELEGRAM_BOT_TOKEN;
-    delete process.env.TELEGRAM_ALLOWED_USER_IDS;
-    delete process.env.TELEGRAM_ALLOWED_CHAT_IDS;
-    delete process.env.TELEGRAM_ADMIN_USER_IDS;
-    delete process.env.TELEGRAM_READONLY_USER_IDS;
-    delete process.env.TELEGRAM_ROLE_POLICIES_JSON;
-    delete process.env.TELEGRAM_ALLOW_ANY_CHAT;
     delete process.env.TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS;
     delete process.env.TELEGRAM_EDIT_MIN_INTERVAL_MS;
     delete process.env.TELEGRAM_CLI_MIRROR_MODE;
@@ -103,34 +96,11 @@ describe("loadConfig", () => {
   });
 
   it("throws when TELEGRAM_BOT_TOKEN is missing", () => {
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
-
     expect(() => loadConfig()).toThrow("Missing required environment variable: TELEGRAM_BOT_TOKEN");
-  });
-
-  it("throws when Telegram admin ids are missing", () => {
-    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-
-    expect(() => loadConfig()).toThrow("TELEGRAM_ADMIN_USER_IDS must contain at least one id");
-  });
-
-  it("allows only configured admin ids by default", () => {
-    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
-
-    const config = loadConfig();
-
-    expect(config.telegramAllowedUserIds).toEqual([123]);
-    expect(config.telegramAllowedUserIdSet).toEqual(new Set([123]));
-    expect(config.telegramAdminUserIds).toEqual([123]);
-    expect(config.telegramAdminUserIdSet).toEqual(new Set([123]));
   });
 
   it("parses a valid config correctly", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123,456";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.CODEX_API_KEY = "secret-key";
     process.env.CODEX_MODEL = "o3";
     process.env.CODEX_SANDBOX_MODE = "danger-full-access";
@@ -141,16 +111,6 @@ describe("loadConfig", () => {
 
     expect(config).toEqual({
       telegramBotToken: "bot-token",
-      telegramAllowedUserIds: [123, 456],
-      telegramAllowedUserIdSet: new Set([123, 456]),
-      telegramAllowedChatIds: [],
-      telegramAllowedChatIdSet: new Set(),
-      telegramAdminUserIds: [123],
-      telegramAdminUserIdSet: new Set([123]),
-      telegramReadOnlyUserIds: [],
-      telegramReadOnlyUserIdSet: new Set(),
-      telegramRolePolicies: createDefaultRolePolicies(),
-      telegramAllowAnyChat: false,
       telegramRateLimitMinIntervalMs: 80,
       telegramEditMinIntervalMs: 1_200,
       telegramMirrorMode: "status",
@@ -257,8 +217,6 @@ describe("loadConfig", () => {
 
   it("applies default values for optional fields", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
 
     const config = loadConfig();
 
@@ -351,9 +309,6 @@ describe("loadConfig", () => {
       },
     ]);
     expect(config.defaultLaunchProfileId).toBe("default");
-    expect(config.telegramAdminUserIds).toEqual([123]);
-    expect(config.telegramReadOnlyUserIds).toEqual([]);
-    expect(config.telegramRolePolicies).toEqual(createDefaultRolePolicies());
     expect(config.enableUnsafeLaunchProfiles).toBe(false);
     expect(config.toolVerbosity).toBe("summary");
     expect(config.logFormat).toBe("text");
@@ -370,7 +325,6 @@ describe("loadConfig", () => {
 
   it("parses webhook transport settings", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.TELEGRAM_TRANSPORT = "webhook";
     process.env.TELEGRAM_WEBHOOK_URL = "https://relay.example";
     process.env.TELEGRAM_WEBHOOK_HOST = "0.0.0.0";
@@ -392,97 +346,9 @@ describe("loadConfig", () => {
 
   it("requires a webhook URL when webhook transport is enabled", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.TELEGRAM_TRANSPORT = "webhook";
 
     expect(() => loadConfig()).toThrow("TELEGRAM_TRANSPORT=webhook requires TELEGRAM_WEBHOOK_URL");
-  });
-
-  it("throws when a user id is invalid", () => {
-    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123,nope";
-
-    expect(() => loadConfig()).toThrow(
-      "Invalid Telegram id in TELEGRAM_ALLOWED_USER_IDS: nope",
-    );
-  });
-
-  it("rejects an allowed-user list that becomes empty after parsing", () => {
-    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = " , , ";
-
-    expect(() => loadConfig()).toThrow("TELEGRAM_ALLOWED_USER_IDS must contain at least one id");
-  });
-
-  it("accepts TELEGRAM_ALLOWED_CHAT_IDS without user ids", () => {
-    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "789";
-    process.env.TELEGRAM_ALLOWED_CHAT_IDS = "123,-456";
-
-    const config = loadConfig();
-
-    expect(config.telegramAllowedUserIds).toEqual([789]);
-    expect(config.telegramAllowedChatIds).toEqual([123, -456]);
-    expect(config.telegramAllowedChatIdSet).toEqual(new Set([123, -456]));
-    expect(config.telegramAdminUserIds).toEqual([789]);
-  });
-
-  it("allows any chat only when explicitly enabled and admin ids are configured", () => {
-    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
-    process.env.TELEGRAM_ALLOW_ANY_CHAT = "true";
-
-    const config = loadConfig();
-
-    expect(config.telegramAllowAnyChat).toBe(true);
-    expect(config.telegramAllowedUserIds).toEqual([123]);
-    expect(config.telegramAllowedChatIds).toEqual([]);
-    expect(config.telegramAdminUserIds).toEqual([123]);
-  });
-
-  it("parses explicit admin and read-only user ids", () => {
-    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123,456";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
-    process.env.TELEGRAM_READONLY_USER_IDS = "456";
-
-    const config = loadConfig();
-
-    expect(config.telegramAdminUserIds).toEqual([123]);
-    expect(config.telegramAdminUserIdSet).toEqual(new Set([123]));
-    expect(config.telegramReadOnlyUserIds).toEqual([456]);
-    expect(config.telegramReadOnlyUserIdSet).toEqual(new Set([456]));
-  });
-
-  it("parses granular role policies", () => {
-    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123,456";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
-    process.env.TELEGRAM_ROLE_POLICIES_JSON = JSON.stringify({
-      operator: ["inspect", "prompt"],
-      readonly: ["inspect"],
-      admin: "*",
-    });
-
-    const config = loadConfig();
-
-    expect(config.telegramRolePolicies.operator).toEqual(new Set(["inspect", "prompt"]));
-    expect(config.telegramRolePolicies.readonly).toEqual(new Set(["inspect"]));
-    expect(config.telegramRolePolicies.admin.has("admin")).toBe(true);
-    expect(config.telegramRolePolicies.admin.has("files")).toBe(true);
-  });
-
-  it("rejects invalid granular role policies", () => {
-    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
-    process.env.TELEGRAM_ROLE_POLICIES_JSON = JSON.stringify({
-      operator: ["inspect", "destroy"],
-    });
-
-    expect(() => loadConfig()).toThrow(
-      "Invalid TELEGRAM_ROLE_POLICIES_JSON permission for operator: destroy",
-    );
   });
 
   it("loads values from .env without overwriting existing environment variables", () => {
@@ -491,8 +357,6 @@ describe("loadConfig", () => {
       [
         "# comment",
         "export TELEGRAM_BOT_TOKEN=from-file",
-        "TELEGRAM_ALLOWED_USER_IDS=123,456",
-        "TELEGRAM_ADMIN_USER_IDS=123",
         "CODEX_API_KEY='from-dotenv'",
         'CODEX_MODEL="gpt-4.1"',
         "CODEX_SANDBOX_MODE=read-only",
@@ -505,7 +369,6 @@ describe("loadConfig", () => {
     const config = loadConfig();
 
     expect(config.telegramBotToken).toBe("from-process");
-    expect(config.telegramAllowedUserIds).toEqual([123, 456]);
     expect(config.codexApiKey).toBe("from-dotenv");
     expect(config.codexModel).toBe("gpt-4.1");
     expect(config.codexSandboxMode).toBe("read-only");
@@ -538,8 +401,6 @@ describe("loadConfig", () => {
 
   it("resolves workspace to /workspace when running in Docker", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.container = "docker";
 
     const config = loadConfig();
@@ -549,8 +410,6 @@ describe("loadConfig", () => {
 
   it("parses MAX_FILE_SIZE when configured", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.MAX_FILE_SIZE = String(5 * 1024 * 1024);
 
     const config = loadConfig();
@@ -560,8 +419,6 @@ describe("loadConfig", () => {
 
   it("parses artifact retention settings", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.ARTIFACT_RETENTION_DAYS = "14.5";
     process.env.ARTIFACT_MAX_TURNS = "80";
     process.env.ARTIFACT_MAX_INBOX_DIRS = "12";
@@ -575,8 +432,6 @@ describe("loadConfig", () => {
 
   it("parses TELEGRAM_AUTO_SEND_ARTIFACTS", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.TELEGRAM_AUTO_SEND_ARTIFACTS = "true";
 
     expect(loadConfig().telegramAutoSendArtifacts).toBe(true);
@@ -587,8 +442,6 @@ describe("loadConfig", () => {
 
   it("parses CODEX_SYNC_INTERVAL_MS", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.CODEX_SYNC_INTERVAL_MS = "2500";
 
     const config = loadConfig();
@@ -598,8 +451,6 @@ describe("loadConfig", () => {
 
   it("parses external Codex busy polling settings", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.CODEX_EXTERNAL_BUSY_CHECK_MS = "1500";
     process.env.CODEX_EXTERNAL_BUSY_STALE_MS = "600000";
 
@@ -611,8 +462,6 @@ describe("loadConfig", () => {
 
   it("parses Pi agent settings", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.NORDRELAY_PI_ENABLED = "true";
     process.env.NORDRELAY_DEFAULT_AGENT = "pi";
     process.env.PI_CLI_PATH = "/usr/local/bin/pi";
@@ -634,8 +483,6 @@ describe("loadConfig", () => {
 
   it("parses Hermes agent settings", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.NORDRELAY_CODEX_ENABLED = "false";
     process.env.NORDRELAY_HERMES_ENABLED = "true";
     process.env.NORDRELAY_DEFAULT_AGENT = "hermes";
@@ -665,8 +512,6 @@ describe("loadConfig", () => {
 
   it("parses OpenClaw agent settings", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.NORDRELAY_CODEX_ENABLED = "false";
     process.env.NORDRELAY_OPENCLAW_ENABLED = "true";
     process.env.NORDRELAY_DEFAULT_AGENT = "openclaw";
@@ -700,8 +545,6 @@ describe("loadConfig", () => {
 
   it("parses Claude Code agent settings", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.NORDRELAY_CODEX_ENABLED = "false";
     process.env.NORDRELAY_CLAUDE_CODE_ENABLED = "true";
     process.env.NORDRELAY_DEFAULT_AGENT = "claude-code";
@@ -727,8 +570,6 @@ describe("loadConfig", () => {
 
   it("rejects a default agent that is not enabled", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.NORDRELAY_CODEX_ENABLED = "false";
     process.env.NORDRELAY_DEFAULT_AGENT = "codex";
 
@@ -749,8 +590,6 @@ describe("loadConfig", () => {
 
   it("parses CONNECTOR_LOG_FORMAT", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.CONNECTOR_LOG_FORMAT = "json";
 
     const config = loadConfig();
@@ -760,8 +599,6 @@ describe("loadConfig", () => {
 
   it("parses ENABLE_TELEGRAM_LOGIN boolean values", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
 
     const truthyValues = ["true", "1", "yes"];
     const falsyValues = ["false", "0", "no"];
@@ -785,8 +622,6 @@ describe("loadConfig", () => {
 
   it("parses ENABLE_TELEGRAM_REACTIONS boolean values", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
 
     const truthyValues = ["true", "1", "yes"];
     const falsyValues = ["false", "0", "no"];
@@ -810,8 +645,6 @@ describe("loadConfig", () => {
 
   it("parses SHOW_TURN_TOKEN_USAGE boolean values", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
 
     const truthyValues = ["true", "1", "yes"];
     const falsyValues = ["false", "0", "no"];
@@ -836,8 +669,6 @@ describe("loadConfig", () => {
   it("falls back to defaults for invalid optional enum values", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.CODEX_SANDBOX_MODE = "unsafe";
     process.env.CODEX_APPROVAL_POLICY = "sometimes";
     process.env.TOOL_VERBOSITY = "loud";
@@ -864,8 +695,6 @@ describe("loadConfig", () => {
 
   it("parses explicit launch profiles and default selection", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.ENABLE_UNSAFE_LAUNCH_PROFILES = "true";
     process.env.CODEX_LAUNCH_PROFILES_JSON = JSON.stringify([
       {
@@ -928,8 +757,6 @@ describe("loadConfig", () => {
 
   it("throws when CODEX_DEFAULT_LAUNCH_PROFILE is unknown", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.CODEX_LAUNCH_PROFILES_JSON = JSON.stringify([
       {
         id: "readonly",
@@ -945,8 +772,6 @@ describe("loadConfig", () => {
 
   it("throws when unsafe extra launch profiles are configured without enabling them", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.CODEX_LAUNCH_PROFILES_JSON = JSON.stringify([
       {
         id: "danger-full",
@@ -963,8 +788,6 @@ describe("loadConfig", () => {
 
   it("throws on duplicate launch profile ids", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
-    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
-    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
     process.env.CODEX_LAUNCH_PROFILES_JSON = JSON.stringify([
       {
         id: "readonly",

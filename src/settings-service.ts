@@ -38,18 +38,10 @@ const SECRET_KEYS = new Set([
   "OPENCLAW_GATEWAY_PASSWORD",
   "OPENAI_API_KEY",
   "TELEGRAM_WEBHOOK_SECRET",
-  "NORDRELAY_DASHBOARD_TOKEN",
-  "NORDRELAY_DASHBOARD_PASSWORD",
 ]);
 
 export const SETTING_DEFINITIONS: SettingDefinition[] = [
   setting("TELEGRAM_BOT_TOKEN", "Telegram bot token", "Telegram", "secret", "BotFather token.", true),
-  setting("TELEGRAM_ADMIN_USER_IDS", "Telegram admin user IDs", "Telegram", "list", "Comma-separated Telegram users allowed to administer and use the bot.", true),
-  setting("TELEGRAM_ALLOWED_USER_IDS", "Allowed operator user IDs", "Telegram", "list", "Optional non-admin operators.", true),
-  setting("TELEGRAM_READONLY_USER_IDS", "Readonly user IDs", "Telegram", "list", "Users allowed to inspect but not mutate.", true),
-  setting("TELEGRAM_ALLOWED_CHAT_IDS", "Allowed chat IDs", "Telegram", "list", "Optional chat allowlist.", true),
-  setting("TELEGRAM_ALLOW_ANY_CHAT", "Allow any Telegram chat", "Telegram", "boolean", "Unsafe override; keep off for normal use.", true),
-  setting("TELEGRAM_ROLE_POLICIES_JSON", "Role policy JSON", "Telegram", "json", "Granular Telegram permission policy.", true),
   setting("TELEGRAM_TRANSPORT", "Telegram transport", "Telegram", "string", "polling or webhook.", true, ["polling", "webhook"]),
   setting("TELEGRAM_WEBHOOK_URL", "Webhook public URL", "Telegram", "string", "Public base URL for webhook mode.", true),
   setting("TELEGRAM_WEBHOOK_HOST", "Webhook bind host", "Telegram", "string", "Local webhook bind host.", true),
@@ -149,9 +141,6 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   setting("FASTER_WHISPER_LANGUAGE", "faster-whisper language", "Voice", "string", "Fixed transcription language.", true),
   setting("FASTER_WHISPER_TIMEOUT_MS", "faster-whisper timeout", "Voice", "number", "Transcription timeout.", true),
 
-  setting("NORDRELAY_DASHBOARD_TOKEN", "Dashboard token", "Dashboard", "secret", "Bearer/login token for WebUI.", true),
-  setting("NORDRELAY_DASHBOARD_USER", "Dashboard user", "Dashboard", "string", "Optional Basic Auth user.", true),
-  setting("NORDRELAY_DASHBOARD_PASSWORD", "Dashboard password", "Dashboard", "secret", "Optional Basic Auth password.", true),
   setting("NORDRELAY_DASHBOARD_HOST", "Dashboard host", "Dashboard", "string", "WebUI bind host.", true),
   setting("NORDRELAY_DASHBOARD_PORT", "Dashboard port", "Dashboard", "number", "WebUI bind port.", true),
 ];

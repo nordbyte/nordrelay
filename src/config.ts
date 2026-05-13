@@ -22,10 +22,6 @@ import {
   type AgentReasoningEffort,
 } from "./agent.js";
 import {
-  parseRolePoliciesJson,
-  type TelegramRolePolicies,
-} from "./access-control.js";
-import {
   parseMirrorMode,
   parseNotifyMode,
   parseQuietHours,
@@ -42,16 +38,6 @@ export type ToolVerbosity = "all" | "summary" | "errors-only" | "none";
 
 export interface ConnectorConfig {
   telegramBotToken: string;
-  telegramAllowedUserIds: number[];
-  telegramAllowedUserIdSet: Set<number>;
-  telegramAllowedChatIds: number[];
-  telegramAllowedChatIdSet: Set<number>;
-  telegramAdminUserIds: number[];
-  telegramAdminUserIdSet: Set<number>;
-  telegramReadOnlyUserIds: number[];
-  telegramReadOnlyUserIdSet: Set<number>;
-  telegramRolePolicies: TelegramRolePolicies;
-  telegramAllowAnyChat: boolean;
   telegramRateLimitMinIntervalMs: number;
   telegramEditMinIntervalMs: number;
   telegramMirrorMode: TelegramMirrorMode;
@@ -137,32 +123,6 @@ export function loadConfig(): ConnectorConfig {
   loadEnvFile(path.resolve(process.cwd(), ".env"));
 
   const telegramBotToken = requireEnv("TELEGRAM_BOT_TOKEN");
-  const telegramAllowAnyChat = parseBooleanEnv(optionalString(process.env.TELEGRAM_ALLOW_ANY_CHAT), false);
-  const configuredAllowedUserIds = parseOptionalIdList(
-    optionalString(process.env.TELEGRAM_ALLOWED_USER_IDS),
-    "TELEGRAM_ALLOWED_USER_IDS",
-    { positiveOnly: true },
-  );
-  const telegramAllowedChatIds = parseOptionalIdList(
-    optionalString(process.env.TELEGRAM_ALLOWED_CHAT_IDS),
-    "TELEGRAM_ALLOWED_CHAT_IDS",
-    { positiveOnly: false },
-  );
-  const configuredAdminUserIds = parseOptionalIdList(
-    optionalString(process.env.TELEGRAM_ADMIN_USER_IDS),
-    "TELEGRAM_ADMIN_USER_IDS",
-    { positiveOnly: true },
-  );
-  ensureTelegramAdminIds(configuredAdminUserIds);
-  const telegramAllowedUserIds = mergeUniqueIds(configuredAllowedUserIds, configuredAdminUserIds);
-  const telegramReadOnlyUserIds = parseOptionalIdList(
-    optionalString(process.env.TELEGRAM_READONLY_USER_IDS),
-    "TELEGRAM_READONLY_USER_IDS",
-    { positiveOnly: true },
-  );
-  const telegramRolePolicies = parseRolePoliciesJson(optionalString(process.env.TELEGRAM_ROLE_POLICIES_JSON));
-  ensureTelegramAllowlist(telegramAllowedUserIds, telegramAllowedChatIds, telegramAllowAnyChat);
-  const telegramAdminUserIds = configuredAdminUserIds;
   const telegramRateLimitMinIntervalMs = parseNonNegativeIntegerEnv(optionalString(process.env.TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS), 80, "TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS");
   const telegramEditMinIntervalMs = parseNonNegativeIntegerEnv(optionalString(process.env.TELEGRAM_EDIT_MIN_INTERVAL_MS), 1_200, "TELEGRAM_EDIT_MIN_INTERVAL_MS");
   const telegramMirrorMode = parseMirrorMode(optionalString(process.env.TELEGRAM_CLI_MIRROR_MODE), "status");
@@ -279,16 +239,6 @@ export function loadConfig(): ConnectorConfig {
 
   return {
     telegramBotToken,
-    telegramAllowedUserIds,
-    telegramAllowedUserIdSet: new Set(telegramAllowedUserIds),
-    telegramAllowedChatIds,
-    telegramAllowedChatIdSet: new Set(telegramAllowedChatIds),
-    telegramAdminUserIds,
-    telegramAdminUserIdSet: new Set(telegramAdminUserIds),
-    telegramReadOnlyUserIds,
-    telegramReadOnlyUserIdSet: new Set(telegramReadOnlyUserIds),
-    telegramRolePolicies,
-    telegramAllowAnyChat,
     telegramRateLimitMinIntervalMs,
     telegramEditMinIntervalMs,
     telegramMirrorMode,
@@ -436,34 +386,6 @@ function optionalString(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-function parseOptionalIdList(
-  raw: string | undefined,
-  envName: string,
-  options: { positiveOnly: boolean },
-): number[] {
-  if (!raw) {
-    return [];
-  }
-
-  const ids = raw
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .map((value) => {
-      const parsed = Number(value);
-      if (!Number.isInteger(parsed) || (options.positiveOnly ? parsed <= 0 : parsed === 0)) {
-        throw new Error(`Invalid Telegram id in ${envName}: ${value}`);
-      }
-      return parsed;
-    });
-
-  if (raw.trim() && ids.length === 0) {
-    throw new Error(`${envName} must contain at least one id`);
-  }
-
-  return ids;
-}
-
 function parseOptionalStringList(raw: string | undefined): string[] {
   if (!raw) {
     return [];
@@ -476,34 +398,6 @@ function parseOptionalStringList(raw: string | undefined): string[] {
 
 function parsePathList(raw: string | undefined): string[] {
   return parseOptionalStringList(raw).map((value) => path.resolve(value));
-}
-
-function ensureTelegramAllowlist(
-  userIds: number[],
-  chatIds: number[],
-  allowAnyChat: boolean,
-): void {
-  if (allowAnyChat) {
-    return;
-  }
-
-  if (userIds.length > 0 || chatIds.length > 0) {
-    return;
-  }
-
-  throw new Error(
-    "TELEGRAM_ALLOWED_USER_IDS or TELEGRAM_ALLOWED_CHAT_IDS must contain at least one id",
-  );
-}
-
-function ensureTelegramAdminIds(userIds: number[]): void {
-  if (userIds.length === 0) {
-    throw new Error("TELEGRAM_ADMIN_USER_IDS must contain at least one id");
-  }
-}
-
-function mergeUniqueIds(...groups: number[][]): number[] {
-  return Array.from(new Set(groups.flat()));
 }
 
 function parseBooleanEnv(raw: string | undefined, defaultValue: boolean): boolean {

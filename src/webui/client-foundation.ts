@@ -1,10 +1,8 @@
 export function dashboardClientFoundation(): string {
   return `
-const token = localStorage.getItem('nordrelayDashboardToken') || '';
 const state = { snapshot:null, controls:null, newSessionControls:null, enabledAgents:[], settings:[], currentPage:'overview', settingsGroup:null, logsPlain:'', logTimer:null, toastTimer:null, cliStatusActive:false, selectedArtifactTurns:new Set(), mediaRecorder:null, recordedChunks:[], events:null, reconnectTimer:null, notifications:false, toolTooltipTimer:null, toolTooltipTarget:null, agentUpdateJobs:[], sessionsRequestId:0 };
-const authHeaders = () => token ? { authorization: 'Bearer ' + token } : {};
 async function api(path, options={}) {
-  const headers = { ...(options.body ? {'content-type':'application/json'} : {}), ...authHeaders(), ...(options.headers||{}) };
+  const headers = { ...(options.body ? {'content-type':'application/json'} : {}), ...(options.headers||{}) };
   const res = await fetch(path, { ...options, headers });
   if (res.status === 401) { location.reload(); return; }
   const text = await res.text();
@@ -36,6 +34,7 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>page(b.dataset.
 document.getElementById('menuBtn').onclick=()=>document.getElementById('sidebar').classList.toggle('open');
 document.getElementById('refreshBtn').onclick=()=>loadBootstrap();
 document.getElementById('themeBtn').onclick=toggleTheme;
+document.getElementById('logoutBtn').onclick=()=>safe(async()=>{await api('/api/dashboard/logout',{method:'POST'});location.href='/'});
 applyTheme(localStorage.getItem('nordrelayTheme') || 'light');
 
 function createPaginator(containerId, onChange, pageSize=50){
@@ -68,6 +67,7 @@ async function loadBootstrap(){
   renderAdapters(data.channels, data.agentAdapters);
   document.getElementById('footerVersion').textContent='NordRelay '+(data.status.health?.version || '');
   document.getElementById('footerHealth').textContent='Health: '+(data.status.health?.state?.status || 'unknown');
+  document.getElementById('footerUser').textContent='User: '+(data.auth?.user?.email || '-');
   const agentSelect=document.getElementById('agentSelect');
   agentSelect.innerHTML=data.enabledAgents.map(a=>'<option value="'+a+'">'+a+'</option>').join('');
   agentSelect.value=state.snapshot.session.agentId;

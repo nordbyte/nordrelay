@@ -12,7 +12,7 @@ export const DASHBOARD_PAGES: DashboardPage[] = [
   { id: "activity", label: "Activity" },
   { id: "artifacts", label: "Artifacts" },
   { id: "adapters", label: "Adapters" },
-  { id: "access", label: "Access" },
+  { id: "access", label: "Users" },
   { id: "version", label: "Version" },
   { id: "settings", label: "Settings" },
   { id: "logs", label: "Logs" },

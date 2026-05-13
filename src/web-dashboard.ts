@@ -8,11 +8,13 @@ import { enabledAgents } from "./agent-factory.js";
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { isAgentId } from "./agent.js";
 import { listChannelDescriptors } from "./channel-adapter.js";
+import { permissionForWebRequest } from "./access-control.js";
 import { loadConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { escapeHTML } from "./format.js";
 import { RelayRuntime, type RelayEvent } from "./relay-runtime.js";
 import { resolveDashboardEnvPath, SettingsService } from "./settings-service.js";
+import { UserStore, publicUser, publicUserSnapshot, type AuthenticatedUser } from "./user-management.js";
 import { dashboardJs } from "./web-dashboard-client.js";
 import { dashboardCss } from "./web-dashboard-style.js";
 import { renderDashboardNav } from "./web-dashboard-ui.js";
@@ -23,28 +25,14 @@ interface DashboardOptions {
   home: string;
 }
 
-interface DashboardAuth {
-  required: boolean;
-  publicBind: boolean;
-  token?: string;
-  user?: string;
-  password?: string;
-}
-
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
 
 const options = parseOptions(process.argv.slice(2));
-const auth = resolveDashboardAuth(options.host);
-if (auth.publicBind && !auth.token && !(auth.user && auth.password)) {
-  throw new Error(
-    "Dashboard bound to 0.0.0.0 requires NORDRELAY_DASHBOARD_TOKEN or NORDRELAY_DASHBOARD_USER/PASSWORD.",
-  );
-}
-
 const config = loadConfig();
 const runtime = new RelayRuntime(config);
 const settings = new SettingsService(resolveDashboardEnvPath(options.home));
+const users = new UserStore(options.home);
 
 const server = createServer((req, res) => {
   void handleRequest(req, res).catch((error) => {
@@ -60,29 +48,31 @@ process.once("SIGTERM", () => shutdown());
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-  const queryToken = url.searchParams.get("token");
-  if (queryToken && isAuthorizedToken(queryToken) && !url.pathname.startsWith("/api/")) {
-    setAuthCookie(res, queryToken);
-    res.writeHead(302, { location: url.pathname || "/" });
-    res.end();
-    return;
-  }
-
   if (url.pathname === "/api/auth" && req.method === "POST") {
     await handleLogin(req, res);
     return;
   }
+  if (url.pathname === "/api/dashboard/logout" && req.method === "POST") {
+    handleLogout(req, res);
+    return;
+  }
 
-  if (auth.required && !isAuthorizedRequest(req) && !isAuthorizedToken(queryToken ?? "")) {
+  const authenticated = authenticateRequest(req);
+  if (url.pathname === "/api/auth/me" && req.method === "GET") {
+    if (!authenticated) {
+      sendJson(res, 401, { error: "Authentication required", adminConfigured: users.hasAdminUser() });
+      return;
+    }
+    sendJson(res, 200, currentUserDto(authenticated));
+    return;
+  }
+
+  if (!authenticated) {
     if (url.pathname === "/" || url.pathname === "/index.html") {
-      sendText(res, 200, renderLoginPage(auth), "text/html; charset=utf-8");
+      sendText(res, 200, renderLoginPage({ adminConfigured: users.hasAdminUser() }), "text/html; charset=utf-8");
       return;
     }
-    if (url.pathname.startsWith("/api/") || url.pathname === "/healthz") {
-      sendJson(res, 401, { error: "Authentication required" });
-      return;
-    }
-    sendText(res, 401, "Authentication required\n", "text/plain; charset=utf-8");
+    sendJson(res, 401, { error: "Authentication required", adminConfigured: users.hasAdminUser() });
     return;
   }
 
@@ -92,7 +82,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   }
 
   if (url.pathname === "/" || url.pathname === "/index.html") {
-    sendText(res, 200, renderDashboardApp({ authRequired: auth.required }), "text/html; charset=utf-8");
+    sendText(res, 200, renderDashboardApp(), "text/html; charset=utf-8");
     return;
   }
 
@@ -116,13 +106,19 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
-  await handleApi(req, res, url);
+  await handleApi(req, res, url, authenticated);
 }
 
-async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, authUser: AuthenticatedUser): Promise<void> {
+  const permission = permissionForWebRequest(req.method, url.pathname);
+  if (!users.hasPermission(authUser, permission)) {
+    sendJson(res, 403, { error: `Access denied: ${permission} permission required.` });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/bootstrap") {
     sendJson(res, 200, {
-      auth: { required: auth.required, publicBind: auth.publicBind },
+      auth: currentUserDto(authUser),
       channels: listChannelDescriptors(),
       agentAdapters: listAgentAdapterDescriptors(),
       enabledAgents: enabledAgents(config),
@@ -193,7 +189,119 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
   }
 
   if (req.method === "GET" && url.pathname === "/api/permissions") {
-    sendJson(res, 200, runtime.permissions());
+    sendJson(res, 200, publicUserSnapshot(users.snapshot()));
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/users") {
+    sendJson(res, 200, publicUserSnapshot(users.snapshot()));
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/users") {
+    const body = await readJsonBody(req);
+    const user = users.createUser({
+      email: stringField(body, "email"),
+      displayName: optionalStringField(body, "displayName") ?? stringField(body, "email"),
+      password: stringField(body, "password"),
+      groupIds: arrayStringField(body, "groupIds"),
+      active: optionalBooleanField(body, "active") ?? true,
+      telegramUserId: optionalNumberField(body, "telegramUserId"),
+    });
+    sendJson(res, 201, { user: publicUser(user.user), groups: user.groups });
+    return;
+  }
+
+  const userMatch = url.pathname.match(/^\/api\/users\/([^/]+)$/);
+  if (userMatch?.[1] && req.method === "PATCH") {
+    const body = await readJsonBody(req);
+    const user = users.updateUser(decodeURIComponent(userMatch[1]), {
+      email: optionalStringField(body, "email"),
+      displayName: optionalStringField(body, "displayName"),
+      active: optionalBooleanField(body, "active"),
+      groupIds: body.groupIds === undefined ? undefined : arrayStringField(body, "groupIds"),
+    });
+    sendJson(res, 200, { user: publicUser(user.user), groups: user.groups });
+    return;
+  }
+
+  const passwordMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/password$/);
+  if (passwordMatch?.[1] && req.method === "POST") {
+    const body = await readJsonBody(req);
+    users.setPassword(decodeURIComponent(passwordMatch[1]), stringField(body, "password"));
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  const telegramLinkMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/telegram$/);
+  if (telegramLinkMatch?.[1] && req.method === "POST") {
+    const body = await readJsonBody(req);
+    if (body.createCode === true) {
+      sendJson(res, 201, { linkCode: users.createTelegramLinkCode(decodeURIComponent(telegramLinkMatch[1])) });
+      return;
+    }
+    sendJson(res, 201, {
+      identity: users.linkTelegramUser(decodeURIComponent(telegramLinkMatch[1]), {
+        telegramUserId: numberField(body, "telegramUserId"),
+        username: optionalStringField(body, "username"),
+      }),
+    });
+    return;
+  }
+
+  const telegramUnlinkMatch = url.pathname.match(/^\/api\/users\/[^/]+\/telegram\/([^/]+)$/);
+  if (telegramUnlinkMatch?.[1] && req.method === "DELETE") {
+    sendJson(res, 200, { removed: users.unlinkTelegramIdentity(decodeURIComponent(telegramUnlinkMatch[1])) });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/groups") {
+    sendJson(res, 200, { groups: users.listGroups() });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/groups") {
+    const body = await readJsonBody(req);
+    sendJson(res, 201, { group: users.createGroup({ name: stringField(body, "name"), description: optionalStringField(body, "description"), permissions: arrayStringField(body, "permissions") }) });
+    return;
+  }
+
+  const groupMatch = url.pathname.match(/^\/api\/groups\/([^/]+)$/);
+  if (groupMatch?.[1] && req.method === "PATCH") {
+    const body = await readJsonBody(req);
+    sendJson(res, 200, { group: users.updateGroup(decodeURIComponent(groupMatch[1]), {
+      name: optionalStringField(body, "name"),
+      description: optionalStringField(body, "description"),
+      permissions: body.permissions === undefined ? undefined : arrayStringField(body, "permissions"),
+    }) });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/telegram-chats") {
+    sendJson(res, 200, { chats: users.snapshot().telegramChats });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/telegram-chats") {
+    const body = await readJsonBody(req);
+    sendJson(res, 201, { chat: users.registerTelegramChat({
+      chatId: numberField(body, "chatId"),
+      title: optionalStringField(body, "title"),
+      type: optionalStringField(body, "type"),
+      enabled: optionalBooleanField(body, "enabled") ?? true,
+      allowedGroupIds: arrayStringField(body, "allowedGroupIds"),
+    }) });
+    return;
+  }
+
+  const chatMatch = url.pathname.match(/^\/api\/telegram-chats\/([^/]+)$/);
+  if (chatMatch?.[1] && req.method === "PATCH") {
+    const body = await readJsonBody(req);
+    sendJson(res, 200, { chat: users.updateTelegramChat(decodeURIComponent(chatMatch[1]), {
+      enabled: optionalBooleanField(body, "enabled"),
+      title: optionalStringField(body, "title"),
+      allowedGroupIds: body.allowedGroupIds === undefined ? undefined : arrayStringField(body, "allowedGroupIds"),
+    }) });
     return;
   }
 
@@ -489,9 +597,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
 }
 
 function handleEvents(req: IncomingMessage, res: ServerResponse): void {
-  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-  const token = url.searchParams.get("token");
-  if (auth.required && !(isAuthorizedRequest(req) || (token && isAuthorizedToken(token)))) {
+  if (!authenticateRequest(req)) {
     sendJson(res, 401, { error: "Authentication required" });
     return;
   }
@@ -518,20 +624,26 @@ function handleEvents(req: IncomingMessage, res: ServerResponse): void {
 
 async function handleLogin(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = await readJsonBody(req);
-  const token = optionalStringField(body, "token");
-  const user = optionalStringField(body, "user");
+  const email = optionalStringField(body, "email");
   const password = optionalStringField(body, "password");
-  if (token && isAuthorizedToken(token)) {
-    setAuthCookie(res, token);
-    sendJson(res, 200, { ok: true, mode: "token" });
+  if (!users.hasAdminUser()) {
+    sendJson(res, 503, { error: "No admin user exists. Run nordrelay user create-admin first." });
     return;
   }
-  if (user && password && isAuthorizedBasic(user, password)) {
-    setBasicCookie(res, user, password);
-    sendJson(res, 200, { ok: true, mode: "basic" });
+  const authUser = email && password ? users.verifyPassword(email, password) : null;
+  if (!authUser) {
+    sendJson(res, 401, { error: "Invalid credentials" });
     return;
   }
-  sendJson(res, 401, { error: "Invalid dashboard credentials" });
+  const session = users.createWebSession(authUser.user.id);
+  setSessionCookie(res, session.token);
+  sendJson(res, 200, currentUserDto(authUser));
+}
+
+function handleLogout(req: IncomingMessage, res: ServerResponse): void {
+  users.destroyWebSession(parseCookies(req.headers.cookie ?? "").nr_session);
+  clearSessionCookie(res);
+  sendJson(res, 200, { ok: true });
 }
 
 function parseOptions(argv: string[]): DashboardOptions {
@@ -550,85 +662,25 @@ function parseOptions(argv: string[]): DashboardOptions {
   return { host, port, home };
 }
 
-function resolveDashboardAuth(host: string): DashboardAuth {
-  const token = optionalEnv("NORDRELAY_DASHBOARD_TOKEN");
-  const user = optionalEnv("NORDRELAY_DASHBOARD_USER");
-  const password = optionalEnv("NORDRELAY_DASHBOARD_PASSWORD");
-  const publicBind = isPublicBindHost(host);
-  return {
-    required: publicBind || Boolean(token || (user && password)),
-    publicBind,
-    token,
-    user,
-    password,
-  };
-}
-
-function isPublicBindHost(host: string): boolean {
-  return host === "0.0.0.0" || host === "::" || host === "";
-}
-
-function isAuthorizedRequest(req: IncomingMessage): boolean {
-  if (!auth.required) {
-    return true;
-  }
-  const header = req.headers.authorization;
-  if (header?.startsWith("Bearer ") && isAuthorizedToken(header.slice("Bearer ".length).trim())) {
-    return true;
-  }
-  if (header?.startsWith("Basic ")) {
-    const decoded = Buffer.from(header.slice("Basic ".length), "base64").toString("utf8");
-    const [user, ...passwordParts] = decoded.split(":");
-    if (isAuthorizedBasic(user ?? "", passwordParts.join(":"))) {
-      return true;
-    }
-  }
+function authenticateRequest(req: IncomingMessage): AuthenticatedUser | null {
   const cookies = parseCookies(req.headers.cookie ?? "");
-  if (cookies.nrdash && isAuthorizedToken(cookies.nrdash)) {
-    return true;
-  }
-  if (cookies.nrdash_basic) {
-    const decoded = Buffer.from(cookies.nrdash_basic, "base64").toString("utf8");
-    const [user, ...passwordParts] = decoded.split(":");
-    if (isAuthorizedBasic(user ?? "", passwordParts.join(":"))) {
-      return true;
-    }
-  }
-  return false;
+  return users.resolveWebSession(cookies.nr_session);
 }
 
-function isAuthorizedToken(token: string): boolean {
-  return Boolean(auth.token && constantTimeEqual(token, auth.token));
+function setSessionCookie(res: ServerResponse, token: string): void {
+  res.setHeader("set-cookie", `nr_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/`);
 }
 
-function isAuthorizedBasic(user: string, password: string): boolean {
-  return Boolean(auth.user && auth.password && constantTimeEqual(user, auth.user) && constantTimeEqual(password, auth.password));
+function clearSessionCookie(res: ServerResponse): void {
+  res.setHeader("set-cookie", "nr_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0");
 }
 
-function constantTimeEqual(left: string, right: string): boolean {
-  const leftBuffer = Buffer.from(left);
-  const rightBuffer = Buffer.from(right);
-  if (leftBuffer.length !== rightBuffer.length) {
-    return false;
-  }
-  return cryptoTimingSafeEqual(leftBuffer, rightBuffer);
-}
-
-function cryptoTimingSafeEqual(left: Buffer, right: Buffer): boolean {
-  let diff = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    diff |= left[index]! ^ right[index]!;
-  }
-  return diff === 0;
-}
-
-function setAuthCookie(res: ServerResponse, token: string): void {
-  res.setHeader("set-cookie", `nrdash=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/`);
-}
-
-function setBasicCookie(res: ServerResponse, user: string, password: string): void {
-  const value = Buffer.from(`${user}:${password}`).toString("base64");
-  res.setHeader("set-cookie", `nrdash_basic=${encodeURIComponent(value)}; HttpOnly; SameSite=Strict; Path=/`);
+function currentUserDto(authUser: AuthenticatedUser) {
+  return {
+    user: publicUser(authUser.user),
+    groups: authUser.groups,
+    permissions: authUser.permissions,
+  };
 }
 
 function parseCookies(cookieHeader: string): Record<string, string> {
@@ -686,6 +738,36 @@ function optionalStringField(value: Record<string, unknown>, key: string): strin
 function optionalBooleanField(value: Record<string, unknown>, key: string): boolean | undefined {
   const field = value[key];
   return typeof field === "boolean" ? field : undefined;
+}
+
+function numberField(value: Record<string, unknown>, key: string): number {
+  const field = value[key];
+  const parsed = typeof field === "number" ? field : typeof field === "string" ? Number(field) : Number.NaN;
+  if (!Number.isInteger(parsed)) {
+    throw new Error(`${key} must be an integer`);
+  }
+  return parsed;
+}
+
+function optionalNumberField(value: Record<string, unknown>, key: string): number | undefined {
+  if (value[key] === undefined || value[key] === "") {
+    return undefined;
+  }
+  return numberField(value, key);
+}
+
+function arrayStringField(value: Record<string, unknown>, key: string): string[] {
+  const field = value[key];
+  if (field === undefined || field === null || field === "") {
+    return [];
+  }
+  if (Array.isArray(field)) {
+    return field.filter((item): item is string => typeof item === "string");
+  }
+  if (typeof field === "string") {
+    return field.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+  throw new Error(`${key} must be a string list`);
 }
 
 function parseAgentId(value: string | undefined) {
@@ -757,13 +839,7 @@ function optionalEnv(key: string): string | undefined {
 
 function activeSettingsValues(current: typeof config): Record<string, string | undefined> {
   return {
-    TELEGRAM_ALLOW_ANY_CHAT: boolValue(current.telegramAllowAnyChat),
     TELEGRAM_BOT_TOKEN: current.telegramBotToken,
-    TELEGRAM_ADMIN_USER_IDS: current.telegramAdminUserIds.join(","),
-    TELEGRAM_ALLOWED_USER_IDS: current.telegramAllowedUserIds.join(","),
-    TELEGRAM_READONLY_USER_IDS: current.telegramReadOnlyUserIds.join(","),
-    TELEGRAM_ALLOWED_CHAT_IDS: current.telegramAllowedChatIds.join(","),
-    TELEGRAM_ROLE_POLICIES_JSON: optionalEnv("TELEGRAM_ROLE_POLICIES_JSON"),
     TELEGRAM_TRANSPORT: current.telegramTransport,
     TELEGRAM_WEBHOOK_URL: current.telegramWebhookUrl,
     TELEGRAM_WEBHOOK_HOST: current.telegramWebhookHost,
@@ -874,7 +950,7 @@ function shutdown(): void {
   server.close(() => process.exit(0));
 }
 
-function renderLoginPage(currentAuth: DashboardAuth): string {
+function renderLoginPage(options: { adminConfigured: boolean }): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -895,18 +971,17 @@ function renderLoginPage(currentAuth: DashboardAuth): string {
 <body>
   <form id="login">
     <h1>NordRelay Dashboard</h1>
-    <p>${currentAuth.publicBind ? "Remote dashboard access requires authentication." : "Authentication required."}</p>
-    ${currentAuth.token ? '<label>Token</label><input id="token" name="token" type="password" autocomplete="current-password">' : ""}
-    ${currentAuth.user ? '<label>User</label><input id="user" name="user" autocomplete="username"><label>Password</label><input id="password" name="password" type="password" autocomplete="current-password">' : ""}
-    <button>Sign in</button>
+    <p>${options.adminConfigured ? "Sign in with your NordRelay user account." : "No admin user exists. Run nordrelay user create-admin on this host first."}</p>
+    <label>Email</label><input id="email" name="email" type="email" autocomplete="username" ${options.adminConfigured ? "" : "disabled"}>
+    <label>Password</label><input id="password" name="password" type="password" autocomplete="current-password" ${options.adminConfigured ? "" : "disabled"}>
+    <button ${options.adminConfigured ? "" : "disabled"}>Sign in</button>
     <div class="error" id="error"></div>
   </form>
   <script>
     document.getElementById('login').addEventListener('submit', async (event) => {
       event.preventDefault();
       const payload = {
-        token: document.getElementById('token')?.value || undefined,
-        user: document.getElementById('user')?.value || undefined,
+        email: document.getElementById('email')?.value || undefined,
         password: document.getElementById('password')?.value || undefined,
       };
       const res = await fetch('/api/auth', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(payload) });
@@ -914,7 +989,6 @@ function renderLoginPage(currentAuth: DashboardAuth): string {
         document.getElementById('error').textContent = 'Invalid credentials';
         return;
       }
-      if (payload.token) localStorage.setItem('nordrelayDashboardToken', payload.token);
       location.href = '/';
     });
   </script>
@@ -922,7 +996,7 @@ function renderLoginPage(currentAuth: DashboardAuth): string {
 </html>`;
 }
 
-function renderDashboardApp(options: { authRequired: boolean }): string {
+function renderDashboardApp(): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -952,6 +1026,7 @@ function renderDashboardApp(options: { authRequired: boolean }): string {
           <select id="agentSelect"></select>
           <button id="themeBtn" class="secondary" title="Toggle dark theme">Dark</button>
           <button id="refreshBtn">Refresh</button>
+          <button id="logoutBtn" class="secondary">Logout</button>
         </div>
       </header>
 
@@ -1048,8 +1123,12 @@ function renderDashboardApp(options: { authRequired: boolean }): string {
 
       <section class="page" id="page-access">
         <div class="panel">
-          <div class="row"><button id="loadAccessBtn">Reload access</button><button id="saveAccessBtn">Save access settings</button><button id="lockSessionBtn" class="secondary">Lock web session</button><button id="unlockSessionBtn" class="secondary">Unlock web session</button></div>
+          <div class="row"><button id="loadAccessBtn">Reload users</button><button id="createUserBtn">Create user</button><button id="createGroupBtn" class="secondary">Create group</button><button id="lockSessionBtn" class="secondary">Lock web session</button><button id="unlockSessionBtn" class="secondary">Unlock web session</button></div>
           <div id="accessPanel" class="settings-grid"></div>
+          <h2>Groups</h2>
+          <div id="groupsList" class="list"></div>
+          <h2>Telegram chats</h2>
+          <div id="telegramChatsList" class="list"></div>
           <h2>Locks</h2>
           <div id="locksList" class="list"></div>
           <h2>Audit</h2>
@@ -1089,7 +1168,7 @@ function renderDashboardApp(options: { authRequired: boolean }): string {
       <footer>
         <span id="footerVersion">NordRelay</span>
         <span id="footerHealth">Health: loading</span>
-        <span>Dashboard bind: ${escapeHTML(options.authRequired ? "authenticated" : "local")}</span>
+        <span id="footerUser">User: loading</span>
       </footer>
     </main>
   </div>

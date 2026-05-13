@@ -7,11 +7,10 @@ import { autoRetry } from "@grammyjs/auto-retry";
 import { Bot, InlineKeyboard, InputFile, type Context } from "grammy";
 
 import {
-  hasTelegramPermission,
+  ADMIN_GROUP_ID,
   permissionForCallbackData,
   permissionForCommand,
-  type TelegramPermission,
-  type TelegramRole,
+  type Permission,
 } from "./access-control.js";
 import {
   buildFileInstructions,
@@ -134,6 +133,7 @@ import {
 import { SessionRegistry } from "./session-registry.js";
 import { getAvailableBackends, transcribeAudio, type TranscriptionBackend } from "./voice.js";
 import { getTelegramRateLimitMetrics, telegramRateLimiter, type TelegramRateLimitMetrics } from "./telegram-rate-limit.js";
+import { UserStore, type AuthenticatedUser } from "./user-management.js";
 import {
   evaluateWorkspacePolicy,
   filterAllowedWorkspaces,
@@ -459,6 +459,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const preferencesStore = new BotPreferencesStore(config.workspace, config.stateBackend);
   const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
   const lockStore = new SessionLockStore(config.workspace, config.stateBackend);
+  const userStore = new UserStore();
+  const contextUsers = new WeakMap<Context, AuthenticatedUser>();
   const agentUpdates = new AgentUpdateManager();
   const drainingQueues = new Set<TelegramContextKey>();
   const externalQueueTimers = new Map<TelegramContextKey, NodeJS.Timeout>();
@@ -1139,37 +1141,35 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     externalQueueTimers.set(contextKey, timer);
   };
 
-  const getUserRole = (ctx: Context): TelegramRole => {
-    const fromId = ctx.from?.id;
-    if (fromId !== undefined && config.telegramAdminUserIdSet.has(fromId)) {
-      return "admin";
-    }
-    if (fromId !== undefined && config.telegramReadOnlyUserIdSet.has(fromId)) {
-      return "readonly";
-    }
-    return "operator";
+  const getAuthenticatedUser = (ctx: Context): AuthenticatedUser | null => contextUsers.get(ctx) ?? null;
+
+  const getUserRole = (ctx: Context): string => {
+    const authUser = getAuthenticatedUser(ctx);
+    return authUser?.groups.map((group) => group.name).join(", ") || "unauthenticated";
   };
 
-  const getRequiredPermission = (ctx: Context): TelegramPermission => {
+  const isAdminUser = (ctx: Context): boolean => Boolean(getAuthenticatedUser(ctx)?.groups.some((group) => group.id === ADMIN_GROUP_ID));
+
+  const getRequiredPermission = (ctx: Context): Permission => {
     if (ctx.callbackQuery?.data) {
       return permissionForCallbackData(ctx.callbackQuery.data);
     }
 
     if (ctx.message?.voice || ctx.message?.audio || ctx.message?.photo || ctx.message?.document) {
-      return "files";
+      return "files.write";
     }
     const text = ctx.message?.text?.trim();
     if (!text) {
       return "inspect";
     }
     if (!text.startsWith("/")) {
-      return "prompt";
+      return "prompt.send";
     }
 
     const command = extractCommandName(text);
     if (command === "queue") {
       const argument = text.replace(/^\/queue(?:@\w+)?\s*/i, "").trim();
-      return argument ? "prompt" : "inspect";
+      return argument ? "prompt.send" : "inspect";
     }
     return permissionForCommand(command);
   };
@@ -1206,7 +1206,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     session: AgentSessionService,
   ): Promise<boolean> => {
     const lock = lockStore.get(contextKey);
-    const isAdmin = getUserRole(ctx) === "admin";
+    const isAdmin = isAdminUser(ctx);
     if (canWriteWithLock(lock, ctx.from?.id, isAdmin)) {
       return false;
     }
@@ -2258,23 +2258,49 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   bot.use(async (ctx, next) => {
     const fromId = ctx.from?.id;
     const chatId = ctx.chat?.id;
-    const authorized =
-      config.telegramAllowAnyChat ||
-      (fromId !== undefined && config.telegramAllowedUserIdSet.has(fromId)) ||
-      (chatId !== undefined && config.telegramAllowedChatIdSet.has(chatId));
+    const chatType = ctx.chat?.type;
+    const commandName = ctx.message?.text?.startsWith("/") ? extractCommandName(ctx.message.text) : undefined;
 
-    if (!authorized) {
+    if (commandName === "link") {
+      await next();
+      return;
+    }
+
+    if (!userStore.hasAdminUser()) {
+      const message = "NordRelay has no admin user yet. Run `nordrelay user create-admin` on the host.";
       if (ctx.callbackQuery) {
-        await ctx.answerCallbackQuery({ text: "Unauthorized" }).catch(() => {});
+        await ctx.answerCallbackQuery({ text: "No admin user configured" }).catch(() => {});
       } else if (ctx.chat) {
-        await safeReply(ctx, escapeHTML("Unauthorized"), { fallbackText: "Unauthorized" });
+        await safeReply(ctx, escapeHTML(message), { fallbackText: message });
       }
       return;
     }
 
-    const role = getUserRole(ctx);
+    const authUser = userStore.resolveTelegramUser(fromId);
+    if (!authUser) {
+      const message = "Unauthorized. Link this Telegram account to a NordRelay user first.";
+      if (ctx.callbackQuery) {
+        await ctx.answerCallbackQuery({ text: "Unauthorized" }).catch(() => {});
+      } else if (ctx.chat?.type === "private") {
+        await safeReply(ctx, escapeHTML(message), { fallbackText: message });
+      }
+      return;
+    }
+    contextUsers.set(ctx, authUser);
+
+    const chatAllowed = userStore.isTelegramChatAllowed(typeof chatId === "number" ? chatId : undefined, chatType, authUser);
+    if (!chatAllowed && commandName !== "register_chat") {
+      const message = "This Telegram chat is not enabled for NordRelay. An admin can run /register_chat in this chat.";
+      if (ctx.callbackQuery) {
+        await ctx.answerCallbackQuery({ text: "Chat not enabled" }).catch(() => {});
+      } else if (ctx.chat?.type === "private") {
+        await safeReply(ctx, escapeHTML(message), { fallbackText: message });
+      }
+      return;
+    }
+
     const permission = getRequiredPermission(ctx);
-    if (!hasTelegramPermission(config.telegramRolePolicies, role, permission)) {
+    if (!userStore.hasPermission(authUser, permission)) {
       const message = `Access denied: ${permission} permission required.`;
       if (ctx.callbackQuery) {
         await ctx.answerCallbackQuery({ text: message }).catch(() => {});
@@ -2285,6 +2311,82 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     await next();
+  });
+
+  bot.command("link", async (ctx) => {
+    if (ctx.chat?.type !== "private") {
+      await safeReply(ctx, escapeHTML("Use /link in a private chat with the bot."), {
+        fallbackText: "Use /link in a private chat with the bot.",
+      });
+      return;
+    }
+    const code = (ctx.message?.text ?? "").replace(/^\/link(?:@\w+)?\s*/i, "").trim();
+    if (!code) {
+      await safeReply(ctx, escapeHTML("Send /link <code> after creating a Telegram link code in the WebUI or CLI."), {
+        fallbackText: "Send /link <code> after creating a Telegram link code in the WebUI or CLI.",
+      });
+      return;
+    }
+    if (!ctx.from?.id) {
+      return;
+    }
+    try {
+      const linked = userStore.consumeTelegramLinkCode(code, {
+        telegramUserId: ctx.from.id,
+        username: ctx.from.username,
+        firstName: ctx.from.first_name,
+        lastName: ctx.from.last_name,
+      });
+      contextUsers.set(ctx, linked);
+      await safeReply(ctx, escapeHTML(`Linked Telegram account to ${linked.user.email}.`), {
+        fallbackText: `Linked Telegram account to ${linked.user.email}.`,
+      });
+    } catch (error) {
+      const message = friendlyErrorText(error);
+      await safeReply(ctx, `<b>Link failed:</b> ${escapeHTML(message)}`, { fallbackText: `Link failed: ${message}` });
+    }
+  });
+
+  bot.command("whoami", async (ctx) => {
+    const authUser = getAuthenticatedUser(ctx);
+    if (!authUser) {
+      await safeReply(ctx, escapeHTML("Not linked."), { fallbackText: "Not linked." });
+      return;
+    }
+    const text = [
+      `User: ${authUser.user.displayName} <${authUser.user.email}>`,
+      `Groups: ${authUser.groups.map((group) => group.name).join(", ") || "-"}`,
+      `Permissions: ${authUser.permissions.join(", ") || "-"}`,
+    ].join("\n");
+    await safeReply(ctx, `<b>User:</b> ${escapeHTML(authUser.user.displayName)}\n<b>Email:</b> <code>${escapeHTML(authUser.user.email)}</code>\n<b>Groups:</b> <code>${escapeHTML(authUser.groups.map((group) => group.name).join(", ") || "-")}</code>`, {
+      fallbackText: text,
+    });
+  });
+
+  bot.command("register_chat", async (ctx) => {
+    const authUser = getAuthenticatedUser(ctx);
+    if (!authUser || !userStore.hasPermission(authUser, "users.write")) {
+      await safeReply(ctx, escapeHTML("Access denied: users.write permission required."), {
+        fallbackText: "Access denied: users.write permission required.",
+      });
+      return;
+    }
+    if (!ctx.chat?.id || ctx.chat.type === "private") {
+      await safeReply(ctx, escapeHTML("Run /register_chat inside a Telegram group or supergroup."), {
+        fallbackText: "Run /register_chat inside a Telegram group or supergroup.",
+      });
+      return;
+    }
+    const chat = userStore.registerTelegramChat({
+      chatId: ctx.chat.id,
+      title: "title" in ctx.chat ? ctx.chat.title : undefined,
+      type: ctx.chat.type,
+      enabled: true,
+      allowedGroupIds: [],
+    });
+    await safeReply(ctx, escapeHTML(`Telegram chat enabled for NordRelay.\nChat ID: ${chat.chatId}`), {
+      fallbackText: `Telegram chat enabled for NordRelay.\nChat ID: ${chat.chatId}`,
+    });
   });
 
   bot.command("start", async (ctx) => {
@@ -2836,7 +2938,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
     const { contextKey, session } = contextSession;
     const existing = lockStore.get(contextKey);
-    if (existing && existing.ownerId !== ctx.from.id && getUserRole(ctx) !== "admin") {
+    if (existing && existing.ownerId !== ctx.from.id && !isAdminUser(ctx)) {
       const text = `Session is already locked by ${formatLockOwner(existing)}.`;
       await safeReply(ctx, escapeHTML(text), { fallbackText: text });
       return;
@@ -2858,7 +2960,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
     const { contextKey, session } = contextSession;
     const lock = lockStore.get(contextKey);
-    if (lock && lock.ownerId !== ctx.from?.id && getUserRole(ctx) !== "admin") {
+    if (lock && lock.ownerId !== ctx.from?.id && !isAdminUser(ctx)) {
       const text = `Only ${formatLockOwner(lock)} or an admin can unlock this session.`;
       await safeReply(ctx, escapeHTML(text), { fallbackText: text });
       return;
@@ -4208,8 +4310,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
-    const role = getUserRole(ctx);
-    if (pending.requestedBy !== undefined && ctx.from?.id !== pending.requestedBy && role !== "admin") {
+    if (pending.requestedBy !== undefined && ctx.from?.id !== pending.requestedBy && !isAdminUser(ctx)) {
       await ctx.answerCallbackQuery({ text: "Only the requester or an admin can approve" });
       return;
     }
@@ -5017,6 +5118,9 @@ export async function registerCommands(bot: Bot<Context>): Promise<void> {
   await bot.api.setMyCommands([
     { command: "start", description: "Welcome & status" },
     { command: "help", description: "Command reference" },
+    { command: "link", description: "Link Telegram to NordRelay user" },
+    { command: "whoami", description: "Show your NordRelay user" },
+    { command: "register_chat", description: "Admin: enable this group chat" },
     { command: "channels", description: "Messaging adapter status" },
     { command: "agents", description: "Agent adapter status" },
     { command: "agent", description: "Select agent" },
@@ -5511,7 +5615,7 @@ function renderDiagnosticsPlain(
   registry: SessionRegistry,
   health: Awaited<ReturnType<typeof getConnectorHealth>>,
   authenticated: boolean,
-  role: TelegramRole,
+  role: string,
   queueLength: number,
   progress: TurnProgress | undefined,
   runtime: RuntimeDiagnostics,
@@ -5552,7 +5656,7 @@ function renderDiagnosticsPlain(
     `Artifact ignore dirs/globs: ${config.artifactIgnoreDirs.length}/${config.artifactIgnoreGlobs.length}`,
     `Artifact retention: ${config.artifactRetentionDays}d / ${config.artifactMaxTurnDirs} turns / ${config.artifactMaxInboxDirs} inbox dirs`,
     `Workspace allowed/warn roots: ${config.workspaceAllowedRoots.length}/${config.workspaceWarnRoots.length}`,
-    `Allowed users/chats/admins/readonly: ${config.telegramAllowedUserIds.length}/${config.telegramAllowedChatIds.length}/${config.telegramAdminUserIds.length}/${config.telegramReadOnlyUserIds.length}`,
+    "User management: users/groups/telegram identities",
     `Session lock TTL: ${config.sessionLockTtlMs} ms`,
     `Audit max events: ${config.auditMaxEvents}`,
     `Loaded sessions: ${contexts.length}`,
@@ -5566,7 +5670,7 @@ function renderDiagnosticsHTML(
   registry: SessionRegistry,
   health: Awaited<ReturnType<typeof getConnectorHealth>>,
   authenticated: boolean,
-  role: TelegramRole,
+  role: string,
   queueLength: number,
   progress: TurnProgress | undefined,
   runtime: RuntimeDiagnostics,
@@ -5607,7 +5711,7 @@ function renderDiagnosticsHTML(
     `<b>Artifact ignore dirs/globs:</b> <code>${config.artifactIgnoreDirs.length}/${config.artifactIgnoreGlobs.length}</code>`,
     `<b>Artifact retention:</b> <code>${config.artifactRetentionDays}d / ${config.artifactMaxTurnDirs} turns / ${config.artifactMaxInboxDirs} inbox dirs</code>`,
     `<b>Workspace allowed/warn roots:</b> <code>${config.workspaceAllowedRoots.length}/${config.workspaceWarnRoots.length}</code>`,
-    `<b>Allowed users/chats/admins/readonly:</b> <code>${config.telegramAllowedUserIds.length}/${config.telegramAllowedChatIds.length}/${config.telegramAdminUserIds.length}/${config.telegramReadOnlyUserIds.length}</code>`,
+    "<b>User management:</b> <code>users/groups/telegram identities</code>",
     `<b>Session lock TTL:</b> <code>${config.sessionLockTtlMs} ms</code>`,
     `<b>Audit max events:</b> <code>${config.auditMaxEvents}</code>`,
     `<b>Loaded sessions:</b> <code>${contexts.length}</code>`,
@@ -5619,7 +5723,7 @@ function renderDiagnosticsHTML(
 function renderHealthPlain(
   health: Awaited<ReturnType<typeof getConnectorHealth>>,
   authenticated: boolean,
-  role: "admin" | "operator" | "readonly",
+  role: string,
 ): string {
   return [
     `Status: ${health.state.status ?? "unknown"}`,
@@ -5643,7 +5747,7 @@ function renderHealthPlain(
 function renderHealthHTML(
   health: Awaited<ReturnType<typeof getConnectorHealth>>,
   authenticated: boolean,
-  role: "admin" | "operator" | "readonly",
+  role: string,
 ): string {
   return [
     `<b>Status:</b> <code>${escapeHTML(health.state.status ?? "unknown")}</code>`,

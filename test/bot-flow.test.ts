@@ -4,10 +4,10 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createDefaultRolePolicies } from "../src/access-control.js";
 import { createBot } from "../src/bot.js";
 import { createDefaultLaunchProfile } from "../src/codex-launch.js";
 import type { ConnectorConfig } from "../src/config.js";
+import { UserStore } from "../src/user-management.js";
 
 const mockCodexState = vi.hoisted(() => ({
   getThread: vi.fn(() => null),
@@ -135,6 +135,7 @@ vi.mock("../src/operations.js", async (importOriginal) => {
 });
 
 const tempDirs: string[] = [];
+const originalNordrelayHome = process.env.NORDRELAY_HOME;
 
 function createTempWorkspace(): string {
   const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-flow-"));
@@ -143,18 +144,25 @@ function createTempWorkspace(): string {
 }
 
 function createConfig(overrides: Partial<ConnectorConfig> = {}): ConnectorConfig {
+  const workspace = createTempWorkspace();
+  process.env.NORDRELAY_HOME = workspace;
+  const users = new UserStore(workspace);
+  users.createAdmin({
+    email: "admin@example.com",
+    displayName: "Admin",
+    password: "password123",
+    telegramUserId: 123,
+  });
+  users.createUser({
+    email: "readonly@example.com",
+    displayName: "Read Only",
+    password: "password123",
+    groupIds: ["readonly"],
+    telegramUserId: 999,
+  });
+
   return {
     telegramBotToken: "123:token",
-    telegramAllowedUserIds: [123, 999],
-    telegramAllowedUserIdSet: new Set([123, 999]),
-    telegramAllowedChatIds: [],
-    telegramAllowedChatIdSet: new Set(),
-    telegramAdminUserIds: [123],
-    telegramAdminUserIdSet: new Set([123]),
-    telegramReadOnlyUserIds: [999],
-    telegramReadOnlyUserIdSet: new Set([999]),
-    telegramRolePolicies: createDefaultRolePolicies(),
-    telegramAllowAnyChat: false,
     telegramRateLimitMinIntervalMs: 0,
     telegramEditMinIntervalMs: 0,
     telegramMirrorMode: "status",
@@ -162,7 +170,13 @@ function createConfig(overrides: Partial<ConnectorConfig> = {}): ConnectorConfig
     telegramNotifyMode: "minimal",
     telegramQuietHours: null,
     telegramRedactPatterns: [],
-    workspace: createTempWorkspace(),
+    telegramTransport: "polling",
+    telegramWebhookUrl: undefined,
+    telegramWebhookHost: "127.0.0.1",
+    telegramWebhookPort: 8080,
+    telegramWebhookPath: "/telegram/webhook",
+    telegramWebhookSecret: undefined,
+    workspace,
     workspaceAllowedRoots: [],
     workspaceWarnRoots: [],
     maxFileSize: 20 * 1024 * 1024,
@@ -226,6 +240,8 @@ function createConfig(overrides: Partial<ConnectorConfig> = {}): ConnectorConfig
     voicePreferredBackend: "auto",
     voiceDefaultLanguage: undefined,
     voiceTranscribeOnly: false,
+    auditMaxEvents: 1000,
+    sessionLockTtlMs: 1_800_000,
     ...overrides,
   };
 }
@@ -477,6 +493,11 @@ describe("bot flow integration", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    if (originalNordrelayHome === undefined) {
+      delete process.env.NORDRELAY_HOME;
+    } else {
+      process.env.NORDRELAY_HOME = originalNordrelayHome;
+    }
     while (tempDirs.length > 0) {
       rmSync(tempDirs.pop()!, { recursive: true, force: true });
     }
@@ -489,7 +510,7 @@ describe("bot flow integration", () => {
 
     await bot.handleUpdate(messageUpdate("run tests", 999) as any);
 
-    expect(api.sentMessages.at(-1)?.text).toContain("Access denied: prompt permission required.");
+    expect(api.sentMessages.at(-1)?.text).toContain("Access denied: prompt.send permission required.");
     expect(registry.getOrCreate).not.toHaveBeenCalled();
   });
 
@@ -763,7 +784,7 @@ describe("bot flow integration", () => {
 
     await bot.handleUpdate(callbackUpdate("artifact_delete:turn-a", 999) as any);
 
-    expect(api.answeredCallbacks.at(-1)).toBe("Access denied: files permission required.");
+    expect(api.answeredCallbacks.at(-1)).toBe("Access denied: files.write permission required.");
     expect(registry.getOrCreate).not.toHaveBeenCalled();
   });
 });

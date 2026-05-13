@@ -22,6 +22,7 @@ import { checkPiAuthStatus } from "./pi-auth.js";
 import { describePiCli, resolvePiCli } from "./pi-cli.js";
 import { configureRedaction } from "./redaction.js";
 import { SessionRegistry } from "./session-registry.js";
+import { UserStore } from "./user-management.js";
 
 let registry: SessionRegistry | undefined;
 let bot: ReturnType<typeof createBot> | undefined;
@@ -38,6 +39,12 @@ try {
   await registerCommands(bot);
 
   console.log("NordRelay running");
+  const userStore = new UserStore();
+  if (userStore.hasAdminUser()) {
+    console.log("User management: admin user configured");
+  } else {
+    console.warn("Warning: no NordRelay admin user exists. Run `nordrelay user create-admin` to enable WebUI and Telegram access.");
+  }
   const authStatus = await checkDefaultAgentAuth(config);
   console.log(`Auth (${agentLabel(config.defaultAgent)}): ${authStatus.authenticated ? "authenticated" : "not authenticated"} (${authStatus.method})`);
   if (!authStatus.authenticated) {

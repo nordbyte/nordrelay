@@ -249,12 +249,8 @@ export interface WebAuthDto {
 }
 
 export interface WebPermissionsDto {
-  telegramAllowAnyChat: boolean;
-  telegramAdminUserIds: number[];
-  telegramAllowedUserIds: number[];
-  telegramReadOnlyUserIds: number[];
-  telegramAllowedChatIds: number[];
-  telegramRolePolicies: ConnectorConfig["telegramRolePolicies"];
+  mode: "users";
+  message: string;
 }
 
 export interface ExternalMirrorState {
@@ -483,12 +479,8 @@ export class RelayRuntime {
 
   permissions(): WebPermissionsDto {
     return {
-      telegramAllowAnyChat: this.config.telegramAllowAnyChat,
-      telegramAdminUserIds: this.config.telegramAdminUserIds,
-      telegramAllowedUserIds: this.config.telegramAllowedUserIds,
-      telegramReadOnlyUserIds: this.config.telegramReadOnlyUserIds,
-      telegramAllowedChatIds: this.config.telegramAllowedChatIds,
-      telegramRolePolicies: this.config.telegramRolePolicies,
+      mode: "users",
+      message: "Access is managed by NordRelay users, groups, Telegram identities, and Telegram chat access records.",
     };
   }
 

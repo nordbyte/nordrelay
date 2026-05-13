@@ -2,7 +2,6 @@ import path from "node:path";
 
 import { vi } from "vitest";
 
-import { createDefaultRolePolicies } from "../src/access-control.js";
 import { createDefaultLaunchProfile, createLaunchProfile } from "../src/codex-launch.js";
 import type { ConnectorConfig } from "../src/config.js";
 
@@ -108,16 +107,6 @@ describe("SessionRegistry", () => {
 
   const createConfig = (overrides: Partial<ConnectorConfig> = {}): ConnectorConfig => ({
     telegramBotToken: "bot-token",
-    telegramAllowedUserIds: [123],
-    telegramAllowedUserIdSet: new Set([123]),
-    telegramAllowedChatIds: [],
-    telegramAllowedChatIdSet: new Set(),
-    telegramAdminUserIds: [123],
-    telegramAdminUserIdSet: new Set([123]),
-    telegramReadOnlyUserIds: [],
-    telegramReadOnlyUserIdSet: new Set(),
-    telegramRolePolicies: createDefaultRolePolicies(),
-    telegramAllowAnyChat: false,
     telegramRateLimitMinIntervalMs: 80,
     telegramEditMinIntervalMs: 1_200,
     telegramMirrorMode: "status",

@@ -21,6 +21,6 @@ node scripts/nordrelay.mjs status
 node scripts/nordrelay.mjs stop
 ```
 
-The bridge needs `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ADMIN_USER_IDS` by default. Optional non-admin operators can be added with `TELEGRAM_ALLOWED_USER_IDS` or trusted group/topic access can be added with `TELEGRAM_ALLOWED_CHAT_IDS`.
+The bridge needs `TELEGRAM_BOT_TOKEN` and at least one NordRelay admin user. Telegram accounts must be linked to active NordRelay users; group or forum chats must be enabled by an admin before they can control agents.
 
 Prefer `start` for normal use. Use `foreground` only when debugging connection problems, because it keeps the current command running. If the runtime is missing, run `npm install` and `npm run build` in the repository root.

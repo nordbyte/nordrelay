@@ -27,10 +27,12 @@ Do not include real Telegram bot tokens, OpenAI API keys, Codex credentials, loc
 
 NordRelay is designed to fail closed:
 
-- `TELEGRAM_ADMIN_USER_IDS` is required.
-- Fresh installs only accept Telegram messages from configured admin user ids.
-- `TELEGRAM_ALLOW_ANY_CHAT=false` by default.
+- A fresh install requires a NordRelay admin user before Telegram or WebUI control can be used.
+- WebUI login is required for every dashboard page, API route, SSE stream, artifact download, and health endpoint.
+- Telegram private chats require a linked active NordRelay user.
+- Telegram group and forum chats are disabled until an admin enables the chat.
+- Authorization is enforced through user groups and granular permissions.
 - Uploaded files are staged inside the selected workspace.
 - Secrets are redacted from logs and Telegram diagnostics where possible.
 
-Treat enabling `danger-full-access`, `TELEGRAM_ALLOW_ANY_CHAT=true`, or broad group chat access as equivalent to granting remote shell-adjacent control over the host.
+Treat enabling `danger-full-access`, broad write permissions, or Telegram group chat access as equivalent to granting remote shell-adjacent control over the host.

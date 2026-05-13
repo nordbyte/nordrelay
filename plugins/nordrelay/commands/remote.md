@@ -21,7 +21,7 @@ Codex plugin commands are namespaced by the plugin id in current plugin-aware co
 ## Workflow
 
 1. Locate the plugin root containing `.codex-plugin/plugin.json` with `"name": "nordrelay"`. In a source checkout this is usually `<repo>/plugins/nordrelay`.
-2. Check whether `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ADMIN_USER_IDS` are available from the environment or from the NordRelay env file.
+2. Check whether `TELEGRAM_BOT_TOKEN` is available from the environment or from the NordRelay env file, and whether a NordRelay admin user exists.
 3. Run the connector command from the plugin root:
 
 ```bash

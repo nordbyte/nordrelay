@@ -7,7 +7,7 @@ import path from "node:path";
 import process from "node:process";
 import readline from "node:readline/promises";
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const FALLBACK_VERSION = "0.3.1";
 const require = createRequire(import.meta.url);
@@ -61,7 +61,10 @@ function parseArgs(argv) {
     else if (arg === "--host") options.host = requireValue(copy, ++i, arg);
     else if (arg === "--port") options.port = Number.parseInt(requireValue(copy, ++i, arg), 10);
     else if (arg === "--token") options.telegramBotToken = requireValue(copy, ++i, arg);
-    else if (arg === "--admin-id") options.telegramAdminUserIds = requireValue(copy, ++i, arg);
+    else if (arg === "--admin-email") options.adminEmail = requireValue(copy, ++i, arg);
+    else if (arg === "--admin-name") options.adminName = requireValue(copy, ++i, arg);
+    else if (arg === "--admin-password") options.adminPassword = requireValue(copy, ++i, arg);
+    else if (arg === "--telegram-user-id") options.telegramUserId = requireValue(copy, ++i, arg);
     else if (arg === "--state-backend") options.stateBackend = requireValue(copy, ++i, arg);
     else if (arg === "--enable-pi") options.enablePi = true;
     else if (arg === "--enable-hermes") options.enableHermes = true;
@@ -128,14 +131,6 @@ function loadEnvFile(envPath) {
 }
 
 function normalizeEnvAliases() {
-  if (!process.env.TELEGRAM_ALLOWED_USER_IDS && process.env.TELEGRAM_ALLOWED_CHAT_IDS) {
-    process.env.TELEGRAM_ALLOWED_USER_IDS = process.env.TELEGRAM_ALLOWED_CHAT_IDS;
-  }
-
-  if (!process.env.TELEGRAM_ALLOWED_CHAT_IDS && process.env.TELEGRAM_ALLOWED_USER_IDS) {
-    process.env.TELEGRAM_ALLOWED_CHAT_IDS = process.env.TELEGRAM_ALLOWED_USER_IDS;
-  }
-
   if (!process.env.TOOL_VERBOSITY && envFlag("NORDRELAY_FORWARD_TOOL_OUTPUT")) {
     process.env.TOOL_VERBOSITY = "all";
   }
@@ -334,6 +329,7 @@ async function commandStatus(options) {
 async function commandInit(options) {
   await mkdirp(options.home);
   const envPath = path.join(options.home, "nordrelay.env");
+  const userStore = await createUserStore(options.home);
   if (fs.existsSync(envPath) && !options.force) {
     console.log(`Config already exists: ${envPath}`);
     console.log("Run with --force to overwrite.");
@@ -347,9 +343,10 @@ async function commandInit(options) {
     const telegramBotToken = options.telegramBotToken ||
       process.env.TELEGRAM_BOT_TOKEN ||
       await ask(rl, "Telegram bot token", "");
-    const telegramAdminUserIds = options.telegramAdminUserIds ||
-      process.env.TELEGRAM_ADMIN_USER_IDS ||
-      await ask(rl, "Telegram admin user id", "");
+    const adminEmail = options.adminEmail || await ask(rl, "Admin email", "");
+    const adminName = options.adminName || await ask(rl, "Admin name", "Admin");
+    const adminPassword = options.adminPassword || await ask(rl, "Admin password", "");
+    const telegramUserId = options.telegramUserId || await ask(rl, "Optional Telegram user id to link", "");
     const enableCodex = options.disableCodex ? "false" : await askChoice(rl, "Enable Codex", "true");
     const enablePi = options.enablePi ? "true" : await askChoice(rl, "Enable Pi", "false");
     const enableHermes = options.enableHermes ? "true" : await askChoice(rl, "Enable Hermes", "false");
@@ -358,7 +355,8 @@ async function commandInit(options) {
     const stateBackend = options.stateBackend || await askChoice(rl, "State backend (json/sqlite)", "json");
 
     if (!telegramBotToken) throw new Error("Telegram bot token is required.");
-    if (!telegramAdminUserIds) throw new Error("Telegram admin user id is required.");
+    if (!adminEmail) throw new Error("Admin email is required.");
+    if (!adminPassword) throw new Error("Admin password is required.");
     if (enableCodex !== "true" && enablePi !== "true" && enableHermes !== "true" && enableOpenClaw !== "true" && enableClaudeCode !== "true") throw new Error("At least one agent must be enabled.");
     const defaultAgent = enableCodex === "true"
       ? "codex"
@@ -374,8 +372,6 @@ async function commandInit(options) {
       "# NordRelay local runtime config.",
       "# Keep this file private; it contains bot credentials.",
       `TELEGRAM_BOT_TOKEN=${telegramBotToken}`,
-      `TELEGRAM_ADMIN_USER_IDS=${telegramAdminUserIds}`,
-      "TELEGRAM_ALLOW_ANY_CHAT=false",
       `NORDRELAY_CODEX_ENABLED=${enableCodex}`,
       `NORDRELAY_PI_ENABLED=${enablePi}`,
       `NORDRELAY_HERMES_ENABLED=${enableHermes}`,
@@ -398,8 +394,112 @@ async function commandInit(options) {
 
     await fsp.writeFile(envPath, lines.join("\n"), { mode: 0o600 });
     await fsp.chmod(envPath, 0o600).catch(() => {});
+    userStore.createAdmin({
+      email: adminEmail,
+      displayName: adminName || adminEmail,
+      password: adminPassword,
+      telegramUserId: telegramUserId ? Number(telegramUserId) : undefined,
+    });
     console.log(`Wrote ${envPath}`);
+    console.log(`Created admin user ${adminEmail}.`);
     console.log("Run `nordrelay doctor` to validate the setup.");
+  } finally {
+    rl?.close();
+  }
+}
+
+async function createUserStore(home) {
+  const modulePath = path.join(RUNTIME_ROOT, "dist", "user-management.js");
+  if (!fs.existsSync(modulePath)) {
+    throw new Error(`Missing user management runtime. Run \`npm run build\` in ${RUNTIME_ROOT}.`);
+  }
+  const mod = await import(pathToFileURL(modulePath).href);
+  return new mod.UserStore(home);
+}
+
+function parseUserFlags(argv) {
+  const copy = [...argv];
+  const subcommand = copy[0] && !copy[0].startsWith("-") ? copy.shift() : "list";
+  const flags = { subcommand };
+  for (let i = 0; i < copy.length; i += 1) {
+    const arg = copy[i];
+    if (arg === "--email") flags.email = requireValue(copy, ++i, arg);
+    else if (arg === "--name") flags.name = requireValue(copy, ++i, arg);
+    else if (arg === "--password") flags.password = requireValue(copy, ++i, arg);
+    else if (arg === "--group" || arg === "--groups") flags.groups = requireValue(copy, ++i, arg);
+    else if (arg === "--telegram-user-id") flags.telegramUserId = Number.parseInt(requireValue(copy, ++i, arg), 10);
+    else if (arg === "--user-id") flags.userId = requireValue(copy, ++i, arg);
+  }
+  return flags;
+}
+
+async function commandUser(options) {
+  await mkdirp(options.home);
+  loadEnvFiles(options.home);
+  const store = await createUserStore(options.home);
+  const flags = parseUserFlags(options.rawFlags);
+  const rl = process.stdin.isTTY
+    ? readline.createInterface({ input: process.stdin, output: process.stdout })
+    : null;
+  try {
+    if (flags.subcommand === "list") {
+      const snapshot = store.snapshot();
+      if (snapshot.users.length === 0) {
+        console.log("No users configured.");
+        console.log("Create the first admin with `nordrelay user create-admin --email you@example.com --name YourName`.");
+        return;
+      }
+      for (const user of snapshot.users) {
+        console.log(`${user.email} (${user.displayName}) ${user.active ? "active" : "disabled"} groups=${user.groups.map((group) => group.id).join(",") || "-"}`);
+      }
+      return;
+    }
+
+    if (flags.subcommand === "create-admin" || flags.subcommand === "create") {
+      const email = flags.email || await ask(rl, "Email", "");
+      const name = flags.name || await ask(rl, "Display name", email);
+      const password = flags.password || await ask(rl, "Password", "");
+      const groupIds = flags.subcommand === "create-admin"
+        ? ["admin"]
+        : (flags.groups ? flags.groups.split(",").map((item) => item.trim()).filter(Boolean) : ["user"]);
+      const created = flags.subcommand === "create-admin"
+        ? store.createAdmin({ email, displayName: name, password, telegramUserId: flags.telegramUserId })
+        : store.createUser({ email, displayName: name, password, groupIds, telegramUserId: flags.telegramUserId });
+      console.log(`Created user ${created.user.email} (${created.groups.map((group) => group.name).join(", ")}).`);
+      return;
+    }
+
+    if (flags.subcommand === "reset-password") {
+      const email = flags.email || await ask(rl, "Email", "");
+      const password = flags.password || await ask(rl, "New password", "");
+      const user = store.getUserByEmail(email);
+      if (!user) throw new Error(`User not found: ${email}`);
+      store.setPassword(user.user.id, password);
+      console.log(`Password updated for ${user.user.email}.`);
+      return;
+    }
+
+    if (flags.subcommand === "link-telegram") {
+      const email = flags.email || await ask(rl, "Email", "");
+      const telegramUserId = flags.telegramUserId || Number.parseInt(await ask(rl, "Telegram user id", ""), 10);
+      const user = store.getUserByEmail(email);
+      if (!user) throw new Error(`User not found: ${email}`);
+      store.linkTelegramUser(user.user.id, { telegramUserId });
+      console.log(`Linked Telegram user ${telegramUserId} to ${user.user.email}.`);
+      return;
+    }
+
+    if (flags.subcommand === "link-code") {
+      const email = flags.email || await ask(rl, "Email", "");
+      const user = store.getUserByEmail(email);
+      if (!user) throw new Error(`User not found: ${email}`);
+      const code = store.createTelegramLinkCode(user.user.id);
+      console.log(`Telegram link code for ${user.user.email}: ${code.code}`);
+      console.log(`Expires: ${code.expiresAt}`);
+      return;
+    }
+
+    throw new Error("Usage: nordrelay user [list|create-admin|create|reset-password|link-telegram|link-code]");
   } finally {
     rl?.close();
   }
@@ -408,11 +508,15 @@ async function commandInit(options) {
 async function commandDoctor(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
+  const userStore = await createUserStore(options.home).catch(() => null);
+  const userSnapshot = userStore?.snapshot();
   const checks = [];
   checks.push(check("Node.js >= 22", Number.parseInt(process.versions.node.split(".")[0], 10) >= 22, process.version));
   checks.push(check("Telegram bot token", Boolean(process.env.TELEGRAM_BOT_TOKEN), process.env.TELEGRAM_BOT_TOKEN ? "configured" : "missing"));
-  checks.push(check("Telegram admin ids", Boolean(process.env.TELEGRAM_ADMIN_USER_IDS), process.env.TELEGRAM_ADMIN_USER_IDS ? "configured" : "missing"));
-  checks.push(check("Private by default", process.env.TELEGRAM_ALLOW_ANY_CHAT !== "true", "TELEGRAM_ALLOW_ANY_CHAT is not true"));
+  checks.push(check("User store", Boolean(userStore), userStore ? userStore.filePath : "missing runtime", userStore ? "pass" : "fail"));
+  checks.push(check("Admin user", Boolean(userSnapshot?.adminConfigured), userSnapshot?.adminConfigured ? "configured" : "missing"));
+  checks.push(check("WebUI login", true, "required for every dashboard request"));
+  checks.push(check("Telegram access", true, "requires linked active users and enabled group chats"));
   checks.push(check("Codex enabled flag", process.env.NORDRELAY_CODEX_ENABLED !== "false", `NORDRELAY_CODEX_ENABLED=${process.env.NORDRELAY_CODEX_ENABLED ?? "true"}`));
   checks.push(check("Pi enabled flag", process.env.NORDRELAY_PI_ENABLED === "true" || process.env.NORDRELAY_PI_ENABLED === undefined, `NORDRELAY_PI_ENABLED=${process.env.NORDRELAY_PI_ENABLED ?? "false"}`, process.env.NORDRELAY_PI_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("Hermes enabled flag", process.env.NORDRELAY_HERMES_ENABLED === "true", `NORDRELAY_HERMES_ENABLED=${process.env.NORDRELAY_HERMES_ENABLED ?? "false"}`, process.env.NORDRELAY_HERMES_ENABLED === "true" ? "pass" : "warn"));
@@ -770,6 +874,7 @@ async function main() {
   if (options.command === "stop") return commandStop(options);
   if (options.command === "status") return commandStatus(options);
   if (options.command === "init") return commandInit(options);
+  if (options.command === "user") return commandUser(options);
   if (options.command === "doctor") return commandDoctor(options);
   if (options.command === "web" || options.command === "dashboard") return commandWeb(options);
   if (options.command === "restart") {
@@ -783,7 +888,7 @@ async function main() {
   }
 
   console.error(`Unknown command: ${options.command}`);
-  console.error("Usage: nordrelay [init|doctor|web|start|stop|restart|status|foreground|version]");
+  console.error("Usage: nordrelay [init|user|doctor|web|start|stop|restart|status|foreground|version]");
   process.exitCode = 2;
 }
 

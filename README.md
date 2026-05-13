@@ -36,7 +36,7 @@ Session control:
 - `/status`, `/health`, and `/version` report connector runtime health from Telegram.
 - `/tasks` and `/progress` show the current turn status, queue length, active tool, elapsed time, and last error.
 - `/activity` shows a compact timeline of recent rollout events for the active thread, with filters and export.
-- `/diagnostics` reports redacted runtime, config, role, Telegram rate-limit, mirror, voice, session, queue, and progress details for admins.
+- `/diagnostics` reports redacted runtime, config, user/group authorization, Telegram rate-limit, mirror, voice, session, queue, and progress details.
 - `/lock`, `/unlock`, and `/locks` provide a team write-lock for shared sessions so one user can operate while others watch.
 - `/audit` shows recent prompt, queue, lock, and command audit events for admins.
 
@@ -160,13 +160,13 @@ Telegram output:
 
 Authentication and safety:
 
-- Telegram access requires `TELEGRAM_ADMIN_USER_IDS` by default; a fresh install only accepts those admin user ids.
-- `TELEGRAM_ALLOWED_USER_IDS` can add non-admin operators.
-- `TELEGRAM_ALLOWED_CHAT_IDS` is supported for private chats, groups, and backward compatibility.
-- `TELEGRAM_ALLOW_ANY_CHAT=true` is an explicit unsafe override for temporary local setup only.
-- `TELEGRAM_ADMIN_USER_IDS` restricts admin-only commands such as `/logs`, `/restart`, and `/update`.
-- `TELEGRAM_READONLY_USER_IDS` can inspect status and sessions but cannot send prompts or run mutating commands by default.
-- `TELEGRAM_ROLE_POLICIES_JSON` can override role permissions for `admin`, `operator`, and `readonly`.
+- WebUI login is required for every dashboard page, API route, SSE stream, artifact download, and health endpoint.
+- Access is managed through NordRelay users, groups, permissions, web sessions, and linked Telegram identities.
+- Built-in groups are `Admin`, `User`, and `Read Only`; custom groups can be created in the WebUI or CLI.
+- Telegram private chats require a linked active NordRelay user.
+- Telegram group and forum chats must be registered before use; admins can run `/register_chat` in the chat or enable chats in the WebUI.
+- `/whoami` shows the linked NordRelay account and groups.
+- `/link <code>` links a Telegram account to a NordRelay user after a link code is created in the WebUI or with `nordrelay user link-code`.
 - `/auth` reports Codex authentication, Pi provider environment health, Hermes API Server reachability, OpenClaw Gateway reachability, or Claude Code CLI auth for the selected agent.
 - `/login` starts Telegram-managed CLI auth for Codex, Hermes, or Claude Code when enabled.
 - `/logout` signs out of CLI auth for Codex, Hermes, or Claude Code; Codex logout is disabled while `CODEX_API_KEY` is in use.
@@ -192,7 +192,7 @@ Operations:
 - The WebUI has responsive header/sidebar/footer navigation, live chat streaming, session controls, queue/artifact/log/diagnostic views, and settings management.
 - The WebUI supports light and dark themes, tabbed settings groups, paginated session browsing, and chat uploads for images, documents, and audio transcription.
 - The WebUI exposes REST and SSE endpoints for chat streaming, sessions, settings, queue, artifacts, logs, health, and diagnostics.
-- Binding the dashboard to `0.0.0.0` is refused unless `NORDRELAY_DASHBOARD_TOKEN` or `NORDRELAY_DASHBOARD_USER` plus `NORDRELAY_DASHBOARD_PASSWORD` is configured.
+- The dashboard can bind to `127.0.0.1` or `0.0.0.0`; user login and session cookies are mandatory in both modes.
 - Telegram can run with long polling or an HTTP webhook via `TELEGRAM_TRANSPORT=webhook`.
 - Version freshness checks are cached with `NORDRELAY_VERSION_CACHE_TTL_MS` to keep `/version` responsive.
 - CI includes typecheck, tests, package dry run, npm audit, and a separate secret-scan workflow.
@@ -207,6 +207,7 @@ Recommended npm setup:
 ```bash
 npm install -g @nordbyte/nordrelay
 nordrelay init
+nordrelay user list
 nordrelay doctor
 nordrelay start
 ```
@@ -216,8 +217,15 @@ npm is the fastest install path and is the recommended default for normal use. `
 Non-interactive setup is also supported:
 
 ```bash
-nordrelay init --token 123456789:replace-me --admin-id 123456789
+nordrelay init \
+  --token 123456789:replace-me \
+  --admin-email you@example.com \
+  --admin-name "Your Name" \
+  --admin-password "replace-with-a-long-password" \
+  --telegram-user-id 123456789
 ```
+
+`--telegram-user-id` is optional, but linking the first admin during setup is the fastest way to use Telegram immediately.
 
 Source checkout setup:
 
@@ -237,14 +245,13 @@ Create the Telegram bot:
 2. Run `/newbot`.
 3. Choose a display name and bot username.
 4. Copy the bot token into `TELEGRAM_BOT_TOKEN` in `~/.nordrelay/nordrelay.env`.
-5. Find your Telegram user id with a trusted id helper bot, for example `@userinfobot`, or from Telegram API tooling.
-6. Put your user id into `TELEGRAM_ADMIN_USER_IDS`.
+5. Create the first admin user with `nordrelay init` or `nordrelay user create-admin`.
+6. Link Telegram from the WebUI, with `nordrelay user link-telegram`, or by creating a link code and sending `/link <code>` to the bot.
 
 Minimal private-bot `~/.nordrelay/nordrelay.env`:
 
 ```dotenv
 TELEGRAM_BOT_TOKEN=123456789:replace-me
-TELEGRAM_ADMIN_USER_IDS=123456789
 NORDRELAY_CODEX_ENABLED=true
 NORDRELAY_PI_ENABLED=false
 NORDRELAY_HERMES_ENABLED=false
@@ -255,13 +262,14 @@ CODEX_SANDBOX_MODE=workspace-write
 CODEX_APPROVAL_POLICY=never
 ```
 
-Optional non-admin operators can be added with:
+User and Telegram access management:
 
-```dotenv
-TELEGRAM_ALLOWED_USER_IDS=234567890,345678901
-```
-
-Do not use `TELEGRAM_ALLOW_ANY_CHAT=true` for normal coding sessions. It makes the bot reachable from any Telegram chat that can message it.
+- `nordrelay init` creates the first admin user and writes `~/.nordrelay/users.json`.
+- `nordrelay user create-admin --email you@example.com --name "Your Name"` creates another admin.
+- `nordrelay user create --email dev@example.com --name "Dev" --group user` creates a normal user.
+- `nordrelay user link-telegram --email you@example.com --telegram-user-id 123456789` links a Telegram account directly.
+- `nordrelay user link-code --email you@example.com` creates a short-lived code that the user sends as `/link <code>` to the bot.
+- Group chats are disabled until an admin enables them from the WebUI or runs `/register_chat` inside the group.
 
 Codex authentication:
 
@@ -334,7 +342,7 @@ Where Codex exposes namespaced plugin commands, this also works:
 /nordrelay:remote
 ```
 
-The old unnamespaced `/remote` command is no longer required and current Codex TUI builds do not register it as a top-level plugin slash command. The command is only a process-manager shortcut; Telegram contains the actual controls.
+The command is only a process-manager shortcut; Telegram contains the actual controls.
 
 Manual process commands:
 
@@ -357,6 +365,7 @@ node plugins/nordrelay/scripts/nordrelay.mjs status
 node plugins/nordrelay/scripts/nordrelay.mjs restart
 node plugins/nordrelay/scripts/nordrelay.mjs stop
 node plugins/nordrelay/scripts/nordrelay.mjs foreground
+node plugins/nordrelay/scripts/nordrelay.mjs user list
 node plugins/nordrelay/scripts/nordrelay.mjs doctor
 node plugins/nordrelay/scripts/nordrelay.mjs web
 ```
@@ -421,13 +430,9 @@ Dashboard auth:
 ```dotenv
 NORDRELAY_DASHBOARD_HOST=127.0.0.1
 NORDRELAY_DASHBOARD_PORT=31878
-NORDRELAY_DASHBOARD_TOKEN=replace-with-random-token
-# or:
-NORDRELAY_DASHBOARD_USER=admin
-NORDRELAY_DASHBOARD_PASSWORD=replace-with-random-password
 ```
 
-When `NORDRELAY_DASHBOARD_HOST=0.0.0.0`, NordRelay refuses to start the dashboard unless token or basic auth is configured. Login cookies use `SameSite=Strict`, and every dashboard route, API endpoint, SSE stream, artifact download, and health endpoint requires the same auth.
+The dashboard always requires NordRelay email/password login. Login cookies use `SameSite=Strict`, and every dashboard route, API endpoint, SSE stream, artifact download, and health endpoint requires an authenticated active user with the matching permission.
 
 Webhook mode:
 
@@ -440,7 +445,7 @@ TELEGRAM_WEBHOOK_PATH=/telegram/webhook
 TELEGRAM_WEBHOOK_SECRET=replace-with-random-secret
 ```
 
-Run NordRelay behind your reverse proxy so the public URL forwards to `http://127.0.0.1:8080/telegram/webhook`. `GET /healthz` returns a simple health check.
+Run NordRelay behind your reverse proxy so the public URL forwards to `http://127.0.0.1:8080/telegram/webhook`. Dashboard health checks are available to authenticated WebUI sessions through `/healthz` and `/api/health`.
 
 ## Telegram Commands
 
@@ -449,6 +454,9 @@ Run NordRelay behind your reverse proxy so the public URL forwards to `http://12
 - `/channels` shows available and planned messaging adapters.
 - `/agents` shows available and planned coding-agent adapters.
 - `/agent` selects the active agent for this Telegram context.
+- `/link <code>` links the Telegram account to a NordRelay user.
+- `/whoami` shows the linked NordRelay user, groups, and permissions.
+- `/register_chat` enables the current Telegram group or forum chat for NordRelay when the linked user has user-management permission.
 - `/new` starts a new thread. If the selected agent knows multiple workspaces, Telegram shows a workspace picker.
 - `/session` shows current thread details.
 - `/sessions` opens a paginated recent-session picker.
@@ -472,7 +480,7 @@ Run NordRelay behind your reverse proxy so the public URL forwards to `http://12
 - `/cancel <queue-id>` removes one queued prompt; the queue id is the short code shown in messages such as `Queued prompt 332kmt`.
 - `/clearqueue` clears queued prompts for this Telegram context.
 - `/activity [all|tools|errors|user|agent|tasks] [limit] [since 1h] [export]` shows or exports rollout activity for the active thread.
-- `/audit [limit]` shows recent audit events. Admin only.
+- `/audit [limit]` shows recent audit events. Requires `audit.read`.
 - `/lock` locks writes for this Telegram session to the current user.
 - `/unlock` releases the current session write lock.
 - `/locks` lists active write locks.
@@ -499,14 +507,14 @@ Run NordRelay behind your reverse proxy so the public URL forwards to `http://12
 - `/status` reports connector runtime status.
 - `/health` reports runtime health, auth, PIDs, Codex CLI, Pi CLI, Hermes CLI, OpenClaw CLI, Claude Code CLI, and state DB.
 - `/version` reports connector, Codex CLI, Pi CLI, Hermes CLI, OpenClaw CLI, and Claude Code CLI paths plus installed/latest NordRelay, Codex, Pi, Hermes, OpenClaw, and Claude Code versions with status icons.
-- `/logs [lines]` shows a redacted, timestamped connector log tail. Admin only.
-- `/logs update [lines]` shows the self-update log. Admin only.
-- `/logs agent [lines]` shows the aggregate agent updater log. Admin only.
-- `/logs all [lines]` shows connector, self-update, and agent update logs together. Admin only.
-- `/diagnostics` shows redacted connector diagnostics. Admin only.
-- `/restart` restarts the connector process. Admin only.
-- `/update` updates through npm or git depending on the detected install type, then restarts only on success. Admin only.
-- `/update agents`, `/update <agent>`, `/update jobs`, `/update log <id>`, `/update cancel <id>`, and `/update input <id> <text>` manage agent CLI update jobs. Admin only.
+- `/logs [lines]` shows a redacted, timestamped connector log tail. Requires `logs.read`.
+- `/logs update [lines]` shows the self-update log. Requires `logs.read`.
+- `/logs agent [lines]` shows the aggregate agent updater log. Requires `logs.read`.
+- `/logs all [lines]` shows connector, self-update, and agent update logs together. Requires `logs.read`.
+- `/diagnostics` shows redacted connector diagnostics. Requires `logs.read`.
+- `/restart` restarts the connector process. Requires `system.restart`.
+- `/update` updates through npm or git depending on the detected install type, then restarts only on success. Requires `updates.run`.
+- `/update agents`, `/update <agent>`, `/update jobs`, `/update log <id>`, `/update cancel <id>`, and `/update input <id> <text>` manage agent CLI update jobs. Requires `updates.run`.
 
 ## Command Examples
 
@@ -689,12 +697,6 @@ Voice transcription uses `OPENAI_API_KEY`, not `CODEX_API_KEY`.
 Telegram:
 
 - `TELEGRAM_BOT_TOKEN`: required BotFather token.
-- `TELEGRAM_ADMIN_USER_IDS`: required comma-separated Telegram user ids allowed to use admin commands. Admin ids are automatically allowed to use the bot.
-- `TELEGRAM_ALLOWED_USER_IDS`: optional comma-separated non-admin Telegram user ids allowed to use the bot.
-- `TELEGRAM_READONLY_USER_IDS`: comma-separated Telegram user ids that can inspect status and sessions but cannot run prompts or mutating commands.
-- `TELEGRAM_ALLOWED_CHAT_IDS`: comma-separated chat ids allowed to use the bot. Group ids may be negative.
-- `TELEGRAM_ALLOW_ANY_CHAT`: allows all chats when `true`. Keep `false` unless you intentionally want an open bot.
-- `TELEGRAM_ROLE_POLICIES_JSON`: optional JSON object mapping roles to permissions. Permissions are `inspect`, `sessions`, `prompt`, `files`, `settings`, `auth`, and `admin`.
 - `TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS`: minimum interval for normal Telegram API sends. Defaults to `80`.
 - `TELEGRAM_EDIT_MIN_INTERVAL_MS`: minimum interval for Telegram message edits. Defaults to `1200`.
 - `TELEGRAM_TRANSPORT`: `polling` or `webhook`. Defaults to `polling`.
@@ -709,11 +711,12 @@ Telegram:
 - `TELEGRAM_QUIET_HOURS`: optional quiet-hour range in `HH-HH` format, for example `22-7`.
 - `TELEGRAM_REDACT_PATTERNS`: comma-separated regular expressions for additional Telegram/log redaction.
 
-Role policy example:
+User management:
 
-```dotenv
-TELEGRAM_ROLE_POLICIES_JSON={"readonly":["inspect","sessions"],"operator":["inspect","sessions","prompt","files"],"admin":"*"}
-```
+- Users, groups, Telegram identities, Telegram group-chat access, and web sessions are stored in `~/.nordrelay/users.json`.
+- Manage users in the WebUI Users page or with `nordrelay user list`, `create-admin`, `create`, `reset-password`, `link-telegram`, and `link-code`.
+- Built-in groups are `admin`, `user`, and `readonly`.
+- Group permissions include `inspect`, `sessions.read`, `sessions.write`, `prompt.send`, `prompt.abort`, `files.read`, `files.write`, `settings.read`, `settings.write`, `auth.manage`, `logs.read`, `updates.run`, `system.restart`, `users.read`, `users.write`, and `audit.read`.
 
 Agent selection:
 
@@ -732,9 +735,6 @@ Dashboard:
 
 - `NORDRELAY_DASHBOARD_HOST`: dashboard bind host. Defaults to `127.0.0.1`.
 - `NORDRELAY_DASHBOARD_PORT`: dashboard bind port. Defaults to `31878`.
-- `NORDRELAY_DASHBOARD_TOKEN`: optional dashboard bearer/login token. Required when binding to `0.0.0.0` unless basic auth is configured.
-- `NORDRELAY_DASHBOARD_USER`: optional dashboard basic-auth user.
-- `NORDRELAY_DASHBOARD_PASSWORD`: optional dashboard basic-auth password. Required with `NORDRELAY_DASHBOARD_USER`.
 - `NORDRELAY_ENV_FILE`: optional explicit env-file path used by the wrapper and edited by the dashboard settings page. Defaults to `~/.nordrelay/nordrelay.env`.
 
 Codex:
@@ -871,14 +871,14 @@ Unsafe profiles are intentionally gated. Telegram asks for confirmation before a
 
 ## Security Notes
 
-- Always set `TELEGRAM_ADMIN_USER_IDS`; a fresh install refuses to start without at least one admin user id.
-- Prefer `TELEGRAM_ADMIN_USER_IDS` and `TELEGRAM_ALLOWED_USER_IDS` over `TELEGRAM_ALLOWED_CHAT_IDS` for private bots.
-- Use `TELEGRAM_ALLOWED_CHAT_IDS` for groups or forum topics only when you trust the entire chat.
-- Do not leave `TELEGRAM_ALLOW_ANY_CHAT=true` enabled after setup.
+- Create the first admin user during setup and keep that account protected with a strong password.
+- Link Telegram accounts only to active NordRelay users that should control agents remotely.
+- Enable Telegram group/forum chats only when the whole chat context is trusted for the permissions granted to linked users.
+- Review group permissions before granting `prompt.send`, `prompt.abort`, `files.write`, `settings.write`, `updates.run`, `system.restart`, or `users.write`.
 - Treat `danger-full-access` as equivalent to shell access on the host.
 - Treat uploaded files as untrusted input. They are staged inside the active workspace so the selected sandbox policy still matters.
 - Keep `CODEX_API_KEY`, `HERMES_API_KEY`, `OPENCLAW_GATEWAY_TOKEN`, `OPENCLAW_GATEWAY_PASSWORD`, and `OPENAI_API_KEY` in `~/.nordrelay/nordrelay.env` or host secret management.
-- In group chats, remember that any allowed user can prompt the selected agent in that chat context.
+- In group chats, remember that any linked user with prompt permissions can prompt the selected agent in that chat context.
 - Use `TOOL_VERBOSITY=summary` or `errors-only` when command output may include sensitive data.
 - Review and unsafe launch profiles add a Telegram approve/deny gate before each turn starts.
 
@@ -1043,7 +1043,7 @@ npm run build
 - `src/persistence.ts`: atomic JSON/text writes with backup recovery.
 - `src/redaction.ts`: common secret redaction and custom redaction pattern support.
 - `src/workspace-policy.ts`: workspace allow/warn root evaluation.
-- `src/access-control.ts`: Telegram role permissions and command/callback permission mapping.
+- `src/access-control.ts`: user/group permission definitions and command/callback/WebUI permission mapping.
 - `src/codex-session.ts`: Codex SDK service for new/resumed threads, streaming events, abort, model, reasoning, launch profiles, and handback.
 - `src/pi-session.ts`: Pi RPC service for JSONL RPC sessions, streaming events, abort, model, thinking, launch profiles, and handback.
 - `src/hermes-session.ts`: Hermes API Server service for streamed runs, stop, model, reasoning, launch profiles, attachments, and handback.
