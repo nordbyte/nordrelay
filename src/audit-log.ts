@@ -11,7 +11,21 @@ export type AuditAction =
   | "prompt_failed"
   | "queue_updated"
   | "lock_updated"
-  | "command";
+  | "command"
+  | "auth_login"
+  | "auth_logout"
+  | "auth_login_failed"
+  | "permission_denied"
+  | "user_created"
+  | "user_updated"
+  | "user_password_changed"
+  | "user_session_revoked"
+  | "group_created"
+  | "group_updated"
+  | "telegram_link_created"
+  | "telegram_linked"
+  | "telegram_unlinked"
+  | "telegram_chat_updated";
 
 export interface AuditEvent {
   id: string;
@@ -20,7 +34,7 @@ export interface AuditEvent {
   status: "ok" | "failed" | "denied";
   contextKey: TelegramContextKey;
   channelId: "telegram" | "web";
-  actorId?: number;
+  actorId?: number | string;
   actorRole?: string;
   agentId?: AgentId;
   threadId?: string | null;

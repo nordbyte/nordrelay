@@ -9,7 +9,11 @@ export type Permission =
   | "settings.read"
   | "settings.write"
   | "auth.manage"
+  | "diagnostics.read"
   | "logs.read"
+  | "logs.clear"
+  | "queue.read"
+  | "queue.write"
   | "updates.run"
   | "system.restart"
   | "users.read"
@@ -27,7 +31,11 @@ export const ALL_PERMISSIONS: Permission[] = [
   "settings.read",
   "settings.write",
   "auth.manage",
+  "diagnostics.read",
   "logs.read",
+  "logs.clear",
+  "queue.read",
+  "queue.write",
   "updates.run",
   "system.restart",
   "users.read",
@@ -69,6 +77,8 @@ export const BUILTIN_GROUPS: GroupDefinition[] = [
       "files.write",
       "settings.read",
       "auth.manage",
+      "queue.read",
+      "queue.write",
     ],
     system: true,
   },
@@ -100,7 +110,7 @@ const COMMAND_PERMISSIONS = new Map<string, Permission>([
   ["auth", "inspect"],
   ["voice", "inspect"],
   ["whoami", "inspect"],
-  ["diagnostics", "logs.read"],
+  ["diagnostics", "diagnostics.read"],
   ["logs", "logs.read"],
   ["audit", "audit.read"],
   ["restart", "system.restart"],
@@ -110,7 +120,7 @@ const COMMAND_PERMISSIONS = new Map<string, Permission>([
   ["sessions", "sessions.read"],
   ["pinned", "sessions.read"],
   ["locks", "sessions.read"],
-  ["queue", "inspect"],
+  ["queue", "queue.read"],
   ["artifacts", "files.read"],
   ["agent", "settings.write"],
   ["mirror", "settings.write"],
@@ -134,8 +144,8 @@ const COMMAND_PERMISSIONS = new Map<string, Permission>([
   ["lock", "sessions.write"],
   ["unlock", "sessions.write"],
   ["retry", "prompt.send"],
-  ["clearqueue", "prompt.send"],
-  ["cancel", "prompt.send"],
+  ["clearqueue", "queue.write"],
+  ["cancel", "queue.write"],
   ["abort", "prompt.abort"],
   ["stop", "prompt.abort"],
   ["register_chat", "users.write"],
@@ -143,16 +153,16 @@ const COMMAND_PERMISSIONS = new Map<string, Permission>([
   ["link", "inspect"],
 ]);
 
-export function permissionForCommand(command: string | undefined): Permission {
+export function permissionForCommand(command: string | undefined): Permission | null {
   if (!command) {
-    return "inspect";
+    return null;
   }
-  return COMMAND_PERMISSIONS.get(command.toLowerCase()) ?? "inspect";
+  return COMMAND_PERMISSIONS.get(command.toLowerCase()) ?? null;
 }
 
-export function permissionForCallbackData(callbackData: string | undefined): Permission {
+export function permissionForCallbackData(callbackData: string | undefined): Permission | null {
   if (!callbackData) {
-    return "inspect";
+    return null;
   }
   if (callbackData === "noop_page") {
     return "inspect";
@@ -170,7 +180,7 @@ export function permissionForCallbackData(callbackData: string | undefined): Per
     return "prompt.abort";
   }
   if (callbackData.startsWith("queue_")) {
-    return "prompt.send";
+    return "queue.write";
   }
   if (callbackData.startsWith("artifact_delete")) {
     return "files.write";
@@ -178,22 +188,26 @@ export function permissionForCallbackData(callbackData: string | undefined): Per
   if (callbackData.startsWith("artifact_")) {
     return "files.read";
   }
-  return "inspect";
+  return null;
 }
 
-export function permissionForWebRequest(method: string | undefined, pathname: string): Permission {
+export function permissionForWebRequest(method: string | undefined, pathname: string): Permission | null {
   const verb = (method ?? "GET").toUpperCase();
   if (pathname === "/api/bootstrap" || pathname === "/api/health" || pathname === "/api/snapshot" || pathname === "/api/tasks" || pathname === "/api/progress") {
     return "inspect";
   }
-  if (pathname === "/api/version" || pathname === "/api/adapters/health" || pathname === "/api/diagnostics") {
+  if (pathname === "/api/version" || pathname === "/api/adapters/health") {
     return "inspect";
   }
+  if (pathname === "/api/diagnostics") return "diagnostics.read";
   if (pathname.startsWith("/api/users") || pathname.startsWith("/api/groups") || pathname.startsWith("/api/telegram-chats")) {
     return verb === "GET" ? "users.read" : "users.write";
   }
   if (pathname === "/api/permissions" || pathname === "/api/audit") {
     return pathname === "/api/audit" ? "audit.read" : "users.read";
+  }
+  if (pathname === "/api/control-options") {
+    return "settings.read";
   }
   if (pathname === "/api/settings") {
     return verb === "GET" ? "settings.read" : "settings.write";
@@ -202,7 +216,7 @@ export function permissionForWebRequest(method: string | undefined, pathname: st
     return verb === "GET" ? "updates.run" : "updates.run";
   }
   if (pathname === "/api/logs" || pathname === "/api/logs/clear") {
-    return "logs.read";
+    return pathname === "/api/logs/clear" ? "logs.clear" : "logs.read";
   }
   if (pathname === "/api/runtime/restart") {
     return "system.restart";
@@ -217,6 +231,7 @@ export function permissionForWebRequest(method: string | undefined, pathname: st
     return verb === "GET" ? "settings.read" : "settings.write";
   }
   if (pathname === "/api/prompt" || pathname === "/api/prompt/upload" || pathname === "/api/retry" || pathname === "/api/queue") {
+    if (pathname === "/api/queue") return verb === "GET" ? "queue.read" : "queue.write";
     return verb === "GET" ? "inspect" : "prompt.send";
   }
   if (pathname === "/api/abort" || pathname === "/api/stop") {
@@ -231,7 +246,7 @@ export function permissionForWebRequest(method: string | undefined, pathname: st
   if (pathname.startsWith("/api/artifacts")) {
     return verb === "GET" ? "files.read" : "files.write";
   }
-  return "inspect";
+  return null;
 }
 
 export function isPermission(value: string): value is Permission {

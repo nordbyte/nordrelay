@@ -7,8 +7,9 @@ import { URL } from "node:url";
 import { enabledAgents } from "./agent-factory.js";
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { isAgentId } from "./agent.js";
+import { AuditLogStore, type AuditEvent } from "./audit-log.js";
 import { listChannelDescriptors } from "./channel-adapter.js";
-import { permissionForWebRequest } from "./access-control.js";
+import { ALL_PERMISSIONS, permissionForWebRequest } from "./access-control.js";
 import { loadConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { escapeHTML } from "./format.js";
@@ -25,6 +26,12 @@ interface DashboardOptions {
   home: string;
 }
 
+interface RateLimitBucket {
+  count: number;
+  resetAt: number;
+  blockedUntil?: number;
+}
+
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
 
@@ -33,6 +40,8 @@ const config = loadConfig();
 const runtime = new RelayRuntime(config);
 const settings = new SettingsService(resolveDashboardEnvPath(options.home));
 const users = new UserStore(options.home);
+const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
+const loginAttempts = new Map<string, RateLimitBucket>();
 
 const server = createServer((req, res) => {
   void handleRequest(req, res).catch((error) => {
@@ -77,6 +86,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   }
 
   if (url.pathname === "/healthz") {
+    if (!users.hasPermission(authenticated, "inspect")) {
+      sendText(res, 403, "access denied\n", "text/plain; charset=utf-8");
+      return;
+    }
     sendText(res, 200, "ok\n", "text/plain; charset=utf-8");
     return;
   }
@@ -111,7 +124,29 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
 async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, authUser: AuthenticatedUser): Promise<void> {
   const permission = permissionForWebRequest(req.method, url.pathname);
+  if (!permission) {
+    audit({
+      action: "permission_denied",
+      status: "denied",
+      channelId: "web",
+      contextKey: "web",
+      actorId: authUser.user.id,
+      actorRole: authUser.groups.map((group) => group.name).join(", "),
+      description: `Denied unknown endpoint ${req.method ?? "GET"} ${url.pathname}`,
+    });
+    sendJson(res, 403, { error: "Access denied." });
+    return;
+  }
   if (!users.hasPermission(authUser, permission)) {
+    audit({
+      action: "permission_denied",
+      status: "denied",
+      channelId: "web",
+      contextKey: "web",
+      actorId: authUser.user.id,
+      actorRole: authUser.groups.map((group) => group.name).join(", "),
+      description: `${permission} required for ${req.method ?? "GET"} ${url.pathname}`,
+    });
     sendJson(res, 403, { error: `Access denied: ${permission} permission required.` });
     return;
   }
@@ -189,12 +224,12 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   }
 
   if (req.method === "GET" && url.pathname === "/api/permissions") {
-    sendJson(res, 200, publicUserSnapshot(users.snapshot()));
+    sendJson(res, 200, { ...publicUserSnapshot(users.snapshot()), permissions: ALL_PERMISSIONS });
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/users") {
-    sendJson(res, 200, publicUserSnapshot(users.snapshot()));
+    sendJson(res, 200, { ...publicUserSnapshot(users.snapshot()), permissions: ALL_PERMISSIONS });
     return;
   }
 
@@ -208,6 +243,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
       active: optionalBooleanField(body, "active") ?? true,
       telegramUserId: optionalNumberField(body, "telegramUserId"),
     });
+    auditUserAction(authUser, "user_created", user.user.email);
     sendJson(res, 201, { user: publicUser(user.user), groups: user.groups });
     return;
   }
@@ -221,6 +257,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
       active: optionalBooleanField(body, "active"),
       groupIds: body.groupIds === undefined ? undefined : arrayStringField(body, "groupIds"),
     });
+    auditUserAction(authUser, "user_updated", user.user.email);
     sendJson(res, 200, { user: publicUser(user.user), groups: user.groups });
     return;
   }
@@ -228,8 +265,33 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   const passwordMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/password$/);
   if (passwordMatch?.[1] && req.method === "POST") {
     const body = await readJsonBody(req);
-    users.setPassword(decodeURIComponent(passwordMatch[1]), stringField(body, "password"));
+    const userId = decodeURIComponent(passwordMatch[1]);
+    users.setPassword(userId, stringField(body, "password"));
+    auditUserAction(authUser, "user_password_changed", userId);
     sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  const userSessionsMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/sessions$/);
+  if (userSessionsMatch?.[1] && req.method === "GET") {
+    sendJson(res, 200, { sessions: users.listWebSessions(decodeURIComponent(userSessionsMatch[1])) });
+    return;
+  }
+
+  if (userSessionsMatch?.[1] && req.method === "DELETE") {
+    const userId = decodeURIComponent(userSessionsMatch[1]);
+    const revoked = users.revokeUserSessions(userId);
+    auditUserAction(authUser, "user_session_revoked", `${userId}: ${revoked} sessions`);
+    sendJson(res, 200, { revoked });
+    return;
+  }
+
+  const userSessionMatch = url.pathname.match(/^\/api\/users\/[^/]+\/sessions\/([^/]+)$/);
+  if (userSessionMatch?.[1] && req.method === "DELETE") {
+    const sessionId = decodeURIComponent(userSessionMatch[1]);
+    const revoked = users.revokeWebSession(sessionId);
+    auditUserAction(authUser, "user_session_revoked", sessionId);
+    sendJson(res, 200, { revoked });
     return;
   }
 
@@ -237,21 +299,27 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   if (telegramLinkMatch?.[1] && req.method === "POST") {
     const body = await readJsonBody(req);
     if (body.createCode === true) {
-      sendJson(res, 201, { linkCode: users.createTelegramLinkCode(decodeURIComponent(telegramLinkMatch[1])) });
+      const userId = decodeURIComponent(telegramLinkMatch[1]);
+      const linkCode = users.createTelegramLinkCode(userId);
+      auditUserAction(authUser, "telegram_link_created", userId);
+      sendJson(res, 201, { linkCode });
       return;
     }
-    sendJson(res, 201, {
-      identity: users.linkTelegramUser(decodeURIComponent(telegramLinkMatch[1]), {
-        telegramUserId: numberField(body, "telegramUserId"),
-        username: optionalStringField(body, "username"),
-      }),
+    const identity = users.linkTelegramUser(decodeURIComponent(telegramLinkMatch[1]), {
+      telegramUserId: numberField(body, "telegramUserId"),
+      username: optionalStringField(body, "username"),
     });
+    auditUserAction(authUser, "telegram_linked", String(identity.telegramUserId));
+    sendJson(res, 201, { identity });
     return;
   }
 
   const telegramUnlinkMatch = url.pathname.match(/^\/api\/users\/[^/]+\/telegram\/([^/]+)$/);
   if (telegramUnlinkMatch?.[1] && req.method === "DELETE") {
-    sendJson(res, 200, { removed: users.unlinkTelegramIdentity(decodeURIComponent(telegramUnlinkMatch[1])) });
+    const identityId = decodeURIComponent(telegramUnlinkMatch[1]);
+    const removed = users.unlinkTelegramIdentity(identityId);
+    auditUserAction(authUser, "telegram_unlinked", identityId);
+    sendJson(res, 200, { removed });
     return;
   }
 
@@ -262,18 +330,32 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
 
   if (req.method === "POST" && url.pathname === "/api/groups") {
     const body = await readJsonBody(req);
-    sendJson(res, 201, { group: users.createGroup({ name: stringField(body, "name"), description: optionalStringField(body, "description"), permissions: arrayStringField(body, "permissions") }) });
+    const group = users.createGroup({
+      name: stringField(body, "name"),
+      description: optionalStringField(body, "description"),
+      permissions: arrayStringField(body, "permissions"),
+      agentIds: arrayStringField(body, "agentIds"),
+      workspaceRoots: arrayStringField(body, "workspaceRoots"),
+      telegramChatIds: arrayNumberField(body, "telegramChatIds"),
+    });
+    auditUserAction(authUser, "group_created", group.id);
+    sendJson(res, 201, { group });
     return;
   }
 
   const groupMatch = url.pathname.match(/^\/api\/groups\/([^/]+)$/);
   if (groupMatch?.[1] && req.method === "PATCH") {
     const body = await readJsonBody(req);
-    sendJson(res, 200, { group: users.updateGroup(decodeURIComponent(groupMatch[1]), {
+    const group = users.updateGroup(decodeURIComponent(groupMatch[1]), {
       name: optionalStringField(body, "name"),
       description: optionalStringField(body, "description"),
       permissions: body.permissions === undefined ? undefined : arrayStringField(body, "permissions"),
-    }) });
+      agentIds: body.agentIds === undefined ? undefined : arrayStringField(body, "agentIds"),
+      workspaceRoots: body.workspaceRoots === undefined ? undefined : arrayStringField(body, "workspaceRoots"),
+      telegramChatIds: body.telegramChatIds === undefined ? undefined : arrayNumberField(body, "telegramChatIds"),
+    });
+    auditUserAction(authUser, "group_updated", group.id);
+    sendJson(res, 200, { group });
     return;
   }
 
@@ -284,24 +366,28 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
 
   if (req.method === "POST" && url.pathname === "/api/telegram-chats") {
     const body = await readJsonBody(req);
-    sendJson(res, 201, { chat: users.registerTelegramChat({
+    const chat = users.registerTelegramChat({
       chatId: numberField(body, "chatId"),
       title: optionalStringField(body, "title"),
       type: optionalStringField(body, "type"),
       enabled: optionalBooleanField(body, "enabled") ?? true,
       allowedGroupIds: arrayStringField(body, "allowedGroupIds"),
-    }) });
+    });
+    auditUserAction(authUser, "telegram_chat_updated", String(chat.chatId));
+    sendJson(res, 201, { chat });
     return;
   }
 
   const chatMatch = url.pathname.match(/^\/api\/telegram-chats\/([^/]+)$/);
   if (chatMatch?.[1] && req.method === "PATCH") {
     const body = await readJsonBody(req);
-    sendJson(res, 200, { chat: users.updateTelegramChat(decodeURIComponent(chatMatch[1]), {
+    const chat = users.updateTelegramChat(decodeURIComponent(chatMatch[1]), {
       enabled: optionalBooleanField(body, "enabled"),
       title: optionalStringField(body, "title"),
       allowedGroupIds: body.allowedGroupIds === undefined ? undefined : arrayStringField(body, "allowedGroupIds"),
-    }) });
+    });
+    auditUserAction(authUser, "telegram_chat_updated", String(chat.chatId));
+    sendJson(res, 200, { chat });
     return;
   }
 
@@ -379,16 +465,21 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     if (!isAgentId(agentId)) {
       throw new Error(`Invalid agent: ${agentId}`);
     }
+    assertScopedAgent(authUser, agentId);
     sendJson(res, 200, { session: await runtime.setAgent(agentId) });
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/sessions/new") {
     const body = await readJsonBody(req);
+    const agentId = parseAgentId(optionalStringField(body, "agentId"));
+    const workspace = optionalStringField(body, "workspace");
+    assertScopedAgent(authUser, agentId);
+    assertScopedWorkspace(authUser, workspace);
     sendJson(res, 200, {
       session: await runtime.newSession({
-        agentId: parseAgentId(optionalStringField(body, "agentId")),
-        workspace: optionalStringField(body, "workspace"),
+        agentId,
+        workspace,
         model: optionalStringField(body, "model"),
         reasoningEffort: optionalStringField(body, "reasoningEffort"),
         launchProfileId: optionalStringField(body, "launchProfileId"),
@@ -400,13 +491,22 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
 
   if (req.method === "POST" && url.pathname === "/api/sessions/switch") {
     const body = await readJsonBody(req);
-    sendJson(res, 200, { session: await runtime.switchSession(stringField(body, "threadId")) });
+    const threadId = stringField(body, "threadId");
+    const detail = await runtime.sessionDetail(threadId);
+    if (detail.record && typeof detail.record === "object") {
+      assertSessionScope(authUser, detail.record as Record<string, unknown>);
+    }
+    const session = await runtime.switchSession(threadId);
+    assertSessionScope(authUser, session);
+    sendJson(res, 200, { session });
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/sessions/attach") {
     const body = await readJsonBody(req);
-    sendJson(res, 200, { session: await runtime.attachSession(stringField(body, "threadId")) });
+    const session = await runtime.attachSession(stringField(body, "threadId"));
+    assertSessionScope(authUser, session);
+    sendJson(res, 200, { session });
     return;
   }
 
@@ -446,12 +546,14 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
 
   if (req.method === "POST" && url.pathname === "/api/prompt") {
     const body = await readJsonBody(req);
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 202, await runtime.sendPrompt(stringField(body, "text")));
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/prompt/upload") {
     const body = await readJsonBody(req);
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 202, await runtime.sendUploadPrompt({
       text: optionalStringField(body, "text"),
       files: parseUploadFiles(body.files),
@@ -597,8 +699,13 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
 }
 
 function handleEvents(req: IncomingMessage, res: ServerResponse): void {
-  if (!authenticateRequest(req)) {
+  const authUser = authenticateRequest(req);
+  if (!authUser) {
     sendJson(res, 401, { error: "Authentication required" });
+    return;
+  }
+  if (!users.hasPermission(authUser, "inspect")) {
+    sendJson(res, 403, { error: "Access denied: inspect permission required." });
     return;
   }
 
@@ -626,22 +733,57 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse): Promise<v
   const body = await readJsonBody(req);
   const email = optionalStringField(body, "email");
   const password = optionalStringField(body, "password");
+  const rateLimitKey = `${req.socket.remoteAddress ?? "unknown"}:${email ?? "-"}`;
+  const limited = consumeRateLimit(loginAttempts, rateLimitKey, 5, 15 * 60 * 1000, 15 * 60 * 1000);
+  if (limited.limited) {
+    audit({
+      action: "auth_login_failed",
+      status: "denied",
+      channelId: "web",
+      contextKey: "web",
+      description: `Rate limited login attempt for ${email ?? "unknown"}`,
+      detail: `${Math.ceil((limited.retryAfterMs ?? 0) / 1000)}s retry-after`,
+    });
+    sendJson(res, 429, { error: "Too many login attempts. Try again later.", retryAfterMs: limited.retryAfterMs });
+    return;
+  }
   if (!users.hasAdminUser()) {
     sendJson(res, 503, { error: "No admin user exists. Run nordrelay user create-admin first." });
     return;
   }
   const authUser = email && password ? users.verifyPassword(email, password) : null;
   if (!authUser) {
+    audit({
+      action: "auth_login_failed",
+      status: "failed",
+      channelId: "web",
+      contextKey: "web",
+      description: `Failed login for ${email ?? "unknown"}`,
+    });
     sendJson(res, 401, { error: "Invalid credentials" });
     return;
   }
+  resetRateLimit(loginAttempts, rateLimitKey);
   const session = users.createWebSession(authUser.user.id);
+  audit({
+    action: "auth_login",
+    status: "ok",
+    channelId: "web",
+    contextKey: "web",
+    actorId: authUser.user.id,
+    actorRole: authUser.groups.map((group) => group.name).join(", "),
+    description: `Login ${authUser.user.email}`,
+  });
   setSessionCookie(res, session.token);
   sendJson(res, 200, currentUserDto(authUser));
 }
 
 function handleLogout(req: IncomingMessage, res: ServerResponse): void {
+  const authUser = authenticateRequest(req);
   users.destroyWebSession(parseCookies(req.headers.cookie ?? "").nr_session);
+  if (authUser) {
+    auditUserAction(authUser, "auth_logout", authUser.user.email);
+  }
   clearSessionCookie(res);
   sendJson(res, 200, { ok: true });
 }
@@ -681,6 +823,77 @@ function currentUserDto(authUser: AuthenticatedUser) {
     groups: authUser.groups,
     permissions: authUser.permissions,
   };
+}
+
+function audit(event: Omit<AuditEvent, "id" | "timestamp" | "channelId"> & { channelId?: AuditEvent["channelId"] }): void {
+  try {
+    auditLog.append(event);
+  } catch (error) {
+    console.warn("Failed to write audit event:", error instanceof Error ? error.message : String(error));
+  }
+}
+
+function auditUserAction(authUser: AuthenticatedUser, action: AuditEvent["action"], description: string): void {
+  audit({
+    action,
+    status: "ok",
+    channelId: "web",
+    contextKey: "web",
+    actorId: authUser.user.id,
+    actorRole: authUser.groups.map((group) => group.name).join(", "),
+    description,
+  });
+}
+
+function assertScopedAgent(authUser: AuthenticatedUser, agentId: string | undefined): void {
+  if (!users.canUseAgent(authUser, agentId)) {
+    throw new Error(`Access denied: agent ${agentId} is outside your group scope.`);
+  }
+}
+
+function assertScopedWorkspace(authUser: AuthenticatedUser, workspace: string | undefined): void {
+  if (!users.canUseWorkspace(authUser, workspace)) {
+    throw new Error(`Access denied: workspace ${workspace} is outside your group scope.`);
+  }
+}
+
+function assertSessionScope(authUser: AuthenticatedUser, session: { agentId?: string; workspace?: string } | Record<string, unknown>): void {
+  const agentId = typeof session.agentId === "string" ? session.agentId : undefined;
+  const workspace = typeof session.workspace === "string" ? session.workspace : undefined;
+  assertScopedAgent(authUser, agentId);
+  assertScopedWorkspace(authUser, workspace);
+}
+
+async function assertCurrentSessionScope(authUser: AuthenticatedUser): Promise<void> {
+  const snapshot = await runtime.snapshot();
+  assertSessionScope(authUser, snapshot.session);
+}
+
+function consumeRateLimit(
+  buckets: Map<string, RateLimitBucket>,
+  key: string,
+  limit: number,
+  windowMs: number,
+  blockMs: number,
+): { limited: boolean; retryAfterMs?: number } {
+  const now = Date.now();
+  const existing = buckets.get(key);
+  if (existing?.blockedUntil && existing.blockedUntil > now) {
+    return { limited: true, retryAfterMs: existing.blockedUntil - now };
+  }
+  const bucket = !existing || existing.resetAt <= now ? { count: 0, resetAt: now + windowMs } : existing;
+  bucket.count += 1;
+  if (bucket.count > limit) {
+    bucket.blockedUntil = now + blockMs;
+    buckets.set(key, bucket);
+    return { limited: true, retryAfterMs: blockMs };
+  }
+  buckets.set(key, bucket);
+  return { limited: false };
+}
+
+function resetRateLimit(buckets: Map<string, RateLimitBucket>, key: string): void {
+  buckets.delete(key);
 }
 
 function parseCookies(cookieHeader: string): Record<string, string> {
@@ -768,6 +981,20 @@ function arrayStringField(value: Record<string, unknown>, key: string): string[]
     return field.split(",").map((item) => item.trim()).filter(Boolean);
   }
   throw new Error(`${key} must be a string list`);
+}
+
+function arrayNumberField(value: Record<string, unknown>, key: string): number[] {
+  const field = value[key];
+  if (field === undefined || field === null || field === "") {
+    return [];
+  }
+  if (Array.isArray(field)) {
+    return field.map((item) => typeof item === "number" ? item : Number(item)).filter((item) => Number.isInteger(item));
+  }
+  if (typeof field === "string") {
+    return field.split(",").map((item) => Number(item.trim())).filter((item) => Number.isInteger(item));
+  }
+  throw new Error(`${key} must be a number list`);
 }
 
 function parseAgentId(value: string | undefined) {
@@ -1123,7 +1350,7 @@ function renderDashboardApp(): string {
 
       <section class="page" id="page-access">
         <div class="panel">
-          <div class="row"><button id="loadAccessBtn">Reload users</button><button id="createUserBtn">Create user</button><button id="createGroupBtn" class="secondary">Create group</button><button id="lockSessionBtn" class="secondary">Lock web session</button><button id="unlockSessionBtn" class="secondary">Unlock web session</button></div>
+          <div class="row"><button id="loadAccessBtn">Reload users</button><button id="createUserBtn">Create user</button><button id="createGroupBtn" class="secondary">Create group</button><button id="createChatBtn" class="secondary">Add Telegram chat</button><button id="lockSessionBtn" class="secondary">Lock web session</button><button id="unlockSessionBtn" class="secondary">Unlock web session</button></div>
           <div id="accessPanel" class="settings-grid"></div>
           <h2>Groups</h2>
           <div id="groupsList" class="list"></div>
@@ -1190,6 +1417,13 @@ function renderDashboardApp(): string {
   <dialog id="sessionDetailDialog">
     <div id="sessionDetail"></div>
     <div class="row dialog-actions"><button id="closeSessionDetailBtn" class="secondary">Close</button></div>
+  </dialog>
+  <dialog id="adminDialog">
+    <form method="dialog" id="adminDialogForm">
+      <h2 id="adminDialogTitle">Edit</h2>
+      <div id="adminDialogBody" class="form-grid"></div>
+      <div class="row dialog-actions"><button type="button" id="adminDialogCancel" class="secondary">Cancel</button><button id="adminDialogSubmit" value="default">Save</button></div>
+    </form>
   </dialog>
   <div id="toolTooltip" class="tool-tooltip"></div>
   <div id="toast"></div>

@@ -31,7 +31,12 @@ NordRelay is designed to fail closed:
 - WebUI login is required for every dashboard page, API route, SSE stream, artifact download, and health endpoint.
 - Telegram private chats require a linked active NordRelay user.
 - Telegram group and forum chats are disabled until an admin enables the chat.
-- Authorization is enforced through user groups and granular permissions.
+- Authorization is enforced through user groups, granular permissions, and optional group scopes for agents, workspace roots, and Telegram chats.
+- Unknown commands, callback actions, and API routes are denied by default.
+- The last active admin user cannot be disabled or demoted.
+- WebUI login and Telegram account-link attempts are rate-limited.
+- Password changes and group membership changes revoke existing WebUI sessions.
+- User, group, Telegram-link, Telegram-chat, session-revocation, login, and permission-denied events are audited.
 - Uploaded files are staged inside the selected workspace.
 - Secrets are redacted from logs and Telegram diagnostics where possible.
 

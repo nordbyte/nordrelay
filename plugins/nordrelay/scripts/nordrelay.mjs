@@ -345,7 +345,7 @@ async function commandInit(options) {
       await ask(rl, "Telegram bot token", "");
     const adminEmail = options.adminEmail || await ask(rl, "Admin email", "");
     const adminName = options.adminName || await ask(rl, "Admin name", "Admin");
-    const adminPassword = options.adminPassword || await ask(rl, "Admin password", "");
+    const adminPassword = options.adminPassword || await askSecret(rl, "Admin password", "");
     const telegramUserId = options.telegramUserId || await ask(rl, "Optional Telegram user id to link", "");
     const enableCodex = options.disableCodex ? "false" : await askChoice(rl, "Enable Codex", "true");
     const enablePi = options.enablePi ? "true" : await askChoice(rl, "Enable Pi", "false");
@@ -458,7 +458,7 @@ async function commandUser(options) {
     if (flags.subcommand === "create-admin" || flags.subcommand === "create") {
       const email = flags.email || await ask(rl, "Email", "");
       const name = flags.name || await ask(rl, "Display name", email);
-      const password = flags.password || await ask(rl, "Password", "");
+      const password = flags.password || await askSecret(rl, "Password", "");
       const groupIds = flags.subcommand === "create-admin"
         ? ["admin"]
         : (flags.groups ? flags.groups.split(",").map((item) => item.trim()).filter(Boolean) : ["user"]);
@@ -471,7 +471,7 @@ async function commandUser(options) {
 
     if (flags.subcommand === "reset-password") {
       const email = flags.email || await ask(rl, "Email", "");
-      const password = flags.password || await ask(rl, "New password", "");
+      const password = flags.password || await askSecret(rl, "New password", "");
       const user = store.getUserByEmail(email);
       if (!user) throw new Error(`User not found: ${email}`);
       store.setPassword(user.user.id, password);
@@ -795,6 +795,51 @@ async function ask(rl, label, defaultValue) {
   const suffix = defaultValue ? ` [${defaultValue}]` : "";
   const answer = (await rl.question(`${label}${suffix}: `)).trim();
   return answer || defaultValue;
+}
+
+async function askSecret(rl, label, defaultValue) {
+  if (!rl || !process.stdin.isTTY || !process.stdout.isTTY) return defaultValue;
+  const suffix = defaultValue ? " [hidden default]" : "";
+  rl.pause();
+  return await new Promise((resolve) => {
+    const input = process.stdin;
+    const output = process.stdout;
+    const wasRaw = input.isRaw;
+    let value = "";
+    output.write(`${label}${suffix}: `);
+    input.setRawMode(true);
+    input.resume();
+    const finish = () => {
+      input.off("data", onData);
+      input.setRawMode(Boolean(wasRaw));
+      output.write("\n");
+      rl.resume();
+      resolve(value || defaultValue);
+    };
+    const onData = (chunk) => {
+      const text = chunk.toString("utf8");
+      for (const char of text) {
+        if (char === "\u0003") {
+          output.write("\n");
+          process.exit(130);
+        }
+        if (char === "\r" || char === "\n") {
+          finish();
+          return;
+        }
+        if (char === "\u007f" || char === "\b") {
+          if (value.length > 0) {
+            value = value.slice(0, -1);
+            output.write("\b \b");
+          }
+          continue;
+        }
+        value += char;
+        output.write("*");
+      }
+    };
+    input.on("data", onData);
+  });
 }
 
 async function askChoice(rl, label, defaultValue) {

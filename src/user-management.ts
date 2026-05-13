@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
+import { closeSync, mkdirSync, openSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -26,6 +27,9 @@ export interface UserRecord {
 }
 
 export interface GroupRecord extends GroupDefinition {
+  agentIds: string[];
+  workspaceRoots: string[];
+  telegramChatIds: number[];
   createdAt: string;
   updatedAt: string;
 }
@@ -81,11 +85,17 @@ export interface AuthenticatedUser {
 }
 
 export interface UserManagementSnapshot {
-  users: Array<UserRecord & { groups: GroupRecord[]; telegramIdentities: TelegramIdentityRecord[] }>;
+  users: Array<UserRecord & {
+    groups: GroupRecord[];
+    telegramIdentities: TelegramIdentityRecord[];
+    webSessions: PublicWebSessionRecord[];
+  }>;
   groups: GroupRecord[];
   telegramChats: TelegramChatAccessRecord[];
   adminConfigured: boolean;
 }
+
+export type PublicWebSessionRecord = Omit<WebSessionRecord, "tokenHash">;
 
 interface PersistedUsers {
   version: 1;
@@ -101,6 +111,8 @@ interface PersistedUsers {
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const LINK_CODE_TTL_MS = 15 * 60 * 1000;
 const PASSWORD_KEYLEN = 64;
+const WRITE_LOCK_TIMEOUT_MS = 5_000;
+const STALE_LOCK_MS = 30_000;
 
 export class UserStore {
   readonly filePath: string;
@@ -121,6 +133,9 @@ export class UserStore {
         ...user,
         groups: this.groupsForUser(payload, user.id),
         telegramIdentities: payload.telegramIdentities.filter((identity) => identity.userId === user.id),
+        webSessions: payload.webSessions
+          .filter((session) => session.userId === user.id)
+          .map(publicWebSession),
       })),
       groups: payload.groups,
       telegramChats: payload.telegramChats,
@@ -130,6 +145,13 @@ export class UserStore {
 
   listGroups(): GroupRecord[] {
     return this.readPayload().groups;
+  }
+
+  listWebSessions(userId?: string): PublicWebSessionRecord[] {
+    const payload = this.readPayload();
+    return payload.webSessions
+      .filter((session) => !userId || session.userId === userId)
+      .map(publicWebSession);
   }
 
   getUser(id: string): AuthenticatedUser | null {
@@ -153,36 +175,36 @@ export class UserStore {
     active?: boolean;
     telegramUserId?: number;
   }): AuthenticatedUser {
-    const payload = this.readPayload();
-    const email = normalizeEmail(input.email);
-    if (!email) {
-      throw new Error("Email is required.");
-    }
-    if (payload.users.some((user) => user.email === email)) {
-      throw new Error(`User already exists: ${email}`);
-    }
-    const now = new Date().toISOString();
-    const password = hashPassword(input.password);
-    const user: UserRecord = {
-      id: randomId(),
-      email,
-      displayName: input.displayName.trim() || email,
-      passwordHash: password.hash,
-      passwordSalt: password.salt,
-      active: input.active ?? true,
-      createdAt: now,
-      updatedAt: now,
-    };
-    const groupIds = normalizeGroupIds(payload, input.groupIds?.length ? input.groupIds : [USER_GROUP_ID]);
-    payload.users.push(user);
-    payload.userGroups.push(...groupIds.map((groupId) => ({ userId: user.id, groupId })));
-    if (input.telegramUserId !== undefined) {
-      this.upsertTelegramIdentityInPayload(payload, user.id, {
-        telegramUserId: input.telegramUserId,
-      });
-    }
-    this.writePayload(payload);
-    return this.authenticatedUser(payload, user);
+    return this.mutatePayload((payload) => {
+      const email = normalizeEmail(input.email);
+      if (!email) {
+        throw new Error("Email is required.");
+      }
+      if (payload.users.some((user) => user.email === email)) {
+        throw new Error(`User already exists: ${email}`);
+      }
+      const now = new Date().toISOString();
+      const password = hashPassword(input.password);
+      const user: UserRecord = {
+        id: randomId(),
+        email,
+        displayName: input.displayName.trim() || email,
+        passwordHash: password.hash,
+        passwordSalt: password.salt,
+        active: input.active ?? true,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const groupIds = normalizeGroupIds(payload, input.groupIds?.length ? input.groupIds : [USER_GROUP_ID]);
+      payload.users.push(user);
+      payload.userGroups.push(...groupIds.map((groupId) => ({ userId: user.id, groupId })));
+      if (input.telegramUserId !== undefined) {
+        this.upsertTelegramIdentityInPayload(payload, user.id, {
+          telegramUserId: input.telegramUserId,
+        });
+      }
+      return this.authenticatedUser(payload, user);
+    });
   }
 
   createAdmin(input: {
@@ -204,116 +226,135 @@ export class UserStore {
     active?: boolean;
     groupIds?: string[];
   }): AuthenticatedUser {
-    const payload = this.readPayload();
-    const user = payload.users.find((candidate) => candidate.id === id);
-    if (!user) {
-      throw new Error("User not found.");
-    }
-    if (patch.email !== undefined) {
-      const email = normalizeEmail(patch.email);
-      if (!email) {
-        throw new Error("Email is required.");
+    return this.mutatePayload((payload) => {
+      const user = payload.users.find((candidate) => candidate.id === id);
+      if (!user) {
+        throw new Error("User not found.");
       }
-      if (payload.users.some((candidate) => candidate.id !== id && candidate.email === email)) {
-        throw new Error(`User already exists: ${email}`);
+      const shouldRevokeSessions = patch.active === false || patch.groupIds !== undefined;
+      if (patch.email !== undefined) {
+        const email = normalizeEmail(patch.email);
+        if (!email) {
+          throw new Error("Email is required.");
+        }
+        if (payload.users.some((candidate) => candidate.id !== id && candidate.email === email)) {
+          throw new Error(`User already exists: ${email}`);
+        }
+        user.email = email;
       }
-      user.email = email;
-    }
-    if (patch.displayName !== undefined) {
-      user.displayName = patch.displayName.trim() || user.email;
-    }
-    if (patch.active !== undefined) {
-      user.active = patch.active;
-    }
-    if (patch.groupIds !== undefined) {
-      const groupIds = normalizeGroupIds(payload, patch.groupIds);
-      payload.userGroups = payload.userGroups.filter((item) => item.userId !== id);
-      payload.userGroups.push(...groupIds.map((groupId) => ({ userId: id, groupId })));
-    }
-    user.updatedAt = new Date().toISOString();
-    this.writePayload(payload);
-    return this.authenticatedUser(payload, user);
+      if (patch.displayName !== undefined) {
+        user.displayName = patch.displayName.trim() || user.email;
+      }
+      if (patch.active !== undefined) {
+        user.active = patch.active;
+      }
+      if (patch.groupIds !== undefined) {
+        const groupIds = normalizeGroupIds(payload, patch.groupIds);
+        payload.userGroups = payload.userGroups.filter((item) => item.userId !== id);
+        payload.userGroups.push(...groupIds.map((groupId) => ({ userId: id, groupId })));
+      }
+      assertActiveAdminExists(payload);
+      if (shouldRevokeSessions) {
+        this.revokeUserSessionsInPayload(payload, id);
+      }
+      user.updatedAt = new Date().toISOString();
+      return this.authenticatedUser(payload, user);
+    });
   }
 
   setPassword(id: string, password: string): void {
-    const payload = this.readPayload();
-    const user = payload.users.find((candidate) => candidate.id === id);
-    if (!user) {
-      throw new Error("User not found.");
-    }
-    const next = hashPassword(password);
-    user.passwordHash = next.hash;
-    user.passwordSalt = next.salt;
-    user.updatedAt = new Date().toISOString();
-    this.revokeUserSessionsInPayload(payload, id);
-    this.writePayload(payload);
+    this.mutatePayload((payload) => {
+      const user = payload.users.find((candidate) => candidate.id === id);
+      if (!user) {
+        throw new Error("User not found.");
+      }
+      const next = hashPassword(password);
+      user.passwordHash = next.hash;
+      user.passwordSalt = next.salt;
+      user.updatedAt = new Date().toISOString();
+      this.revokeUserSessionsInPayload(payload, id);
+    });
   }
 
   verifyPassword(email: string, password: string): AuthenticatedUser | null {
-    const payload = this.readPayload();
-    const user = payload.users.find((candidate) => candidate.email === normalizeEmail(email));
-    if (!user || !user.active || !verifyPasswordHash(password, user.passwordSalt, user.passwordHash)) {
-      return null;
-    }
-    user.lastLoginAt = new Date().toISOString();
-    user.updatedAt = user.lastLoginAt;
-    this.writePayload(payload);
-    return this.authenticatedUser(payload, user);
+    return this.mutatePayload((payload) => {
+      const user = payload.users.find((candidate) => candidate.email === normalizeEmail(email));
+      if (!user || !user.active || !verifyPasswordHash(password, user.passwordSalt, user.passwordHash)) {
+        return null;
+      }
+      user.lastLoginAt = new Date().toISOString();
+      user.updatedAt = user.lastLoginAt;
+      return this.authenticatedUser(payload, user);
+    });
   }
 
   createWebSession(userId: string): { token: string; session: WebSessionRecord } {
-    const payload = this.readPayload();
-    const user = payload.users.find((candidate) => candidate.id === userId && candidate.active);
-    if (!user) {
-      throw new Error("Active user not found.");
-    }
-    const token = randomBytes(32).toString("hex");
-    const now = new Date();
-    const session: WebSessionRecord = {
-      id: randomId(),
-      userId,
-      tokenHash: hashToken(token),
-      createdAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + SESSION_TTL_MS).toISOString(),
-      lastSeenAt: now.toISOString(),
-    };
-    payload.webSessions.push(session);
-    this.pruneExpiredSessionsInPayload(payload);
-    this.writePayload(payload);
-    return { token, session };
+    return this.mutatePayload((payload) => {
+      const user = payload.users.find((candidate) => candidate.id === userId && candidate.active);
+      if (!user) {
+        throw new Error("Active user not found.");
+      }
+      const token = randomBytes(32).toString("hex");
+      const now = new Date();
+      const session: WebSessionRecord = {
+        id: randomId(),
+        userId,
+        tokenHash: hashToken(token),
+        createdAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + SESSION_TTL_MS).toISOString(),
+        lastSeenAt: now.toISOString(),
+      };
+      payload.webSessions.push(session);
+      this.pruneExpiredSessionsInPayload(payload);
+      return { token, session };
+    });
   }
 
   resolveWebSession(token: string | undefined): AuthenticatedUser | null {
     if (!token) {
       return null;
     }
-    const payload = this.readPayload();
-    this.pruneExpiredSessionsInPayload(payload);
-    const tokenHash = hashToken(token);
-    const session = payload.webSessions.find((candidate) => constantTimeStringEqual(candidate.tokenHash, tokenHash));
-    if (!session) {
-      this.writePayload(payload);
-      return null;
-    }
-    const user = payload.users.find((candidate) => candidate.id === session.userId && candidate.active);
-    if (!user) {
-      payload.webSessions = payload.webSessions.filter((candidate) => candidate.id !== session.id);
-      this.writePayload(payload);
-      return null;
-    }
-    session.lastSeenAt = new Date().toISOString();
-    this.writePayload(payload);
-    return this.authenticatedUser(payload, user);
+    return this.mutatePayload((payload) => {
+      this.pruneExpiredSessionsInPayload(payload);
+      const tokenHash = hashToken(token);
+      const session = payload.webSessions.find((candidate) => constantTimeStringEqual(candidate.tokenHash, tokenHash));
+      if (!session) {
+        return null;
+      }
+      const user = payload.users.find((candidate) => candidate.id === session.userId && candidate.active);
+      if (!user) {
+        payload.webSessions = payload.webSessions.filter((candidate) => candidate.id !== session.id);
+        return null;
+      }
+      session.lastSeenAt = new Date().toISOString();
+      return this.authenticatedUser(payload, user);
+    });
   }
 
   destroyWebSession(token: string | undefined): void {
     if (!token) {
       return;
     }
-    const payload = this.readPayload();
-    const tokenHash = hashToken(token);
-    payload.webSessions = payload.webSessions.filter((session) => !constantTimeStringEqual(session.tokenHash, tokenHash));
-    this.writePayload(payload);
+    this.mutatePayload((payload) => {
+      const tokenHash = hashToken(token);
+      payload.webSessions = payload.webSessions.filter((session) => !constantTimeStringEqual(session.tokenHash, tokenHash));
+    });
+  }
+
+  revokeWebSession(sessionId: string): boolean {
+    return this.mutatePayload((payload) => {
+      const before = payload.webSessions.length;
+      payload.webSessions = payload.webSessions.filter((session) => session.id !== sessionId);
+      return payload.webSessions.length !== before;
+    });
+  }
+
+  revokeUserSessions(userId: string): number {
+    return this.mutatePayload((payload) => {
+      const before = payload.webSessions.length;
+      this.revokeUserSessionsInPayload(payload, userId);
+      return before - payload.webSessions.length;
+    });
   }
 
   resolveTelegramUser(telegramUserId: number | undefined): AuthenticatedUser | null {
@@ -335,40 +376,39 @@ export class UserStore {
     firstName?: string;
     lastName?: string;
   }): TelegramIdentityRecord {
-    const payload = this.readPayload();
-    const user = payload.users.find((candidate) => candidate.id === userId);
-    if (!user) {
-      throw new Error("User not found.");
-    }
-    const identity = this.upsertTelegramIdentityInPayload(payload, userId, input);
-    this.writePayload(payload);
-    return identity;
+    return this.mutatePayload((payload) => {
+      const user = payload.users.find((candidate) => candidate.id === userId);
+      if (!user) {
+        throw new Error("User not found.");
+      }
+      return this.upsertTelegramIdentityInPayload(payload, userId, input);
+    });
   }
 
   unlinkTelegramIdentity(identityId: string): boolean {
-    const payload = this.readPayload();
-    const before = payload.telegramIdentities.length;
-    payload.telegramIdentities = payload.telegramIdentities.filter((identity) => identity.id !== identityId);
-    this.writePayload(payload);
-    return payload.telegramIdentities.length !== before;
+    return this.mutatePayload((payload) => {
+      const before = payload.telegramIdentities.length;
+      payload.telegramIdentities = payload.telegramIdentities.filter((identity) => identity.id !== identityId);
+      return payload.telegramIdentities.length !== before;
+    });
   }
 
   createTelegramLinkCode(userId: string): TelegramLinkCodeRecord {
-    const payload = this.readPayload();
-    if (!payload.users.some((user) => user.id === userId && user.active)) {
-      throw new Error("Active user not found.");
-    }
-    const now = Date.now();
-    payload.telegramLinkCodes = payload.telegramLinkCodes.filter((code) => new Date(code.expiresAt).getTime() > now);
-    const code: TelegramLinkCodeRecord = {
-      code: randomLinkCode(),
-      userId,
-      createdAt: new Date(now).toISOString(),
-      expiresAt: new Date(now + LINK_CODE_TTL_MS).toISOString(),
-    };
-    payload.telegramLinkCodes.push(code);
-    this.writePayload(payload);
-    return code;
+    return this.mutatePayload((payload) => {
+      if (!payload.users.some((user) => user.id === userId && user.active)) {
+        throw new Error("Active user not found.");
+      }
+      const now = Date.now();
+      payload.telegramLinkCodes = payload.telegramLinkCodes.filter((code) => new Date(code.expiresAt).getTime() > now);
+      const code: TelegramLinkCodeRecord = {
+        code: randomLinkCode(),
+        userId,
+        createdAt: new Date(now).toISOString(),
+        expiresAt: new Date(now + LINK_CODE_TTL_MS).toISOString(),
+      };
+      payload.telegramLinkCodes.push(code);
+      return code;
+    });
   }
 
   consumeTelegramLinkCode(code: string, input: {
@@ -377,21 +417,21 @@ export class UserStore {
     firstName?: string;
     lastName?: string;
   }): AuthenticatedUser {
-    const payload = this.readPayload();
-    const normalized = code.trim().toUpperCase();
-    const now = Date.now();
-    const link = payload.telegramLinkCodes.find((candidate) => candidate.code === normalized && new Date(candidate.expiresAt).getTime() > now);
-    if (!link) {
-      throw new Error("Invalid or expired link code.");
-    }
-    const user = payload.users.find((candidate) => candidate.id === link.userId && candidate.active);
-    if (!user) {
-      throw new Error("Linked user is not active.");
-    }
-    this.upsertTelegramIdentityInPayload(payload, user.id, input);
-    payload.telegramLinkCodes = payload.telegramLinkCodes.filter((candidate) => candidate.code !== normalized);
-    this.writePayload(payload);
-    return this.authenticatedUser(payload, user);
+    return this.mutatePayload((payload) => {
+      const normalized = code.trim().toUpperCase();
+      const now = Date.now();
+      const link = payload.telegramLinkCodes.find((candidate) => candidate.code === normalized && new Date(candidate.expiresAt).getTime() > now);
+      if (!link) {
+        throw new Error("Invalid or expired link code.");
+      }
+      const user = payload.users.find((candidate) => candidate.id === link.userId && candidate.active);
+      if (!user) {
+        throw new Error("Linked user is not active.");
+      }
+      this.upsertTelegramIdentityInPayload(payload, user.id, input);
+      payload.telegramLinkCodes = payload.telegramLinkCodes.filter((candidate) => candidate.code !== normalized);
+      return this.authenticatedUser(payload, user);
+    });
   }
 
   registerTelegramChat(input: {
@@ -401,46 +441,45 @@ export class UserStore {
     enabled?: boolean;
     allowedGroupIds?: string[];
   }): TelegramChatAccessRecord {
-    const payload = this.readPayload();
-    const now = new Date().toISOString();
-    const existing = payload.telegramChats.find((chat) => chat.chatId === input.chatId);
-    const allowedGroupIds = normalizeGroupIds(payload, input.allowedGroupIds ?? [], null);
-    if (existing) {
-      existing.title = input.title ?? existing.title;
-      existing.type = input.type ?? existing.type;
-      existing.enabled = input.enabled ?? existing.enabled;
-      existing.allowedGroupIds = allowedGroupIds;
-      existing.updatedAt = now;
-      this.writePayload(payload);
-      return existing;
-    }
-    const chat: TelegramChatAccessRecord = {
-      id: randomId(),
-      chatId: input.chatId,
-      title: input.title,
-      type: input.type,
-      enabled: input.enabled ?? true,
-      allowedGroupIds,
-      createdAt: now,
-      updatedAt: now,
-    };
-    payload.telegramChats.push(chat);
-    this.writePayload(payload);
-    return chat;
+    return this.mutatePayload((payload) => {
+      const now = new Date().toISOString();
+      const existing = payload.telegramChats.find((chat) => chat.chatId === input.chatId);
+      const allowedGroupIds = normalizeGroupIds(payload, input.allowedGroupIds ?? [], null);
+      if (existing) {
+        existing.title = input.title ?? existing.title;
+        existing.type = input.type ?? existing.type;
+        existing.enabled = input.enabled ?? existing.enabled;
+        existing.allowedGroupIds = allowedGroupIds;
+        existing.updatedAt = now;
+        return existing;
+      }
+      const chat: TelegramChatAccessRecord = {
+        id: randomId(),
+        chatId: input.chatId,
+        title: input.title,
+        type: input.type,
+        enabled: input.enabled ?? true,
+        allowedGroupIds,
+        createdAt: now,
+        updatedAt: now,
+      };
+      payload.telegramChats.push(chat);
+      return chat;
+    });
   }
 
   updateTelegramChat(id: string, patch: { enabled?: boolean; allowedGroupIds?: string[]; title?: string }): TelegramChatAccessRecord {
-    const payload = this.readPayload();
-    const chat = payload.telegramChats.find((candidate) => candidate.id === id);
-    if (!chat) {
-      throw new Error("Telegram chat not found.");
-    }
-    if (patch.enabled !== undefined) chat.enabled = patch.enabled;
-    if (patch.title !== undefined) chat.title = patch.title;
-    if (patch.allowedGroupIds !== undefined) chat.allowedGroupIds = normalizeGroupIds(payload, patch.allowedGroupIds, null);
-    chat.updatedAt = new Date().toISOString();
-    this.writePayload(payload);
-    return chat;
+    return this.mutatePayload((payload) => {
+      const chat = payload.telegramChats.find((candidate) => candidate.id === id);
+      if (!chat) {
+        throw new Error("Telegram chat not found.");
+      }
+      if (patch.enabled !== undefined) chat.enabled = patch.enabled;
+      if (patch.title !== undefined) chat.title = patch.title;
+      if (patch.allowedGroupIds !== undefined) chat.allowedGroupIds = normalizeGroupIds(payload, patch.allowedGroupIds, null);
+      chat.updatedAt = new Date().toISOString();
+      return chat;
+    });
   }
 
   isTelegramChatAllowed(chatId: number | undefined, chatType: string | undefined, user: AuthenticatedUser): boolean {
@@ -448,7 +487,7 @@ export class UserStore {
       return false;
     }
     if (chatType === "private") {
-      return true;
+      return this.canUseTelegramChat(user, chatId);
     }
     const payload = this.readPayload();
     const access = payload.telegramChats.find((chat) => chat.chatId === chatId);
@@ -456,56 +495,99 @@ export class UserStore {
       return false;
     }
     if (access.allowedGroupIds.length === 0) {
-      return true;
+      return this.canUseTelegramChat(user, chatId);
     }
     const userGroupIds = new Set(user.groups.map((group) => group.id));
-    return access.allowedGroupIds.some((groupId) => userGroupIds.has(groupId));
+    return access.allowedGroupIds.some((groupId) => userGroupIds.has(groupId)) && this.canUseTelegramChat(user, chatId);
   }
 
-  hasPermission(user: AuthenticatedUser | null | undefined, permission: Permission): boolean {
-    return Boolean(user?.permissions.includes(permission));
+  hasPermission(user: AuthenticatedUser | null | undefined, permission: Permission | null | undefined): boolean {
+    return Boolean(permission && user?.permissions.includes(permission));
   }
 
-  createGroup(input: { name: string; description?: string; permissions?: string[] }): GroupRecord {
-    const payload = this.readPayload();
-    const now = new Date().toISOString();
-    const id = slugify(input.name);
-    if (!id) {
-      throw new Error("Group name is required.");
+  canUseAgent(user: AuthenticatedUser | null | undefined, agentId: string | undefined): boolean {
+    if (!user || !agentId) {
+      return true;
     }
-    if (payload.groups.some((group) => group.id === id)) {
-      throw new Error(`Group already exists: ${id}`);
-    }
-    const group: GroupRecord = {
-      id,
-      name: input.name.trim(),
-      description: input.description?.trim() ?? "",
-      permissions: normalizePermissions(input.permissions ?? []),
-      system: false,
-      createdAt: now,
-      updatedAt: now,
-    };
-    payload.groups.push(group);
-    this.writePayload(payload);
-    return group;
+    return user.groups.some((group) => group.agentIds.length === 0 || group.agentIds.includes(agentId));
   }
 
-  updateGroup(id: string, patch: { name?: string; description?: string; permissions?: string[] }): GroupRecord {
-    const payload = this.readPayload();
-    const group = payload.groups.find((candidate) => candidate.id === id);
-    if (!group) {
-      throw new Error("Group not found.");
+  canUseWorkspace(user: AuthenticatedUser | null | undefined, workspace: string | undefined): boolean {
+    if (!user || !workspace) {
+      return true;
     }
-    if (group.system && id === ADMIN_GROUP_ID && patch.permissions) {
-      group.permissions = ALL_PERMISSIONS_SAFE();
-    } else if (patch.permissions !== undefined) {
-      group.permissions = normalizePermissions(patch.permissions);
+    const normalizedWorkspace = normalizeWorkspacePath(workspace);
+    return user.groups.some((group) => group.workspaceRoots.length === 0 ||
+      group.workspaceRoots.some((root) => isPathInside(normalizedWorkspace, normalizeWorkspacePath(root))));
+  }
+
+  canUseTelegramChat(user: AuthenticatedUser | null | undefined, chatId: number | undefined): boolean {
+    if (!user || chatId === undefined) {
+      return true;
     }
-    if (!group.system && patch.name !== undefined) group.name = patch.name.trim() || group.name;
-    if (patch.description !== undefined) group.description = patch.description.trim();
-    group.updatedAt = new Date().toISOString();
-    this.writePayload(payload);
-    return group;
+    return user.groups.some((group) => group.telegramChatIds.length === 0 || group.telegramChatIds.includes(chatId));
+  }
+
+  createGroup(input: {
+    name: string;
+    description?: string;
+    permissions?: string[];
+    agentIds?: string[];
+    workspaceRoots?: string[];
+    telegramChatIds?: number[];
+  }): GroupRecord {
+    return this.mutatePayload((payload) => {
+      const now = new Date().toISOString();
+      const id = slugify(input.name);
+      if (!id) {
+        throw new Error("Group name is required.");
+      }
+      if (payload.groups.some((group) => group.id === id)) {
+        throw new Error(`Group already exists: ${id}`);
+      }
+      const group: GroupRecord = {
+        id,
+        name: input.name.trim(),
+        description: input.description?.trim() ?? "",
+        permissions: normalizePermissions(input.permissions ?? [], true),
+        system: false,
+        agentIds: normalizeStringList(input.agentIds ?? []),
+        workspaceRoots: normalizeStringList(input.workspaceRoots ?? []),
+        telegramChatIds: normalizeNumberList(input.telegramChatIds ?? []),
+        createdAt: now,
+        updatedAt: now,
+      };
+      payload.groups.push(group);
+      return group;
+    });
+  }
+
+  updateGroup(id: string, patch: {
+    name?: string;
+    description?: string;
+    permissions?: string[];
+    agentIds?: string[];
+    workspaceRoots?: string[];
+    telegramChatIds?: number[];
+  }): GroupRecord {
+    return this.mutatePayload((payload) => {
+      const group = payload.groups.find((candidate) => candidate.id === id);
+      if (!group) {
+        throw new Error("Group not found.");
+      }
+      if (group.system && id === ADMIN_GROUP_ID && patch.permissions) {
+        group.permissions = ALL_PERMISSIONS_SAFE();
+      } else if (patch.permissions !== undefined) {
+        group.permissions = normalizePermissions(patch.permissions, true);
+      }
+      if (!group.system && patch.name !== undefined) group.name = patch.name.trim() || group.name;
+      if (patch.description !== undefined) group.description = patch.description.trim();
+      if (patch.agentIds !== undefined) group.agentIds = normalizeStringList(patch.agentIds);
+      if (patch.workspaceRoots !== undefined) group.workspaceRoots = normalizeStringList(patch.workspaceRoots);
+      if (patch.telegramChatIds !== undefined) group.telegramChatIds = normalizeNumberList(patch.telegramChatIds);
+      group.updatedAt = new Date().toISOString();
+      return group;
+    });
   }
 
   private authenticatedUser(payload: PersistedUsers, user: UserRecord): AuthenticatedUser {
@@ -571,6 +653,54 @@ export class UserStore {
     payload.webSessions = payload.webSessions.filter((session) => session.userId !== userId);
   }
 
+  private mutatePayload<T>(updater: (payload: PersistedUsers) => T): T {
+    return this.withWriteLock(() => {
+      const payload = this.readPayload();
+      const result = updater(payload);
+      this.writePayload(payload);
+      return result;
+    });
+  }
+
+  private withWriteLock<T>(operation: () => T): T {
+    const lockPath = `${this.filePath}.lock`;
+    mkdirSync(path.dirname(lockPath), { recursive: true });
+    const deadline = Date.now() + WRITE_LOCK_TIMEOUT_MS;
+    let fd: number | undefined;
+    for (;;) {
+      try {
+        fd = openSync(lockPath, "wx");
+        break;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "EEXIST") {
+          throw error;
+        }
+        try {
+          const stat = statSync(lockPath);
+          if (Date.now() - stat.mtimeMs > STALE_LOCK_MS) {
+            rmSync(lockPath, { force: true });
+            continue;
+          }
+        } catch {
+          continue;
+        }
+        if (Date.now() > deadline) {
+          throw new Error("User store is busy. Try again shortly.");
+        }
+        sleepSync(25);
+      }
+    }
+    try {
+      return operation();
+    } finally {
+      if (fd !== undefined) {
+        closeSync(fd);
+      }
+      rmSync(lockPath, { force: true });
+    }
+  }
+
   private readPayload(): PersistedUsers {
     const payload = readJsonFileWithBackup<PersistedUsers>(this.filePath).value;
     return normalizePayload(payload);
@@ -583,6 +713,11 @@ export class UserStore {
 
 export function publicUser(user: UserRecord): Omit<UserRecord, "passwordHash" | "passwordSalt"> {
   const { passwordHash: _passwordHash, passwordSalt: _passwordSalt, ...rest } = user;
+  return rest;
+}
+
+export function publicWebSession(session: WebSessionRecord): PublicWebSessionRecord {
+  const { tokenHash: _tokenHash, ...rest } = session;
   return rest;
 }
 
@@ -603,6 +738,9 @@ function normalizePayload(payload: PersistedUsers | undefined): PersistedUsers {
     groupsById.set(group.id, {
       ...group,
       permissions: group.id === ADMIN_GROUP_ID ? ALL_PERMISSIONS_SAFE() : group.permissions,
+      agentIds: [],
+      workspaceRoots: [],
+      telegramChatIds: [],
       createdAt: now,
       updatedAt: now,
     });
@@ -613,6 +751,9 @@ function normalizePayload(payload: PersistedUsers | undefined): PersistedUsers {
       ...group,
       permissions: group.id === ADMIN_GROUP_ID ? ALL_PERMISSIONS_SAFE() : normalizePermissions(group.permissions),
       system: BUILTIN_GROUPS.some((builtin) => builtin.id === group.id) || group.system,
+      agentIds: normalizeStringList(group.agentIds),
+      workspaceRoots: normalizeStringList(group.workspaceRoots),
+      telegramChatIds: normalizeNumberList(group.telegramChatIds),
     });
   }
   const groups = Array.from(groupsById.values());
@@ -649,14 +790,51 @@ function normalizeGroupIds(payload: PersistedUsers, values: string[], emptyFallb
   return groupIds.length > 0 ? groupIds : (emptyFallback ? [emptyFallback] : []);
 }
 
-function normalizePermissions(values: string[]): Permission[] {
+function normalizePermissions(values: string[] | undefined, strict = false): Permission[] {
   const permissions: Permission[] = [];
-  for (const value of values) {
-    if (isPermission(value) && !permissions.includes(value)) {
-      permissions.push(value);
+  for (const value of values ?? []) {
+    if (isPermission(value)) {
+      if (!permissions.includes(value)) {
+        permissions.push(value);
+      }
+      continue;
+    }
+    if (strict && value.trim()) {
+      throw new Error(`Unknown permission: ${value}`);
     }
   }
   return permissions;
+}
+
+function normalizeStringList(values: string[] | undefined): string[] {
+  return Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
+}
+
+function normalizeNumberList(values: number[] | undefined): number[] {
+  return Array.from(new Set((values ?? []).filter((value) => Number.isInteger(value))));
+}
+
+function assertActiveAdminExists(payload: PersistedUsers): void {
+  const hasAdmin = payload.users.some((user) => user.active && payload.userGroups.some((item) => item.userId === user.id && item.groupId === ADMIN_GROUP_ID));
+  if (!hasAdmin) {
+    throw new Error("Cannot remove or disable the last active admin user.");
+  }
+}
+
+function normalizeWorkspacePath(value: string): string {
+  return path.resolve(value);
+}
+
+function isPathInside(candidate: string, root: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function sleepSync(ms: number): void {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    // The lock is only held around tiny JSON mutations; a short spin keeps the implementation dependency-free.
+  }
 }
 
 function hashPassword(password: string): { salt: string; hash: string } {

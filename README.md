@@ -38,7 +38,7 @@ Session control:
 - `/activity` shows a compact timeline of recent rollout events for the active thread, with filters and export.
 - `/diagnostics` reports redacted runtime, config, user/group authorization, Telegram rate-limit, mirror, voice, session, queue, and progress details.
 - `/lock`, `/unlock`, and `/locks` provide a team write-lock for shared sessions so one user can operate while others watch.
-- `/audit` shows recent prompt, queue, lock, and command audit events for admins.
+- `/audit` shows recent prompt, queue, lock, command, authentication, permission-denied, user, group, Telegram-link, Telegram-chat, and web-session audit events for admins.
 
 Adapter architecture:
 
@@ -162,11 +162,15 @@ Authentication and safety:
 
 - WebUI login is required for every dashboard page, API route, SSE stream, artifact download, and health endpoint.
 - Access is managed through NordRelay users, groups, permissions, web sessions, and linked Telegram identities.
-- Built-in groups are `Admin`, `User`, and `Read Only`; custom groups can be created in the WebUI or CLI.
+- Built-in groups are `Admin`, `User`, and `Read Only`; custom groups can be created in the WebUI and can restrict allowed agents, workspace roots, and Telegram chats.
+- The last active admin cannot be disabled or demoted, and web sessions are revoked when passwords or group memberships change.
+- Admins can review and revoke active WebUI sessions from the Users page.
 - Telegram private chats require a linked active NordRelay user.
 - Telegram group and forum chats must be registered before use; admins can run `/register_chat` in the chat or enable chats in the WebUI.
 - `/whoami` shows the linked NordRelay account and groups.
 - `/link <code>` links a Telegram account to a NordRelay user after a link code is created in the WebUI or with `nordrelay user link-code`.
+- WebUI login and Telegram link attempts are rate-limited to reduce brute-force risk.
+- User, group, Telegram-link, Telegram-chat, web-session, login, and permission-denied events are written to the audit log.
 - `/auth` reports Codex authentication, Pi provider environment health, Hermes API Server reachability, OpenClaw Gateway reachability, or Claude Code CLI auth for the selected agent.
 - `/login` starts Telegram-managed CLI auth for Codex, Hermes, or Claude Code when enabled.
 - `/logout` signs out of CLI auth for Codex, Hermes, or Claude Code; Codex logout is disabled while `CODEX_API_KEY` is in use.
@@ -716,7 +720,8 @@ User management:
 - Users, groups, Telegram identities, Telegram group-chat access, and web sessions are stored in `~/.nordrelay/users.json`.
 - Manage users in the WebUI Users page or with `nordrelay user list`, `create-admin`, `create`, `reset-password`, `link-telegram`, and `link-code`.
 - Built-in groups are `admin`, `user`, and `readonly`.
-- Group permissions include `inspect`, `sessions.read`, `sessions.write`, `prompt.send`, `prompt.abort`, `files.read`, `files.write`, `settings.read`, `settings.write`, `auth.manage`, `logs.read`, `updates.run`, `system.restart`, `users.read`, `users.write`, and `audit.read`.
+- Group permissions include `inspect`, `sessions.read`, `sessions.write`, `prompt.send`, `prompt.abort`, `files.read`, `files.write`, `settings.read`, `settings.write`, `auth.manage`, `diagnostics.read`, `logs.read`, `logs.clear`, `queue.read`, `queue.write`, `updates.run`, `system.restart`, `users.read`, `users.write`, and `audit.read`.
+- Custom groups can also restrict access to specific agent ids, workspace roots, and Telegram chat ids.
 
 Agent selection:
 

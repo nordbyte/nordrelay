@@ -156,6 +156,12 @@ type TelegramChatId = number | string;
 type TelegramParseMode = "HTML";
 type KeyboardItem = { label: string; callbackData: string };
 
+interface RateLimitBucket {
+  count: number;
+  resetAt: number;
+  blockedUntil?: number;
+}
+
 type ToolState = {
   toolName: string;
   partialResult: string;
@@ -462,6 +468,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const userStore = new UserStore();
   const contextUsers = new WeakMap<Context, AuthenticatedUser>();
   const agentUpdates = new AgentUpdateManager();
+  const linkAttempts = new Map<string, RateLimitBucket>();
   const drainingQueues = new Set<TelegramContextKey>();
   const externalQueueTimers = new Map<TelegramContextKey, NodeJS.Timeout>();
   const externalMirrors = new Map<TelegramContextKey, ExternalMirrorState>();
@@ -1150,7 +1157,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
   const isAdminUser = (ctx: Context): boolean => Boolean(getAuthenticatedUser(ctx)?.groups.some((group) => group.id === ADMIN_GROUP_ID));
 
-  const getRequiredPermission = (ctx: Context): Permission => {
+  const getRequiredPermission = (ctx: Context): Permission | null => {
     if (ctx.callbackQuery?.data) {
       return permissionForCallbackData(ctx.callbackQuery.data);
     }
@@ -1169,7 +1176,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const command = extractCommandName(text);
     if (command === "queue") {
       const argument = text.replace(/^\/queue(?:@\w+)?\s*/i, "").trim();
-      return argument ? "prompt.send" : "inspect";
+      return argument ? "queue.write" : "queue.read";
     }
     return permissionForCommand(command);
   };
@@ -2279,6 +2286,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const authUser = userStore.resolveTelegramUser(fromId);
     if (!authUser) {
       const message = "Unauthorized. Link this Telegram account to a NordRelay user first.";
+      audit({
+        action: "permission_denied",
+        status: "denied",
+        contextKey: typeof chatId === "number" ? String(chatId) : "telegram",
+        actorId: fromId,
+        description: "Telegram account is not linked",
+      });
       if (ctx.callbackQuery) {
         await ctx.answerCallbackQuery({ text: "Unauthorized" }).catch(() => {});
       } else if (ctx.chat?.type === "private") {
@@ -2291,6 +2305,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const chatAllowed = userStore.isTelegramChatAllowed(typeof chatId === "number" ? chatId : undefined, chatType, authUser);
     if (!chatAllowed && commandName !== "register_chat") {
       const message = "This Telegram chat is not enabled for NordRelay. An admin can run /register_chat in this chat.";
+      audit({
+        action: "permission_denied",
+        status: "denied",
+        contextKey: typeof chatId === "number" ? String(chatId) : "telegram",
+        actorId: fromId,
+        actorRole: getUserRole(ctx),
+        description: "Telegram chat is not enabled or outside user scope",
+      });
       if (ctx.callbackQuery) {
         await ctx.answerCallbackQuery({ text: "Chat not enabled" }).catch(() => {});
       } else if (ctx.chat?.type === "private") {
@@ -2300,8 +2322,33 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const permission = getRequiredPermission(ctx);
+    if (!permission) {
+      const message = "Unsupported command or action.";
+      audit({
+        action: "permission_denied",
+        status: "denied",
+        contextKey: typeof chatId === "number" ? String(chatId) : "telegram",
+        actorId: fromId,
+        actorRole: getUserRole(ctx),
+        description: commandName ? `Unsupported command /${commandName}` : "Unsupported callback",
+      });
+      if (ctx.callbackQuery) {
+        await ctx.answerCallbackQuery({ text: message }).catch(() => {});
+      } else {
+        await safeReply(ctx, escapeHTML(message), { fallbackText: message });
+      }
+      return;
+    }
     if (!userStore.hasPermission(authUser, permission)) {
       const message = `Access denied: ${permission} permission required.`;
+      audit({
+        action: "permission_denied",
+        status: "denied",
+        contextKey: typeof chatId === "number" ? String(chatId) : "telegram",
+        actorId: fromId,
+        actorRole: getUserRole(ctx),
+        description: `${permission} required`,
+      });
       if (ctx.callbackQuery) {
         await ctx.answerCallbackQuery({ text: message }).catch(() => {});
       } else {
@@ -2330,6 +2377,23 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     if (!ctx.from?.id) {
       return;
     }
+    const limitKey = String(ctx.from.id);
+    const limited = consumeRateLimit(linkAttempts, limitKey, 5, 15 * 60 * 1000, 15 * 60 * 1000);
+    if (limited.limited) {
+      const seconds = Math.ceil((limited.retryAfterMs ?? 0) / 1000);
+      audit({
+        action: "auth_login_failed",
+        status: "denied",
+        contextKey: String(ctx.chat.id),
+        actorId: ctx.from.id,
+        description: "Telegram link rate limited",
+        detail: `${seconds}s retry-after`,
+      });
+      await safeReply(ctx, escapeHTML(`Too many link attempts. Try again in ${seconds}s.`), {
+        fallbackText: `Too many link attempts. Try again in ${seconds}s.`,
+      });
+      return;
+    }
     try {
       const linked = userStore.consumeTelegramLinkCode(code, {
         telegramUserId: ctx.from.id,
@@ -2337,12 +2401,29 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         firstName: ctx.from.first_name,
         lastName: ctx.from.last_name,
       });
+      resetRateLimit(linkAttempts, limitKey);
       contextUsers.set(ctx, linked);
+      audit({
+        action: "telegram_linked",
+        status: "ok",
+        contextKey: String(ctx.chat.id),
+        actorId: ctx.from.id,
+        actorRole: linked.groups.map((group) => group.name).join(", "),
+        description: `Linked ${linked.user.email}`,
+      });
       await safeReply(ctx, escapeHTML(`Linked Telegram account to ${linked.user.email}.`), {
         fallbackText: `Linked Telegram account to ${linked.user.email}.`,
       });
     } catch (error) {
       const message = friendlyErrorText(error);
+      audit({
+        action: "auth_login_failed",
+        status: "failed",
+        contextKey: String(ctx.chat.id),
+        actorId: ctx.from.id,
+        description: "Telegram link failed",
+        detail: message,
+      });
       await safeReply(ctx, `<b>Link failed:</b> ${escapeHTML(message)}`, { fallbackText: `Link failed: ${message}` });
     }
   });
@@ -2383,6 +2464,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       type: ctx.chat.type,
       enabled: true,
       allowedGroupIds: [],
+    });
+    audit({
+      action: "telegram_chat_updated",
+      status: "ok",
+      contextKey: String(ctx.chat.id),
+      actorId: ctx.from?.id,
+      actorRole: getUserRole(ctx),
+      description: `Registered Telegram chat ${chat.chatId}`,
     });
     await safeReply(ctx, escapeHTML(`Telegram chat enabled for NordRelay.\nChat ID: ${chat.chatId}`), {
       fallbackText: `Telegram chat enabled for NordRelay.\nChat ID: ${chat.chatId}`,
@@ -6378,6 +6467,33 @@ function orderPinnedSessions<T extends { id: string }>(sessions: T[], pinnedThre
     }
     return 0;
   });
+}
+
+function consumeRateLimit(
+  buckets: Map<string, RateLimitBucket>,
+  key: string,
+  limit: number,
+  windowMs: number,
+  blockMs: number,
+): { limited: boolean; retryAfterMs?: number } {
+  const now = Date.now();
+  const existing = buckets.get(key);
+  if (existing?.blockedUntil && existing.blockedUntil > now) {
+    return { limited: true, retryAfterMs: existing.blockedUntil - now };
+  }
+  const bucket = !existing || existing.resetAt <= now ? { count: 0, resetAt: now + windowMs } : existing;
+  bucket.count += 1;
+  if (bucket.count > limit) {
+    bucket.blockedUntil = now + blockMs;
+    buckets.set(key, bucket);
+    return { limited: true, retryAfterMs: blockMs };
+  }
+  buckets.set(key, bucket);
+  return { limited: false };
+}
+
+function resetRateLimit(buckets: Map<string, RateLimitBucket>, key: string): void {
+  buckets.delete(key);
 }
 
 function isMessageNotModifiedError(error: unknown): boolean {

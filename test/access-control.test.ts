@@ -21,7 +21,9 @@ describe("access-control", () => {
     expect(permissionForCommand("artifacts")).toBe("files.read");
     expect(permissionForCommand("model")).toBe("settings.write");
     expect(permissionForCommand("login")).toBe("auth.manage");
-    expect(permissionForCommand("diagnostics")).toBe("logs.read");
+    expect(permissionForCommand("diagnostics")).toBe("diagnostics.read");
+    expect(permissionForCommand("queue")).toBe("queue.read");
+    expect(permissionForCommand("unknown")).toBeNull();
     expect(permissionForCommand("restart")).toBe("system.restart");
     expect(permissionForCommand("register_chat")).toBe("users.write");
   });
@@ -33,10 +35,11 @@ describe("access-control", () => {
     expect(permissionForCallbackData("effort_xhigh")).toBe("settings.write");
     expect(permissionForCallbackData("codex_abort:123")).toBe("prompt.abort");
     expect(permissionForCallbackData("approval_yes:abc123")).toBe("prompt.abort");
-    expect(permissionForCallbackData("queue_cancel:123:abc123")).toBe("prompt.send");
-    expect(permissionForCallbackData("queue_remove:-100:4:abc123")).toBe("prompt.send");
+    expect(permissionForCallbackData("queue_cancel:123:abc123")).toBe("queue.write");
+    expect(permissionForCallbackData("queue_remove:-100:4:abc123")).toBe("queue.write");
     expect(permissionForCallbackData("artifact_send:turn")).toBe("files.read");
     expect(permissionForCallbackData("artifact_delete:turn")).toBe("files.write");
+    expect(permissionForCallbackData("unknown_callback")).toBeNull();
   });
 
   it("maps web requests to user-management permissions", () => {
@@ -45,6 +48,10 @@ describe("access-control", () => {
     expect(permissionForWebRequest("GET", "/api/settings")).toBe("settings.read");
     expect(permissionForWebRequest("PATCH", "/api/settings")).toBe("settings.write");
     expect(permissionForWebRequest("POST", "/api/prompt")).toBe("prompt.send");
+    expect(permissionForWebRequest("GET", "/api/queue")).toBe("queue.read");
+    expect(permissionForWebRequest("POST", "/api/queue")).toBe("queue.write");
+    expect(permissionForWebRequest("GET", "/api/diagnostics")).toBe("diagnostics.read");
+    expect(permissionForWebRequest("POST", "/api/logs/clear")).toBe("logs.clear");
     expect(permissionForWebRequest("POST", "/api/abort")).toBe("prompt.abort");
     expect(permissionForWebRequest("GET", "/api/artifacts")).toBe("files.read");
     expect(permissionForWebRequest("DELETE", "/api/artifacts/turn/file")).toBe("files.write");
@@ -57,6 +64,7 @@ describe("access-control", () => {
 
     expect(admin?.permissions).toEqual(ALL_PERMISSIONS);
     expect(user?.permissions).toContain("prompt.send");
+    expect(user?.permissions).toContain("queue.write");
     expect(user?.permissions).not.toContain("users.write");
     expect(readonly?.permissions).toContain("sessions.read");
     expect(readonly?.permissions).not.toContain("prompt.send");

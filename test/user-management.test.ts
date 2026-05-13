@@ -50,6 +50,7 @@ describe("UserStore", () => {
     const snapshot = publicUserSnapshot(store.snapshot());
     expect(snapshot.users[0]).not.toHaveProperty("passwordHash");
     expect(snapshot.users[0]).not.toHaveProperty("passwordSalt");
+    expect(snapshot.users[0].webSessions[0]).not.toHaveProperty("tokenHash");
   });
 
   it("links Telegram users with expiring link codes", () => {
@@ -102,5 +103,52 @@ describe("UserStore", () => {
     expect(store.isTelegramChatAllowed(-100, "supergroup", operator)).toBe(true);
     expect(store.isTelegramChatAllowed(-100, "supergroup", readonly)).toBe(false);
     expect(store.isTelegramChatAllowed(789, "private", readonly)).toBe(true);
+  });
+
+  it("protects the last active admin and revokes sessions on permission changes", () => {
+    const admin = store.createAdmin({
+      email: "owner@example.com",
+      displayName: "Owner",
+      password: "password123",
+    });
+    const { token } = store.createWebSession(admin.user.id);
+
+    expect(() => store.updateUser(admin.user.id, { active: false })).toThrow("Cannot remove or disable the last active admin user.");
+    expect(() => store.updateUser(admin.user.id, { groupIds: [USER_GROUP_ID] })).toThrow("Cannot remove or disable the last active admin user.");
+    expect(store.resolveWebSession(token)).not.toBeNull();
+
+    const second = store.createAdmin({
+      email: "second@example.com",
+      displayName: "Second",
+      password: "password123",
+    });
+    store.updateUser(admin.user.id, { groupIds: [USER_GROUP_ID] });
+    expect(store.resolveWebSession(token)).toBeNull();
+    expect(store.hasAdminUser()).toBe(true);
+    expect(second.permissions).toContain("users.write");
+  });
+
+  it("supports group scopes for agents, workspaces, and Telegram chats", () => {
+    const group = store.createGroup({
+      name: "Scoped Operators",
+      permissions: ["inspect", "sessions.read"],
+      agentIds: ["codex"],
+      workspaceRoots: [home],
+      telegramChatIds: [-100],
+    });
+    const user = store.createUser({
+      email: "scoped@example.com",
+      displayName: "Scoped",
+      password: "password123",
+      groupIds: [group.id],
+    });
+
+    expect(store.canUseAgent(user, "codex")).toBe(true);
+    expect(store.canUseAgent(user, "pi")).toBe(false);
+    expect(store.canUseWorkspace(user, path.join(home, "repo"))).toBe(true);
+    expect(store.canUseWorkspace(user, path.join(tmpdir(), "other"))).toBe(false);
+    expect(store.canUseTelegramChat(user, -100)).toBe(true);
+    expect(store.canUseTelegramChat(user, -101)).toBe(false);
+    expect(() => store.createGroup({ name: "Bad", permissions: ["not.real"] })).toThrow("Unknown permission");
   });
 });
