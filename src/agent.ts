@@ -50,6 +50,9 @@ export interface AgentCapabilities {
   auth: boolean;
   login: boolean;
   logout: boolean;
+  usageStats: boolean;
+  subscriptionLimits: boolean;
+  /** @deprecated Use usageStats and subscriptionLimits instead. */
   usageLimits: boolean;
   workspaces: boolean;
   attachments: boolean;
@@ -67,6 +70,8 @@ export const CODEX_AGENT_CAPABILITIES: AgentCapabilities = {
   auth: true,
   login: true,
   logout: true,
+  usageStats: true,
+  subscriptionLimits: true,
   usageLimits: true,
   workspaces: true,
   attachments: true,
@@ -84,7 +89,9 @@ export const PI_AGENT_CAPABILITIES: AgentCapabilities = {
   auth: true,
   login: false,
   logout: false,
-  usageLimits: true,
+  usageStats: true,
+  subscriptionLimits: false,
+  usageLimits: false,
   workspaces: true,
   attachments: true,
   modelSelection: true,
@@ -101,7 +108,9 @@ export const HERMES_AGENT_CAPABILITIES: AgentCapabilities = {
   auth: true,
   login: false,
   logout: false,
-  usageLimits: true,
+  usageStats: true,
+  subscriptionLimits: false,
+  usageLimits: false,
   workspaces: true,
   attachments: true,
   modelSelection: true,
@@ -118,7 +127,9 @@ export const OPENCLAW_AGENT_CAPABILITIES: AgentCapabilities = {
   auth: true,
   login: false,
   logout: false,
-  usageLimits: true,
+  usageStats: true,
+  subscriptionLimits: false,
+  usageLimits: false,
   workspaces: true,
   attachments: true,
   modelSelection: true,
@@ -319,6 +330,7 @@ export interface AgentSessionService {
   switchSession(threadId: string): Promise<AgentSessionInfo>;
   listAllSessions(limit?: number): AgentThreadRecord[];
   listWorkspaces(): string[];
+  refreshModels(options?: { force?: boolean }): Promise<void>;
   listModels(): AgentModelRecord[];
   listLaunchProfiles(): AgentLaunchProfileRecord[];
   getSessionRecord(threadId: string): AgentThreadRecord | null;

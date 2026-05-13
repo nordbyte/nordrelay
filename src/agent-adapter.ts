@@ -75,6 +75,8 @@ function plannedCapabilities(): AgentCapabilities {
     auth: false,
     login: false,
     logout: false,
+    usageStats: false,
+    subscriptionLimits: false,
     usageLimits: false,
     workspaces: true,
     attachments: true,

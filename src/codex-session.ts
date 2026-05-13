@@ -401,6 +401,10 @@ export class CodexSessionService {
     return listWorkspaces();
   }
 
+  async refreshModels(): Promise<void> {
+    // Codex models are read from local state on each listModels() call.
+  }
+
   listModels(): AgentModelRecord[] {
     return listModels();
   }

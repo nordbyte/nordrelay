@@ -55,6 +55,9 @@ export class HermesSessionService implements AgentSessionService {
   private processing = false;
   private abortController: AbortController | null = null;
   private currentRunId: string | null = null;
+  private modelsLoadedAt = 0;
+
+  private static readonly MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
 
   private constructor(private readonly config: ConnectorConfig) {
     this.api = new HermesApiClient({
@@ -302,6 +305,26 @@ export class HermesSessionService implements AgentSessionService {
     return [...workspaces].sort((left, right) => left.localeCompare(right));
   }
 
+  async refreshModels(options: { force?: boolean } = {}): Promise<void> {
+    const now = Date.now();
+    if (
+      !options.force &&
+      this.cachedModels.length > 0 &&
+      now - this.modelsLoadedAt < HermesSessionService.MODEL_CACHE_TTL_MS
+    ) {
+      return;
+    }
+
+    const models = await this.api.models();
+    this.cachedModels = models.map((model) => ({
+      slug: model.id,
+      displayName: model.id,
+      supportsThinking: true,
+      supportsImages: true,
+    }));
+    this.modelsLoadedAt = now;
+  }
+
   listModels(): AgentModelRecord[] {
     const models = [...this.cachedModels];
     if (this.currentModel && !models.some((model) => model.slug === this.currentModel)) {
@@ -406,16 +429,6 @@ export class HermesSessionService implements AgentSessionService {
     if (this.processing) {
       throw new Error(`Cannot ${action} while a turn is in progress`);
     }
-  }
-
-  private async refreshModels(): Promise<void> {
-    const models = await this.api.models();
-    this.cachedModels = models.map((model) => ({
-      slug: model.id,
-      displayName: model.id,
-      supportsThinking: true,
-      supportsImages: true,
-    }));
   }
 
   private refreshFromState(): void {

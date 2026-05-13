@@ -1,4 +1,4 @@
-import { CODEX_AGENT_CAPABILITIES, agentReasoningLabel, type AgentSessionInfo } from "./agent.js";
+import { CODEX_AGENT_CAPABILITIES, agentReasoningLabel, type AgentCapabilities, type AgentSessionInfo } from "./agent.js";
 import { escapeHTML } from "./format.js";
 
 export function renderSessionInfoPlain(info: AgentSessionInfo): string {
@@ -18,8 +18,8 @@ export function renderSessionInfoPlain(info: AgentSessionInfo): string {
     capabilities.fastMode
       ? `Reasoning/Fast: ${info.reasoningEffort ?? "(model default)"} / ${info.fastMode ? "on" : "off"}`
       : `${agentReasoningLabel(agentId)}: ${info.reasoningEffort ?? "(model default)"}`,
-    ...renderCodexUsagePlain(info),
-    ...renderAgentUsagePlain(info),
+    ...renderCodexUsagePlain(info, capabilities),
+    ...renderAgentUsagePlain(info, capabilities),
     info.sessionTokens ? formatSessionTokensPlain(info.sessionTokens) : undefined,
   ]
     .filter((line): line is string => Boolean(line))
@@ -44,8 +44,8 @@ export function renderSessionInfoHTML(info: AgentSessionInfo): string {
     capabilities.fastMode
       ? `<b>Reasoning/Fast:</b> <code>${escapeHTML(info.reasoningEffort ?? "(model default)")} / ${info.fastMode ? "on" : "off"}</code>`
       : `<b>${escapeHTML(agentReasoningLabel(agentId))}:</b> <code>${escapeHTML(info.reasoningEffort ?? "(model default)")}</code>`,
-    ...renderCodexUsageHTML(info),
-    ...renderAgentUsageHTML(info),
+    ...renderCodexUsageHTML(info, capabilities),
+    ...renderAgentUsageHTML(info, capabilities),
     info.sessionTokens ? `<b>Session tokens:</b> <code>${escapeHTML(formatSessionTokensValue(info.sessionTokens))}</code>` : undefined,
   ]
     .filter((line): line is string => Boolean(line))
@@ -73,19 +73,19 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, "")} MB`;
 }
 
-function renderCodexUsagePlain(info: AgentSessionInfo): string[] {
+function renderCodexUsagePlain(info: AgentSessionInfo, capabilities: AgentCapabilities): string[] {
   const usage = info.codexUsage;
   if (!usage) {
     return [];
   }
 
   const lines: string[] = [];
-  if (usage.contextUsedPercent !== null && usage.contextWindow !== null && usage.lastTokenUsage) {
+  if (capabilities.usageStats && usage.contextUsedPercent !== null && usage.contextWindow !== null && usage.lastTokenUsage) {
     lines.push(
       `Context used: ${formatPercent(usage.contextUsedPercent)} (${formatCompactTokenCount(usage.lastTokenUsage.totalTokens)} / ${formatCompactTokenCount(usage.contextWindow)})`,
     );
   }
-  if (usage.totalTokenUsage) {
+  if (capabilities.usageStats && usage.totalTokenUsage) {
     lines.push(
       [
         `Tokens in: ${formatCompactTokenCount(usage.totalTokenUsage.inputTokens)}`,
@@ -95,26 +95,28 @@ function renderCodexUsagePlain(info: AgentSessionInfo): string[] {
       ].join(" · "),
     );
   }
-  const limits = formatLimitsLeft(usage);
-  if (limits) {
-    lines.push(`Limits left: ${limits}`);
+  if (capabilities.subscriptionLimits) {
+    const limits = formatLimitsLeft(usage);
+    if (limits) {
+      lines.push(`Limits left: ${limits}`);
+    }
   }
   return lines;
 }
 
-function renderCodexUsageHTML(info: AgentSessionInfo): string[] {
+function renderCodexUsageHTML(info: AgentSessionInfo, capabilities: AgentCapabilities): string[] {
   const usage = info.codexUsage;
   if (!usage) {
     return [];
   }
 
   const lines: string[] = [];
-  if (usage.contextUsedPercent !== null && usage.contextWindow !== null && usage.lastTokenUsage) {
+  if (capabilities.usageStats && usage.contextUsedPercent !== null && usage.contextWindow !== null && usage.lastTokenUsage) {
     lines.push(
       `<b>Context used:</b> <code>${escapeHTML(formatPercent(usage.contextUsedPercent))}</code> <i>(${escapeHTML(formatCompactTokenCount(usage.lastTokenUsage.totalTokens))} / ${escapeHTML(formatCompactTokenCount(usage.contextWindow))})</i>`,
     );
   }
-  if (usage.totalTokenUsage) {
+  if (capabilities.usageStats && usage.totalTokenUsage) {
     lines.push(
       `<b>Tokens:</b> <code>${escapeHTML([
         `in ${formatCompactTokenCount(usage.totalTokenUsage.inputTokens)}`,
@@ -124,14 +126,19 @@ function renderCodexUsageHTML(info: AgentSessionInfo): string[] {
       ].join(" · "))}</code>`,
     );
   }
-  const limits = formatLimitsLeft(usage);
-  if (limits) {
-    lines.push(`<b>Limits left:</b> <code>${escapeHTML(limits)}</code>`);
+  if (capabilities.subscriptionLimits) {
+    const limits = formatLimitsLeft(usage);
+    if (limits) {
+      lines.push(`<b>Limits left:</b> <code>${escapeHTML(limits)}</code>`);
+    }
   }
   return lines;
 }
 
-function renderAgentUsagePlain(info: AgentSessionInfo): string[] {
+function renderAgentUsagePlain(info: AgentSessionInfo, capabilities: AgentCapabilities): string[] {
+  if (!capabilities.usageStats) {
+    return [];
+  }
   const lines: string[] = [];
   if (info.contextUsage?.percent !== undefined && info.contextUsage.percent !== null) {
     const contextWindow = info.contextUsage.contextWindow !== null && info.contextUsage.contextWindow !== undefined
@@ -152,7 +159,10 @@ function renderAgentUsagePlain(info: AgentSessionInfo): string[] {
   return lines;
 }
 
-function renderAgentUsageHTML(info: AgentSessionInfo): string[] {
+function renderAgentUsageHTML(info: AgentSessionInfo, capabilities: AgentCapabilities): string[] {
+  if (!capabilities.usageStats) {
+    return [];
+  }
   const lines: string[] = [];
   if (info.contextUsage?.percent !== undefined && info.contextUsage.percent !== null) {
     const contextWindow = info.contextUsage.contextWindow !== null && info.contextUsage.contextWindow !== undefined

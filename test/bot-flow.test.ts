@@ -239,6 +239,9 @@ function createFakeRegistry() {
     prompt: vi.fn(),
     listAllSessions: vi.fn(() => []),
     listWorkspaces: vi.fn(() => []),
+    refreshModels: vi.fn(async () => {}),
+    listModels: vi.fn(() => [{ slug: "o3", displayName: "o3" }]),
+    listLaunchProfiles: vi.fn(() => []),
   };
 
   return {

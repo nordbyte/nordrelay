@@ -55,6 +55,11 @@ export class OpenClawSessionService implements AgentSessionService {
   private abortController: AbortController | null = null;
   private currentGateway: OpenClawGatewayClient | null = null;
   private currentRunId: string | null = null;
+  private modelsLoadedAt = 0;
+  private lastStateRefreshAt = 0;
+
+  private static readonly MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
+  private static readonly STATE_CACHE_TTL_MS = 5_000;
 
   private constructor(private readonly config: ConnectorConfig) {
     this.cliPath = resolveOpenClawCli(process.env, config.openClawCliPath).path;
@@ -96,7 +101,7 @@ export class OpenClawSessionService implements AgentSessionService {
       launchProfileLabel: this.currentLaunchProfile.label,
       launchProfileBehavior: this.currentLaunchProfile.behavior,
       sandboxMode: "host",
-      approvalPolicy: "on-request",
+      approvalPolicy: "never",
       fastMode: false,
       unsafeLaunch: this.currentLaunchProfile.unsafe,
       sessionUsage: this.cachedUsage,
@@ -236,7 +241,7 @@ export class OpenClawSessionService implements AgentSessionService {
       if (!didEnd) {
         callbacks.onAgentEnd();
       }
-      this.refreshFromState();
+      this.refreshFromState({ force: true });
     } catch (error) {
       if (isAbortError(error)) {
         throw new Error("OpenClaw run was aborted");
@@ -267,6 +272,7 @@ export class OpenClawSessionService implements AgentSessionService {
     }
     this.currentThreadId = createOpenClawSessionId();
     this.cachedUsage = undefined;
+    this.lastStateRefreshAt = Date.now();
     return this.getInfo();
   }
 
@@ -281,6 +287,7 @@ export class OpenClawSessionService implements AgentSessionService {
       throw new Error(`Unknown OpenClaw session: ${threadId}`);
     }
     this.applyRecord(record);
+    this.lastStateRefreshAt = Date.now();
     return this.getInfo();
   }
 
@@ -293,6 +300,21 @@ export class OpenClawSessionService implements AgentSessionService {
     workspaces.add(this.currentWorkspace);
     workspaces.add(this.config.workspace);
     return [...workspaces].sort((left, right) => left.localeCompare(right));
+  }
+
+  async refreshModels(options: { force?: boolean } = {}): Promise<void> {
+    const now = Date.now();
+    if (
+      !options.force &&
+      this.cachedModels.length > 0 &&
+      now - this.modelsLoadedAt < OpenClawSessionService.MODEL_CACHE_TTL_MS
+    ) {
+      return;
+    }
+    const gatewayModels = await this.refreshModelsFromGateway().catch(() => []);
+    const cliModels = gatewayModels.length > 0 ? [] : this.refreshModelsFromCli();
+    this.cachedModels = gatewayModels.length > 0 ? gatewayModels : cliModels;
+    this.modelsLoadedAt = now;
   }
 
   listModels(): AgentModelRecord[] {
@@ -355,7 +377,7 @@ export class OpenClawSessionService implements AgentSessionService {
 
   syncFromCodexState(): AgentSyncResult {
     const before = this.getInfo();
-    this.refreshFromState();
+    this.refreshFromState({ force: true });
     const after = this.getInfo();
     const changedFields: string[] = [];
     if (before.model !== after.model) changedFields.push("model");
@@ -412,12 +434,6 @@ export class OpenClawSessionService implements AgentSessionService {
     });
   }
 
-  private async refreshModels(): Promise<void> {
-    const gatewayModels = await this.refreshModelsFromGateway().catch(() => []);
-    const cliModels = gatewayModels.length > 0 ? [] : this.refreshModelsFromCli();
-    this.cachedModels = gatewayModels.length > 0 ? gatewayModels : cliModels;
-  }
-
   private async refreshModelsFromGateway(): Promise<AgentModelRecord[]> {
     const gateway = this.createGatewayClient();
     try {
@@ -447,10 +463,15 @@ export class OpenClawSessionService implements AgentSessionService {
     }
   }
 
-  private refreshFromState(): void {
+  private refreshFromState(options: { force?: boolean } = {}): void {
     if (!this.currentThreadId) {
       return;
     }
+    const now = Date.now();
+    if (!options.force && now - this.lastStateRefreshAt < OpenClawSessionService.STATE_CACHE_TTL_MS) {
+      return;
+    }
+    this.lastStateRefreshAt = now;
     const record = this.getRecord(this.currentThreadId);
     if (record) {
       this.applyRecord(record);

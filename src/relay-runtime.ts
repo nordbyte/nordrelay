@@ -270,6 +270,13 @@ export class RelayRuntime {
     try {
       const info = this.publicInfo(session);
       const capabilities = info.capabilities ?? CODEX_AGENT_CAPABILITIES;
+      if (capabilities.modelSelection) {
+        await session.refreshModels().catch((error) => {
+          console.warn(
+            `Failed to refresh ${agentLabel(info.agentId)} models: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+      }
       return {
         models: capabilities.modelSelection ? session.listModels() : [],
         reasoningLabel: agentReasoningLabel(info.agentId),
@@ -344,7 +351,14 @@ export class RelayRuntime {
   }
 
   async listModels(): Promise<ReturnType<AgentSessionService["listModels"]>> {
-    return (await this.getSession(true)).listModels();
+    const session = await this.getSession(true);
+    const info = this.publicInfo(session);
+    await session.refreshModels({ force: true }).catch((error) => {
+      console.warn(
+        `Failed to refresh ${agentLabel(info.agentId)} models: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+    return session.listModels();
   }
 
   async setAgent(agentId: AgentId): Promise<AgentSessionInfo> {

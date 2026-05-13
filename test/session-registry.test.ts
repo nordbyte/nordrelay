@@ -403,6 +403,7 @@ describe("SessionRegistry", () => {
     expect(registry.listContexts()).toEqual([
       {
         contextKey: "123:42",
+        agentId: "codex",
         threadId: "thread-b",
         workspace: "/workspace/b",
         model: "gpt-5.4",
@@ -412,6 +413,7 @@ describe("SessionRegistry", () => {
       },
       {
         contextKey: "123",
+        agentId: "codex",
         threadId: "thread-a",
         workspace: "/workspace/a",
         model: "o4-mini",
@@ -445,6 +447,7 @@ describe("SessionRegistry", () => {
     expect(registry.listContexts()).toEqual([
       {
         contextKey: "123",
+        agentId: "codex",
         threadId: "thread-a",
         workspace: "/workspace/a",
         model: "o3",
@@ -537,6 +540,7 @@ describe("SessionRegistry", () => {
     expect(reloaded.listContexts()).toEqual([
       {
         contextKey: "123",
+        agentId: "codex",
         threadId: "thread-a",
         workspace: "/workspace/a",
         model: "o4-mini",

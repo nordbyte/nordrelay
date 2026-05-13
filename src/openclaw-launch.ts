@@ -71,6 +71,6 @@ export function openClawProfileAsLaunchProfile(profile: OpenClawLaunchProfile): 
     id: profile.id,
     label: profile.label,
     sandboxMode: profile.unsafe ? "danger-full-access" : "workspace-write",
-    approvalPolicy: profile.unsafe ? "never" : "on-request",
+    approvalPolicy: "never",
   });
 }

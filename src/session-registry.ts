@@ -112,6 +112,7 @@ export class SessionRegistry {
     const pinnedThreadIds = previousPinnedByAgent[agentId] ?? previous?.pinnedThreadIds ?? [];
     const next: ContextMetadata = {
       contextKey,
+      agentId,
       threadId: info.threadId,
       workspace: info.workspace,
       model: info.model,
@@ -119,9 +120,6 @@ export class SessionRegistry {
       launchProfileId: info.nextLaunchProfileId ?? info.launchProfileId,
       updatedAt: Date.now(),
     };
-    if (agentId !== "codex") {
-      next.agentId = agentId;
-    }
     if (info.sessionPath) {
       next.sessionPath = info.sessionPath;
     }
@@ -232,7 +230,10 @@ export class SessionRegistry {
       }
       for (const entry of data) {
         if (entry.contextKey) {
-          this.metadata.set(entry.contextKey, entry);
+          this.metadata.set(entry.contextKey, {
+            ...entry,
+            agentId: entry.agentId ?? "codex",
+          });
         }
       }
     } catch {
@@ -243,6 +244,7 @@ export class SessionRegistry {
   private createEmptyMetadata(contextKey: TelegramContextKey): ContextMetadata {
     return {
       contextKey,
+      agentId: this.config.defaultAgent ?? "codex",
       threadId: null,
       workspace: this.config.workspace,
       launchProfileId: this.config.defaultLaunchProfileId,

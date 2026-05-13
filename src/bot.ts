@@ -2062,7 +2062,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const info = session.getInfo();
     const authStatus = capabilitiesOf(info).auth ? await checkAgentAuthStatus(info) : null;
     const authWarning = authStatus && !authStatus.authenticated
-      ? "Not authenticated. Use /login or set CODEX_API_KEY."
+      ? [`${labelOf(info)} is not authenticated.`, authStatus.detail, authHelpText(info)].filter(Boolean).join(" ")
       : undefined;
     const isReturning = registry.hasMetadata(contextKey);
 
@@ -3630,6 +3630,12 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
+    const info = session.getInfo();
+    await session.refreshModels({ force: true }).catch((error) => {
+      console.warn(
+        `Failed to refresh ${labelOf(info)} models: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
     const models = session.listModels();
     if (models.length === 0) {
       await safeReply(ctx, escapeHTML("No models available."), {

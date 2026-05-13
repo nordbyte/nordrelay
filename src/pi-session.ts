@@ -294,6 +294,10 @@ export class PiSessionService implements AgentSessionService {
     return [...workspaces].sort((left, right) => left.localeCompare(right));
   }
 
+  async refreshModels(): Promise<void> {
+    // Pi models are read from the CLI on each listModels() call.
+  }
+
   listModels(): AgentModelRecord[] {
     const result = spawnSync(this.cliPath, ["--list-models"], {
       cwd: this.currentWorkspace,
