@@ -57,6 +57,7 @@ describe("loadConfig", () => {
     delete process.env.NORDRELAY_CODEX_ENABLED;
     delete process.env.NORDRELAY_PI_ENABLED;
     delete process.env.NORDRELAY_HERMES_ENABLED;
+    delete process.env.NORDRELAY_OPENCLAW_ENABLED;
     delete process.env.NORDRELAY_DEFAULT_AGENT;
     delete process.env.PI_CLI_PATH;
     delete process.env.PI_SESSION_DIR;
@@ -71,6 +72,16 @@ describe("loadConfig", () => {
     delete process.env.HERMES_DEFAULT_MODEL;
     delete process.env.HERMES_DEFAULT_REASONING;
     delete process.env.HERMES_DEFAULT_PROFILE;
+    delete process.env.OPENCLAW_CLI_PATH;
+    delete process.env.OPENCLAW_GATEWAY_URL;
+    delete process.env.OPENCLAW_GATEWAY_TOKEN;
+    delete process.env.OPENCLAW_GATEWAY_PASSWORD;
+    delete process.env.OPENCLAW_AGENT_ID;
+    delete process.env.OPENCLAW_HOME;
+    delete process.env.OPENCLAW_STATE_DIR;
+    delete process.env.OPENCLAW_DEFAULT_MODEL;
+    delete process.env.OPENCLAW_DEFAULT_THINKING;
+    delete process.env.OPENCLAW_DEFAULT_PROFILE;
     delete process.env.WORKSPACE_ALLOWED_ROOTS;
     delete process.env.WORKSPACE_WARN_ROOTS;
     delete process.env.NORDRELAY_STATE_BACKEND;
@@ -212,6 +223,17 @@ describe("loadConfig", () => {
       hermesDefaultModel: undefined,
       hermesDefaultReasoning: undefined,
       hermesDefaultLaunchProfileId: "default",
+      openClawEnabled: false,
+      openClawCliPath: undefined,
+      openClawGatewayUrl: "ws://127.0.0.1:18789",
+      openClawGatewayToken: undefined,
+      openClawGatewayPassword: undefined,
+      openClawAgentId: "main",
+      openClawHome: undefined,
+      openClawStateDir: undefined,
+      openClawDefaultModel: undefined,
+      openClawDefaultThinking: undefined,
+      openClawDefaultLaunchProfileId: "default",
       defaultAgent: "codex",
       toolVerbosity: "all",
       logFormat: "text",
@@ -251,6 +273,17 @@ describe("loadConfig", () => {
     expect(config.hermesDefaultModel).toBeUndefined();
     expect(config.hermesDefaultReasoning).toBeUndefined();
     expect(config.hermesDefaultLaunchProfileId).toBe("default");
+    expect(config.openClawEnabled).toBe(false);
+    expect(config.openClawCliPath).toBeUndefined();
+    expect(config.openClawGatewayUrl).toBe("ws://127.0.0.1:18789");
+    expect(config.openClawGatewayToken).toBeUndefined();
+    expect(config.openClawGatewayPassword).toBeUndefined();
+    expect(config.openClawAgentId).toBe("main");
+    expect(config.openClawHome).toBeUndefined();
+    expect(config.openClawStateDir).toBeUndefined();
+    expect(config.openClawDefaultModel).toBeUndefined();
+    expect(config.openClawDefaultThinking).toBeUndefined();
+    expect(config.openClawDefaultLaunchProfileId).toBe("default");
     expect(config.codexModel).toBeUndefined();
     expect(config.codexSyncIntervalMs).toBe(10_000);
     expect(config.codexExternalBusyCheckMs).toBe(5_000);
@@ -616,6 +649,41 @@ describe("loadConfig", () => {
     expect(config.hermesDefaultLaunchProfileId).toBe("yolo");
   });
 
+  it("parses OpenClaw agent settings", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
+    process.env.TELEGRAM_ADMIN_USER_IDS = "123";
+    process.env.NORDRELAY_CODEX_ENABLED = "false";
+    process.env.NORDRELAY_OPENCLAW_ENABLED = "true";
+    process.env.NORDRELAY_DEFAULT_AGENT = "openclaw";
+    process.env.OPENCLAW_CLI_PATH = "/usr/local/bin/openclaw";
+    process.env.OPENCLAW_GATEWAY_URL = "ws://127.0.0.1:19999";
+    process.env.OPENCLAW_GATEWAY_TOKEN = "openclaw-token";
+    process.env.OPENCLAW_GATEWAY_PASSWORD = "openclaw-password";
+    process.env.OPENCLAW_AGENT_ID = "work";
+    process.env.OPENCLAW_HOME = "/home/user/.openclaw-test";
+    process.env.OPENCLAW_STATE_DIR = "/tmp/openclaw-state";
+    process.env.OPENCLAW_DEFAULT_MODEL = "openai/gpt-5.5";
+    process.env.OPENCLAW_DEFAULT_THINKING = "xhigh";
+    process.env.OPENCLAW_DEFAULT_PROFILE = "local";
+
+    const config = loadConfig();
+
+    expect(config.codexEnabled).toBe(false);
+    expect(config.openClawEnabled).toBe(true);
+    expect(config.defaultAgent).toBe("openclaw");
+    expect(config.openClawCliPath).toBe("/usr/local/bin/openclaw");
+    expect(config.openClawGatewayUrl).toBe("ws://127.0.0.1:19999");
+    expect(config.openClawGatewayToken).toBe("openclaw-token");
+    expect(config.openClawGatewayPassword).toBe("openclaw-password");
+    expect(config.openClawAgentId).toBe("work");
+    expect(config.openClawHome).toBe("/home/user/.openclaw-test");
+    expect(config.openClawStateDir).toBe("/tmp/openclaw-state");
+    expect(config.openClawDefaultModel).toBe("openai/gpt-5.5");
+    expect(config.openClawDefaultThinking).toBe("xhigh");
+    expect(config.openClawDefaultLaunchProfileId).toBe("local");
+  });
+
   it("rejects a default agent that is not enabled", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
     process.env.TELEGRAM_ALLOWED_USER_IDS = "123";
@@ -630,6 +698,9 @@ describe("loadConfig", () => {
 
     process.env.NORDRELAY_DEFAULT_AGENT = "hermes";
     expect(() => loadConfig()).toThrow("NORDRELAY_DEFAULT_AGENT=hermes requires NORDRELAY_HERMES_ENABLED=true");
+
+    process.env.NORDRELAY_DEFAULT_AGENT = "openclaw";
+    expect(() => loadConfig()).toThrow("NORDRELAY_DEFAULT_AGENT=openclaw requires NORDRELAY_OPENCLAW_ENABLED=true");
   });
 
   it("parses CONNECTOR_LOG_FORMAT", () => {

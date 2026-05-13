@@ -21,7 +21,7 @@ Codex plugin commands are namespaced by the plugin id in current plugin-aware co
 ## Workflow
 
 1. Locate the plugin root containing `.codex-plugin/plugin.json` with `"name": "nordrelay"`. In a source checkout this is usually `<repo>/plugins/nordrelay`.
-2. Check whether `TELEGRAM_BOT_TOKEN` and either `TELEGRAM_ALLOWED_USER_IDS`, `TELEGRAM_ALLOWED_CHAT_IDS`, or `TELEGRAM_ALLOW_ANY_CHAT=1` are available from the environment or from `.env`.
+2. Check whether `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ADMIN_USER_IDS` are available from the environment or from the NordRelay env file.
 3. Run the connector command from the plugin root:
 
 ```bash
@@ -29,5 +29,5 @@ node scripts/nordrelay.mjs ${ARGUMENTS:-start}
 ```
 
 4. If `${ARGUMENTS}` is empty, use `start`.
-5. After `start` or `restart`, run `node scripts/nordrelay.mjs status` and report the PID, selected Codex thread id, and log file.
+5. After `start` or `restart`, run `node scripts/nordrelay.mjs status` and report the PID, selected thread id if visible, and log file.
 6. If startup fails because dependencies are missing, run `npm install` and `npm run build` in the repository root.

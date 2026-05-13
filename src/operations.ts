@@ -7,6 +7,7 @@ import path from "node:path";
 import { describeCodexCli, resolveCodexCli } from "./codex-cli.js";
 import { findLatestDatabase } from "./codex-state.js";
 import { describeHermesCli, resolveHermesCli } from "./hermes-cli.js";
+import { describeOpenClawCli, resolveOpenClawCli } from "./openclaw-cli.js";
 import { describePiCli, resolvePiCli } from "./pi-cli.js";
 
 export interface ConnectorRuntimeState {
@@ -20,6 +21,7 @@ export interface ConnectorRuntimeState {
   codexCli?: string;
   piCli?: string;
   hermesCli?: string;
+  openClawCli?: string;
   error?: string;
   updatedAt?: string;
 }
@@ -38,6 +40,9 @@ export interface ConnectorHealth {
   hermesCli: string;
   hermesCliPath: string | null;
   hermesCliVersion: string;
+  openClawCli: string;
+  openClawCliPath: string | null;
+  openClawCliVersion: string;
   stateFile: string;
   logFile: string;
   databasePath: string | null;
@@ -61,6 +66,7 @@ export interface VersionChecks {
   codex: VersionCheck;
   pi: VersionCheck;
   hermes: VersionCheck;
+  openclaw: VersionCheck;
 }
 
 export type SelfUpdateMethod = "git" | "npm";
@@ -85,6 +91,7 @@ const PACKAGE_NAME = "@nordbyte/nordrelay";
 const CODEX_PACKAGE_NAME = "@openai/codex";
 const PI_PACKAGE_NAME = "@mariozechner/pi-coding-agent";
 const HERMES_PACKAGE_NAME = "hermes-agent";
+const OPENCLAW_PACKAGE_NAME = "openclaw";
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 const SECRET_RE = /(bot|token|api[_-]?key|authorization|bearer|password|secret)(["'=: ]+)([^\s"',]+)/gi;
 const DEFAULT_VERSION_CACHE_TTL_MS = 60 * 60 * 1000;
@@ -158,16 +165,18 @@ export async function getPackageVersion(): Promise<string> {
   }
 }
 
-export async function getVersionChecks(options: { piCliPath?: string; hermesCliPath?: string } = {}): Promise<VersionChecks> {
+export async function getVersionChecks(options: { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string } = {}): Promise<VersionChecks> {
   const nordrelayVersion = await getPackageVersion();
   const codexCli = resolveCodexCli();
   const piCli = resolvePiCli(process.env, options.piCliPath);
   const hermesCli = resolveHermesCli(process.env, options.hermesCliPath);
+  const openClawCli = resolveOpenClawCli(process.env, options.openClawCliPath);
   const codexVersionLabel = codexCli.path
     ? detectCliVersion(codexCli.path)
     : readInstalledPackageVersion(CODEX_PACKAGE_NAME) ?? "not installed";
   const piVersionLabel = piCli.path ? detectCliVersion(piCli.path) : "not installed";
   const hermesVersionLabel = hermesCli.path ? detectCliVersion(hermesCli.path) : "not installed";
+  const openClawVersionLabel = openClawCli.path ? detectCliVersion(openClawCli.path) : "not installed";
 
   return {
     nordrelay: buildVersionCheck({
@@ -198,10 +207,18 @@ export async function getVersionChecks(options: { piCliPath?: string; hermesCliP
       notInstalled: hermesVersionLabel === "not installed",
       skipLatest: true,
     }),
+    openclaw: buildVersionCheck({
+      label: "OpenClaw",
+      packageName: OPENCLAW_PACKAGE_NAME,
+      installedLabel: openClawVersionLabel,
+      installedVersion: extractVersion(openClawVersionLabel),
+      notInstalled: openClawVersionLabel === "not installed",
+      skipLatest: true,
+    }),
   };
 }
 
-export async function getConnectorHealth(options: { piCliPath?: string; hermesCliPath?: string } = {}): Promise<ConnectorHealth> {
+export async function getConnectorHealth(options: { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string } = {}): Promise<ConnectorHealth> {
   const state = await readConnectorState();
   const version = await getPackageVersion();
   const pidRunning = isProcessRunning(state.pid);
@@ -209,6 +226,7 @@ export async function getConnectorHealth(options: { piCliPath?: string; hermesCl
   const codexCli = resolveCodexCli();
   const piCli = resolvePiCli(process.env, options.piCliPath);
   const hermesCli = resolveHermesCli(process.env, options.hermesCliPath);
+  const openClawCli = resolveOpenClawCli(process.env, options.openClawCliPath);
 
   return {
     version,
@@ -224,6 +242,9 @@ export async function getConnectorHealth(options: { piCliPath?: string; hermesCl
     hermesCli: describeHermesCli(hermesCli),
     hermesCliPath: hermesCli.path ?? null,
     hermesCliVersion: detectCliVersion(hermesCli.path),
+    openClawCli: describeOpenClawCli(openClawCli),
+    openClawCliPath: openClawCli.path ?? null,
+    openClawCliVersion: detectCliVersion(openClawCli.path),
     stateFile: getConnectorStatePath(),
     logFile: getConnectorLogPath(),
     databasePath: findLatestDatabase(),

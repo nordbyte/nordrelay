@@ -1,7 +1,7 @@
 import type { CodexLaunchProfile } from "./codex-launch.js";
 import type { CodexSessionUsage } from "./codex-state.js";
 
-export const AGENT_IDS = ["codex", "pi", "hermes"] as const;
+export const AGENT_IDS = ["codex", "pi", "hermes", "openclaw"] as const;
 export type AgentId = typeof AGENT_IDS[number];
 
 export type AgentReasoningEffort = "off" | "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -25,6 +25,15 @@ export const PI_THINKING_LEVELS: AgentReasoningEffort[] = [
 
 export const HERMES_REASONING_EFFORTS: AgentReasoningEffort[] = [
   "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+];
+
+export const OPENCLAW_THINKING_LEVELS: AgentReasoningEffort[] = [
+  "off",
   "minimal",
   "low",
   "medium",
@@ -84,6 +93,23 @@ export const PI_AGENT_CAPABILITIES: AgentCapabilities = {
 };
 
 export const HERMES_AGENT_CAPABILITIES: AgentCapabilities = {
+  launchProfiles: true,
+  fastMode: false,
+  externalActivity: true,
+  cliMirror: true,
+  activityLog: true,
+  auth: true,
+  login: false,
+  logout: false,
+  usageLimits: true,
+  workspaces: true,
+  attachments: true,
+  modelSelection: true,
+  reasoningSelection: true,
+  handback: true,
+};
+
+export const OPENCLAW_AGENT_CAPABILITIES: AgentCapabilities = {
   launchProfiles: true,
   fastMode: false,
   externalActivity: true,
@@ -309,7 +335,7 @@ export interface AgentSessionService {
 }
 
 export function isAgentId(value: string | undefined): value is AgentId {
-  return value === "codex" || value === "pi" || value === "hermes";
+  return value === "codex" || value === "pi" || value === "hermes" || value === "openclaw";
 }
 
 export function agentLabel(agentId: AgentId): string {
@@ -319,11 +345,14 @@ export function agentLabel(agentId: AgentId): string {
   if (agentId === "hermes") {
     return "Hermes";
   }
+  if (agentId === "openclaw") {
+    return "OpenClaw";
+  }
   return "Codex";
 }
 
 export function agentReasoningLabel(agentId: AgentId): string {
-  return agentId === "pi" ? "Thinking" : "Reasoning";
+  return agentId === "pi" || agentId === "openclaw" ? "Thinking" : "Reasoning";
 }
 
 export function agentReasoningOptions(agentId: AgentId): AgentReasoningEffort[] {
@@ -332,6 +361,9 @@ export function agentReasoningOptions(agentId: AgentId): AgentReasoningEffort[] 
   }
   if (agentId === "hermes") {
     return HERMES_REASONING_EFFORTS;
+  }
+  if (agentId === "openclaw") {
+    return OPENCLAW_THINKING_LEVELS;
   }
   return CODEX_REASONING_EFFORTS;
 }

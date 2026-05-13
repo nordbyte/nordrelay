@@ -1,7 +1,7 @@
 {
   "name": "nordrelay",
-  "version": "0.3.0",
-  "description": "Run a remote-control bridge for coding agents. The current adapter connects Codex sessions to Telegram with streaming replies, multi-session controls, attachments, voice input, model selection, thread browsing, and handback.",
+  "version": "0.3.1",
+  "description": "Run a remote-control bridge for coding agents. Current adapters connect Codex, Pi, Hermes, and OpenClaw sessions to Telegram with streaming replies, multi-session controls, attachments, voice input, model selection, thread browsing, and handback.",
   "author": {
     "name": "Ricardo",
     "url": "https://github.com/nordbyte"
@@ -14,6 +14,9 @@
     "messaging",
     "remote-control",
     "codex",
+    "pi",
+    "hermes",
+    "openclaw",
     "telegram",
     "bot",
     "app-server"
@@ -22,7 +25,7 @@
   "interface": {
     "displayName": "NordRelay",
     "shortDescription": "Remote-control bridge for coding agents",
-    "longDescription": "Starts NordRelay, a messaging bridge for coding agents. The current runtime connects Codex and Pi sessions to Telegram: messages become agent turns, replies and tool activity stream back to Telegram, each chat or forum topic has its own session, and commands provide thread browsing, model and reasoning controls, launch profiles, attachments, voice transcription, artifacts, login, abort, retry, and CLI handback.",
+    "longDescription": "Starts NordRelay, a messaging bridge for coding agents. The current runtime connects Codex, Pi, Hermes, and OpenClaw sessions to Telegram: messages become agent turns, replies and tool activity stream back to Telegram, each chat or forum topic has its own session, and commands provide thread browsing, model and reasoning controls, launch profiles, attachments, voice transcription, artifacts, login, abort, retry, and CLI handback.",
     "developerName": "Ricardo",
     "category": "Productivity",
     "capabilities": [
@@ -38,7 +41,7 @@
       "Show NordRelay status",
       "Stop NordRelay",
       "Show Telegram session browser",
-      "Select Codex model"
+      "Select agent model"
     ],
     "brandColor": "#229ED9",
     "composerIcon": "./assets/nordrelay.svg",

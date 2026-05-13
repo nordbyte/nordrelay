@@ -35,6 +35,10 @@ function readRuntimePackageVersion() {
 function parseArgs(argv) {
   const copy = [...argv];
   let command = "foreground";
+  if (copy[0] === "--version" || copy[0] === "-v") {
+    command = "version";
+    copy.shift();
+  }
   if (copy[0] && !copy[0].startsWith("-")) {
     command = copy.shift();
   }
@@ -61,6 +65,7 @@ function parseArgs(argv) {
     else if (arg === "--state-backend") options.stateBackend = requireValue(copy, ++i, arg);
     else if (arg === "--enable-pi") options.enablePi = true;
     else if (arg === "--enable-hermes") options.enableHermes = true;
+    else if (arg === "--enable-openclaw") options.enableOpenClaw = true;
     else if (arg === "--disable-codex") options.disableCodex = true;
   }
 
@@ -261,6 +266,7 @@ async function commandStop(options) {
 }
 
 async function commandStatus(options) {
+  loadEnvFiles(options.home);
   const pid = await readPid(options.pidFile);
   const state = await readJson(options.stateFile, {});
   const running = isProcessRunning(pid);
@@ -272,6 +278,8 @@ async function commandStatus(options) {
   console.log(`Codex CLI: ${state.codexCli || "-"}`);
   console.log(`Pi CLI: ${state.piCli || "-"}`);
   console.log(`Hermes CLI: ${state.hermesCli || "-"}`);
+  console.log(`OpenClaw CLI: ${state.openClawCli || "-"}`);
+  console.log(`OpenClaw Gateway: ${state.openClawGateway || process.env.OPENCLAW_GATEWAY_URL || "-"}`);
   console.log(`Log: ${options.logFile}`);
   if (state.error) console.log(`Error: ${state.error}`);
 }
@@ -298,12 +306,19 @@ async function commandInit(options) {
     const enableCodex = options.disableCodex ? "false" : await askChoice(rl, "Enable Codex", "true");
     const enablePi = options.enablePi ? "true" : await askChoice(rl, "Enable Pi", "false");
     const enableHermes = options.enableHermes ? "true" : await askChoice(rl, "Enable Hermes", "false");
+    const enableOpenClaw = options.enableOpenClaw ? "true" : await askChoice(rl, "Enable OpenClaw", "false");
     const stateBackend = options.stateBackend || await askChoice(rl, "State backend (json/sqlite)", "json");
 
     if (!telegramBotToken) throw new Error("Telegram bot token is required.");
     if (!telegramAdminUserIds) throw new Error("Telegram admin user id is required.");
-    if (enableCodex !== "true" && enablePi !== "true" && enableHermes !== "true") throw new Error("At least one agent must be enabled.");
-    const defaultAgent = enableCodex === "true" ? "codex" : enablePi === "true" ? "pi" : "hermes";
+    if (enableCodex !== "true" && enablePi !== "true" && enableHermes !== "true" && enableOpenClaw !== "true") throw new Error("At least one agent must be enabled.");
+    const defaultAgent = enableCodex === "true"
+      ? "codex"
+      : enablePi === "true"
+        ? "pi"
+        : enableHermes === "true"
+          ? "hermes"
+          : "openclaw";
 
     const lines = [
       "# NordRelay local runtime config.",
@@ -314,10 +329,14 @@ async function commandInit(options) {
       `NORDRELAY_CODEX_ENABLED=${enableCodex}`,
       `NORDRELAY_PI_ENABLED=${enablePi}`,
       `NORDRELAY_HERMES_ENABLED=${enableHermes}`,
+      `NORDRELAY_OPENCLAW_ENABLED=${enableOpenClaw}`,
       `NORDRELAY_DEFAULT_AGENT=${defaultAgent}`,
       "PI_DEFAULT_PROFILE=default",
       "HERMES_API_BASE_URL=http://127.0.0.1:8642",
       "HERMES_DEFAULT_PROFILE=default",
+      "OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18789",
+      "OPENCLAW_AGENT_ID=main",
+      "OPENCLAW_DEFAULT_PROFILE=default",
       `NORDRELAY_STATE_BACKEND=${stateBackend === "sqlite" ? "sqlite" : "json"}`,
       "TELEGRAM_TRANSPORT=polling",
       "TELEGRAM_AUTO_SEND_ARTIFACTS=false",
@@ -344,11 +363,15 @@ async function commandDoctor(options) {
   checks.push(check("Codex enabled flag", process.env.NORDRELAY_CODEX_ENABLED !== "false", `NORDRELAY_CODEX_ENABLED=${process.env.NORDRELAY_CODEX_ENABLED ?? "true"}`));
   checks.push(check("Pi enabled flag", process.env.NORDRELAY_PI_ENABLED === "true" || process.env.NORDRELAY_PI_ENABLED === undefined, `NORDRELAY_PI_ENABLED=${process.env.NORDRELAY_PI_ENABLED ?? "false"}`, process.env.NORDRELAY_PI_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("Hermes enabled flag", process.env.NORDRELAY_HERMES_ENABLED === "true", `NORDRELAY_HERMES_ENABLED=${process.env.NORDRELAY_HERMES_ENABLED ?? "false"}`, process.env.NORDRELAY_HERMES_ENABLED === "true" ? "pass" : "warn"));
+  checks.push(check("OpenClaw enabled flag", process.env.NORDRELAY_OPENCLAW_ENABLED === "true", `NORDRELAY_OPENCLAW_ENABLED=${process.env.NORDRELAY_OPENCLAW_ENABLED ?? "false"}`, process.env.NORDRELAY_OPENCLAW_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("Codex CLI", Boolean(findExecutable(process.env.CODEX_CLI_PATH || "codex")), process.env.CODEX_CLI_PATH || findExecutable("codex") || "not found", process.env.NORDRELAY_CODEX_ENABLED === "false" ? "warn" : "fail"));
   checks.push(check("Pi CLI", Boolean(findExecutable(process.env.PI_CLI_PATH || "pi")), process.env.PI_CLI_PATH || findExecutable("pi") || "not found", process.env.NORDRELAY_PI_ENABLED === "true" ? "fail" : "warn"));
   checks.push(check("Hermes CLI", Boolean(findExecutable(process.env.HERMES_CLI_PATH || "hermes")), process.env.HERMES_CLI_PATH || findExecutable("hermes") || "not found", process.env.NORDRELAY_HERMES_ENABLED === "true" ? "fail" : "warn"));
+  checks.push(check("OpenClaw CLI", Boolean(findExecutable(process.env.OPENCLAW_CLI_PATH || "openclaw")), process.env.OPENCLAW_CLI_PATH || findExecutable("openclaw") || "not found", process.env.NORDRELAY_OPENCLAW_ENABLED === "true" ? "fail" : "warn"));
   const hermesApiCheck = await checkHermesApiServer();
   checks.push(check("Hermes API Server", hermesApiCheck.ok, hermesApiCheck.detail, process.env.NORDRELAY_HERMES_ENABLED === "true" ? "fail" : "warn"));
+  const openClawGatewayCheck = await checkOpenClawGateway();
+  checks.push(check("OpenClaw Gateway", openClawGatewayCheck.ok, openClawGatewayCheck.detail, process.env.NORDRELAY_OPENCLAW_ENABLED === "true" ? "fail" : "warn"));
   checks.push(check("ffmpeg", Boolean(findExecutable("ffmpeg")), findExecutable("ffmpeg") || "not found", "warn"));
   const stateBackendCheck = validateStateBackend();
   checks.push(check("State backend", stateBackendCheck.ok, stateBackendCheck.detail));
@@ -379,6 +402,61 @@ async function checkHermesApiServer() {
       detail: `${baseUrl}/health failed: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
+}
+
+async function checkOpenClawGateway() {
+  const gatewayUrl = process.env.OPENCLAW_GATEWAY_URL || "ws://127.0.0.1:18789";
+  const WebSocketClass = globalThis.WebSocket;
+  if (!WebSocketClass) {
+    return { ok: false, detail: "Node.js WebSocket runtime is unavailable" };
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      try {
+        socket.close();
+      } catch {
+        // Ignore close errors during diagnostics.
+      }
+      resolve(value);
+    };
+    const timeout = setTimeout(() => {
+      finish({ ok: false, detail: `${gatewayUrl} timed out` });
+    }, 2000);
+    timeout.unref?.();
+
+    let socket;
+    try {
+      socket = new WebSocketClass(gatewayUrl);
+    } catch (error) {
+      clearTimeout(timeout);
+      resolve({ ok: false, detail: `${gatewayUrl} failed: ${error instanceof Error ? error.message : String(error)}` });
+      return;
+    }
+
+    socket.addEventListener("open", () => {
+      const auth = {};
+      if (process.env.OPENCLAW_GATEWAY_TOKEN) auth.token = process.env.OPENCLAW_GATEWAY_TOKEN;
+      if (process.env.OPENCLAW_GATEWAY_PASSWORD) auth.password = process.env.OPENCLAW_GATEWAY_PASSWORD;
+      const params = {
+        client: { name: "NordRelay doctor", deviceFamily: "nordrelay" },
+        role: "operator",
+        subscribe: ["health"],
+      };
+      if (Object.keys(auth).length > 0) params.auth = auth;
+      socket.send(JSON.stringify({ type: "connect", id: "doctor", params }));
+    }, { once: true });
+    socket.addEventListener("message", () => {
+      finish({ ok: true, detail: `${gatewayUrl} reachable` });
+    }, { once: true });
+    socket.addEventListener("error", () => {
+      finish({ ok: false, detail: `${gatewayUrl} failed` });
+    }, { once: true });
+  });
 }
 
 async function commandWeb(options) {

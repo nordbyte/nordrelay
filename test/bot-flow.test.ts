@@ -31,6 +31,9 @@ const mockOperations = vi.hoisted(() => ({
     hermesCli: "path (/usr/local/bin/hermes)",
     hermesCliPath: "/usr/local/bin/hermes",
     hermesCliVersion: "hermes 1.2.3",
+    openClawCli: "path (/usr/local/bin/openclaw)",
+    openClawCliPath: "/usr/local/bin/openclaw",
+    openClawCliVersion: "openclaw 0.9.0",
     stateFile: "/tmp/state.json",
     logFile: "/tmp/nordrelay.log",
     databasePath: null,
@@ -66,6 +69,14 @@ const mockOperations = vi.hoisted(() => ({
       packageName: "hermes-agent",
       installedLabel: "hermes 1.2.3",
       installedVersion: "1.2.3",
+      latestVersion: null,
+      status: "unknown",
+    },
+    openclaw: {
+      label: "OpenClaw",
+      packageName: "openclaw",
+      installedLabel: "openclaw 0.9.0",
+      installedVersion: "0.9.0",
       latestVersion: null,
       status: "unknown",
     },
@@ -176,6 +187,17 @@ function createConfig(overrides: Partial<ConnectorConfig> = {}): ConnectorConfig
     hermesDefaultModel: undefined,
     hermesDefaultReasoning: undefined,
     hermesDefaultLaunchProfileId: "default",
+    openClawEnabled: false,
+    openClawCliPath: undefined,
+    openClawGatewayUrl: "ws://127.0.0.1:18789",
+    openClawGatewayToken: undefined,
+    openClawGatewayPassword: undefined,
+    openClawAgentId: "main",
+    openClawHome: undefined,
+    openClawStateDir: undefined,
+    openClawDefaultModel: undefined,
+    openClawDefaultThinking: undefined,
+    openClawDefaultLaunchProfileId: "default",
     defaultAgent: "codex",
     stateBackend: "json",
     toolVerbosity: "summary",
@@ -355,6 +377,9 @@ describe("bot flow integration", () => {
       hermesCli: "path (/usr/local/bin/hermes)",
       hermesCliPath: "/usr/local/bin/hermes",
       hermesCliVersion: "hermes 1.2.3",
+      openClawCli: "path (/usr/local/bin/openclaw)",
+      openClawCliPath: "/usr/local/bin/openclaw",
+      openClawCliVersion: "openclaw 0.9.0",
       stateFile: "/tmp/state.json",
       logFile: "/tmp/nordrelay.log",
       databasePath: null,
@@ -391,6 +416,14 @@ describe("bot flow integration", () => {
         packageName: "hermes-agent",
         installedLabel: "hermes 1.2.3",
         installedVersion: "1.2.3",
+        latestVersion: null,
+        status: "unknown",
+      },
+      openclaw: {
+        label: "OpenClaw",
+        packageName: "openclaw",
+        installedLabel: "openclaw 0.9.0",
+        installedVersion: "0.9.0",
         latestVersion: null,
         status: "unknown",
       },
@@ -625,7 +658,7 @@ describe("bot flow integration", () => {
     expect(api.sentMessages.at(-1)?.text).not.toContain("<code>Something needs attention</code>");
   });
 
-  it("renders version freshness for NordRelay, Codex, Pi, and Hermes", async () => {
+  it("renders version freshness for NordRelay, Codex, Pi, Hermes, and OpenClaw", async () => {
     const { registry } = createFakeRegistry();
     const bot = createBot(createConfig(), registry as any);
     const api = installFakeApi(bot);
@@ -643,6 +676,8 @@ describe("bot flow integration", () => {
     expect(api.sentMessages.at(-1)?.text).toContain("not installed");
     expect(api.sentMessages.at(-1)?.text).toContain("<b>Hermes CLI path:</b> <code>/usr/local/bin/hermes</code>");
     expect(api.sentMessages.at(-1)?.text).toContain("<b>Hermes version:</b> ⚠️");
+    expect(api.sentMessages.at(-1)?.text).toContain("<b>OpenClaw CLI path:</b> <code>/usr/local/bin/openclaw</code>");
+    expect(api.sentMessages.at(-1)?.text).toContain("<b>OpenClaw version:</b> ⚠️");
   });
 
   it("renders workspace guardrails", async () => {

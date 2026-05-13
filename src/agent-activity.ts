@@ -21,6 +21,12 @@ import {
   getHermesSessionSnapshot,
 } from "./hermes-state.js";
 import {
+  getOpenClawSessionActivity,
+  getOpenClawSessionActivityLog,
+  getOpenClawSessionDiagnostics,
+  getOpenClawSessionSnapshot,
+} from "./openclaw-state.js";
+import {
   getPiSessionActivity,
   getPiSessionActivityLog,
   getPiSessionDiagnostics,
@@ -51,6 +57,16 @@ export function getExternalActivityForSession(
       hermesHome: config.hermesHome,
       stateDbPath: config.hermesStateDbPath,
       workspace: info.workspace,
+      staleAfterMs: config.codexExternalBusyStaleMs,
+    });
+  }
+  if (info.agentId === "openclaw") {
+    return getOpenClawSessionActivity(threadId, {
+      cliPath: config.openClawCliPath,
+      openClawHome: config.openClawHome,
+      stateDir: config.openClawStateDir,
+      workspace: info.workspace,
+      openClawAgentId: config.openClawAgentId,
       staleAfterMs: config.codexExternalBusyStaleMs,
     });
   }
@@ -104,6 +120,18 @@ export function getExternalSnapshotForSession(
       staleAfterMs: config.codexExternalBusyStaleMs,
     });
   }
+  if (info.agentId === "openclaw") {
+    return getOpenClawSessionSnapshot(threadId, {
+      cliPath: config.openClawCliPath,
+      openClawHome: config.openClawHome,
+      stateDir: config.openClawStateDir,
+      workspace: info.workspace,
+      openClawAgentId: config.openClawAgentId,
+      afterLine: options.afterLine,
+      maxEvents: options.maxEvents,
+      staleAfterMs: config.codexExternalBusyStaleMs,
+    });
+  }
 
   const snapshot = getThreadRolloutSnapshot(threadId, {
     afterLine: options.afterLine,
@@ -131,6 +159,15 @@ export function getAgentActivityLog(
       hermesHome: config.hermesHome,
       stateDbPath: config.hermesStateDbPath,
       workspace: info.workspace,
+    });
+  }
+  if (info.agentId === "openclaw") {
+    return getOpenClawSessionActivityLog(threadId, limit, {
+      cliPath: config.openClawCliPath,
+      openClawHome: config.openClawHome,
+      stateDir: config.openClawStateDir,
+      workspace: info.workspace,
+      openClawAgentId: config.openClawAgentId,
     });
   }
   return getThreadActivityLog(threadId, limit).map(codexEventToAgentEvent);
@@ -178,6 +215,29 @@ export function getAgentDiagnostics(
         { label: "Hermes messages", value: String(diagnostics.lineCount) },
         { label: "Hermes updated", value: diagnostics.updatedAt?.toISOString() ?? "-" },
         { label: "Hermes API run active", value: session.isProcessing() ? "yes" : "idle" },
+      ],
+    };
+  }
+  if (info.agentId === "openclaw") {
+    const diagnostics = getOpenClawSessionDiagnostics(info.threadId, {
+      cliPath: config.openClawCliPath,
+      openClawHome: config.openClawHome,
+      stateDir: config.openClawStateDir,
+      workspace: info.workspace,
+      openClawAgentId: config.openClawAgentId,
+      staleAfterMs: config.codexExternalBusyStaleMs,
+    });
+    return {
+      agentId: "openclaw",
+      agentLabel: "OpenClaw",
+      lines: [
+        { label: "OpenClaw Gateway", value: config.openClawGatewayUrl },
+        { label: "OpenClaw sessions", value: diagnostics.sourcePath },
+        { label: "OpenClaw session status", value: diagnostics.status },
+        { label: "OpenClaw status reason", value: diagnostics.reason },
+        { label: "OpenClaw events", value: String(diagnostics.lineCount) },
+        { label: "OpenClaw updated", value: diagnostics.updatedAt?.toISOString() ?? "-" },
+        { label: "OpenClaw Gateway run active", value: session.isProcessing() ? "yes" : "idle" },
       ],
     };
   }

@@ -45,6 +45,7 @@ import { checkAuthStatus } from "./codex-auth.js";
 import type { ConnectorConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { checkHermesAuthStatus } from "./hermes-auth.js";
+import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
 import { getConnectorHealth, getVersionChecks, readFormattedLogTail, spawnConnectorRestart } from "./operations.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
@@ -243,16 +244,16 @@ export class RelayRuntime {
 
   async status(): Promise<Record<string, unknown>> {
     return {
-      health: await getConnectorHealth({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath }),
-      versionChecks: await getVersionChecks({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath }),
+      health: await getConnectorHealth({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath }),
+      versionChecks: await getVersionChecks({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath }),
       snapshot: await this.snapshot(),
     };
   }
 
   async diagnostics(): Promise<WebDiagnosticsDto> {
     return {
-      health: await getConnectorHealth({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath }),
-      versionChecks: await getVersionChecks({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath }),
+      health: await getConnectorHealth({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath }),
+      versionChecks: await getVersionChecks({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath }),
       snapshot: await this.snapshot(),
       runtime: {
         stateBackend: this.config.stateBackend,
@@ -894,6 +895,13 @@ export class RelayRuntime {
       return checkHermesAuthStatus({
         baseUrl: this.config.hermesApiBaseUrl,
         apiKey: this.config.hermesApiKey,
+      });
+    }
+    if (info.agentId === "openclaw") {
+      return checkOpenClawAuthStatus({
+        gatewayUrl: this.config.openClawGatewayUrl,
+        token: this.config.openClawGatewayToken,
+        password: this.config.openClawGatewayPassword,
       });
     }
     return checkAuthStatus(this.config.codexApiKey);

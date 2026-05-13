@@ -14,6 +14,7 @@ import {
 } from "./codex-launch.js";
 import {
   HERMES_REASONING_EFFORTS,
+  OPENCLAW_THINKING_LEVELS,
   isAgentId,
   PI_THINKING_LEVELS,
   type AgentId,
@@ -100,6 +101,17 @@ export interface ConnectorConfig {
   hermesDefaultModel?: string;
   hermesDefaultReasoning?: AgentReasoningEffort;
   hermesDefaultLaunchProfileId: string;
+  openClawEnabled: boolean;
+  openClawCliPath?: string;
+  openClawGatewayUrl: string;
+  openClawGatewayToken?: string;
+  openClawGatewayPassword?: string;
+  openClawAgentId: string;
+  openClawHome?: string;
+  openClawStateDir?: string;
+  openClawDefaultModel?: string;
+  openClawDefaultThinking?: AgentReasoningEffort;
+  openClawDefaultLaunchProfileId: string;
   defaultAgent: AgentId;
   toolVerbosity: ToolVerbosity;
   logFormat: ConnectorLogFormat;
@@ -204,7 +216,6 @@ export function loadConfig(): ConnectorConfig {
   const piDefaultThinking = parsePiThinkingLevel(optionalString(process.env.PI_DEFAULT_THINKING));
   const piDefaultLaunchProfileId = optionalString(process.env.PI_DEFAULT_PROFILE) ?? "default";
   const hermesEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_HERMES_ENABLED), false);
-  ensureAtLeastOneAgentEnabled(codexEnabled, piEnabled, hermesEnabled);
   const hermesCliPath = optionalString(process.env.HERMES_CLI_PATH);
   const hermesHome = optionalString(process.env.HERMES_HOME);
   const hermesStateDbPath = optionalString(process.env.HERMES_STATE_DB_PATH);
@@ -213,11 +224,24 @@ export function loadConfig(): ConnectorConfig {
   const hermesDefaultModel = optionalString(process.env.HERMES_DEFAULT_MODEL);
   const hermesDefaultReasoning = parseHermesReasoningEffort(optionalString(process.env.HERMES_DEFAULT_REASONING));
   const hermesDefaultLaunchProfileId = optionalString(process.env.HERMES_DEFAULT_PROFILE) ?? "default";
+  const openClawEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_OPENCLAW_ENABLED), false);
+  ensureAtLeastOneAgentEnabled(codexEnabled, piEnabled, hermesEnabled, openClawEnabled);
+  const openClawCliPath = optionalString(process.env.OPENCLAW_CLI_PATH);
+  const openClawGatewayUrl = optionalString(process.env.OPENCLAW_GATEWAY_URL) ?? "ws://127.0.0.1:18789";
+  const openClawGatewayToken = optionalString(process.env.OPENCLAW_GATEWAY_TOKEN);
+  const openClawGatewayPassword = optionalString(process.env.OPENCLAW_GATEWAY_PASSWORD);
+  const openClawAgentId = optionalString(process.env.OPENCLAW_AGENT_ID) ?? "main";
+  const openClawHome = optionalString(process.env.OPENCLAW_HOME);
+  const openClawStateDir = optionalString(process.env.OPENCLAW_STATE_DIR);
+  const openClawDefaultModel = optionalString(process.env.OPENCLAW_DEFAULT_MODEL);
+  const openClawDefaultThinking = parseOpenClawThinkingLevel(optionalString(process.env.OPENCLAW_DEFAULT_THINKING));
+  const openClawDefaultLaunchProfileId = optionalString(process.env.OPENCLAW_DEFAULT_PROFILE) ?? "default";
   const defaultAgent = parseDefaultAgent(
     optionalString(process.env.NORDRELAY_DEFAULT_AGENT),
     codexEnabled,
     piEnabled,
     hermesEnabled,
+    openClawEnabled,
   );
   const toolVerbosity = parseToolVerbosity(optionalString(process.env.TOOL_VERBOSITY));
   const logFormat = parseLogFormat(optionalString(process.env.CONNECTOR_LOG_FORMAT));
@@ -299,6 +323,17 @@ export function loadConfig(): ConnectorConfig {
     hermesDefaultModel,
     hermesDefaultReasoning,
     hermesDefaultLaunchProfileId,
+    openClawEnabled,
+    openClawCliPath,
+    openClawGatewayUrl,
+    openClawGatewayToken,
+    openClawGatewayPassword,
+    openClawAgentId,
+    openClawHome,
+    openClawStateDir,
+    openClawDefaultModel,
+    openClawDefaultThinking,
+    openClawDefaultLaunchProfileId,
     defaultAgent,
     toolVerbosity,
     logFormat,
@@ -664,9 +699,9 @@ function parseDefaultLaunchProfileId(
   return profile.id;
 }
 
-function ensureAtLeastOneAgentEnabled(codexEnabled: boolean, piEnabled: boolean, hermesEnabled = false): void {
-  if (!codexEnabled && !piEnabled && !hermesEnabled) {
-    throw new Error("At least one agent must be enabled: set NORDRELAY_CODEX_ENABLED=true, NORDRELAY_PI_ENABLED=true, or NORDRELAY_HERMES_ENABLED=true");
+function ensureAtLeastOneAgentEnabled(codexEnabled: boolean, piEnabled: boolean, hermesEnabled = false, openClawEnabled = false): void {
+  if (!codexEnabled && !piEnabled && !hermesEnabled && !openClawEnabled) {
+    throw new Error("At least one agent must be enabled: set NORDRELAY_CODEX_ENABLED=true, NORDRELAY_PI_ENABLED=true, NORDRELAY_HERMES_ENABLED=true, or NORDRELAY_OPENCLAW_ENABLED=true");
   }
 }
 
@@ -675,15 +710,17 @@ function parseDefaultAgent(
   codexEnabled: boolean,
   piEnabled: boolean,
   hermesEnabled: boolean,
+  openClawEnabled: boolean,
 ): AgentId {
   if (!raw) {
     if (codexEnabled) return "codex";
     if (piEnabled) return "pi";
-    return "hermes";
+    if (hermesEnabled) return "hermes";
+    return "openclaw";
   }
 
   if (!isAgentId(raw)) {
-    throw new Error(`Invalid NORDRELAY_DEFAULT_AGENT: ${raw}. Expected codex, pi, or hermes`);
+    throw new Error(`Invalid NORDRELAY_DEFAULT_AGENT: ${raw}. Expected codex, pi, hermes, or openclaw`);
   }
   if (raw === "codex" && !codexEnabled) {
     throw new Error("NORDRELAY_DEFAULT_AGENT=codex requires NORDRELAY_CODEX_ENABLED=true");
@@ -693,6 +730,9 @@ function parseDefaultAgent(
   }
   if (raw === "hermes" && !hermesEnabled) {
     throw new Error("NORDRELAY_DEFAULT_AGENT=hermes requires NORDRELAY_HERMES_ENABLED=true");
+  }
+  if (raw === "openclaw" && !openClawEnabled) {
+    throw new Error("NORDRELAY_DEFAULT_AGENT=openclaw requires NORDRELAY_OPENCLAW_ENABLED=true");
   }
   return raw;
 }
@@ -720,6 +760,19 @@ function parseHermesReasoningEffort(raw: string | undefined): AgentReasoningEffo
   }
   console.warn(
     `Invalid HERMES_DEFAULT_REASONING value: "${raw}". Expected one of: ${HERMES_REASONING_EFFORTS.join(", ")}. Falling back to model default.`,
+  );
+  return undefined;
+}
+
+function parseOpenClawThinkingLevel(raw: string | undefined): AgentReasoningEffort | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  if (OPENCLAW_THINKING_LEVELS.includes(raw as AgentReasoningEffort)) {
+    return raw as AgentReasoningEffort;
+  }
+  console.warn(
+    `Invalid OPENCLAW_DEFAULT_THINKING value: "${raw}". Expected one of: ${OPENCLAW_THINKING_LEVELS.join(", ")}. Falling back to OpenClaw default.`,
   );
   return undefined;
 }

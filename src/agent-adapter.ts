@@ -1,6 +1,7 @@
 import {
   CODEX_AGENT_CAPABILITIES,
   HERMES_AGENT_CAPABILITIES,
+  OPENCLAW_AGENT_CAPABILITIES,
   PI_AGENT_CAPABILITIES,
   type AgentCapabilities,
   type AgentId,
@@ -9,7 +10,7 @@ import {
 export type AgentAdapterStatus = "available" | "planned";
 
 export interface AgentAdapterDescriptor {
-  id: AgentId | "claude-code" | "openclaw" | "hermes";
+  id: AgentId | "claude-code";
   label: string;
   status: AgentAdapterStatus;
   capabilities: AgentCapabilities;
@@ -41,17 +42,19 @@ export const BUILTIN_AGENT_ADAPTERS: AgentAdapterDescriptor[] = [
     notes: "Uses the Hermes API Server for streaming runs, stop, session continuity, and tool lifecycle events.",
   },
   {
+    id: "openclaw",
+    label: "OpenClaw",
+    status: "available",
+    capabilities: OPENCLAW_AGENT_CAPABILITIES,
+    envFlag: "NORDRELAY_OPENCLAW_ENABLED",
+    notes: "Uses the OpenClaw Gateway WebSocket RPC surface for streamed agent runs, session continuity, and tool lifecycle events.",
+  },
+  {
     id: "claude-code",
     label: "Claude Code",
     status: "planned",
     capabilities: plannedCapabilities(),
     notes: "Use this descriptor as the target contract for a future Claude Code session service.",
-  },
-  {
-    id: "openclaw",
-    label: "OpenClaw",
-    status: "planned",
-    capabilities: plannedCapabilities(),
   },
 ];
 

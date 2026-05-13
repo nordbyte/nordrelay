@@ -13,6 +13,8 @@ import { enabledAgents } from "./agent-factory.js";
 import { loadConfig, type ConnectorConfig } from "./config.js";
 import { checkHermesAuthStatus } from "./hermes-auth.js";
 import { describeHermesCli, resolveHermesCli } from "./hermes-cli.js";
+import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
+import { describeOpenClawCli, resolveOpenClawCli } from "./openclaw-cli.js";
 import { installConsoleLogger } from "./logger.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
 import { describePiCli, resolvePiCli } from "./pi-cli.js";
@@ -47,11 +49,16 @@ try {
   const codexCli = resolveCodexCli();
   const piCli = resolvePiCli(process.env, config.piCliPath);
   const hermesCli = resolveHermesCli(process.env, config.hermesCliPath);
+  const openClawCli = resolveOpenClawCli(process.env, config.openClawCliPath);
   console.log(`Codex CLI: ${describeCodexCli(codexCli)}`);
   console.log(`Pi CLI: ${describePiCli(piCli)}`);
   console.log(`Hermes CLI: ${describeHermesCli(hermesCli)}`);
+  console.log(`OpenClaw CLI: ${describeOpenClawCli(openClawCli)}`);
   if (config.hermesEnabled) {
     console.log(`Hermes API: ${config.hermesApiBaseUrl}`);
+  }
+  if (config.openClawEnabled) {
+    console.log(`OpenClaw Gateway: ${config.openClawGatewayUrl}`);
   }
   const defaultLaunchProfile = findLaunchProfile(config.launchProfiles, config.defaultLaunchProfileId);
   if (defaultLaunchProfile) {
@@ -75,6 +82,8 @@ try {
     codexCli: describeCodexCli(codexCli),
     piCli: describePiCli(piCli),
     hermesCli: describeHermesCli(hermesCli),
+    openClawCli: describeOpenClawCli(openClawCli),
+    openClawGateway: config.openClawGatewayUrl,
     telegramTransport: config.telegramTransport,
   });
 } catch (error) {
@@ -103,6 +112,13 @@ async function checkDefaultAgentAuth(config: ConnectorConfig): Promise<{
     return checkHermesAuthStatus({
       baseUrl: config.hermesApiBaseUrl,
       apiKey: config.hermesApiKey,
+    });
+  }
+  if (agentId === "openclaw") {
+    return checkOpenClawAuthStatus({
+      gatewayUrl: config.openClawGatewayUrl,
+      token: config.openClawGatewayToken,
+      password: config.openClawGatewayPassword,
     });
   }
   return checkAuthStatus(config.codexApiKey);
