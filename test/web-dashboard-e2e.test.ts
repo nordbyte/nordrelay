@@ -34,6 +34,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("data-update-agent");
     expect(js).toContain("data-update-delete-log");
     expect(js).toContain("Delete Log");
+    expect(js).not.toContain("data-update-log");
     expect(js).toContain("card('Runtime'");
     expect(js).toContain("bindAgentUpdateButtons();applyPermissions()");
   });
