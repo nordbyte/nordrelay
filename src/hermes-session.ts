@@ -329,7 +329,7 @@ export class HermesSessionService implements AgentSessionService {
   setModelForCurrentSession(slug: string): AgentSettingResult {
     this.ensureIdle("change Hermes model");
     this.currentModel = slug;
-    return { value: slug, appliedToActiveThread: false };
+    return { value: slug, appliedToActiveThread: Boolean(this.currentThreadId) };
   }
 
   setReasoningEffort(effort: string): void {
@@ -343,7 +343,7 @@ export class HermesSessionService implements AgentSessionService {
       throw new Error("Hermes reasoning effort is empty");
     }
     this.currentReasoning = value;
-    return { value, appliedToActiveThread: false };
+    return { value, appliedToActiveThread: Boolean(this.currentThreadId) };
   }
 
   setLaunchProfile(profileId: string): CodexLaunchProfile {

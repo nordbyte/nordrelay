@@ -298,7 +298,7 @@ export async function createArtifactZipBundle(
   const bundleDir = path.join(outDir, ".telegram-artifacts");
   await mkdir(bundleDir, { recursive: true });
 
-  const bundleName = options.bundleName ?? `codex-artifacts-${sanitizeZipStem(path.basename(path.dirname(outDir)))}.zip`;
+  const bundleName = options.bundleName ?? `nordrelay-artifacts-${sanitizeZipStem(path.basename(path.dirname(outDir)))}.zip`;
   const bundlePath = path.join(bundleDir, bundleName);
   await rm(bundlePath, { force: true }).catch(() => {});
 

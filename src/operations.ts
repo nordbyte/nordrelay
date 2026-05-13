@@ -201,14 +201,14 @@ export async function getVersionChecks(options: { piCliPath?: string; hermesCliP
   };
 }
 
-export async function getConnectorHealth(): Promise<ConnectorHealth> {
+export async function getConnectorHealth(options: { piCliPath?: string; hermesCliPath?: string } = {}): Promise<ConnectorHealth> {
   const state = await readConnectorState();
   const version = await getPackageVersion();
   const pidRunning = isProcessRunning(state.pid);
   const appPidRunning = isProcessRunning(state.appPid);
   const codexCli = resolveCodexCli();
-  const piCli = resolvePiCli();
-  const hermesCli = resolveHermesCli();
+  const piCli = resolvePiCli(process.env, options.piCliPath);
+  const hermesCli = resolveHermesCli(process.env, options.hermesCliPath);
 
   return {
     version,

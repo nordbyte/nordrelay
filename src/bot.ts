@@ -330,20 +330,20 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         try {
           registry.syncAllFromCodexState({ reattach: true });
         } catch (error) {
-          console.error("Failed to sync sessions from Codex state:", error);
+          console.error("Failed to sync sessions from agent state:", error);
         }
       }, config.codexSyncIntervalMs)
     : undefined;
   syncInterval?.unref?.();
   const externalMonitorInterval = setInterval(() => {
     void monitorExternalContexts().catch((error) => {
-      console.error("Failed to monitor external Codex activity:", error);
+      console.error("Failed to monitor external agent activity:", error);
     });
   }, config.codexExternalBusyCheckMs);
   externalMonitorInterval.unref?.();
   setTimeout(() => {
     void monitorExternalContexts().catch((error) => {
-      console.error("Failed to run initial external Codex monitor:", error);
+      console.error("Failed to run initial external agent monitor:", error);
     });
   }, 0).unref?.();
 
@@ -1535,7 +1535,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
     try {
       const sessionInfo = session.getInfo();
-      if (capabilitiesOf(sessionInfo).auth && idOf(sessionInfo) !== "pi") {
+      if (capabilitiesOf(sessionInfo).auth) {
         const authStatus = await checkAgentAuthStatus(sessionInfo);
         if (!authStatus.authenticated) {
           await safeReply(
@@ -1807,7 +1807,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   ): Promise<void> => {
     const bundle = await createArtifactZipBundle(report.artifacts, report.outDir, {
       maxFileSize: config.maxFileSize,
-      bundleName: `codex-artifacts-${report.turnId}.zip`,
+      bundleName: `nordrelay-artifacts-${report.turnId}.zip`,
     });
 
     if (!bundle) {
@@ -2125,11 +2125,6 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const { contextKey, session } = contextSession;
-    if (!capabilitiesOf(session.getInfo()).modelSelection) {
-      const text = `Model selection is not supported for ${labelOf(session.getInfo())}.`;
-      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
-      return;
-    }
     if (isBusy(contextKey)) {
       await safeReply(ctx, escapeHTML("Cannot switch agent while a prompt is running."), {
         fallbackText: "Cannot switch agent while a prompt is running.",
@@ -2508,7 +2503,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   });
 
   bot.command(["status", "health"], async (ctx) => {
-    const health = await getConnectorHealth();
+    const health = await getConnectorHealth({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath });
     const contextSession = await getContextSession(ctx, { deferThreadStart: true });
     const authStatus = contextSession
       ? await checkAgentAuthStatus(contextSession.session.getInfo())
@@ -2519,7 +2514,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   });
 
   bot.command("version", async (ctx) => {
-    const health = await getConnectorHealth();
+    const health = await getConnectorHealth({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath });
     const state = await readConnectorState();
     const versions = await getVersionChecks({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath });
     const plain = [
@@ -2587,7 +2582,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const events = filterActivityEvents(getAgentActivityLog(contextSession.session, config, options.exportFile ? 200 : options.limit), options);
     const rendered = renderActivityTimeline(threadId, events, options);
     if (options.exportFile && ctx.chat) {
-      const exportPath = path.join(tmpdir(), `codex-activity-${threadId}-${randomUUID().slice(0, 8)}.txt`);
+      const exportPath = path.join(tmpdir(), `nordrelay-activity-${threadId}-${randomUUID().slice(0, 8)}.txt`);
       await writeFile(exportPath, rendered.plain, "utf8");
       try {
         await telegramRateLimiter.run(chatBucket(ctx.chat.id), "sendDocument", () =>
@@ -2663,7 +2658,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   });
 
   bot.command("diagnostics", async (ctx) => {
-    const health = await getConnectorHealth();
+    const health = await getConnectorHealth({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath });
     const contextKey = contextKeyFromCtx(ctx);
     const queueLength = contextKey ? promptStore.list(contextKey).length : 0;
     const progress = contextKey ? turnProgress.get(contextKey) : undefined;
@@ -4320,9 +4315,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     try {
       const result = await session.setModelForCurrentSession(slug);
       updateSessionMetadata(contextKey, session);
-      const scope = result.appliedToActiveThread
-        ? "applied to the current idle thread and future threads"
-        : "applies to new threads";
+      const scope = formatAgentSettingScope(session.getInfo(), result.appliedToActiveThread);
       const html = `<b>Model set to</b> <code>${escapeHTML(result.value)}</code> — ${escapeHTML(scope)}.`;
       const plainText = `Model set to ${result.value} — ${scope}.`;
 
@@ -4373,9 +4366,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const result = await session.setReasoningEffortForCurrentSession(effort);
     updateSessionMetadata(contextKey, session);
     const label = agentReasoningLabel(idOf(session.getInfo()));
-    const scope = result.appliedToActiveThread
-      ? "applied to the current idle thread and future threads"
-      : "applies to new threads";
+    const scope = formatAgentSettingScope(session.getInfo(), result.appliedToActiveThread);
     const html = `⚡ ${escapeHTML(label)} set to <code>${escapeHTML(effort)}</code> — ${escapeHTML(scope)}.`;
     await safeEditMessage(bot, chatId, messageId, html, {
       fallbackText: `⚡ ${label} set to ${effort} — ${scope}.`,
@@ -4737,7 +4728,7 @@ export async function registerCommands(bot: Bot<Context>): Promise<void> {
     { command: "help", description: "Command reference" },
     { command: "channels", description: "Messaging adapter status" },
     { command: "agents", description: "Agent adapter status" },
-    { command: "agent", description: "Select Codex or Pi" },
+    { command: "agent", description: "Select agent" },
     { command: "new", description: "Start a new thread" },
     { command: "session", description: "Current thread details" },
     { command: "sessions", description: "Browse & switch threads" },
@@ -5568,6 +5559,23 @@ function authHelpText(info: AgentSessionInfo): string {
     return "Start the Hermes API Server and configure HERMES_API_KEY when the server requires one.";
   }
   return "Use /login to start authentication, or set CODEX_API_KEY on the host.";
+}
+
+function formatAgentSettingScope(info: AgentSessionInfo, appliedToActiveThread: boolean): string {
+  const agentId = idOf(info);
+  if (agentId === "hermes") {
+    return appliedToActiveThread
+      ? "applies to the next Hermes run in this session"
+      : "applies to new Hermes sessions";
+  }
+  if (agentId === "pi") {
+    return appliedToActiveThread
+      ? "applied to the current idle Pi session and future turns"
+      : "applies to new Pi sessions";
+  }
+  return appliedToActiveThread
+    ? "applied to the current idle thread and future threads"
+    : "applies to new threads";
 }
 
 function requiresTurnApproval(info: AgentSessionInfo): boolean {

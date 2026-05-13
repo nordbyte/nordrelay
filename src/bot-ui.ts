@@ -14,7 +14,7 @@ export function renderHelpMessage(): DualText {
       title: "💬 Session",
       commands: [
         ["/new", "Start a new thread"],
-        ["/agent", "Select Codex or Pi"],
+        ["/agent", "Select agent"],
         ["/session", "Current thread details"],
         ["/sessions", "Browse & switch threads"],
         ["/sync", "Sync active sessions from CLI state"],

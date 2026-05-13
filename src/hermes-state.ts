@@ -315,7 +315,23 @@ export function getHermesSessionDiagnostics(
 }
 
 export function listHermesWorkspaces(options: HermesStateOptions = {}): string[] {
-  return [options.workspace].filter((value): value is string => Boolean(value?.trim()));
+  const workspaces = new Set<string>();
+  if (options.workspace?.trim()) {
+    workspaces.add(options.workspace);
+  }
+  const rows = withHermesDatabase(options, (db) => db.prepare(`
+    SELECT source, model_config
+    FROM sessions
+    ORDER BY COALESCE(ended_at, started_at) DESC, started_at DESC
+    LIMIT 500
+  `).all() as Array<{ source: unknown; model_config: unknown }>) ?? [];
+  for (const row of rows) {
+    const workspace = extractHermesWorkspace(row);
+    if (workspace) {
+      workspaces.add(workspace);
+    }
+  }
+  return [...workspaces].sort((left, right) => left.localeCompare(right));
 }
 
 export function listHermesMessages(id: string, options: HermesStateOptions = {}): HermesMessageRow[] {
@@ -343,7 +359,9 @@ function parseHermesActivityEvents(
       latestTimestamp = timestamp;
     }
     const role = stringValue(message.role);
-    const text = stringValue(message.content);
+    const text = extractHermesMessageText(message);
+    const toolName = extractHermesToolName(message);
+    const reasoningText = extractHermesReasoningText(message);
     if (role === "user") {
       currentTurnId = `hermes-${sessionId}-${lineNumber}`;
       pushEvent(events, afterLine, {
@@ -371,6 +389,36 @@ function parseHermesActivityEvents(
       continue;
     }
     if (role === "assistant") {
+      if (reasoningText) {
+        pushEvent(events, afterLine, {
+          lineNumber,
+          kind: "tool",
+          timestamp,
+          type: "reasoning",
+          turnId: currentTurnId,
+          status: "finished",
+          text: reasoningText,
+          toolName: "reasoning",
+          phase: null,
+        });
+      }
+      if (toolName && !text) {
+        pushEvent(events, afterLine, {
+          lineNumber,
+          kind: "tool",
+          timestamp,
+          type: "tool_call",
+          turnId: currentTurnId,
+          status: "started",
+          text: null,
+          toolName,
+          phase: null,
+        });
+        continue;
+      }
+      if (reasoningText && !text) {
+        continue;
+      }
       pushEvent(events, afterLine, {
         lineNumber,
         kind: "agent",
@@ -400,11 +448,22 @@ function parseHermesActivityEvents(
         lineNumber,
         kind: "tool",
         timestamp,
-        type: "message",
+        type: "tool",
+        turnId: currentTurnId,
+        status: "started",
+        text: null,
+        toolName: toolName ?? "tool",
+        phase: null,
+      });
+      pushEvent(events, afterLine, {
+        lineNumber,
+        kind: "tool",
+        timestamp,
+        type: "tool",
         turnId: currentTurnId,
         status: "finished",
         text,
-        toolName: stringValue(message.tool_name) ?? "tool",
+        toolName: toolName ?? "tool",
         phase: null,
       });
     }
@@ -423,7 +482,7 @@ function mapHermesSessionRow(
   return {
     id: String(row.id ?? ""),
     title,
-    cwd: workspace ?? process.cwd(),
+    cwd: extractHermesWorkspace(row, workspace) ?? process.cwd(),
     model: stringValue(row.model),
     reasoningEffort: parseReasoningFromModelConfig(row.model_config),
     createdAt: unixSecondsToDate(row.started_at) ?? new Date(0),
@@ -470,6 +529,63 @@ function parseReasoningFromModelConfig(value: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+function extractHermesWorkspace(
+  row: { source: unknown; model_config: unknown },
+  fallback?: string,
+): string | null {
+  const parsed = parseJsonValue(stringValue(row.model_config));
+  const config = objectValue(parsed);
+  const agent = objectValue(config?.agent);
+  const candidates = [
+    stringValue(config?.cwd),
+    stringValue(config?.workspace),
+    stringValue(config?.working_directory),
+    stringValue(config?.workingDirectory),
+    stringValue(config?.project_dir),
+    stringValue(config?.projectDir),
+    stringValue(config?.repo_path),
+    stringValue(config?.repository),
+    stringValue(agent?.cwd),
+    stringValue(agent?.workspace),
+    workspaceFromSource(row.source),
+    fallback,
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate?.trim() && path.isAbsolute(candidate.trim())) {
+      return path.normalize(candidate.trim());
+    }
+  }
+  return fallback?.trim() ? fallback : null;
+}
+
+function workspaceFromSource(value: unknown): string | null {
+  const raw = stringValue(value);
+  if (!raw) {
+    return null;
+  }
+  if (path.isAbsolute(raw)) {
+    return raw;
+  }
+  if (raw.startsWith("file://")) {
+    const pathname = raw.slice("file://".length);
+    try {
+      return decodeURIComponent(pathname);
+    } catch {
+      return pathname;
+    }
+  }
+  const keyValueMatch = raw.match(/(?:cwd|workspace|workdir|path|dir)=([^;,]+)/i);
+  if (keyValueMatch?.[1] && path.isAbsolute(keyValueMatch[1].trim())) {
+    return keyValueMatch[1].trim();
+  }
+  const prefixedPathMatch = raw.match(/^[a-z0-9_-]+:(\/.+)$/i);
+  if (prefixedPathMatch?.[1] && path.isAbsolute(prefixedPathMatch[1].trim())) {
+    return prefixedPathMatch[1].trim();
+  }
+  return null;
 }
 
 function withHermesDatabase<T>(
@@ -531,6 +647,97 @@ function objectValue(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
+}
+
+function extractHermesMessageText(message: HermesMessageRow): string | null {
+  const raw = stringValue(message.content);
+  if (!raw) {
+    return null;
+  }
+  const parsed = parseJsonValue(raw);
+  return parsed ? extractTextFromValue(parsed) ?? raw : raw;
+}
+
+function extractHermesReasoningText(message: HermesMessageRow): string | null {
+  const direct = stringValue(message.reasoning_content) ?? stringValue(message.reasoning);
+  if (!direct) {
+    return null;
+  }
+  const parsed = parseJsonValue(direct);
+  return parsed ? extractTextFromValue(parsed) ?? direct : direct;
+}
+
+function extractHermesToolName(message: HermesMessageRow): string | null {
+  const direct = stringValue(message.tool_name);
+  if (direct) {
+    return direct;
+  }
+  const parsed = parseJsonValue(stringValue(message.content));
+  return parsed ? extractToolNameFromValue(parsed) : null;
+}
+
+function parseJsonValue(raw: string | null): unknown {
+  if (!raw) {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) {
+    return null;
+  }
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function extractTextFromValue(value: unknown): string | null {
+  if (typeof value === "string") {
+    return value.trim() || null;
+  }
+  if (Array.isArray(value)) {
+    const text = value.map(extractTextFromValue).filter(Boolean).join("\n").trim();
+    return text || null;
+  }
+  const object = objectValue(value);
+  if (!object) {
+    return null;
+  }
+  const direct =
+    stringValue(object.text) ??
+    stringValue(object.content) ??
+    stringValue(object.message) ??
+    stringValue(object.output) ??
+    stringValue(object.result);
+  if (direct) {
+    return direct;
+  }
+  if (Array.isArray(object.content)) {
+    return extractTextFromValue(object.content);
+  }
+  return null;
+}
+
+function extractToolNameFromValue(value: unknown): string | null {
+  const object = objectValue(value);
+  if (!object) {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        const name = extractToolNameFromValue(entry);
+        if (name) return name;
+      }
+    }
+    return null;
+  }
+  const functionObject = objectValue(object.function);
+  const toolCall = objectValue(object.tool_call) ?? objectValue(object.toolCall);
+  return (
+    stringValue(object.tool_name) ??
+    stringValue(object.toolName) ??
+    stringValue(object.name) ??
+    stringValue(functionObject?.name) ??
+    extractToolNameFromValue(toolCall)
+  );
 }
 
 function escapeLikePrefix(value: string): string {

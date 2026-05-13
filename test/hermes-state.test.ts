@@ -11,6 +11,7 @@ import {
   getHermesSessionActivityLog,
   getHermesSessionDiagnostics,
   listHermesSessions,
+  listHermesWorkspaces,
 } from "../src/hermes-state.js";
 
 const require = createRequire(import.meta.url);
@@ -78,7 +79,7 @@ describe("hermes-state", () => {
       "cli",
       "Hermes task",
       "openai/gpt-5.5",
-      JSON.stringify({ agent: { reasoning_effort: "xhigh" } }),
+      JSON.stringify({ workspace: "/workspace/from-db", agent: { reasoning_effort: "xhigh" } }),
       Date.parse("2026-05-12T08:00:00.000Z") / 1000,
       1,
       1200,
@@ -89,6 +90,8 @@ describe("hermes-state", () => {
     );
     db.prepare("INSERT INTO messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)")
       .run("hermes-active", "user", "Still running", Date.parse("2026-05-12T08:00:03.000Z") / 1000);
+    db.prepare("INSERT INTO messages (session_id, role, content, tool_name, timestamp) VALUES (?, ?, ?, ?, ?)")
+      .run("hermes-active", "tool", "Reading files", "read_file", Date.parse("2026-05-12T08:00:04.000Z") / 1000);
     db.close();
 
     const options = {
@@ -102,12 +105,13 @@ describe("hermes-state", () => {
     const activity = getHermesSessionActivity("hermes-active", options);
     const events = getHermesSessionActivityLog("hermes-active", 10, options);
     const diagnostics = getHermesSessionDiagnostics("hermes-active", options);
+    const workspaces = listHermesWorkspaces(options);
 
     expect(sessions).toHaveLength(1);
     expect(record).toMatchObject({
       agentId: "hermes",
       id: "hermes-active",
-      cwd: "/workspace/project",
+      cwd: "/workspace/from-db",
       model: "openai/gpt-5.5",
       reasoningEffort: "xhigh",
       firstUserMessage: "Still running",
@@ -127,8 +131,11 @@ describe("hermes-state", () => {
       threadId: "hermes-active",
       sourcePath: stateDbPath,
     });
-    expect(events.map((event) => event.kind)).toEqual(["task", "user"]);
+    expect(events.map((event) => event.kind)).toEqual(["task", "user", "tool", "tool"]);
+    expect(events.filter((event) => event.kind === "tool").map((event) => event.status)).toEqual(["started", "finished"]);
+    expect(events.filter((event) => event.kind === "tool").map((event) => event.toolName)).toEqual(["read_file", "read_file"]);
     expect(diagnostics.status).toBe("active");
-    expect(diagnostics.lineCount).toBe(1);
+    expect(diagnostics.lineCount).toBe(2);
+    expect(workspaces).toContain("/workspace/from-db");
   });
 });

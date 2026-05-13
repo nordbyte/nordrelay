@@ -59,7 +59,7 @@ Codex runtime:
 - Unsafe `danger-full-access` profiles require `ENABLE_UNSAFE_LAUNCH_PROFILES=true` and Telegram confirmation.
 - Review or unsafe launch profiles require an inline Telegram approval before each prompt is executed.
 - Fast mode can be toggled with `/fast` and mirrors Codex's `fast_default_opt_out` setting from `~/.codex/config.toml`.
-- Active Telegram sessions periodically sync model, reasoning, workspace, launch metadata, and fast-mode defaults from local Codex state.
+- Active Telegram sessions periodically sync model, reasoning, workspace, launch metadata, and fast-mode defaults from local agent state where supported.
 - Active local Codex CLI tasks are detected from rollout JSONL files so Telegram does not race the CLI on the same thread.
 - `/diagnostics` includes rollout path, activity status, stale/idle reason, line count, and last update time.
 - Optional per-turn token usage footer with `SHOW_TURN_TOKEN_USAGE=true`.
@@ -137,7 +137,7 @@ Authentication and safety:
 - `TELEGRAM_ADMIN_USER_IDS` restricts admin-only commands such as `/logs`, `/restart`, and `/update`.
 - `TELEGRAM_READONLY_USER_IDS` can inspect status and sessions but cannot send prompts or run mutating commands by default.
 - `TELEGRAM_ROLE_POLICIES_JSON` can override role permissions for `admin`, `operator`, and `readonly`.
-- `/auth` reports Codex authentication status or Pi provider environment health for the selected agent.
+- `/auth` reports Codex authentication, Pi provider environment health, or Hermes API Server reachability for the selected agent.
 - `/login` starts Codex CLI device auth from Telegram when enabled.
 - `/logout` signs out of CLI auth when not using `CODEX_API_KEY`.
 - `CODEX_API_KEY` can be used for host-side Codex authentication.
@@ -337,7 +337,7 @@ http://127.0.0.1:31878/
 
 The dashboard is a second NordRelay client next to Telegram. It can:
 
-- Start a new Codex or Pi session.
+- Start a new Codex, Pi, or Hermes session.
 - Start a new session from a modal with agent, workspace, model, reasoning/thinking, fast mode, and launch-profile choices.
 - Switch or attach existing sessions, and copy thread IDs from the session list.
 - Send prompts and receive streamed text/tool/plan updates through Server-Sent Events.
@@ -420,7 +420,7 @@ Run NordRelay behind your reverse proxy so the public URL forwards to `http://12
 - `/launch_profiles` or `/launch` opens the launch profile picker.
 - `/fast [on|off]` toggles Codex fast mode. Without an argument it flips the current state.
 - `/model` opens the model picker.
-- `/reasoning` opens the Codex reasoning or Pi thinking picker.
+- `/reasoning` opens the selected agent's reasoning or thinking picker.
 - `/effort` is a backward-compatible alias for `/reasoning`.
 - `/mirror [off|status|final|full]` controls local CLI mirroring for this Telegram context.
 - `/notify [off|minimal|all]` controls Telegram notifications.
@@ -820,7 +820,7 @@ No sessions listed:
 
 Wrong model, reasoning, or fast mode after switching:
 
-- The connector reads model, reasoning, sandbox, and approval policy from Codex state on `/sessions`, `/switch`, `/attach`, and `/session`; fast mode is read from `~/.codex/config.toml`.
+- The connector reads model, reasoning, workspace, sandbox, and approval metadata from supported local agent state on `/sessions`, `/switch`, `/attach`, and `/session`; Codex fast mode is read from `~/.codex/config.toml`.
 - For Pi, the connector reads model/thinking from Pi JSONL sessions and refreshes active RPC state when a session is running.
 - For Hermes, the connector reads model, reasoning, token usage, and message activity from Hermes `state.db`; `/model` and `/reasoning` values are sent with future API runs.
 - If values look stale, make sure the selected local CLI has finished writing session state.

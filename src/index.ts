@@ -4,14 +4,17 @@ import path from "node:path";
 
 import { webhookCallback } from "grammy";
 
+import { agentLabel, type AgentId } from "./agent.js";
 import { createBot, registerCommands } from "./bot.js";
 import { checkAuthStatus } from "./codex-auth.js";
 import { describeCodexCli, resolveCodexCli } from "./codex-cli.js";
 import { findLaunchProfile, formatLaunchProfileBehavior } from "./codex-launch.js";
 import { enabledAgents } from "./agent-factory.js";
 import { loadConfig, type ConnectorConfig } from "./config.js";
+import { checkHermesAuthStatus } from "./hermes-auth.js";
 import { describeHermesCli, resolveHermesCli } from "./hermes-cli.js";
 import { installConsoleLogger } from "./logger.js";
+import { checkPiAuthStatus } from "./pi-auth.js";
 import { describePiCli, resolvePiCli } from "./pi-cli.js";
 import { configureRedaction } from "./redaction.js";
 import { SessionRegistry } from "./session-registry.js";
@@ -31,14 +34,10 @@ try {
   await registerCommands(bot);
 
   console.log("NordRelay running");
-  const authStatus = config.codexEnabled
-    ? await checkAuthStatus(config.codexApiKey)
-    : { authenticated: true, method: "codex-disabled" };
-  if (config.codexEnabled) {
-    console.log(`Auth: ${authStatus.authenticated ? "authenticated" : "not authenticated"} (${authStatus.method})`);
-    if (!authStatus.authenticated) {
-      console.warn("Warning: Codex is not authenticated. Use /login or set CODEX_API_KEY.");
-    }
+  const authStatus = await checkDefaultAgentAuth(config);
+  console.log(`Auth (${agentLabel(config.defaultAgent)}): ${authStatus.authenticated ? "authenticated" : "not authenticated"} (${authStatus.method})`);
+  if (!authStatus.authenticated) {
+    console.warn(`Warning: ${agentLabel(config.defaultAgent)} is not authenticated. ${authStatus.detail}`);
   }
   console.log(`Workspace: ${config.workspace}`);
   console.log(`Enabled agents: ${enabledAgents(config).join(", ")} (default: ${config.defaultAgent})`);
@@ -89,6 +88,24 @@ try {
   });
   registry?.disposeAll();
   process.exit(1);
+}
+
+async function checkDefaultAgentAuth(config: ConnectorConfig): Promise<{
+  authenticated: boolean;
+  method: string;
+  detail: string;
+}> {
+  const agentId: AgentId = config.defaultAgent;
+  if (agentId === "pi") {
+    return checkPiAuthStatus(config.piDefaultModel);
+  }
+  if (agentId === "hermes") {
+    return checkHermesAuthStatus({
+      baseUrl: config.hermesApiBaseUrl,
+      apiKey: config.hermesApiKey,
+    });
+  }
+  return checkAuthStatus(config.codexApiKey);
 }
 
 let shuttingDown = false;

@@ -9,17 +9,27 @@ import readline from "node:readline/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const VERSION = "0.3.0";
+const FALLBACK_VERSION = "0.3.1";
 const require = createRequire(import.meta.url);
 const APP_NAME = "nordrelay";
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const PLUGIN_ROOT = path.resolve(path.dirname(SCRIPT_PATH), "..");
 const DEFAULT_MARKETPLACE_ROOT = path.resolve(PLUGIN_ROOT, "../..");
 const RUNTIME_ROOT = findRuntimeRoot();
+const VERSION = readRuntimePackageVersion() || FALLBACK_VERSION;
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function readRuntimePackageVersion() {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(RUNTIME_ROOT, "package.json"), "utf8"));
+    return typeof pkg.version === "string" && pkg.version.trim() ? pkg.version.trim() : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseArgs(argv) {

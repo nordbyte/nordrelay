@@ -40,7 +40,7 @@ import {
   getAgentDiagnostics,
   getExternalSnapshotForSession,
 } from "./agent-activity.js";
-import { enabledAgents } from "./agent-factory.js";
+import { createAgentSessionService, enabledAgents } from "./agent-factory.js";
 import { checkAuthStatus } from "./codex-auth.js";
 import type { ConnectorConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
@@ -243,7 +243,7 @@ export class RelayRuntime {
 
   async status(): Promise<Record<string, unknown>> {
     return {
-      health: await getConnectorHealth(),
+      health: await getConnectorHealth({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath }),
       versionChecks: await getVersionChecks({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath }),
       snapshot: await this.snapshot(),
     };
@@ -251,7 +251,7 @@ export class RelayRuntime {
 
   async diagnostics(): Promise<WebDiagnosticsDto> {
     return {
-      health: await getConnectorHealth(),
+      health: await getConnectorHealth({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath }),
       versionChecks: await getVersionChecks({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath }),
       snapshot: await this.snapshot(),
       runtime: {
@@ -264,18 +264,24 @@ export class RelayRuntime {
     };
   }
 
-  async controlOptions(): Promise<DashboardControlOptions> {
-    const session = await this.getSession(true);
-    const info = this.publicInfo(session);
-    const capabilities = info.capabilities ?? CODEX_AGENT_CAPABILITIES;
-    return {
-      models: capabilities.modelSelection ? session.listModels() : [],
-      reasoningLabel: agentReasoningLabel(info.agentId),
-      reasoningOptions: agentReasoningOptions(info.agentId),
-      launchProfiles: capabilities.launchProfiles ? session.listLaunchProfiles() : [],
-      workspaces: filterAllowedWorkspaces(session.listWorkspaces(), this.config),
-      capabilities,
-    };
+  async controlOptions(agentId?: AgentId): Promise<DashboardControlOptions> {
+    const { session, dispose } = await this.getControlSession(agentId);
+    try {
+      const info = this.publicInfo(session);
+      const capabilities = info.capabilities ?? CODEX_AGENT_CAPABILITIES;
+      return {
+        models: capabilities.modelSelection ? session.listModels() : [],
+        reasoningLabel: agentReasoningLabel(info.agentId),
+        reasoningOptions: agentReasoningOptions(info.agentId),
+        launchProfiles: capabilities.launchProfiles ? session.listLaunchProfiles() : [],
+        workspaces: filterAllowedWorkspaces(session.listWorkspaces(), this.config),
+        capabilities,
+      };
+    } finally {
+      if (dispose) {
+        session.dispose();
+      }
+    }
   }
 
   async chatHistory(limit = 200): Promise<WebChatMessage[]> {
@@ -857,6 +863,22 @@ export class RelayRuntime {
     return this.registry.getOrCreate(WEB_CONTEXT_KEY, { deferThreadStart });
   }
 
+  private async getControlSession(agentId?: AgentId): Promise<{ session: AgentSessionService; dispose: boolean }> {
+    const active = await this.getSession(true);
+    const activeInfo = this.publicInfo(active);
+    if (!agentId || agentId === activeInfo.agentId) {
+      return { session: active, dispose: false };
+    }
+    if (!enabledAgents(this.config).includes(agentId)) {
+      throw new Error(`Agent is not enabled: ${agentId}`);
+    }
+    const session = await createAgentSessionService(this.config, agentId, {
+      deferThreadStart: true,
+      workspace: activeInfo.workspace,
+    });
+    return { session, dispose: true };
+  }
+
   private async ensureActiveThread(session: AgentSessionService): Promise<void> {
     if (!session.hasActiveThread()) {
       await session.newThread();
@@ -886,7 +908,7 @@ export class RelayRuntime {
   private async runPrompt(session: AgentSessionService, envelope: PromptEnvelope): Promise<void> {
     await this.ensureActiveThread(session);
     const info = session.getInfo();
-    if ((info.capabilities ?? CODEX_AGENT_CAPABILITIES).auth && info.agentId !== "pi") {
+    if ((info.capabilities ?? CODEX_AGENT_CAPABILITIES).auth) {
       const auth = await this.checkAgentAuth(info);
       if (!auth.authenticated) {
         throw new Error(`${agentLabel(info.agentId)} is not authenticated: ${auth.detail}`);

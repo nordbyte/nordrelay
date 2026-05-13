@@ -402,12 +402,57 @@ export class PiSessionService implements AgentSessionService {
     return piProfileAsLaunchProfile(this.currentLaunchProfile);
   }
 
-  syncFromCodexState(): AgentSyncResult {
+  syncFromCodexState(options: { reattach?: boolean } = {}): AgentSyncResult {
+    const before = {
+      threadId: this.currentThreadId,
+      workspace: this.currentWorkspace,
+      model: this.currentModel,
+      thinking: this.currentThinking,
+      sessionPath: this.currentSessionPath,
+    };
+    const changedFields = new Set<string>();
+    const record = this.currentSessionPath
+      ? readPiSessionRecord(this.currentSessionPath, path.basename(path.dirname(this.currentSessionPath)))
+      : this.currentThreadId
+        ? getPiSession(this.currentThreadId, { sessionDir: this.sessionDir })
+        : null;
+
+    if (record) {
+      if (record.id !== this.currentThreadId) changedFields.add("thread");
+      if (record.cwd && record.cwd !== this.currentWorkspace) changedFields.add("workspace");
+      if (record.model && record.model !== this.currentModel) changedFields.add("model");
+      if (record.reasoningEffort && record.reasoningEffort !== this.currentThinking) changedFields.add("reasoning");
+      if (record.sessionPath !== this.currentSessionPath) changedFields.add("sessionPath");
+
+      this.currentThreadId = record.id;
+      this.currentWorkspace = record.cwd || this.currentWorkspace;
+      this.currentSessionPath = record.sessionPath;
+      this.currentModel = record.model ?? this.currentModel;
+      this.currentThinking = record.reasoningEffort ?? this.currentThinking;
+
+      if (changedFields.has("thread") || changedFields.has("sessionPath")) {
+        this.cachedStats = {};
+      }
+    }
+
+    const changed = changedFields.size > 0 ||
+      before.threadId !== this.currentThreadId ||
+      before.workspace !== this.currentWorkspace ||
+      before.model !== this.currentModel ||
+      before.thinking !== this.currentThinking ||
+      before.sessionPath !== this.currentSessionPath;
+
+    let reattached = false;
+    if (changed && options.reattach && this.rpc && !this.processing) {
+      this.restartRpc();
+      reattached = true;
+    }
+
     return {
       threadId: this.currentThreadId,
-      changed: false,
-      reattached: false,
-      changedFields: [],
+      changed,
+      reattached,
+      changedFields: [...changedFields],
       info: this.getInfo(),
     };
   }
