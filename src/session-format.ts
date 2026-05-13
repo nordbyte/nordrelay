@@ -18,12 +18,28 @@ export function renderSessionInfoPlain(info: AgentSessionInfo): string {
     capabilities.fastMode
       ? `Reasoning/Fast: ${info.reasoningEffort ?? "(model default)"} / ${info.fastMode ? "on" : "off"}`
       : `${agentReasoningLabel(agentId)}: ${info.reasoningEffort ?? "(model default)"}`,
-    ...renderCodexUsagePlain(info, capabilities),
-    ...renderAgentUsagePlain(info, capabilities),
-    info.sessionTokens ? formatSessionTokensPlain(info.sessionTokens) : undefined,
+    ...renderSessionUsageRowsPlain(info),
   ]
     .filter((line): line is string => Boolean(line))
     .join("\n");
+}
+
+export function renderSessionUsageRowsPlain(info: AgentSessionInfo): string[] {
+  const capabilities = info.capabilities ?? CODEX_AGENT_CAPABILITIES;
+  return [
+    ...renderCodexUsagePlain(info, capabilities),
+    ...renderAgentUsagePlain(info, capabilities),
+    info.sessionTokens ? formatSessionTokensPlain(info.sessionTokens) : undefined,
+  ].filter((line): line is string => Boolean(line));
+}
+
+export function renderSessionUsageRows(info: AgentSessionInfo): Array<[string, string]> {
+  const capabilities = info.capabilities ?? CODEX_AGENT_CAPABILITIES;
+  return [
+    ...renderCodexUsageRows(info, capabilities),
+    ...renderAgentUsageRows(info, capabilities),
+    info.sessionTokens ? ["Session tokens", formatSessionTokensValue(info.sessionTokens)] as [string, string] : undefined,
+  ].filter((row): row is [string, string] => Boolean(row));
 }
 
 export function renderSessionInfoHTML(info: AgentSessionInfo): string {
@@ -135,6 +151,39 @@ function renderCodexUsageHTML(info: AgentSessionInfo, capabilities: AgentCapabil
   return lines;
 }
 
+function renderCodexUsageRows(info: AgentSessionInfo, capabilities: AgentCapabilities): Array<[string, string]> {
+  const usage = info.codexUsage;
+  if (!usage) {
+    return [];
+  }
+
+  const rows: Array<[string, string]> = [];
+  if (capabilities.usageStats && usage.contextUsedPercent !== null && usage.contextWindow !== null && usage.lastTokenUsage) {
+    rows.push([
+      "Context used",
+      `${formatPercent(usage.contextUsedPercent)} (${formatCompactTokenCount(usage.lastTokenUsage.totalTokens)} / ${formatCompactTokenCount(usage.contextWindow)})`,
+    ]);
+  }
+  if (capabilities.usageStats && usage.totalTokenUsage) {
+    rows.push([
+      "Tokens",
+      [
+        `in ${formatCompactTokenCount(usage.totalTokenUsage.inputTokens)}`,
+        `cached ${formatCompactTokenCount(usage.totalTokenUsage.cachedInputTokens)}`,
+        `out ${formatCompactTokenCount(usage.totalTokenUsage.outputTokens)}`,
+        `reasoning out ${formatCompactTokenCount(usage.totalTokenUsage.reasoningOutputTokens)}`,
+      ].join(" · "),
+    ]);
+  }
+  if (capabilities.subscriptionLimits) {
+    const limits = formatLimitsLeft(usage);
+    if (limits) {
+      rows.push(["Limits left", limits]);
+    }
+  }
+  return rows;
+}
+
 function renderAgentUsagePlain(info: AgentSessionInfo, capabilities: AgentCapabilities): string[] {
   if (!capabilities.usageStats) {
     return [];
@@ -181,6 +230,31 @@ function renderAgentUsageHTML(info: AgentSessionInfo, capabilities: AgentCapabil
     );
   }
   return lines;
+}
+
+function renderAgentUsageRows(info: AgentSessionInfo, capabilities: AgentCapabilities): Array<[string, string]> {
+  if (!capabilities.usageStats) {
+    return [];
+  }
+  const rows: Array<[string, string]> = [];
+  if (info.contextUsage?.percent !== undefined && info.contextUsage.percent !== null) {
+    const contextWindow = info.contextUsage.contextWindow !== null && info.contextUsage.contextWindow !== undefined
+      ? ` (${formatCompactTokenCount(info.contextUsage.tokens ?? 0)} / ${formatCompactTokenCount(info.contextUsage.contextWindow)})`
+      : "";
+    rows.push(["Context used", `${formatPercent(info.contextUsage.percent)}${contextWindow}`]);
+  }
+  if (info.sessionUsage) {
+    rows.push([
+      "Tokens",
+      [
+        `in ${formatCompactTokenCount(info.sessionUsage.input)}`,
+        `cache read ${formatCompactTokenCount(info.sessionUsage.cacheRead)}`,
+        `cache write ${formatCompactTokenCount(info.sessionUsage.cacheWrite)}`,
+        `out ${formatCompactTokenCount(info.sessionUsage.output)}`,
+      ].join(" · "),
+    ]);
+  }
+  return rows;
 }
 
 function formatLimitsLeft(usage: NonNullable<AgentSessionInfo["codexUsage"]>): string {

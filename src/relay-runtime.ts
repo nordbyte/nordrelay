@@ -52,7 +52,7 @@ import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
 import { clearLogFile, getConnectorHealth, getConnectorLogPath, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "./operations.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
-import { renderSessionInfoPlain } from "./session-format.js";
+import { renderSessionInfoPlain, renderSessionUsageRows } from "./session-format.js";
 import { SessionLockStore, type SessionLock } from "./session-locks.js";
 import { SessionRegistry } from "./session-registry.js";
 import { transcribeAudio, type TranscriptionBackend } from "./voice.js";
@@ -640,9 +640,11 @@ export class RelayRuntime {
   async sessionDetail(threadId: string): Promise<Record<string, unknown>> {
     const session = await this.getSession(true);
     const record = session.getSessionRecord(threadId);
+    const active = this.publicInfo(session);
     return {
       record,
-      active: this.publicInfo(session),
+      active,
+      usageRows: active.threadId === threadId ? renderSessionUsageRows(active) : [],
       messages: this.chatStore.list(threadId, 100),
       activity: this.activity({ limit: 100 }).filter((event) => event.threadId === threadId),
     };

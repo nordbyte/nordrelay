@@ -6,6 +6,7 @@ import {
   renderLaunchSummaryPlain,
   renderSessionInfoHTML,
   renderSessionInfoPlain,
+  renderSessionUsageRows,
 } from "../src/session-format.js";
 
 describe("session-format", () => {
@@ -78,6 +79,15 @@ describe("session-format", () => {
     expect(rendered).toContain("/workspace/&lt;project&gt;");
     expect(rendered).toContain("<b>Reasoning/Fast:</b>");
     expect(rendered).toContain("5h 45% · weekly 30%");
+  });
+
+  it("exposes session usage rows with Telegram labels", () => {
+    expect(renderSessionUsageRows(baseInfo)).toEqual([
+      ["Context used", "12.3% (1.5K / 200K)"],
+      ["Tokens", "in 123K · cached 12K · out 2.3M · reasoning out 900"],
+      ["Limits left", "5h 45% · weekly 30%"],
+      ["Session tokens", "in: 1.5K · cached: 200 · out: 2M"],
+    ]);
   });
 
   it("renders launch summary and file sizes", () => {
