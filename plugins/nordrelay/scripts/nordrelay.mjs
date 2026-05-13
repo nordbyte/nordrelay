@@ -196,7 +196,7 @@ function formatDashboardUrl(endpoint) {
   return `http://${formattedHost}:${endpoint.port}/${bindHint}`;
 }
 
-async function commandStart(options) {
+async function commandStart(options, settings = {}) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
   const dashboard = resolveDashboardEndpoint(options);
@@ -232,7 +232,9 @@ async function commandStart(options) {
     console.log(`Started ${APP_NAME} ${VERSION} with PID ${child.pid}`);
     console.log(`Workspace: ${state.workspace || "-"}`);
     console.log(`Mode: ${state.sessionMode || "per Telegram context"}`);
-    console.log(`WebUI: ${formatDashboardUrl(dashboard)} (run \`nordrelay web\` to start it)`);
+    if (!settings.skipWebHint) {
+      console.log(`WebUI: ${formatDashboardUrl(dashboard)} (run \`nordrelay web\` to start it)`);
+    }
     console.log(`Log: ${options.logFile}`);
     return;
   }
@@ -248,8 +250,25 @@ async function commandStart(options) {
   }
 
   console.log(`Started ${APP_NAME} ${VERSION} with PID ${child.pid}`);
-  console.log(`WebUI: ${formatDashboardUrl(dashboard)} (run \`nordrelay web\` to start it)`);
+  if (!settings.skipWebHint) {
+    console.log(`WebUI: ${formatDashboardUrl(dashboard)} (run \`nordrelay web\` to start it)`);
+  }
   console.log(`Startup is still in progress. Log: ${options.logFile}`);
+}
+
+async function ensureConnectorStartedForWeb(options) {
+  const currentPid = await readPid(options.pidFile);
+  if (isProcessRunning(currentPid)) {
+    console.log(`NordRelay connector already running with PID ${currentPid}.`);
+    return;
+  }
+
+  console.log("Starting NordRelay connector...");
+  const previousExitCode = process.exitCode;
+  await commandStart(options, { skipWebHint: true });
+  if (process.exitCode && process.exitCode !== previousExitCode) {
+    throw new Error(`NordRelay connector failed to start. See ${options.logFile}.`);
+  }
 }
 
 async function waitForState(stateFile, pid, timeoutMs) {
@@ -499,6 +518,7 @@ async function commandWeb(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
   const { host, port } = resolveDashboardEndpoint(options, { strict: true });
+  await ensureConnectorStartedForWeb(options);
   const entry = await resolveWebRuntimeEntry();
   if (!entry) {
     throw new Error(`Missing dashboard runtime. Run \`npm install\` and \`npm run build\` in ${RUNTIME_ROOT}.`);

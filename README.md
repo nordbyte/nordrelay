@@ -186,7 +186,7 @@ Operations:
 - Context metadata, queues, and preferences are written atomically with backup recovery.
 - Context metadata, queues, preferences, audit events, and locks can use JSON files or the optional SQLite state backend with `NORDRELAY_STATE_BACKEND=sqlite`.
 - Runtime config, state, and logs are written under `~/.nordrelay/`.
-- `nordrelay init` creates a private runtime config, `nordrelay doctor` validates host prerequisites, and `nordrelay web` starts a full local WebUI dashboard.
+- `nordrelay init` creates a private runtime config, `nordrelay doctor` validates host prerequisites, and `nordrelay web` starts the connector plus a full local WebUI dashboard.
 - The WebUI has responsive header/sidebar/footer navigation, live chat streaming, session controls, queue/artifact/log/diagnostic views, and settings management.
 - The WebUI supports light and dark themes, tabbed settings groups, paginated session browsing, and chat uploads for images, documents, and audio transcription.
 - The WebUI exposes REST and SSE endpoints for chat streaming, sessions, settings, queue, artifacts, logs, health, and diagnostics.
@@ -383,6 +383,8 @@ Start the local WebUI:
 ```bash
 nordrelay web
 ```
+
+If the connector is not already running, `nordrelay web` starts it automatically before binding the dashboard.
 
 Open:
 
