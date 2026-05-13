@@ -1,5 +1,3 @@
-export function dashboardClientEvents(): string {
-  return `
 function scrollChatToBottom(){const box=document.getElementById('messages');if(!box)return;requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight})})}
 function appendMessage(cls,text){const box=document.getElementById('messages');const div=document.createElement('div');div.className='message '+cls;div.textContent=text;box.appendChild(div);scrollChatToBottom();return div}
 function appendQueuedMessage(id){const div=appendMessage('system','Queued prompt '+id);const btn=document.createElement('button');btn.textContent='Cancel queued message';btn.className='danger';btn.onclick=()=>safe(async()=>{const r=await api('/api/queue',{method:'POST',body:JSON.stringify({action:'cancel',id})});renderQueue(r.queue,r.paused);div.textContent='Cancelled queued prompt '+id});div.appendChild(document.createElement('br'));div.appendChild(btn)}
@@ -46,5 +44,3 @@ toolStreamEl.addEventListener('focusin',e=>{const target=e.target.closest?.('.to
 toolStreamEl.addEventListener('focusout',hideToolTooltip);
 function tool(cls,text){const div=document.createElement('div');div.className='tool '+(cls==='danger'?'danger':'');div.dataset.createdAt=String(Date.now());div.tabIndex=0;div.textContent=text;document.getElementById('toolStream').prepend(div);updateToolAgeTitles()}
 setInterval(updateToolAgeTitles,30000);
-`;
-}

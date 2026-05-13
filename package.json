@@ -39,8 +39,8 @@
     "docker-compose.yml"
   ],
   "scripts": {
-    "build": "tsc",
-    "check": "node --check plugins/nordrelay/scripts/nordrelay.mjs && tsc --noEmit",
+    "build": "node scripts/clean-dist.mjs && tsc && node scripts/build-web-assets.mjs",
+    "check": "node --check plugins/nordrelay/scripts/nordrelay.mjs && tsc --noEmit && node scripts/build-web-assets.mjs --check",
     "dev": "tsx src/index.ts",
     "foreground": "node plugins/nordrelay/scripts/nordrelay.mjs foreground",
     "prepack": "npm run build",

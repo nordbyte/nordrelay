@@ -3,12 +3,7 @@ import { Script } from "node:vm";
 
 import { describe, expect, it } from "vitest";
 
-import { dashboardJs } from "../src/web-dashboard-client.js";
-import { dashboardCss } from "../src/web-dashboard-style.js";
-import { dashboardClientFoundation } from "../src/webui/client-foundation.js";
-import { dashboardClientWorkflows } from "../src/webui/client-workflows.js";
-import { dashboardStyleLayout } from "../src/webui/style-layout.js";
-import { dashboardStyleTheme } from "../src/webui/style-theme.js";
+import { dashboardCss, dashboardJs } from "../src/web-dashboard-assets.js";
 
 describe("web dashboard browser-flow assets", () => {
   it("includes the agent feature matrix and dedicated agent update log flow", () => {
@@ -61,10 +56,10 @@ describe("web dashboard browser-flow assets", () => {
   });
 
   it("composes dashboard assets from focused WebUI modules", () => {
-    expect(dashboardClientFoundation()).toContain("function renderSnapshot");
-    expect(dashboardClientWorkflows()).toContain("function loadSessions");
-    expect(dashboardStyleTheme()).toContain(":root");
-    expect(dashboardStyleLayout()).toContain(".chat-layout");
+    expect(readFileSync("src/webui/client/foundation.js", "utf8")).toContain("function renderSnapshot");
+    expect(readFileSync("src/webui/client/workflows.js", "utf8")).toContain("function loadSessions");
+    expect(readFileSync("src/webui/styles/theme.css", "utf8")).toContain(":root");
+    expect(readFileSync("src/webui/styles/layout.css", "utf8")).toContain(".chat-layout");
   });
 
   it("renders parseable permission-aware dashboard JavaScript", () => {

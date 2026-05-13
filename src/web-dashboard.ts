@@ -16,8 +16,7 @@ import { escapeHTML } from "./format.js";
 import { RelayRuntime, type DashboardControlOptions, type RelayEvent, type SessionPageDto, type WebTasksDto } from "./relay-runtime.js";
 import { resolveDashboardEnvPath, SettingsService } from "./settings-service.js";
 import { UserStore, publicUser, publicUserSnapshot, type AuthenticatedUser } from "./user-management.js";
-import { dashboardJs } from "./web-dashboard-client.js";
-import { dashboardCss } from "./web-dashboard-style.js";
+import { dashboardCss, dashboardJs } from "./web-dashboard-assets.js";
 import { renderDashboardNav } from "./web-dashboard-ui.js";
 
 interface DashboardOptions {

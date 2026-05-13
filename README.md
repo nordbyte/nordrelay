@@ -424,8 +424,8 @@ The dashboard is a second NordRelay client next to Telegram. It can:
 - Edit all supported runtime settings from tabbed Settings groups with option selects, validation feedback, and restart actions.
 - View filtered connector/update/agent-update logs, structured diagnostics, enabled channels, and agent adapters.
 - Inspect a per-agent capability matrix showing model, reasoning, launch, fast mode, attachments, activity, usage, auth, login/logout, and handback support.
-- Check NordRelay and agent CLI versions, then start Codex, Pi, Hermes, OpenClaw, or Claude Code updates from outdated version rows with live output, cancel, full-log, and stdin response controls for interactive updaters.
-- Load dashboard CSS and client JavaScript as authenticated static assets instead of inline HTML, keeping the server shell, style, and browser client modules separate.
+- Check NordRelay and agent CLI versions, then start Codex, Pi, Hermes, OpenClaw, or Claude Code updates from outdated version rows with live output, cancel, delete-log, and stdin response controls for interactive updaters.
+- Build dashboard CSS and client JavaScript from modular source assets, then serve them as authenticated static assets instead of inline HTML.
 
 Dashboard API endpoints are served under `/api/*`. Streaming uses `GET /api/events`.
 

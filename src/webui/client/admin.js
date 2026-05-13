@@ -1,5 +1,3 @@
-export function dashboardClientAdmin(): string {
-  return `
 async function loadActivity(){setLoading('activityList','Loading activity...');const q='?source='+encodeURIComponent(val('activitySource'))+'&status='+encodeURIComponent(val('activityStatus'))+'&limit='+encodeURIComponent(val('activityLimit')||'100');const data=await api('/api/activity'+q);state.activityEvents=data.events||[];renderActivity(state.activityEvents)}
 function activityWorkspace(e){const active=state.snapshot?.session;return e.workspace||(active?.threadId&&e.threadId===active.threadId?active.workspace:'')}
 function activityMetaHtml(e){const workspace=activityWorkspace(e);const duration=typeof e.durationMs==='number'?fmtDuration(e.durationMs):'';const parts=[];if(e.threadId)parts.push('<button type="button" class="copy-id" data-copy-id="'+attr(e.threadId)+'">'+esc(e.threadId)+'</button>');if(workspace)parts.push(esc(workspace));if(duration)parts.push(esc(duration));return parts.join(' | ')}
@@ -65,5 +63,3 @@ function diagnosticsHtml(d){const h=d.health||{};const s=d.snapshot?.session||{}
 function card(title,rows){return '<div class="item"><strong>'+esc(title)+'</strong>'+rows.map(r=>'<small>'+esc(r[0])+': '+esc(r[1]??'-')+'</small>').join('')+'</div>'}
 function safe(fn,event){if(event&&event.preventDefault)event.preventDefault();Promise.resolve().then(fn).catch(err=>toast(err.message||String(err)))}
 loadBootstrap().then(()=>connectEvents()).catch(err=>toast(err.message));
-`;
-}

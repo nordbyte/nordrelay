@@ -1,5 +1,3 @@
-export function dashboardClientFoundation(): string {
-  return `
 const state = { snapshot:null, controls:null, newSessionControls:null, enabledAgents:[], auth:null, permissions:[], settings:[], currentPage:'overview', settingsGroup:null, logsPlain:'', logTimer:null, toastTimer:null, cliStatusActive:false, selectedArtifactTurns:new Set(), mediaRecorder:null, recordedChunks:[], events:null, reconnectTimer:null, notifications:false, toolTooltipTimer:null, toolTooltipTarget:null, agentUpdateJobs:[], sessionsRequestId:0 };
 async function api(path, options={}) {
   const headers = { ...(options.body ? {'content-type':'application/json'} : {}), ...(options.headers||{}) };
@@ -159,5 +157,3 @@ function featureMatrix(caps){const c=caps||{};return '<div class="feature-matrix
 function versionStatusLabel(status){if(status==='current')return'Latest';if(status==='outdated')return'Outdated';if(status==='not-installed')return'Not installed';return'Unknown'}
 function versionStatusClass(status){if(status==='current')return'available';if(status==='outdated')return'planned';return'disabled'}
 function jobStatusClass(status){if(status==='completed')return'available';if(status==='running')return'planned';return'disabled'}
-`;
-}
