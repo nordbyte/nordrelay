@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { renderEnvExample } from "../src/config-metadata.js";
 import { maskSecret, resolveDashboardEnvPath, SETTING_DEFINITIONS, SettingsService } from "../src/settings-service.js";
 
 describe("SettingsService", () => {
@@ -112,5 +113,15 @@ describe("SettingsService", () => {
     expect(byKey.get("HERMES_API_BASE_URL")).toMatchObject({ group: "Hermes" });
     expect(byKey.get("OPENCLAW_GATEWAY_URL")).toMatchObject({ group: "OpenClaw" });
     expect(byKey.get("CLAUDE_CODE_CLI_PATH")).toMatchObject({ group: "Claude Code" });
+  });
+
+  it("generates the env example from the shared setting metadata", () => {
+    const example = renderEnvExample();
+
+    for (const definition of SETTING_DEFINITIONS) {
+      expect(example).toContain(`${definition.key}=`);
+    }
+    expect(example).toContain("NORDRELAY_CLAUDE_CODE_ENABLED=false");
+    expect(example).toContain("TELEGRAM_TRANSPORT=polling");
   });
 });

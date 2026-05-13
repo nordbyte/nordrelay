@@ -54,19 +54,14 @@ import {
 } from "./bot-preferences.js";
 import {
   logTailRequests,
-  parseAgentUpdateId,
   parseLogsCommand,
   renderAgentUpdateJobAction,
-  renderAgentUpdateJobsAction,
-  renderAgentUpdateLogAction,
-  renderAgentUpdatePickerAction,
   renderAgentsAction,
   renderArtifactReportsAction,
   renderChannelsAction,
   renderLogTailsAction,
   renderQueueListAction,
   renderQueuedPromptDetailAction,
-  renderSelfUpdateStartedAction,
   type ChannelActionResponse,
 } from "./channel-actions.js";
 import { listChannelDescriptors } from "./channel-adapter.js";
@@ -104,7 +99,6 @@ import {
   readConnectorState,
   readFormattedLogTail,
   spawnConnectorRestart,
-  spawnSelfUpdate,
 } from "./operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
 import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./hermes-auth.js";
@@ -145,13 +139,14 @@ import {
   type KeyboardItem,
 } from "./telegram-channel-runtime.js";
 import { createTelegramAccessMiddleware } from "./telegram-access-middleware.js";
+import { registerTelegramAccessCommands } from "./telegram-access-commands.js";
+import { registerTelegramUpdateCommands } from "./telegram-update-commands.js";
 import {
   appendWithCap,
   authHelpText,
   buildArtifactActionsKeyboard,
   buildStreamingPreview,
   capabilitiesOf,
-  consumeRateLimit,
   filterActivityEvents,
   filterArtifactReports,
   filterSessions,
@@ -197,7 +192,6 @@ import {
   renderVersionCheckHTML,
   renderVersionCheckPlain,
   requiresTurnApproval,
-  resetRateLimit,
   trimLine,
   type RuntimeDiagnostics,
 } from "./bot-rendering.js";
@@ -209,6 +203,7 @@ import {
 } from "./workspace-policy.js";
 
 export { formatToolSummaryLine, formatTurnUsageLine, summarizeToolName } from "./bot-rendering.js";
+export { registerCommands } from "./telegram-command-menu.js";
 
 const EDIT_DEBOUNCE_MS = 1500;
 const TYPING_INTERVAL_MS = 4500;
@@ -2164,123 +2159,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
   bot.use(createTelegramAccessMiddleware({ userStore, contextUsers, audit }));
 
-  bot.command("link", async (ctx) => {
-    if (ctx.chat?.type !== "private") {
-      await safeReply(ctx, escapeHTML("Use /link in a private chat with the bot."), {
-        fallbackText: "Use /link in a private chat with the bot.",
-      });
-      return;
-    }
-    const code = (ctx.message?.text ?? "").replace(/^\/link(?:@\w+)?\s*/i, "").trim();
-    if (!code) {
-      await safeReply(ctx, escapeHTML("Send /link <code> after creating a Telegram link code in the WebUI or CLI."), {
-        fallbackText: "Send /link <code> after creating a Telegram link code in the WebUI or CLI.",
-      });
-      return;
-    }
-    if (!ctx.from?.id) {
-      return;
-    }
-    const limitKey = String(ctx.from.id);
-    const limited = consumeRateLimit(linkAttempts, limitKey, 5, 15 * 60 * 1000, 15 * 60 * 1000);
-    if (limited.limited) {
-      const seconds = Math.ceil((limited.retryAfterMs ?? 0) / 1000);
-      audit({
-        action: "auth_login_failed",
-        status: "denied",
-        contextKey: String(ctx.chat.id),
-        actorId: ctx.from.id,
-        description: "Telegram link rate limited",
-        detail: `${seconds}s retry-after`,
-      });
-      await safeReply(ctx, escapeHTML(`Too many link attempts. Try again in ${seconds}s.`), {
-        fallbackText: `Too many link attempts. Try again in ${seconds}s.`,
-      });
-      return;
-    }
-    try {
-      const linked = userStore.consumeTelegramLinkCode(code, {
-        telegramUserId: ctx.from.id,
-        username: ctx.from.username,
-        firstName: ctx.from.first_name,
-        lastName: ctx.from.last_name,
-      });
-      resetRateLimit(linkAttempts, limitKey);
-      contextUsers.set(ctx, linked);
-      audit({
-        action: "telegram_linked",
-        status: "ok",
-        contextKey: String(ctx.chat.id),
-        actorId: ctx.from.id,
-        actorRole: linked.groups.map((group) => group.name).join(", "),
-        description: `Linked ${linked.user.email}`,
-      });
-      await safeReply(ctx, escapeHTML(`Linked Telegram account to ${linked.user.email}.`), {
-        fallbackText: `Linked Telegram account to ${linked.user.email}.`,
-      });
-    } catch (error) {
-      const message = friendlyErrorText(error);
-      audit({
-        action: "auth_login_failed",
-        status: "failed",
-        contextKey: String(ctx.chat.id),
-        actorId: ctx.from.id,
-        description: "Telegram link failed",
-        detail: message,
-      });
-      await safeReply(ctx, `<b>Link failed:</b> ${escapeHTML(message)}`, { fallbackText: `Link failed: ${message}` });
-    }
-  });
-
-  bot.command("whoami", async (ctx) => {
-    const authUser = getAuthenticatedUser(ctx);
-    if (!authUser) {
-      await safeReply(ctx, escapeHTML("Not linked."), { fallbackText: "Not linked." });
-      return;
-    }
-    const text = [
-      `User: ${authUser.user.displayName} <${authUser.user.email}>`,
-      `Groups: ${authUser.groups.map((group) => group.name).join(", ") || "-"}`,
-      `Permissions: ${authUser.permissions.join(", ") || "-"}`,
-    ].join("\n");
-    await safeReply(ctx, `<b>User:</b> ${escapeHTML(authUser.user.displayName)}\n<b>Email:</b> <code>${escapeHTML(authUser.user.email)}</code>\n<b>Groups:</b> <code>${escapeHTML(authUser.groups.map((group) => group.name).join(", ") || "-")}</code>`, {
-      fallbackText: text,
-    });
-  });
-
-  bot.command("register_chat", async (ctx) => {
-    const authUser = getAuthenticatedUser(ctx);
-    if (!authUser || !userStore.hasPermission(authUser, "users.write")) {
-      await safeReply(ctx, escapeHTML("Access denied: users.write permission required."), {
-        fallbackText: "Access denied: users.write permission required.",
-      });
-      return;
-    }
-    if (!ctx.chat?.id || ctx.chat.type === "private") {
-      await safeReply(ctx, escapeHTML("Run /register_chat inside a Telegram group or supergroup."), {
-        fallbackText: "Run /register_chat inside a Telegram group or supergroup.",
-      });
-      return;
-    }
-    const chat = userStore.registerTelegramChat({
-      chatId: ctx.chat.id,
-      title: "title" in ctx.chat ? ctx.chat.title : undefined,
-      type: ctx.chat.type,
-      enabled: true,
-      allowedGroupIds: [],
-    });
-    audit({
-      action: "telegram_chat_updated",
-      status: "ok",
-      contextKey: String(ctx.chat.id),
-      actorId: ctx.from?.id,
-      actorRole: getUserRole(ctx),
-      description: `Registered Telegram chat ${chat.chatId}`,
-    });
-    await safeReply(ctx, escapeHTML(`Telegram chat enabled for NordRelay.\nChat ID: ${chat.chatId}`), {
-      fallbackText: `Telegram chat enabled for NordRelay.\nChat ID: ${chat.chatId}`,
-    });
-  });
+  registerTelegramAccessCommands({ bot, userStore, contextUsers, linkAttempts, audit, getUserRole });
 
   bot.command("start", async (ctx) => {
     const contextSession = await getContextSession(ctx, { deferThreadStart: true });
@@ -2960,97 +2839,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }, 300);
   });
 
-  bot.command("update", async (ctx) => {
-    const rawText = ctx.message?.text ?? "";
-    const argument = rawText.replace(/^\/update(?:@\w+)?\s*/i, "").trim();
-    const tokens = argument.split(/\s+/).filter(Boolean);
-    const subcommand = tokens[0]?.toLowerCase();
-
-    if (subcommand === "agents" || subcommand === "agent") {
-      const rendered = renderAgentUpdatePickerAction(listAgentAdapterDescriptors());
-      await replyChannelAction(ctx, rendered);
-      return;
-    }
-
-    if (subcommand === "jobs" || subcommand === "status") {
-      const rendered = renderAgentUpdateJobsAction(agentUpdates.list());
-      await replyChannelAction(ctx, rendered);
-      return;
-    }
-
-    if (subcommand === "log" && tokens[1]) {
-      const rendered = renderAgentUpdateLogAction(agentUpdates.readLog(tokens[1]));
-      await replyChannelAction(ctx, rendered);
-      return;
-    }
-
-    if (subcommand === "cancel" && tokens[1]) {
-      const job = agentUpdates.cancel(tokens[1]);
-      const rendered = renderAgentUpdateJobAction(job);
-      await replyChannelAction(ctx, rendered);
-      return;
-    }
-
-    if ((subcommand === "input" || subcommand === "send") && tokens[1] && tokens.slice(2).join(" ").trim()) {
-      const job = agentUpdates.sendInput(tokens[1], tokens.slice(2).join(" "));
-      const rendered = renderAgentUpdateJobAction(job);
-      await replyChannelAction(ctx, rendered);
-      return;
-    }
-
-    const requestedAgent = parseAgentUpdateId(subcommand);
-    if (requestedAgent) {
-      await startTelegramAgentUpdate(ctx, requestedAgent);
-      return;
-    }
-
-    if (subcommand) {
-      const usage = "Unknown update target. Use /update, /update agents, /update jobs, /update <agent>, /update log <id>, /update cancel <id>, or /update input <id> <text>.";
-      await safeReply(ctx, escapeHTML(usage), { fallbackText: usage });
-      return;
-    }
-
-    const update = spawnSelfUpdate();
-    const rendered = renderSelfUpdateStartedAction(update);
-    await replyChannelAction(ctx, rendered);
-  });
-
-  bot.callbackQuery("upd_jobs", async (ctx) => {
-    await ctx.answerCallbackQuery();
-    const rendered = renderAgentUpdateJobsAction(agentUpdates.list());
-    await replyChannelAction(ctx, rendered);
-  });
-
-  bot.callbackQuery(/^upd_agent:(codex|pi|hermes|openclaw|claude-code)$/, async (ctx) => {
-    const agentId = ctx.match?.[1] as AgentId | undefined;
-    if (!agentId) {
-      await ctx.answerCallbackQuery();
-      return;
-    }
-    await ctx.answerCallbackQuery({ text: `Starting ${agentLabel(agentId)} update...` });
-    await startTelegramAgentUpdate(ctx, agentId);
-  });
-
-  bot.callbackQuery(/^upd_log:(.+)$/, async (ctx) => {
-    const id = ctx.match?.[1];
-    await ctx.answerCallbackQuery();
-    if (!id) {
-      return;
-    }
-    const rendered = renderAgentUpdateLogAction(agentUpdates.readLog(id));
-    await replyChannelAction(ctx, rendered);
-  });
-
-  bot.callbackQuery(/^upd_cancel:(.+)$/, async (ctx) => {
-    const id = ctx.match?.[1];
-    await ctx.answerCallbackQuery({ text: "Cancelling update..." });
-    if (!id) {
-      return;
-    }
-    const job = agentUpdates.cancel(id);
-    const rendered = renderAgentUpdateJobAction(job);
-    await replyChannelAction(ctx, rendered);
-  });
+  registerTelegramUpdateCommands({ bot, agentUpdates, replyChannelAction, startTelegramAgentUpdate });
 
   bot.command("new", async (ctx) => {
     const chatId = ctx.chat?.id;
@@ -5005,59 +4794,4 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   });
 
   return bot;
-}
-
-export async function registerCommands(bot: Bot<Context>): Promise<void> {
-  await bot.api.setMyCommands([
-    { command: "start", description: "Welcome & status" },
-    { command: "help", description: "Command reference" },
-    { command: "link", description: "Link Telegram to NordRelay user" },
-    { command: "whoami", description: "Show your NordRelay user" },
-    { command: "register_chat", description: "Admin: enable this group chat" },
-    { command: "channels", description: "Messaging adapter status" },
-    { command: "agents", description: "Agent adapter status" },
-    { command: "agent", description: "Select agent" },
-    { command: "new", description: "Start a new thread" },
-    { command: "session", description: "Current thread details" },
-    { command: "sessions", description: "Browse & switch threads" },
-    { command: "sync", description: "Sync active session from CLI state" },
-    { command: "pinned", description: "Show pinned threads" },
-    { command: "pin", description: "Pin current or given thread" },
-    { command: "unpin", description: "Unpin current or given thread" },
-    { command: "retry", description: "Resend the last prompt" },
-    { command: "queue", description: "Show queued prompts" },
-    { command: "cancel", description: "Cancel a queued prompt" },
-    { command: "clearqueue", description: "Clear queued prompts" },
-    { command: "artifacts", description: "List or resend generated files" },
-    { command: "workspaces", description: "List allowed workspaces" },
-    { command: "abort", description: "Cancel current operation" },
-    { command: "stop", description: "Cancel current operation" },
-    { command: "launch_profiles", description: "Select launch profile" },
-    { command: "fast", description: "Toggle fast mode" },
-    { command: "model", description: "View & change model" },
-    { command: "reasoning", description: "Set reasoning effort" },
-    { command: "mirror", description: "Control CLI mirroring" },
-    { command: "notify", description: "Control notifications" },
-    { command: "auth", description: "Check auth status" },
-    { command: "login", description: "Start authentication" },
-    { command: "logout", description: "Sign out" },
-    { command: "voice", description: "Voice transcription status" },
-    { command: "tasks", description: "Current turn progress" },
-    { command: "progress", description: "Current turn progress" },
-    { command: "activity", description: "Thread activity timeline" },
-    { command: "audit", description: "Admin: recent audit events" },
-    { command: "status", description: "Connector runtime status" },
-    { command: "health", description: "Connector health report" },
-    { command: "version", description: "Connector version" },
-    { command: "logs", description: "Admin: show connector logs" },
-    { command: "diagnostics", description: "Admin: connector diagnostics" },
-    { command: "lock", description: "Lock session writes to you" },
-    { command: "unlock", description: "Release session write lock" },
-    { command: "locks", description: "List session write locks" },
-    { command: "restart", description: "Admin: restart connector" },
-    { command: "update", description: "Admin: update connector or agents" },
-    { command: "handback", description: "Hand session back to CLI" },
-    { command: "attach", description: "Bind a session to this topic" },
-    { command: "switch", description: "Switch to a thread by ID" },
-  ]);
 }

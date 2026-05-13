@@ -40,8 +40,10 @@
   ],
   "scripts": {
     "build": "node scripts/clean-dist.mjs && tsc && node scripts/build-web-assets.mjs",
-    "check": "node --check plugins/nordrelay/scripts/nordrelay.mjs && tsc --noEmit && node scripts/build-web-assets.mjs --check",
+    "check": "node --check plugins/nordrelay/scripts/nordrelay.mjs && tsc --noEmit && node scripts/build-web-assets.mjs --check && node --import tsx scripts/generate-env-example.mjs --check",
     "dev": "tsx src/index.ts",
+    "env:check": "node --import tsx scripts/generate-env-example.mjs --check",
+    "env:generate": "node --import tsx scripts/generate-env-example.mjs",
     "foreground": "node plugins/nordrelay/scripts/nordrelay.mjs foreground",
     "prepack": "npm run build",
     "prepublishOnly": "npm run check && npm test && npm run build",
@@ -62,6 +64,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^25.5.0",
+    "esbuild": "^0.28.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"

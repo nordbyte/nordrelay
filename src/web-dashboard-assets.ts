@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
 const clientSources = [
-  "client/foundation.js",
+  "client/core/runtime.js",
+  "client/overview.js",
   "client/events.js",
   "client/workflows.js",
   "client/admin.js",

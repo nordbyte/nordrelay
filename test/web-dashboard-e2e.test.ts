@@ -56,7 +56,8 @@ describe("web dashboard browser-flow assets", () => {
   });
 
   it("composes dashboard assets from focused WebUI modules", () => {
-    expect(readFileSync("src/webui/client/foundation.js", "utf8")).toContain("function renderSnapshot");
+    expect(readFileSync("src/webui/client/core/runtime.js", "utf8")).toContain("const state");
+    expect(readFileSync("src/webui/client/overview.js", "utf8")).toContain("function renderSnapshot");
     expect(readFileSync("src/webui/client/workflows.js", "utf8")).toContain("function loadSessions");
     expect(readFileSync("src/webui/styles/theme.css", "utf8")).toContain(":root");
     expect(readFileSync("src/webui/styles/layout.css", "utf8")).toContain(".chat-layout");

@@ -425,7 +425,7 @@ The dashboard is a second NordRelay client next to Telegram. It can:
 - View filtered connector/update/agent-update logs, structured diagnostics, enabled channels, and agent adapters.
 - Inspect a per-agent capability matrix showing model, reasoning, launch, fast mode, attachments, activity, usage, auth, login/logout, and handback support.
 - Check NordRelay and agent CLI versions, then start Codex, Pi, Hermes, OpenClaw, or Claude Code updates from outdated version rows with live output, cancel, delete-log, and stdin response controls for interactive updaters.
-- Build dashboard CSS and client JavaScript from modular source assets, then serve them as authenticated static assets instead of inline HTML.
+- Build dashboard CSS and client JavaScript from modular source assets through esbuild, then serve them as authenticated static assets instead of inline HTML.
 
 Dashboard API endpoints are served under `/api/*`. Streaming uses `GET /api/events`.
 
@@ -1040,9 +1040,11 @@ npm run build
 - `plugins/nordrelay/`: Codex plugin bundle with manifest, skill, command, icon, and process wrapper.
 - `plugins/nordrelay/scripts/nordrelay.mjs`: process manager for `start`, `stop`, `restart`, `status`, and `foreground`.
 - `src/index.ts`: runtime entrypoint, config load, auth check, state-file writes, polling lifecycle, shutdown.
-- `src/bot.ts`: Telegram command handlers, callbacks, message streaming, file/photo/voice handling, artifacts, and error handling.
+- `src/bot.ts`: Telegram prompt/session runtime, streaming, file/photo/voice handling, artifacts, and error handling.
+- `src/telegram-access-commands.ts`, `src/telegram-update-commands.ts`, and `src/telegram-command-menu.ts`: focused Telegram command groups for access linking, update jobs, and command menu registration.
 - `src/channel-adapter.ts`, `src/channel-runtime.ts`, and `src/channel-actions.ts`: channel descriptors, generic command routing, outbound delivery contracts, and channel-neutral command responses.
-- `src/webui/`: focused WebUI asset modules for dashboard foundation, live events, chat/session workflows, admin pages, and CSS sections.
+- `src/config-metadata.ts`: shared setting metadata used by the WebUI settings page and generated `.env.example`.
+- `src/webui/`: focused WebUI source assets for core runtime state/API helpers, overview rendering, live events, chat/session workflows, admin pages, and CSS sections.
 - `src/bot-preferences.ts`: per-context mirror, notification, quiet-hour, and voice preference persistence.
 - `src/telegram-rate-limit.ts`: centralized Telegram API send/edit/document rate limiting and retry-after tracking.
 - `src/persistence.ts`: atomic JSON/text writes with backup recovery.
