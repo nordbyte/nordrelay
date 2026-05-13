@@ -47,7 +47,7 @@ function applyPermissions(){
     ['[data-queue],[data-q]','queue.write'],
     ['[data-del-art],#deleteSelectedArtifactsBtn','files.write'],
     ['[data-auth-login],[data-auth-logout]','auth.manage'],
-    ['[data-update-agent],[data-update-send],[data-update-cancel]','updates.run'],
+    ['[data-update-agent],[data-update-send],[data-update-cancel],[data-update-delete-log]','updates.run'],
     ['[data-user-edit],[data-user-toggle],[data-user-code],[data-user-link],[data-user-password],[data-user-revoke],[data-telegram-unlink],[data-group-edit],[data-chat-edit],[data-chat-toggle]','users.write'],
   ];
   disableMap.forEach(([selector,permission])=>document.querySelectorAll(selector).forEach(el=>{el.disabled=!can(permission);if(!can(permission))el.title='Permission required: '+permission}));

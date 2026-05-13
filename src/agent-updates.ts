@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -54,6 +54,7 @@ export interface AgentUpdateJobSnapshot {
   signal?: string | null;
   error?: string;
   logPath: string;
+  logDeletedAt?: string;
   outputTail: string;
   ownerPid?: number;
 }
@@ -95,6 +96,9 @@ export class AgentUpdateManager {
 
   readLog(id: string): { job: AgentUpdateJobSnapshot; plain: string } {
     const job = this.requireJob(id);
+    if (job.logDeletedAt) {
+      return { job: this.snapshot(job), plain: `Update log was deleted at ${job.logDeletedAt}.` };
+    }
     try {
       return { job: this.snapshot(job), plain: redactText(readFileSync(job.logPath, "utf8")) };
     } catch (error) {
@@ -103,6 +107,21 @@ export class AgentUpdateManager {
         plain: `Cannot read update log: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
+  }
+
+  deleteLog(id: string): AgentUpdateJobSnapshot {
+    const job = this.requireJob(id);
+    if (job.status === "running") {
+      throw new Error("Cannot delete the update log while the update job is still running.");
+    }
+    rmSync(job.logPath, { force: true });
+    job.output = "";
+    job.outputTail = "";
+    job.logDeletedAt = new Date().toISOString();
+    job.updatedAt = job.logDeletedAt;
+    this.persistJobs();
+    this.emit(job);
+    return this.snapshot(job);
   }
 
   start(agentId: AgentId, context: AgentUpdateContext = {}): AgentUpdateJobSnapshot {

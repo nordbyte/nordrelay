@@ -59,6 +59,7 @@ describe("access-control", () => {
     expect(permissionForWebRequest("DELETE", "/api/artifacts/turn/file")).toBe("files.write");
     expect(permissionForWebRequest("GET", "/api/agent-updates")).toBe("updates.run");
     expect(permissionForWebRequest("POST", "/api/agent-update/job/input")).toBe("updates.run");
+    expect(permissionForWebRequest("DELETE", "/api/agent-update/job/log")).toBe("updates.run");
   });
 
   it("defines builtin groups with scoped permissions", () => {

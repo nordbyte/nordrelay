@@ -67,6 +67,7 @@ describe("agent updates", () => {
     const started = manager.start("codex");
 
     await waitFor(() => manager.get(started.id)?.needsInput === true);
+    expect(() => manager.deleteLog(started.id)).toThrow(/still running/i);
     manager.sendInput(started.id, "yes");
     await waitFor(() => manager.get(started.id)?.status === "completed");
 
@@ -85,6 +86,19 @@ describe("agent updates", () => {
       agentId: "codex",
     });
     expect(existsSync(path.join(dir, "updates", "jobs.json"))).toBe(true);
+
+    const deleted = reloaded.deleteLog(started.id);
+    expect(deleted.logDeletedAt).toEqual(expect.any(String));
+    expect(deleted.outputTail).toBe("");
+    expect(existsSync(started.logPath)).toBe(false);
+    expect(reloaded.readLog(started.id).plain).toContain("deleted");
+
+    const afterDeleteReload = new AgentUpdateManager({ home: dir });
+    expect(afterDeleteReload.get(started.id)).toMatchObject({
+      id: started.id,
+      logDeletedAt: deleted.logDeletedAt,
+      outputTail: "",
+    });
   });
 });
 

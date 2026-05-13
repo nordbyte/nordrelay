@@ -412,6 +412,19 @@ export class RelayRuntime {
     return this.agentUpdates.readLog(id);
   }
 
+  deleteAgentUpdateLog(id: string): AgentUpdateJobSnapshot {
+    const job = this.agentUpdates.deleteLog(id);
+    this.appendAudit({
+      action: "command",
+      status: "ok",
+      contextKey: WEB_CONTEXT_KEY,
+      agentId: job.agentId,
+      description: `delete update log ${id}`,
+      detail: job.logPath,
+    });
+    return job;
+  }
+
   sendAgentUpdateInput(id: string, input: string): AgentUpdateJobSnapshot {
     return this.agentUpdates.sendInput(id, input);
   }

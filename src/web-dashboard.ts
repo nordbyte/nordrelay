@@ -210,6 +210,13 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     return;
   }
 
+  if (req.method === "DELETE" && agentUpdateLogMatch?.[1]) {
+    const id = decodeURIComponent(agentUpdateLogMatch[1]);
+    assertAgentUpdateJobScope(authUser, id);
+    sendJson(res, 200, { job: runtime.deleteAgentUpdateLog(id) });
+    return;
+  }
+
   const agentUpdateInputMatch = url.pathname.match(/^\/api\/agent-update\/([^/]+)\/input$/);
   if (req.method === "POST" && agentUpdateInputMatch?.[1]) {
     const body = await readJsonBody(req);
