@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { listAgentAdapterDescriptors } from "../src/agent-adapter.js";
 import { TelegramChannelAdapter, listChannelDescriptors, type ChannelInboundMessage } from "../src/channel-adapter.js";
+import { ChannelCommandRouter, InMemoryChannelRuntime, deliverChannelAction } from "../src/channel-runtime.js";
 import { AuditLogStore } from "../src/audit-log.js";
 import { SessionLockStore, canWriteWithLock } from "../src/session-locks.js";
 import { createDocumentStore } from "../src/state-backend.js";
@@ -49,6 +50,30 @@ describe("adapter and e2e harness primitives", () => {
     });
 
     expect(harness.outbox).toEqual(["typing:123", "reply:HELLO"]);
+  });
+
+  it("routes a generic channel command to a generic channel runtime", async () => {
+    const runtime = new InMemoryChannelRuntime({
+      id: "matrix",
+      label: "Matrix",
+      capabilities: ["text", "inline-buttons"],
+      status: "planned",
+    });
+    const router = new ChannelCommandRouter().command("channels", () => ({
+      plain: "Channels listed",
+      html: "<b>Channels listed</b>",
+    }));
+
+    const result = await router.dispatch({
+      id: "m2",
+      context: { channelId: "matrix", chatId: "!room" },
+      text: "/channels",
+    });
+    if (result.response) {
+      await deliverChannelAction(runtime, { channelId: "matrix", chatId: "!room" }, result.response);
+    }
+
+    expect(runtime.sentMessages[0]?.message.fallbackText).toBe("Channels listed");
   });
 });
 

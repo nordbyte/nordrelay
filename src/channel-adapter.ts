@@ -23,9 +23,32 @@ export interface ChannelContext {
 
 export interface ChannelOutboundMessage {
   text: string;
+  fallbackText?: string;
   parseMode?: "html" | "markdown" | "plain";
   threadId?: string;
-  buttons?: Array<{ label: string; action: string }>;
+  buttons?: Array<Array<{ label: string; action: string }>>;
+}
+
+export interface ChannelOutboundResult {
+  messageId: string;
+}
+
+export interface ChannelOutboundFile {
+  localPath: string;
+  name?: string;
+  caption?: string;
+  threadId?: string;
+}
+
+export interface ChannelRuntime {
+  id: ChannelId;
+  label: string;
+  capabilities: Set<ChannelCapability>;
+  describe(): ChannelDescriptor;
+  sendMessage(context: ChannelContext, message: ChannelOutboundMessage): Promise<ChannelOutboundResult>;
+  editMessage(context: ChannelContext, messageId: string, message: ChannelOutboundMessage): Promise<void>;
+  sendTyping(context: ChannelContext): Promise<void>;
+  sendFile?(context: ChannelContext, file: ChannelOutboundFile): Promise<ChannelOutboundResult>;
 }
 
 export interface ChannelInboundMessage {

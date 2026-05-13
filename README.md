@@ -46,7 +46,7 @@ Adapter architecture:
 - `/channels` shows available and planned messaging adapters for Discord, WhatsApp, Slack, and Matrix.
 - Codex, Pi, Hermes, OpenClaw, and Claude Code are implemented as agent adapters.
 - `/agents` shows available/planned agent adapters and whether Codex, Pi, Hermes, OpenClaw, and Claude Code are enabled.
-- Shared command-action renderers keep channel-neutral responses for adapter lists, queues, artifacts, logs, and update jobs separate from Telegram-specific keyboards and delivery.
+- Shared command-action renderers and a channel runtime contract keep inbound commands, outbound messages, typing, files, inline actions, and streaming-ready delivery separate from Telegram-specific API calls.
 
 Codex runtime:
 
@@ -1036,6 +1036,7 @@ npm run build
 - `plugins/nordrelay/scripts/nordrelay.mjs`: process manager for `start`, `stop`, `restart`, `status`, and `foreground`.
 - `src/index.ts`: runtime entrypoint, config load, auth check, state-file writes, polling lifecycle, shutdown.
 - `src/bot.ts`: Telegram command handlers, callbacks, message streaming, file/photo/voice handling, artifacts, and error handling.
+- `src/channel-adapter.ts`, `src/channel-runtime.ts`, and `src/channel-actions.ts`: channel descriptors, generic command routing, outbound delivery contracts, and channel-neutral command responses.
 - `src/bot-preferences.ts`: per-context mirror, notification, quiet-hour, and voice preference persistence.
 - `src/telegram-rate-limit.ts`: centralized Telegram API send/edit/document rate limiting and retry-after tracking.
 - `src/persistence.ts`: atomic JSON/text writes with backup recovery.

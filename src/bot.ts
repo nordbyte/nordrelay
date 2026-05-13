@@ -75,8 +75,10 @@ import {
   renderQueuedPromptDetailAction,
   renderSelfUpdateStartedAction,
   type ChannelActionButton,
+  type ChannelActionResponse,
 } from "./channel-actions.js";
-import { listChannelDescriptors } from "./channel-adapter.js";
+import { listChannelDescriptors, TelegramChannelAdapter, type ChannelContext, type ChannelOutboundFile, type ChannelOutboundMessage, type ChannelOutboundResult, type ChannelRuntime } from "./channel-adapter.js";
+import { deliverChannelAction } from "./channel-runtime.js";
 import {
   CODEX_AGENT_CAPABILITIES,
   agentLabel,
@@ -332,6 +334,91 @@ function telegramActionData(action: string): string {
   return action;
 }
 
+class TelegramBotChannelRuntime implements ChannelRuntime {
+  readonly id = "telegram" as const;
+  readonly label = "Telegram";
+  readonly capabilities = new TelegramChannelAdapter().capabilities;
+
+  constructor(private readonly bot: Bot<Context>) {}
+
+  describe() {
+    return new TelegramChannelAdapter().describe();
+  }
+
+  async sendMessage(context: ChannelContext, message: ChannelOutboundMessage): Promise<ChannelOutboundResult> {
+    const sent = await sendTextMessage(this.bot.api, telegramChatIdFromChannelContext(context), message.text, {
+      parseMode: telegramParseMode(message.parseMode),
+      fallbackText: message.fallbackText,
+      replyMarkup: actionKeyboard(message.buttons),
+      messageThreadId: telegramThreadIdFromChannelContext(context, message.threadId),
+    });
+    return { messageId: String(sent.message_id) };
+  }
+
+  async editMessage(context: ChannelContext, messageId: string, message: ChannelOutboundMessage): Promise<void> {
+    const parsedMessageId = Number.parseInt(messageId, 10);
+    if (!Number.isFinite(parsedMessageId)) {
+      throw new Error(`Invalid Telegram message id: ${messageId}`);
+    }
+    await safeEditMessage(this.bot, telegramChatIdFromChannelContext(context), parsedMessageId, message.text, {
+      parseMode: telegramParseMode(message.parseMode),
+      fallbackText: message.fallbackText,
+      replyMarkup: actionKeyboard(message.buttons),
+    });
+  }
+
+  async sendTyping(context: ChannelContext): Promise<void> {
+    await sendChatActionSafe(
+      this.bot.api,
+      telegramChatIdFromChannelContext(context),
+      "typing",
+      telegramThreadIdFromChannelContext(context),
+    );
+  }
+
+  async sendFile(context: ChannelContext, file: ChannelOutboundFile): Promise<ChannelOutboundResult> {
+    const sent = await telegramRateLimiter.run(chatBucket(telegramChatIdFromChannelContext(context)), "sendDocument", () =>
+      this.bot.api.sendDocument(telegramChatIdFromChannelContext(context), new InputFile(file.localPath, file.name), {
+        caption: file.caption ? redactText(file.caption) : undefined,
+        message_thread_id: telegramThreadIdFromChannelContext(context, file.threadId),
+      })
+    );
+    return { messageId: String(sent.message_id) };
+  }
+}
+
+function telegramChannelContextFromCtx(ctx: Context): ChannelContext | null {
+  if (!ctx.chat?.id) {
+    return null;
+  }
+  const topicId = ctx.message?.message_thread_id ?? ctx.callbackQuery?.message?.message_thread_id;
+  return {
+    channelId: "telegram",
+    chatId: String(ctx.chat.id),
+    ...(topicId ? { topicId: String(topicId) } : {}),
+    ...(ctx.from?.id ? { userId: String(ctx.from.id) } : {}),
+    ...(ctx.from?.username ? { username: ctx.from.username } : {}),
+  };
+}
+
+function telegramChatIdFromChannelContext(context: ChannelContext): TelegramChatId {
+  const numeric = Number(context.chatId);
+  return Number.isSafeInteger(numeric) ? numeric : context.chatId;
+}
+
+function telegramThreadIdFromChannelContext(context: ChannelContext, override?: string): number | undefined {
+  const value = override ?? context.topicId;
+  if (!value) {
+    return undefined;
+  }
+  const numeric = Number(value);
+  return Number.isSafeInteger(numeric) ? numeric : undefined;
+}
+
+function telegramParseMode(parseMode: ChannelOutboundMessage["parseMode"]): TelegramParseMode | undefined {
+  return parseMode === "html" ? "HTML" : undefined;
+}
+
 export function createBot(config: ConnectorConfig, registry: SessionRegistry): Bot<Context> {
   configureRedaction(config.telegramRedactPatterns);
   telegramRateLimiter.configure({
@@ -341,6 +428,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   });
   const bot = new Bot<Context>(config.telegramBotToken);
   bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 10 }));
+  const telegramChannelRuntime = new TelegramBotChannelRuntime(bot);
 
   const contextBusy = new Map<
     TelegramContextKey,
@@ -518,6 +606,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     return checkAuthStatus(config.codexApiKey);
   };
 
+  const replyChannelAction = async (ctx: Context, rendered: ChannelActionResponse): Promise<void> => {
+    const channelContext = telegramChannelContextFromCtx(ctx);
+    if (!channelContext) {
+      return;
+    }
+    await deliverChannelAction(telegramChannelRuntime, channelContext, rendered);
+  };
+
   const agentUpdateContext = () => ({
     piCliPath: config.piCliPath,
     hermesCliPath: config.hermesCliPath,
@@ -540,10 +636,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         });
       }
       const rendered = renderAgentUpdateJobAction(job);
-      await safeReply(ctx, rendered.html, {
-        fallbackText: rendered.plain,
-        replyMarkup: actionKeyboard(rendered.buttons),
-      });
+      await replyChannelAction(ctx, rendered);
     } catch (error) {
       const message = `Failed to start ${agentLabel(agentId)} update: ${friendlyErrorText(error)}`;
       await safeReply(ctx, `<b>Update failed:</b> ${escapeHTML(message)}`, { fallbackText: message });
@@ -2231,12 +2324,12 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
   bot.command("channels", async (ctx) => {
     const rendered = renderChannelsAction(listChannelDescriptors());
-    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+    await replyChannelAction(ctx, rendered);
   });
 
   bot.command("agents", async (ctx) => {
     const rendered = renderAgentsAction(listAgentAdapterDescriptors(), enabledAgents(config));
-    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+    await replyChannelAction(ctx, rendered);
   });
 
   bot.command("agent", async (ctx) => {
@@ -2860,7 +2953,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       tail: await readFormattedLogTail(logRequest.lines, request.path),
     })));
     const rendered = renderLogTailsAction(logs);
-    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+    await replyChannelAction(ctx, rendered);
   });
 
   bot.command("restart", async (ctx) => {
@@ -2880,39 +2973,33 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
     if (subcommand === "agents" || subcommand === "agent") {
       const rendered = renderAgentUpdatePickerAction(listAgentAdapterDescriptors());
-      await safeReply(ctx, rendered.html, { fallbackText: rendered.plain, replyMarkup: actionKeyboard(rendered.buttons) });
+      await replyChannelAction(ctx, rendered);
       return;
     }
 
     if (subcommand === "jobs" || subcommand === "status") {
       const rendered = renderAgentUpdateJobsAction(agentUpdates.list());
-      await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+      await replyChannelAction(ctx, rendered);
       return;
     }
 
     if (subcommand === "log" && tokens[1]) {
       const rendered = renderAgentUpdateLogAction(agentUpdates.readLog(tokens[1]));
-      await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+      await replyChannelAction(ctx, rendered);
       return;
     }
 
     if (subcommand === "cancel" && tokens[1]) {
       const job = agentUpdates.cancel(tokens[1]);
       const rendered = renderAgentUpdateJobAction(job);
-      await safeReply(ctx, rendered.html, {
-        fallbackText: rendered.plain,
-        replyMarkup: actionKeyboard(rendered.buttons),
-      });
+      await replyChannelAction(ctx, rendered);
       return;
     }
 
     if ((subcommand === "input" || subcommand === "send") && tokens[1] && tokens.slice(2).join(" ").trim()) {
       const job = agentUpdates.sendInput(tokens[1], tokens.slice(2).join(" "));
       const rendered = renderAgentUpdateJobAction(job);
-      await safeReply(ctx, rendered.html, {
-        fallbackText: rendered.plain,
-        replyMarkup: actionKeyboard(rendered.buttons),
-      });
+      await replyChannelAction(ctx, rendered);
       return;
     }
 
@@ -2930,13 +3017,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
     const update = spawnSelfUpdate();
     const rendered = renderSelfUpdateStartedAction(update);
-    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+    await replyChannelAction(ctx, rendered);
   });
 
   bot.callbackQuery("upd_jobs", async (ctx) => {
     await ctx.answerCallbackQuery();
     const rendered = renderAgentUpdateJobsAction(agentUpdates.list());
-    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+    await replyChannelAction(ctx, rendered);
   });
 
   bot.callbackQuery(/^upd_agent:(codex|pi|hermes|openclaw|claude-code)$/, async (ctx) => {
@@ -2956,7 +3043,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
     const rendered = renderAgentUpdateLogAction(agentUpdates.readLog(id));
-    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+    await replyChannelAction(ctx, rendered);
   });
 
   bot.callbackQuery(/^upd_cancel:(.+)$/, async (ctx) => {
@@ -2967,10 +3054,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
     const job = agentUpdates.cancel(id);
     const rendered = renderAgentUpdateJobAction(job);
-    await safeReply(ctx, rendered.html, {
-      fallbackText: rendered.plain,
-      replyMarkup: actionKeyboard(rendered.buttons),
-    });
+    await replyChannelAction(ctx, rendered);
   });
 
   bot.command("new", async (ctx) => {
