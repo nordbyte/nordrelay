@@ -41,6 +41,7 @@ import {
   getExternalSnapshotForSession,
 } from "./agent-activity.js";
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
+import { AgentUpdateManager, type AgentUpdateJobSnapshot } from "./agent-updates.js";
 import { createAgentSessionService, enabledAgents } from "./agent-factory.js";
 import { AuditLogStore, type AuditEvent } from "./audit-log.js";
 import { checkAuthStatus, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
@@ -80,6 +81,7 @@ export type RelayEvent =
   | { type: "turn_error"; id: string; error: string; at: string }
   | { type: "queue_update"; queue: QueueItemDto[]; paused: boolean }
   | { type: "session_update"; session: AgentSessionInfo }
+  | { type: "agent_update"; job: AgentUpdateJobSnapshot }
   | { type: "status"; message: string; level: "info" | "warn" | "error"; at: string };
 
 export interface RelaySnapshot {
@@ -277,6 +279,7 @@ export class RelayRuntime {
   private readonly activityStore: WebActivityStore;
   private readonly auditStore: AuditLogStore;
   private readonly lockStore: SessionLockStore;
+  private readonly agentUpdates: AgentUpdateManager;
   private readonly subscribers = new Set<(event: RelayEvent) => void>();
   private readonly externalMonitor?: NodeJS.Timeout;
   private draining = false;
@@ -296,6 +299,9 @@ export class RelayRuntime {
     this.activityStore = new WebActivityStore(config.workspace, config.stateBackend, config.auditMaxEvents);
     this.auditStore = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
     this.lockStore = new SessionLockStore(config.workspace, config.stateBackend);
+    this.agentUpdates = new AgentUpdateManager({
+      onUpdate: (job) => this.broadcast({ type: "agent_update", job }),
+    });
     if (config.codexExternalBusyCheckMs > 0) {
       this.externalMonitor = setInterval(() => {
         void this.monitorExternalActivity().catch((error) => this.broadcastStatus(friendlyErrorText(error), "error"));
@@ -371,6 +377,50 @@ export class RelayRuntime {
       detail: update.summary,
     });
     return update;
+  }
+
+  agentUpdateJobs(): AgentUpdateJobSnapshot[] {
+    return this.agentUpdates.list();
+  }
+
+  startAgentUpdate(agentId: AgentId): AgentUpdateJobSnapshot {
+    const job = this.agentUpdates.start(agentId, {
+      piCliPath: this.config.piCliPath,
+      hermesCliPath: this.config.hermesCliPath,
+      openClawCliPath: this.config.openClawCliPath,
+      claudeCodeCliPath: this.config.claudeCodeCliPath,
+    });
+    this.broadcastStatus(`${job.agentLabel} update started. Log: ${job.logPath}`, "warn");
+    this.appendActivity({
+      source: "web",
+      status: "info",
+      type: "agent_update_started",
+      agentId,
+      threadId: null,
+      workspace: this.config.workspace,
+      detail: `${job.method}: ${job.summary}`,
+    });
+    this.appendAudit({
+      action: "command",
+      status: "ok",
+      contextKey: WEB_CONTEXT_KEY,
+      agentId,
+      description: `update ${agentId}`,
+      detail: job.summary,
+    });
+    return job;
+  }
+
+  agentUpdateLog(id: string): ReturnType<AgentUpdateManager["readLog"]> {
+    return this.agentUpdates.readLog(id);
+  }
+
+  sendAgentUpdateInput(id: string, input: string): AgentUpdateJobSnapshot {
+    return this.agentUpdates.sendInput(id, input);
+  }
+
+  cancelAgentUpdate(id: string): AgentUpdateJobSnapshot {
+    return this.agentUpdates.cancel(id);
   }
 
   async diagnostics(): Promise<WebDiagnosticsDto> {
@@ -1162,6 +1212,7 @@ export class RelayRuntime {
     if (this.externalMonitor) {
       clearInterval(this.externalMonitor);
     }
+    this.agentUpdates.cancelAll();
     this.registry.disposeAll();
     this.subscribers.clear();
   }

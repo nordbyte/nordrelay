@@ -103,7 +103,8 @@ export interface ClearLogResult {
 const APP_NAME = "nordrelay";
 const PACKAGE_NAME = "@nordbyte/nordrelay";
 const CODEX_PACKAGE_NAME = "@openai/codex";
-const PI_PACKAGE_NAME = "@mariozechner/pi-coding-agent";
+const PI_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
+const LEGACY_PI_PACKAGE_NAME = "@mariozechner/pi-coding-agent";
 const HERMES_PACKAGE_NAME = "hermes-agent";
 const OPENCLAW_PACKAGE_NAME = "openclaw";
 const CLAUDE_CODE_PACKAGE_NAME = "@anthropic-ai/claude-code";
@@ -200,7 +201,10 @@ export async function getVersionChecks(options: { piCliPath?: string; hermesCliP
   const codexVersionLabel = codexCli.path
     ? detectCliVersion(codexCli.path)
     : readInstalledPackageVersion(CODEX_PACKAGE_NAME) ?? "not installed";
-  const piVersionLabel = piCli.path ? detectCliVersion(piCli.path) : "not installed";
+  const piVersionLabel = piCli.path
+    ? detectCliVersion(piCli.path)
+    : readInstalledPackageVersion(PI_PACKAGE_NAME) ?? readInstalledPackageVersion(LEGACY_PI_PACKAGE_NAME) ?? "not installed";
+  const legacyPiPackageVersion = readInstalledPackageVersion(LEGACY_PI_PACKAGE_NAME);
   const hermesVersionLabel = hermesCli.path ? detectCliVersion(hermesCli.path) : "not installed";
   const openClawVersionLabel = openClawCli.path ? detectCliVersion(openClawCli.path) : "not installed";
   const claudeCodeVersionLabel = claudeCodeCli.path
@@ -228,6 +232,7 @@ export async function getVersionChecks(options: { piCliPath?: string; hermesCliP
       installedLabel: piVersionLabel,
       installedVersion: extractVersion(piVersionLabel),
       notInstalled: piVersionLabel === "not installed",
+      detail: legacyPiPackageVersion ? `Legacy package ${LEGACY_PI_PACKAGE_NAME} is present; current package is ${PI_PACKAGE_NAME}.` : undefined,
     }),
     hermes: buildHermesVersionCheck(hermesVersionLabel),
     openclaw: buildVersionCheck({
@@ -466,6 +471,7 @@ function buildVersionCheck(options: {
   installedVersion: string | null;
   notInstalled?: boolean;
   skipLatest?: boolean;
+  detail?: string;
 }): VersionCheck {
   if (options.notInstalled) {
     return {
@@ -475,6 +481,7 @@ function buildVersionCheck(options: {
       installedVersion: null,
       latestVersion: null,
       status: "not-installed",
+      detail: options.detail,
     };
   }
 
@@ -486,7 +493,7 @@ function buildVersionCheck(options: {
       installedVersion: options.installedVersion,
       latestVersion: null,
       status: options.installedVersion ? "unknown" : "unknown",
-      detail: "Latest-version lookup is not available for this package source",
+      detail: options.detail ?? "Latest-version lookup is not available for this package source",
     };
   }
 
@@ -499,7 +506,7 @@ function buildVersionCheck(options: {
       installedVersion: options.installedVersion,
       latestVersion: latest.version,
       status: "unknown",
-      detail: latest.error ?? "Could not parse installed version",
+      detail: [options.detail, latest.error ?? "Could not parse installed version"].filter(Boolean).join(" "),
     };
   }
 
@@ -510,7 +517,7 @@ function buildVersionCheck(options: {
     installedVersion: options.installedVersion,
     latestVersion: latest.version,
     status: compareVersions(options.installedVersion, latest.version) < 0 ? "outdated" : "current",
-    detail: latest.error,
+    detail: [options.detail, latest.error].filter(Boolean).join(" ") || undefined,
   };
 }
 

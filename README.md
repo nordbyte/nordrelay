@@ -270,6 +270,7 @@ Codex authentication:
 Pi setup:
 
 - Install Pi from https://pi.dev/ and confirm `pi --help` works on the host.
+- npm installs should use the current package name: `npm install -g @earendil-works/pi-coding-agent`.
 - Set `NORDRELAY_PI_ENABLED=true` in `~/.nordrelay/nordrelay.env`.
 - Keep `NORDRELAY_DEFAULT_AGENT=codex` to start chats in Codex, or set `NORDRELAY_DEFAULT_AGENT=pi` to start chats in Pi.
 - Optional: set `PI_SESSION_DIR` if your Pi sessions are not stored in `~/.pi/agent/sessions/`.
@@ -407,6 +408,7 @@ The dashboard is a second NordRelay client next to Telegram. It can:
 - Inspect the activity timeline for WebUI and mirrored CLI turns.
 - Edit all supported runtime settings from tabbed Settings groups with option selects, validation feedback, and restart actions.
 - View filtered logs, structured diagnostics, enabled channels, and agent adapters.
+- Check NordRelay and agent CLI versions, then start Codex, Pi, Hermes, OpenClaw, or Claude Code updates from outdated version rows with live output, cancel, full-log, and stdin response controls for interactive updaters.
 
 Dashboard API endpoints are served under `/api/*`. Streaming uses `GET /api/events`.
 
@@ -823,6 +825,7 @@ NordRelay wrapper:
 - `NORDRELAY_HOME`: config/state/log directory override. Defaults to `~/.nordrelay`.
 - `NORDRELAY_SOURCE_ROOT`: runtime source root override. Useful when the plugin is launched from Codex cache.
 - `NORDRELAY_UPDATE_METHOD`: optional `auto`, `npm`, or `git` self-update method override. Auto uses git when the runtime root has a `.git` directory and npm otherwise.
+- Agent updates from the dashboard use each agent's native updater where possible: `codex update`, `pi update pi`, `hermes update --yes`, `openclaw update --yes`, and `claude update`.
 - `NORDRELAY_KEEP_PENDING_UPDATES`: set true to avoid dropping pending Telegram updates on start.
 - `NORDRELAY_FORWARD_TOOL_OUTPUT`: backward-compatible alias that sets `TOOL_VERBOSITY=all` when `TOOL_VERBOSITY` is unset.
 - `NORDRELAY_STATE_FILE`: internal state-file path passed by the wrapper.

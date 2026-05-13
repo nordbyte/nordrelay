@@ -61,7 +61,7 @@ const mockOperations = vi.hoisted(() => ({
     },
     pi: {
       label: "Pi",
-      packageName: "@mariozechner/pi-coding-agent",
+      packageName: "@earendil-works/pi-coding-agent",
       installedLabel: "not installed",
       installedVersion: null,
       latestVersion: null,
@@ -429,7 +429,7 @@ describe("bot flow integration", () => {
       },
       pi: {
         label: "Pi",
-        packageName: "@mariozechner/pi-coding-agent",
+        packageName: "@earendil-works/pi-coding-agent",
         installedLabel: "not installed",
         installedVersion: null,
         latestVersion: null,
