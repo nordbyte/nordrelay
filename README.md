@@ -374,6 +374,7 @@ Runtime files:
 - Log file: `~/.nordrelay/nordrelay.log`
 - Home override: `NORDRELAY_HOME=/custom/path`
 - Local dashboard: `nordrelay web --host 127.0.0.1 --port 31878`
+- `nordrelay start` and `nordrelay status` print the configured WebUI URL.
 
 ## WebUI Dashboard
 

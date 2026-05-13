@@ -49,8 +49,8 @@ function parseArgs(argv) {
     home: process.env.NORDRELAY_HOME || DEFAULT_HOME,
     dropPendingUpdates: !envFlag("NORDRELAY_KEEP_PENDING_UPDATES"),
     force: false,
-    host: process.env.NORDRELAY_DASHBOARD_HOST || "127.0.0.1",
-    port: Number.parseInt(process.env.NORDRELAY_DASHBOARD_PORT || "31878", 10),
+    host: undefined,
+    port: undefined,
   };
 
   for (let i = 0; i < copy.length; i += 1) {
@@ -175,9 +175,31 @@ async function readPid(pidFile) {
   }
 }
 
+function resolveDashboardEndpoint(options, settings = {}) {
+  const host = options.host || process.env.NORDRELAY_DASHBOARD_HOST || "127.0.0.1";
+  const rawPort = options.port ?? Number.parseInt(process.env.NORDRELAY_DASHBOARD_PORT || "31878", 10);
+  if (!Number.isFinite(rawPort) || rawPort <= 0) {
+    if (settings.strict) {
+      throw new Error("Dashboard port must be a positive number.");
+    }
+    return { host, port: 31878 };
+  }
+  const port = rawPort;
+  return { host, port };
+}
+
+function formatDashboardUrl(endpoint) {
+  const host = endpoint.host || "127.0.0.1";
+  const displayHost = host === "0.0.0.0" || host === "" ? "127.0.0.1" : host === "::" ? "::1" : host;
+  const formattedHost = displayHost.includes(":") && !displayHost.startsWith("[") ? `[${displayHost}]` : displayHost;
+  const bindHint = displayHost === host ? "" : ` (binds ${host || "all interfaces"})`;
+  return `http://${formattedHost}:${endpoint.port}/${bindHint}`;
+}
+
 async function commandStart(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
+  const dashboard = resolveDashboardEndpoint(options);
 
   const currentPid = await readPid(options.pidFile);
   if (isProcessRunning(currentPid)) {
@@ -210,6 +232,7 @@ async function commandStart(options) {
     console.log(`Started ${APP_NAME} ${VERSION} with PID ${child.pid}`);
     console.log(`Workspace: ${state.workspace || "-"}`);
     console.log(`Mode: ${state.sessionMode || "per Telegram context"}`);
+    console.log(`WebUI: ${formatDashboardUrl(dashboard)} (run \`nordrelay web\` to start it)`);
     console.log(`Log: ${options.logFile}`);
     return;
   }
@@ -225,6 +248,7 @@ async function commandStart(options) {
   }
 
   console.log(`Started ${APP_NAME} ${VERSION} with PID ${child.pid}`);
+  console.log(`WebUI: ${formatDashboardUrl(dashboard)} (run \`nordrelay web\` to start it)`);
   console.log(`Startup is still in progress. Log: ${options.logFile}`);
 }
 
@@ -268,6 +292,7 @@ async function commandStop(options) {
 
 async function commandStatus(options) {
   loadEnvFiles(options.home);
+  const dashboard = resolveDashboardEndpoint(options);
   const pid = await readPid(options.pidFile);
   const state = await readJson(options.stateFile, {});
   const running = isProcessRunning(pid);
@@ -282,6 +307,7 @@ async function commandStatus(options) {
   console.log(`OpenClaw CLI: ${state.openClawCli || "-"}`);
   console.log(`Claude Code CLI: ${state.claudeCodeCli || "-"}`);
   console.log(`OpenClaw Gateway: ${state.openClawGateway || process.env.OPENCLAW_GATEWAY_URL || "-"}`);
+  console.log(`WebUI: ${formatDashboardUrl(dashboard)}`);
   console.log(`Log: ${options.logFile}`);
   if (state.error) console.log(`Error: ${state.error}`);
 }
@@ -472,8 +498,7 @@ async function checkOpenClawGateway() {
 async function commandWeb(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
-  const host = options.host || "127.0.0.1";
-  const port = Number.isFinite(options.port) ? options.port : 31878;
+  const { host, port } = resolveDashboardEndpoint(options, { strict: true });
   const entry = await resolveWebRuntimeEntry();
   if (!entry) {
     throw new Error(`Missing dashboard runtime. Run \`npm install\` and \`npm run build\` in ${RUNTIME_ROOT}.`);
