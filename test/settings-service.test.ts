@@ -52,6 +52,35 @@ describe("SettingsService", () => {
     expect(maskSecret("abcdefghijkl")).toBe("abcd...ijkl");
   });
 
+  it("keeps configured values separate from active defaults", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "nordrelay-settings-defaults-"));
+    try {
+      const envPath = path.join(dir, "nordrelay.env");
+      writeFileSync(envPath, "", "utf8");
+      const service = new SettingsService(envPath);
+
+      const snapshot = await service.snapshot({}, {
+        CONNECTOR_LOG_FORMAT: "text",
+        NORDRELAY_STATE_BACKEND: "json",
+      });
+      const logFormat = snapshot.settings.find((setting) => setting.key === "CONNECTOR_LOG_FORMAT");
+      const stateBackend = snapshot.settings.find((setting) => setting.key === "NORDRELAY_STATE_BACKEND");
+
+      expect(logFormat).toEqual(expect.objectContaining({
+        configured: false,
+        value: "",
+        effectiveValue: "text",
+      }));
+      expect(stateBackend).toEqual(expect.objectContaining({
+        configured: false,
+        value: "",
+        effectiveValue: "json",
+      }));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("validates dashboard setting values before writing", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "nordrelay-settings-validation-"));
     try {

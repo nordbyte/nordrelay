@@ -151,15 +151,18 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
 export class SettingsService {
   constructor(private readonly envPath: string) {}
 
-  async snapshot(env: NodeJS.ProcessEnv = process.env): Promise<SettingsSnapshot> {
+  async snapshot(
+    env: NodeJS.ProcessEnv = process.env,
+    activeValues: Record<string, string | undefined> = {},
+  ): Promise<SettingsSnapshot> {
     const parsed = await readEnvFile(this.envPath);
     const settings = SETTING_DEFINITIONS.map((definition) => {
       const configuredValue = parsed[definition.key];
-      const effectiveValue = configuredValue ?? env[definition.key] ?? "";
+      const effectiveValue = configuredValue ?? activeValues[definition.key] ?? env[definition.key] ?? "";
       const masked = SECRET_KEYS.has(definition.key) && Boolean(effectiveValue);
       return {
         ...definition,
-        value: masked ? maskSecret(effectiveValue) : effectiveValue,
+        value: configuredValue === undefined ? "" : SECRET_KEYS.has(definition.key) && configuredValue ? maskSecret(configuredValue) : configuredValue,
         effectiveValue: masked ? maskSecret(effectiveValue) : effectiveValue,
         configured: configuredValue !== undefined,
         masked,
