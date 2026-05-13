@@ -283,6 +283,7 @@ export class RelayRuntime {
   private readonly subscribers = new Set<(event: RelayEvent) => void>();
   private readonly externalMonitor?: NodeJS.Timeout;
   private draining = false;
+  private externalMonitorRunning = false;
   private currentTurnId: string | null = null;
   private accumulatedText = "";
   private currentTurnStartedAt = 0;
@@ -304,7 +305,7 @@ export class RelayRuntime {
     });
     if (config.codexExternalBusyCheckMs > 0) {
       this.externalMonitor = setInterval(() => {
-        void this.monitorExternalActivity().catch((error) => this.broadcastStatus(friendlyErrorText(error), "error"));
+        void this.monitorExternalActivitySafe();
       }, config.codexExternalBusyCheckMs);
       this.externalMonitor.unref?.();
     }
@@ -719,7 +720,8 @@ export class RelayRuntime {
   }
 
   activity(options: { limit?: number; source?: WebActivitySource | "all"; status?: WebActivityStatus | "all" } = {}): WebActivityEvent[] {
-    return this.activityStore.list(options).map((event) => this.enrichActivityEvent(event));
+    const currentInfo = this.registry.get(WEB_CONTEXT_KEY)?.getInfo();
+    return this.activityStore.list(options).map((event) => this.enrichActivityEvent(event, currentInfo));
   }
 
   async retry(): Promise<{ queued: boolean; queueId?: string }> {
@@ -1325,6 +1327,20 @@ export class RelayRuntime {
     mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);
   }
 
+  private async monitorExternalActivitySafe(): Promise<void> {
+    if (this.externalMonitorRunning) {
+      return;
+    }
+    this.externalMonitorRunning = true;
+    try {
+      await this.monitorExternalActivity();
+    } catch (error) {
+      this.broadcastStatus(friendlyErrorText(error), "error");
+    } finally {
+      this.externalMonitorRunning = false;
+    }
+  }
+
   private startExternalTurn(snapshot: AgentExternalSnapshot): void {
     const prompt = snapshot.latestUserMessage ?? `${snapshot.agentLabel} CLI task`;
     this.chatStore.append({
@@ -1677,12 +1693,11 @@ export class RelayRuntime {
     return this.enrichActivityFields(input) as T;
   }
 
-  private enrichActivityEvent(event: WebActivityEvent): WebActivityEvent {
-    return this.enrichActivityFields(event) as WebActivityEvent;
+  private enrichActivityEvent(event: WebActivityEvent, info?: AgentSessionInfo): WebActivityEvent {
+    return this.enrichActivityFields(event, info) as WebActivityEvent;
   }
 
-  private enrichActivityFields<T extends Pick<WebActivityEvent, "threadId"> & Partial<Pick<WebActivityEvent, "workspace" | "agentId">>>(event: T): T {
-    const info = this.registry.get(WEB_CONTEXT_KEY)?.getInfo();
+  private enrichActivityFields<T extends Pick<WebActivityEvent, "threadId"> & Partial<Pick<WebActivityEvent, "workspace" | "agentId">>>(event: T, info?: AgentSessionInfo): T {
     if (!info) {
       return !event.threadId && !event.workspace ? { ...event, workspace: this.config.workspace } : event;
     }
