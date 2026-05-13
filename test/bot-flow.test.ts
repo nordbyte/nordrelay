@@ -297,6 +297,7 @@ function installFakeApi(bot: ReturnType<typeof createBot>) {
   const sentMessages: Array<{ chatId: number | string; text: string; options: unknown }> = [];
   const editedMessages: Array<{ chatId: number | string; messageId: number; text: string; options: unknown }> = [];
   const answeredCallbacks: string[] = [];
+  const chatActions: Array<{ chatId: number | string; action: string; options: unknown }> = [];
   let nextMessageId = 100;
 
   bot.botInfo = {
@@ -329,14 +330,20 @@ function installFakeApi(bot: ReturnType<typeof createBot>) {
         return { ok: true, result: true };
       }
       case "editMessageReplyMarkup":
+        return { ok: true, result: true };
       case "sendChatAction":
+        chatActions.push({
+          chatId: (payload as { chat_id: number | string }).chat_id,
+          action: (payload as { action: string }).action,
+          options: payload,
+        });
         return { ok: true, result: true };
       default:
         return { ok: true, result: true };
     }
   });
 
-  return { sentMessages, editedMessages, answeredCallbacks };
+  return { sentMessages, editedMessages, answeredCallbacks, chatActions };
 }
 
 function getFirstInlineButton(payload: unknown): { text: string; callback_data: string } {
@@ -511,6 +518,40 @@ describe("bot flow integration", () => {
     await bot.handleUpdate(messageUpdate("run tests", 999) as any);
 
     expect(api.sentMessages.at(-1)?.text).toContain("Access denied: prompt.send permission required.");
+    expect(registry.getOrCreate).not.toHaveBeenCalled();
+  });
+
+  it("does not mirror external typing before an admin user exists", async () => {
+    const config = createConfig({ codexExternalBusyCheckMs: 999_999 });
+    rmSync(path.join(config.workspace, "users.json"), { force: true });
+    rmSync(path.join(config.workspace, "users.json.bak"), { force: true });
+    mockCodexState.getThreadRolloutSnapshot.mockReturnValue({
+      threadId: "thread-1",
+      rolloutPath: "/tmp/rollout.jsonl",
+      lineCount: 2,
+      activity: {
+        threadId: "thread-1",
+        rolloutPath: "/tmp/rollout.jsonl",
+        active: true,
+        stale: false,
+        turnId: "turn-1",
+        startedAt: new Date("2026-05-13T10:00:00Z"),
+        updatedAt: new Date("2026-05-13T10:00:01Z"),
+      },
+      events: [],
+      latestAgentMessage: null,
+      latestUserMessage: "do work",
+      latestToolName: "exec_command",
+    });
+    const { registry } = createFakeRegistry();
+    registry.listContexts.mockReturnValue([{ contextKey: "123" }]);
+    const bot = createBot(config, registry as any);
+    const api = installFakeApi(bot);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(api.sentMessages).toEqual([]);
+    expect(api.chatActions).toEqual([]);
     expect(registry.getOrCreate).not.toHaveBeenCalled();
   });
 

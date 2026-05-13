@@ -831,6 +831,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     contextKey: TelegramContextKey,
     text: string,
   ): Promise<void> => {
+    if (!canSendSystemMessagesToContext(contextKey)) {
+      return;
+    }
     const parsed = parseContextKey(contextKey);
     const html = escapeHTML(text);
     const state = queueStatusMessages.get(contextKey) ?? {};
@@ -881,6 +884,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
   const monitorExternalContext = async (contextKey: TelegramContextKey): Promise<void> => {
     if (!isTelegramContextKey(contextKey)) {
+      return;
+    }
+    if (!canSendSystemMessagesToContext(contextKey)) {
       return;
     }
 
@@ -1054,6 +1060,17 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
   };
 
+  const canSendSystemMessagesToContext = (contextKey: TelegramContextKey): boolean => {
+    if (!userStore.hasAdminUser()) {
+      return false;
+    }
+    const parsed = parseContextKey(contextKey);
+    if (parsed.chatId > 0) {
+      return Boolean(userStore.resolveTelegramUser(parsed.chatId));
+    }
+    return userStore.snapshot().telegramChats.some((chat) => chat.chatId === parsed.chatId && chat.enabled);
+  };
+
   const deliverCliGeneratedArtifacts = async (
     contextKey: TelegramContextKey,
     chatId: TelegramChatId,
@@ -1120,6 +1137,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       externalQueueTimers.delete(contextKey);
       void (async () => {
         if (promptStore.list(contextKey).length === 0) {
+          return;
+        }
+        if (!canSendSystemMessagesToContext(contextKey)) {
           return;
         }
 
