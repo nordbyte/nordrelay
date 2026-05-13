@@ -555,6 +555,29 @@ describe("bot flow integration", () => {
     expect(registry.getOrCreate).not.toHaveBeenCalled();
   });
 
+  it("does not send approval timeout messages after Telegram access is revoked", async () => {
+    vi.useFakeTimers();
+    const config = createConfig();
+    const { registry, session } = createFakeRegistry();
+    session.getInfo.mockReturnValue({
+      ...session.getInfo(),
+      approvalPolicy: "on-request",
+    });
+    const bot = createBot(config, registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("needs approval") as any);
+    expect(api.sentMessages).toHaveLength(1);
+    expect(api.sentMessages.at(-1)?.text).toContain("Approval required");
+
+    rmSync(path.join(config.workspace, "users.json"), { force: true });
+    rmSync(path.join(config.workspace, "users.json.bak"), { force: true });
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+    expect(api.sentMessages).toHaveLength(1);
+    expect(api.sentMessages.some((message) => message.text.includes("Approval timed out"))).toBe(false);
+  });
+
   it("handles /tasks through middleware and reports idle progress", async () => {
     const { registry } = createFakeRegistry();
     const bot = createBot(createConfig(), registry as any);

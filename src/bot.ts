@@ -1079,6 +1079,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     turnId: string | null,
     messageThreadId?: number,
   ): Promise<void> => {
+    if (!canSendSystemMessagesToContext(contextKey)) {
+      return;
+    }
     if (!startedAt || !turnId) {
       return;
     }
@@ -1316,6 +1319,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       }
       pendingApprovals.delete(approvalId);
       getBusyState(contextKey).approving = false;
+      if (!canSendSystemMessagesToContext(contextKey)) {
+        return;
+      }
       const parsed = parseContextKey(contextKey);
       void sendTextMessage(bot.api, parsed.chatId, `Approval timed out for prompt ${approvalId}.`, {
         messageThreadId: parsed.messageThreadId,
@@ -1356,6 +1362,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     prompt: AgentPromptInput | PromptEnvelope,
     options: { fromQueue?: boolean; approved?: boolean } = {},
   ): Promise<void> => {
+    if (!canSendSystemMessagesToContext(contextKey)) {
+      return;
+    }
     const parsed = parseContextKey(contextKey);
     const messageThreadId = parsed.messageThreadId;
     const envelope = isPromptEnvelopeLike(prompt) ? prompt : toPromptEnvelope(prompt);
@@ -1972,6 +1981,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     if (drainingQueues.has(contextKey)) {
       return;
     }
+    if (!canSendSystemMessagesToContext(contextKey)) {
+      return;
+    }
 
     drainingQueues.add(contextKey);
     try {
@@ -2192,9 +2204,15 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     pendingMediaGroups.delete(key);
 
     try {
+      if (!canSendSystemMessagesToContext(pending.contextKey)) {
+        return;
+      }
       await processMediaGroup(pending);
     } catch (error) {
       console.error("Failed to process media group:", error);
+      if (!canSendSystemMessagesToContext(pending.contextKey)) {
+        return;
+      }
       await safeReply(pending.ctx, `<b>Failed to process media group:</b> ${escapeHTML(friendlyErrorText(error))}`, {
         fallbackText: `Failed to process media group: ${friendlyErrorText(error)}`,
       });
@@ -2202,6 +2220,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   };
 
   const processMediaGroup = async (pending: PendingMediaGroup): Promise<void> => {
+    if (!canSendSystemMessagesToContext(pending.contextKey)) {
+      return;
+    }
     const busyState = getBusyState(pending.contextKey);
     busyState.transcribing = true;
 
@@ -2254,11 +2275,17 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     if (stagedFiles.length === 0) {
+      if (!canSendSystemMessagesToContext(pending.contextKey)) {
+        return;
+      }
       const text = skippedCount > 0 ? "No media group files could be staged." : "Media group was empty.";
       await safeReply(pending.ctx, escapeHTML(text), { fallbackText: text });
       return;
     }
 
+    if (!canSendSystemMessagesToContext(pending.contextKey)) {
+      return;
+    }
     const receivedText = `Received ${stagedFiles.length} media group file${stagedFiles.length === 1 ? "" : "s"}${skippedCount > 0 ? ` (${skippedCount} skipped)` : ""}.`;
     await safeReply(pending.ctx, escapeHTML(receivedText), { fallbackText: receivedText });
     await sendChatActionSafe(pending.ctx.api, pending.chatId, "typing", pending.messageThreadId).catch(() => {});

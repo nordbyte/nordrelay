@@ -13,7 +13,7 @@ import { ALL_PERMISSIONS, permissionForWebRequest } from "./access-control.js";
 import { loadConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { escapeHTML } from "./format.js";
-import { RelayRuntime, type RelayEvent } from "./relay-runtime.js";
+import { RelayRuntime, type DashboardControlOptions, type RelayEvent, type SessionPageDto, type WebTasksDto } from "./relay-runtime.js";
 import { resolveDashboardEnvPath, SettingsService } from "./settings-service.js";
 import { UserStore, publicUser, publicUserSnapshot, type AuthenticatedUser } from "./user-management.js";
 import { dashboardJs } from "./web-dashboard-client.js";
@@ -43,9 +43,11 @@ const users = new UserStore(options.home);
 const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
 const loginAttempts = new Map<string, RateLimitBucket>();
 
+class AccessDeniedError extends Error {}
+
 const server = createServer((req, res) => {
   void handleRequest(req, res).catch((error) => {
-    sendJson(res, 500, { error: friendlyErrorText(error) });
+    sendJson(res, error instanceof AccessDeniedError ? 403 : 500, { error: friendlyErrorText(error) });
   });
 });
 
@@ -110,7 +112,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   }
 
   if (url.pathname === "/api/events" && req.method === "GET") {
-    handleEvents(req, res);
+    await handleEvents(req, res);
     return;
   }
 
@@ -152,23 +154,27 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   }
 
   if (req.method === "GET" && url.pathname === "/api/bootstrap") {
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, {
       auth: currentUserDto(authUser),
       channels: listChannelDescriptors(),
-      agentAdapters: listAgentAdapterDescriptors(),
-      enabledAgents: enabledAgents(config),
-      controls: await runtime.controlOptions(),
+      agentAdapters: listAgentAdapterDescriptors().filter((adapter) => users.canUseAgent(authUser, adapter.id)),
+      enabledAgents: enabledAgents(config).filter((agentId) => users.canUseAgent(authUser, agentId)),
+      controls: scopedControlOptions(authUser, await runtime.controlOptions()),
       status: await runtime.bootstrapStatus(),
     });
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/control-options") {
-    sendJson(res, 200, await runtime.controlOptions(parseAgentId(url.searchParams.get("agent") ?? undefined)));
+    const agentId = parseAgentId(url.searchParams.get("agent") ?? undefined);
+    assertScopedAgent(authUser, agentId);
+    sendJson(res, 200, scopedControlOptions(authUser, await runtime.controlOptions(agentId)));
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/health") {
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, await runtime.status());
     return;
   }
@@ -184,42 +190,50 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   }
 
   if (req.method === "GET" && url.pathname === "/api/agent-updates") {
-    sendJson(res, 200, { jobs: runtime.agentUpdateJobs() });
+    sendJson(res, 200, { jobs: runtime.agentUpdateJobs().filter((job) => users.canUseAgent(authUser, job.agentId)) });
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/agent-update") {
     const body = await readJsonBody(req);
-    sendJson(res, 202, { job: runtime.startAgentUpdate(parseAgentIdRequired(stringField(body, "agentId"))) });
+    const agentId = parseAgentIdRequired(stringField(body, "agentId"));
+    assertScopedAgent(authUser, agentId);
+    sendJson(res, 202, { job: runtime.startAgentUpdate(agentId) });
     return;
   }
 
   const agentUpdateLogMatch = url.pathname.match(/^\/api\/agent-update\/([^/]+)\/log$/);
   if (req.method === "GET" && agentUpdateLogMatch?.[1]) {
-    sendJson(res, 200, runtime.agentUpdateLog(decodeURIComponent(agentUpdateLogMatch[1])));
+    const id = decodeURIComponent(agentUpdateLogMatch[1]);
+    assertAgentUpdateJobScope(authUser, id);
+    sendJson(res, 200, runtime.agentUpdateLog(id));
     return;
   }
 
   const agentUpdateInputMatch = url.pathname.match(/^\/api\/agent-update\/([^/]+)\/input$/);
   if (req.method === "POST" && agentUpdateInputMatch?.[1]) {
     const body = await readJsonBody(req);
-    sendJson(res, 200, { job: runtime.sendAgentUpdateInput(decodeURIComponent(agentUpdateInputMatch[1]), stringField(body, "input")) });
+    const id = decodeURIComponent(agentUpdateInputMatch[1]);
+    assertAgentUpdateJobScope(authUser, id);
+    sendJson(res, 200, { job: runtime.sendAgentUpdateInput(id, stringField(body, "input")) });
     return;
   }
 
   const agentUpdateCancelMatch = url.pathname.match(/^\/api\/agent-update\/([^/]+)\/cancel$/);
   if (req.method === "POST" && agentUpdateCancelMatch?.[1]) {
-    sendJson(res, 200, { job: runtime.cancelAgentUpdate(decodeURIComponent(agentUpdateCancelMatch[1])) });
+    const id = decodeURIComponent(agentUpdateCancelMatch[1]);
+    assertAgentUpdateJobScope(authUser, id);
+    sendJson(res, 200, { job: runtime.cancelAgentUpdate(id) });
     return;
   }
 
   if (req.method === "GET" && (url.pathname === "/api/tasks" || url.pathname === "/api/progress")) {
-    sendJson(res, 200, runtime.tasks());
+    sendJson(res, 200, await scopedTasks(authUser, runtime.tasks()));
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/adapters/health") {
-    sendJson(res, 200, { adapters: await runtime.adapterHealth() });
+    sendJson(res, 200, { adapters: (await runtime.adapterHealth()).filter((adapter) => users.canUseAgent(authUser, adapter.id)) });
     return;
   }
 
@@ -397,35 +411,44 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   }
 
   if (req.method === "GET" && url.pathname === "/api/locks") {
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, { locks: runtime.locks() });
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/locks") {
     const body = await readJsonBody(req);
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, { lock: runtime.lockWebSession(optionalStringField(body, "ownerName")), locks: runtime.locks() });
     return;
   }
 
   if (req.method === "DELETE" && url.pathname === "/api/locks") {
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, runtime.unlockWebSession());
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/auth/status") {
-    sendJson(res, 200, await runtime.authStatus(parseAgentId(url.searchParams.get("agent") ?? undefined)));
+    const agentId = parseAgentId(url.searchParams.get("agent") ?? undefined);
+    assertScopedAgent(authUser, agentId);
+    sendJson(res, 200, await runtime.authStatus(agentId));
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/auth/login") {
     const body = await readJsonBody(req);
-    sendJson(res, 200, await runtime.login(parseAgentId(optionalStringField(body, "agentId"))));
+    const agentId = parseAgentId(optionalStringField(body, "agentId"));
+    assertScopedAgent(authUser, agentId);
+    sendJson(res, 200, await runtime.login(agentId));
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/auth/logout") {
     const body = await readJsonBody(req);
-    sendJson(res, 200, await runtime.logout(parseAgentId(optionalStringField(body, "agentId"))));
+    const agentId = parseAgentId(optionalStringField(body, "agentId"));
+    assertScopedAgent(authUser, agentId);
+    sendJson(res, 200, await runtime.logout(agentId));
     return;
   }
 
@@ -441,20 +464,28 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   }
 
   if (req.method === "GET" && url.pathname === "/api/snapshot") {
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, await runtime.snapshot());
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/sessions") {
+    const agentId = parseAgentId(url.searchParams.get("agent") ?? undefined);
+    if (agentId) {
+      assertScopedAgent(authUser, agentId);
+    } else {
+      await assertCurrentSessionScope(authUser);
+    }
+    const page = await runtime.listSessionsPage(
+      numberParam(url, "page", 1),
+      numberParam(url, "limit", 50),
+      url.searchParams.get("query") ?? "",
+      agentId,
+    );
     sendJson(
       res,
       200,
-      await runtime.listSessionsPage(
-        numberParam(url, "page", 1),
-        numberParam(url, "limit", 50),
-        url.searchParams.get("query") ?? "",
-        parseAgentId(url.searchParams.get("agent") ?? undefined),
-      ),
+      scopedSessionPage(authUser, page),
     );
     return;
   }
@@ -511,35 +542,43 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   }
 
   if (req.method === "GET" && url.pathname === "/api/sessions/detail") {
-    sendJson(res, 200, await runtime.sessionDetail(requiredSearch(url, "threadId")));
+    const threadId = requiredSearch(url, "threadId");
+    const detail = await runtime.sessionDetail(threadId);
+    assertSessionDetailScope(authUser, threadId, detail);
+    sendJson(res, 200, detail);
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/models") {
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, { models: await runtime.listModels() });
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/session/model") {
     const body = await readJsonBody(req);
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, { session: await runtime.setModel(stringField(body, "model")) });
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/session/reasoning") {
     const body = await readJsonBody(req);
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, { session: await runtime.setReasoningEffort(stringField(body, "reasoning")) });
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/session/fast") {
     const body = await readJsonBody(req);
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, { session: await runtime.setFastMode(Boolean(body?.enabled)) });
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/session/launch") {
     const body = await readJsonBody(req);
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, { session: await runtime.setLaunchProfile(stringField(body, "profileId")) });
     return;
   }
@@ -562,70 +601,81 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   }
 
   if (req.method === "POST" && (url.pathname === "/api/abort" || url.pathname === "/api/stop")) {
+    await assertCurrentSessionScope(authUser);
     await runtime.abort();
     sendJson(res, 200, { ok: true });
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/handback") {
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, await runtime.handback());
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/retry") {
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 202, await runtime.retry());
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/sync") {
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, await runtime.sync());
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/queue") {
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, { queue: runtime.queue(), paused: runtime.queuePaused() });
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/queue") {
     const body = await readJsonBody(req);
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, { queue: runtime.queueAction(stringField(body, "action") as never, optionalStringField(body, "id")), paused: runtime.queuePaused() });
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/chat/history") {
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, { messages: await runtime.chatHistory(numberParam(url, "limit", 200)) });
     return;
   }
 
   if (req.method === "DELETE" && url.pathname === "/api/chat/history") {
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, await runtime.clearChatHistory());
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/activity") {
     sendJson(res, 200, {
-      events: runtime.activity({
+      events: filterActivityByScope(authUser, runtime.activity({
         limit: numberParam(url, "limit", 100),
         source: (url.searchParams.get("source") || "all") as never,
         status: (url.searchParams.get("status") || "all") as never,
-      }),
+      })),
     });
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/artifacts") {
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, { reports: await runtime.artifacts() });
     return;
   }
 
   if (req.method === "DELETE" && url.pathname === "/api/artifacts") {
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, { removed: await runtime.deleteArtifact(requiredSearch(url, "turnId")) });
     return;
   }
 
   if (req.method === "POST" && url.pathname === "/api/artifacts/bulk") {
     const body = await readJsonBody(req);
+    await assertCurrentSessionScope(authUser);
     const action = stringField(body, "action");
     const turnIds = Array.isArray(body.turnIds) ? body.turnIds.filter((item): item is string => typeof item === "string") : [];
     if (action !== "delete") {
@@ -642,6 +692,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   }
 
   if (req.method === "GET" && url.pathname === "/api/artifacts/zip") {
+    await assertCurrentSessionScope(authUser);
     const bundle = await runtime.createArtifactZip(requiredSearch(url, "turnId"));
     if (!bundle) {
       sendJson(res, 404, { error: "Artifact turn not found or ZIP could not be created" });
@@ -652,6 +703,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   }
 
   if (req.method === "GET" && url.pathname === "/api/artifacts/file") {
+    await assertCurrentSessionScope(authUser);
     const turnId = requiredSearch(url, "turnId");
     const relativePath = requiredSearch(url, "path");
     const report = await runtime.artifact(turnId);
@@ -665,6 +717,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   }
 
   if (req.method === "GET" && url.pathname === "/api/artifacts/preview") {
+    await assertCurrentSessionScope(authUser);
     const preview = await runtime.artifactPreview(requiredSearch(url, "turnId"), requiredSearch(url, "path"));
     if (!preview) {
       sendJson(res, 404, { error: "Artifact not found" });
@@ -686,6 +739,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   }
 
   if (req.method === "GET" && url.pathname === "/api/diagnostics") {
+    await assertCurrentSessionScope(authUser);
     sendJson(res, 200, await runtime.diagnostics());
     return;
   }
@@ -698,16 +752,17 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   sendJson(res, 404, { error: "Unknown endpoint" });
 }
 
-function handleEvents(req: IncomingMessage, res: ServerResponse): void {
+async function handleEvents(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const authUser = authenticateRequest(req);
   if (!authUser) {
     sendJson(res, 401, { error: "Authentication required" });
     return;
   }
-  if (!users.hasPermission(authUser, "inspect")) {
-    sendJson(res, 403, { error: "Access denied: inspect permission required." });
+  if (!users.hasPermission(authUser, "sessions.read")) {
+    sendJson(res, 403, { error: "Access denied: sessions.read permission required." });
     return;
   }
+  await assertCurrentSessionScope(authUser);
 
   res.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
@@ -715,8 +770,23 @@ function handleEvents(req: IncomingMessage, res: ServerResponse): void {
     connection: "keep-alive",
   });
   const send = (event: RelayEvent) => {
-    res.write(`event: ${event.type}\n`);
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
+    void scopeRelayEvent(authUser, event, canUseCurrentSession).then((scopedEvent) => {
+      if (!scopedEvent || res.destroyed || res.writableEnded) {
+        return;
+      }
+      res.write(`event: ${scopedEvent.type}\n`);
+      res.write(`data: ${JSON.stringify(scopedEvent)}\n\n`);
+    }).catch(() => {});
+  };
+  let currentScopeCache: { allowed: boolean; expiresAt: number } | null = null;
+  const canUseCurrentSession = async (): Promise<boolean> => {
+    const now = Date.now();
+    if (currentScopeCache && currentScopeCache.expiresAt > now) {
+      return currentScopeCache.allowed;
+    }
+    const allowed = await canUseCurrentSessionScope(authUser);
+    currentScopeCache = { allowed, expiresAt: now + 1_000 };
+    return allowed;
   };
   const unsubscribe = runtime.subscribe(send);
   const heartbeat = setInterval(() => {
@@ -845,21 +915,129 @@ function auditUserAction(authUser: AuthenticatedUser, action: AuditEvent["action
   });
 }
 
+function scopedControlOptions(authUser: AuthenticatedUser, options: DashboardControlOptions): DashboardControlOptions {
+  return {
+    ...options,
+    workspaces: options.workspaces.filter((workspace) => users.canUseWorkspace(authUser, workspace)),
+  };
+}
+
+function scopedSessionPage(authUser: AuthenticatedUser, page: SessionPageDto): SessionPageDto {
+  return {
+    ...page,
+    sessions: page.sessions.filter((session) => canUseSession(authUser, session)),
+  };
+}
+
+async function scopedTasks(authUser: AuthenticatedUser, tasks: WebTasksDto): Promise<WebTasksDto> {
+  const currentAllowed = await canUseCurrentSessionScope(authUser);
+  return {
+    ...tasks,
+    current: tasks.current && canUseSession(authUser, tasks.current) ? tasks.current : null,
+    external: tasks.external && canUseSession(authUser, tasks.external) ? tasks.external : null,
+    queue: currentAllowed ? tasks.queue : [],
+    recent: filterActivityByScope(authUser, tasks.recent),
+  };
+}
+
+async function scopeRelayEvent(
+  authUser: AuthenticatedUser,
+  event: RelayEvent,
+  canUseCurrentSession: () => Promise<boolean> = () => canUseCurrentSessionScope(authUser),
+): Promise<RelayEvent | null> {
+  switch (event.type) {
+    case "snapshot":
+      return canUseSession(authUser, event.data.session) ? event : null;
+    case "session_update":
+      return canUseSession(authUser, event.session) ? event : null;
+    case "activity_update":
+      return { ...event, events: filterActivityByScope(authUser, event.events) };
+    case "agent_update":
+      return users.canUseAgent(authUser, event.job.agentId) ? event : null;
+    case "status":
+      return event;
+    case "chat_history":
+    case "queue_update":
+    case "turn_start":
+    case "text_delta":
+    case "tool_start":
+    case "tool_update":
+    case "tool_end":
+    case "todo_update":
+    case "turn_complete":
+    case "turn_error":
+      return await canUseCurrentSession() ? event : null;
+  }
+}
+
+function filterActivityByScope<T extends { agentId?: string; workspace?: string }>(authUser: AuthenticatedUser, events: T[]): T[] {
+  return events.filter((event) => canUseSession(authUser, event));
+}
+
+async function canUseCurrentSessionScope(authUser: AuthenticatedUser): Promise<boolean> {
+  try {
+    await assertCurrentSessionScope(authUser);
+    return true;
+  } catch (error) {
+    if (error instanceof AccessDeniedError) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function canUseSession(authUser: AuthenticatedUser, session: { agentId?: string; workspace?: string; cwd?: string } | Record<string, unknown>): boolean {
+  const agentId = typeof session.agentId === "string" ? session.agentId : undefined;
+  const workspace = typeof session.workspace === "string"
+    ? session.workspace
+    : typeof session.cwd === "string"
+      ? session.cwd
+      : undefined;
+  return users.canUseAgent(authUser, agentId) && users.canUseWorkspace(authUser, workspace);
+}
+
+function assertAgentUpdateJobScope(authUser: AuthenticatedUser, id: string): void {
+  const job = runtime.agentUpdateJobs().find((candidate) => candidate.id === id);
+  if (job) {
+    assertScopedAgent(authUser, job.agentId);
+  }
+}
+
+function assertSessionDetailScope(authUser: AuthenticatedUser, threadId: string, detail: Record<string, unknown>): void {
+  const record = objectValue(detail.record);
+  if (record) {
+    assertSessionScope(authUser, record);
+    return;
+  }
+
+  const active = objectValue(detail.active);
+  if (active && active.threadId === threadId) {
+    assertSessionScope(authUser, active);
+    return;
+  }
+
+  throw new AccessDeniedError("Access denied: session is outside your group scope.");
+}
+
 function assertScopedAgent(authUser: AuthenticatedUser, agentId: string | undefined): void {
   if (!users.canUseAgent(authUser, agentId)) {
-    throw new Error(`Access denied: agent ${agentId} is outside your group scope.`);
+    throw new AccessDeniedError(`Access denied: agent ${agentId} is outside your group scope.`);
   }
 }
 
 function assertScopedWorkspace(authUser: AuthenticatedUser, workspace: string | undefined): void {
   if (!users.canUseWorkspace(authUser, workspace)) {
-    throw new Error(`Access denied: workspace ${workspace} is outside your group scope.`);
+    throw new AccessDeniedError(`Access denied: workspace ${workspace} is outside your group scope.`);
   }
 }
 
-function assertSessionScope(authUser: AuthenticatedUser, session: { agentId?: string; workspace?: string } | Record<string, unknown>): void {
+function assertSessionScope(authUser: AuthenticatedUser, session: { agentId?: string; workspace?: string; cwd?: string } | Record<string, unknown>): void {
   const agentId = typeof session.agentId === "string" ? session.agentId : undefined;
-  const workspace = typeof session.workspace === "string" ? session.workspace : undefined;
+  const workspace = typeof session.workspace === "string"
+    ? session.workspace
+    : typeof session.cwd === "string"
+      ? session.cwd
+      : undefined;
   assertScopedAgent(authUser, agentId);
   assertScopedWorkspace(authUser, workspace);
 }
@@ -867,6 +1045,10 @@ function assertSessionScope(authUser: AuthenticatedUser, session: { agentId?: st
 async function assertCurrentSessionScope(authUser: AuthenticatedUser): Promise<void> {
   const snapshot = await runtime.snapshot();
   assertSessionScope(authUser, snapshot.session);
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
 function consumeRateLimit(
