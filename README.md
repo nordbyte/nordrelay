@@ -178,9 +178,10 @@ Operations:
 
 - Plugin command/skill starts, stops, restarts, and inspects the connector process.
 - Manual process commands support `start`, `stop`, `restart`, `status`, and `foreground`.
-- Telegram admin commands support `/logs`, `/diagnostics`, `/restart`, and `/update`.
+- Telegram admin commands support `/logs`, `/diagnostics`, `/restart`, and `/update` for NordRelay and agent CLIs.
 - `/update` detects the install type: npm installs update with `npm install -g @nordbyte/nordrelay@latest`; source checkouts pull `origin/main`, install dependencies, run check, tests, and build, then restart.
-- `/logs` renders redacted connector and update logs with local-time timestamps, levels, file path, last-modified time, and highlighted warnings/errors.
+- `/update agents`, `/update <agent>`, `/update jobs`, `/update log <id>`, `/update cancel <id>`, and `/update input <id> <text>` manage Codex, Pi, Hermes, OpenClaw, and Claude Code updater jobs from Telegram.
+- `/logs` renders redacted connector, NordRelay update, and agent update logs with local-time timestamps, levels, file path, last-modified time, and highlighted warnings/errors.
 - Logs can be emitted as timestamped plain text or JSON records with `CONNECTOR_LOG_FORMAT`.
 - Telegram sends/edits/documents are routed through a rate-limit queue that honors Telegram retry-after responses.
 - Context metadata, queues, and preferences are written atomically with backup recovery.
@@ -407,7 +408,8 @@ The dashboard is a second NordRelay client next to Telegram. It can:
 - Browse, preview, download, ZIP, and delete artifacts.
 - Inspect the activity timeline for WebUI and mirrored CLI turns.
 - Edit all supported runtime settings from tabbed Settings groups with option selects, validation feedback, and restart actions.
-- View filtered logs, structured diagnostics, enabled channels, and agent adapters.
+- View filtered connector/update/agent-update logs, structured diagnostics, enabled channels, and agent adapters.
+- Inspect a per-agent capability matrix showing model, reasoning, launch, fast mode, attachments, activity, usage, auth, login/logout, and handback support.
 - Check NordRelay and agent CLI versions, then start Codex, Pi, Hermes, OpenClaw, or Claude Code updates from outdated version rows with live output, cancel, full-log, and stdin response controls for interactive updaters.
 
 Dashboard API endpoints are served under `/api/*`. Streaming uses `GET /api/events`.
@@ -497,10 +499,12 @@ Run NordRelay behind your reverse proxy so the public URL forwards to `http://12
 - `/version` reports connector, Codex CLI, Pi CLI, Hermes CLI, OpenClaw CLI, and Claude Code CLI paths plus installed/latest NordRelay, Codex, Pi, Hermes, OpenClaw, and Claude Code versions with status icons.
 - `/logs [lines]` shows a redacted, timestamped connector log tail. Admin only.
 - `/logs update [lines]` shows the self-update log. Admin only.
-- `/logs all [lines]` shows connector and self-update logs together. Admin only.
+- `/logs agent [lines]` shows the aggregate agent updater log. Admin only.
+- `/logs all [lines]` shows connector, self-update, and agent update logs together. Admin only.
 - `/diagnostics` shows redacted connector diagnostics. Admin only.
 - `/restart` restarts the connector process. Admin only.
 - `/update` updates through npm or git depending on the detected install type, then restarts only on success. Admin only.
+- `/update agents`, `/update <agent>`, `/update jobs`, `/update log <id>`, `/update cancel <id>`, and `/update input <id> <text>` manage agent CLI update jobs. Admin only.
 
 ## Command Examples
 
@@ -825,7 +829,7 @@ NordRelay wrapper:
 - `NORDRELAY_HOME`: config/state/log directory override. Defaults to `~/.nordrelay`.
 - `NORDRELAY_SOURCE_ROOT`: runtime source root override. Useful when the plugin is launched from Codex cache.
 - `NORDRELAY_UPDATE_METHOD`: optional `auto`, `npm`, or `git` self-update method override. Auto uses git when the runtime root has a `.git` directory and npm otherwise.
-- Agent updates from the dashboard use each agent's native updater where possible: `codex update`, `pi update pi`, `hermes update --yes`, `openclaw update --yes`, and `claude update`.
+- Agent updates from the dashboard and Telegram use each agent's native updater where possible: `codex update`, `pi update pi`, `hermes update --yes`, `openclaw update --yes`, and `claude update`.
 - `NORDRELAY_KEEP_PENDING_UPDATES`: set true to avoid dropping pending Telegram updates on start.
 - `NORDRELAY_FORWARD_TOOL_OUTPUT`: backward-compatible alias that sets `TOOL_VERBOSITY=all` when `TOOL_VERBOSITY` is unset.
 - `NORDRELAY_STATE_FILE`: internal state-file path passed by the wrapper.

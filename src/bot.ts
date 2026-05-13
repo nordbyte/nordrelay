@@ -38,6 +38,8 @@ import {
   type ArtifactTurnReport,
 } from "./artifacts.js";
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
+import { formatAgentFeatureSummaryHTML, formatAgentFeatureSummaryPlain } from "./agent-feature-matrix.js";
+import { AgentUpdateManager, type AgentUpdateJobSnapshot } from "./agent-updates.js";
 import { AuditLogStore, type AuditEvent } from "./audit-log.js";
 import {
   formatSessionLabel,
@@ -92,6 +94,7 @@ import { friendlyErrorText } from "./error-messages.js";
 import { escapeHTML, formatTelegramHTML } from "./format.js";
 import {
   getConnectorHealth,
+  getAgentUpdateLogPath,
   getUpdateLogPath,
   getVersionChecks,
   readConnectorState,
@@ -323,6 +326,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const preferencesStore = new BotPreferencesStore(config.workspace, config.stateBackend);
   const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
   const lockStore = new SessionLockStore(config.workspace, config.stateBackend);
+  const agentUpdates = new AgentUpdateManager();
   const drainingQueues = new Set<TelegramContextKey>();
   const externalQueueTimers = new Map<TelegramContextKey, NodeJS.Timeout>();
   const externalMirrors = new Map<TelegramContextKey, ExternalMirrorState>();
@@ -467,6 +471,38 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return checkClaudeCodeAuthStatus(config.claudeCodeCliPath);
     }
     return checkAuthStatus(config.codexApiKey);
+  };
+
+  const agentUpdateContext = () => ({
+    piCliPath: config.piCliPath,
+    hermesCliPath: config.hermesCliPath,
+    openClawCliPath: config.openClawCliPath,
+    claudeCodeCliPath: config.claudeCodeCliPath,
+  });
+
+  const startTelegramAgentUpdate = async (ctx: Context, agentId: AgentId): Promise<void> => {
+    try {
+      const job = agentUpdates.start(agentId, agentUpdateContext());
+      const contextKey = contextKeyFromCtx(ctx);
+      if (contextKey) {
+        audit({
+          action: "command",
+          status: "ok",
+          contextKey,
+          agentId,
+          description: `update ${agentId}`,
+          detail: job.summary,
+        });
+      }
+      const rendered = renderAgentUpdateJobMessage(job);
+      await safeReply(ctx, rendered.html, {
+        fallbackText: rendered.plain,
+        replyMarkup: agentUpdateJobKeyboard(job),
+      });
+    } catch (error) {
+      const message = `Failed to start ${agentLabel(agentId)} update: ${friendlyErrorText(error)}`;
+      await safeReply(ctx, `<b>Update failed:</b> ${escapeHTML(message)}`, { fallbackText: message });
+    }
   };
 
   const startAgentLogin = (info?: AgentSessionInfo): Promise<LoginResult> => {
@@ -2185,7 +2221,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const descriptors = listAgentAdapterDescriptors();
     const plain = [
       "Agent adapters:",
-      ...descriptors.map((descriptor) => {
+      ...descriptors.flatMap((descriptor) => {
         const enabled = descriptor.id === "codex"
           ? config.codexEnabled
           : descriptor.id === "pi"
@@ -2197,7 +2233,10 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
                 : descriptor.id === "claude-code"
                   ? config.claudeCodeEnabled
                   : false;
-        return `${descriptor.label}: ${descriptor.status}${descriptor.status === "available" ? ` · ${enabled ? "enabled" : "disabled"}` : ""}`;
+        return [
+          `${descriptor.label}: ${descriptor.status}${descriptor.status === "available" ? ` · ${enabled ? "enabled" : "disabled"}` : ""}`,
+          ...formatAgentFeatureSummaryPlain(descriptor.capabilities).map((line) => `  ${line}`),
+        ];
       }),
     ].join("\n");
     const html = [
@@ -2216,7 +2255,10 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
                   : false;
         const status = descriptor.status === "available" ? `${enabled ? "enabled" : "disabled"}` : "planned";
         const notes = descriptor.notes ? `\n  ${escapeHTML(descriptor.notes)}` : "";
-        return `${descriptor.status === "available" ? "✅" : "🟡"} <b>${escapeHTML(descriptor.label)}</b> <code>${escapeHTML(status)}</code>${notes}`;
+        return [
+          `${descriptor.status === "available" ? "✅" : "🟡"} <b>${escapeHTML(descriptor.label)}</b> <code>${escapeHTML(status)}</code>${notes}`,
+          ...formatAgentFeatureSummaryHTML(descriptor.capabilities).map((line) => `  ${line}`),
+        ].join("\n");
       }),
     ].join("\n");
     await safeReply(ctx, html, { fallbackText: plain });
@@ -2842,11 +2884,12 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       ? [
           { title: "Connector", tail: await readFormattedLogTail(logRequest.lines) },
           { title: "Update", tail: await readFormattedLogTail(logRequest.lines, getUpdateLogPath()) },
+          { title: "Agent updates", tail: await readFormattedLogTail(logRequest.lines, getAgentUpdateLogPath()) },
         ]
       : [
           {
-            title: logRequest.target === "update" ? "Update" : "Connector",
-            tail: await readFormattedLogTail(logRequest.lines, logRequest.target === "update" ? getUpdateLogPath() : undefined),
+            title: logTargetTitle(logRequest.target),
+            tail: await readFormattedLogTail(logRequest.lines, logTargetPath(logRequest.target)),
           },
         ];
     const plain = logs.map(({ title, tail }) => renderLogTailPlain(title, tail)).join("\n\n");
@@ -2864,6 +2907,78 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   });
 
   bot.command("update", async (ctx) => {
+    const rawText = ctx.message?.text ?? "";
+    const argument = rawText.replace(/^\/update(?:@\w+)?\s*/i, "").trim();
+    const tokens = argument.split(/\s+/).filter(Boolean);
+    const subcommand = tokens[0]?.toLowerCase();
+
+    if (subcommand === "agents" || subcommand === "agent") {
+      const descriptors = listAgentAdapterDescriptors().filter((descriptor) => descriptor.status === "available");
+      const keyboard = new InlineKeyboard();
+      for (const descriptor of descriptors) {
+        keyboard.text(`Update ${descriptor.label}`, `upd_agent:${descriptor.id}`).row();
+      }
+      keyboard.text("Show update jobs", "upd_jobs");
+      const plain = [
+        "Agent updates:",
+        ...descriptors.map((descriptor) => `${descriptor.label}: /update ${descriptor.id}`),
+        "",
+        "Use /update jobs to list running and recent agent updates.",
+      ].join("\n");
+      const html = [
+        "<b>Agent updates:</b>",
+        ...descriptors.map((descriptor) => `<b>${escapeHTML(descriptor.label)}:</b> <code>/update ${escapeHTML(descriptor.id)}</code>`),
+        "",
+        "Use <code>/update jobs</code> to list running and recent agent updates.",
+      ].join("\n");
+      await safeReply(ctx, html, { fallbackText: plain, replyMarkup: keyboard });
+      return;
+    }
+
+    if (subcommand === "jobs" || subcommand === "status") {
+      const rendered = renderAgentUpdateJobsMessage(agentUpdates.list());
+      await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+      return;
+    }
+
+    if (subcommand === "log" && tokens[1]) {
+      const rendered = renderAgentUpdateLogMessage(agentUpdates.readLog(tokens[1]));
+      await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+      return;
+    }
+
+    if (subcommand === "cancel" && tokens[1]) {
+      const job = agentUpdates.cancel(tokens[1]);
+      const rendered = renderAgentUpdateJobMessage(job);
+      await safeReply(ctx, rendered.html, {
+        fallbackText: rendered.plain,
+        replyMarkup: agentUpdateJobKeyboard(job),
+      });
+      return;
+    }
+
+    if ((subcommand === "input" || subcommand === "send") && tokens[1] && tokens.slice(2).join(" ").trim()) {
+      const job = agentUpdates.sendInput(tokens[1], tokens.slice(2).join(" "));
+      const rendered = renderAgentUpdateJobMessage(job);
+      await safeReply(ctx, rendered.html, {
+        fallbackText: rendered.plain,
+        replyMarkup: agentUpdateJobKeyboard(job),
+      });
+      return;
+    }
+
+    const requestedAgent = parseAgentUpdateId(subcommand);
+    if (requestedAgent) {
+      await startTelegramAgentUpdate(ctx, requestedAgent);
+      return;
+    }
+
+    if (subcommand) {
+      const usage = "Unknown update target. Use /update, /update agents, /update jobs, /update <agent>, /update log <id>, /update cancel <id>, or /update input <id> <text>.";
+      await safeReply(ctx, escapeHTML(usage), { fallbackText: usage });
+      return;
+    }
+
     const update = spawnSelfUpdate();
     const plain = [
       "Update started.",
@@ -2872,6 +2987,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       `Source: ${update.sourceRoot}`,
       `Log: ${update.logPath}`,
       "Use /logs update after the restart or inspect update.log on the host.",
+      "Use /update agents for agent CLI updates.",
     ].join("\n");
     const html = [
       "<b>Update started.</b>",
@@ -2880,8 +2996,49 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       `<b>Source:</b> <code>${escapeHTML(update.sourceRoot)}</code>`,
       `<b>Log:</b> <code>${escapeHTML(update.logPath)}</code>`,
       `Use <code>/logs update</code> after the restart or inspect <code>${escapeHTML(getUpdateLogPath())}</code> on the host.`,
+      `Use <code>/update agents</code> for agent CLI updates.`,
     ].join("\n");
     await safeReply(ctx, html, { fallbackText: plain });
+  });
+
+  bot.callbackQuery("upd_jobs", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const rendered = renderAgentUpdateJobsMessage(agentUpdates.list());
+    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+  });
+
+  bot.callbackQuery(/^upd_agent:(codex|pi|hermes|openclaw|claude-code)$/, async (ctx) => {
+    const agentId = ctx.match?.[1] as AgentId | undefined;
+    if (!agentId) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    await ctx.answerCallbackQuery({ text: `Starting ${agentLabel(agentId)} update...` });
+    await startTelegramAgentUpdate(ctx, agentId);
+  });
+
+  bot.callbackQuery(/^upd_log:(.+)$/, async (ctx) => {
+    const id = ctx.match?.[1];
+    await ctx.answerCallbackQuery();
+    if (!id) {
+      return;
+    }
+    const rendered = renderAgentUpdateLogMessage(agentUpdates.readLog(id));
+    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+  });
+
+  bot.callbackQuery(/^upd_cancel:(.+)$/, async (ctx) => {
+    const id = ctx.match?.[1];
+    await ctx.answerCallbackQuery({ text: "Cancelling update..." });
+    if (!id) {
+      return;
+    }
+    const job = agentUpdates.cancel(id);
+    const rendered = renderAgentUpdateJobMessage(job);
+    await safeReply(ctx, rendered.html, {
+      fallbackText: rendered.plain,
+      replyMarkup: agentUpdateJobKeyboard(job),
+    });
   });
 
   bot.command("new", async (ctx) => {
@@ -4885,7 +5042,7 @@ export async function registerCommands(bot: Bot<Context>): Promise<void> {
     { command: "unlock", description: "Release session write lock" },
     { command: "locks", description: "List session write locks" },
     { command: "restart", description: "Admin: restart connector" },
-    { command: "update", description: "Admin: update connector" },
+    { command: "update", description: "Admin: update connector or agents" },
     { command: "handback", description: "Hand session back to CLI" },
     { command: "attach", description: "Bind a session to this topic" },
     { command: "switch", description: "Switch to a thread by ID" },
@@ -4956,7 +5113,112 @@ function versionStatusIcon(check: VersionCheck): string {
   return check.status === "current" ? "✅" : "⚠️";
 }
 
-type LogTarget = "connector" | "update" | "all";
+function parseAgentUpdateId(value: string | undefined): AgentId | null {
+  const normalized = value?.toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === "claude") {
+    return "claude-code";
+  }
+  return ["codex", "pi", "hermes", "openclaw", "claude-code"].includes(normalized)
+    ? normalized as AgentId
+    : null;
+}
+
+function agentUpdateJobKeyboard(job: AgentUpdateJobSnapshot): InlineKeyboard {
+  const keyboard = new InlineKeyboard().text("Full log", `upd_log:${job.id}`);
+  if (job.canInput) {
+    keyboard.text("Cancel", `upd_cancel:${job.id}`);
+  }
+  return keyboard;
+}
+
+function renderAgentUpdateJobsMessage(jobs: AgentUpdateJobSnapshot[]): { plain: string; html: string } {
+  if (jobs.length === 0) {
+    return {
+      plain: "No agent update jobs yet. Use /update agents to start one.",
+      html: "No agent update jobs yet. Use <code>/update agents</code> to start one.",
+    };
+  }
+  const limited = jobs.slice(0, 10);
+  return {
+    plain: [
+      "Agent update jobs:",
+      ...limited.map((job) => `${job.id}: ${job.agentLabel} · ${job.status} · ${formatLocalDateTime(new Date(job.updatedAt))}`),
+      "",
+      "Use /update log <id>, /update cancel <id>, or /update input <id> <text>.",
+    ].join("\n"),
+    html: [
+      "<b>Agent update jobs:</b>",
+      ...limited.map((job) => `<code>${escapeHTML(job.id)}</code> ${escapeHTML(job.agentLabel)} · <b>${escapeHTML(job.status)}</b> · <code>${escapeHTML(formatLocalDateTime(new Date(job.updatedAt)))}</code>`),
+      "",
+      "Use <code>/update log &lt;id&gt;</code>, <code>/update cancel &lt;id&gt;</code>, or <code>/update input &lt;id&gt; &lt;text&gt;</code>.",
+    ].join("\n"),
+  };
+}
+
+function renderAgentUpdateJobMessage(job: AgentUpdateJobSnapshot): { plain: string; html: string } {
+  const command = [job.command, ...job.args].join(" ");
+  const inputLine = job.canInput
+    ? "If the updater asks a question, reply with /update input " + job.id + " <text>."
+    : "This update job is no longer accepting input.";
+  const tail = trimLine(job.outputTail || "(waiting for output)", 1200);
+  return {
+    plain: [
+      `${job.agentLabel} update ${job.status}.`,
+      `ID: ${job.id}`,
+      `Method: ${job.method}`,
+      `Command: ${command}`,
+      `Started: ${formatLocalDateTime(new Date(job.startedAt))}`,
+      job.finishedAt ? `Finished: ${formatLocalDateTime(new Date(job.finishedAt))}` : undefined,
+      job.error ? `Error: ${job.error}` : undefined,
+      `Log: ${job.logPath}`,
+      `Agent update log: ${getAgentUpdateLogPath()}`,
+      inputLine,
+      "",
+      tail,
+    ].filter(Boolean).join("\n"),
+    html: [
+      `<b>${escapeHTML(job.agentLabel)} update ${escapeHTML(job.status)}.</b>`,
+      `<b>ID:</b> <code>${escapeHTML(job.id)}</code>`,
+      `<b>Method:</b> <code>${escapeHTML(job.method)}</code>`,
+      `<b>Command:</b> <code>${escapeHTML(command)}</code>`,
+      `<b>Started:</b> <code>${escapeHTML(formatLocalDateTime(new Date(job.startedAt)))}</code>`,
+      job.finishedAt ? `<b>Finished:</b> <code>${escapeHTML(formatLocalDateTime(new Date(job.finishedAt)))}</code>` : undefined,
+      job.error ? `<b>Error:</b> ${escapeHTML(job.error)}` : undefined,
+      `<b>Log:</b> <code>${escapeHTML(job.logPath)}</code>`,
+      `<b>Agent update log:</b> <code>${escapeHTML(getAgentUpdateLogPath())}</code>`,
+      escapeHTML(inputLine),
+      "",
+      `<pre>${escapeHTML(tail)}</pre>`,
+    ].filter(Boolean).join("\n"),
+  };
+}
+
+function renderAgentUpdateLogMessage(result: { job: AgentUpdateJobSnapshot; plain: string }): { plain: string; html: string } {
+  const tail = trimLine(result.plain || "(empty)", 3000);
+  return {
+    plain: [
+      `${result.job.agentLabel} update log`,
+      `ID: ${result.job.id}`,
+      `Status: ${result.job.status}`,
+      `File: ${result.job.logPath}`,
+      "",
+      tail,
+    ].join("\n"),
+    html: [
+      `<b>${escapeHTML(result.job.agentLabel)} update log</b>`,
+      `<b>ID:</b> <code>${escapeHTML(result.job.id)}</code>`,
+      `<b>Status:</b> <code>${escapeHTML(result.job.status)}</code>`,
+      `<b>File:</b> <code>${escapeHTML(result.job.logPath)}</code>`,
+      "",
+      `<pre>${escapeHTML(tail)}</pre>`,
+    ].join("\n"),
+  };
+}
+
+type LogTarget = "connector" | "update" | "agent-updates" | "all";
 
 function parseLogsCommand(argument: string): { target: LogTarget; lines: number } {
   const tokens = argument.split(/\s+/).filter(Boolean);
@@ -4969,8 +5231,12 @@ function parseLogsCommand(argument: string): { target: LogTarget; lines: number 
       target = "connector";
       continue;
     }
-    if (normalized === "update" || normalized === "updates") {
+    if (normalized === "update" || normalized === "self-update" || normalized === "self") {
       target = "update";
+      continue;
+    }
+    if (normalized === "agent" || normalized === "agents" || normalized === "agent-update" || normalized === "agent-updates") {
+      target = "agent-updates";
       continue;
     }
     if (normalized === "all") {
@@ -4985,6 +5251,26 @@ function parseLogsCommand(argument: string): { target: LogTarget; lines: number 
   }
 
   return { target, lines };
+}
+
+function logTargetTitle(target: LogTarget): string {
+  if (target === "update") {
+    return "Update";
+  }
+  if (target === "agent-updates") {
+    return "Agent updates";
+  }
+  return "Connector";
+}
+
+function logTargetPath(target: LogTarget): string | undefined {
+  if (target === "update") {
+    return getUpdateLogPath();
+  }
+  if (target === "agent-updates") {
+    return getAgentUpdateLogPath();
+  }
+  return undefined;
 }
 
 function renderLogTailPlain(title: string, tail: FormattedLogTail): string {

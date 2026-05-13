@@ -129,6 +129,10 @@ export function getUpdateLogPath(): string {
   return path.join(getConnectorHome(), "update.log");
 }
 
+export function getAgentUpdateLogPath(home = getConnectorHome()): string {
+  return path.join(home, "agent-updates.log");
+}
+
 export async function readConnectorState(): Promise<ConnectorRuntimeState> {
   try {
     return JSON.parse(await readFile(getConnectorStatePath(), "utf8")) as ConnectorRuntimeState;

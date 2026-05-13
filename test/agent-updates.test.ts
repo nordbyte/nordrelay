@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -76,6 +76,15 @@ describe("agent updates", () => {
     expect(finished?.outputTail).toContain("answer yes");
     expect(finished?.outputTail).not.toContain("secret-value");
     expect(readFileSync(started.logPath, "utf8")).toContain("api_key=[REDACTED]");
+    expect(readFileSync(path.join(dir, "agent-updates.log"), "utf8")).toContain("api_key=[REDACTED]");
+
+    const reloaded = new AgentUpdateManager({ home: dir });
+    expect(reloaded.get(started.id)).toMatchObject({
+      id: started.id,
+      status: "completed",
+      agentId: "codex",
+    });
+    expect(existsSync(path.join(dir, "updates", "jobs.json"))).toBe(true);
   });
 });
 

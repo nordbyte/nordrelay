@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -9,7 +9,7 @@ import { resolveClaudeCodeCli } from "./claude-code-cli.js";
 import { resolveCodexCli } from "./codex-cli.js";
 import { resolveHermesCli } from "./hermes-cli.js";
 import { resolveOpenClawCli } from "./openclaw-cli.js";
-import { getConnectorHome } from "./operations.js";
+import { getAgentUpdateLogPath, getConnectorHome } from "./operations.js";
 import { resolvePiCli } from "./pi-cli.js";
 import { redactText } from "./redaction.js";
 
@@ -55,6 +55,7 @@ export interface AgentUpdateJobSnapshot {
   error?: string;
   logPath: string;
   outputTail: string;
+  ownerPid?: number;
 }
 
 interface AgentUpdateJob extends AgentUpdateJobSnapshot {
@@ -64,6 +65,9 @@ interface AgentUpdateJob extends AgentUpdateJobSnapshot {
 
 export class AgentUpdateManager {
   private readonly jobs = new Map<string, AgentUpdateJob>();
+  private readonly home: string;
+  private readonly manifestPath: string;
+  private readonly aggregateLogPath: string;
 
   constructor(
     private readonly options: {
@@ -71,7 +75,12 @@ export class AgentUpdateManager {
       env?: NodeJS.ProcessEnv;
       onUpdate?: (job: AgentUpdateJobSnapshot) => void;
     } = {},
-  ) {}
+  ) {
+    this.home = options.home ?? getConnectorHome();
+    this.manifestPath = path.join(this.home, "updates", "jobs.json");
+    this.aggregateLogPath = getAgentUpdateLogPath(this.home);
+    this.loadPersistedJobs();
+  }
 
   list(): AgentUpdateJobSnapshot[] {
     return [...this.jobs.values()]
@@ -105,7 +114,7 @@ export class AgentUpdateManager {
     const plan = resolveAgentUpdatePlan(agentId, { ...context, env: context.env ?? this.options.env });
     const now = new Date().toISOString();
     const id = `${agentId.replace(/[^a-z0-9]/gi, "")}-${Date.now().toString(36)}`;
-    const logPath = path.join(this.options.home ?? getConnectorHome(), "updates", `${id}.log`);
+    const logPath = path.join(this.home, "updates", `${id}.log`);
     mkdirSync(path.dirname(logPath), { recursive: true });
     const job: AgentUpdateJob = {
       id,
@@ -123,10 +132,12 @@ export class AgentUpdateManager {
       startedAt: now,
       updatedAt: now,
       logPath,
+      ownerPid: process.pid,
       output: "",
       outputTail: "",
     };
     this.jobs.set(id, job);
+    this.persistJobs();
     this.append(job, [
       `[${now}] Starting ${job.agentLabel} update`,
       `Method: ${job.method}`,
@@ -209,6 +220,8 @@ export class AgentUpdateManager {
     job.updatedAt = new Date().toISOString();
     job.needsInput = job.status === "running" && looksLikePrompt(job.outputTail);
     writeFileSync(job.logPath, redacted, { flag: "a", encoding: "utf8" });
+    this.appendAggregate(job, redacted);
+    this.persistJobs();
     this.emit(job);
   }
 
@@ -232,6 +245,70 @@ export class AgentUpdateManager {
   private snapshot(job: AgentUpdateJob): AgentUpdateJobSnapshot {
     const { child: _child, output: _output, ...snapshot } = job;
     return { ...snapshot };
+  }
+
+  private loadPersistedJobs(): void {
+    if (!existsSync(this.manifestPath)) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(readFileSync(this.manifestPath, "utf8")) as AgentUpdateJobSnapshot[];
+      let changed = false;
+      for (const snapshot of parsed) {
+        const staleRunning = snapshot.status === "running" && !isProcessRunning(snapshot.ownerPid);
+        if (staleRunning) {
+          changed = true;
+        }
+        const job: AgentUpdateJob = {
+          ...snapshot,
+          status: staleRunning ? "failed" : snapshot.status,
+          canInput: false,
+          needsInput: false,
+          error: staleRunning
+            ? "Update process was still running when NordRelay restarted; inspect the agent update log before retrying."
+            : snapshot.error,
+          finishedAt: staleRunning ? new Date().toISOString() : snapshot.finishedAt,
+          updatedAt: staleRunning ? new Date().toISOString() : snapshot.updatedAt,
+          output: snapshot.outputTail ?? "",
+          outputTail: snapshot.outputTail ?? "",
+        };
+        this.jobs.set(job.id, job);
+      }
+      if (changed) {
+        this.persistJobs();
+      }
+    } catch {
+      this.jobs.clear();
+    }
+  }
+
+  private persistJobs(): void {
+    mkdirSync(path.dirname(this.manifestPath), { recursive: true });
+    const snapshots = this.list().slice(0, 100);
+    writeFileSync(this.manifestPath, `${JSON.stringify(snapshots, null, 2)}\n`, "utf8");
+  }
+
+  private appendAggregate(job: AgentUpdateJob, text: string): void {
+    const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+    if (lines.length === 0) {
+      return;
+    }
+    mkdirSync(path.dirname(this.aggregateLogPath), { recursive: true });
+    const now = new Date().toISOString();
+    const prefix = `[${now}] INFO [${job.id}]`;
+    appendFileSync(this.aggregateLogPath, `${lines.map((line) => `${prefix} ${line}`).join("\n")}\n`, "utf8");
+  }
+}
+
+function isProcessRunning(pid: unknown): boolean {
+  if (!Number.isInteger(pid) || (pid as number) <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid as number, 0);
+    return true;
+  } catch {
+    return false;
   }
 }
 

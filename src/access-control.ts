@@ -144,6 +144,9 @@ export function permissionForCallbackData(callbackData: string | undefined): Tel
   if (/^(launch_|launchconfirm_|model_|effort_|agent_)/.test(callbackData)) {
     return "settings";
   }
+  if (callbackData.startsWith("upd_")) {
+    return "admin";
+  }
   if (callbackData.startsWith("approval_") || callbackData.startsWith("codex_abort:") || callbackData.startsWith("agent_abort:")) {
     return "prompt";
   }

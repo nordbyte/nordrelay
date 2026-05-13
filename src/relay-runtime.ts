@@ -50,7 +50,7 @@ import type { ConnectorConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./hermes-auth.js";
 import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
-import { clearLogFile, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "./operations.js";
+import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "./operations.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
 import { renderSessionInfoPlain, renderSessionUsageRows } from "./session-format.js";
@@ -1187,15 +1187,18 @@ export class RelayRuntime {
     };
   }
 
-  async logs(target: "connector" | "update" = "connector", lines = 100): Promise<ReturnType<typeof readFormattedLogTail>> {
+  async logs(target: "connector" | "update" | "agent-updates" = "connector", lines = 100): Promise<ReturnType<typeof readFormattedLogTail>> {
     if (target === "update") {
       return readFormattedLogTail(lines, getUpdateLogPath());
+    }
+    if (target === "agent-updates") {
+      return readFormattedLogTail(lines, getAgentUpdateLogPath());
     }
     return readFormattedLogTail(lines);
   }
 
-  clearLogs(target: "connector" | "update" = "connector"): { ok: true; filePath: string; clearedAt: string } {
-    const result = clearLogFile(target === "update" ? getUpdateLogPath() : getConnectorLogPath());
+  clearLogs(target: "connector" | "update" | "agent-updates" = "connector"): { ok: true; filePath: string; clearedAt: string } {
+    const result = clearLogFile(target === "update" ? getUpdateLogPath() : target === "agent-updates" ? getAgentUpdateLogPath() : getConnectorLogPath());
     this.appendActivity({
       source: "web",
       status: "info",

@@ -690,6 +690,31 @@ describe("bot flow integration", () => {
     expect(api.sentMessages.at(-1)?.text).not.toContain("<code>Something needs attention</code>");
   });
 
+  it("renders the dedicated agent update log target", async () => {
+    const { registry } = createFakeRegistry();
+    const bot = createBot(createConfig(), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("/logs agent 25") as any);
+
+    expect(api.sentMessages.at(-1)?.text).toContain("<b>Agent updates log tail</b>");
+    expect(mockOperations.readFormattedLogTail).toHaveBeenCalledWith(25, expect.stringContaining("agent-updates.log"));
+  });
+
+  it("lists agent update commands from Telegram", async () => {
+    const { registry } = createFakeRegistry();
+    const bot = createBot(createConfig(), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("/update agents") as any);
+
+    expect(api.sentMessages.at(-1)?.text).toContain("<b>Agent updates:</b>");
+    expect(api.sentMessages.at(-1)?.text).toContain("/update codex");
+    expect(api.sentMessages.at(-1)?.options).toMatchObject({
+      reply_markup: expect.objectContaining({ inline_keyboard: expect.any(Array) }),
+    });
+  });
+
   it("renders version freshness for NordRelay, Codex, Pi, Hermes, OpenClaw, and Claude Code", async () => {
     const { registry } = createFakeRegistry();
     const bot = createBot(createConfig(), registry as any);
