@@ -15,6 +15,8 @@ export interface ConnectorRuntimeState {
   status?: string;
   pid?: number;
   appPid?: number;
+  exitCode?: number | null;
+  signal?: string | null;
   workspace?: string;
   sessionMode?: string;
   authenticated?: boolean;
@@ -25,6 +27,7 @@ export interface ConnectorRuntimeState {
   openClawCli?: string;
   claudeCodeCli?: string;
   error?: string;
+  logFile?: string;
   updatedAt?: string;
 }
 
@@ -245,10 +248,11 @@ export async function getVersionChecks(options: { piCliPath?: string; hermesCliP
 }
 
 export async function getConnectorHealth(options: { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string; claudeCodeCliPath?: string } = {}): Promise<ConnectorHealth> {
-  const state = await readConnectorState();
+  const rawState = await readConnectorState();
   const version = await getPackageVersion();
-  const pidRunning = isProcessRunning(state.pid);
-  const appPidRunning = isProcessRunning(state.appPid);
+  const pidRunning = isProcessRunning(rawState.pid);
+  const appPidRunning = isProcessRunning(rawState.appPid);
+  const state = normalizeConnectorState(rawState, pidRunning, appPidRunning);
   const codexCli = resolveCodexCli();
   const piCli = resolvePiCli(process.env, options.piCliPath);
   const hermesCli = resolveHermesCli(process.env, options.hermesCliPath);
@@ -360,6 +364,18 @@ function isProcessRunning(pid: unknown): boolean {
   } catch {
     return false;
   }
+}
+
+function normalizeConnectorState(
+  state: ConnectorRuntimeState,
+  pidRunning: boolean,
+  appPidRunning: boolean,
+): ConnectorRuntimeState {
+  const stoppedSignal = state.signal === "SIGTERM" || state.signal === "SIGINT";
+  if (state.status === "error" && stoppedSignal && !state.error && !pidRunning && !appPidRunning) {
+    return { ...state, status: "stopped" };
+  }
+  return state;
 }
 
 function redactSecrets(text: string): string {

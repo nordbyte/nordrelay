@@ -589,21 +589,23 @@ async function commandForeground(options) {
   });
 
   const previousState = await readJson(options.stateFile, {});
+  const stoppedBySignal = exit.signal === "SIGTERM" || exit.signal === "SIGINT";
+  const stopped = exit.code === 0 || stoppedBySignal;
   await writeJsonAtomic(options.stateFile, {
-    status: exit.code === 0 ? "stopped" : "error",
+    status: stopped ? "stopped" : "error",
     pid: process.pid,
     updatedAt: nowIso(),
     exitCode: exit.code,
     signal: exit.signal,
-    error: exit.code === 0 ? undefined : previousState.error,
+    error: stopped ? undefined : previousState.error,
     logFile: options.logFile,
   });
 
-  if (exit.signal) {
+  if (exit.signal && !stoppedBySignal) {
     process.kill(process.pid, exit.signal);
     return;
   }
-  process.exit(exit.code ?? 0);
+  process.exit(stopped ? 0 : exit.code ?? 1);
 }
 
 async function resolveRuntimeEntry() {
