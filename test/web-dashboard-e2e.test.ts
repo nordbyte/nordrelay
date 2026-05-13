@@ -27,6 +27,14 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("if(name==='sessions') await loadSessions(true,options.agentId)");
   });
 
+  it("binds version agent update buttons after rendering version cards", () => {
+    const js = dashboardJs();
+
+    expect(js).toContain("data-update-agent");
+    expect(js).toContain("card('Runtime'");
+    expect(js).toContain(");bindAgentUpdateButtons()}");
+  });
+
   it("loads dashboard CSS and JavaScript through static asset routes", () => {
     const source = readFileSync("src/web-dashboard.ts", "utf8");
 
