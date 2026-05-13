@@ -4,6 +4,10 @@ import { describe, expect, it } from "vitest";
 
 import { dashboardJs } from "../src/web-dashboard-client.js";
 import { dashboardCss } from "../src/web-dashboard-style.js";
+import { dashboardClientFoundation } from "../src/webui/client-foundation.js";
+import { dashboardClientWorkflows } from "../src/webui/client-workflows.js";
+import { dashboardStyleLayout } from "../src/webui/style-layout.js";
+import { dashboardStyleTheme } from "../src/webui/style-theme.js";
 
 describe("web dashboard browser-flow assets", () => {
   it("includes the agent feature matrix and dedicated agent update log flow", () => {
@@ -32,5 +36,12 @@ describe("web dashboard browser-flow assets", () => {
     expect(source).toContain('src="/assets/dashboard.js"');
     expect(source).not.toContain("<style>${dashboardCss()}</style>");
     expect(source).not.toContain("<script>${dashboardJs()}</script>");
+  });
+
+  it("composes dashboard assets from focused WebUI modules", () => {
+    expect(dashboardClientFoundation()).toContain("function renderSnapshot");
+    expect(dashboardClientWorkflows()).toContain("function loadSessions");
+    expect(dashboardStyleTheme()).toContain(":root");
+    expect(dashboardStyleLayout()).toContain(".chat-layout");
   });
 });

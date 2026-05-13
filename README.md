@@ -1037,6 +1037,7 @@ npm run build
 - `src/index.ts`: runtime entrypoint, config load, auth check, state-file writes, polling lifecycle, shutdown.
 - `src/bot.ts`: Telegram command handlers, callbacks, message streaming, file/photo/voice handling, artifacts, and error handling.
 - `src/channel-adapter.ts`, `src/channel-runtime.ts`, and `src/channel-actions.ts`: channel descriptors, generic command routing, outbound delivery contracts, and channel-neutral command responses.
+- `src/webui/`: focused WebUI asset modules for dashboard foundation, live events, chat/session workflows, admin pages, and CSS sections.
 - `src/bot-preferences.ts`: per-context mirror, notification, quiet-hour, and voice preference persistence.
 - `src/telegram-rate-limit.ts`: centralized Telegram API send/edit/document rate limiting and retry-after tracking.
 - `src/persistence.ts`: atomic JSON/text writes with backup recovery.
