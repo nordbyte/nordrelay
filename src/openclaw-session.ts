@@ -375,7 +375,7 @@ export class OpenClawSessionService implements AgentSessionService {
     return openClawProfileAsLaunchProfile(this.currentLaunchProfile);
   }
 
-  syncFromCodexState(): AgentSyncResult {
+  syncFromAgentState(): AgentSyncResult {
     const before = this.getInfo();
     this.refreshFromState({ force: true });
     const after = this.getInfo();

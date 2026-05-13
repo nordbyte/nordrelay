@@ -469,7 +469,7 @@ describe("CodexSessionService", () => {
     }));
   });
 
-  it("syncFromCodexState imports changed thread metadata and reattaches idle threads", async () => {
+  it("syncFromAgentState imports changed thread metadata and reattaches idle threads", async () => {
     const service = await CodexSessionService.create(createConfig(), {
       resumeThreadId: "thread-sync",
     });
@@ -487,7 +487,7 @@ describe("CodexSessionService", () => {
     });
     const codexInstance = mockState.codexInstances.at(-1);
 
-    const result = service.syncFromCodexState({ reattach: true });
+    const result = service.syncFromAgentState({ reattach: true });
 
     expect(result.changed).toBe(true);
     expect(result.reattached).toBe(true);
@@ -508,14 +508,14 @@ describe("CodexSessionService", () => {
     }));
   });
 
-  it("syncFromCodexState mirrors Codex fast mode defaults for future threads", async () => {
+  it("syncFromAgentState mirrors Codex fast mode defaults for future threads", async () => {
     const service = await CodexSessionService.create(createConfig(), {
       launchProfileId: "review",
       deferThreadStart: true,
     });
     mockCodexConfig.readCodexFastMode.mockReturnValue(true);
 
-    const result = service.syncFromCodexState();
+    const result = service.syncFromAgentState();
 
     expect(result.changed).toBe(true);
     expect(result.changedFields).toEqual(expect.arrayContaining(["fast", "next-launch"]));

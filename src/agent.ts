@@ -114,8 +114,8 @@ export const HERMES_AGENT_CAPABILITIES: AgentCapabilities = {
   cliMirror: true,
   activityLog: true,
   auth: true,
-  login: false,
-  logout: false,
+  login: true,
+  logout: true,
   usageStats: true,
   subscriptionLimits: false,
   usageLimits: false,
@@ -152,8 +152,8 @@ export const CLAUDE_CODE_AGENT_CAPABILITIES: AgentCapabilities = {
   cliMirror: true,
   activityLog: true,
   auth: true,
-  login: false,
-  logout: false,
+  login: true,
+  logout: true,
   usageStats: true,
   subscriptionLimits: false,
   usageLimits: false,
@@ -368,7 +368,7 @@ export interface AgentSessionService {
   setLaunchProfile(profileId: string): CodexLaunchProfile;
   setFastMode(enabled: boolean): AgentFastModeResult;
   getSelectedLaunchProfile(): CodexLaunchProfile;
-  syncFromCodexState(options?: { reattach?: boolean }): AgentSyncResult;
+  syncFromAgentState(options?: { reattach?: boolean }): AgentSyncResult;
   handback(): AgentHandbackResult;
   dispose(): void;
 }

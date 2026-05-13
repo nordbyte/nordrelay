@@ -383,7 +383,7 @@ export class HermesSessionService implements AgentSessionService {
     return hermesProfileAsLaunchProfile(this.currentLaunchProfile);
   }
 
-  syncFromCodexState(): AgentSyncResult {
+  syncFromAgentState(): AgentSyncResult {
     const before = this.getInfo();
     this.refreshFromState();
     const after = this.getInfo();

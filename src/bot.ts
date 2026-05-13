@@ -83,8 +83,8 @@ import {
   getExternalSnapshotForSession,
 } from "./agent-activity.js";
 import { enabledAgents } from "./agent-factory.js";
-import { checkAuthStatus, clearAuthCache, startLogin, startLogout } from "./codex-auth.js";
-import { checkClaudeCodeAuthStatus } from "./claude-code-auth.js";
+import { checkAuthStatus, clearAuthCache, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
+import { checkClaudeCodeAuthStatus, startClaudeCodeLogin, startClaudeCodeLogout } from "./claude-code-auth.js";
 import { formatLaunchProfileBehavior } from "./codex-launch.js";
 import type { ConnectorConfig, ToolVerbosity } from "./config.js";
 import { contextKeyFromCtx, isTelegramContextKey, isTopicContextKey, parseContextKey, type TelegramContextKey } from "./context-key.js";
@@ -102,7 +102,7 @@ import {
   type VersionCheck,
 } from "./operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
-import { checkHermesAuthStatus } from "./hermes-auth.js";
+import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./hermes-auth.js";
 import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
 import { configureRedaction, redactText } from "./redaction.js";
@@ -330,7 +330,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const syncInterval = config.codexSyncIntervalMs > 0
     ? setInterval(() => {
         try {
-          registry.syncAllFromCodexState({ reattach: true });
+          registry.syncAllFromAgentState({ reattach: true });
         } catch (error) {
           console.error("Failed to sync sessions from agent state:", error);
         }
@@ -449,6 +449,68 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return checkClaudeCodeAuthStatus(config.claudeCodeCliPath);
     }
     return checkAuthStatus(config.codexApiKey);
+  };
+
+  const agentIdForAuth = (info?: AgentSessionInfo): AgentId => info ? idOf(info) : "codex";
+
+  const labelForAuth = (info?: AgentSessionInfo): string => info ? labelOf(info) : "Codex";
+
+  const checkLoginAuthStatus = async (info?: AgentSessionInfo): Promise<{ authenticated: boolean; method: string; detail: string }> => {
+    const agentId = agentIdForAuth(info);
+    if (agentId === "hermes") {
+      return checkHermesAuthStatus({
+        baseUrl: config.hermesApiBaseUrl,
+        apiKey: config.hermesApiKey,
+      });
+    }
+    if (agentId === "claude-code") {
+      return checkClaudeCodeAuthStatus(config.claudeCodeCliPath);
+    }
+    return checkAuthStatus(config.codexApiKey);
+  };
+
+  const startAgentLogin = (info?: AgentSessionInfo): Promise<LoginResult> => {
+    const agentId = agentIdForAuth(info);
+    if (agentId === "hermes") {
+      return startHermesLogin(config.hermesCliPath);
+    }
+    if (agentId === "claude-code") {
+      return startClaudeCodeLogin(config.claudeCodeCliPath);
+    }
+    return startCodexLogin();
+  };
+
+  const startAgentLogout = (info?: AgentSessionInfo): Promise<LoginResult> => {
+    const agentId = agentIdForAuth(info);
+    if (agentId === "hermes") {
+      return startHermesLogout(config.hermesCliPath);
+    }
+    if (agentId === "claude-code") {
+      return startClaudeCodeLogout(config.claudeCodeCliPath);
+    }
+    return startCodexLogout();
+  };
+
+  const hostLoginCommand = (info?: AgentSessionInfo): string => {
+    const agentId = agentIdForAuth(info);
+    if (agentId === "hermes") {
+      return `${config.hermesCliPath ?? "hermes"} login --no-browser`;
+    }
+    if (agentId === "claude-code") {
+      return `${config.claudeCodeCliPath ?? "claude"} auth login`;
+    }
+    return "codex login --device-auth";
+  };
+
+  const hostLogoutCommand = (info?: AgentSessionInfo): string => {
+    const agentId = agentIdForAuth(info);
+    if (agentId === "hermes") {
+      return `${config.hermesCliPath ?? "hermes"} logout`;
+    }
+    if (agentId === "claude-code") {
+      return `${config.claudeCodeCliPath ?? "claude"} auth logout`;
+    }
+    return "codex logout";
   };
 
   const isTopicContext = (contextKey: TelegramContextKey): boolean => isTopicContextKey(contextKey);
@@ -2238,8 +2300,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
-    const authStatus = await checkAuthStatus(config.codexApiKey);
-    if (authStatus.authenticated) {
+    const authStatus = await checkLoginAuthStatus(info);
+    if (agentIdForAuth(info) !== "hermes" && authStatus.authenticated) {
       await safeReply(ctx, `<b>✅ Already authenticated</b> via <code>${escapeHTML(authStatus.method)}</code>.`, {
         fallbackText: `✅ Already authenticated via ${authStatus.method}.`,
       });
@@ -2252,20 +2314,20 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         [
           "<b>Telegram-initiated login is disabled.</b>",
           "",
-          "Run <code>codex login</code> on the host, or set CODEX_API_KEY in .env.",
+          `Run <code>${escapeHTML(hostLoginCommand(info))}</code> on the host.`,
         ].join("\n"),
         {
           fallbackText: [
             "Telegram-initiated login is disabled.",
             "",
-            "Run 'codex login' on the host, or set CODEX_API_KEY in .env.",
+            `Run '${hostLoginCommand(info)}' on the host.`,
           ].join("\n"),
         },
       );
       return;
     }
 
-    const result = await startLogin();
+    const result = await startAgentLogin(info);
     if (result.success) {
       await safeReply(ctx, `<b>🔑 Login initiated.</b>\n\n<code>${escapeHTML(result.message)}</code>`, {
         fallbackText: `🔑 Login initiated.\n\n${result.message}`,
@@ -2291,20 +2353,20 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
-    const authStatus = await checkAuthStatus(config.codexApiKey);
+    const authStatus = await checkLoginAuthStatus(info);
     if (authStatus.method === "api-key") {
       await safeReply(
         ctx,
         [
-          "<b>Cannot logout via Telegram when using CODEX_API_KEY.</b>",
+          `<b>Cannot logout via Telegram when ${escapeHTML(labelForAuth(info))} uses API-key authentication.</b>`,
           "",
-          "Remove CODEX_API_KEY from .env to use CLI-based auth instead.",
+          "Remove the API key from .env to use CLI-based auth instead.",
         ].join("\n"),
         {
           fallbackText: [
-            "Cannot logout via Telegram when using CODEX_API_KEY.",
+            `Cannot logout via Telegram when ${labelForAuth(info)} uses API-key authentication.`,
             "",
-            "Remove CODEX_API_KEY from .env to use CLI-based auth instead.",
+            "Remove the API key from .env to use CLI-based auth instead.",
           ].join("\n"),
         },
       );
@@ -2315,25 +2377,25 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       await safeReply(ctx, [
         "<b>Telegram-initiated auth management is disabled.</b>",
         "",
-        "Run <code>codex logout</code> on the host.",
+        `Run <code>${escapeHTML(hostLogoutCommand(info))}</code> on the host.`,
       ].join("\n"), {
         fallbackText: [
           "Telegram-initiated auth management is disabled.",
           "",
-          "Run 'codex logout' on the host.",
+          `Run '${hostLogoutCommand(info)}' on the host.`,
         ].join("\n"),
       });
       return;
     }
 
-    if (!authStatus.authenticated) {
+    if (agentIdForAuth(info) !== "hermes" && !authStatus.authenticated) {
       await safeReply(ctx, escapeHTML("Not currently authenticated."), {
         fallbackText: "Not currently authenticated.",
       });
       return;
     }
 
-    const result = await startLogout();
+    const result = await startAgentLogout(info);
     if (result.success) {
       await safeReply(ctx, `<b>🔓 Logged out.</b>\n\n${escapeHTML(result.message)}`, {
         fallbackText: `🔓 Logged out.\n\n${result.message}`,
@@ -2750,7 +2812,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
-    const result = contextSession.session.syncFromCodexState({ reattach: true });
+    const result = contextSession.session.syncFromAgentState({ reattach: true });
     if (result.changed) {
       updateSessionMetadata(contextSession.contextKey, contextSession.session);
     }
@@ -5622,13 +5684,13 @@ function authHelpText(info: AgentSessionInfo): string {
     return "Configure the required Pi provider environment variable on the host.";
   }
   if (agentId === "hermes") {
-    return "Start the Hermes API Server and configure HERMES_API_KEY when the server requires one.";
+    return "Start the Hermes API Server, configure HERMES_API_KEY when required, or use /login to start Hermes CLI auth.";
   }
   if (agentId === "openclaw") {
     return "Start the OpenClaw Gateway and configure OPENCLAW_GATEWAY_TOKEN or OPENCLAW_GATEWAY_PASSWORD when the gateway requires one.";
   }
   if (agentId === "claude-code") {
-    return "Run 'claude auth login' on the host, or configure Claude Code provider credentials for the host CLI.";
+    return "Use /login to start Claude Code CLI auth, or run 'claude auth login' on the host.";
   }
   return "Use /login to start authentication, or set CODEX_API_KEY on the host.";
 }

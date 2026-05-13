@@ -406,7 +406,7 @@ export class PiSessionService implements AgentSessionService {
     return piProfileAsLaunchProfile(this.currentLaunchProfile);
   }
 
-  syncFromCodexState(options: { reattach?: boolean } = {}): AgentSyncResult {
+  syncFromAgentState(options: { reattach?: boolean } = {}): AgentSyncResult {
     const before = {
       threadId: this.currentThreadId,
       workspace: this.currentWorkspace,

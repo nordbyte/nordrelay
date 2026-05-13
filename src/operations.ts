@@ -99,6 +99,7 @@ const PI_PACKAGE_NAME = "@mariozechner/pi-coding-agent";
 const HERMES_PACKAGE_NAME = "hermes-agent";
 const OPENCLAW_PACKAGE_NAME = "openclaw";
 const CLAUDE_CODE_PACKAGE_NAME = "@anthropic-ai/claude-code";
+const CLAUDE_CODE_SDK_PACKAGE_NAME = "@anthropic-ai/claude-agent-sdk";
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 const SECRET_RE = /(bot|token|api[_-]?key|authorization|bearer|password|secret)(["'=: ]+)([^\s"',]+)/gi;
 const DEFAULT_VERSION_CACHE_TTL_MS = 60 * 60 * 1000;
@@ -187,7 +188,8 @@ export async function getVersionChecks(options: { piCliPath?: string; hermesCliP
   const openClawVersionLabel = openClawCli.path ? detectCliVersion(openClawCli.path) : "not installed";
   const claudeCodeVersionLabel = claudeCodeCli.path
     ? detectCliVersion(claudeCodeCli.path)
-    : readInstalledPackageVersion("@anthropic-ai/claude-agent-sdk") ?? "bundled";
+    : readInstalledPackageVersion(CLAUDE_CODE_SDK_PACKAGE_NAME) ?? "bundled";
+  const claudeCodePackageName = claudeCodeCli.path ? CLAUDE_CODE_PACKAGE_NAME : CLAUDE_CODE_SDK_PACKAGE_NAME;
 
   return {
     nordrelay: buildVersionCheck({
@@ -210,29 +212,20 @@ export async function getVersionChecks(options: { piCliPath?: string; hermesCliP
       installedVersion: extractVersion(piVersionLabel),
       notInstalled: piVersionLabel === "not installed",
     }),
-    hermes: buildVersionCheck({
-      label: "Hermes",
-      packageName: HERMES_PACKAGE_NAME,
-      installedLabel: hermesVersionLabel,
-      installedVersion: extractVersion(hermesVersionLabel),
-      notInstalled: hermesVersionLabel === "not installed",
-      skipLatest: true,
-    }),
+    hermes: buildHermesVersionCheck(hermesVersionLabel),
     openclaw: buildVersionCheck({
       label: "OpenClaw",
       packageName: OPENCLAW_PACKAGE_NAME,
       installedLabel: openClawVersionLabel,
       installedVersion: extractVersion(openClawVersionLabel),
       notInstalled: openClawVersionLabel === "not installed",
-      skipLatest: true,
     }),
     claudeCode: buildVersionCheck({
       label: "Claude Code",
-      packageName: CLAUDE_CODE_PACKAGE_NAME,
+      packageName: claudeCodePackageName,
       installedLabel: claudeCodeVersionLabel,
       installedVersion: extractVersion(claudeCodeVersionLabel),
       notInstalled: claudeCodeVersionLabel === "not installed",
-      skipLatest: true,
     }),
   };
 }
@@ -269,7 +262,7 @@ export async function getConnectorHealth(options: { piCliPath?: string; hermesCl
     claudeCodeCliPath: claudeCodeCli.path ?? null,
     claudeCodeCliVersion: claudeCodeCli.path
       ? detectCliVersion(claudeCodeCli.path)
-      : readInstalledPackageVersion("@anthropic-ai/claude-agent-sdk") ?? "bundled",
+      : readInstalledPackageVersion(CLAUDE_CODE_SDK_PACKAGE_NAME) ?? "bundled",
     stateFile: getConnectorStatePath(),
     logFile: getConnectorLogPath(),
     databasePath: findLatestDatabase(),
@@ -407,6 +400,33 @@ function detectCliVersion(commandPath: string | undefined): string {
     return output ? `unavailable (${output})` : `unavailable (exit ${result.status ?? "unknown"})`;
   }
   return output || "unknown";
+}
+
+function buildHermesVersionCheck(installedLabel: string): VersionCheck {
+  if (installedLabel === "not installed") {
+    return {
+      label: "Hermes",
+      packageName: HERMES_PACKAGE_NAME,
+      installedLabel: "not installed",
+      installedVersion: null,
+      latestVersion: null,
+      status: "not-installed",
+    };
+  }
+
+  const lines = installedLabel.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const versionLine = lines[0] ?? installedLabel;
+  const updateLine = lines.find((line) => /^Update available:/i.test(line));
+  const installedVersion = extractVersion(versionLine);
+  return {
+    label: "Hermes",
+    packageName: HERMES_PACKAGE_NAME,
+    installedLabel: versionLine,
+    installedVersion,
+    latestVersion: updateLine?.replace(/^Update available:\s*/i, "") ?? null,
+    status: updateLine ? "outdated" : installedVersion ? "current" : "unknown",
+    detail: updateLine ?? (installedVersion ? undefined : "Could not parse Hermes version or update status"),
+  };
 }
 
 function buildVersionCheck(options: {

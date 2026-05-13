@@ -181,7 +181,7 @@ describe("SessionRegistry", () => {
       getInfo: vi.fn(() => ({ ...currentInfo })),
       dispose: vi.fn(),
       isProcessing: vi.fn(() => false),
-      syncFromCodexState: vi.fn(() => ({
+      syncFromAgentState: vi.fn(() => ({
         threadId: currentInfo.threadId,
         changed: false,
         reattached: false,
@@ -472,7 +472,7 @@ describe("SessionRegistry", () => {
   it("syncs loaded sessions from Codex state and updates changed metadata", async () => {
     const registry = new SessionRegistry(createConfig());
     const session = (await registry.getOrCreate("123")) as any;
-    session.syncFromCodexState.mockReturnValueOnce({
+    session.syncFromAgentState.mockReturnValueOnce({
       threadId: "thread-synced",
       changed: true,
       reattached: true,
@@ -492,10 +492,10 @@ describe("SessionRegistry", () => {
     });
     session.setInfo({ threadId: "thread-synced", model: "gpt-5.5" });
 
-    const results = registry.syncAllFromCodexState({ reattach: true });
+    const results = registry.syncAllFromAgentState({ reattach: true });
 
     expect(results).toHaveLength(1);
-    expect(session.syncFromCodexState).toHaveBeenCalledWith({ reattach: true });
+    expect(session.syncFromAgentState).toHaveBeenCalledWith({ reattach: true });
     expect(registry.listContexts()[0]).toEqual(expect.objectContaining({
       threadId: "thread-synced",
       model: "gpt-5.5",

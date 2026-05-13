@@ -175,13 +175,13 @@ export class SessionRegistry {
     return [...this.metadata.values()].sort((left, right) => right.updatedAt - left.updatedAt);
   }
 
-  syncAllFromCodexState(options: { reattach?: boolean } = {}): Array<{ contextKey: TelegramContextKey; result: AgentSyncResult }> {
+  syncAllFromAgentState(options: { reattach?: boolean } = {}): Array<{ contextKey: TelegramContextKey; result: AgentSyncResult }> {
     const results: Array<{ contextKey: TelegramContextKey; result: AgentSyncResult }> = [];
     for (const [contextKey, session] of this.sessions.entries()) {
       if (!(session.getInfo().capabilities ?? CODEX_AGENT_CAPABILITIES).externalActivity) {
         continue;
       }
-      const result = session.syncFromCodexState(options);
+      const result = session.syncFromAgentState(options);
       if (result.changed) {
         this.updateMetadata(contextKey, session);
       }

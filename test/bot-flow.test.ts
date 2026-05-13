@@ -245,7 +245,7 @@ function createFakeRegistry() {
       unsafeLaunch: false,
     })),
     getActiveThreadId: vi.fn(() => "thread-1"),
-    syncFromCodexState: vi.fn(() => ({
+    syncFromAgentState: vi.fn(() => ({
       threadId: "thread-1",
       changed: true,
       reattached: true,
@@ -272,7 +272,7 @@ function createFakeRegistry() {
       updateMetadata: vi.fn(),
       listPinnedThreadIds: vi.fn(() => []),
       listContexts: vi.fn(() => []),
-      syncAllFromCodexState: vi.fn(() => []),
+      syncAllFromAgentState: vi.fn(() => []),
     },
   };
 }
@@ -512,7 +512,7 @@ describe("bot flow integration", () => {
 
     await bot.handleUpdate(messageUpdate("/sync") as any);
 
-    expect(session.syncFromCodexState).toHaveBeenCalledWith({ reattach: true });
+    expect(session.syncFromAgentState).toHaveBeenCalledWith({ reattach: true });
     expect(registry.updateMetadata).toHaveBeenCalled();
     expect(api.sentMessages.at(-1)?.text).toContain("Synced from Codex state.");
   });

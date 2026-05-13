@@ -167,8 +167,8 @@ Authentication and safety:
 - `TELEGRAM_READONLY_USER_IDS` can inspect status and sessions but cannot send prompts or run mutating commands by default.
 - `TELEGRAM_ROLE_POLICIES_JSON` can override role permissions for `admin`, `operator`, and `readonly`.
 - `/auth` reports Codex authentication, Pi provider environment health, Hermes API Server reachability, OpenClaw Gateway reachability, or Claude Code CLI auth for the selected agent.
-- `/login` starts Codex CLI device auth from Telegram when enabled.
-- `/logout` signs out of CLI auth when not using `CODEX_API_KEY`.
+- `/login` starts Telegram-managed CLI auth for Codex, Hermes, or Claude Code when enabled.
+- `/logout` signs out of CLI auth for Codex, Hermes, or Claude Code; Codex logout is disabled while `CODEX_API_KEY` is in use.
 - `CODEX_API_KEY` can be used for host-side Codex authentication.
 - Friendly error messages are returned for auth, network, model, rate-limit, timeout, and context-length failures.
 - Outgoing Telegram messages and logs redact common token/API-key patterns, with optional custom redaction patterns.
@@ -283,6 +283,7 @@ Hermes setup:
 - Keep `NORDRELAY_DEFAULT_AGENT=codex` to start chats in Codex, or set `NORDRELAY_DEFAULT_AGENT=hermes` to start chats in Hermes.
 - Set `HERMES_API_BASE_URL` if the API Server is not listening on `http://127.0.0.1:8642`.
 - Set `HERMES_API_KEY` when the Hermes API Server is protected with `API_SERVER_KEY`.
+- Optional: use `/login` or run `hermes login --no-browser` on the host to refresh Hermes provider credentials.
 - Optional: set `HERMES_STATE_DB_PATH` if your Hermes session database is not stored at `~/.hermes/state.db`.
 - Optional: set `HERMES_DEFAULT_MODEL`, `HERMES_DEFAULT_REASONING`, and `HERMES_DEFAULT_PROFILE`.
 
@@ -301,7 +302,7 @@ OpenClaw setup:
 Claude Code setup:
 
 - Install Claude Code and confirm `claude --help` works on the host, or use the SDK bundled runtime.
-- Run `claude auth login` on the host when your Claude Code installation requires local auth.
+- Use `/login` or run `claude auth login` on the host when your Claude Code installation requires local auth.
 - Set `NORDRELAY_CLAUDE_CODE_ENABLED=true` in `~/.nordrelay/nordrelay.env`.
 - Keep `NORDRELAY_DEFAULT_AGENT=codex` to start chats in Codex, or set `NORDRELAY_DEFAULT_AGENT=claude-code` to start chats in Claude Code.
 - Optional: set `CLAUDE_CODE_CLI_PATH` if `claude` is not on `PATH`.
@@ -479,8 +480,8 @@ Run NordRelay behind your reverse proxy so the public URL forwards to `http://12
 - `/notify [off|minimal|all]` controls Telegram notifications.
 - `/notify quiet HH-HH` sets quiet hours; `/notify quiet off` disables them.
 - `/auth` reports Codex authentication status, Pi provider environment health, Hermes API Server reachability, OpenClaw Gateway reachability, or Claude Code CLI auth for the selected agent.
-- `/login` starts Telegram-initiated Codex CLI login when Codex is selected.
-- `/logout` signs out from Codex CLI auth unless `CODEX_API_KEY` is active.
+- `/login` starts Telegram-initiated CLI login for Codex, Hermes, or Claude Code when one of those agents is selected.
+- `/logout` signs out from CLI auth for Codex, Hermes, or Claude Code when one of those agents is selected; Codex logout is disabled while `CODEX_API_KEY` is active.
 - `/voice` reports voice transcription backends and current voice preferences.
 - `/voice backend auto|parakeet|faster-whisper|openai` selects backend preference.
 - `/voice language auto|<code>` selects transcription language.

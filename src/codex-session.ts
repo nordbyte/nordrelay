@@ -484,7 +484,7 @@ export class CodexSessionService {
     return this.currentLaunchProfile;
   }
 
-  syncFromCodexState(options: { reattach?: boolean } = {}): CodexSyncResult {
+  syncFromAgentState(options: { reattach?: boolean } = {}): CodexSyncResult {
     const activeThreadId = this.thread?.id ?? this.currentThreadId;
     const before = {
       workspace: this.currentWorkspace,

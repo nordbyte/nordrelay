@@ -42,6 +42,7 @@ import {
 } from "./agent-activity.js";
 import { createAgentSessionService, enabledAgents } from "./agent-factory.js";
 import { checkAuthStatus } from "./codex-auth.js";
+import { checkClaudeCodeAuthStatus } from "./claude-code-auth.js";
 import type { ConnectorConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { checkHermesAuthStatus } from "./hermes-auth.js";
@@ -917,6 +918,9 @@ export class RelayRuntime {
         token: this.config.openClawGatewayToken,
         password: this.config.openClawGatewayPassword,
       });
+    }
+    if (info.agentId === "claude-code") {
+      return checkClaudeCodeAuthStatus(this.config.claudeCodeCliPath);
     }
     return checkAuthStatus(this.config.codexApiKey);
   }
