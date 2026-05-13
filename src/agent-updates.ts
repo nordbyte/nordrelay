@@ -9,10 +9,11 @@ import { resolveClaudeCodeCli } from "./claude-code-cli.js";
 import { resolveCodexCli } from "./codex-cli.js";
 import { resolveHermesCli } from "./hermes-cli.js";
 import { resolveOpenClawCli } from "./openclaw-cli.js";
-import { getAgentUpdateLogPath, getConnectorHome } from "./operations.js";
+import { getAgentUpdateLogPath, getConnectorHome, resolveNpmSpawnCommand } from "./operations.js";
 import { resolvePiCli } from "./pi-cli.js";
 import { redactText } from "./redaction.js";
 
+export type AgentUpdateOperation = "update" | "install";
 export type AgentUpdateStatus = "running" | "completed" | "failed" | "cancelled";
 
 export interface AgentUpdateContext {
@@ -26,6 +27,7 @@ export interface AgentUpdateContext {
 export interface AgentUpdatePlan {
   agentId: AgentId;
   agentLabel: string;
+  operation: AgentUpdateOperation;
   method: string;
   command: string;
   args: string[];
@@ -38,6 +40,7 @@ export interface AgentUpdateJobSnapshot {
   id: string;
   agentId: AgentId;
   agentLabel: string;
+  operation: AgentUpdateOperation;
   status: AgentUpdateStatus;
   method: string;
   command: string;
@@ -63,6 +66,14 @@ interface AgentUpdateJob extends AgentUpdateJobSnapshot {
   child?: ChildProcessWithoutNullStreams;
   output: string;
 }
+
+const AGENT_INSTALL_PACKAGES: Record<AgentId, string> = {
+  codex: "@openai/codex",
+  pi: "@earendil-works/pi-coding-agent",
+  hermes: "hermes-agent",
+  openclaw: "openclaw",
+  "claude-code": "@anthropic-ai/claude-code",
+};
 
 export class AgentUpdateManager {
   private readonly jobs = new Map<string, AgentUpdateJob>();
@@ -121,13 +132,13 @@ export class AgentUpdateManager {
     return snapshot;
   }
 
-  start(agentId: AgentId, context: AgentUpdateContext = {}): AgentUpdateJobSnapshot {
+  start(agentId: AgentId, context: AgentUpdateContext = {}, operation: AgentUpdateOperation = "update"): AgentUpdateJobSnapshot {
     const running = [...this.jobs.values()].find((job) => job.agentId === agentId && job.status === "running");
     if (running) {
-      throw new Error(`${agentLabel(agentId)} update is already running.`);
+      throw new Error(`${agentLabel(agentId)} update/install job is already running.`);
     }
 
-    const plan = resolveAgentUpdatePlan(agentId, { ...context, env: context.env ?? this.options.env });
+    const plan = resolveAgentUpdatePlan(agentId, { ...context, env: context.env ?? this.options.env }, operation);
     const now = new Date().toISOString();
     const id = `${agentId.replace(/[^a-z0-9]/gi, "")}-${Date.now().toString(36)}`;
     const logPath = path.join(this.home, "updates", `${id}.log`);
@@ -136,6 +147,7 @@ export class AgentUpdateManager {
       id,
       agentId,
       agentLabel: plan.agentLabel,
+      operation,
       status: "running",
       method: plan.method,
       command: plan.command,
@@ -155,7 +167,7 @@ export class AgentUpdateManager {
     this.jobs.set(id, job);
     this.persistJobs();
     this.append(job, [
-      `[${now}] Starting ${job.agentLabel} update`,
+      `[${now}] Starting ${job.agentLabel} ${job.operation}`,
       `Method: ${job.method}`,
       `Command: ${[job.command, ...job.args].join(" ")}`,
       `Working directory: ${job.cwd}`,
@@ -181,7 +193,7 @@ export class AgentUpdateManager {
       if (job.status !== "running") {
         return;
       }
-      this.finish(job, code === 0 ? "completed" : "failed", code, signal, code === 0 ? undefined : `Update exited with code ${code ?? "unknown"}`);
+      this.finish(job, code === 0 ? "completed" : "failed", code, signal, code === 0 ? undefined : `${capitalize(job.operation)} exited with code ${code ?? "unknown"}`);
     });
 
     this.emit(job);
@@ -251,7 +263,7 @@ export class AgentUpdateManager {
     job.finishedAt = new Date().toISOString();
     job.updatedAt = job.finishedAt;
     job.child = undefined;
-    this.append(job, `\n[${job.finishedAt}] ${job.agentLabel} update ${status}${error ? `: ${job.error}` : ""}\n`);
+    this.append(job, `\n[${job.finishedAt}] ${job.agentLabel} ${job.operation} ${status}${error ? `: ${job.error}` : ""}\n`);
   }
 
   private emit(job: AgentUpdateJob): void {
@@ -281,6 +293,7 @@ export class AgentUpdateManager {
         }
         const job: AgentUpdateJob = {
           ...snapshot,
+          operation: snapshot.operation ?? "update",
           status: staleRunning ? "failed" : snapshot.status,
           canInput: false,
           needsInput: false,
@@ -332,7 +345,11 @@ function isProcessRunning(pid: unknown): boolean {
   }
 }
 
-export function resolveAgentUpdatePlan(agentId: AgentId, context: AgentUpdateContext = {}): AgentUpdatePlan {
+export function resolveAgentUpdatePlan(agentId: AgentId, context: AgentUpdateContext = {}, operation: AgentUpdateOperation = "update"): AgentUpdatePlan {
+  if (operation === "install") {
+    return resolveAgentInstallPlan(agentId, context);
+  }
+
   const env = context.env ?? process.env;
   switch (agentId) {
     case "codex": {
@@ -373,10 +390,32 @@ export function resolveAgentUpdatePlan(agentId: AgentId, context: AgentUpdateCon
   }
 }
 
+function resolveAgentInstallPlan(agentId: AgentId, context: AgentUpdateContext = {}): AgentUpdatePlan {
+  const env = context.env ?? process.env;
+  const npm = resolveNpmSpawnCommand(env);
+  if (!npm) {
+    throw new Error(`Cannot install ${agentLabel(agentId)} because npm was not found on PATH.`);
+  }
+
+  const packageName = AGENT_INSTALL_PACKAGES[agentId];
+  return {
+    agentId,
+    agentLabel: agentLabel(agentId),
+    operation: "install",
+    method: `npm install -g ${packageName}@latest`,
+    command: npm.command,
+    args: [...npm.argsPrefix, "install", "-g", `${packageName}@latest`],
+    cwd: env.HOME || os.homedir(),
+    summary: `Installs the latest ${agentLabel(agentId)} CLI with npm. Restart NordRelay after installation if the agent was previously unavailable.`,
+    interactive: true,
+  };
+}
+
 function plan(agentId: AgentId, method: string, command: string, args: string[], summary: string, env: NodeJS.ProcessEnv): AgentUpdatePlan {
   return {
     agentId,
     agentLabel: agentLabel(agentId),
+    operation: "update",
     method,
     command,
     args,
@@ -389,4 +428,8 @@ function plan(agentId: AgentId, method: string, command: string, args: string[],
 function looksLikePrompt(text: string): boolean {
   const tail = text.split(/\r?\n/).slice(-4).join("\n");
   return /\b(y\/n|yes\/no|continue|proceed|confirm|password|passphrase|token|api key|enter|select)\b|[?>]\s*$/i.test(tail);
+}
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }

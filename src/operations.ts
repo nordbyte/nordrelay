@@ -4,7 +4,7 @@ import { readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { describeCodexCli, resolveCodexCli } from "./codex-cli.js";
+import { describeCodexCli, findExecutableOnPath, resolveCodexCli } from "./codex-cli.js";
 import { findLatestDatabase } from "./codex-state.js";
 import { describeClaudeCodeCli, resolveClaudeCodeCli } from "./claude-code-cli.js";
 import { describeHermesCli, resolveHermesCli } from "./hermes-cli.js";
@@ -98,6 +98,13 @@ export interface FormattedLogTail {
 export interface ClearLogResult {
   filePath: string;
   clearedAt: Date;
+}
+
+export interface NpmSpawnCommand {
+  command: string;
+  argsPrefix: string[];
+  display: string;
+  shell: boolean;
 }
 
 const APP_NAME = "nordrelay";
@@ -413,9 +420,9 @@ function buildNpmSelfUpdateCommands(): string[] {
 }
 
 function resolveNpmCommand(): string {
-  const npmExecPath = process.env.npm_execpath;
-  if (npmExecPath && existsSync(npmExecPath)) {
-    return `${shellQuote(process.execPath)} ${shellQuote(npmExecPath)}`;
+  const npm = resolveNpmSpawnCommand();
+  if (npm) {
+    return [npm.command, ...npm.argsPrefix].map(shellQuote).join(" ");
   }
   return "npm";
 }
@@ -427,6 +434,7 @@ function detectCliVersion(commandPath: string | undefined): string {
 
   const result = spawnSync(commandPath, ["--version"], {
     encoding: "utf8",
+    shell: isWindowsShellScript(commandPath),
     timeout: 3000,
     windowsHide: true,
   });
@@ -443,13 +451,15 @@ function detectCliVersion(commandPath: string | undefined): string {
 
 function buildHermesVersionCheck(installedLabel: string): VersionCheck {
   if (installedLabel === "not installed") {
+    const latest = detectLatestNpmVersion(HERMES_PACKAGE_NAME);
     return {
       label: "Hermes",
       packageName: HERMES_PACKAGE_NAME,
       installedLabel: "not installed",
       installedVersion: null,
-      latestVersion: null,
+      latestVersion: latest.version,
       status: "not-installed",
+      detail: latest.error,
     };
   }
 
@@ -478,14 +488,15 @@ function buildVersionCheck(options: {
   detail?: string;
 }): VersionCheck {
   if (options.notInstalled) {
+    const latest = options.skipLatest ? { version: null, error: undefined } : detectLatestNpmVersion(options.packageName);
     return {
       label: options.label,
       packageName: options.packageName,
       installedLabel: "not installed",
       installedVersion: null,
-      latestVersion: null,
+      latestVersion: latest.version,
       status: "not-installed",
-      detail: options.detail,
+      detail: [options.detail, latest.error].filter(Boolean).join(" ") || undefined,
     };
   }
 
@@ -531,14 +542,20 @@ function detectLatestNpmVersion(packageName: string): { version: string | null; 
     return cached;
   }
 
-  const result = spawnSync("npm", ["view", packageName, "version", "--registry=https://registry.npmjs.org"], {
+  const npm = resolveNpmSpawnCommand();
+  if (!npm) {
+    return { version: null, error: "npm was not found on PATH; latest-version lookup is unavailable" };
+  }
+
+  const result = spawnSync(npm.command, [...npm.argsPrefix, "view", packageName, "version", "--registry=https://registry.npmjs.org"], {
     encoding: "utf8",
+    shell: npm.shell,
     timeout: 5000,
     windowsHide: true,
   });
   const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
   if (result.error) {
-    return { version: null, error: result.error.message };
+    return { version: null, error: `${npm.display}: ${result.error.message}` };
   }
   if (result.status !== 0) {
     return { version: null, error: output || `npm exited ${result.status ?? "unknown"}` };
@@ -546,6 +563,57 @@ function detectLatestNpmVersion(packageName: string): { version: string | null; 
   const resolved = { version: output.split(/\r?\n/).at(-1)?.trim() || null };
   writeVersionCache(packageName, resolved.version);
   return resolved;
+}
+
+export function resolveNpmSpawnCommand(env: NodeJS.ProcessEnv = process.env): NpmSpawnCommand | null {
+  const npmExecPath = env.npm_execpath?.trim();
+  if (npmExecPath && existsSync(npmExecPath)) {
+    return {
+      command: process.execPath,
+      argsPrefix: [npmExecPath],
+      display: `${process.execPath} ${npmExecPath}`,
+      shell: false,
+    };
+  }
+
+  const pathMatch = findExecutableOnPath("npm", env.PATH);
+  if (pathMatch) {
+    return {
+      command: pathMatch,
+      argsPrefix: [],
+      display: pathMatch,
+      shell: isWindowsShellScript(pathMatch),
+    };
+  }
+
+  for (const candidate of commonNpmCandidates(env)) {
+    if (!existsSync(candidate)) {
+      continue;
+    }
+    return {
+      command: candidate,
+      argsPrefix: [],
+      display: candidate,
+      shell: isWindowsShellScript(candidate),
+    };
+  }
+
+  return null;
+}
+
+function commonNpmCandidates(env: NodeJS.ProcessEnv): string[] {
+  const names = process.platform === "win32" ? ["npm.cmd", "npm.bat", "npm"] : ["npm"];
+  const directories = [
+    path.dirname(process.execPath),
+    env.APPDATA ? path.join(env.APPDATA, "npm") : undefined,
+    env.ProgramFiles ? path.join(env.ProgramFiles, "nodejs") : undefined,
+    env["ProgramFiles(x86)"] ? path.join(env["ProgramFiles(x86)"], "nodejs") : undefined,
+  ].filter((value): value is string => Boolean(value));
+  return directories.flatMap((directory) => names.map((name) => path.join(directory, name)));
+}
+
+function isWindowsShellScript(filePath: string): boolean {
+  return process.platform === "win32" && /\.(?:cmd|bat)$/i.test(filePath);
 }
 
 function readVersionCache(packageName: string): { version: string | null; error?: string } | null {

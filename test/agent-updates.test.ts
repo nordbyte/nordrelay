@@ -46,6 +46,18 @@ describe("agent updates", () => {
     });
   });
 
+  it("resolves npm-based agent install commands", () => {
+    const dir = createTempDir();
+    const npmCli = path.join(dir, "npm-cli.js");
+    writeFileSync(npmCli, "process.exit(0);\n");
+
+    expect(resolveAgentUpdatePlan("pi", { env: { ...process.env, npm_execpath: npmCli } }, "install")).toMatchObject({
+      method: "npm install -g @earendil-works/pi-coding-agent@latest",
+      command: process.execPath,
+      args: [npmCli, "install", "-g", "@earendil-works/pi-coding-agent@latest"],
+    });
+  });
+
   it("runs update jobs, accepts input, and redacts output logs", async () => {
     const dir = createTempDir();
     const bin = path.join(dir, "codex");
@@ -96,6 +108,31 @@ describe("agent updates", () => {
     const afterDeleteReload = new AgentUpdateManager({ home: dir });
     expect(afterDeleteReload.get(started.id)).toBeNull();
     expect(afterDeleteReload.list().some((job) => job.id === started.id)).toBe(false);
+  });
+
+  it("runs install jobs through npm and persists the operation", async () => {
+    const dir = createTempDir();
+    const npmCli = path.join(dir, "npm-cli.js");
+    writeFileSync(npmCli, [
+      "process.stdout.write('npm args: ' + process.argv.slice(2).join(' ') + '\\n');",
+      "setTimeout(() => process.exit(0), 10);",
+    ].join("\n"));
+
+    const manager = new AgentUpdateManager({
+      home: dir,
+      env: { ...process.env, npm_execpath: npmCli },
+    });
+    const started = manager.start("pi", {}, "install");
+
+    await waitFor(() => manager.get(started.id)?.status === "completed");
+
+    const finished = manager.get(started.id);
+    expect(finished).toMatchObject({
+      operation: "install",
+      status: "completed",
+      method: "npm install -g @earendil-works/pi-coding-agent@latest",
+    });
+    expect(finished?.outputTail).toContain("npm args: install -g @earendil-works/pi-coding-agent@latest");
   });
 });
 

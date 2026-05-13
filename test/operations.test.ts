@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { clearLogFile, detectSelfUpdateMethod, readFormattedLogTail } from "../src/operations.js";
+import { clearLogFile, detectSelfUpdateMethod, readFormattedLogTail, resolveNpmSpawnCommand } from "../src/operations.js";
 
 const tempDirs: string[] = [];
 
@@ -58,6 +58,18 @@ describe("operations", () => {
 
     process.env = { ...originalEnv, NORDRELAY_UPDATE_METHOD: "npm" };
     expect(detectSelfUpdateMethod(gitRoot)).toBe("npm");
+  });
+
+  it("resolves npm through npm_execpath for Windows-safe spawned commands", () => {
+    const dir = createTempDir();
+    const npmCli = path.join(dir, "npm-cli.js");
+    writeFileSync(npmCli, "process.exit(0);\n");
+
+    expect(resolveNpmSpawnCommand({ ...process.env, npm_execpath: npmCli })).toMatchObject({
+      command: process.execPath,
+      argsPrefix: [npmCli],
+      shell: false,
+    });
   });
 
   it("clears log files", () => {

@@ -73,13 +73,13 @@ export function renderAgentUpdatePickerAction(descriptors: AgentAdapterDescripto
       "Agent updates:",
       ...available.map((descriptor) => `${descriptor.label}: /update ${descriptor.id}`),
       "",
-      "Use /update jobs to list running and recent agent updates.",
+      "Use /update install <agent> for missing CLIs and /update jobs to list running and recent agent updates.",
     ].join("\n"),
     html: [
       "<b>Agent updates:</b>",
       ...available.map((descriptor) => `<b>${escapeHTML(descriptor.label)}:</b> <code>/update ${escapeHTML(descriptor.id)}</code>`),
       "",
-      "Use <code>/update jobs</code> to list running and recent agent updates.",
+      "Use <code>/update install &lt;agent&gt;</code> for missing CLIs and <code>/update jobs</code> to list running and recent agent updates.",
     ].join("\n"),
     buttons,
   };
@@ -109,13 +109,13 @@ export function renderAgentUpdateJobsAction(jobs: AgentUpdateJobSnapshot[]): Cha
   return {
     plain: [
       "Agent update jobs:",
-      ...limited.map((job) => `${job.id}: ${job.agentLabel} · ${job.status} · ${formatLocalDateTime(new Date(job.updatedAt))}`),
+      ...limited.map((job) => `${job.id}: ${job.agentLabel} ${job.operation ?? "update"} · ${job.status} · ${formatLocalDateTime(new Date(job.updatedAt))}`),
       "",
       "Use /update log <id>, /update cancel <id>, or /update input <id> <text>.",
     ].join("\n"),
     html: [
       "<b>Agent update jobs:</b>",
-      ...limited.map((job) => `<code>${escapeHTML(job.id)}</code> ${escapeHTML(job.agentLabel)} · <b>${escapeHTML(job.status)}</b> · <code>${escapeHTML(formatLocalDateTime(new Date(job.updatedAt)))}</code>`),
+      ...limited.map((job) => `<code>${escapeHTML(job.id)}</code> ${escapeHTML(job.agentLabel)} ${escapeHTML(job.operation ?? "update")} · <b>${escapeHTML(job.status)}</b> · <code>${escapeHTML(formatLocalDateTime(new Date(job.updatedAt)))}</code>`),
       "",
       "Use <code>/update log &lt;id&gt;</code>, <code>/update cancel &lt;id&gt;</code>, or <code>/update input &lt;id&gt; &lt;text&gt;</code>.",
     ].join("\n"),
@@ -130,7 +130,7 @@ export function renderAgentUpdateJobAction(job: AgentUpdateJobSnapshot): Channel
   const tail = trimLine(job.outputTail || "(waiting for output)", 1200);
   return {
     plain: [
-      `${job.agentLabel} update ${job.status}.`,
+      `${job.agentLabel} ${job.operation ?? "update"} ${job.status}.`,
       `ID: ${job.id}`,
       `Method: ${job.method}`,
       `Command: ${command}`,
@@ -144,7 +144,7 @@ export function renderAgentUpdateJobAction(job: AgentUpdateJobSnapshot): Channel
       tail,
     ].filter(Boolean).join("\n"),
     html: [
-      `<b>${escapeHTML(job.agentLabel)} update ${escapeHTML(job.status)}.</b>`,
+      `<b>${escapeHTML(job.agentLabel)} ${escapeHTML(job.operation ?? "update")} ${escapeHTML(job.status)}.</b>`,
       `<b>ID:</b> <code>${escapeHTML(job.id)}</code>`,
       `<b>Method:</b> <code>${escapeHTML(job.method)}</code>`,
       `<b>Command:</b> <code>${escapeHTML(command)}</code>`,
@@ -170,7 +170,7 @@ export function renderAgentUpdateLogAction(result: { job: AgentUpdateJobSnapshot
   const tail = trimLine(result.plain || "(empty)", 3000);
   return {
     plain: [
-      `${result.job.agentLabel} update log`,
+      `${result.job.agentLabel} ${result.job.operation ?? "update"} log`,
       `ID: ${result.job.id}`,
       `Status: ${result.job.status}`,
       `File: ${result.job.logPath}`,
@@ -178,7 +178,7 @@ export function renderAgentUpdateLogAction(result: { job: AgentUpdateJobSnapshot
       tail,
     ].join("\n"),
     html: [
-      `<b>${escapeHTML(result.job.agentLabel)} update log</b>`,
+      `<b>${escapeHTML(result.job.agentLabel)} ${escapeHTML(result.job.operation ?? "update")} log</b>`,
       `<b>ID:</b> <code>${escapeHTML(result.job.id)}</code>`,
       `<b>Status:</b> <code>${escapeHTML(result.job.status)}</code>`,
       `<b>File:</b> <code>${escapeHTML(result.job.logPath)}</code>`,

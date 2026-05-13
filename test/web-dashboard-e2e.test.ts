@@ -27,6 +27,8 @@ describe("web dashboard browser-flow assets", () => {
     const js = dashboardJs();
 
     expect(js).toContain("data-update-agent");
+    expect(js).toContain("data-update-operation");
+    expect(js).toContain("Install");
     expect(js).toContain("data-update-delete-log");
     expect(js).toContain("Delete Log");
     expect(js).not.toContain("data-update-log");

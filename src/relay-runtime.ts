@@ -41,7 +41,7 @@ import {
   getExternalSnapshotForSession,
 } from "./agent-activity.js";
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
-import { AgentUpdateManager, type AgentUpdateJobSnapshot } from "./agent-updates.js";
+import { AgentUpdateManager, type AgentUpdateJobSnapshot, type AgentUpdateOperation } from "./agent-updates.js";
 import { createAgentSessionService, enabledAgents } from "./agent-factory.js";
 import { AuditLogStore, type AuditEvent } from "./audit-log.js";
 import { checkAuthStatus, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
@@ -380,18 +380,18 @@ export class RelayRuntime {
     return this.agentUpdates.list();
   }
 
-  startAgentUpdate(agentId: AgentId): AgentUpdateJobSnapshot {
+  startAgentUpdate(agentId: AgentId, operation: AgentUpdateOperation = "update"): AgentUpdateJobSnapshot {
     const job = this.agentUpdates.start(agentId, {
       piCliPath: this.config.piCliPath,
       hermesCliPath: this.config.hermesCliPath,
       openClawCliPath: this.config.openClawCliPath,
       claudeCodeCliPath: this.config.claudeCodeCliPath,
-    });
-    this.broadcastStatus(`${job.agentLabel} update started. Log: ${job.logPath}`, "warn");
+    }, operation);
+    this.broadcastStatus(`${job.agentLabel} ${operation} started. Log: ${job.logPath}`, "warn");
     this.appendActivity({
       source: "web",
       status: "info",
-      type: "agent_update_started",
+      type: operation === "install" ? "agent_install_started" : "agent_update_started",
       agentId,
       threadId: null,
       workspace: this.config.workspace,
@@ -402,7 +402,7 @@ export class RelayRuntime {
       status: "ok",
       contextKey: WEB_CONTEXT_KEY,
       agentId,
-      description: `update ${agentId}`,
+      description: `${operation} ${agentId}`,
       detail: job.summary,
     });
     return job;

@@ -31,7 +31,7 @@ import {
   type ArtifactTurnReport,
 } from "./artifacts.js";
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
-import { AgentUpdateManager } from "./agent-updates.js";
+import { AgentUpdateManager, type AgentUpdateOperation } from "./agent-updates.js";
 import { AuditLogStore, type AuditEvent } from "./audit-log.js";
 import {
   formatSessionLabel,
@@ -502,9 +502,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     claudeCodeCliPath: config.claudeCodeCliPath,
   });
 
-  const startTelegramAgentUpdate = async (ctx: Context, agentId: AgentId): Promise<void> => {
+  const startTelegramAgentUpdate = async (ctx: Context, agentId: AgentId, operation: AgentUpdateOperation = "update"): Promise<void> => {
     try {
-      const job = agentUpdates.start(agentId, agentUpdateContext());
+      const job = agentUpdates.start(agentId, agentUpdateContext(), operation);
       const contextKey = contextKeyFromCtx(ctx);
       if (contextKey) {
         audit({
@@ -512,15 +512,16 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
           status: "ok",
           contextKey,
           agentId,
-          description: `update ${agentId}`,
+          description: `${operation} ${agentId}`,
           detail: job.summary,
         });
       }
       const rendered = renderAgentUpdateJobAction(job);
       await replyChannelAction(ctx, rendered);
     } catch (error) {
-      const message = `Failed to start ${agentLabel(agentId)} update: ${friendlyErrorText(error)}`;
-      await safeReply(ctx, `<b>Update failed:</b> ${escapeHTML(message)}`, { fallbackText: message });
+      const message = `Failed to start ${agentLabel(agentId)} ${operation}: ${friendlyErrorText(error)}`;
+      const label = operation === "install" ? "Install" : "Update";
+      await safeReply(ctx, `<b>${label} failed:</b> ${escapeHTML(message)}`, { fallbackText: message });
     }
   };
 

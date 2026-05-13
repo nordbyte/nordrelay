@@ -2,7 +2,7 @@ import type { Bot, Context } from "grammy";
 
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { agentLabel, type AgentId } from "./agent.js";
-import type { AgentUpdateManager } from "./agent-updates.js";
+import type { AgentUpdateManager, AgentUpdateOperation } from "./agent-updates.js";
 import {
   parseAgentUpdateId,
   renderAgentUpdateJobAction,
@@ -20,7 +20,7 @@ interface UpdateCommandDeps {
   bot: Bot<Context>;
   agentUpdates: AgentUpdateManager;
   replyChannelAction: (ctx: Context, rendered: ChannelActionResponse) => Promise<void>;
-  startTelegramAgentUpdate: (ctx: Context, agentId: AgentId) => Promise<void>;
+  startTelegramAgentUpdate: (ctx: Context, agentId: AgentId, operation?: AgentUpdateOperation) => Promise<void>;
 }
 
 export function registerTelegramUpdateCommands(deps: UpdateCommandDeps): void {
@@ -31,6 +31,11 @@ export function registerTelegramUpdateCommands(deps: UpdateCommandDeps): void {
     const argument = rawText.replace(/^\/update(?:@\w+)?\s*/i, "").trim();
     const tokens = argument.split(/\s+/).filter(Boolean);
     const subcommand = tokens[0]?.toLowerCase();
+    const installTarget = subcommand === "install" ? parseAgentUpdateId(tokens[1]) : null;
+    if (installTarget) {
+      await startTelegramAgentUpdate(ctx, installTarget, "install");
+      return;
+    }
 
     if (subcommand === "agents" || subcommand === "agent") {
       const rendered = renderAgentUpdatePickerAction(listAgentAdapterDescriptors());
@@ -71,7 +76,7 @@ export function registerTelegramUpdateCommands(deps: UpdateCommandDeps): void {
     }
 
     if (subcommand) {
-      const usage = "Unknown update target. Use /update, /update agents, /update jobs, /update <agent>, /update log <id>, /update cancel <id>, or /update input <id> <text>.";
+      const usage = "Unknown update target. Use /update, /update agents, /update jobs, /update <agent>, /update install <agent>, /update log <id>, /update cancel <id>, or /update input <id> <text>.";
       await safeReply(ctx, escapeHTML(usage), { fallbackText: usage });
       return;
     }

@@ -7,6 +7,7 @@ import { URL } from "node:url";
 import { enabledAgents } from "./agent-factory.js";
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { isAgentId } from "./agent.js";
+import type { AgentUpdateOperation } from "./agent-updates.js";
 import { AuditLogStore, type AuditEvent } from "./audit-log.js";
 import { listChannelDescriptors } from "./channel-adapter.js";
 import { ALL_PERMISSIONS, permissionForWebRequest } from "./access-control.js";
@@ -196,8 +197,9 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   if (req.method === "POST" && url.pathname === "/api/agent-update") {
     const body = await readJsonBody(req);
     const agentId = parseAgentIdRequired(stringField(body, "agentId"));
+    const operation = parseAgentUpdateOperation(optionalStringField(body, "operation"));
     assertScopedAgent(authUser, agentId);
-    sendJson(res, 202, { job: runtime.startAgentUpdate(agentId) });
+    sendJson(res, 202, { job: runtime.startAgentUpdate(agentId, operation) });
     return;
   }
 
@@ -1197,6 +1199,16 @@ function parseAgentIdRequired(value: string) {
     throw new Error(`Invalid agent: ${value}`);
   }
   return value;
+}
+
+function parseAgentUpdateOperation(value: string | undefined): AgentUpdateOperation {
+  if (!value || value === "update") {
+    return "update";
+  }
+  if (value === "install") {
+    return "install";
+  }
+  throw new Error(`Invalid agent update operation: ${value}`);
 }
 
 function parseLogTarget(value: string | undefined): "connector" | "update" | "agent-updates" {
