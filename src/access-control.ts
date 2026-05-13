@@ -1,3 +1,5 @@
+import { permissionForWebRequestFromContract } from "./web-api-contract.js";
+
 export type Permission =
   | "inspect"
   | "sessions.read"
@@ -192,61 +194,7 @@ export function permissionForCallbackData(callbackData: string | undefined): Per
 }
 
 export function permissionForWebRequest(method: string | undefined, pathname: string): Permission | null {
-  const verb = (method ?? "GET").toUpperCase();
-  if (pathname === "/api/bootstrap" || pathname === "/api/health" || pathname === "/api/snapshot" || pathname === "/api/tasks" || pathname === "/api/progress") {
-    return "inspect";
-  }
-  if (pathname === "/api/version" || pathname === "/api/adapters/health") {
-    return "inspect";
-  }
-  if (pathname === "/api/diagnostics") return "diagnostics.read";
-  if (pathname.startsWith("/api/users") || pathname.startsWith("/api/groups") || pathname.startsWith("/api/telegram-chats")) {
-    return verb === "GET" ? "users.read" : "users.write";
-  }
-  if (pathname === "/api/permissions" || pathname === "/api/audit") {
-    return pathname === "/api/audit" ? "audit.read" : "users.read";
-  }
-  if (pathname === "/api/control-options") {
-    return "settings.read";
-  }
-  if (pathname === "/api/settings") {
-    return verb === "GET" ? "settings.read" : "settings.write";
-  }
-  if (pathname === "/api/update" || pathname.startsWith("/api/agent-update")) {
-    return verb === "GET" ? "updates.run" : "updates.run";
-  }
-  if (pathname === "/api/logs" || pathname === "/api/logs/clear") {
-    return pathname === "/api/logs/clear" ? "logs.clear" : "logs.read";
-  }
-  if (pathname === "/api/runtime/restart") {
-    return "system.restart";
-  }
-  if (pathname.startsWith("/api/sessions") || pathname === "/api/agent" || pathname === "/api/sync" || pathname === "/api/handback" || pathname === "/api/locks") {
-    return verb === "GET" ? "sessions.read" : "sessions.write";
-  }
-  if (pathname.startsWith("/api/auth/")) {
-    return verb === "GET" ? "inspect" : "auth.manage";
-  }
-  if (pathname.startsWith("/api/models") || pathname.startsWith("/api/session/")) {
-    return verb === "GET" ? "settings.read" : "settings.write";
-  }
-  if (pathname === "/api/prompt" || pathname === "/api/prompt/upload" || pathname === "/api/retry" || pathname === "/api/queue") {
-    if (pathname === "/api/queue") return verb === "GET" ? "queue.read" : "queue.write";
-    return verb === "GET" ? "inspect" : "prompt.send";
-  }
-  if (pathname === "/api/abort" || pathname === "/api/stop") {
-    return "prompt.abort";
-  }
-  if (pathname.startsWith("/api/chat")) {
-    return verb === "GET" ? "sessions.read" : "sessions.write";
-  }
-  if (pathname.startsWith("/api/activity")) {
-    return "sessions.read";
-  }
-  if (pathname.startsWith("/api/artifacts")) {
-    return verb === "GET" ? "files.read" : "files.write";
-  }
-  return null;
+  return permissionForWebRequestFromContract(method, pathname);
 }
 
 export function isPermission(value: string): value is Permission {

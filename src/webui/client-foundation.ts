@@ -1,6 +1,6 @@
 export function dashboardClientFoundation(): string {
   return `
-const state = { snapshot:null, controls:null, newSessionControls:null, enabledAgents:[], settings:[], currentPage:'overview', settingsGroup:null, logsPlain:'', logTimer:null, toastTimer:null, cliStatusActive:false, selectedArtifactTurns:new Set(), mediaRecorder:null, recordedChunks:[], events:null, reconnectTimer:null, notifications:false, toolTooltipTimer:null, toolTooltipTarget:null, agentUpdateJobs:[], sessionsRequestId:0 };
+const state = { snapshot:null, controls:null, newSessionControls:null, enabledAgents:[], auth:null, permissions:[], settings:[], currentPage:'overview', settingsGroup:null, logsPlain:'', logTimer:null, toastTimer:null, cliStatusActive:false, selectedArtifactTurns:new Set(), mediaRecorder:null, recordedChunks:[], events:null, reconnectTimer:null, notifications:false, toolTooltipTimer:null, toolTooltipTarget:null, agentUpdateJobs:[], sessionsRequestId:0 };
 async function api(path, options={}) {
   const headers = { ...(options.body ? {'content-type':'application/json'} : {}), ...(options.headers||{}) };
   const res = await fetch(path, { ...options, headers });
@@ -22,6 +22,36 @@ function fmtBytes(n){if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixe
 function compactNum(n){if(!n)return'';if(n>=1000000000)return Math.round(n/100000000)/10+'B';if(n>=1000000)return Math.round(n/100000)/10+'M';if(n>=1000)return Math.round(n/100)/10+'K';return String(n)}
 function loadingHtml(label){return '<div class="loading-state"><span class="spinner"></span><span>'+esc(label||'Loading...')+'</span></div>'}
 function setLoading(id,label){const el=document.getElementById(id);if(el)el.innerHTML=loadingHtml(label)}
+function can(permission){return !permission || (state.permissions||[]).includes(permission)}
+function disabledAttr(permission){return can(permission)?'':' disabled title="Permission required: '+attr(permission)+'"'}
+function hiddenStyle(permission){return can(permission)?'':' style="display:none"'}
+function applyPermissions(){
+  document.querySelectorAll('[data-permission]').forEach(el=>{const allowed=can(el.dataset.permission);el.hidden=!allowed;el.disabled=!allowed});
+  const currentButton=document.querySelector('nav button[data-page="'+cssEscape(state.currentPage)+'"]');
+  if(currentButton&&currentButton.hidden){const first=[...document.querySelectorAll('nav button[data-page]')].find(b=>!b.hidden);if(first)page(first.dataset.page)}
+  const disableMap=[
+    ['#promptForm > button,#promptInput','prompt.send'],
+    ['#fileInput,#recordBtn,#clearFilesBtn','files.write'],
+    ['#newSessionBtn,#attachBtn,#createSessionBtn','sessions.write'],
+    ['#retryBtn','prompt.send'],
+    ['#syncBtn,#handbackBtn','sessions.write'],
+    ['#abortBtn','prompt.abort'],
+    ['#clearChatBtn','sessions.write'],
+    ['#saveSettingsBtn','settings.write'],
+    ['#restartBtn','system.restart'],
+    ['#updateBtn','updates.run'],
+    ['#clearLogsBtn','logs.clear'],
+    ['#createUserBtn,#createGroupBtn,#createChatBtn','users.write'],
+    ['#lockSessionBtn,#unlockSessionBtn','sessions.write'],
+    ['[data-switch]','sessions.write'],
+    ['[data-queue],[data-q]','queue.write'],
+    ['[data-del-art],#deleteSelectedArtifactsBtn','files.write'],
+    ['[data-auth-login],[data-auth-logout]','auth.manage'],
+    ['[data-update-agent],[data-update-send],[data-update-cancel]','updates.run'],
+    ['[data-user-edit],[data-user-toggle],[data-user-code],[data-user-link],[data-user-password],[data-user-revoke],[data-telegram-unlink],[data-group-edit],[data-chat-edit],[data-chat-toggle]','users.write'],
+  ];
+  disableMap.forEach(([selector,permission])=>document.querySelectorAll(selector).forEach(el=>{el.disabled=!can(permission);if(!can(permission))el.title='Permission required: '+permission}));
+}
 function modelLabel(m){const meta=[m.contextWindow?compactNum(m.contextWindow):'',m.supportsImages===true?'img':m.supportsImages===false?'text':'',m.supportsThinking===true?'think':''].filter(Boolean).join(' ');return (m.displayName||m.slug)+(meta?' · '+meta:'')}
 function fmtAge(ms){const sec=Math.max(0,Math.floor(ms/1000));if(sec<60)return sec+'s ago';const min=Math.floor(sec/60);if(min<60)return min+'m ago';return Math.floor(min/60)+'h ago'}
 function isCliRunningStatus(msg){return / CLI running\\b/.test(String(msg||''))}
@@ -58,9 +88,12 @@ const sessionsPager=createPaginator('sessionsPager',()=>loadSessions(false),50);
 
 async function loadBootstrap(){
   const data = await api('/api/bootstrap');
+  state.auth = data.auth || null;
+  state.permissions = data.auth?.permissions || [];
   state.snapshot = data.status.snapshot;
   state.controls = data.controls;
   state.enabledAgents = data.enabledAgents || [];
+  applyPermissions();
   renderSnapshot(state.snapshot);
   renderSessionControls();
   populateNewSessionForm(data.enabledAgents);
@@ -72,6 +105,7 @@ async function loadBootstrap(){
   agentSelect.innerHTML=data.enabledAgents.map(a=>'<option value="'+a+'">'+a+'</option>').join('');
   agentSelect.value=state.snapshot.session.agentId;
   agentSelect.onchange=()=>safe(async()=>{const selected=agentSelect.value;const r=await api('/api/agent',{method:'POST',body:JSON.stringify({agentId:selected})});if(state.snapshot&&r.session){state.snapshot.session=r.session;renderSnapshot(state.snapshot)}toast('Agent switched');await loadBootstrap();await reloadCurrentPage({agentId:selected})});
+  applyPermissions();
 }
 function renderSnapshot(s){
   document.getElementById('sessionLine').textContent=(s.session.agentLabel||'Agent')+' / '+(s.session.model||'default')+' / '+(s.session.threadId||'not started');
@@ -87,10 +121,10 @@ function renderSessionControls(){
   const reasoningOptions=(c.reasoningOptions||[]).map(v=>'<option value="'+attr(v)+'" '+(v===s.reasoningEffort?'selected':'')+'>'+esc(v)+'</option>').join('');
   const launchOptions=(c.launchProfiles||[]).map(p=>'<option value="'+attr(p.id)+'" '+(p.id===(s.nextLaunchProfileId||s.launchProfileId)?'selected':'')+'>'+esc(p.label+' - '+p.behavior+(p.unsafe?' - unsafe':''))+'</option>').join('');
   document.getElementById('sessionControls').innerHTML=[
-    caps.modelSelection?'<label>Model<select id="controlModel">'+modelOptions+'</select></label>':'',
-    caps.reasoningSelection?'<label>'+esc(c.reasoningLabel||'Reasoning')+'<select id="controlReasoning">'+reasoningOptions+'</select></label>':'',
-    caps.launchProfiles?'<label>Launch<select id="controlLaunch">'+launchOptions+'</select></label>':'',
-    caps.fastMode?'<label class="checkbox"><input id="controlFast" type="checkbox" '+(s.fastMode?'checked':'')+'> Fast mode</label>':''
+    caps.modelSelection?'<label>Model<select id="controlModel"'+disabledAttr('settings.write')+'>'+modelOptions+'</select></label>':'',
+    caps.reasoningSelection?'<label>'+esc(c.reasoningLabel||'Reasoning')+'<select id="controlReasoning"'+disabledAttr('settings.write')+'>'+reasoningOptions+'</select></label>':'',
+    caps.launchProfiles?'<label>Launch<select id="controlLaunch"'+disabledAttr('settings.write')+'>'+launchOptions+'</select></label>':'',
+    caps.fastMode?'<label class="checkbox"><input id="controlFast" type="checkbox" '+(s.fastMode?'checked':'')+disabledAttr('settings.write')+'> Fast mode</label>':''
   ].join('');
   const model=document.getElementById('controlModel'); if(model) model.onchange=()=>safe(async()=>{if(model.value){await api('/api/session/model',{method:'POST',body:JSON.stringify({model:model.value})});toast('Model updated');loadBootstrap()}});
   const reasoning=document.getElementById('controlReasoning'); if(reasoning) reasoning.onchange=()=>safe(async()=>{await api('/api/session/reasoning',{method:'POST',body:JSON.stringify({reasoning:reasoning.value})});toast((c.reasoningLabel||'Reasoning')+' updated');loadBootstrap()});

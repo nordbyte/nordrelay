@@ -9,6 +9,7 @@ import {
   permissionForCommand,
   permissionForWebRequest,
 } from "../src/access-control.js";
+import { WEB_API_ROUTES } from "../src/web-api-contract.js";
 
 describe("access-control", () => {
   it("maps commands to granular permissions", () => {
@@ -43,6 +44,7 @@ describe("access-control", () => {
   });
 
   it("maps web requests to user-management permissions", () => {
+    expect(WEB_API_ROUTES.length).toBeGreaterThan(10);
     expect(permissionForWebRequest("GET", "/api/users")).toBe("users.read");
     expect(permissionForWebRequest("POST", "/api/users")).toBe("users.write");
     expect(permissionForWebRequest("GET", "/api/settings")).toBe("settings.read");
@@ -55,6 +57,8 @@ describe("access-control", () => {
     expect(permissionForWebRequest("POST", "/api/abort")).toBe("prompt.abort");
     expect(permissionForWebRequest("GET", "/api/artifacts")).toBe("files.read");
     expect(permissionForWebRequest("DELETE", "/api/artifacts/turn/file")).toBe("files.write");
+    expect(permissionForWebRequest("GET", "/api/agent-updates")).toBe("updates.run");
+    expect(permissionForWebRequest("POST", "/api/agent-update/job/input")).toBe("updates.run");
   });
 
   it("defines builtin groups with scoped permissions", () => {

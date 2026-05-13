@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { Script } from "node:vm";
 
 import { describe, expect, it } from "vitest";
 
@@ -32,7 +33,7 @@ describe("web dashboard browser-flow assets", () => {
 
     expect(js).toContain("data-update-agent");
     expect(js).toContain("card('Runtime'");
-    expect(js).toContain(");bindAgentUpdateButtons()}");
+    expect(js).toContain("bindAgentUpdateButtons();applyPermissions()");
   });
 
   it("loads dashboard CSS and JavaScript through static asset routes", () => {
@@ -61,5 +62,15 @@ describe("web dashboard browser-flow assets", () => {
     expect(dashboardClientWorkflows()).toContain("function loadSessions");
     expect(dashboardStyleTheme()).toContain(":root");
     expect(dashboardStyleLayout()).toContain(".chat-layout");
+  });
+
+  it("renders parseable permission-aware dashboard JavaScript", () => {
+    const js = dashboardJs();
+
+    expect(() => new Script(js)).not.toThrow();
+    expect(js).toContain("function applyPermissions");
+    expect(js).toContain("function can(permission)");
+    expect(js).toContain("disabledAttr('queue.write')");
+    expect(js).toContain("Permission required: users.read");
   });
 });
