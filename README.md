@@ -1050,6 +1050,7 @@ npm run build
 - `src/openclaw-session.ts`: OpenClaw Gateway service for streamed runs, cancel, model, thinking, launch profiles, attachments, and handback.
 - `src/claude-code-session.ts`: Claude Agent SDK service for streamed runs, abort, model, effort, launch profiles, attachments, and handback.
 - `src/session-registry.ts`: per-chat/topic session registry and persisted context metadata.
+- `test/agent-adapter-contract.test.ts`: shared adapter contract coverage for descriptors, capability flags, reasoning options, launch profiles, and `AgentSessionService` method parity.
 - `src/session-format.ts`: compact Telegram rendering for session details, token usage, and limits.
 - `src/codex-state.ts`: reader for Codex `~/.codex/state_*.sqlite` thread, workspace, model, reasoning, sandbox, and approval metadata.
 - `src/pi-state.ts`: reader for Pi session JSONL files, activity timelines, diagnostics, and external busy detection.
