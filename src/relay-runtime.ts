@@ -1,18 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import {
-  createArtifactZipBundle,
-  collectRecentWorkspaceArtifacts,
-  getArtifactTurnReport,
-  ensureOutDir,
-  listRecentArtifactReports,
-  persistWorkspaceArtifactReport,
-  removeArtifactTurn,
-  totalArtifactSize,
-  type ArtifactTurnReport,
-} from "./artifacts.js";
+import { ensureOutDir, type ArtifactTurnReport } from "./artifacts.js";
 import {
   buildFileInstructions,
   outboxPath,
@@ -24,7 +13,6 @@ import {
   agentLabel,
   agentReasoningLabel,
   agentReasoningOptions,
-  type AgentExternalSnapshot,
   type AgentId,
   type AgentPromptInput,
   type AgentPromptObject,
@@ -49,7 +37,10 @@ import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./he
 import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
 import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "./operations.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
-import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
+import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "./prompt-store.js";
+import { RelayArtifactService } from "./relay-artifact-service.js";
+import { RelayExternalActivityMonitor } from "./relay-external-activity-monitor.js";
+import { RelayQueueService, type RelayQueueAction } from "./relay-queue-service.js";
 import { renderSessionInfoPlain, renderSessionUsageRows } from "./session-format.js";
 import { SessionLockStore, type SessionLock } from "./session-locks.js";
 import { SessionRegistry } from "./session-registry.js";
@@ -67,7 +58,6 @@ import type {
   ArtifactPreviewDto,
   ArtifactReportDto,
   DashboardControlOptions,
-  ExternalMirrorState,
   QueueItemDto,
   RelayEvent,
   RelaySnapshot,
@@ -105,7 +95,6 @@ export type {
 const WEB_CONTEXT_KEY = "web:dashboard";
 const MAX_WEB_SESSION_PAGE_SIZE = 50;
 const MAX_CHAT_HISTORY = 250;
-const MAX_TEXT_PREVIEW_BYTES = 256 * 1024;
 
 export class RelayRuntime {
   private readonly registry: SessionRegistry;
@@ -115,15 +104,16 @@ export class RelayRuntime {
   private readonly auditStore: AuditLogStore;
   private readonly lockStore: SessionLockStore;
   private readonly agentUpdates: AgentUpdateManager;
+  private readonly queueService: RelayQueueService;
+  private readonly artifactService: RelayArtifactService;
+  private readonly externalActivityMonitor: RelayExternalActivityMonitor;
   private readonly subscribers = new Set<(event: RelayEvent) => void>();
   private readonly externalMonitor?: NodeJS.Timeout;
   private draining = false;
-  private externalMonitorRunning = false;
   private currentTurnId: string | null = null;
   private accumulatedText = "";
   private currentTurnStartedAt = 0;
   private currentProgress: WebTaskDto | null = null;
-  private externalMirror: ExternalMirrorState | null = null;
 
   constructor(private readonly config: ConnectorConfig) {
     this.registry = new SessionRegistry(config, {
@@ -135,12 +125,28 @@ export class RelayRuntime {
     this.activityStore = new WebActivityStore(config.workspace, config.stateBackend, config.auditMaxEvents);
     this.auditStore = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
     this.lockStore = new SessionLockStore(config.workspace, config.stateBackend);
+    this.queueService = new RelayQueueService(this.promptStore, WEB_CONTEXT_KEY);
+    this.artifactService = new RelayArtifactService(config);
     this.agentUpdates = new AgentUpdateManager({
       onUpdate: (job) => this.broadcast({ type: "agent_update", job }),
     });
+    this.externalActivityMonitor = new RelayExternalActivityMonitor({
+      config,
+      getSession: () => this.getSession(true),
+      publicInfo: (session) => this.publicInfo(session),
+      queueLength: () => this.queueService.length(),
+      chatStore: this.chatStore,
+      chatHistory: () => this.chatHistory(),
+      persistWorkspaceArtifactsForTurn: (workspace, turnId, startedAt) =>
+        this.artifactService.persistWorkspaceArtifactsForTurn(workspace, turnId, startedAt),
+      drainQueue: () => this.drainQueue(),
+      appendActivity: (input) => this.appendActivity(input),
+      broadcast: (event) => this.broadcast(event),
+      broadcastStatus: (message, level) => this.broadcastStatus(message, level),
+    });
     if (config.codexExternalBusyCheckMs > 0) {
       this.externalMonitor = setInterval(() => {
-        void this.monitorExternalActivitySafe();
+        void this.externalActivityMonitor.monitorSafe();
       }, config.codexExternalBusyCheckMs);
       this.externalMonitor.unref?.();
     }
@@ -280,8 +286,8 @@ export class RelayRuntime {
       runtime: {
         stateBackend: this.config.stateBackend,
         sourceWorkspace: this.config.workspace,
-        queuePaused: this.promptStore.isPaused(WEB_CONTEXT_KEY),
-        externalMirror: this.externalMirror ? { ...this.externalMirror } : null,
+        queuePaused: this.queueService.isPaused(),
+        externalMirror: this.externalActivityMonitor.snapshot(),
         agentDiagnostics: getAgentDiagnostics(await this.getSession(true), this.config),
       },
     };
@@ -339,7 +345,7 @@ export class RelayRuntime {
   tasks(): WebTasksDto {
     return {
       current: this.currentProgress ? { ...this.currentProgress, tools: [...this.currentProgress.tools] } : null,
-      external: this.externalTask(),
+      external: this.externalActivityMonitor.task(),
       queue: this.queue(),
       queuePaused: this.queuePaused(),
       recent: this.activity({ limit: 20 }),
@@ -596,7 +602,7 @@ export class RelayRuntime {
   }
 
   async retry(): Promise<{ queued: boolean; queueId?: string }> {
-    const cached = this.promptStore.getLastPrompt(WEB_CONTEXT_KEY);
+    const cached = this.queueService.getLastPrompt();
     if (!cached) {
       throw new Error("Nothing to retry. Send a message first.");
     }
@@ -924,7 +930,7 @@ export class RelayRuntime {
     const session = await this.getSession(false);
     const external = getExternalSnapshotForSession(session, this.config, { maxEvents: 0 });
     if (session.isProcessing() || external?.activity.active) {
-      const queued = this.promptStore.enqueue(WEB_CONTEXT_KEY, envelope);
+      const queued = this.queueService.enqueue(envelope);
       const info = this.publicInfo(session);
       this.appendActivity({
         source: "web",
@@ -936,7 +942,7 @@ export class RelayRuntime {
         prompt: envelope.description,
         detail: external?.activity.active
           ? `Queued because ${external.agentLabel} CLI is still processing another task.`
-          : `Queued at position ${this.promptStore.list(WEB_CONTEXT_KEY).length}.`,
+          : `Queued at position ${this.queueService.length()}.`,
       });
       this.appendAudit({
         action: "prompt_queued",
@@ -949,7 +955,7 @@ export class RelayRuntime {
         description: envelope.description,
       });
       if (external?.activity.active) {
-        this.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${this.promptStore.list(WEB_CONTEXT_KEY).length} queued.`, "info");
+        this.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${this.queueService.length()} queued.`, "info");
       }
       this.broadcastQueue();
       return { queued: true, queueId: queued.id };
@@ -962,24 +968,16 @@ export class RelayRuntime {
   }
 
   queue(): QueueItemDto[] {
-    return this.promptStore.list(WEB_CONTEXT_KEY).map(queueItemDto);
+    return this.queueService.list();
   }
 
   queuePaused(): boolean {
-    return this.promptStore.isPaused(WEB_CONTEXT_KEY);
+    return this.queueService.isPaused();
   }
 
-  queueAction(action: "pause" | "resume" | "clear" | "cancel" | "top" | "up" | "down" | "run", id?: string): QueueItemDto[] {
-    if (action === "pause") this.promptStore.pause(WEB_CONTEXT_KEY);
-    if (action === "resume") this.promptStore.resume(WEB_CONTEXT_KEY);
-    if (action === "clear") this.promptStore.clear(WEB_CONTEXT_KEY);
-    if (id && action === "cancel") this.promptStore.remove(WEB_CONTEXT_KEY, id);
-    if (id && action === "top") this.promptStore.moveToTop(WEB_CONTEXT_KEY, id);
-    if (id && action === "up") this.promptStore.moveUp(WEB_CONTEXT_KEY, id);
-    if (id && action === "down") this.promptStore.moveDown(WEB_CONTEXT_KEY, id);
+  queueAction(action: RelayQueueAction, id?: string): QueueItemDto[] {
+    this.queueService.apply(action, id);
     if (id && action === "run") {
-      const item = this.promptStore.remove(WEB_CONTEXT_KEY, id);
-      if (item) this.promptStore.enqueueFront(WEB_CONTEXT_KEY, item);
       void this.drainQueue().catch((error) => this.broadcastStatus(friendlyErrorText(error), "error"));
     }
     this.appendActivity({
@@ -1002,62 +1000,27 @@ export class RelayRuntime {
 
   async artifacts(): Promise<ArtifactReportDto[]> {
     const session = await this.getSession(true);
-    return (await listRecentArtifactReports(session.getInfo().workspace, 20, this.config.maxFileSize)).map(artifactDto);
+    return this.artifactService.list(session.getInfo().workspace, 20);
   }
 
   async artifact(turnId: string): Promise<ArtifactTurnReport | null> {
     const session = await this.getSession(true);
-    return getArtifactTurnReport(session.getInfo().workspace, turnId, this.config.maxFileSize);
+    return this.artifactService.get(session.getInfo().workspace, turnId);
   }
 
   async deleteArtifact(turnId: string): Promise<boolean> {
     const session = await this.getSession(true);
-    return removeArtifactTurn(session.getInfo().workspace, turnId);
+    return this.artifactService.delete(session.getInfo().workspace, turnId);
   }
 
   async createArtifactZip(turnId: string): Promise<{ path: string; name: string } | null> {
-    const report = await this.artifact(turnId);
-    if (!report) {
-      return null;
-    }
-    const bundle = await createArtifactZipBundle(report.artifacts, report.outDir, {
-      maxFileSize: this.config.maxFileSize,
-      bundleName: `nordrelay-artifacts-${turnId}.zip`,
-    });
-    return bundle ? { path: bundle.localPath, name: bundle.name } : null;
+    const session = await this.getSession(true);
+    return this.artifactService.createZip(session.getInfo().workspace, turnId);
   }
 
   async artifactPreview(turnId: string, relativePath: string): Promise<ArtifactPreviewDto | null> {
-    const report = await this.artifact(turnId);
-    const artifact = report?.artifacts.find((candidate) => candidate.relativePath.split(path.sep).join("/") === relativePath);
-    if (!artifact) {
-      return null;
-    }
-    const extension = path.extname(artifact.name).toLowerCase();
-    if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(extension)) {
-      return {
-        kind: "image",
-        name: artifact.name,
-        sizeBytes: artifact.sizeBytes,
-      };
-    }
-    if (!isPreviewableTextFile(extension, artifact.sizeBytes)) {
-      return {
-        kind: "unsupported",
-        name: artifact.name,
-        sizeBytes: artifact.sizeBytes,
-        detail: artifact.sizeBytes > MAX_TEXT_PREVIEW_BYTES ? "File is too large for inline preview." : "File type is not previewable.",
-      };
-    }
-    const buffer = await readFile(artifact.localPath);
-    const truncated = buffer.byteLength > MAX_TEXT_PREVIEW_BYTES;
-    return {
-      kind: "text",
-      name: artifact.name,
-      sizeBytes: artifact.sizeBytes,
-      truncated,
-      text: buffer.subarray(0, MAX_TEXT_PREVIEW_BYTES).toString("utf8"),
-    };
+    const session = await this.getSession(true);
+    return this.artifactService.preview(session.getInfo().workspace, turnId, relativePath);
   }
 
   async logs(target: "connector" | "update" | "agent-updates" = "connector", lines = 100): Promise<ReturnType<typeof readFormattedLogTail>> {
@@ -1104,167 +1067,6 @@ export class RelayRuntime {
     this.agentUpdates.cancelAll();
     this.registry.disposeAll();
     this.subscribers.clear();
-  }
-
-  private async monitorExternalActivity(): Promise<void> {
-    const session = await this.getSession(true);
-    const info = this.publicInfo(session);
-    if (!info.capabilities.externalActivity || !info.threadId || session.isProcessing()) {
-      return;
-    }
-
-    const snapshot = getExternalSnapshotForSession(session, this.config, {
-      afterLine: this.externalMirror?.threadId === info.threadId ? this.externalMirror.lastLine : Number.MAX_SAFE_INTEGER,
-    }) ?? getExternalSnapshotForSession(session, this.config, {
-      maxEvents: 0,
-    });
-    if (!snapshot) {
-      return;
-    }
-
-    if (!this.externalMirror || this.externalMirror.threadId !== snapshot.threadId || this.externalMirror.rolloutPath !== snapshot.sourcePath) {
-      this.externalMirror = {
-        threadId: snapshot.threadId,
-        rolloutPath: snapshot.sourcePath,
-        lastLine: snapshot.lineCount,
-        turnId: snapshot.activity.turnId,
-        startedAt: snapshot.activity.startedAt?.toISOString() ?? null,
-      };
-      if (snapshot.activity.active) {
-        this.startExternalTurn(snapshot);
-      }
-      return;
-    }
-
-    const mirror = this.externalMirror;
-    if (snapshot.activity.active) {
-      if (mirror.turnId !== snapshot.activity.turnId) {
-        mirror.turnId = snapshot.activity.turnId;
-        mirror.startedAt = snapshot.activity.startedAt?.toISOString() ?? null;
-        mirror.latestAgentLine = undefined;
-        this.startExternalTurn(snapshot);
-      }
-      this.broadcastExternalEvents(snapshot, snapshot.events.filter((event) => event.lineNumber > mirror.lastLine));
-      mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);
-      mirror.latestStatus = externalStatusLine(snapshot, this.queue().length);
-      this.broadcastStatus(mirror.latestStatus, "info");
-      return;
-    }
-
-    const terminalEvent = [...snapshot.events].reverse().find((event) => event.kind === "task" && event.status && event.status !== "started");
-    if (terminalEvent && terminalEvent.lineNumber > mirror.lastLine) {
-      const finalAgent = snapshot.events.filter((event) => event.kind === "agent" && event.text).at(-1);
-      const finalText = finalAgent?.text ?? snapshot.latestAgentMessage;
-      const finalLine = finalAgent?.lineNumber ?? snapshot.lineCount;
-      if (finalText && finalLine !== mirror.latestAgentLine) {
-        this.chatStore.append({
-          threadId: snapshot.threadId,
-          role: "agent",
-          text: finalText,
-          source: "cli",
-          turnId: terminalEvent.turnId ?? undefined,
-        });
-        this.broadcast({ type: "text_delta", id: terminalEvent.turnId ?? "cli", delta: finalText });
-        mirror.latestAgentLine = finalLine;
-      }
-      const externalStartedAt = mirror.startedAt ? new Date(mirror.startedAt) : snapshot.activity.startedAt;
-      this.broadcast({
-        type: "turn_complete",
-        id: terminalEvent.turnId ?? "cli",
-        at: terminalEvent.timestamp?.toISOString() ?? new Date().toISOString(),
-      });
-      this.appendActivity({
-        source: "cli",
-        status: terminalEvent.status === "aborted" ? "aborted" : terminalEvent.status === "failed" ? "failed" : "completed",
-        type: "cli_turn_finished",
-        threadId: snapshot.threadId,
-        workspace: info.workspace,
-        agentId: info.agentId,
-        prompt: snapshot.latestUserMessage ?? undefined,
-        detail: `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`,
-        durationMs: durationFromDates(externalStartedAt, terminalEvent.timestamp),
-      });
-      if (externalStartedAt && terminalEvent.turnId) {
-        await this.persistWorkspaceArtifactsForTurn(info.workspace, terminalEvent.turnId, externalStartedAt);
-      }
-      mirror.latestStatus = `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`;
-      this.broadcastStatus(
-        `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`,
-        terminalEvent.status === "failed" ? "error" : terminalEvent.status === "aborted" ? "warn" : "info",
-      );
-      this.broadcast({ type: "chat_history", messages: await this.chatHistory() });
-      await this.drainQueue();
-    }
-    mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);
-  }
-
-  private async monitorExternalActivitySafe(): Promise<void> {
-    if (this.externalMonitorRunning) {
-      return;
-    }
-    this.externalMonitorRunning = true;
-    try {
-      await this.monitorExternalActivity();
-    } catch (error) {
-      this.broadcastStatus(friendlyErrorText(error), "error");
-    } finally {
-      this.externalMonitorRunning = false;
-    }
-  }
-
-  private startExternalTurn(snapshot: AgentExternalSnapshot): void {
-    const prompt = snapshot.latestUserMessage ?? `${snapshot.agentLabel} CLI task`;
-    this.chatStore.append({
-      threadId: snapshot.threadId,
-      role: "user",
-      text: prompt,
-      source: "cli",
-      turnId: snapshot.activity.turnId ?? undefined,
-      timestamp: snapshot.activity.startedAt?.toISOString(),
-    });
-    this.broadcast({
-      type: "turn_start",
-      id: snapshot.activity.turnId ?? "cli",
-      prompt,
-      at: snapshot.activity.startedAt?.toISOString() ?? new Date().toISOString(),
-      source: "cli",
-    });
-    this.appendActivity({
-      source: "cli",
-      status: "running",
-      type: "cli_turn_started",
-      threadId: snapshot.threadId,
-      prompt,
-      detail: `${snapshot.sourceLabel}: ${snapshot.sourcePath}`,
-    });
-  }
-
-  private broadcastExternalEvents(snapshot: AgentExternalSnapshot, events: AgentExternalSnapshot["events"]): void {
-    for (const event of events) {
-      if (event.kind === "tool" && event.status === "started") {
-        this.broadcast({
-          type: "tool_start",
-          id: snapshot.activity.turnId ?? "cli",
-          toolCallId: `cli-${event.lineNumber}`,
-          toolName: event.toolName ?? "tool",
-        });
-        this.appendActivity({
-          source: "cli",
-          status: "running",
-          type: "cli_tool_started",
-          threadId: snapshot.threadId,
-          detail: event.toolName ?? "tool",
-        });
-      }
-      if (event.kind === "tool" && event.status === "finished") {
-        this.broadcast({
-          type: "tool_end",
-          id: snapshot.activity.turnId ?? "cli",
-          toolCallId: `cli-${event.lineNumber}`,
-          isError: false,
-        });
-      }
-    }
   }
 
   private async getSession(deferThreadStart: boolean): Promise<AgentSessionService> {
@@ -1388,7 +1190,7 @@ export class RelayRuntime {
       outputChars: 0,
       tools: [],
     };
-    this.promptStore.setLastPrompt(WEB_CONTEXT_KEY, envelope);
+    this.queueService.setLastPrompt(envelope);
     const startedDate = new Date();
     const startedAt = startedDate.toISOString();
     this.chatStore.append({
@@ -1448,7 +1250,7 @@ export class RelayRuntime {
     try {
       await session.prompt(envelope.input as AgentPromptInput, callbacks);
       this.updateSession(session);
-      await this.persistWorkspaceArtifactsForTurn(session.getInfo().workspace, turnId, startedDate);
+      await this.artifactService.persistWorkspaceArtifactsForTurn(session.getInfo().workspace, turnId, startedDate);
       if (this.accumulatedText.trim()) {
         this.chatStore.append({
           threadId: info.threadId ?? "pending",
@@ -1525,7 +1327,7 @@ export class RelayRuntime {
   }
 
   private async drainQueue(): Promise<void> {
-    if (this.draining || this.promptStore.isPaused(WEB_CONTEXT_KEY)) {
+    if (this.draining || this.queueService.isPaused()) {
       return;
     }
     this.draining = true;
@@ -1534,10 +1336,10 @@ export class RelayRuntime {
       while (!session.isProcessing()) {
         const external = getExternalSnapshotForSession(session, this.config, { maxEvents: 0 });
         if (external?.activity.active) {
-          this.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${this.queue().length} queued.`, "info");
+          this.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${this.queueService.length()} queued.`, "info");
           return;
         }
-        const next = this.promptStore.dequeue(WEB_CONTEXT_KEY);
+        const next = this.queueService.dequeue();
         this.broadcastQueue();
         if (!next) {
           return;
@@ -1613,32 +1415,6 @@ export class RelayRuntime {
     this.updateCurrentProgress({ currentTool: toolName, lastTool: toolName });
   }
 
-  private externalTask(): WebTaskDto | null {
-    if (!this.externalMirror) {
-      return null;
-    }
-    const startedAt = this.externalMirror.startedAt ?? new Date().toISOString();
-    const startedMs = new Date(startedAt).getTime();
-    return {
-      id: this.externalMirror.turnId ?? "cli",
-      source: "cli",
-      status: this.externalMirror.latestStatus?.includes("failed")
-        ? "failed"
-        : this.externalMirror.latestStatus?.includes("aborted")
-          ? "aborted"
-          : this.externalMirror.latestStatus?.includes("finished") || this.externalMirror.latestStatus?.includes("completed")
-            ? "completed"
-            : "running",
-      threadId: this.externalMirror.threadId,
-      startedAt,
-      updatedAt: new Date().toISOString(),
-      durationMs: Number.isFinite(startedMs) ? Math.max(0, Date.now() - startedMs) : 0,
-      outputChars: 0,
-      tools: [],
-      detail: this.externalMirror.latestStatus ?? this.externalMirror.rolloutPath,
-    };
-  }
-
   private broadcastQueue(): void {
     this.broadcast({ type: "queue_update", queue: this.queue(), paused: this.queuePaused() });
   }
@@ -1668,56 +1444,6 @@ export class RelayRuntime {
     };
   }
 
-  private async persistWorkspaceArtifactsForTurn(workspace: string, turnId: string, startedAt: Date): Promise<void> {
-    const report = await collectRecentWorkspaceArtifacts(workspace, {
-      since: startedAt,
-      until: new Date(),
-      maxFileSize: this.config.maxFileSize,
-      limit: 20,
-      ignoreDirs: this.config.artifactIgnoreDirs,
-      ignoreGlobs: this.config.artifactIgnoreGlobs,
-    });
-    if (report.artifacts.length === 0 && report.skippedCount === 0 && !report.omittedCount) {
-      return;
-    }
-    await persistWorkspaceArtifactReport(workspace, turnId, report);
-  }
-}
-
-function queueItemDto(item: QueuedPrompt): QueueItemDto {
-  return {
-    id: item.id,
-    description: item.description,
-    createdAt: new Date(item.createdAt).toISOString(),
-    attempts: item.attempts ?? 0,
-    notBefore: item.notBefore ? new Date(item.notBefore).toISOString() : undefined,
-    lastError: item.lastError,
-  };
-}
-
-function artifactDto(report: ArtifactTurnReport): ArtifactReportDto {
-  return {
-    turnId: report.turnId,
-    updatedAt: report.updatedAt.toISOString(),
-    source: report.source,
-    fileCount: report.artifacts.length,
-    totalSizeBytes: totalArtifactSize(report.artifacts),
-    skippedCount: report.skippedCount,
-    omittedCount: report.omittedCount,
-    artifacts: report.artifacts.map((artifact) => ({
-      name: artifact.name,
-      relativePath: artifact.relativePath.split(path.sep).join("/"),
-      sizeBytes: artifact.sizeBytes,
-    })),
-  };
-}
-
-function externalStatusLine(snapshot: AgentExternalSnapshot, queueLength: number): string {
-  const elapsed = snapshot.activity.startedAt
-    ? formatDuration((Date.now() - snapshot.activity.startedAt.getTime()) / 1000)
-    : "-";
-  const tool = snapshot.latestToolName ?? "-";
-  return `${snapshot.agentLabel} CLI running · ${elapsed} · tool ${tool} · ${queueLength} queued`;
 }
 
 function cliHealthForAgent(agentId: AgentId, health: Awaited<ReturnType<typeof getConnectorHealth>>): WebAdapterHealthDto["cli"] {
@@ -1776,25 +1502,6 @@ function hostLogoutCommand(info: AgentSessionInfo, config: ConnectorConfig): str
   return "codex logout";
 }
 
-function durationFromDates(start: Date | null, end: Date | null): number | undefined {
-  if (!start || !end) {
-    return undefined;
-  }
-  return Math.max(0, end.getTime() - start.getTime());
-}
-
-function formatDuration(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) {
-    return "-";
-  }
-  if (seconds < 60) {
-    return `${Math.round(seconds)}s`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  const remainder = Math.round(seconds % 60);
-  return `${minutes}m ${remainder}s`;
-}
-
 function normalizeMimeType(value: string | undefined, name: string): string {
   const configured = value?.trim();
   if (configured) {
@@ -1819,39 +1526,4 @@ function uploadFileDtos(files: StagedFile[]): UploadPromptResult["files"] {
     mimeType: file.mimeType,
     sizeBytes: file.sizeBytes,
   }));
-}
-
-function isPreviewableTextFile(extension: string, sizeBytes: number): boolean {
-  if (sizeBytes > MAX_TEXT_PREVIEW_BYTES * 4) {
-    return false;
-  }
-  return [
-    "",
-    ".c",
-    ".conf",
-    ".cpp",
-    ".css",
-    ".csv",
-    ".env",
-    ".go",
-    ".html",
-    ".java",
-    ".js",
-    ".json",
-    ".jsx",
-    ".log",
-    ".md",
-    ".py",
-    ".rb",
-    ".rs",
-    ".sh",
-    ".sql",
-    ".toml",
-    ".ts",
-    ".tsx",
-    ".txt",
-    ".xml",
-    ".yaml",
-    ".yml",
-  ].includes(extension);
 }

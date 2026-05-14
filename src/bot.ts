@@ -30,23 +30,12 @@ import {
   type Artifact,
   type ArtifactTurnReport,
 } from "./artifacts.js";
-import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { AgentUpdateManager, type AgentUpdateOperation } from "./agent-updates.js";
 import { AuditLogStore, type AuditEvent } from "./audit-log.js";
-import {
-  formatSessionLabel,
-  renderHelpMessage,
-  renderWelcomeFirstTime,
-  renderWelcomeReturning,
-} from "./bot-ui.js";
+import { formatSessionLabel } from "./bot-ui.js";
 import {
   BotPreferencesStore,
-  formatQuietHours,
   isQuietNow,
-  parseMirrorMode,
-  parseNotifyMode,
-  parseQuietHours,
-  parseVoiceBackendPreference,
   type ContextPreferences,
   type TelegramMirrorMode,
   type TelegramNotifyMode,
@@ -54,14 +43,11 @@ import {
 } from "./bot-preferences.js";
 import {
   renderAgentUpdateJobAction,
-  renderAgentsAction,
   renderArtifactReportsAction,
-  renderChannelsAction,
   renderQueueListAction,
   renderQueuedPromptDetailAction,
   type ChannelActionResponse,
 } from "./channel-actions.js";
-import { listChannelDescriptors } from "./channel-adapter.js";
 import { deliverChannelAction } from "./channel-runtime.js";
 import {
   agentLabel,
@@ -81,7 +67,6 @@ import {
   getExternalActivityForSession,
   getExternalSnapshotForSession,
 } from "./agent-activity.js";
-import { enabledAgents } from "./agent-factory.js";
 import { checkAuthStatus, clearAuthCache, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
 import { checkClaudeCodeAuthStatus, startClaudeCodeLogin, startClaudeCodeLogout } from "./claude-code-auth.js";
 import { formatLaunchProfileBehavior } from "./codex-launch.js";
@@ -89,7 +74,6 @@ import type { ConnectorConfig, ToolVerbosity } from "./config.js";
 import { contextKeyFromCtx, isTelegramContextKey, isTopicContextKey, parseContextKey, type TelegramContextKey } from "./context-key.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { escapeHTML } from "./format.js";
-import { spawnConnectorRestart } from "./operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
 import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./hermes-auth.js";
 import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
@@ -97,13 +81,11 @@ import { checkPiAuthStatus } from "./pi-auth.js";
 import { configureRedaction, redactText } from "./redaction.js";
 import { canWriteWithLock, SessionLockStore } from "./session-locks.js";
 import {
-  renderLaunchSummaryHTML,
-  renderLaunchSummaryPlain,
   renderSessionInfoHTML,
   renderSessionInfoPlain,
 } from "./session-format.js";
 import { SessionRegistry } from "./session-registry.js";
-import { getAvailableBackends, transcribeAudio, type TranscriptionBackend } from "./voice.js";
+import { transcribeAudio, type TranscriptionBackend } from "./voice.js";
 import { telegramRateLimiter } from "./telegram-rate-limit.js";
 import {
   chatBucket,
@@ -130,7 +112,10 @@ import {
 } from "./telegram-channel-runtime.js";
 import { createTelegramAccessMiddleware } from "./telegram-access-middleware.js";
 import { registerTelegramAccessCommands } from "./telegram-access-commands.js";
+import { registerTelegramAgentCommands } from "./telegram-agent-commands.js";
 import { registerTelegramDiagnosticsCommands } from "./telegram-diagnostics-command.js";
+import { registerTelegramGeneralCommands } from "./telegram-general-commands.js";
+import { registerTelegramPreferenceCommands } from "./telegram-preference-commands.js";
 import { registerTelegramSupportCommands } from "./telegram-support-command.js";
 import { registerTelegramUpdateCommands } from "./telegram-update-commands.js";
 import {
@@ -162,7 +147,6 @@ import {
   orderPinnedSessions,
   parseActivityOptions,
   parseFastModeArgument,
-  parseToggle,
   renderActivityTimeline,
   renderAuditEvents,
   renderExternalMirrorEvent,
@@ -2144,433 +2128,44 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
   registerTelegramAccessCommands({ bot, userStore, contextUsers, linkAttempts, audit, getUserRole });
 
-  bot.command("start", async (ctx) => {
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession) {
-      return;
-    }
-
-    const { contextKey, session } = contextSession;
-    const info = session.getInfo();
-    const authStatus = capabilitiesOf(info).auth ? await checkAgentAuthStatus(info) : null;
-    const authWarning = authStatus && !authStatus.authenticated
-      ? [`${labelOf(info)} is not authenticated.`, authStatus.detail, authHelpText(info)].filter(Boolean).join(" ")
-      : undefined;
-    const isReturning = registry.hasMetadata(contextKey);
-
-    if (isReturning) {
-      const welcome = renderWelcomeReturning(
-        renderSessionInfoHTML(info),
-        renderSessionInfoPlain(info),
-        isTopicContext(contextKey),
-        authWarning,
-      );
-      await safeReply(ctx, welcome.html, { fallbackText: welcome.plain });
-    } else {
-      const welcome = renderWelcomeFirstTime(authWarning);
-      await safeReply(ctx, [welcome.html, "", renderLaunchSummaryHTML(info)].join("\n"), {
-        fallbackText: [welcome.plain, "", renderLaunchSummaryPlain(info)].join("\n"),
-      });
-    }
+  registerTelegramGeneralCommands({
+    bot,
+    config,
+    registry,
+    getContextSession,
+    checkAgentAuthStatus,
+    isTopicContext,
+    replyChannelAction,
   });
 
-  bot.command("help", async (ctx) => {
-    const help = renderHelpMessage();
-    await safeReply(ctx, help.html, { fallbackText: help.plain });
+  registerTelegramAgentCommands({
+    bot,
+    config,
+    registry,
+    pendingAgentPicks,
+    getContextSession,
+    isBusy,
+    checkAgentAuthStatus,
+    checkLoginAuthStatus,
+    agentIdForAuth,
+    labelForAuth,
+    startAgentLogin,
+    startAgentLogout,
+    hostLoginCommand,
+    hostLogoutCommand,
   });
 
-  bot.command("channels", async (ctx) => {
-    const rendered = renderChannelsAction(listChannelDescriptors());
-    await replyChannelAction(ctx, rendered);
-  });
-
-  bot.command("agents", async (ctx) => {
-    const rendered = renderAgentsAction(listAgentAdapterDescriptors(), enabledAgents(config));
-    await replyChannelAction(ctx, rendered);
-  });
-
-  bot.command("agent", async (ctx) => {
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession) {
-      return;
-    }
-
-    const { contextKey, session } = contextSession;
-    if (isBusy(contextKey)) {
-      await safeReply(ctx, escapeHTML("Cannot switch agent while a prompt is running."), {
-        fallbackText: "Cannot switch agent while a prompt is running.",
-      });
-      return;
-    }
-
-    const availableAgents = enabledAgents(config);
-    const currentAgent = idOf(session.getInfo());
-    if (availableAgents.length <= 1) {
-      const only = agentLabel(availableAgents[0] ?? currentAgent);
-      await safeReply(ctx, `<b>Current agent:</b> <code>${escapeHTML(only)}</code>\nNo other agents are enabled.`, {
-        fallbackText: `Current agent: ${only}\nNo other agents are enabled.`,
-      });
-      return;
-    }
-
-    pendingAgentPicks.set(contextKey, availableAgents);
-    const keyboard = new InlineKeyboard();
-    for (const availableAgent of availableAgents) {
-      keyboard.text(`${agentLabel(availableAgent)}${availableAgent === currentAgent ? " ✓" : ""}`, `agent_${availableAgent}`).row();
-    }
-
-    await safeReply(ctx, `<b>Current agent:</b> <code>${escapeHTML(agentLabel(currentAgent))}</code>\nSelect agent for this Telegram context:`, {
-      fallbackText: `Current agent: ${agentLabel(currentAgent)}\nSelect agent for this Telegram context:`,
-      replyMarkup: keyboard,
-    });
-  });
-
-  bot.command("auth", async (ctx) => {
-    if (!ctx.chat) {
-      return;
-    }
-
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    const info = contextSession?.session.getInfo();
-    if (info && !capabilitiesOf(info).auth) {
-      const text = `${labelOf(info)} uses its local CLI authentication. Run its login flow on the host if needed.`;
-      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
-      return;
-    }
-
-    const authStatus = info ? await checkAgentAuthStatus(info) : await checkAuthStatus(config.codexApiKey);
-    const icon = authStatus.authenticated ? "✅" : "❌";
-    const html = [
-      `<b>${icon} Auth status:</b> ${authStatus.authenticated ? "authenticated" : "not authenticated"}`,
-      `<b>Method:</b> <code>${escapeHTML(authStatus.method)}</code>`,
-      `<b>Detail:</b> <code>${escapeHTML(authStatus.detail)}</code>`,
-    ].join("\n");
-    const plain = [
-      `${icon} Auth status: ${authStatus.authenticated ? "authenticated" : "not authenticated"}`,
-      `Method: ${authStatus.method}`,
-      `Detail: ${authStatus.detail}`,
-    ].join("\n");
-
-    await safeReply(ctx, html, { fallbackText: plain });
-  });
-
-  bot.command("login", async (ctx) => {
-    if (!ctx.chat) {
-      return;
-    }
-
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    const info = contextSession?.session.getInfo();
-    if (info && !capabilitiesOf(info).login) {
-      const text = `${labelOf(info)} login is not managed by NordRelay. Run the CLI login flow on the host.`;
-      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
-      return;
-    }
-
-    const authStatus = await checkLoginAuthStatus(info);
-    if (agentIdForAuth(info) !== "hermes" && authStatus.authenticated) {
-      await safeReply(ctx, `<b>✅ Already authenticated</b> via <code>${escapeHTML(authStatus.method)}</code>.`, {
-        fallbackText: `✅ Already authenticated via ${authStatus.method}.`,
-      });
-      return;
-    }
-
-    if (!config.enableTelegramLogin) {
-      await safeReply(
-        ctx,
-        [
-          "<b>Telegram-initiated login is disabled.</b>",
-          "",
-          `Run <code>${escapeHTML(hostLoginCommand(info))}</code> on the host.`,
-        ].join("\n"),
-        {
-          fallbackText: [
-            "Telegram-initiated login is disabled.",
-            "",
-            `Run '${hostLoginCommand(info)}' on the host.`,
-          ].join("\n"),
-        },
-      );
-      return;
-    }
-
-    const result = await startAgentLogin(info);
-    if (result.success) {
-      await safeReply(ctx, `<b>🔑 Login initiated.</b>\n\n<code>${escapeHTML(result.message)}</code>`, {
-        fallbackText: `🔑 Login initiated.\n\n${result.message}`,
-      });
-      return;
-    }
-
-    await safeReply(ctx, `<b>❌ Login failed.</b>\n\n<code>${escapeHTML(result.message)}</code>`, {
-      fallbackText: `❌ Login failed.\n\n${result.message}`,
-    });
-  });
-
-  bot.command("logout", async (ctx) => {
-    if (!ctx.chat) {
-      return;
-    }
-
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    const info = contextSession?.session.getInfo();
-    if (info && !capabilitiesOf(info).logout) {
-      const text = `${labelOf(info)} logout is not managed by NordRelay. Run the CLI logout flow on the host.`;
-      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
-      return;
-    }
-
-    const authStatus = await checkLoginAuthStatus(info);
-    if (authStatus.method === "api-key") {
-      await safeReply(
-        ctx,
-        [
-          `<b>Cannot logout via Telegram when ${escapeHTML(labelForAuth(info))} uses API-key authentication.</b>`,
-          "",
-          "Remove the API key from .env to use CLI-based auth instead.",
-        ].join("\n"),
-        {
-          fallbackText: [
-            `Cannot logout via Telegram when ${labelForAuth(info)} uses API-key authentication.`,
-            "",
-            "Remove the API key from .env to use CLI-based auth instead.",
-          ].join("\n"),
-        },
-      );
-      return;
-    }
-
-    if (!config.enableTelegramLogin) {
-      await safeReply(ctx, [
-        "<b>Telegram-initiated auth management is disabled.</b>",
-        "",
-        `Run <code>${escapeHTML(hostLogoutCommand(info))}</code> on the host.`,
-      ].join("\n"), {
-        fallbackText: [
-          "Telegram-initiated auth management is disabled.",
-          "",
-          `Run '${hostLogoutCommand(info)}' on the host.`,
-        ].join("\n"),
-      });
-      return;
-    }
-
-    if (agentIdForAuth(info) !== "hermes" && !authStatus.authenticated) {
-      await safeReply(ctx, escapeHTML("Not currently authenticated."), {
-        fallbackText: "Not currently authenticated.",
-      });
-      return;
-    }
-
-    const result = await startAgentLogout(info);
-    if (result.success) {
-      await safeReply(ctx, `<b>🔓 Logged out.</b>\n\n${escapeHTML(result.message)}`, {
-        fallbackText: `🔓 Logged out.\n\n${result.message}`,
-      });
-      return;
-    }
-
-    await safeReply(ctx, `<b>❌ Logout failed.</b>\n\n<code>${escapeHTML(result.message)}</code>`, {
-      fallbackText: `❌ Logout failed.\n\n${result.message}`,
-    });
-  });
-
-  bot.command("mirror", async (ctx) => {
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession) {
-      return;
-    }
-    const { contextKey, session } = contextSession;
-    if (!capabilitiesOf(session.getInfo()).cliMirror) {
-      const text = `CLI mirroring is not supported for ${labelOf(session.getInfo())} yet.`;
-      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
-      return;
-    }
-    const argument = (ctx.message?.text ?? "").replace(/^\/mirror(?:@\w+)?\s*/i, "").trim();
-    if (argument) {
-      const mode = parseMirrorMode(argument, getEffectiveMirrorMode(contextKey));
-      if (!["off", "status", "final", "full"].includes(argument.toLowerCase())) {
-        await safeReply(ctx, escapeHTML("Usage: /mirror [off|status|final|full]"), {
-          fallbackText: "Usage: /mirror [off|status|final|full]",
-        });
-        return;
-      }
-      preferencesStore.update(contextKey, { mirrorMode: mode });
-    }
-
-    const mode = getEffectiveMirrorMode(contextKey);
-    const plain = [
-      `CLI mirroring: ${mode}`,
-      `Minimum update interval: ${config.telegramMirrorMinUpdateMs} ms`,
-      "Modes: off, status, final, full",
-    ].join("\n");
-    const html = [
-      `<b>CLI mirroring:</b> <code>${escapeHTML(mode)}</code>`,
-      `<b>Minimum update interval:</b> <code>${config.telegramMirrorMinUpdateMs} ms</code>`,
-      "<b>Modes:</b> <code>off</code>, <code>status</code>, <code>final</code>, <code>full</code>",
-    ].join("\n");
-    await safeReply(ctx, html, { fallbackText: plain });
-  });
-
-  bot.command("notify", async (ctx) => {
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession) {
-      return;
-    }
-    const { contextKey } = contextSession;
-    const argument = (ctx.message?.text ?? "").replace(/^\/notify(?:@\w+)?\s*/i, "").trim();
-    if (argument) {
-      const quietMatch = argument.match(/^quiet\s+(.+)$/i);
-      if (quietMatch) {
-        let quietHours;
-        try {
-          quietHours = quietMatch[1]!.toLowerCase() === "off" ? null : parseQuietHours(quietMatch[1]);
-        } catch (error) {
-          await safeReply(ctx, escapeHTML(`Invalid quiet hours: ${friendlyErrorText(error)}`), {
-            fallbackText: `Invalid quiet hours: ${friendlyErrorText(error)}`,
-          });
-          return;
-        }
-        preferencesStore.update(contextKey, { quietHours });
-      } else {
-        const mode = parseNotifyMode(argument, getEffectiveNotifyMode(contextKey));
-        if (!["off", "minimal", "all"].includes(argument.toLowerCase())) {
-          await safeReply(ctx, escapeHTML("Usage: /notify [off|minimal|all] or /notify quiet HH-HH"), {
-            fallbackText: "Usage: /notify [off|minimal|all] or /notify quiet HH-HH",
-          });
-          return;
-        }
-        preferencesStore.update(contextKey, { notifyMode: mode });
-      }
-    }
-
-    const mode = getEffectiveNotifyMode(contextKey);
-    const quietHours = getEffectiveQuietHours(contextKey);
-    const plain = [
-      `Notifications: ${mode}`,
-      `Quiet hours: ${formatQuietHours(quietHours)}`,
-      `Currently quiet: ${isQuietNow(quietHours) ? "yes" : "no"}`,
-    ].join("\n");
-    const html = [
-      `<b>Notifications:</b> <code>${escapeHTML(mode)}</code>`,
-      `<b>Quiet hours:</b> <code>${escapeHTML(formatQuietHours(quietHours))}</code>`,
-      `<b>Currently quiet:</b> <code>${isQuietNow(quietHours) ? "yes" : "no"}</code>`,
-    ].join("\n");
-    await safeReply(ctx, html, { fallbackText: plain });
-  });
-
-  bot.command("workspaces", async (ctx) => {
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession) {
-      return;
-    }
-    const { session } = contextSession;
-    const agentName = labelOf(session.getInfo());
-    const workspaces = filterAllowedWorkspaces(session.listWorkspaces(), config);
-    const currentWorkspace = session.getInfo().workspace;
-    const lines = workspaces.slice(0, 20).map((workspace, index) => {
-      const prefix = workspace === currentWorkspace ? "*" : `${index + 1}.`;
-      const policy = renderWorkspacePolicyLine(workspace, config);
-      return `${prefix} ${workspace}${policy ? ` (${policy})` : ""}`;
-    });
-    const currentPolicy = evaluateWorkspacePolicy(currentWorkspace, config);
-    const header = [
-      "Workspaces:",
-      `Current: ${currentWorkspace}`,
-      currentPolicy.warning ? `Current warning: ${currentPolicy.warning}` : undefined,
-      config.workspaceAllowedRoots.length > 0 ? `Allowed roots: ${config.workspaceAllowedRoots.join(", ")}` : "Allowed roots: unrestricted",
-      "",
-    ].filter((line): line is string => Boolean(line));
-    const plain = [...header, ...(lines.length > 0 ? lines : [`No workspaces found in ${agentName} state.`])].join("\n");
-    const html = [
-      "<b>Workspaces:</b>",
-      `<b>Current:</b> <code>${escapeHTML(currentWorkspace)}</code>`,
-      currentPolicy.warning ? `<b>Current warning:</b> <code>${escapeHTML(currentPolicy.warning)}</code>` : undefined,
-      `<b>Allowed roots:</b> <code>${escapeHTML(config.workspaceAllowedRoots.length > 0 ? config.workspaceAllowedRoots.join(", ") : "unrestricted")}</code>`,
-      "",
-      ...(lines.length > 0 ? lines.map((line) => `<code>${escapeHTML(line)}</code>`) : [`<code>No workspaces found in ${escapeHTML(agentName)} state.</code>`]),
-    ].filter((line): line is string => Boolean(line)).join("\n");
-    await safeReply(ctx, html, { fallbackText: plain });
-  });
-
-  bot.command("voice", async (ctx) => {
-    if (!ctx.chat) {
-      return;
-    }
-
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession) {
-      return;
-    }
-    const { contextKey } = contextSession;
-    const argument = (ctx.message?.text ?? "").replace(/^\/voice(?:@\w+)?\s*/i, "").trim();
-    if (argument) {
-      const parts = argument.split(/\s+/);
-      const key = parts[0]?.toLowerCase();
-      const value = parts.slice(1).join(" ").trim();
-      if (key === "backend" && value) {
-        preferencesStore.update(contextKey, { voiceBackend: parseVoiceBackendPreference(value) });
-      } else if (key === "language") {
-        preferencesStore.update(contextKey, { voiceLanguage: value && value.toLowerCase() !== "auto" ? value : null });
-      } else if (key === "transcribe_only" || key === "transcribe-only") {
-        const enabled = parseToggle(value);
-        if (enabled === undefined) {
-          await safeReply(ctx, escapeHTML("Usage: /voice transcribe_only on|off"), {
-            fallbackText: "Usage: /voice transcribe_only on|off",
-          });
-          return;
-        }
-        preferencesStore.update(contextKey, { voiceTranscribeOnly: enabled });
-      } else {
-        await safeReply(ctx, escapeHTML("Usage: /voice, /voice backend auto|parakeet|faster-whisper|openai, /voice language auto|<code>, /voice transcribe_only on|off"), {
-          fallbackText: "Usage: /voice, /voice backend auto|parakeet|faster-whisper|openai, /voice language auto|<code>, /voice transcribe_only on|off",
-        });
-        return;
-      }
-    }
-
-    const backends = await getAvailableBackends().catch(() => []);
-
-    if (backends.length === 0) {
-      await safeReply(
-        ctx,
-        [
-          "<b>Voice transcription is not available.</b>",
-          "",
-          "Install <code>faster-whisper</code> + ffmpeg, install <code>parakeet-coreml</code> on macOS Apple Silicon, or set <code>OPENAI_API_KEY</code>.",
-          "<i>Cloud transcription uses OPENAI_API_KEY, not CODEX_API_KEY.</i>",
-        ].join("\n"),
-        {
-          fallbackText: [
-            "Voice transcription is not available.",
-            "",
-            "Install faster-whisper + ffmpeg, install parakeet-coreml on macOS Apple Silicon, or set OPENAI_API_KEY.",
-            "Cloud transcription uses OPENAI_API_KEY, not CODEX_API_KEY.",
-          ].join("\n"),
-        },
-      );
-      return;
-    }
-
-    const joined = backends.join(" + ");
-    const backendPreference = getEffectiveVoiceBackend(contextKey);
-    const language = getEffectiveVoiceLanguage(contextKey);
-    const transcribeOnly = isVoiceTranscribeOnly(contextKey);
-    const plain = [
-      `Voice backends: ${joined}`,
-      `Preferred backend: ${backendPreference}`,
-      `Language: ${language ?? "auto"}`,
-      `Transcribe only: ${transcribeOnly ? "on" : "off"}`,
-    ].join("\n");
-    const html = [
-      `<b>Voice backends:</b> <code>${escapeHTML(joined)}</code>`,
-      `<b>Preferred backend:</b> <code>${escapeHTML(backendPreference)}</code>`,
-      `<b>Language:</b> <code>${escapeHTML(language ?? "auto")}</code>`,
-      `<b>Transcribe only:</b> <code>${transcribeOnly ? "on" : "off"}</code>`,
-    ].join("\n");
-    await safeReply(ctx, html, {
-      fallbackText: plain,
-    });
+  registerTelegramPreferenceCommands({
+    bot,
+    config,
+    preferencesStore,
+    getContextSession,
+    getEffectiveMirrorMode,
+    getEffectiveNotifyMode,
+    getEffectiveQuietHours,
+    getEffectiveVoiceBackend,
+    getEffectiveVoiceLanguage,
+    isVoiceTranscribeOnly,
   });
 
   registerTelegramDiagnosticsCommands({
@@ -2745,15 +2340,6 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       renderSessionInfoHTML(result.info),
     ].join("\n");
     await safeReply(ctx, html, { fallbackText: plain });
-  });
-
-  bot.command("restart", async (ctx) => {
-    await safeReply(ctx, escapeHTML("Restarting connector..."), {
-      fallbackText: "Restarting connector...",
-    });
-    setTimeout(() => {
-      spawnConnectorRestart();
-    }, 300);
   });
 
   registerTelegramSupportCommands({ bot, config, auditLog, agentUpdates, getUserRole, audit });
@@ -3724,49 +3310,6 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   };
 
   bot.command(["effort", "reasoning"], openReasoningPicker);
-
-  bot.callbackQuery(/^agent_(codex|pi|hermes|openclaw|claude-code)$/, async (ctx) => {
-    const chatId = ctx.chat?.id;
-    const messageId = ctx.callbackQuery.message?.message_id;
-    const selectedAgent = ctx.match?.[1] as AgentId | undefined;
-    const contextKey = contextKeyFromCtx(ctx);
-    if (!chatId || !contextKey || !selectedAgent) {
-      await ctx.answerCallbackQuery();
-      return;
-    }
-
-    const picks = pendingAgentPicks.get(contextKey);
-    if (!picks?.includes(selectedAgent)) {
-      await ctx.answerCallbackQuery({ text: "Expired, run /agent again" });
-      return;
-    }
-    if (isBusy(contextKey)) {
-      await ctx.answerCallbackQuery({ text: "Wait for the current prompt to finish" });
-      return;
-    }
-
-    await ctx.answerCallbackQuery({ text: `Switching to ${agentLabel(selectedAgent)}...` });
-    pendingAgentPicks.delete(contextKey);
-    try {
-      const session = await registry.switchAgent(contextKey, selectedAgent);
-      const info = session.getInfo();
-      const html = [`<b>Agent switched to ${escapeHTML(labelOf(info))}.</b>`, "", renderSessionInfoHTML(info)].join("\n");
-      const plain = [`Agent switched to ${labelOf(info)}.`, "", renderSessionInfoPlain(info)].join("\n");
-      if (messageId) {
-        await safeEditMessage(bot, chatId, messageId, html, { fallbackText: plain });
-      } else {
-        await safeReply(ctx, html, { fallbackText: plain });
-      }
-    } catch (error) {
-      const html = `<b>Failed:</b> ${escapeHTML(friendlyErrorText(error))}`;
-      const plain = `Failed: ${friendlyErrorText(error)}`;
-      if (messageId) {
-        await safeEditMessage(bot, chatId, messageId, html, { fallbackText: plain });
-      } else {
-        await safeReply(ctx, html, { fallbackText: plain });
-      }
-    }
-  });
 
   bot.callbackQuery(NOOP_PAGE_CALLBACK_DATA, async (ctx) => {
     await ctx.answerCallbackQuery();

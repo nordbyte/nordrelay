@@ -1043,12 +1043,13 @@ npm run build
 - `plugins/nordrelay/scripts/nordrelay.mjs`: process manager for `start`, `stop`, `restart`, `status`, and `foreground`.
 - `src/index.ts`: runtime entrypoint, config load, auth check, state-file writes, polling lifecycle, shutdown.
 - `src/bot.ts`: Telegram prompt/session runtime, streaming, file/photo/voice handling, artifacts, and error handling.
-- `src/telegram-access-commands.ts`, `src/telegram-diagnostics-command.ts`, `src/telegram-update-commands.ts`, `src/telegram-support-command.ts`, and `src/telegram-command-menu.ts`: focused Telegram command groups for access linking, diagnostics/log/version commands, update jobs, diagnostics bundle export, and command menu registration.
+- `src/telegram-general-commands.ts`, `src/telegram-agent-commands.ts`, `src/telegram-preference-commands.ts`, `src/telegram-access-commands.ts`, `src/telegram-diagnostics-command.ts`, `src/telegram-update-commands.ts`, `src/telegram-support-command.ts`, and `src/telegram-command-menu.ts`: focused Telegram command groups for start/help/adapters, agent/auth controls, per-chat preferences, access linking, diagnostics/log/version commands, update jobs, diagnostics bundle export, and command menu registration.
 - `src/channel-adapter.ts`, `src/channel-runtime.ts`, and `src/channel-actions.ts`: channel descriptors, generic command routing, outbound delivery contracts, and channel-neutral command responses.
 - `src/config-metadata.ts`: shared setting metadata used by the WebUI settings page and generated `.env.example`.
 - `src/support-bundle.ts` and `src/zip-writer.ts`: redacted diagnostics bundle creation with a dependency-free ZIP writer.
+- `src/relay-queue-service.ts`, `src/relay-artifact-service.ts`, and `src/relay-external-activity-monitor.ts`: Web runtime queue operations, artifact preview/export/persistence, and external CLI activity mirroring.
 - `src/relay-runtime-types.ts`: shared Runtime/WebUI DTO types used by runtime, API contracts, and dashboard code.
-- `src/web-dashboard-http.ts` and `src/web-dashboard-pages.ts`: dashboard HTTP helpers and HTML shell rendering.
+- `src/web-dashboard-http.ts`, `src/web-dashboard-pages.ts`, and `src/web-dashboard-runtime-routes.ts`: dashboard HTTP helpers, HTML shell rendering, and operational runtime API routes.
 - `src/webui/`: focused WebUI source assets for core runtime state/API helpers, overview rendering, live events, chat/session workflows, admin pages, and CSS sections.
 - `src/bot-preferences.ts`: per-context mirror, notification, quiet-hour, and voice preference persistence.
 - `src/telegram-rate-limit.ts`: centralized Telegram API send/edit/document rate limiting and retry-after tracking.
