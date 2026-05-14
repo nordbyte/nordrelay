@@ -36,7 +36,7 @@ ${routeRules.map((route) => {
 
 if (checkOnly) {
   const current = readFileSync(targetPath, "utf8");
-  if (current !== body) {
+  if (normalizeNewlines(current) !== normalizeNewlines(body)) {
     throw new Error("Generated WebUI API route rules are out of date. Run npm run api:generate.");
   }
 } else {
@@ -45,4 +45,8 @@ if (checkOnly) {
 
 function regexLiteral(source) {
   return `/${source.replace(/\//g, "\\/")}/`;
+}
+
+function normalizeNewlines(value) {
+  return value.replace(/\r\n/g, "\n");
 }

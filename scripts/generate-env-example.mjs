@@ -11,10 +11,14 @@ const target = path.join(root, ".env.example");
 
 if (process.argv.includes("--check")) {
   const current = await import("node:fs").then((fs) => fs.readFileSync(target, "utf8"));
-  if (current !== next) {
+  if (normalizeNewlines(current) !== normalizeNewlines(next)) {
     console.error(".env.example is out of sync with src/config-metadata.ts");
     process.exit(1);
   }
 } else {
   writeFileSync(target, next, "utf8");
+}
+
+function normalizeNewlines(value) {
+  return value.replace(/\r\n/g, "\n");
 }
