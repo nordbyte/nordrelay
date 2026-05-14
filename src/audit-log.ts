@@ -6,7 +6,7 @@ import {
   type WebActivityActor,
   type WebActivityCategory,
 } from "./activity-events.js";
-import type { TelegramContextKey } from "./context-key.js";
+import type { ChannelContextKey } from "./context-key.js";
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "./state-backend.js";
 
 export type AuditAction =
@@ -42,7 +42,7 @@ export interface AuditEvent {
   action: AuditAction;
   category?: WebActivityCategory;
   status: "ok" | "failed" | "denied";
-  contextKey: TelegramContextKey;
+  contextKey: ChannelContextKey;
   channelId: "telegram" | "discord" | "web";
   actor?: WebActivityActor;
   actorId?: number | string;

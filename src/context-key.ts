@@ -1,35 +1,48 @@
 import type { Context } from "grammy";
 
-export type TelegramContextKey = string;
+export type ChannelContextKey = string;
+export type TelegramContextKey = ChannelContextKey;
 
-export function contextKeyFromMessage(chatId: number, messageThreadId?: number): TelegramContextKey {
+export function telegramContextKeyFromMessage(chatId: number, messageThreadId?: number): TelegramContextKey {
   if (messageThreadId !== undefined) {
     return `${chatId}:${messageThreadId}`;
   }
   return `${chatId}`;
 }
 
-export function contextKeyFromCtx(ctx: Context): TelegramContextKey | null {
+export function telegramContextKeyFromCtx(ctx: Context): TelegramContextKey | null {
   const chatId = ctx.chat?.id;
   if (chatId === undefined) {
     return null;
   }
   const threadId = ctx.message?.message_thread_id ?? ctx.callbackQuery?.message?.message_thread_id;
-  return contextKeyFromMessage(chatId, threadId);
+  return telegramContextKeyFromMessage(chatId, threadId);
 }
 
-export function parseContextKey(key: TelegramContextKey): { chatId: number; messageThreadId?: number } {
+export function parseTelegramContextKey(key: TelegramContextKey): { chatId: number; messageThreadId?: number } {
   const parts = key.split(":");
   const chatId = Number(parts[0]);
   const messageThreadId = parts[1] ? Number(parts[1]) : undefined;
   return { chatId, messageThreadId };
 }
 
-export function isTopicContextKey(key: TelegramContextKey): boolean {
+export function contextKeyFromMessage(chatId: number, messageThreadId?: number): TelegramContextKey {
+  return telegramContextKeyFromMessage(chatId, messageThreadId);
+}
+
+export function contextKeyFromCtx(ctx: Context): TelegramContextKey | null {
+  return telegramContextKeyFromCtx(ctx);
+}
+
+export function parseContextKey(key: TelegramContextKey): { chatId: number; messageThreadId?: number } {
+  return parseTelegramContextKey(key);
+}
+
+export function isTopicContextKey(key: ChannelContextKey): boolean {
   return key.includes(":");
 }
 
-export function isTelegramContextKey(key: TelegramContextKey): boolean {
+export function isTelegramContextKey(key: ChannelContextKey): key is TelegramContextKey {
   const parts = key.split(":");
   if (parts.length < 1 || parts.length > 2) {
     return false;
@@ -58,17 +71,17 @@ export function isTelegramContextKey(key: TelegramContextKey): boolean {
   return Number.isSafeInteger(threadId) && threadId > 0;
 }
 
-export function discordContextKey(input: { guildId?: string | null; channelId: string; threadId?: string | null }): TelegramContextKey {
+export function discordContextKey(input: { guildId?: string | null; channelId: string; threadId?: string | null }): ChannelContextKey {
   const guildId = input.guildId || "dm";
   const topic = input.threadId && input.threadId !== input.channelId ? `:${input.threadId}` : "";
   return `discord:${guildId}:${input.channelId}${topic}`;
 }
 
-export function isDiscordContextKey(key: TelegramContextKey): boolean {
+export function isDiscordContextKey(key: ChannelContextKey): boolean {
   return /^discord:[^:]+:[^:]+(?::[^:]+)?$/.test(key);
 }
 
-export function parseDiscordContextKey(key: TelegramContextKey): { guildId?: string; channelId: string; threadId?: string } | null {
+export function parseDiscordContextKey(key: ChannelContextKey): { guildId?: string; channelId: string; threadId?: string } | null {
   if (!isDiscordContextKey(key)) {
     return null;
   }

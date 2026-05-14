@@ -2,11 +2,11 @@ import { createAgentSessionService } from "./agent-factory.js";
 import { CODEX_AGENT_CAPABILITIES, type AgentId, type AgentSessionService, type AgentSyncResult } from "./agent.js";
 import { findLaunchProfile } from "./codex-launch.js";
 import type { ConnectorConfig } from "./config.js";
-import type { TelegramContextKey } from "./context-key.js";
+import type { ChannelContextKey } from "./context-key.js";
 import { createDocumentStore, type DocumentStore } from "./state-backend.js";
 
 export interface ContextMetadata {
-  contextKey: TelegramContextKey;
+  contextKey: ChannelContextKey;
   agentId?: AgentId;
   threadId: string | null;
   workspace: string;
@@ -25,10 +25,10 @@ export interface SessionRegistryOptions {
 }
 
 export class SessionRegistry {
-  private readonly sessions = new Map<TelegramContextKey, AgentSessionService>();
-  private readonly metadata = new Map<TelegramContextKey, ContextMetadata>();
+  private readonly sessions = new Map<ChannelContextKey, AgentSessionService>();
+  private readonly metadata = new Map<ChannelContextKey, ContextMetadata>();
   private readonly store: DocumentStore<ContextMetadata[]>;
-  private onRemoveCallback?: (contextKey: TelegramContextKey) => void;
+  private onRemoveCallback?: (contextKey: ChannelContextKey) => void;
 
   constructor(private readonly config: ConnectorConfig, options: SessionRegistryOptions = {}) {
     this.store = createDocumentStore<ContextMetadata[]>({
@@ -41,7 +41,7 @@ export class SessionRegistry {
   }
 
   async getOrCreate(
-    contextKey: TelegramContextKey,
+    contextKey: ChannelContextKey,
     options?: { deferThreadStart?: boolean; agentId?: AgentId },
   ): Promise<AgentSessionService> {
     let session = this.sessions.get(contextKey);
@@ -70,19 +70,19 @@ export class SessionRegistry {
     return session;
   }
 
-  get(contextKey: TelegramContextKey): AgentSessionService | undefined {
+  get(contextKey: ChannelContextKey): AgentSessionService | undefined {
     return this.sessions.get(contextKey);
   }
 
-  has(contextKey: TelegramContextKey): boolean {
+  has(contextKey: ChannelContextKey): boolean {
     return this.sessions.has(contextKey);
   }
 
-  hasMetadata(contextKey: TelegramContextKey): boolean {
+  hasMetadata(contextKey: ChannelContextKey): boolean {
     return this.metadata.has(contextKey);
   }
 
-  async switchAgent(contextKey: TelegramContextKey, agentId: AgentId): Promise<AgentSessionService> {
+  async switchAgent(contextKey: ChannelContextKey, agentId: AgentId): Promise<AgentSessionService> {
     const current = this.sessions.get(contextKey);
     if (current?.getInfo().agentId === agentId) {
       return current;
@@ -104,7 +104,7 @@ export class SessionRegistry {
     return this.getOrCreate(contextKey, { deferThreadStart: true, agentId });
   }
 
-  updateMetadata(contextKey: TelegramContextKey, session: AgentSessionService): void {
+  updateMetadata(contextKey: ChannelContextKey, session: AgentSessionService): void {
     const info = session.getInfo();
     const previous = this.metadata.get(contextKey);
     const agentId = info.agentId ?? "codex";
@@ -136,7 +136,7 @@ export class SessionRegistry {
     this.persistMetadata();
   }
 
-  pinThread(contextKey: TelegramContextKey, threadId: string): string[] {
+  pinThread(contextKey: ChannelContextKey, threadId: string): string[] {
     const meta = this.metadata.get(contextKey) ?? this.createEmptyMetadata(contextKey);
     const agentId = meta.agentId ?? this.config.defaultAgent ?? "codex";
     const pinnedByAgent = meta.pinnedThreadIdsByAgent ?? {};
@@ -150,7 +150,7 @@ export class SessionRegistry {
     return meta.pinnedThreadIdsByAgent[agentId] ?? [];
   }
 
-  unpinThread(contextKey: TelegramContextKey, threadId: string): string[] {
+  unpinThread(contextKey: ChannelContextKey, threadId: string): string[] {
     const meta = this.metadata.get(contextKey) ?? this.createEmptyMetadata(contextKey);
     const agentId = meta.agentId ?? this.config.defaultAgent ?? "codex";
     const pinnedByAgent = meta.pinnedThreadIdsByAgent ?? {};
@@ -165,7 +165,7 @@ export class SessionRegistry {
     return meta.pinnedThreadIdsByAgent[agentId] ?? [];
   }
 
-  listPinnedThreadIds(contextKey: TelegramContextKey): string[] {
+  listPinnedThreadIds(contextKey: ChannelContextKey): string[] {
     const meta = this.metadata.get(contextKey);
     const agentId = meta?.agentId ?? this.config.defaultAgent ?? "codex";
     return [...(meta?.pinnedThreadIdsByAgent?.[agentId] ?? meta?.pinnedThreadIds ?? [])];
@@ -175,8 +175,8 @@ export class SessionRegistry {
     return [...this.metadata.values()].sort((left, right) => right.updatedAt - left.updatedAt);
   }
 
-  syncAllFromAgentState(options: { reattach?: boolean } = {}): Array<{ contextKey: TelegramContextKey; result: AgentSyncResult }> {
-    const results: Array<{ contextKey: TelegramContextKey; result: AgentSyncResult }> = [];
+  syncAllFromAgentState(options: { reattach?: boolean } = {}): Array<{ contextKey: ChannelContextKey; result: AgentSyncResult }> {
+    const results: Array<{ contextKey: ChannelContextKey; result: AgentSyncResult }> = [];
     for (const [contextKey, session] of this.sessions.entries()) {
       if (!(session.getInfo().capabilities ?? CODEX_AGENT_CAPABILITIES).externalActivity) {
         continue;
@@ -190,11 +190,11 @@ export class SessionRegistry {
     return results;
   }
 
-  onRemove(callback: (contextKey: TelegramContextKey) => void): void {
+  onRemove(callback: (contextKey: ChannelContextKey) => void): void {
     this.onRemoveCallback = callback;
   }
 
-  remove(contextKey: TelegramContextKey): void {
+  remove(contextKey: ChannelContextKey): void {
     const session = this.sessions.get(contextKey);
     session?.dispose();
     this.sessions.delete(contextKey);
@@ -241,7 +241,7 @@ export class SessionRegistry {
     }
   }
 
-  private createEmptyMetadata(contextKey: TelegramContextKey): ContextMetadata {
+  private createEmptyMetadata(contextKey: ChannelContextKey): ContextMetadata {
     return {
       contextKey,
       agentId: this.config.defaultAgent ?? "codex",

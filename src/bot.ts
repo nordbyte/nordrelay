@@ -38,6 +38,7 @@ import {
   type VoiceBackendPreference,
 } from "./bot-preferences.js";
 import { renderAgentUpdateJobAction, type ChannelActionResponse } from "./channel-actions.js";
+import { ChannelCommandService } from "./channel-command-service.js";
 import { deliverChannelAction } from "./channel-runtime.js";
 import {
   agentLabel,
@@ -306,6 +307,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const contextUsers = new WeakMap<Context, AuthenticatedUser>();
   const agentUpdateActors = new Map<string, WebActivityActor>();
   const agentUpdateStates = new Map<string, { status: string; needsInput: boolean }>();
+  const commandService = new ChannelCommandService(config);
   const agentUpdates = new AgentUpdateManager({
     onUpdate: (job) => recordTelegramAgentUpdateLifecycle(job),
   });
@@ -2404,6 +2406,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     checkAgentAuthStatus,
     isTopicContext,
     replyChannelAction,
+    commandService,
   });
 
   registerTelegramAgentCommands({
@@ -2462,6 +2465,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     getEffectiveVoiceLanguage,
     isVoiceTranscribeOnly,
     replyChannelAction,
+    commandService,
   });
 
   registerTelegramOperationalCommands({

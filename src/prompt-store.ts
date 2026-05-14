@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AgentPromptInput } from "./agent.js";
-import type { TelegramContextKey } from "./context-key.js";
+import type { ChannelContextKey } from "./context-key.js";
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "./state-backend.js";
 import type { WebActivityActor } from "./web-state.js";
 
@@ -13,7 +13,7 @@ export interface PromptEnvelope {
 
 export interface QueuedPrompt extends PromptEnvelope {
   id: string;
-  contextKey: TelegramContextKey;
+  contextKey: ChannelContextKey;
   createdAt: number;
   notBefore?: number;
   updatedAt?: number;
@@ -22,16 +22,16 @@ export interface QueuedPrompt extends PromptEnvelope {
 }
 
 interface PersistedPromptStore {
-  lastPrompts: Record<TelegramContextKey, PromptEnvelope>;
-  queues: Record<TelegramContextKey, QueuedPrompt[]>;
-  pausedContexts?: TelegramContextKey[];
+  lastPrompts: Record<ChannelContextKey, PromptEnvelope>;
+  queues: Record<ChannelContextKey, QueuedPrompt[]>;
+  pausedContexts?: ChannelContextKey[];
 }
 
 export class PromptStore {
   private readonly store: DocumentStore<PersistedPromptStore>;
-  private lastPrompts = new Map<TelegramContextKey, PromptEnvelope>();
-  private queues = new Map<TelegramContextKey, QueuedPrompt[]>();
-  private pausedContexts = new Set<TelegramContextKey>();
+  private lastPrompts = new Map<ChannelContextKey, PromptEnvelope>();
+  private queues = new Map<ChannelContextKey, QueuedPrompt[]>();
+  private pausedContexts = new Set<ChannelContextKey>();
 
   constructor(workspace: string, backend: StateBackendKind = "json") {
     this.store = createDocumentStore<PersistedPromptStore>({
@@ -43,16 +43,16 @@ export class PromptStore {
     this.load();
   }
 
-  setLastPrompt(contextKey: TelegramContextKey, prompt: PromptEnvelope): void {
+  setLastPrompt(contextKey: ChannelContextKey, prompt: PromptEnvelope): void {
     this.lastPrompts.set(contextKey, prompt);
     this.persist();
   }
 
-  getLastPrompt(contextKey: TelegramContextKey): PromptEnvelope | undefined {
+  getLastPrompt(contextKey: ChannelContextKey): PromptEnvelope | undefined {
     return this.lastPrompts.get(contextKey);
   }
 
-  enqueue(contextKey: TelegramContextKey, prompt: PromptEnvelope, options: { notBefore?: number } = {}): QueuedPrompt {
+  enqueue(contextKey: ChannelContextKey, prompt: PromptEnvelope, options: { notBefore?: number } = {}): QueuedPrompt {
     const item: QueuedPrompt = {
       ...prompt,
       id: createQueueId(),
@@ -67,14 +67,14 @@ export class PromptStore {
     return item;
   }
 
-  enqueueFront(contextKey: TelegramContextKey, prompt: QueuedPrompt): void {
+  enqueueFront(contextKey: ChannelContextKey, prompt: QueuedPrompt): void {
     const queue = this.queues.get(contextKey) ?? [];
     queue.unshift(prompt);
     this.queues.set(contextKey, queue);
     this.persist();
   }
 
-  dequeue(contextKey: TelegramContextKey): QueuedPrompt | undefined {
+  dequeue(contextKey: ChannelContextKey): QueuedPrompt | undefined {
     const queue = this.queues.get(contextKey);
     if (!queue || queue.length === 0) {
       return undefined;
@@ -96,15 +96,15 @@ export class PromptStore {
     return item;
   }
 
-  list(contextKey: TelegramContextKey): QueuedPrompt[] {
+  list(contextKey: ChannelContextKey): QueuedPrompt[] {
     return [...(this.queues.get(contextKey) ?? [])];
   }
 
-  get(contextKey: TelegramContextKey, id: string): QueuedPrompt | undefined {
+  get(contextKey: ChannelContextKey, id: string): QueuedPrompt | undefined {
     return this.queues.get(contextKey)?.find((item) => item.id === id);
   }
 
-  nextRunnableAt(contextKey: TelegramContextKey): number | null {
+  nextRunnableAt(contextKey: ChannelContextKey): number | null {
     const timestamps = (this.queues.get(contextKey) ?? [])
       .map((item) => item.notBefore)
       .filter((value): value is number => typeof value === "number")
@@ -112,11 +112,11 @@ export class PromptStore {
     return timestamps[0] ?? null;
   }
 
-  listContextKeys(): TelegramContextKey[] {
+  listContextKeys(): ChannelContextKey[] {
     return [...new Set([...this.queues.keys(), ...this.pausedContexts])];
   }
 
-  remove(contextKey: TelegramContextKey, id: string): QueuedPrompt | undefined {
+  remove(contextKey: ChannelContextKey, id: string): QueuedPrompt | undefined {
     const queue = this.queues.get(contextKey);
     if (!queue) {
       return undefined;
@@ -135,7 +135,7 @@ export class PromptStore {
     return removed;
   }
 
-  moveToTop(contextKey: TelegramContextKey, id: string): QueuedPrompt | undefined {
+  moveToTop(contextKey: ChannelContextKey, id: string): QueuedPrompt | undefined {
     const queue = this.queues.get(contextKey);
     if (!queue) {
       return undefined;
@@ -152,7 +152,7 @@ export class PromptStore {
     return item;
   }
 
-  moveUp(contextKey: TelegramContextKey, id: string): QueuedPrompt | undefined {
+  moveUp(contextKey: ChannelContextKey, id: string): QueuedPrompt | undefined {
     const queue = this.queues.get(contextKey);
     if (!queue) {
       return undefined;
@@ -168,7 +168,7 @@ export class PromptStore {
     return item;
   }
 
-  moveDown(contextKey: TelegramContextKey, id: string): QueuedPrompt | undefined {
+  moveDown(contextKey: ChannelContextKey, id: string): QueuedPrompt | undefined {
     const queue = this.queues.get(contextKey);
     if (!queue) {
       return undefined;
@@ -187,30 +187,30 @@ export class PromptStore {
     return item;
   }
 
-  markFailed(contextKey: TelegramContextKey, item: QueuedPrompt, error: string): void {
+  markFailed(contextKey: ChannelContextKey, item: QueuedPrompt, error: string): void {
     item.lastError = error;
     item.updatedAt = Date.now();
     this.enqueueFront(contextKey, item);
   }
 
-  clear(contextKey: TelegramContextKey): number {
+  clear(contextKey: ChannelContextKey): number {
     const count = this.queues.get(contextKey)?.length ?? 0;
     this.queues.delete(contextKey);
     this.persist();
     return count;
   }
 
-  pause(contextKey: TelegramContextKey): void {
+  pause(contextKey: ChannelContextKey): void {
     this.pausedContexts.add(contextKey);
     this.persist();
   }
 
-  resume(contextKey: TelegramContextKey): void {
+  resume(contextKey: ChannelContextKey): void {
     this.pausedContexts.delete(contextKey);
     this.persist();
   }
 
-  isPaused(contextKey: TelegramContextKey): boolean {
+  isPaused(contextKey: ChannelContextKey): boolean {
     return this.pausedContexts.has(contextKey);
   }
 

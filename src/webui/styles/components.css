@@ -5,6 +5,15 @@
 @media(max-width:560px){.agent-settings-nav{align-items:stretch}
 .agent-settings-nav button{width:100%}
 }
+.access-tab{display:none}
+.access-tab.active{display:block}
+.access-tab-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px}
+.access-tab-heading h2{margin:0}
+.access-tab-heading input{max-width:320px}
+.access-id-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+@media(max-width:560px){.access-tab-heading{align-items:stretch;flex-direction:column}
+.access-tab-heading input{max-width:none;width:100%}
+}
 .drop-active{outline:2px dashed var(--accent);outline-offset:-8px}
 .chip{display:inline-flex;align-items:center;justify-content:center;min-height:20px;border-radius:999px;border:1px solid var(--border);padding:0 8px;font-size:12px;line-height:1;color:var(--muted);margin-right:6px}
 .chip.error{color:var(--danger);border-color:var(--danger)}

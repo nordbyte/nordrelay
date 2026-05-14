@@ -1,4 +1,4 @@
-import type { TelegramContextKey } from "./context-key.js";
+import type { ChannelContextKey } from "./context-key.js";
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "./state-backend.js";
 
 export type TelegramMirrorMode = "off" | "status" | "final" | "full";
@@ -21,12 +21,12 @@ export interface ContextPreferences {
 
 interface PersistedPreferences {
   version: 1;
-  contexts: Record<TelegramContextKey, ContextPreferences>;
+  contexts: Record<ChannelContextKey, ContextPreferences>;
 }
 
 export class BotPreferencesStore {
   private readonly store: DocumentStore<PersistedPreferences>;
-  private readonly contexts = new Map<TelegramContextKey, ContextPreferences>();
+  private readonly contexts = new Map<ChannelContextKey, ContextPreferences>();
 
   constructor(workspace: string, backend: StateBackendKind = "json") {
     this.store = createDocumentStore<PersistedPreferences>({
@@ -38,11 +38,11 @@ export class BotPreferencesStore {
     this.load();
   }
 
-  get(contextKey: TelegramContextKey): ContextPreferences {
+  get(contextKey: ChannelContextKey): ContextPreferences {
     return { ...(this.contexts.get(contextKey) ?? {}) };
   }
 
-  update(contextKey: TelegramContextKey, patch: ContextPreferences): ContextPreferences {
+  update(contextKey: ChannelContextKey, patch: ContextPreferences): ContextPreferences {
     const current = this.contexts.get(contextKey) ?? {};
     const next = pruneEmptyPreferences({
       ...current,
@@ -53,7 +53,7 @@ export class BotPreferencesStore {
     return { ...next };
   }
 
-  clear(contextKey: TelegramContextKey): void {
+  clear(contextKey: ChannelContextKey): void {
     this.contexts.delete(contextKey);
     this.persist();
   }

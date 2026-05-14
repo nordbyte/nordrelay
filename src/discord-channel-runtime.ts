@@ -18,6 +18,7 @@ import {
   type ChannelOutboundResult,
   type ChannelRuntime,
 } from "./channel-adapter.js";
+import { discordRateLimiter } from "./discord-rate-limit.js";
 import { redactText } from "./redaction.js";
 
 const DISCORD_MESSAGE_LIMIT = 2000;
@@ -41,11 +42,13 @@ export class DiscordBotChannelRuntime implements ChannelRuntime {
     const chunks = splitDiscordMessage(content);
     let first: Message | null = null;
     for (const [index, chunk] of chunks.entries()) {
-      const sent = await channel.send({
-        content: chunk,
-        components: index === chunks.length - 1 ? discordActionRows(message.buttons) : [],
-        allowedMentions: { parse: [] },
-      });
+      const sent = await discordRateLimiter.run(discordBucket(context), "sendMessage", () =>
+        channel.send({
+          content: chunk,
+          components: index === chunks.length - 1 ? discordActionRows(message.buttons) : [],
+          allowedMentions: { parse: [] },
+        })
+      );
       first ??= sent;
     }
     return { messageId: first?.id ?? "" };
@@ -58,25 +61,29 @@ export class DiscordBotChannelRuntime implements ChannelRuntime {
       await this.sendMessage(context, message);
       return;
     }
-    await existing.edit({
-      content: trimDiscordMessage(discordMessageText(message)),
-      components: discordActionRows(message.buttons),
-      allowedMentions: { parse: [] },
-    });
+    await discordRateLimiter.run(discordBucket(context), "editMessage", () =>
+      existing.edit({
+        content: trimDiscordMessage(discordMessageText(message)),
+        components: discordActionRows(message.buttons),
+        allowedMentions: { parse: [] },
+      })
+    );
   }
 
   async sendTyping(context: ChannelContext): Promise<void> {
     const channel = await this.resolveChannel(context);
-    await channel.sendTyping();
+    await discordRateLimiter.run(discordBucket(context), "typing", () => channel.sendTyping());
   }
 
   async sendFile(context: ChannelContext, file: ChannelOutboundFile): Promise<ChannelOutboundResult> {
     const channel = await this.resolveChannel(context, file.threadId);
-    const sent = await channel.send({
-      content: file.caption ? trimDiscordMessage(redactText(file.caption)) : undefined,
-      files: [new AttachmentBuilder(file.localPath, { name: file.name })],
-      allowedMentions: { parse: [] },
-    });
+    const sent = await discordRateLimiter.run(discordBucket(context), "sendFile", () =>
+      channel.send({
+        content: file.caption ? trimDiscordMessage(redactText(file.caption)) : undefined,
+        files: [new AttachmentBuilder(file.localPath, { name: file.name })],
+        allowedMentions: { parse: [] },
+      })
+    );
     return { messageId: sent.id };
   }
 
@@ -88,6 +95,10 @@ export class DiscordBotChannelRuntime implements ChannelRuntime {
     }
     return channel as DiscordSendableChannel;
   }
+}
+
+function discordBucket(context: ChannelContext): string {
+  return context.topicId ?? context.chatId;
 }
 
 export function discordMessageText(message: ChannelOutboundMessage): string {

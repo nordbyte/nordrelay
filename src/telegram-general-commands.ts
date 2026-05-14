@@ -1,8 +1,6 @@
 import type { Bot, Context } from "grammy";
 
-import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import type { AgentSessionInfo } from "./agent.js";
-import { enabledAgents } from "./agent-factory.js";
 import {
   renderWelcomeFirstTime,
   renderWelcomeReturning,
@@ -13,12 +11,8 @@ import {
   capabilitiesOf,
   labelOf,
 } from "./bot-rendering.js";
-import {
-  renderAgentsAction,
-  renderChannelsAction,
-  type ChannelActionResponse,
-} from "./channel-actions.js";
-import { listChannelDescriptors } from "./channel-adapter.js";
+import type { ChannelActionResponse } from "./channel-actions.js";
+import type { ChannelCommandService } from "./channel-command-service.js";
 import type { ConnectorConfig } from "./config.js";
 import type { TelegramContextKey } from "./context-key.js";
 import { escapeHTML } from "./format.js";
@@ -41,6 +35,7 @@ export interface TelegramGeneralCommandOptions {
   checkAgentAuthStatus: (info: AgentSessionInfo) => Promise<{ authenticated: boolean; detail: string }>;
   isTopicContext: (contextKey: TelegramContextKey) => boolean;
   replyChannelAction: (ctx: Context, rendered: ChannelActionResponse) => Promise<void>;
+  commandService: ChannelCommandService;
 }
 
 export function registerTelegramGeneralCommands(options: TelegramGeneralCommandOptions): void {
@@ -81,11 +76,11 @@ export function registerTelegramGeneralCommands(options: TelegramGeneralCommandO
   });
 
   options.bot.command("channels", async (ctx) => {
-    await options.replyChannelAction(ctx, renderChannelsAction(listChannelDescriptors()));
+    await options.replyChannelAction(ctx, options.commandService.renderChannels());
   });
 
   options.bot.command("agents", async (ctx) => {
-    await options.replyChannelAction(ctx, renderAgentsAction(listAgentAdapterDescriptors(), enabledAgents(options.config)));
+    await options.replyChannelAction(ctx, options.commandService.renderAgents());
   });
 
   options.bot.command("restart", async (ctx) => {

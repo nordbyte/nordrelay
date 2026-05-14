@@ -1,8 +1,8 @@
-import type { TelegramContextKey } from "./context-key.js";
+import type { ChannelContextKey } from "./context-key.js";
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "./state-backend.js";
 
 export interface SessionLock {
-  contextKey: TelegramContextKey;
+  contextKey: ChannelContextKey;
   ownerUserId: string;
   ownerLabel?: string;
   ownerChannel?: "web" | "telegram" | "discord" | "system";
@@ -20,7 +20,7 @@ export interface SessionLockOwner {
 
 interface PersistedLocks {
   version: 1;
-  locks: Record<TelegramContextKey, SessionLock>;
+  locks: Record<ChannelContextKey, SessionLock>;
 }
 
 export class SessionLockStore {
@@ -35,7 +35,7 @@ export class SessionLockStore {
     });
   }
 
-  get(contextKey: TelegramContextKey, now = Date.now()): SessionLock | null {
+  get(contextKey: ChannelContextKey, now = Date.now()): SessionLock | null {
     const payload = this.readPayload();
     const lock = payload.locks[contextKey];
     if (!lock) {
@@ -49,7 +49,7 @@ export class SessionLockStore {
     return lock;
   }
 
-  set(contextKey: TelegramContextKey, owner: SessionLockOwner, ttlMs: number): SessionLock {
+  set(contextKey: ChannelContextKey, owner: SessionLockOwner, ttlMs: number): SessionLock {
     const payload = this.readPayload();
     const now = Date.now();
     const lock: SessionLock = {
@@ -66,7 +66,7 @@ export class SessionLockStore {
     return lock;
   }
 
-  clear(contextKey: TelegramContextKey): boolean {
+  clear(contextKey: ChannelContextKey): boolean {
     const payload = this.readPayload();
     const existed = Boolean(payload.locks[contextKey]);
     delete payload.locks[contextKey];
