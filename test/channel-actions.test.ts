@@ -14,10 +14,11 @@ import {
 describe("channel-independent command actions", () => {
   it("renders channel and agent adapter summaries without Telegram primitives", () => {
     const channels = renderChannelsAction([
-      { id: "telegram", label: "Telegram", capabilities: ["text"], status: "available" },
-      { id: "discord", label: "Discord", capabilities: ["text"], status: "planned" },
+      { id: "telegram", label: "Telegram", capabilities: ["text"], status: "available", enabled: true },
+      { id: "discord", label: "Discord", capabilities: ["text"], status: "available", enabled: false },
     ]);
-    expect(channels.plain).toContain("Telegram: available");
+    expect(channels.plain).toContain("Telegram: available / enabled");
+    expect(channels.plain).toContain("Discord: available / disabled");
     expect(channels.html).toContain("<b>Channel adapters:</b>");
 
     const agents = renderAgentsAction([

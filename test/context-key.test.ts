@@ -1,6 +1,15 @@
 import type { Context } from "grammy";
 
-import { contextKeyFromCtx, contextKeyFromMessage, isTelegramContextKey, isTopicContextKey, parseContextKey } from "../src/context-key.js";
+import {
+  contextKeyFromCtx,
+  contextKeyFromMessage,
+  discordContextKey,
+  isDiscordContextKey,
+  isTelegramContextKey,
+  isTopicContextKey,
+  parseContextKey,
+  parseDiscordContextKey,
+} from "../src/context-key.js";
 
 describe("context-key", () => {
   it("uses only chat id for private chats", () => {
@@ -64,5 +73,18 @@ describe("context-key", () => {
     expect(isTelegramContextKey("web:dashboard")).toBe(false);
     expect(isTelegramContextKey("123:dashboard")).toBe(false);
     expect(isTelegramContextKey("123:0")).toBe(false);
+  });
+
+  it("parses Discord guild, channel, and thread context keys", () => {
+    const key = discordContextKey({ guildId: "guild-1", channelId: "channel-1", threadId: "thread-1" });
+
+    expect(key).toBe("discord:guild-1:channel-1:thread-1");
+    expect(isDiscordContextKey(key)).toBe(true);
+    expect(parseDiscordContextKey(key)).toEqual({
+      guildId: "guild-1",
+      channelId: "channel-1",
+      threadId: "thread-1",
+    });
+    expect(isTelegramContextKey(key)).toBe(false);
   });
 });

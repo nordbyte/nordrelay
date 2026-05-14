@@ -26,7 +26,9 @@ export function renderChannelsAction(descriptors: ChannelDescriptor[]): ChannelA
   const plain = [
     "Channel adapters:",
     ...descriptors.map((descriptor) => {
-      const status = descriptor.status === "available" ? "available" : "planned";
+      const status = descriptor.status === "available"
+        ? descriptor.enabled === false ? "available / disabled" : "available / enabled"
+        : "planned";
       return `${descriptor.label}: ${status} · ${descriptor.capabilities.join(", ")}`;
     }),
   ].join("\n");
@@ -34,8 +36,11 @@ export function renderChannelsAction(descriptors: ChannelDescriptor[]): ChannelA
     "<b>Channel adapters:</b>",
     ...descriptors.map((descriptor) => {
       const statusIcon = descriptor.status === "available" ? "✅" : "🟡";
+      const status = descriptor.status === "available"
+        ? descriptor.enabled === false ? "available / disabled" : "available / enabled"
+        : descriptor.status;
       const notes = descriptor.notes ? `\n  ${escapeHTML(descriptor.notes)}` : "";
-      return `${statusIcon} <b>${escapeHTML(descriptor.label)}</b> <code>${escapeHTML(descriptor.status)}</code>\n  <code>${escapeHTML(descriptor.capabilities.join(", "))}</code>${notes}`;
+      return `${statusIcon} <b>${escapeHTML(descriptor.label)}</b> <code>${escapeHTML(status)}</code>\n  <code>${escapeHTML(descriptor.capabilities.join(", "))}</code>${notes}`;
     }),
   ].join("\n");
   return { plain, html };

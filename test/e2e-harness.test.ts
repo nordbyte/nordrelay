@@ -23,12 +23,24 @@ const sqliteAvailable = (() => {
 })();
 
 describe("adapter and e2e harness primitives", () => {
-  it("exposes Telegram as the available channel and future channels as planned adapters", () => {
-    const channels = listChannelDescriptors();
+  it("exposes implemented channels separately from runtime enabled state", () => {
+    const previousTelegram = process.env.TELEGRAM_ENABLED;
+    const previousDiscord = process.env.DISCORD_ENABLED;
+    delete process.env.TELEGRAM_ENABLED;
+    delete process.env.DISCORD_ENABLED;
+    try {
+      const channels = listChannelDescriptors();
 
-    expect(channels.find((channel) => channel.id === "telegram")?.status).toBe("available");
-    expect(channels.find((channel) => channel.id === "discord")?.status).toBe("planned");
-    expect(new TelegramChannelAdapter().capabilities.has("typing")).toBe(true);
+      expect(channels.find((channel) => channel.id === "telegram")).toMatchObject({ status: "available", enabled: true });
+      expect(channels.find((channel) => channel.id === "discord")).toMatchObject({ status: "available", enabled: false });
+      expect(channels.find((channel) => channel.id === "whatsapp")?.status).toBe("planned");
+      expect(new TelegramChannelAdapter().capabilities.has("typing")).toBe(true);
+    } finally {
+      if (previousTelegram === undefined) delete process.env.TELEGRAM_ENABLED;
+      else process.env.TELEGRAM_ENABLED = previousTelegram;
+      if (previousDiscord === undefined) delete process.env.DISCORD_ENABLED;
+      else process.env.DISCORD_ENABLED = previousDiscord;
+    }
   });
 
   it("exposes Codex, Pi, Hermes, OpenClaw, and Claude Code agent adapter descriptors", () => {

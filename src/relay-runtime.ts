@@ -58,7 +58,7 @@ import {
   type WebActivityStatus,
   type WebChatMessage,
 } from "./web-state.js";
-import { isTelegramContextKey } from "./context-key.js";
+import { isDiscordContextKey, isTelegramContextKey } from "./context-key.js";
 import type {
   ActiveSessionDto,
   ActiveSessionsDto,
@@ -1420,7 +1420,7 @@ export class RelayRuntime {
     return {
       id: `${meta.contextKey}:${snapshot.activity.turnId ?? snapshot.threadId}`,
       contextKey: meta.contextKey,
-      source: isTelegramContextKey(meta.contextKey) ? "telegram" : "cli",
+      source: activeSessionSourceForContext(meta.contextKey),
       status: "external",
       agentId: snapshot.agentId,
       agentLabel: snapshot.agentLabel,
@@ -1976,6 +1976,16 @@ function hostLogoutCommand(info: AgentSessionInfo, config: ConnectorConfig): str
     return `${config.openClawCliPath ?? "openclaw"} logout`;
   }
   return "codex logout";
+}
+
+function activeSessionSourceForContext(contextKey: string): ActiveSessionDto["source"] {
+  if (isTelegramContextKey(contextKey)) {
+    return "telegram";
+  }
+  if (isDiscordContextKey(contextKey)) {
+    return "discord";
+  }
+  return "cli";
 }
 
 function normalizeMimeType(value: string | undefined, name: string): string {

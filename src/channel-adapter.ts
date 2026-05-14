@@ -71,6 +71,7 @@ export interface ChannelDescriptor {
   label: string;
   capabilities: ChannelCapability[];
   status: "available" | "planned";
+  enabled?: boolean;
   notes?: string;
 }
 
@@ -125,11 +126,16 @@ export class TelegramChannelAdapter implements ChannelAdapter {
   readonly capabilities = new Set<ChannelCapability>(TELEGRAM_CAPABILITIES);
 
   describe(): ChannelDescriptor {
+    const enabled = process.env.TELEGRAM_ENABLED !== "false";
     return {
       id: this.id,
       label: this.label,
       capabilities: [...this.capabilities],
       status: "available",
+      enabled,
+      notes: enabled
+        ? "Telegram bot runtime is enabled by default."
+        : "Telegram bot runtime is disabled.",
     };
   }
 }
@@ -140,12 +146,14 @@ export class DiscordChannelAdapter implements ChannelAdapter {
   readonly capabilities = new Set<ChannelCapability>(DISCORD_CAPABILITIES);
 
   describe(): ChannelDescriptor {
+    const enabled = process.env.DISCORD_ENABLED === "true";
     return {
       id: this.id,
       label: this.label,
       capabilities: [...this.capabilities],
-      status: process.env.DISCORD_ENABLED === "true" ? "available" : "planned",
-      notes: process.env.DISCORD_ENABLED === "true"
+      status: "available",
+      enabled,
+      notes: enabled
         ? "Discord bot runtime is enabled."
         : "Enable with DISCORD_ENABLED=true and DISCORD_BOT_TOKEN.",
     };

@@ -22,7 +22,15 @@ import type {
 } from "./relay-runtime.js";
 import type { SessionLock } from "./session-locks.js";
 import type { SettingsSnapshot, SettingsUpdateResult } from "./settings-service.js";
-import type { GroupRecord, TelegramChatAccessRecord, TelegramIdentityRecord, UserRecord, WebSessionRecord } from "./user-management.js";
+import type {
+  DiscordChannelAccessRecord,
+  DiscordIdentityRecord,
+  GroupRecord,
+  TelegramChatAccessRecord,
+  TelegramIdentityRecord,
+  UserRecord,
+  WebSessionRecord,
+} from "./user-management.js";
 import type { WebActivityEvent, WebChatMessage } from "./web-state.js";
 
 export type WebApiMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -76,10 +84,12 @@ export interface WebUserManagementResponse {
   users: Array<PublicUser & {
     groups: GroupRecord[];
     telegramIdentities: TelegramIdentityRecord[];
+    discordIdentities: DiscordIdentityRecord[];
     webSessions: PublicWebSession[];
   }>;
   groups: GroupRecord[];
   telegramChats: TelegramChatAccessRecord[];
+  discordChannels: DiscordChannelAccessRecord[];
   adminConfigured: boolean;
   permissions: Permission[];
 }
@@ -119,14 +129,17 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/artifacts/bulk" ? { action: "delete"; turnIds: string[] } :
   P extends "/api/logs/clear" ? { target?: "connector" | "update" | "agent-updates" } :
   P extends "/api/settings" ? { settings: Record<string, string | null | undefined> } :
-  P extends "/api/users" ? { email: string; displayName?: string; password: string; groupIds?: string[]; active?: boolean; telegramUserId?: number } :
-  P extends `/api/users/${string}` ? { email?: string; displayName?: string; active?: boolean; groupIds?: string[] } :
+  P extends "/api/users" ? { email: string; displayName?: string; password: string; groupIds?: string[]; active?: boolean; telegramUserId?: number; discordUserId?: string } :
   P extends `/api/users/${string}/password` ? { password: string } :
   P extends `/api/users/${string}/telegram` ? { createCode?: boolean; telegramUserId?: number; username?: string } :
-  P extends "/api/groups" ? { name: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[] } :
-  P extends `/api/groups/${string}` ? { name?: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[] } :
+  P extends `/api/users/${string}/discord` ? { createCode?: boolean; discordUserId?: string; username?: string; globalName?: string } :
+  P extends `/api/users/${string}` ? { email?: string; displayName?: string; active?: boolean; groupIds?: string[] } :
+  P extends "/api/groups" ? { name: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[]; discordChannelIds?: string[] } :
+  P extends `/api/groups/${string}` ? { name?: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[]; discordChannelIds?: string[] } :
   P extends "/api/telegram-chats" ? { chatId: number; title?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[] } :
   P extends `/api/telegram-chats/${string}` ? { title?: string; enabled?: boolean; allowedGroupIds?: string[] } :
+  P extends "/api/discord-channels" ? { guildId?: string; channelId: string; title?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[] } :
+  P extends `/api/discord-channels/${string}` ? { title?: string; enabled?: boolean; allowedGroupIds?: string[] } :
   P extends "/api/locks" ? { ownerName?: string } :
   P extends "/api/auth/login" | "/api/auth/logout" ? { agentId?: AgentId } :
   P extends `/api/agent-update/${string}/input` ? { input: string } :
@@ -150,6 +163,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/permissions" | "/api/users" ? WebUserManagementResponse :
   P extends "/api/groups" ? { groups: GroupRecord[] } :
   P extends "/api/telegram-chats" ? { chats: TelegramChatAccessRecord[] } :
+  P extends "/api/discord-channels" ? { channels: DiscordChannelAccessRecord[] } :
   P extends "/api/audit" ? { events: AuditEvent[] } :
   P extends "/api/locks" ? { locks: SessionLock[]; lock?: SessionLock } :
   P extends "/api/auth/status" | "/api/auth/login" | "/api/auth/logout" ? WebAuthDto :
@@ -177,7 +191,10 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends `/api/users/${string}/password` ? { ok: boolean } :
   P extends `/api/users/${string}/telegram` ? { linkCode?: unknown; identity?: TelegramIdentityRecord } :
   P extends `/api/users/${string}/telegram/${string}` ? { removed: boolean } :
+  P extends `/api/users/${string}/discord` ? { linkCode?: unknown; identity?: DiscordIdentityRecord } :
+  P extends `/api/users/${string}/discord/${string}` ? { removed: boolean } :
   P extends `/api/users/${string}` ? { user: PublicUser; groups: GroupRecord[] } :
   P extends `/api/groups/${string}` ? { group: GroupRecord } :
   P extends `/api/telegram-chats/${string}` ? { chat: TelegramChatAccessRecord } :
+  P extends `/api/discord-channels/${string}` ? { channel: DiscordChannelAccessRecord } :
   Record<string, unknown>;

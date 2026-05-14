@@ -45,7 +45,7 @@ export interface RelaySnapshot {
   workspaces: string[];
 }
 
-export type ActiveSessionSource = "web" | "telegram" | "cli";
+export type ActiveSessionSource = "web" | "telegram" | "discord" | "cli";
 
 export interface ActiveSessionDto {
   id: string;
