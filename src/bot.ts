@@ -235,6 +235,7 @@ type ExternalMirrorState = {
   rolloutPath: string;
   lastLine: number;
   lastTypingAt?: number;
+  workingNoticeTurnKey?: string | null;
   statusMessageId?: number;
   turnId?: string | null;
   startedAt?: Date | null;
@@ -752,6 +753,26 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     await sendChatActionSafe(bot.api, chatId, "typing", messageThreadId).catch(() => {});
   };
 
+  const sendExternalWorkingNotice = async (
+    chatId: TelegramChatId,
+    messageThreadId: number | undefined,
+    state: ExternalMirrorState,
+    snapshot: AgentExternalSnapshot,
+  ): Promise<void> => {
+    const turnKey = snapshot.activity.turnId ?? snapshot.activity.startedAt?.toISOString() ?? "unknown";
+    if (state.workingNoticeTurnKey === turnKey) {
+      return;
+    }
+
+    const prompt = trimLine(snapshot.latestUserMessage ?? "", 250);
+    const text = prompt ? `Working on ${prompt}` : `Working on external ${snapshot.agentLabel} task...`;
+    await sendTextMessage(bot.api, chatId, escapeHTML(text), {
+      fallbackText: text,
+      messageThreadId,
+    });
+    state.workingNoticeTurnKey = turnKey;
+  };
+
   const mirrorExternalSnapshot = async (
     contextKey: TelegramContextKey,
     chatId: TelegramChatId,
@@ -779,7 +800,12 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       if (mirrorMode !== "off") {
         await sendExternalMirrorTyping(chatId, parsed.messageThreadId, state);
       }
-      if (mirrorMode === "off" || mirrorMode === "final") {
+      if (mirrorMode === "final") {
+        await sendExternalWorkingNotice(chatId, parsed.messageThreadId, state, snapshot);
+        state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
+        return;
+      }
+      if (mirrorMode === "off") {
         state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
         return;
       }
@@ -861,6 +887,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       await deliverCliGeneratedArtifacts(contextKey, chatId, session, state.startedAt, terminalEvent.turnId, parsed.messageThreadId);
     }
 
+    state.workingNoticeTurnKey = undefined;
     state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
   };
 

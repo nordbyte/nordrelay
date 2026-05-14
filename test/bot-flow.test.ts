@@ -555,7 +555,7 @@ describe("bot flow integration", () => {
     expect(registry.getOrCreate).not.toHaveBeenCalled();
   });
 
-  it("sends typing for active external CLI turns in final mirror mode", async () => {
+  it("sends working notice and typing for active external CLI turns in final mirror mode", async () => {
     const config = createConfig({
       codexExternalBusyCheckMs: 999_999,
       telegramMirrorMode: "final",
@@ -591,7 +591,13 @@ describe("bot flow integration", () => {
         action: "typing",
       }),
     ]);
-    expect(api.sentMessages).toEqual([]);
+    expect(api.sentMessages).toEqual([
+      expect.objectContaining({
+        chatId: 123,
+        text: "Working on do work",
+      }),
+    ]);
+    expect(api.sentMessages.at(-1)?.text).not.toContain("CLI task running");
   });
 
   it("does not send approval timeout messages after Telegram access is revoked", async () => {
