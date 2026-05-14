@@ -1,12 +1,12 @@
 .agent-settings-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface)}
 .agent-settings-nav strong{font-size:13px;color:var(--muted);margin-right:4px}
-.agent-settings-nav button{background:var(--surface);color:var(--text);border-color:var(--border);height:32px}
+.agent-settings-nav button{background:var(--surface);color:var(--text);border-color:var(--border);min-height:32px;height:32px;line-height:1}
 .agent-settings-nav button.active{background:var(--accent);color:white;border-color:var(--accent)}
 @media(max-width:560px){.agent-settings-nav{align-items:stretch}
 .agent-settings-nav button{width:100%}
 }
 .drop-active{outline:2px dashed var(--accent);outline-offset:-8px}
-.chip{display:inline-flex;align-items:center;border-radius:999px;border:1px solid var(--border);padding:2px 8px;font-size:12px;color:var(--muted);margin-right:6px}
+.chip{display:inline-flex;align-items:center;justify-content:center;min-height:20px;border-radius:999px;border:1px solid var(--border);padding:0 8px;font-size:12px;line-height:1;color:var(--muted);margin-right:6px}
 .chip.error{color:var(--danger);border-color:var(--danger)}
 .chip.warn{color:#8a6a12;border-color:#d9c27a;background:var(--warn)}
 .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:12px}
@@ -15,7 +15,7 @@
 .artifact-card small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .overview-adapter-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .session-detail-section{margin-top:20px}
-.session-detail-section summary{cursor:pointer;font-weight:700;margin-bottom:0}
+.session-detail-section summary{cursor:pointer;font-weight:700;margin-bottom:0;line-height:1.25}
 .session-detail-section[open] summary{margin-bottom:10px}
 .setting.dirty{border-color:var(--accent)}
 .setting-actions{display:flex;gap:8px;align-items:center;margin-top:8px}
@@ -38,7 +38,7 @@
 .connection-error{color:var(--danger);border-color:var(--danger)}
 .version-actions{margin-bottom:12px}
 .version-update-title{margin-top:22px}
-.mini-button{height:26px;padding:0 8px;font-size:12px}
+.mini-button{min-height:26px;height:26px;padding:0 8px;font-size:12px;line-height:1}
 .update-log{max-height:280px;min-height:90px;margin-top:10px}
 .update-job-header{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
 .update-input{display:grid;grid-template-columns:1fr auto auto;gap:8px;margin-top:8px}

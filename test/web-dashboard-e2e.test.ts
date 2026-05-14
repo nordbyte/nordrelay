@@ -65,6 +65,19 @@ describe("web dashboard browser-flow assets", () => {
     expect(readFileSync("src/webui/styles/layout.css", "utf8")).toContain(".chat-layout");
   });
 
+  it("normalizes dashboard control typography across platforms", () => {
+    const layout = readFileSync("src/webui/styles/layout.css", "utf8");
+    const components = readFileSync("src/webui/styles/components.css", "utf8");
+
+    expect(layout).toContain("line-height:1.4");
+    expect(layout).toContain("button{appearance:none");
+    expect(layout).toContain("display:inline-flex");
+    expect(layout).toContain("nav button{display:flex");
+    expect(layout).toContain(".badge,.adapter-status{display:inline-flex");
+    expect(components).toContain(".chip{display:inline-flex");
+    expect(components).toContain(".mini-button{min-height:26px");
+  });
+
   it("renders parseable permission-aware dashboard JavaScript", () => {
     const js = dashboardJs();
 
