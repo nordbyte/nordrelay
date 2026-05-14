@@ -183,9 +183,9 @@ Authentication and safety:
 Operations:
 
 - Plugin command/skill starts, stops, restarts, and inspects the connector process.
-- Manual process commands support `start`, `stop`, `restart`, `status`, and `foreground`.
+- Manual process commands support `start`, `stop`, `restart`, `status`, `update`, and `foreground`.
 - Telegram admin commands support `/logs`, `/diagnostics`, `/support`, `/restart`, and `/update` for NordRelay and agent CLIs.
-- `/update` detects the install type: npm installs update with `npm install -g @nordbyte/nordrelay@latest`; source checkouts pull `origin/main`, install dependencies, run check, tests, and build, then restart.
+- `nordrelay update`, `/update`, and the WebUI update button detect the install type: npm installs update with `npm install -g @nordbyte/nordrelay@latest`; source checkouts pull `origin/main`, install dependencies, run check, tests, and build, then restart if the connector is running.
 - `/update agents`, `/update <agent>`, `/update install <agent>`, `/update jobs`, `/update log <id>`, `/update cancel <id>`, and `/update input <id> <text>` manage Codex, Pi, Hermes, OpenClaw, and Claude Code updater or installer jobs from Telegram.
 - `/logs` renders redacted connector, NordRelay update, and agent update logs with local-time timestamps, levels, file path, last-modified time, and highlighted warnings/errors.
 - Logs can be emitted as timestamped plain text or JSON records with `CONNECTOR_LOG_FORMAT`.
@@ -356,6 +356,7 @@ nordrelay init
 nordrelay doctor
 nordrelay start
 nordrelay status
+nordrelay update
 nordrelay restart
 nordrelay stop
 nordrelay foreground
@@ -367,6 +368,7 @@ Source checkout process commands:
 ```bash
 node plugins/nordrelay/scripts/nordrelay.mjs start
 node plugins/nordrelay/scripts/nordrelay.mjs status
+node plugins/nordrelay/scripts/nordrelay.mjs update
 node plugins/nordrelay/scripts/nordrelay.mjs restart
 node plugins/nordrelay/scripts/nordrelay.mjs stop
 node plugins/nordrelay/scripts/nordrelay.mjs foreground
@@ -837,7 +839,7 @@ NordRelay wrapper:
 
 - `NORDRELAY_HOME`: config/state/log directory override. Defaults to `~/.nordrelay`.
 - `NORDRELAY_SOURCE_ROOT`: runtime source root override. Useful when the plugin is launched from Codex cache.
-- `NORDRELAY_UPDATE_METHOD`: optional `auto`, `npm`, or `git` self-update method override. Auto uses git when the runtime root has a `.git` directory and npm otherwise.
+- `NORDRELAY_UPDATE_METHOD`: optional `auto`, `npm`, or `git` self-update method override used by `nordrelay update`, `/update`, and the WebUI update button. Auto uses git when the runtime root has a `.git` directory and npm otherwise.
 - Agent updates from the dashboard and Telegram use each agent's native updater where possible: `codex update`, `pi update pi`, `hermes update --yes`, `openclaw update --yes`, and `claude update`. Not-installed agents can be installed from the dashboard or with `/update install <agent>` using npm global installs.
 - `NORDRELAY_KEEP_PENDING_UPDATES`: set true to avoid dropping pending Telegram updates on start.
 - `NORDRELAY_FORWARD_TOOL_OUTPUT`: backward-compatible alias that sets `TOOL_VERBOSITY=all` when `TOOL_VERBOSITY` is unset.

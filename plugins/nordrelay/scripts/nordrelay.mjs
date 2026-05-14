@@ -51,6 +51,8 @@ function parseArgs(argv) {
     force: false,
     host: undefined,
     port: undefined,
+    restartAfterUpdate: true,
+    updateMethod: undefined,
   };
 
   for (let i = 0; i < copy.length; i += 1) {
@@ -60,6 +62,9 @@ function parseArgs(argv) {
     else if (arg === "--force") options.force = true;
     else if (arg === "--host") options.host = requireValue(copy, ++i, arg);
     else if (arg === "--port") options.port = Number.parseInt(requireValue(copy, ++i, arg), 10);
+    else if (arg === "--method") options.updateMethod = requireValue(copy, ++i, arg);
+    else if (arg === "--no-restart") options.restartAfterUpdate = false;
+    else if (arg === "--restart") options.restartAfterUpdate = true;
     else if (arg === "--token") options.telegramBotToken = requireValue(copy, ++i, arg);
     else if (arg === "--admin-email") options.adminEmail = requireValue(copy, ++i, arg);
     else if (arg === "--admin-name") options.adminName = requireValue(copy, ++i, arg);
@@ -324,6 +329,219 @@ async function commandStatus(options) {
   console.log(`WebUI: ${formatDashboardUrl(dashboard)}`);
   console.log(`Log: ${options.logFile}`);
   if (state.error) console.log(`Error: ${state.error}`);
+}
+
+async function commandUpdate(options) {
+  await mkdirp(options.home);
+  loadEnvFiles(options.home);
+  const method = resolveUpdateMethod(options);
+  const updateLog = path.join(options.home, "update.log");
+  await mkdirp(path.dirname(updateLog));
+  const log = fs.createWriteStream(updateLog, { flags: "a" });
+  const sourceRoot = RUNTIME_ROOT;
+  const wasRunning = isProcessRunning(await readPid(options.pidFile));
+  const summary = method === "npm"
+    ? "Install latest @nordbyte/nordrelay with npm, verify the CLI, and restart if the connector is running."
+    : "Pull origin/main, install dependencies, run check, tests, build, and restart if the connector is running.";
+
+  console.log(`Starting NordRelay update (${method}).`);
+  console.log(`Source: ${sourceRoot}`);
+  console.log(`Log: ${updateLog}`);
+  logUpdateLine(log, `Starting ${method} connector self-update`);
+  logUpdateLine(log, summary);
+
+  try {
+    if (method === "npm") {
+      await runNpmSelfUpdate(sourceRoot, log);
+    } else {
+      await runGitSelfUpdate(sourceRoot, log);
+    }
+
+    if (options.restartAfterUpdate && wasRunning) {
+      await runLoggedStep(log, "Restart NordRelay connector", process.execPath, [
+        SCRIPT_PATH,
+        "restart",
+        "--keep-pending-updates",
+        "--home",
+        options.home,
+      ], { cwd: sourceRoot });
+    } else if (options.restartAfterUpdate) {
+      logUpdateLine(log, "Connector was not running; restart skipped.");
+      console.log("Connector was not running; restart skipped.");
+    } else {
+      logUpdateLine(log, "Restart skipped by --no-restart.");
+      console.log("Restart skipped by --no-restart.");
+    }
+
+    logUpdateLine(log, "NordRelay update completed.");
+    console.log("NordRelay update completed.");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logUpdateLine(log, `ERROR ${message}`);
+    console.error(`Update failed: ${message}`);
+    process.exitCode = 1;
+  } finally {
+    await closeLogStream(log);
+  }
+}
+
+function resolveUpdateMethod(options) {
+  const requested = (options.updateMethod || process.env.NORDRELAY_UPDATE_METHOD || "auto").trim().toLowerCase();
+  if (!requested || requested === "auto") {
+    return fs.existsSync(path.join(RUNTIME_ROOT, ".git")) ? "git" : "npm";
+  }
+  if (requested === "npm" || requested === "git") {
+    return requested;
+  }
+  throw new Error(`Unsupported update method "${requested}". Use auto, npm, or git.`);
+}
+
+async function runNpmSelfUpdate(sourceRoot, log) {
+  const npm = resolveNpmSpawnCommand();
+  if (!npm) {
+    throw new Error("npm was not found. Install Node.js/npm or add npm to PATH.");
+  }
+  await runLoggedStep(log, "Install latest NordRelay package", npm.command, [
+    ...npm.argsPrefix,
+    "install",
+    "-g",
+    "@nordbyte/nordrelay@latest",
+  ], { cwd: os.homedir(), shell: npm.shell });
+  await runVerifyNordRelayCli(sourceRoot, log);
+}
+
+async function runGitSelfUpdate(sourceRoot, log) {
+  const git = resolveRequiredCommand("git");
+  const npm = resolveNpmSpawnCommand();
+  if (!npm) {
+    throw new Error("npm was not found. Install Node.js/npm or add npm to PATH.");
+  }
+  await runLoggedStep(log, "Pull latest source", git.command, ["pull", "--ff-only", "origin", "main"], { cwd: sourceRoot, shell: git.shell });
+  await runLoggedStep(log, "Install dependencies", npm.command, [...npm.argsPrefix, "install"], { cwd: sourceRoot, shell: npm.shell });
+  await runLoggedStep(log, "Run checks", npm.command, [...npm.argsPrefix, "run", "check"], { cwd: sourceRoot, shell: npm.shell });
+  await runLoggedStep(log, "Run tests", npm.command, [...npm.argsPrefix, "test"], { cwd: sourceRoot, shell: npm.shell });
+  await runLoggedStep(log, "Build runtime", npm.command, [...npm.argsPrefix, "run", "build"], { cwd: sourceRoot, shell: npm.shell });
+  await runVerifyNordRelayCli(sourceRoot, log);
+}
+
+async function runVerifyNordRelayCli(sourceRoot, log) {
+  if (fs.existsSync(SCRIPT_PATH)) {
+    await runLoggedStep(log, "Verify NordRelay CLI", process.execPath, [SCRIPT_PATH, "version"], { cwd: sourceRoot });
+    return;
+  }
+  const nordrelay = resolveRequiredCommand("nordrelay");
+  await runLoggedStep(log, "Verify NordRelay CLI", nordrelay.command, ["version"], { cwd: os.homedir(), shell: nordrelay.shell });
+}
+
+async function runLoggedStep(log, label, command, args, settings = {}) {
+  logUpdateLine(log, `${label}: ${formatCommand(command, args)}`);
+  console.log(`\n${label}`);
+  const child = spawn(command, args, {
+    cwd: settings.cwd || RUNTIME_ROOT,
+    env: process.env,
+    shell: Boolean(settings.shell),
+    stdio: ["inherit", "pipe", "pipe"],
+    windowsHide: false,
+  });
+
+  child.stdout?.on("data", (chunk) => {
+    safeWrite(process.stdout, chunk);
+    safeWrite(log, chunk);
+  });
+  child.stderr?.on("data", (chunk) => {
+    safeWrite(process.stderr, chunk);
+    safeWrite(log, chunk);
+  });
+
+  const exit = await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code, signal) => resolve({ code, signal }));
+  });
+
+  if (exit.signal) {
+    throw new Error(`${label} stopped with signal ${exit.signal}`);
+  }
+  if (exit.code !== 0) {
+    throw new Error(`${label} failed with exit code ${exit.code ?? "unknown"}`);
+  }
+  logUpdateLine(log, `${label} completed`);
+}
+
+function resolveRequiredCommand(command) {
+  const resolved = findExecutable(command);
+  if (!resolved) {
+    throw new Error(`${command} was not found on PATH.`);
+  }
+  return {
+    command: resolved,
+    shell: isWindowsShellScript(resolved),
+  };
+}
+
+function resolveNpmSpawnCommand(env = process.env) {
+  const npmExecPath = env.npm_execpath?.trim();
+  if (npmExecPath && fs.existsSync(npmExecPath)) {
+    return {
+      command: process.execPath,
+      argsPrefix: [npmExecPath],
+      shell: false,
+    };
+  }
+
+  const pathMatch = findExecutable("npm", env.PATH);
+  if (pathMatch) {
+    return {
+      command: pathMatch,
+      argsPrefix: [],
+      shell: isWindowsShellScript(pathMatch),
+    };
+  }
+
+  for (const candidate of commonNpmCandidates(env)) {
+    if (!fs.existsSync(candidate)) continue;
+    return {
+      command: candidate,
+      argsPrefix: [],
+      shell: isWindowsShellScript(candidate),
+    };
+  }
+  return null;
+}
+
+function commonNpmCandidates(env) {
+  const names = process.platform === "win32" ? ["npm.cmd", "npm.bat", "npm"] : ["npm"];
+  const directories = [
+    path.dirname(process.execPath),
+    env.APPDATA ? path.join(env.APPDATA, "npm") : undefined,
+    env.ProgramFiles ? path.join(env.ProgramFiles, "nodejs") : undefined,
+    env["ProgramFiles(x86)"] ? path.join(env["ProgramFiles(x86)"], "nodejs") : undefined,
+  ].filter(Boolean);
+  return directories.flatMap((directory) => names.map((name) => path.join(directory, name)));
+}
+
+function logUpdateLine(log, message) {
+  safeWrite(log, `[${nowIso()}] ${message}\n`);
+}
+
+function safeWrite(stream, chunk) {
+  try {
+    stream.write(chunk);
+  } catch {
+    // Logging must not break the updater if stdout/stderr disappears.
+  }
+}
+
+function closeLogStream(log) {
+  return new Promise((resolve) => {
+    log.end(resolve);
+  });
+}
+
+function formatCommand(command, args) {
+  return [command, ...args].map((part) => {
+    const text = String(part);
+    return /[\s"'$`\\]/.test(text) ? JSON.stringify(text) : text;
+  }).join(" ");
 }
 
 async function commandInit(options) {
@@ -858,15 +1076,24 @@ function check(name, ok, detail, status = "fail") {
   };
 }
 
-function findExecutable(command) {
+function findExecutable(command, pathValue = process.env.PATH, pathextValue = process.env.PATHEXT) {
   if (!command) return null;
   if (command.includes(path.sep) && fs.existsSync(command)) return command;
-  const paths = (process.env.PATH || "").split(path.delimiter);
+  const paths = (pathValue || "").split(path.delimiter);
+  const extensions = process.platform === "win32"
+    ? ["", ...(pathextValue || ".COM;.EXE;.BAT;.CMD").split(";")]
+    : [""];
   for (const dir of paths) {
-    const candidate = path.join(dir, command);
-    if (fs.existsSync(candidate)) return candidate;
+    for (const extension of extensions) {
+      const candidate = path.join(dir, `${command}${extension}`);
+      if (fs.existsSync(candidate)) return candidate;
+    }
   }
   return null;
+}
+
+function isWindowsShellScript(filePath) {
+  return process.platform === "win32" && /\.(?:cmd|bat)$/i.test(filePath);
 }
 
 function validateStateBackend() {
@@ -920,6 +1147,7 @@ async function main() {
   if (options.command === "init") return commandInit(options);
   if (options.command === "user") return commandUser(options);
   if (options.command === "doctor") return commandDoctor(options);
+  if (options.command === "update") return commandUpdate(options);
   if (options.command === "web" || options.command === "dashboard") return commandWeb(options);
   if (options.command === "restart") {
     await commandStop(options);
@@ -932,7 +1160,7 @@ async function main() {
   }
 
   console.error(`Unknown command: ${options.command}`);
-  console.error("Usage: nordrelay [init|user|doctor|web|start|stop|restart|status|foreground|version]");
+  console.error("Usage: nordrelay [init|user|doctor|web|start|stop|restart|status|update|foreground|version]");
   process.exitCode = 2;
 }
 

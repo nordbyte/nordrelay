@@ -12,4 +12,13 @@ describe("nordrelay CLI script", () => {
     expect(askSecret).not.toContain("rl.pause()");
     expect(askSecret).not.toContain("rl.resume()");
   });
+
+  it("exposes a first-class update command", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain("async function commandUpdate");
+    expect(source).toContain('options.command === "update"');
+    expect(source).toContain("nordrelay [init|user|doctor|web|start|stop|restart|status|update|foreground|version]");
+    expect(source).toContain("@nordbyte/nordrelay@latest");
+  });
 });

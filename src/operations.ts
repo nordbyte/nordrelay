@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -320,24 +320,22 @@ export function spawnSelfUpdate(): SelfUpdateResult {
   const script = getWrapperScriptPath();
   const updateLog = getUpdateLogPath();
   const method = detectSelfUpdateMethod(sourceRoot);
-  const commands = method === "npm"
-    ? buildNpmSelfUpdateCommands()
-    : buildGitSelfUpdateCommands(script);
-  const logFd = openSync(updateLog, "a");
-  const command = [
-    "set -e",
-    `printf '\\n[%s] Starting ${method} connector self-update\\n' "$(date -Is)"`,
-    ...commands,
-  ].join(" && ");
-
-  const child = spawn("sh", ["-lc", command], {
+  mkdirSync(path.dirname(updateLog), { recursive: true });
+  const child = spawn(process.execPath, [
+    script,
+    "update",
+    "--method",
+    method,
+    "--home",
+    getConnectorHome(),
+    "--keep-pending-updates",
+  ], {
     cwd: sourceRoot,
     detached: true,
     env: process.env,
-    stdio: ["ignore", logFd, logFd],
+    stdio: "ignore",
   });
   child.unref();
-  closeSync(logFd);
   return {
     logPath: updateLog,
     method,
@@ -396,35 +394,6 @@ function normalizeConnectorState(
 
 function redactSecrets(text: string): string {
   return text.replace(SECRET_RE, "$1$2[redacted]");
-}
-
-function buildGitSelfUpdateCommands(script: string): string[] {
-  return [
-    "git pull --ff-only origin main",
-    "npm install",
-    "npm run check",
-    "npm test",
-    "npm run build",
-    `printf '[%s] Checks passed; restarting connector\\n' "$(date -Is)"`,
-    `${shellQuote(process.execPath)} ${shellQuote(script)} restart --keep-pending-updates`,
-  ];
-}
-
-function buildNpmSelfUpdateCommands(): string[] {
-  return [
-    `${resolveNpmCommand()} install -g ${PACKAGE_NAME}@latest`,
-    "nordrelay version",
-    `printf '[%s] npm update finished; restarting connector\\n' "$(date -Is)"`,
-    "nordrelay restart --keep-pending-updates",
-  ];
-}
-
-function resolveNpmCommand(): string {
-  const npm = resolveNpmSpawnCommand();
-  if (npm) {
-    return [npm.command, ...npm.argsPrefix].map(shellQuote).join(" ");
-  }
-  return "npm";
 }
 
 function detectCliVersion(commandPath: string | undefined): string {
@@ -702,10 +671,6 @@ function compareVersions(left: string, right: string): number {
 
 function parseVersionParts(value: string): number[] {
   return value.split(/[.-]/).slice(0, 3).map((part) => Number.parseInt(part, 10) || 0);
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 function formatLogLine(line: string): string {
