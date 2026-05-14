@@ -37,7 +37,7 @@ export function findExecutableOnPath(command: string, pathValue: string | undefi
   }
 
   const extensions = process.platform === "win32"
-    ? (process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(";")
+    ? ["", ...(process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(";")]
     : [""];
 
   for (const rawDirectory of pathValue.split(path.delimiter)) {

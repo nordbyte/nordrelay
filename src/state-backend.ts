@@ -11,6 +11,7 @@ export interface DocumentStore<TValue> {
   filePath: string;
   read(): TValue | undefined;
   write(value: TValue): void;
+  close?(): void;
 }
 
 export interface DocumentStoreOptions {
@@ -26,6 +27,7 @@ type SqliteDatabase = {
     get(...params: unknown[]): unknown;
     run(...params: unknown[]): unknown;
   };
+  close(): void;
 };
 
 const require = createRequire(import.meta.url);
@@ -114,6 +116,9 @@ function tryCreateSqliteDocumentStore<TValue>(options: DocumentStoreOptions): Do
         "INSERT INTO documents (key, json, updated_at) VALUES (?, ?, ?)",
         "ON CONFLICT(key) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at",
       ].join(" ")).run(options.sqliteKey, JSON.stringify(value), new Date().toISOString());
+    },
+    close() {
+      db.close();
     },
   };
 }

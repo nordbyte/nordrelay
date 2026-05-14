@@ -41,7 +41,7 @@ describe("SettingsService", () => {
     const original = process.env.NORDRELAY_ENV_FILE;
     delete process.env.NORDRELAY_ENV_FILE;
     try {
-      expect(resolveDashboardEnvPath("/tmp/nordrelay-home", "/tmp/project")).toBe("/tmp/nordrelay-home/nordrelay.env");
+      expect(resolveDashboardEnvPath("/tmp/nordrelay-home", "/tmp/project")).toBe(path.join("/tmp/nordrelay-home", "nordrelay.env"));
     } finally {
       if (original === undefined) delete process.env.NORDRELAY_ENV_FILE;
       else process.env.NORDRELAY_ENV_FILE = original;

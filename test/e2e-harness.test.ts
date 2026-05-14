@@ -98,8 +98,9 @@ describe("state, audit, and lock stores", () => {
   (sqliteAvailable ? it : it.skip)("creates the SQLite state directory before opening the database", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-sqlite-state-"));
     const stateDir = path.join(workspace, ".nordrelay");
+    let store: ReturnType<typeof createDocumentStore<{ value: number }>> | undefined;
     try {
-      const store = createDocumentStore<{ value: number }>({
+      store = createDocumentStore<{ value: number }>({
         workspace,
         fileName: "sample.json",
         sqliteKey: "sample",
@@ -111,6 +112,7 @@ describe("state, audit, and lock stores", () => {
       store.write({ value: 9 });
       expect(store.read()).toEqual({ value: 9 });
     } finally {
+      store?.close?.();
       rmSync(workspace, { recursive: true, force: true });
     }
   });

@@ -111,7 +111,7 @@ describe("hermes-state", () => {
     expect(record).toMatchObject({
       agentId: "hermes",
       id: "hermes-active",
-      cwd: "/workspace/from-db",
+      cwd: path.normalize("/workspace/from-db"),
       model: "openai/gpt-5.5",
       reasoningEffort: "xhigh",
       firstUserMessage: "Still running",
