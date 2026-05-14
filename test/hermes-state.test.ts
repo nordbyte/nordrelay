@@ -136,6 +136,6 @@ describe("hermes-state", () => {
     expect(events.filter((event) => event.kind === "tool").map((event) => event.toolName)).toEqual(["read_file", "read_file"]);
     expect(diagnostics.status).toBe("active");
     expect(diagnostics.lineCount).toBe(2);
-    expect(workspaces).toContain("/workspace/from-db");
+    expect(workspaces).toContain(path.normalize("/workspace/from-db"));
   });
 });

@@ -60,8 +60,9 @@ describe("agent updates", () => {
 
   it("runs update jobs, accepts input, and redacts output logs", async () => {
     const dir = createTempDir();
-    const bin = path.join(dir, "codex");
-    writeFileSync(bin, [
+    const script = path.join(dir, process.platform === "win32" ? "codex-script.js" : "codex");
+    const bin = path.join(dir, process.platform === "win32" ? "codex.cmd" : "codex");
+    writeFileSync(script, [
       "#!/usr/bin/env node",
       "process.stderr.write('api_key=secret-value\\n');",
       "process.stdout.write('Proceed? ');",
@@ -70,6 +71,9 @@ describe("agent updates", () => {
       "  setTimeout(() => process.exit(0), 10);",
       "});",
     ].join("\n"));
+    if (process.platform === "win32") {
+      writeFileSync(bin, `@echo off\r\n"${process.execPath}" "${script}" %*\r\n`);
+    }
     chmodSync(bin, 0o755);
 
     const manager = new AgentUpdateManager({
