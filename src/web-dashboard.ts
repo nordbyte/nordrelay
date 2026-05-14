@@ -667,6 +667,7 @@ function activeSettingsValues(current: typeof config): Record<string, string | u
     NORDRELAY_AUDIT_MAX_EVENTS: String(current.auditMaxEvents),
     NORDRELAY_SESSION_LOCK_TTL_MS: String(current.sessionLockTtlMs),
     NORDRELAY_VERSION_CACHE_TTL_MS: process.env.NORDRELAY_VERSION_CACHE_TTL_MS,
+    NORDRELAY_CLI_VERSION_CACHE_TTL_MS: process.env.NORDRELAY_CLI_VERSION_CACHE_TTL_MS,
     VOICE_PREFERRED_BACKEND: current.voicePreferredBackend,
     VOICE_DEFAULT_LANGUAGE: current.voiceDefaultLanguage,
     VOICE_TRANSCRIBE_ONLY: boolValue(current.voiceTranscribeOnly),

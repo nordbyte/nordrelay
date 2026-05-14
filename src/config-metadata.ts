@@ -107,6 +107,7 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   setting("NORDRELAY_AUDIT_MAX_EVENTS", "Audit max events", "Workspace", "number", "Retained audit events.", true),
   setting("NORDRELAY_SESSION_LOCK_TTL_MS", "Session lock TTL", "Workspace", "number", "Write-lock TTL.", true),
   setting("NORDRELAY_VERSION_CACHE_TTL_MS", "Version cache TTL", "Workspace", "number", "NPM version cache TTL.", true),
+  setting("NORDRELAY_CLI_VERSION_CACHE_TTL_MS", "CLI version cache TTL", "Workspace", "number", "Installed agent CLI version cache TTL.", true),
 
   setting("OPENAI_API_KEY", "OpenAI API key", "Voice", "secret", "Whisper fallback API key.", true),
   setting("VOICE_PREFERRED_BACKEND", "Voice backend", "Voice", "string", "auto, parakeet, faster-whisper, or openai.", false, ["auto", "parakeet", "faster-whisper", "openai"]),
@@ -202,6 +203,7 @@ const EXAMPLE_VALUES: Record<string, string> = {
   "NORDRELAY_AUDIT_MAX_EVENTS": "1000",
   "NORDRELAY_SESSION_LOCK_TTL_MS": "1800000",
   "NORDRELAY_VERSION_CACHE_TTL_MS": "3600000",
+  "NORDRELAY_CLI_VERSION_CACHE_TTL_MS": "60000",
   "NORDRELAY_DASHBOARD_HOST": "127.0.0.1",
   "NORDRELAY_DASHBOARD_PORT": "31878",
   "NORDRELAY_ENV_FILE": "",

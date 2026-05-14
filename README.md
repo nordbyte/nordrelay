@@ -199,7 +199,7 @@ Operations:
 - The WebUI exposes REST and SSE endpoints for chat streaming, sessions, settings, queue, artifacts, logs, health, diagnostics, and redacted diagnostics bundle export.
 - The dashboard can bind to `127.0.0.1` or `0.0.0.0`; user login and session cookies are mandatory in both modes.
 - Telegram can run with long polling or an HTTP webhook via `TELEGRAM_TRANSPORT=webhook`.
-- Version freshness checks are cached with `NORDRELAY_VERSION_CACHE_TTL_MS` to keep `/version` responsive.
+- Version freshness checks are cached with `NORDRELAY_VERSION_CACHE_TTL_MS`, and installed agent CLI version checks are cached with `NORDRELAY_CLI_VERSION_CACHE_TTL_MS`, to keep `/version` and adapter health responsive.
 - CI runs on Ubuntu, Windows, and macOS with typecheck, Vitest, Playwright WebUI browser tests, package dry run, npm audit, and a separate secret-scan workflow.
 - `npm run dev`, `npm run build`, `npm run check`, `npm test`, `npm run test:e2e`, `npm start`, `npm stop`, and `npm run status` are available.
 - Dockerfile and `docker-compose.yml` are included for containerized operation.
@@ -739,6 +739,7 @@ Agent selection:
 - `NORDRELAY_AUDIT_MAX_EVENTS`: maximum audit events retained. Defaults to `1000`.
 - `NORDRELAY_SESSION_LOCK_TTL_MS`: session write-lock TTL. Defaults to `1800000`.
 - `NORDRELAY_VERSION_CACHE_TTL_MS`: npm version freshness cache TTL. Defaults to `3600000`; set `0` to disable.
+- `NORDRELAY_CLI_VERSION_CACHE_TTL_MS`: installed agent CLI version cache TTL. Defaults to `60000`; set `0` to disable.
 
 Dashboard:
 

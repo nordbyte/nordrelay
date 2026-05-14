@@ -175,10 +175,16 @@ export class RelayRuntime {
   }
 
   async status(): Promise<Record<string, unknown>> {
+    const cliOptions = this.cliPathOptions();
+    const [health, versionChecks, snapshot] = await Promise.all([
+      getConnectorHealth(cliOptions),
+      getVersionChecks(cliOptions),
+      this.snapshot(),
+    ]);
     return {
-      health: await getConnectorHealth({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath, claudeCodeCliPath: this.config.claudeCodeCliPath }),
-      versionChecks: await getVersionChecks({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath, claudeCodeCliPath: this.config.claudeCodeCliPath }),
-      snapshot: await this.snapshot(),
+      health,
+      versionChecks,
+      snapshot,
     };
   }
 
@@ -193,10 +199,16 @@ export class RelayRuntime {
   }
 
   async version(): Promise<Record<string, unknown>> {
+    const cliOptions = this.cliPathOptions();
+    const [health, state, versionChecks] = await Promise.all([
+      getConnectorHealth(cliOptions),
+      readConnectorState(),
+      getVersionChecks(cliOptions),
+    ]);
     return {
-      health: await getConnectorHealth({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath, claudeCodeCliPath: this.config.claudeCodeCliPath }),
-      state: await readConnectorState(),
-      versionChecks: await getVersionChecks({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath, claudeCodeCliPath: this.config.claudeCodeCliPath }),
+      health,
+      state,
+      versionChecks,
     };
   }
 
@@ -279,23 +291,33 @@ export class RelayRuntime {
   }
 
   async diagnostics(): Promise<WebDiagnosticsDto> {
+    const cliOptions = this.cliPathOptions();
+    const [health, versionChecks, snapshot, session] = await Promise.all([
+      getConnectorHealth(cliOptions),
+      getVersionChecks(cliOptions),
+      this.snapshot(),
+      this.getSession(true),
+    ]);
     return {
-      health: await getConnectorHealth({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath, claudeCodeCliPath: this.config.claudeCodeCliPath }),
-      versionChecks: await getVersionChecks({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath, claudeCodeCliPath: this.config.claudeCodeCliPath }),
-      snapshot: await this.snapshot(),
+      health,
+      versionChecks,
+      snapshot,
       runtime: {
         stateBackend: this.config.stateBackend,
         sourceWorkspace: this.config.workspace,
         queuePaused: this.queueService.isPaused(),
         externalMirror: this.externalActivityMonitor.snapshot(),
-        agentDiagnostics: getAgentDiagnostics(await this.getSession(true), this.config),
+        agentDiagnostics: getAgentDiagnostics(session, this.config),
       },
     };
   }
 
   async adapterHealth(): Promise<WebAdapterHealthDto[]> {
-    const health = await getConnectorHealth({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath, claudeCodeCliPath: this.config.claudeCodeCliPath });
-    const versions = await getVersionChecks({ piCliPath: this.config.piCliPath, hermesCliPath: this.config.hermesCliPath, openClawCliPath: this.config.openClawCliPath, claudeCodeCliPath: this.config.claudeCodeCliPath });
+    const cliOptions = this.cliPathOptions();
+    const [health, versions] = await Promise.all([
+      getConnectorHealth(cliOptions),
+      getVersionChecks(cliOptions),
+    ]);
     return Promise.all(listAgentAdapterDescriptors().map(async (descriptor) => {
       const enabled = enabledAgents(this.config).includes(descriptor.id);
       const auth = descriptor.capabilities.auth && enabled
@@ -1087,6 +1109,15 @@ export class RelayRuntime {
       workspace: activeInfo.workspace,
     });
     return { session, dispose: true };
+  }
+
+  private cliPathOptions(): { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string; claudeCodeCliPath?: string } {
+    return {
+      piCliPath: this.config.piCliPath,
+      hermesCliPath: this.config.hermesCliPath,
+      openClawCliPath: this.config.openClawCliPath,
+      claudeCodeCliPath: this.config.claudeCodeCliPath,
+    };
   }
 
   private async ensureActiveThread(session: AgentSessionService): Promise<void> {

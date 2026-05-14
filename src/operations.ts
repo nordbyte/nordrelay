@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import os from "node:os";
@@ -119,6 +119,32 @@ const CLAUDE_CODE_SDK_PACKAGE_NAME = "@anthropic-ai/claude-agent-sdk";
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 const SECRET_RE = /(bot|token|api[_-]?key|authorization|bearer|password|secret)(["'=: ]+)([^\s"',]+)/gi;
 const DEFAULT_VERSION_CACHE_TTL_MS = 60 * 60 * 1000;
+const DEFAULT_CLI_VERSION_CACHE_TTL_MS = 60 * 1000;
+
+interface AgentCliVersionSnapshot {
+  codexCli: ReturnType<typeof resolveCodexCli>;
+  piCli: ReturnType<typeof resolvePiCli>;
+  hermesCli: ReturnType<typeof resolveHermesCli>;
+  openClawCli: ReturnType<typeof resolveOpenClawCli>;
+  claudeCodeCli: ReturnType<typeof resolveClaudeCodeCli>;
+  codexVersionLabel: string;
+  piVersionLabel: string;
+  hermesVersionLabel: string;
+  openClawVersionLabel: string;
+  claudeCodeVersionLabel: string;
+  claudeCodePackageName: string;
+  legacyPiPackageVersion: string | null;
+}
+
+interface CommandOutput {
+  stdout: string;
+  stderr: string;
+  status: number | null;
+  signal?: NodeJS.Signals | null;
+  error?: Error & { code?: unknown };
+}
+
+const cliVersionCache = new Map<string, { value?: string; expiresAt: number; promise?: Promise<string> }>();
 
 export function getConnectorHome(): string {
   return process.env.NORDRELAY_HOME || DEFAULT_HOME;
@@ -203,100 +229,96 @@ export async function getPackageVersion(): Promise<string> {
 }
 
 export async function getVersionChecks(options: { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string; claudeCodeCliPath?: string } = {}): Promise<VersionChecks> {
-  const nordrelayVersion = await getPackageVersion();
-  const codexCli = resolveCodexCli();
-  const piCli = resolvePiCli(process.env, options.piCliPath);
-  const hermesCli = resolveHermesCli(process.env, options.hermesCliPath);
-  const openClawCli = resolveOpenClawCli(process.env, options.openClawCliPath);
-  const claudeCodeCli = resolveClaudeCodeCli(process.env, options.claudeCodeCliPath);
-  const codexVersionLabel = codexCli.path
-    ? detectCliVersion(codexCli.path)
-    : readInstalledPackageVersion(CODEX_PACKAGE_NAME) ?? "not installed";
-  const piVersionLabel = piCli.path
-    ? detectCliVersion(piCli.path)
-    : readInstalledPackageVersion(PI_PACKAGE_NAME) ?? readInstalledPackageVersion(LEGACY_PI_PACKAGE_NAME) ?? "not installed";
-  const legacyPiPackageVersion = readInstalledPackageVersion(LEGACY_PI_PACKAGE_NAME);
-  const hermesVersionLabel = hermesCli.path ? detectCliVersion(hermesCli.path) : "not installed";
-  const openClawVersionLabel = openClawCli.path ? detectCliVersion(openClawCli.path) : "not installed";
-  const claudeCodeVersionLabel = claudeCodeCli.path
-    ? detectCliVersion(claudeCodeCli.path)
-    : readInstalledPackageVersion(CLAUDE_CODE_SDK_PACKAGE_NAME) ?? "bundled";
-  const claudeCodePackageName = claudeCodeCli.path ? CLAUDE_CODE_PACKAGE_NAME : CLAUDE_CODE_SDK_PACKAGE_NAME;
-
-  return {
-    nordrelay: buildVersionCheck({
+  const [nordrelayVersion, cliVersions] = await Promise.all([
+    getPackageVersion(),
+    resolveAgentCliVersions(options),
+  ]);
+  const [
+    nordrelay,
+    codex,
+    pi,
+    hermes,
+    openclaw,
+    claudeCode,
+  ] = await Promise.all([
+    buildVersionCheck({
       label: "NordRelay",
       packageName: PACKAGE_NAME,
       installedLabel: nordrelayVersion,
       installedVersion: extractVersion(nordrelayVersion),
     }),
-    codex: buildVersionCheck({
+    buildVersionCheck({
       label: "Codex",
       packageName: CODEX_PACKAGE_NAME,
-      installedLabel: codexVersionLabel,
-      installedVersion: extractVersion(codexVersionLabel),
-      notInstalled: codexVersionLabel === "not installed",
+      installedLabel: cliVersions.codexVersionLabel,
+      installedVersion: extractVersion(cliVersions.codexVersionLabel),
+      notInstalled: cliVersions.codexVersionLabel === "not installed",
     }),
-    pi: buildVersionCheck({
+    buildVersionCheck({
       label: "Pi",
       packageName: PI_PACKAGE_NAME,
-      installedLabel: piVersionLabel,
-      installedVersion: extractVersion(piVersionLabel),
-      notInstalled: piVersionLabel === "not installed",
-      detail: legacyPiPackageVersion ? `Legacy package ${LEGACY_PI_PACKAGE_NAME} is present; current package is ${PI_PACKAGE_NAME}.` : undefined,
+      installedLabel: cliVersions.piVersionLabel,
+      installedVersion: extractVersion(cliVersions.piVersionLabel),
+      notInstalled: cliVersions.piVersionLabel === "not installed",
+      detail: cliVersions.legacyPiPackageVersion ? `Legacy package ${LEGACY_PI_PACKAGE_NAME} is present; current package is ${PI_PACKAGE_NAME}.` : undefined,
     }),
-    hermes: buildHermesVersionCheck(hermesVersionLabel),
-    openclaw: buildVersionCheck({
+    buildHermesVersionCheck(cliVersions.hermesVersionLabel),
+    buildVersionCheck({
       label: "OpenClaw",
       packageName: OPENCLAW_PACKAGE_NAME,
-      installedLabel: openClawVersionLabel,
-      installedVersion: extractVersion(openClawVersionLabel),
-      notInstalled: openClawVersionLabel === "not installed",
+      installedLabel: cliVersions.openClawVersionLabel,
+      installedVersion: extractVersion(cliVersions.openClawVersionLabel),
+      notInstalled: cliVersions.openClawVersionLabel === "not installed",
     }),
-    claudeCode: buildVersionCheck({
+    buildVersionCheck({
       label: "Claude Code",
-      packageName: claudeCodePackageName,
-      installedLabel: claudeCodeVersionLabel,
-      installedVersion: extractVersion(claudeCodeVersionLabel),
-      notInstalled: claudeCodeVersionLabel === "not installed",
+      packageName: cliVersions.claudeCodePackageName,
+      installedLabel: cliVersions.claudeCodeVersionLabel,
+      installedVersion: extractVersion(cliVersions.claudeCodeVersionLabel),
+      notInstalled: cliVersions.claudeCodeVersionLabel === "not installed",
     }),
+  ]);
+
+  return {
+    nordrelay,
+    codex,
+    pi,
+    hermes,
+    openclaw,
+    claudeCode,
   };
 }
 
 export async function getConnectorHealth(options: { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string; claudeCodeCliPath?: string } = {}): Promise<ConnectorHealth> {
-  const rawState = await readConnectorState();
-  const version = await getPackageVersion();
+  const [rawState, version, cliVersions] = await Promise.all([
+    readConnectorState(),
+    getPackageVersion(),
+    resolveAgentCliVersions(options),
+  ]);
   const pidRunning = isProcessRunning(rawState.pid);
   const appPidRunning = isProcessRunning(rawState.appPid);
   const state = normalizeConnectorState(rawState, pidRunning, appPidRunning);
-  const codexCli = resolveCodexCli();
-  const piCli = resolvePiCli(process.env, options.piCliPath);
-  const hermesCli = resolveHermesCli(process.env, options.hermesCliPath);
-  const openClawCli = resolveOpenClawCli(process.env, options.openClawCliPath);
-  const claudeCodeCli = resolveClaudeCodeCli(process.env, options.claudeCodeCliPath);
 
   return {
     version,
     state,
     pidRunning,
     appPidRunning,
-    codexCli: describeCodexCli(codexCli),
-    codexCliPath: codexCli.path ?? null,
-    codexCliVersion: detectCliVersion(codexCli.path),
-    piCli: describePiCli(piCli),
-    piCliPath: piCli.path ?? null,
-    piCliVersion: detectCliVersion(piCli.path),
-    hermesCli: describeHermesCli(hermesCli),
-    hermesCliPath: hermesCli.path ?? null,
-    hermesCliVersion: detectCliVersion(hermesCli.path),
-    openClawCli: describeOpenClawCli(openClawCli),
-    openClawCliPath: openClawCli.path ?? null,
-    openClawCliVersion: detectCliVersion(openClawCli.path),
-    claudeCodeCli: describeClaudeCodeCli(claudeCodeCli),
-    claudeCodeCliPath: claudeCodeCli.path ?? null,
-    claudeCodeCliVersion: claudeCodeCli.path
-      ? detectCliVersion(claudeCodeCli.path)
-      : readInstalledPackageVersion(CLAUDE_CODE_SDK_PACKAGE_NAME) ?? "bundled",
+    codexCli: describeCodexCli(cliVersions.codexCli),
+    codexCliPath: cliVersions.codexCli.path ?? null,
+    codexCliVersion: cliVersions.codexVersionLabel,
+    piCli: describePiCli(cliVersions.piCli),
+    piCliPath: cliVersions.piCli.path ?? null,
+    piCliVersion: cliVersions.piVersionLabel,
+    hermesCli: describeHermesCli(cliVersions.hermesCli),
+    hermesCliPath: cliVersions.hermesCli.path ?? null,
+    hermesCliVersion: cliVersions.hermesVersionLabel,
+    openClawCli: describeOpenClawCli(cliVersions.openClawCli),
+    openClawCliPath: cliVersions.openClawCli.path ?? null,
+    openClawCliVersion: cliVersions.openClawVersionLabel,
+    claudeCodeCli: describeClaudeCodeCli(cliVersions.claudeCodeCli),
+    claudeCodeCliPath: cliVersions.claudeCodeCli.path ?? null,
+    claudeCodeCliVersion: cliVersions.claudeCodeVersionLabel,
     stateFile: getConnectorStatePath(),
     logFile: getConnectorLogPath(),
     databasePath: findLatestDatabase(),
@@ -396,18 +418,74 @@ function redactSecrets(text: string): string {
   return text.replace(SECRET_RE, "$1$2[redacted]");
 }
 
-function detectCliVersion(commandPath: string | undefined): string {
+async function resolveAgentCliVersions(options: { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string; claudeCodeCliPath?: string } = {}): Promise<AgentCliVersionSnapshot> {
+  const codexCli = resolveCodexCli();
+  const piCli = resolvePiCli(process.env, options.piCliPath);
+  const hermesCli = resolveHermesCli(process.env, options.hermesCliPath);
+  const openClawCli = resolveOpenClawCli(process.env, options.openClawCliPath);
+  const claudeCodeCli = resolveClaudeCodeCli(process.env, options.claudeCodeCliPath);
+  const legacyPiPackageVersion = readInstalledPackageVersion(LEGACY_PI_PACKAGE_NAME);
+  const [
+    codexVersionLabel,
+    piVersionLabel,
+    hermesVersionLabel,
+    openClawVersionLabel,
+    claudeCodeVersionLabel,
+  ] = await Promise.all([
+    codexCli.path ? detectCliVersion(codexCli.path) : Promise.resolve(readInstalledPackageVersion(CODEX_PACKAGE_NAME) ?? "not installed"),
+    piCli.path ? detectCliVersion(piCli.path) : Promise.resolve(readInstalledPackageVersion(PI_PACKAGE_NAME) ?? legacyPiPackageVersion ?? "not installed"),
+    hermesCli.path ? detectCliVersion(hermesCli.path) : Promise.resolve("not installed"),
+    openClawCli.path ? detectCliVersion(openClawCli.path) : Promise.resolve("not installed"),
+    claudeCodeCli.path ? detectCliVersion(claudeCodeCli.path) : Promise.resolve(readInstalledPackageVersion(CLAUDE_CODE_SDK_PACKAGE_NAME) ?? "bundled"),
+  ]);
+
+  return {
+    codexCli,
+    piCli,
+    hermesCli,
+    openClawCli,
+    claudeCodeCli,
+    codexVersionLabel,
+    piVersionLabel,
+    hermesVersionLabel,
+    openClawVersionLabel,
+    claudeCodeVersionLabel,
+    claudeCodePackageName: claudeCodeCli.path ? CLAUDE_CODE_PACKAGE_NAME : CLAUDE_CODE_SDK_PACKAGE_NAME,
+    legacyPiPackageVersion,
+  };
+}
+
+async function detectCliVersion(commandPath: string | undefined): Promise<string> {
   if (!commandPath) {
     return "not installed";
   }
 
-  const result = spawnSync(commandPath, ["--version"], {
-    encoding: "utf8",
+  const ttlMs = parseCliVersionCacheTtlMs();
+  if (ttlMs > 0) {
+    const cached = cliVersionCache.get(commandPath);
+    if (cached && Date.now() < cached.expiresAt) {
+      if (cached.value !== undefined) {
+        return cached.value;
+      }
+      if (cached.promise) {
+        return cached.promise;
+      }
+    }
+    const promise = detectCliVersionUncached(commandPath);
+    cliVersionCache.set(commandPath, { promise, expiresAt: Date.now() + ttlMs });
+    const value = await promise;
+    cliVersionCache.set(commandPath, { value, expiresAt: Date.now() + ttlMs });
+    return value;
+  }
+
+  return detectCliVersionUncached(commandPath);
+}
+
+async function detectCliVersionUncached(commandPath: string): Promise<string> {
+  const result = await runCommand(commandPath, ["--version"], {
     shell: isWindowsShellScript(commandPath),
     timeout: 3000,
-    windowsHide: true,
   });
-
   const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
   if (result.error) {
     return `unavailable (${result.error.message})`;
@@ -418,9 +496,9 @@ function detectCliVersion(commandPath: string | undefined): string {
   return output || "unknown";
 }
 
-function buildHermesVersionCheck(installedLabel: string): VersionCheck {
+async function buildHermesVersionCheck(installedLabel: string): Promise<VersionCheck> {
   if (installedLabel === "not installed") {
-    const latest = detectLatestNpmVersion(HERMES_PACKAGE_NAME);
+    const latest = await detectLatestNpmVersion(HERMES_PACKAGE_NAME);
     return {
       label: "Hermes",
       packageName: HERMES_PACKAGE_NAME,
@@ -447,7 +525,7 @@ function buildHermesVersionCheck(installedLabel: string): VersionCheck {
   };
 }
 
-function buildVersionCheck(options: {
+async function buildVersionCheck(options: {
   label: string;
   packageName: string;
   installedLabel: string;
@@ -455,9 +533,9 @@ function buildVersionCheck(options: {
   notInstalled?: boolean;
   skipLatest?: boolean;
   detail?: string;
-}): VersionCheck {
+}): Promise<VersionCheck> {
   if (options.notInstalled) {
-    const latest = options.skipLatest ? { version: null, error: undefined } : detectLatestNpmVersion(options.packageName);
+    const latest = options.skipLatest ? { version: null, error: undefined } : await detectLatestNpmVersion(options.packageName);
     return {
       label: options.label,
       packageName: options.packageName,
@@ -481,7 +559,7 @@ function buildVersionCheck(options: {
     };
   }
 
-  const latest = detectLatestNpmVersion(options.packageName);
+  const latest = await detectLatestNpmVersion(options.packageName);
   if (!options.installedVersion || !latest.version) {
     return {
       label: options.label,
@@ -505,7 +583,7 @@ function buildVersionCheck(options: {
   };
 }
 
-function detectLatestNpmVersion(packageName: string): { version: string | null; error?: string } {
+async function detectLatestNpmVersion(packageName: string): Promise<{ version: string | null; error?: string }> {
   const cached = readVersionCache(packageName);
   if (cached) {
     return cached;
@@ -516,11 +594,9 @@ function detectLatestNpmVersion(packageName: string): { version: string | null; 
     return { version: null, error: "npm was not found on PATH; latest-version lookup is unavailable" };
   }
 
-  const result = spawnSync(npm.command, [...npm.argsPrefix, "view", packageName, "version", "--registry=https://registry.npmjs.org"], {
-    encoding: "utf8",
+  const result = await runCommand(npm.command, [...npm.argsPrefix, "view", packageName, "version", "--registry=https://registry.npmjs.org"], {
     shell: npm.shell,
     timeout: 5000,
-    windowsHide: true,
   });
   const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
   if (result.error) {
@@ -532,6 +608,33 @@ function detectLatestNpmVersion(packageName: string): { version: string | null; 
   const resolved = { version: output.split(/\r?\n/).at(-1)?.trim() || null };
   writeVersionCache(packageName, resolved.version);
   return resolved;
+}
+
+function runCommand(command: string, args: string[], options: { shell?: boolean; timeout: number }): Promise<CommandOutput> {
+  return new Promise((resolve) => {
+    execFile(
+      command,
+      args,
+      {
+        encoding: "utf8",
+        shell: Boolean(options.shell),
+        timeout: options.timeout,
+        windowsHide: true,
+        env: process.env,
+        maxBuffer: 1024 * 1024,
+      },
+      (error, stdout, stderr) => {
+        const enriched = error as (Error & { code?: unknown; signal?: NodeJS.Signals | null }) | null;
+        resolve({
+          stdout: typeof stdout === "string" ? stdout : "",
+          stderr: typeof stderr === "string" ? stderr : "",
+          status: typeof enriched?.code === "number" ? enriched.code : error ? 1 : 0,
+          signal: enriched?.signal,
+          error: enriched ?? undefined,
+        });
+      },
+    );
+  });
 }
 
 export function resolveNpmSpawnCommand(env: NodeJS.ProcessEnv = process.env): NpmSpawnCommand | null {
@@ -636,6 +739,15 @@ function parseVersionCacheTtlMs(): number {
   }
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : DEFAULT_VERSION_CACHE_TTL_MS;
+}
+
+function parseCliVersionCacheTtlMs(): number {
+  const raw = process.env.NORDRELAY_CLI_VERSION_CACHE_TTL_MS;
+  if (!raw) {
+    return DEFAULT_CLI_VERSION_CACHE_TTL_MS;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : DEFAULT_CLI_VERSION_CACHE_TTL_MS;
 }
 
 function readInstalledPackageVersion(packageName: string): string | null {
