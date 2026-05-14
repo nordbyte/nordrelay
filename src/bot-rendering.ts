@@ -130,11 +130,12 @@ export function renderAuditEvents(events: AuditEvent[]): { plain: string; html: 
 
   const lines = events.map((event) => {
     const time = formatLocalDateTime(new Date(event.timestamp));
-    const actor = event.actorId ? `user ${event.actorId}` : "system";
+    const actor = event.actor?.label || event.actor?.username || event.actor?.id || (event.actorId ? `user ${event.actorId}` : "system");
     const prompt = event.promptId ? ` · ${event.promptId}` : "";
     const detail = event.detail ? ` · ${trimLine(event.detail, 90)}` : "";
     const description = event.description ? ` · ${trimLine(event.description, 90)}` : "";
-    return `${time} · ${event.status.toUpperCase()} · ${event.action} · ${actor}${prompt}${description}${detail}`;
+    const category = event.category ? ` · ${event.category}` : "";
+    return `${time} · ${event.status.toUpperCase()} · ${event.action}${category} · ${actor}${prompt}${description}${detail}`;
   });
 
   return {
@@ -169,7 +170,9 @@ export function formatLockOwner(lock: SessionLock | null): string {
   if (!lock) {
     return "nobody";
   }
-  return lock.ownerName ? `${lock.ownerName} (${lock.ownerId})` : `user ${lock.ownerId}`;
+  const label = lock.ownerLabel || lock.ownerUserId;
+  const channel = lock.ownerChannel ? ` via ${lock.ownerChannel}` : "";
+  return `${label} (${lock.ownerUserId})${channel}`;
 }
 
 export function formatTelegramName(ctx: Context): string | undefined {

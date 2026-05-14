@@ -13,7 +13,6 @@ import {
   filterActivityEvents,
   formatLocalDateTime,
   formatLockOwner,
-  formatTelegramName,
   labelOf,
   parseActivityOptions,
   renderActivityTimeline,
@@ -27,7 +26,7 @@ import type { TelegramContextKey } from "./context-key.js";
 import { escapeHTML } from "./format.js";
 import type { PromptStore } from "./prompt-store.js";
 import { renderSessionInfoHTML, renderSessionInfoPlain } from "./session-format.js";
-import type { SessionLockStore } from "./session-locks.js";
+import { canWriteWithLock, type SessionLockOwner, type SessionLockStore } from "./session-locks.js";
 import { chatBucket, safeReply } from "./telegram-output.js";
 import { telegramRateLimiter } from "./telegram-rate-limit.js";
 import type { GetTelegramContextSession } from "./telegram-command-types.js";
@@ -57,7 +56,7 @@ type AuditContextWriter = (
   ctx: Context,
   contextKey: TelegramContextKey,
   session: AgentSessionService,
-  patch: Omit<AuditEvent, "id" | "timestamp" | "channelId" | "contextKey" | "actorId" | "actorRole" | "agentId" | "threadId" | "workspace">,
+  patch: Omit<AuditEvent, "id" | "timestamp" | "channelId" | "contextKey" | "actor" | "actorId" | "actorRole" | "agentId" | "threadId" | "workspace">,
 ) => void;
 
 export interface TelegramOperationalCommandOptions {
@@ -72,6 +71,7 @@ export interface TelegramOperationalCommandOptions {
   getExternalActivity: (session: AgentSessionService | undefined) => AgentExternalActivity | null;
   isAdminUser: (ctx: Context) => boolean;
   auditContext: AuditContextWriter;
+  getLockOwner: (ctx: Context) => SessionLockOwner | null;
   updateSessionMetadata: (contextKey: TelegramContextKey, session: AgentSessionService) => void;
 }
 
@@ -154,21 +154,27 @@ export function registerTelegramOperationalCommands(options: TelegramOperational
 
   bot.command("lock", async (ctx) => {
     const contextSession = await options.getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession || !ctx.from) {
+    if (!contextSession) {
       return;
     }
     const { contextKey, session } = contextSession;
+    const owner = options.getLockOwner(ctx);
+    if (!owner) {
+      const text = "You must be authenticated before locking a session.";
+      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+      return;
+    }
     const existing = lockStore.get(contextKey);
-    if (existing && existing.ownerId !== ctx.from.id && !options.isAdminUser(ctx)) {
+    if (existing && !canWriteWithLock(existing, owner.userId, options.isAdminUser(ctx))) {
       const text = `Session is already locked by ${formatLockOwner(existing)}.`;
       await safeReply(ctx, escapeHTML(text), { fallbackText: text });
       return;
     }
-    const lock = lockStore.set(contextKey, ctx.from.id, formatTelegramName(ctx), config.sessionLockTtlMs);
+    const lock = lockStore.set(contextKey, owner, config.sessionLockTtlMs);
     options.auditContext(ctx, contextKey, session, {
       action: "lock_updated",
       status: "ok",
-      detail: `locked by ${lock.ownerId}`,
+      detail: `locked by ${lock.ownerUserId}`,
     });
     const text = `Session locked by ${formatLockOwner(lock)}${lock.expiresAt ? ` until ${formatLocalDateTime(new Date(lock.expiresAt))}` : ""}.`;
     await safeReply(ctx, escapeHTML(text), { fallbackText: text });
@@ -181,7 +187,8 @@ export function registerTelegramOperationalCommands(options: TelegramOperational
     }
     const { contextKey, session } = contextSession;
     const lock = lockStore.get(contextKey);
-    if (lock && lock.ownerId !== ctx.from?.id && !options.isAdminUser(ctx)) {
+    const owner = options.getLockOwner(ctx);
+    if (lock && !canWriteWithLock(lock, owner?.userId, options.isAdminUser(ctx))) {
       const text = `Only ${formatLockOwner(lock)} or an admin can unlock this session.`;
       await safeReply(ctx, escapeHTML(text), { fallbackText: text });
       return;

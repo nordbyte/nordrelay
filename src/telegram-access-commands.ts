@@ -50,6 +50,7 @@ export function registerTelegramAccessCommands(deps: AccessCommandDeps): void {
         action: "auth_login_failed",
         status: "denied",
         contextKey: String(ctx.chat.id),
+        actor: telegramAuditActor(ctx),
         actorId: ctx.from.id,
         description: "Telegram link rate limited",
         detail: `${seconds}s retry-after`,
@@ -72,7 +73,8 @@ export function registerTelegramAccessCommands(deps: AccessCommandDeps): void {
         action: "telegram_linked",
         status: "ok",
         contextKey: String(ctx.chat.id),
-        actorId: ctx.from.id,
+        actor: telegramAuditActor(ctx, linked),
+        actorId: linked.user.id,
         actorRole: linked.groups.map((group) => group.name).join(", "),
         description: `Linked ${linked.user.email}`,
       });
@@ -85,6 +87,7 @@ export function registerTelegramAccessCommands(deps: AccessCommandDeps): void {
         action: "auth_login_failed",
         status: "failed",
         contextKey: String(ctx.chat.id),
+        actor: telegramAuditActor(ctx),
         actorId: ctx.from.id,
         description: "Telegram link failed",
         detail: message,
@@ -134,7 +137,8 @@ export function registerTelegramAccessCommands(deps: AccessCommandDeps): void {
       action: "telegram_chat_updated",
       status: "ok",
       contextKey: String(ctx.chat.id),
-      actorId: ctx.from?.id,
+      actor: telegramAuditActor(ctx, authUser),
+      actorId: authUser.user.id,
       actorRole: getUserRole(ctx),
       description: `Registered Telegram chat ${chat.chatId}`,
     });
@@ -142,4 +146,14 @@ export function registerTelegramAccessCommands(deps: AccessCommandDeps): void {
       fallbackText: `Telegram chat enabled for NordRelay.\nChat ID: ${chat.chatId}`,
     });
   });
+}
+
+function telegramAuditActor(ctx: Context, authUser?: AuthenticatedUser) {
+  return {
+    channel: "telegram" as const,
+    id: authUser?.user.id ?? (ctx.from?.id !== undefined ? `telegram:${ctx.from.id}` : undefined),
+    label: authUser?.user.displayName || authUser?.user.email || ctx.from?.username || (ctx.from?.id !== undefined ? String(ctx.from.id) : undefined),
+    username: authUser?.user.email ?? ctx.from?.username,
+    channelUserId: ctx.from?.id !== undefined ? String(ctx.from.id) : undefined,
+  };
 }

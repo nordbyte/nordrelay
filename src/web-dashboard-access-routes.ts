@@ -206,7 +206,20 @@ export async function handleDashboardAccessRoute(
   }
 
   if (req.method === "GET" && url.pathname === "/api/audit") {
-    sendJson(res, 200, { events: runtime.audit(numberParam(url, "limit", 50)) });
+    sendJson(res, 200, {
+      events: runtime.audit({
+        limit: numberParam(url, "limit", 50),
+        channelId: (url.searchParams.get("channel") || "all") as never,
+        category: (url.searchParams.get("category") || "all") as never,
+        status: (url.searchParams.get("status") || "all") as never,
+        action: url.searchParams.get("action") || "all",
+        actor: url.searchParams.get("actor") || undefined,
+        agentId: url.searchParams.get("agent") || "all",
+        threadId: url.searchParams.get("thread") || undefined,
+        workspace: url.searchParams.get("workspace") || undefined,
+        since: url.searchParams.get("since") || undefined,
+      }),
+    });
     return true;
   }
 

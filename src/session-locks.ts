@@ -3,10 +3,19 @@ import { createDocumentStore, type DocumentStore, type StateBackendKind } from "
 
 export interface SessionLock {
   contextKey: TelegramContextKey;
-  ownerId: number;
-  ownerName?: string;
+  ownerUserId: string;
+  ownerLabel?: string;
+  ownerChannel?: "web" | "telegram" | "system";
+  ownerChannelUserId?: string;
   createdAt: number;
   expiresAt?: number;
+}
+
+export interface SessionLockOwner {
+  userId: string;
+  label?: string;
+  channel?: "web" | "telegram" | "system";
+  channelUserId?: string;
 }
 
 interface PersistedLocks {
@@ -40,14 +49,17 @@ export class SessionLockStore {
     return lock;
   }
 
-  set(contextKey: TelegramContextKey, ownerId: number, ownerName: string | undefined, ttlMs: number): SessionLock {
+  set(contextKey: TelegramContextKey, owner: SessionLockOwner, ttlMs: number): SessionLock {
     const payload = this.readPayload();
+    const now = Date.now();
     const lock: SessionLock = {
       contextKey,
-      ownerId,
-      ownerName,
-      createdAt: Date.now(),
-      expiresAt: ttlMs > 0 ? Date.now() + ttlMs : undefined,
+      ownerUserId: owner.userId,
+      ownerLabel: owner.label,
+      ownerChannel: owner.channel,
+      ownerChannelUserId: owner.channelUserId,
+      createdAt: now,
+      expiresAt: ttlMs > 0 ? now + ttlMs : undefined,
     };
     payload.locks[contextKey] = lock;
     this.store.write(payload);
@@ -89,13 +101,13 @@ export class SessionLockStore {
 
 export function canWriteWithLock(
   lock: SessionLock | null,
-  userId: number | undefined,
+  userId: string | undefined,
   isAdmin: boolean,
 ): boolean {
   if (!lock) {
     return true;
   }
-  return isAdmin || userId === lock.ownerId;
+  return isAdmin || Boolean(userId && userId === lock.ownerUserId);
 }
 
 function isSessionLock(value: unknown): value is SessionLock {
@@ -104,7 +116,7 @@ function isSessionLock(value: unknown): value is SessionLock {
   }
   const candidate = value as SessionLock;
   return typeof candidate.contextKey === "string" &&
-    Number.isInteger(candidate.ownerId) &&
+    typeof candidate.ownerUserId === "string" &&
     typeof candidate.createdAt === "number" &&
     (candidate.expiresAt === undefined || typeof candidate.expiresAt === "number");
 }

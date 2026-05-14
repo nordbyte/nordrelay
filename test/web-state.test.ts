@@ -43,11 +43,14 @@ describe("web dashboard state stores", () => {
         status: "queued",
         type: "prompt_queued",
         threadId: "thread-a",
+        workspace: "/repo/a",
+        agentId: "codex",
         actor: {
           channel: "telegram",
-          id: "296626516",
+          id: "user-1",
           label: "Ricardo",
-          username: "ricardo",
+          username: "ricardo@example.com",
+          channelUserId: "296626516",
         },
       });
       store.append({
@@ -55,6 +58,8 @@ describe("web dashboard state stores", () => {
         status: "completed",
         type: "cli_tool_completed",
         threadId: "thread-a",
+        workspace: "/repo/a",
+        agentId: "codex",
         actor: {
           channel: "cli",
           label: "CLI",
@@ -70,6 +75,9 @@ describe("web dashboard state stores", () => {
         type: "cli_tool_completed",
       });
       expect(store.list({ status: "completed" })[0]?.source).toBe("cli");
+      expect(store.list({ actor: "ricardo@example.com" })[0]?.source).toBe("telegram");
+      expect(store.list({ actor: "296626516" })[0]?.source).toBe("telegram");
+      expect(store.list({ agentId: "codex", threadId: "thread-a", workspace: "/repo/a", type: "tool" })[0]?.source).toBe("cli");
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }

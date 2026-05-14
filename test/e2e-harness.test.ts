@@ -125,11 +125,13 @@ describe("state, audit, and lock stores", () => {
         action: "prompt_started",
         status: "ok",
         contextKey: "123",
-        actorId: 42,
+        actorId: "user-42",
+        actor: { channel: "telegram", id: "user-42", label: "Ricardo", channelUserId: "42" },
         description: "test",
       });
       expect(event.id).toHaveLength(12);
       expect(event.channelId).toBe("telegram");
+      expect(event.category).toBe("prompt");
       const webEvent = audit.append({
         action: "command",
         status: "ok",
@@ -139,12 +141,13 @@ describe("state, audit, and lock stores", () => {
       });
       expect(webEvent.channelId).toBe("web");
       expect(audit.list(2).map((item) => item.description)).toEqual(["dashboard", "test"]);
+      expect(audit.list({ actor: "ricardo", limit: 5 }).map((item) => item.description)).toEqual(["test"]);
 
       const locks = new SessionLockStore(workspace, "json");
-      const lock = locks.set("123", 42, "Ricardo", 60_000);
-      expect(canWriteWithLock(lock, 42, false)).toBe(true);
-      expect(canWriteWithLock(lock, 7, false)).toBe(false);
-      expect(canWriteWithLock(lock, 7, true)).toBe(true);
+      const lock = locks.set("123", { userId: "user-42", label: "Ricardo", channel: "telegram", channelUserId: "42" }, 60_000);
+      expect(canWriteWithLock(lock, "user-42", false)).toBe(true);
+      expect(canWriteWithLock(lock, "user-7", false)).toBe(false);
+      expect(canWriteWithLock(lock, "user-7", true)).toBe(true);
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }

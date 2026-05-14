@@ -1,28 +1,17 @@
 import { randomUUID } from "node:crypto";
 
 import type { AgentId } from "./agent.js";
+import {
+  activityActorLabel,
+  activityCategoryForType,
+  type WebActivityActor,
+  type WebActivityCategory,
+} from "./activity-events.js";
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "./state-backend.js";
 
 export type WebChatRole = "user" | "agent" | "system" | "tool";
 export type WebActivitySource = "web" | "telegram" | "cli";
 export type WebActivityStatus = "queued" | "running" | "completed" | "failed" | "aborted" | "info";
-export type WebActivityCategory =
-  | "prompt"
-  | "session"
-  | "queue"
-  | "agent-update"
-  | "artifact"
-  | "system"
-  | "auth"
-  | "security"
-  | "tool";
-
-export interface WebActivityActor {
-  channel: "web" | "telegram" | "cli" | "system";
-  id?: string;
-  label?: string;
-  username?: string;
-}
 
 export interface WebChatMessage {
   id: string;
@@ -157,12 +146,30 @@ export class WebActivityStore {
     return event;
   }
 
-  list(options: { limit?: number; source?: WebActivitySource | "all"; status?: WebActivityStatus | "all"; category?: WebActivityCategory | "all" } = {}): WebActivityEvent[] {
+  list(options: {
+    limit?: number;
+    source?: WebActivitySource | "all";
+    status?: WebActivityStatus | "all";
+    category?: WebActivityCategory | "all";
+    actor?: string;
+    agentId?: AgentId | "all" | string;
+    threadId?: string;
+    workspace?: string;
+    type?: string;
+    since?: string | number;
+  } = {}): WebActivityEvent[] {
     const limit = Math.max(1, Math.min(500, options.limit ?? 100));
+    const since = normalizeSince(options.since);
     return this.readPayload().events
       .filter((event) => !options.source || options.source === "all" || event.source === options.source)
       .filter((event) => !options.status || options.status === "all" || event.status === options.status)
       .filter((event) => !options.category || options.category === "all" || (event.category ?? activityCategoryForType(event.type)) === options.category)
+      .filter((event) => !options.agentId || options.agentId === "all" || event.agentId === options.agentId)
+      .filter((event) => !options.threadId || event.threadId === options.threadId)
+      .filter((event) => !options.workspace || event.workspace === options.workspace)
+      .filter((event) => !options.type || event.type.toLowerCase().includes(options.type.toLowerCase()))
+      .filter((event) => !options.actor || activityActorMatches(event.actor, options.actor))
+      .filter((event) => !since || Date.parse(event.timestamp) >= since)
       .slice(-limit)
       .reverse();
   }
@@ -204,18 +211,36 @@ function isWebActivityEvent(value: unknown): value is WebActivityEvent {
     ["queued", "running", "completed", "failed", "aborted", "info"].includes(candidate.status);
 }
 
-export function activityCategoryForType(type: string): WebActivityCategory {
-  if (/^(prompt|cli_turn|voice|upload|attachment)/.test(type)) return "prompt";
-  if (/^(session|agent_switch|handback|model_|reasoning_|fast_|launch_)/.test(type)) return "session";
-  if (/^queue_/.test(type)) return "queue";
-  if (/^agent_(install|update)/.test(type)) return "agent-update";
-  if (/^(artifact|artifacts)/.test(type)) return "artifact";
-  if (/^(auth|login|logout)/.test(type)) return "auth";
-  if (/^(user_|group_|telegram_chat_|telegram_link|permission_|access_|lock_)/.test(type)) return "security";
-  if (/^(tool_|cli_tool)/.test(type)) return "tool";
-  return "system";
+function normalizeSince(value: string | number | undefined): number | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  const time = typeof value === "number" ? value : Date.parse(value);
+  return Number.isFinite(time) ? time : null;
+}
+
+function activityActorMatches(actor: WebActivityActor | undefined, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  return [
+    activityActorLabel(actor),
+    actor?.id,
+    actor?.username,
+    actor?.channelUserId,
+    actor?.channel,
+  ].some((value) => String(value ?? "").toLowerCase().includes(needle));
 }
 
 function randomId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 12);
 }
+
+export {
+  activityActorLabel,
+  activityCategoryForType,
+  auditCategoryForAction,
+  type WebActivityActor,
+  type WebActivityCategory,
+} from "./activity-events.js";

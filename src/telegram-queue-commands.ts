@@ -28,7 +28,7 @@ type AuditContextWriter = (
   ctx: Context,
   contextKey: TelegramContextKey,
   session: AgentSessionService,
-  patch: Omit<AuditEvent, "id" | "timestamp" | "channelId" | "contextKey" | "actorId" | "actorRole" | "agentId" | "threadId" | "workspace">,
+  patch: Omit<AuditEvent, "id" | "timestamp" | "channelId" | "contextKey" | "actor" | "actorId" | "actorRole" | "agentId" | "threadId" | "workspace">,
 ) => void;
 
 export interface TelegramQueueCommandOptions {

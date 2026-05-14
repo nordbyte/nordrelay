@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import type { AgentId } from "./agent.js";
+import {
+  auditCategoryForAction,
+  type WebActivityActor,
+  type WebActivityCategory,
+} from "./activity-events.js";
 import type { TelegramContextKey } from "./context-key.js";
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "./state-backend.js";
 
@@ -31,9 +36,11 @@ export interface AuditEvent {
   id: string;
   timestamp: string;
   action: AuditAction;
+  category?: WebActivityCategory;
   status: "ok" | "failed" | "denied";
   contextKey: TelegramContextKey;
   channelId: "telegram" | "web";
+  actor?: WebActivityActor;
   actorId?: number | string;
   actorRole?: string;
   agentId?: AgentId;
@@ -47,6 +54,19 @@ export interface AuditEvent {
 interface PersistedAuditLog {
   version: 1;
   events: AuditEvent[];
+}
+
+export interface AuditListOptions {
+  limit?: number;
+  channelId?: AuditEvent["channelId"] | "all";
+  status?: AuditEvent["status"] | "all";
+  action?: AuditAction | "all" | string;
+  category?: WebActivityCategory | "all";
+  actor?: string;
+  agentId?: AgentId | "all" | string;
+  threadId?: string;
+  workspace?: string;
+  since?: string | number;
 }
 
 export class AuditLogStore {
@@ -69,6 +89,7 @@ export class AuditLogStore {
       id: randomUUID().replace(/-/g, "").slice(0, 12),
       timestamp: new Date().toISOString(),
       ...event,
+      category: event.category ?? auditCategoryForAction(event.action),
       channelId: event.channelId ?? "telegram",
     };
     payload.events.push(next);
@@ -79,8 +100,22 @@ export class AuditLogStore {
     return next;
   }
 
-  list(limit = 20): AuditEvent[] {
-    return this.readPayload().events.slice(-Math.max(1, Math.min(200, limit))).reverse();
+  list(options: number | AuditListOptions = 20): AuditEvent[] {
+    const resolved = typeof options === "number" ? { limit: options } : options;
+    const limit = Math.max(1, Math.min(500, resolved.limit ?? 20));
+    const since = normalizeSince(resolved.since);
+    return this.readPayload().events
+      .filter((event) => !resolved.channelId || resolved.channelId === "all" || event.channelId === resolved.channelId)
+      .filter((event) => !resolved.status || resolved.status === "all" || event.status === resolved.status)
+      .filter((event) => !resolved.action || resolved.action === "all" || event.action === resolved.action)
+      .filter((event) => !resolved.category || resolved.category === "all" || (event.category ?? auditCategoryForAction(event.action)) === resolved.category)
+      .filter((event) => !resolved.agentId || resolved.agentId === "all" || event.agentId === resolved.agentId)
+      .filter((event) => !resolved.threadId || event.threadId === resolved.threadId)
+      .filter((event) => !resolved.workspace || event.workspace === resolved.workspace)
+      .filter((event) => !resolved.actor || auditActorMatches(event, resolved.actor))
+      .filter((event) => !since || Date.parse(event.timestamp) >= since)
+      .slice(-limit)
+      .reverse();
   }
 
   private readPayload(): PersistedAuditLog {
@@ -93,6 +128,30 @@ export class AuditLogStore {
       events: payload.events.filter(isAuditEvent),
     };
   }
+}
+
+function normalizeSince(value: string | number | undefined): number | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  const time = typeof value === "number" ? value : Date.parse(value);
+  return Number.isFinite(time) ? time : null;
+}
+
+function auditActorMatches(event: AuditEvent, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  return [
+    event.actor?.id,
+    event.actor?.label,
+    event.actor?.username,
+    event.actor?.channelUserId,
+    event.actor?.channel,
+    event.actorId,
+    event.actorRole,
+  ].some((value) => String(value ?? "").toLowerCase().includes(needle));
 }
 
 function isAuditEvent(value: unknown): value is AuditEvent {

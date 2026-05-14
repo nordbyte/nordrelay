@@ -269,6 +269,12 @@ export async function handleDashboardSessionRoute(
         source: (url.searchParams.get("source") || "all") as never,
         status: (url.searchParams.get("status") || "all") as never,
         category: (url.searchParams.get("category") || "all") as WebActivityCategory | "all",
+        actor: url.searchParams.get("actor") || undefined,
+        agentId: url.searchParams.get("agent") || "all",
+        threadId: url.searchParams.get("thread") || undefined,
+        workspace: url.searchParams.get("workspace") || undefined,
+        type: url.searchParams.get("type") || undefined,
+        since: url.searchParams.get("since") || undefined,
       })),
     });
     return true;

@@ -30,7 +30,7 @@ import {
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { AgentUpdateManager, type AgentUpdateJobSnapshot, type AgentUpdateOperation } from "./agent-updates.js";
 import { createAgentSessionService, enabledAgents } from "./agent-factory.js";
-import { AuditLogStore, type AuditEvent } from "./audit-log.js";
+import { AuditLogStore, type AuditEvent, type AuditListOptions } from "./audit-log.js";
 import { checkAuthStatus, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
 import { checkClaudeCodeAuthStatus, startClaudeCodeLogin, startClaudeCodeLogout } from "./claude-code-auth.js";
 import type { ConnectorConfig } from "./config.js";
@@ -242,6 +242,7 @@ export class RelayRuntime {
       action: "command",
       status: "ok",
       contextKey: WEB_CONTEXT_KEY,
+      actor,
       description: "update",
       detail: update.summary,
     });
@@ -279,6 +280,7 @@ export class RelayRuntime {
       status: "ok",
       contextKey: WEB_CONTEXT_KEY,
       agentId,
+      actor,
       description: `${operation} ${agentId}`,
       detail: job.summary,
     });
@@ -306,6 +308,7 @@ export class RelayRuntime {
       status: "ok",
       contextKey: WEB_CONTEXT_KEY,
       agentId: job.agentId,
+      actor,
       description: `delete update log ${id}`,
       detail: job.logPath,
     });
@@ -455,8 +458,8 @@ export class RelayRuntime {
     };
   }
 
-  audit(limit = 50): AuditEvent[] {
-    return this.auditStore.list(limit);
+  audit(options: number | AuditListOptions = 50): AuditEvent[] {
+    return this.auditStore.list(options);
   }
 
   async supportBundle(actor?: WebActivityActor): Promise<SupportBundleResult> {
@@ -481,6 +484,7 @@ export class RelayRuntime {
       action: "command",
       status: "ok",
       contextKey: WEB_CONTEXT_KEY,
+      actor,
       description: "export diagnostics bundle",
       detail: bundle.path,
     });
@@ -492,7 +496,12 @@ export class RelayRuntime {
   }
 
   lockWebSession(ownerName = "Web dashboard", actor?: WebActivityActor): SessionLock {
-    const lock = this.lockStore.set(WEB_CONTEXT_KEY, 0, ownerName, this.config.sessionLockTtlMs);
+    const label = ownerName || actor?.label || "Web dashboard";
+    const lock = this.lockStore.set(WEB_CONTEXT_KEY, {
+      userId: actor?.id ?? "web",
+      label,
+      channel: "web",
+    }, this.config.sessionLockTtlMs);
     this.appendActivity({
       source: "web",
       status: "info",
@@ -500,14 +509,15 @@ export class RelayRuntime {
       threadId: null,
       workspace: this.config.workspace,
       actor,
-      detail: `locked by ${ownerName}`,
+      detail: `locked by ${label}`,
     });
     this.appendAudit({
       action: "lock_updated",
       status: "ok",
       contextKey: WEB_CONTEXT_KEY,
+      actor,
       description: "lock",
-      detail: `locked by ${ownerName}`,
+      detail: `locked by ${label}`,
     });
     return lock;
   }
@@ -527,6 +537,7 @@ export class RelayRuntime {
       action: "lock_updated",
       status: "ok",
       contextKey: WEB_CONTEXT_KEY,
+      actor,
       description: "unlock",
       detail: removed ? "unlocked" : "no lock",
     });
@@ -639,6 +650,7 @@ export class RelayRuntime {
         agentId: info.agentId,
         threadId: info.threadId,
         workspace: info.workspace,
+        actor,
         description: "login",
         detail: result.message,
       });
@@ -701,6 +713,7 @@ export class RelayRuntime {
         agentId: info.agentId,
         threadId: info.threadId,
         workspace: info.workspace,
+        actor,
         description: "logout",
         detail: result.message,
       });
@@ -749,7 +762,18 @@ export class RelayRuntime {
     return { removed, messages };
   }
 
-  activity(options: { limit?: number; source?: WebActivitySource | "all"; status?: WebActivityStatus | "all"; category?: WebActivityCategory | "all" } = {}): WebActivityEvent[] {
+  activity(options: {
+    limit?: number;
+    source?: WebActivitySource | "all";
+    status?: WebActivityStatus | "all";
+    category?: WebActivityCategory | "all";
+    actor?: string;
+    agentId?: AgentId | "all" | string;
+    threadId?: string;
+    workspace?: string;
+    type?: string;
+    since?: string | number;
+  } = {}): WebActivityEvent[] {
     const currentInfo = this.registry.get(WEB_CONTEXT_KEY)?.getInfo();
     return this.activityStore.list(options).map((event) => this.enrichActivityEvent(event, currentInfo));
   }
@@ -763,6 +787,7 @@ export class RelayRuntime {
       action: "command",
       status: "ok",
       contextKey: WEB_CONTEXT_KEY,
+      actor,
       description: "retry",
       detail: cached.description,
     });
@@ -796,6 +821,7 @@ export class RelayRuntime {
       agentId: result.info.agentId,
       threadId: result.info.threadId,
       workspace: result.info.workspace,
+      actor,
       description: "sync",
       detail: result.changedFields.join(", ") || "none",
     });
@@ -1159,6 +1185,7 @@ export class RelayRuntime {
         threadId: info.threadId,
         workspace: info.workspace,
         promptId: queued.id,
+        actor: activityActor,
         description: envelope.description,
       });
       if (external?.activity.active) {
@@ -1203,6 +1230,7 @@ export class RelayRuntime {
       action: "queue_updated",
       status: "ok",
       contextKey: WEB_CONTEXT_KEY,
+      actor,
       description: id ? `${action}: ${id}` : action,
     });
     this.broadcastQueue();
@@ -1281,6 +1309,14 @@ export class RelayRuntime {
       actor,
       detail: `Cleared ${target} log.`,
     });
+    this.appendAudit({
+      action: "command",
+      status: "ok",
+      contextKey: WEB_CONTEXT_KEY,
+      actor,
+      description: `clear ${target} log`,
+      detail: result.filePath,
+    });
     return { ok: true, filePath: result.filePath, clearedAt: result.clearedAt.toISOString() };
   }
 
@@ -1295,6 +1331,13 @@ export class RelayRuntime {
       workspace: this.config.workspace,
       actor,
       detail: "Dashboard requested a connector restart.",
+    });
+    this.appendAudit({
+      action: "command",
+      status: "ok",
+      contextKey: WEB_CONTEXT_KEY,
+      actor,
+      description: "restart connector",
     });
     return { ok: true, message: "Restart requested." };
   }
@@ -1586,6 +1629,7 @@ export class RelayRuntime {
       agentId: info.agentId,
       threadId: info.threadId,
       workspace: info.workspace,
+      actor,
       description: envelope.description,
     });
     this.broadcast({ type: "turn_start", id: turnId, prompt: envelope.description, at: startedAt, source: "web" });
@@ -1670,6 +1714,7 @@ export class RelayRuntime {
         agentId: info.agentId,
         threadId: info.threadId,
         workspace: info.workspace,
+        actor,
         description: envelope.description,
       });
       this.updateCurrentProgress({ status: "completed" });
@@ -1703,6 +1748,7 @@ export class RelayRuntime {
         agentId: info.agentId,
         threadId: info.threadId,
         workspace: info.workspace,
+        actor,
         description: envelope.description,
         detail: errorText,
       });

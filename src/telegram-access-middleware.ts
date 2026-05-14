@@ -46,6 +46,7 @@ export function createTelegramAccessMiddleware(options: TelegramAccessMiddleware
         action: "permission_denied",
         status: "denied",
         contextKey: typeof chatId === "number" ? String(chatId) : "telegram",
+        actor: telegramAuditActor(ctx),
         actorId: fromId,
         description: "Telegram account is not linked",
       });
@@ -65,7 +66,8 @@ export function createTelegramAccessMiddleware(options: TelegramAccessMiddleware
         action: "permission_denied",
         status: "denied",
         contextKey: typeof chatId === "number" ? String(chatId) : "telegram",
-        actorId: fromId,
+        actor: telegramAuditActor(ctx, authUser),
+        actorId: authUser.user.id,
         actorRole: getUserRole(contextUsers, ctx),
         description: "Telegram chat is not enabled or outside user scope",
       });
@@ -84,7 +86,8 @@ export function createTelegramAccessMiddleware(options: TelegramAccessMiddleware
         action: "permission_denied",
         status: "denied",
         contextKey: typeof chatId === "number" ? String(chatId) : "telegram",
-        actorId: fromId,
+        actor: telegramAuditActor(ctx, authUser),
+        actorId: authUser.user.id,
         actorRole: getUserRole(contextUsers, ctx),
         description: commandName ? `Unsupported command /${commandName}` : "Unsupported callback",
       });
@@ -102,7 +105,8 @@ export function createTelegramAccessMiddleware(options: TelegramAccessMiddleware
         action: "permission_denied",
         status: "denied",
         contextKey: typeof chatId === "number" ? String(chatId) : "telegram",
-        actorId: fromId,
+        actor: telegramAuditActor(ctx, authUser),
+        actorId: authUser.user.id,
         actorRole: getUserRole(contextUsers, ctx),
         description: `${permission} required`,
       });
@@ -115,6 +119,16 @@ export function createTelegramAccessMiddleware(options: TelegramAccessMiddleware
     }
 
     await next();
+  };
+}
+
+function telegramAuditActor(ctx: Context, authUser?: AuthenticatedUser) {
+  return {
+    channel: "telegram" as const,
+    id: authUser?.user.id ?? (ctx.from?.id !== undefined ? `telegram:${ctx.from.id}` : undefined),
+    label: authUser?.user.displayName || authUser?.user.email || ctx.from?.username || (ctx.from?.id !== undefined ? String(ctx.from.id) : undefined),
+    username: authUser?.user.email ?? ctx.from?.username,
+    channelUserId: ctx.from?.id !== undefined ? String(ctx.from.id) : undefined,
   };
 }
 

@@ -40,6 +40,13 @@ export function registerTelegramSupportCommands(options: TelegramSupportCommandO
         action: "command",
         status: "ok",
         contextKey,
+        actor: {
+          channel: "telegram",
+          id: ctx.from?.id !== undefined ? `telegram:${ctx.from.id}` : undefined,
+          label: ctx.from?.username || ctx.from?.first_name || (ctx.from?.id !== undefined ? String(ctx.from.id) : undefined),
+          username: ctx.from?.username,
+          channelUserId: ctx.from?.id !== undefined ? String(ctx.from.id) : undefined,
+        },
         actorId: ctx.from?.id,
         actorRole: options.getUserRole(ctx),
         description: "export diagnostics bundle",

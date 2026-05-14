@@ -494,6 +494,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
           status: "ok",
           contextKey,
           agentId,
+          actor,
+          actorId: getAuthenticatedUser(ctx)?.user.id ?? ctx.from?.id,
+          actorRole: getUserRole(ctx),
           description: `${operation} ${agentId}`,
           detail: job.summary,
         });
@@ -1142,12 +1145,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     ctx: Context,
     contextKey: TelegramContextKey,
     session: AgentSessionService,
-    patch: Omit<AuditEvent, "id" | "timestamp" | "channelId" | "contextKey" | "actorId" | "actorRole" | "agentId" | "threadId" | "workspace">,
+    patch: Omit<AuditEvent, "id" | "timestamp" | "channelId" | "contextKey" | "actor" | "actorId" | "actorRole" | "agentId" | "threadId" | "workspace">,
   ): void => {
     const info = session.getInfo();
+    const authUser = getAuthenticatedUser(ctx);
     audit({
       contextKey,
-      actorId: ctx.from?.id,
+      actor: telegramActivityActor(ctx),
+      actorId: authUser?.user.id ?? ctx.from?.id,
       actorRole: getUserRole(ctx),
       agentId: idOf(info),
       threadId: info.threadId,
@@ -1162,9 +1167,10 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const label = authUser?.user.displayName || formatTelegramName(ctx) || user?.username || (user?.id ? String(user.id) : "Telegram user");
     return {
       channel: "telegram",
-      id: user?.id !== undefined ? String(user.id) : authUser?.user.id,
+      id: authUser?.user.id ?? (user?.id !== undefined ? `telegram:${user.id}` : undefined),
       label,
-      username: user?.username ?? authUser?.user.email,
+      username: authUser?.user.email ?? user?.username,
+      channelUserId: user?.id !== undefined ? String(user.id) : undefined,
     };
   }
 
@@ -1229,7 +1235,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   ): Promise<boolean> => {
     const lock = lockStore.get(contextKey);
     const isAdmin = isAdminUser(ctx);
-    if (canWriteWithLock(lock, ctx.from?.id, isAdmin)) {
+    if (canWriteWithLock(lock, getAuthenticatedUser(ctx)?.user.id, isAdmin)) {
       return false;
     }
 
@@ -2470,6 +2476,18 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     getExternalActivity,
     isAdminUser,
     auditContext,
+    getLockOwner: (ctx) => {
+      const authUser = getAuthenticatedUser(ctx);
+      if (!authUser) {
+        return null;
+      }
+      return {
+        userId: authUser.user.id,
+        label: authUser.user.displayName || authUser.user.email,
+        channel: "telegram",
+        channelUserId: ctx.from?.id !== undefined ? String(ctx.from.id) : undefined,
+      };
+    },
     updateSessionMetadata,
   });
 
