@@ -174,10 +174,11 @@ export class AgentUpdateManager {
       "",
     ].join("\n"));
 
-    const child = spawn(plan.command, plan.args, {
+    const useShell = process.platform === "win32";
+    const child = spawn(useShell ? formatShellCommand(plan.command, plan.args) : plan.command, useShell ? [] : plan.args, {
       cwd: plan.cwd,
       env: { ...process.env, ...(this.options.env ?? {}), ...(context.env ?? {}) },
-      shell: process.platform === "win32",
+      shell: useShell,
       windowsHide: true,
       stdio: "pipe",
     });
@@ -428,6 +429,23 @@ function plan(agentId: AgentId, method: string, command: string, args: string[],
 function looksLikePrompt(text: string): boolean {
   const tail = text.split(/\r?\n/).slice(-4).join("\n");
   return /\b(y\/n|yes\/no|continue|proceed|confirm|password|passphrase|token|api key|enter|select)\b|[?>]\s*$/i.test(tail);
+}
+
+function formatShellCommand(command: string, args: string[]): string {
+  return [command, ...args].map(quoteWindowsCmdArg).join(" ");
+}
+
+function quoteWindowsCmdArg(value: string): string {
+  if (value.length === 0) {
+    return "\"\"";
+  }
+  if (!/[\s"&|<>()^%]/.test(value)) {
+    return value;
+  }
+  return `"${value
+    .replace(/%/g, "%%")
+    .replace(/(\\*)"/g, '$1$1\\"')
+    .replace(/(\\+)$/g, "$1$1")}"`;
 }
 
 function capitalize(value: string): string {

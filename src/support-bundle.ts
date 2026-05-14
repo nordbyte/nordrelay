@@ -235,7 +235,8 @@ function systemInfo(): Record<string, unknown> {
 }
 
 function detectNpmVersion(npm: NonNullable<ReturnType<typeof resolveNpmSpawnCommand>>): string | null {
-  const result = spawnSync(npm.command, [...npm.argsPrefix, "--version"], {
+  const args = [...npm.argsPrefix, "--version"];
+  const result = spawnSync(npm.shell ? formatShellCommand(npm.command, args) : npm.command, npm.shell ? [] : args, {
     encoding: "utf8",
     shell: npm.shell,
     timeout: 3000,
@@ -245,6 +246,23 @@ function detectNpmVersion(npm: NonNullable<ReturnType<typeof resolveNpmSpawnComm
     return null;
   }
   return String(result.stdout || "").trim() || null;
+}
+
+function formatShellCommand(command: string, args: string[]): string {
+  return [command, ...args].map(quoteWindowsCmdArg).join(" ");
+}
+
+function quoteWindowsCmdArg(value: string): string {
+  if (value.length === 0) {
+    return "\"\"";
+  }
+  if (!/[\s"&|<>()^%]/.test(value)) {
+    return value;
+  }
+  return `"${value
+    .replace(/%/g, "%%")
+    .replace(/(\\*)"/g, '$1$1\\"')
+    .replace(/(\\+)$/g, "$1$1")}"`;
 }
 
 function formatTimestamp(date: Date): string {

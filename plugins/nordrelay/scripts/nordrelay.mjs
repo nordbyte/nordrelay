@@ -436,10 +436,11 @@ async function runVerifyNordRelayCli(sourceRoot, log) {
 async function runLoggedStep(log, label, command, args, settings = {}) {
   logUpdateLine(log, `${label}: ${formatCommand(command, args)}`);
   console.log(`\n${label}`);
-  const child = spawn(command, args, {
+  const useShell = Boolean(settings.shell);
+  const child = spawn(useShell ? formatShellCommand(command, args) : command, useShell ? [] : args, {
     cwd: settings.cwd || RUNTIME_ROOT,
     env: process.env,
-    shell: Boolean(settings.shell),
+    shell: useShell,
     stdio: ["inherit", "pipe", "pipe"],
     windowsHide: false,
   });
@@ -542,6 +543,30 @@ function formatCommand(command, args) {
     const text = String(part);
     return /[\s"'$`\\]/.test(text) ? JSON.stringify(text) : text;
   }).join(" ");
+}
+
+function formatShellCommand(command, args) {
+  return [command, ...args].map(quoteShellArg).join(" ");
+}
+
+function quoteShellArg(value) {
+  if (process.platform === "win32") {
+    return quoteWindowsCmdArg(String(value));
+  }
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+function quoteWindowsCmdArg(value) {
+  if (value.length === 0) {
+    return "\"\"";
+  }
+  if (!/[\s"&|<>()^%]/.test(value)) {
+    return value;
+  }
+  return `"${value
+    .replace(/%/g, "%%")
+    .replace(/(\\*)"/g, '$1$1\\"')
+    .replace(/(\\+)$/g, "$1$1")}"`;
 }
 
 async function commandInit(options) {

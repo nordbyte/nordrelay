@@ -612,12 +612,13 @@ async function detectLatestNpmVersion(packageName: string): Promise<{ version: s
 
 function runCommand(command: string, args: string[], options: { shell?: boolean; timeout: number }): Promise<CommandOutput> {
   return new Promise((resolve) => {
+    const useShell = Boolean(options.shell);
     execFile(
-      command,
-      args,
+      useShell ? formatShellCommand(command, args) : command,
+      useShell ? [] : args,
       {
         encoding: "utf8",
-        shell: Boolean(options.shell),
+        shell: useShell,
         timeout: options.timeout,
         windowsHide: true,
         env: process.env,
@@ -635,6 +636,30 @@ function runCommand(command: string, args: string[], options: { shell?: boolean;
       },
     );
   });
+}
+
+function formatShellCommand(command: string, args: string[]): string {
+  return [command, ...args].map(quoteShellArg).join(" ");
+}
+
+function quoteShellArg(value: string): string {
+  if (process.platform === "win32") {
+    return quoteWindowsCmdArg(value);
+  }
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function quoteWindowsCmdArg(value: string): string {
+  if (value.length === 0) {
+    return "\"\"";
+  }
+  if (!/[\s"&|<>()^%]/.test(value)) {
+    return value;
+  }
+  return `"${value
+    .replace(/%/g, "%%")
+    .replace(/(\\*)"/g, '$1$1\\"')
+    .replace(/(\\+)$/g, "$1$1")}"`;
 }
 
 export function resolveNpmSpawnCommand(env: NodeJS.ProcessEnv = process.env): NpmSpawnCommand | null {
