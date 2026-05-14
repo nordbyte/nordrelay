@@ -1,13 +1,4 @@
 const state = { snapshot:null, controls:null, newSessionControls:null, enabledAgents:[], auth:null, permissions:[], settings:[], currentPage:'overview', settingsGroup:null, logsPlain:'', logTimer:null, toastTimer:null, cliStatusActive:false, selectedArtifactTurns:new Set(), mediaRecorder:null, recordedChunks:[], events:null, reconnectTimer:null, notifications:false, toolTooltipTimer:null, toolTooltipTarget:null, agentUpdateJobs:[], sessionsRequestId:0 };
-async function api(path, options={}) {
-  const headers = { ...(options.body ? {'content-type':'application/json'} : {}), ...(options.headers||{}) };
-  const res = await fetch(path, { ...options, headers });
-  if (res.status === 401) { location.reload(); return; }
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : {};
-  if (!res.ok) throw new Error(data.error || res.statusText);
-  return data;
-}
 function toast(msg,options={}){const el=document.getElementById('toast');el.textContent=msg;el.style.display='block';if(state.toastTimer)clearTimeout(state.toastTimer);state.toastTimer=null;if(!options.sticky){state.toastTimer=setTimeout(()=>{el.style.display='none';state.toastTimer=null},options.duration||3500)}}
 function esc(s){return String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
 function attr(s){return esc(s).replace(/"/g,'&quot;')}

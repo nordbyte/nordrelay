@@ -8,4 +8,6 @@ dist/
 workspace/
 coverage/
 sbom.json
+test-results/
+playwright-report/
 .DS_Store

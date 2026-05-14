@@ -58,6 +58,7 @@ describe("web dashboard browser-flow assets", () => {
   });
 
   it("composes dashboard assets from focused WebUI modules", () => {
+    expect(readFileSync("src/webui/client/core/api-client.js", "utf8")).toContain("async function api");
     expect(readFileSync("src/webui/client/core/runtime.js", "utf8")).toContain("const state");
     expect(readFileSync("src/webui/client/overview.js", "utf8")).toContain("function renderSnapshot");
     expect(readFileSync("src/webui/client/workflows.js", "utf8")).toContain("function loadSessions");
@@ -82,6 +83,7 @@ describe("web dashboard browser-flow assets", () => {
     const js = dashboardJs();
 
     expect(() => new Script(js)).not.toThrow();
+    expect(js).toContain("function assertApiRoute");
     expect(js).toContain("function applyPermissions");
     expect(js).toContain("function can(permission)");
     expect(js).toContain("disabledAttr('queue.write')");

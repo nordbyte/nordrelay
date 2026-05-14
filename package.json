@@ -40,7 +40,7 @@
   ],
   "scripts": {
     "build": "node scripts/clean-dist.mjs && tsc && node scripts/build-web-assets.mjs",
-    "check": "node --check plugins/nordrelay/scripts/nordrelay.mjs && tsc --noEmit && node scripts/build-web-assets.mjs --check && node --import tsx scripts/generate-env-example.mjs --check",
+    "check": "node --check plugins/nordrelay/scripts/nordrelay.mjs && tsc --noEmit && npm run webui:check && node scripts/build-web-assets.mjs --check && node --import tsx scripts/generate-env-example.mjs --check",
     "dev": "tsx src/index.ts",
     "env:check": "node --import tsx scripts/generate-env-example.mjs --check",
     "env:generate": "node --import tsx scripts/generate-env-example.mjs",
@@ -52,7 +52,10 @@
     "status": "node plugins/nordrelay/scripts/nordrelay.mjs status",
     "start": "node plugins/nordrelay/scripts/nordrelay.mjs start",
     "stop": "node plugins/nordrelay/scripts/nordrelay.mjs stop",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:all": "npm test && npm run test:e2e",
+    "webui:check": "tsc -p tsconfig.webui.json"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.140",
@@ -62,6 +65,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^25.5.0",
     "esbuild": "^0.28.0",

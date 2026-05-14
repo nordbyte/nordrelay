@@ -21,6 +21,7 @@ Run the standard checks:
 ```bash
 npm run check
 npm test
+npm run test:e2e
 npm run build
 npm pack --dry-run
 ```
@@ -49,6 +50,6 @@ Be conservative with defaults. Fresh installs must not expose the bot publicly:
 ## Coding Style
 
 - TypeScript source lives in `src/`.
-- Tests live in `test/` and use Vitest.
+- Tests live in `test/` for Vitest and `e2e/` for Playwright browser flows.
 - Keep runtime behavior explicit and documented.
 - Prefer focused helpers over large abstractions unless they reduce real duplication.

@@ -11,8 +11,15 @@ permissions:
 
 jobs:
   test:
-    name: Node.js 22
-    runs-on: ubuntu-latest
+    name: Node.js 22 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
 
     steps:
       - name: Checkout
@@ -33,11 +40,22 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Security audit
-        run: npm run security:audit
-
       - name: Build
         run: npm run build
+
+      - name: Install Playwright browsers (Linux)
+        if: runner.os == 'Linux'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright browsers
+        if: runner.os != 'Linux'
+        run: npx playwright install chromium
+
+      - name: WebUI browser tests
+        run: npm run test:e2e
+
+      - name: Security audit
+        run: npm run security:audit
 
       - name: Package dry run
         run: npm pack --dry-run

@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "lib": ["ES2022", "DOM"],
+    "noEmit": true,
+    "types": []
+  },
+  "include": [
+    "src/web-api-types.ts",
+    "src/webui/client/core/api-client.js"
+  ]
+}
