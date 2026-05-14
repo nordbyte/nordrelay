@@ -53,13 +53,10 @@ import {
   type VoiceBackendPreference,
 } from "./bot-preferences.js";
 import {
-  logTailRequests,
-  parseLogsCommand,
   renderAgentUpdateJobAction,
   renderAgentsAction,
   renderArtifactReportsAction,
   renderChannelsAction,
-  renderLogTailsAction,
   renderQueueListAction,
   renderQueuedPromptDetailAction,
   type ChannelActionResponse,
@@ -81,7 +78,6 @@ import {
 } from "./agent.js";
 import {
   getAgentActivityLog,
-  getAgentDiagnostics,
   getExternalActivityForSession,
   getExternalSnapshotForSession,
 } from "./agent-activity.js";
@@ -93,13 +89,7 @@ import type { ConnectorConfig, ToolVerbosity } from "./config.js";
 import { contextKeyFromCtx, isTelegramContextKey, isTopicContextKey, parseContextKey, type TelegramContextKey } from "./context-key.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { escapeHTML } from "./format.js";
-import {
-  getConnectorHealth,
-  getVersionChecks,
-  readConnectorState,
-  readFormattedLogTail,
-  spawnConnectorRestart,
-} from "./operations.js";
+import { spawnConnectorRestart } from "./operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
 import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./hermes-auth.js";
 import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
@@ -114,7 +104,7 @@ import {
 } from "./session-format.js";
 import { SessionRegistry } from "./session-registry.js";
 import { getAvailableBackends, transcribeAudio, type TranscriptionBackend } from "./voice.js";
-import { getTelegramRateLimitMetrics, telegramRateLimiter } from "./telegram-rate-limit.js";
+import { telegramRateLimiter } from "./telegram-rate-limit.js";
 import {
   chatBucket,
   downloadTelegramFile,
@@ -140,6 +130,7 @@ import {
 } from "./telegram-channel-runtime.js";
 import { createTelegramAccessMiddleware } from "./telegram-access-middleware.js";
 import { registerTelegramAccessCommands } from "./telegram-access-commands.js";
+import { registerTelegramDiagnosticsCommands } from "./telegram-diagnostics-command.js";
 import { registerTelegramSupportCommands } from "./telegram-support-command.js";
 import { registerTelegramUpdateCommands } from "./telegram-update-commands.js";
 import {
@@ -153,8 +144,6 @@ import {
   filterSessions,
   formatAgentLaunchProfileLabel,
   formatAgentSettingScope,
-  formatCliPathHTML,
-  formatCliPathPlain,
   formatDurationSeconds,
   formatError,
   formatLocalDateTime,
@@ -175,14 +164,9 @@ import {
   parseFastModeArgument,
   parseToggle,
   renderActivityTimeline,
-  renderAgentDiagnostics,
   renderAuditEvents,
-  renderDiagnosticsHTML,
-  renderDiagnosticsPlain,
   renderExternalMirrorEvent,
   renderExternalMirrorStatus,
-  renderHealthHTML,
-  renderHealthPlain,
   renderPromptFailure,
   renderProgressHTML,
   renderProgressPlain,
@@ -190,11 +174,8 @@ import {
   renderTodoList,
   renderToolEndMessage,
   renderToolStartMessage,
-  renderVersionCheckHTML,
-  renderVersionCheckPlain,
   requiresTurnApproval,
   trimLine,
-  type RuntimeDiagnostics,
 } from "./bot-rendering.js";
 import { UserStore, type AuthenticatedUser } from "./user-management.js";
 import {
@@ -2592,50 +2573,25 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     });
   });
 
-  bot.command(["status", "health"], async (ctx) => {
-    const health = await getConnectorHealth({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath, openClawCliPath: config.openClawCliPath, claudeCodeCliPath: config.claudeCodeCliPath });
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    const authStatus = contextSession
-      ? await checkAgentAuthStatus(contextSession.session.getInfo())
-      : await checkAuthStatus(config.codexApiKey);
-    const html = renderHealthHTML(health, authStatus.authenticated, getUserRole(ctx));
-    const plain = renderHealthPlain(health, authStatus.authenticated, getUserRole(ctx));
-    await safeReply(ctx, html, { fallbackText: plain });
-  });
-
-  bot.command("version", async (ctx) => {
-    const health = await getConnectorHealth({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath, openClawCliPath: config.openClawCliPath, claudeCodeCliPath: config.claudeCodeCliPath });
-    const state = await readConnectorState();
-    const versions = await getVersionChecks({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath, openClawCliPath: config.openClawCliPath, claudeCodeCliPath: config.claudeCodeCliPath });
-    const plain = [
-      renderVersionCheckPlain(versions.nordrelay),
-      `Runtime status: ${state.status ?? "unknown"}`,
-      formatCliPathPlain("Codex CLI", health.codexCliPath, health.codexCli),
-      renderVersionCheckPlain(versions.codex),
-      formatCliPathPlain("Pi CLI", health.piCliPath, health.piCli),
-      renderVersionCheckPlain(versions.pi),
-      formatCliPathPlain("Hermes CLI", health.hermesCliPath, health.hermesCli),
-      renderVersionCheckPlain(versions.hermes),
-      formatCliPathPlain("OpenClaw CLI", health.openClawCliPath, health.openClawCli),
-      renderVersionCheckPlain(versions.openclaw),
-      formatCliPathPlain("Claude Code CLI", health.claudeCodeCliPath, health.claudeCodeCli),
-      renderVersionCheckPlain(versions.claudeCode),
-    ].join("\n");
-    const html = [
-      renderVersionCheckHTML(versions.nordrelay),
-      `<b>Runtime status:</b> <code>${escapeHTML(state.status ?? "unknown")}</code>`,
-      formatCliPathHTML("Codex CLI", health.codexCliPath, health.codexCli),
-      renderVersionCheckHTML(versions.codex),
-      formatCliPathHTML("Pi CLI", health.piCliPath, health.piCli),
-      renderVersionCheckHTML(versions.pi),
-      formatCliPathHTML("Hermes CLI", health.hermesCliPath, health.hermesCli),
-      renderVersionCheckHTML(versions.hermes),
-      formatCliPathHTML("OpenClaw CLI", health.openClawCliPath, health.openClawCli),
-      renderVersionCheckHTML(versions.openclaw),
-      formatCliPathHTML("Claude Code CLI", health.claudeCodeCliPath, health.claudeCodeCli),
-      renderVersionCheckHTML(versions.claudeCode),
-    ].join("\n");
-    await safeReply(ctx, html, { fallbackText: plain });
+  registerTelegramDiagnosticsCommands({
+    bot,
+    config,
+    registry,
+    promptStore,
+    turnProgress,
+    externalMirrors,
+    externalQueueTimers,
+    queueStatusMessages,
+    getContextSession,
+    checkAgentAuthStatus,
+    getUserRole,
+    getEffectiveMirrorMode,
+    getEffectiveNotifyMode,
+    getEffectiveQuietHours,
+    getEffectiveVoiceBackend,
+    getEffectiveVoiceLanguage,
+    isVoiceTranscribeOnly,
+    replyChannelAction,
   });
 
   bot.command(["tasks", "progress"], async (ctx) => {
@@ -2755,35 +2711,6 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
   });
 
-  bot.command("diagnostics", async (ctx) => {
-    const health = await getConnectorHealth({ piCliPath: config.piCliPath, hermesCliPath: config.hermesCliPath, openClawCliPath: config.openClawCliPath, claudeCodeCliPath: config.claudeCodeCliPath });
-    const contextKey = contextKeyFromCtx(ctx);
-    const queueLength = contextKey ? promptStore.list(contextKey).length : 0;
-    const progress = contextKey ? turnProgress.get(contextKey) : undefined;
-    const contextSession = contextKey ? await getContextSession(ctx, { deferThreadStart: true }) : null;
-    const authStatus = contextSession
-      ? await checkAgentAuthStatus(contextSession.session.getInfo())
-      : await checkAuthStatus(config.codexApiKey);
-    const agentDiagnostics = contextSession
-      ? renderAgentDiagnostics(getAgentDiagnostics(contextSession.session, config))
-      : { plain: "Agent state: no context", html: "<b>Agent state:</b> <code>no context</code>" };
-    const runtime: RuntimeDiagnostics = {
-      rateLimit: getTelegramRateLimitMetrics(),
-      externalMirrors: externalMirrors.size,
-      externalQueueTimers: externalQueueTimers.size,
-      queueStatusMessages: queueStatusMessages.size,
-      mirrorMode: contextKey ? getEffectiveMirrorMode(contextKey) : config.telegramMirrorMode,
-      notifyMode: contextKey ? getEffectiveNotifyMode(contextKey) : config.telegramNotifyMode,
-      quietHours: formatQuietHours(contextKey ? getEffectiveQuietHours(contextKey) : config.telegramQuietHours),
-      voiceBackend: contextKey ? getEffectiveVoiceBackend(contextKey) : config.voicePreferredBackend,
-      voiceLanguage: contextKey ? getEffectiveVoiceLanguage(contextKey) ?? "auto" : config.voiceDefaultLanguage ?? "auto",
-      voiceTranscribeOnly: contextKey ? isVoiceTranscribeOnly(contextKey) : config.voiceTranscribeOnly,
-    };
-    const plain = `${renderDiagnosticsPlain(config, registry, health, authStatus.authenticated, getUserRole(ctx), queueLength, progress, runtime)}\n${agentDiagnostics.plain}`;
-    const html = `${renderDiagnosticsHTML(config, registry, health, authStatus.authenticated, getUserRole(ctx), queueLength, progress, runtime)}\n${agentDiagnostics.html}`;
-    await safeReply(ctx, html, { fallbackText: plain });
-  });
-
   bot.command("sync", async (ctx) => {
     const contextSession = await getContextSession(ctx, { deferThreadStart: true });
     if (!contextSession) {
@@ -2818,18 +2745,6 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       renderSessionInfoHTML(result.info),
     ].join("\n");
     await safeReply(ctx, html, { fallbackText: plain });
-  });
-
-  bot.command("logs", async (ctx) => {
-    const rawText = ctx.message?.text ?? "";
-    const argument = rawText.replace(/^\/logs(?:@\w+)?\s*/i, "").trim();
-    const logRequest = parseLogsCommand(argument);
-    const logs = await Promise.all(logTailRequests(logRequest.target).map(async (request) => ({
-      title: request.title,
-      tail: await readFormattedLogTail(logRequest.lines, request.path),
-    })));
-    const rendered = renderLogTailsAction(logs);
-    await replyChannelAction(ctx, rendered);
   });
 
   bot.command("restart", async (ctx) => {

@@ -1043,7 +1043,7 @@ npm run build
 - `plugins/nordrelay/scripts/nordrelay.mjs`: process manager for `start`, `stop`, `restart`, `status`, and `foreground`.
 - `src/index.ts`: runtime entrypoint, config load, auth check, state-file writes, polling lifecycle, shutdown.
 - `src/bot.ts`: Telegram prompt/session runtime, streaming, file/photo/voice handling, artifacts, and error handling.
-- `src/telegram-access-commands.ts`, `src/telegram-update-commands.ts`, `src/telegram-support-command.ts`, and `src/telegram-command-menu.ts`: focused Telegram command groups for access linking, update jobs, diagnostics bundle export, and command menu registration.
+- `src/telegram-access-commands.ts`, `src/telegram-diagnostics-command.ts`, `src/telegram-update-commands.ts`, `src/telegram-support-command.ts`, and `src/telegram-command-menu.ts`: focused Telegram command groups for access linking, diagnostics/log/version commands, update jobs, diagnostics bundle export, and command menu registration.
 - `src/channel-adapter.ts`, `src/channel-runtime.ts`, and `src/channel-actions.ts`: channel descriptors, generic command routing, outbound delivery contracts, and channel-neutral command responses.
 - `src/config-metadata.ts`: shared setting metadata used by the WebUI settings page and generated `.env.example`.
 - `src/support-bundle.ts` and `src/zip-writer.ts`: redacted diagnostics bundle creation with a dependency-free ZIP writer.
