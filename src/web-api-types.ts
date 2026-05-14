@@ -7,6 +7,7 @@ import type { ChannelDescriptor } from "./channel-adapter.js";
 import type { ClearLogResult, ConnectorHealth, ConnectorRuntimeState, FormattedLogTail, SelfUpdateResult, VersionChecks } from "./operations.js";
 import type { WebApiDynamicPathFromContract, WebApiStaticPathFromContract } from "./web-api-contract.js";
 import type {
+  ActiveSessionsDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
   DashboardControlOptions,
@@ -138,6 +139,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/health" ? WebStatusResponse :
   P extends "/api/snapshot" ? RelaySnapshot :
   P extends "/api/tasks" | "/api/progress" ? WebTasksDto :
+  P extends "/api/active-sessions" ? ActiveSessionsDto :
   P extends "/api/version" ? WebVersionResponse :
   P extends "/api/update" ? SelfUpdateResult :
   P extends "/api/agent-updates" ? { jobs: AgentUpdateJobSnapshot[] } :

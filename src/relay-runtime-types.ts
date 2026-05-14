@@ -43,6 +43,33 @@ export interface RelaySnapshot {
   workspaces: string[];
 }
 
+export type ActiveSessionSource = "web" | "telegram" | "cli";
+
+export interface ActiveSessionDto {
+  id: string;
+  contextKey: string;
+  source: ActiveSessionSource;
+  status: "running" | "external";
+  agentId?: AgentId;
+  agentLabel?: string;
+  threadId: string | null;
+  workspace?: string;
+  prompt?: string;
+  currentTool?: string;
+  lastTool?: string;
+  startedAt: string;
+  updatedAt: string;
+  durationMs: number;
+  queueLength: number;
+  queuePaused: boolean;
+  detail?: string;
+}
+
+export interface ActiveSessionsDto {
+  sessions: ActiveSessionDto[];
+  updatedAt: string;
+}
+
 export interface QueueItemDto {
   id: string;
   description: string;

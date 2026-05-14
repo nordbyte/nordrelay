@@ -13,6 +13,7 @@ const WEB_API_CLIENT_ROUTE_RULES = [
   { path: "/api/snapshot", methods: ['GET'] },
   { path: "/api/tasks", methods: ['GET'] },
   { path: "/api/progress", methods: ['GET'] },
+  { path: "/api/active-sessions", methods: ['GET'] },
   { path: "/api/version", methods: ['GET'] },
   { path: "/api/update", methods: ['POST'] },
   { path: "/api/agent-updates", methods: ['GET'] },

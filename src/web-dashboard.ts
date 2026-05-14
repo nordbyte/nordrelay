@@ -11,7 +11,7 @@ import { listChannelDescriptors } from "./channel-adapter.js";
 import { permissionForWebRequest } from "./access-control.js";
 import { loadConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
-import { RelayRuntime, type DashboardControlOptions, type RelayEvent, type SessionPageDto, type WebTasksDto } from "./relay-runtime.js";
+import { RelayRuntime, type ActiveSessionsDto, type DashboardControlOptions, type RelayEvent, type SessionPageDto, type WebTasksDto } from "./relay-runtime.js";
 import { resolveDashboardEnvPath, SettingsService } from "./settings-service.js";
 import { UserStore, publicUser, type AuthenticatedUser } from "./user-management.js";
 import { handleDashboardAccessRoute } from "./web-dashboard-access-routes.js";
@@ -170,6 +170,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     assertAgentUpdateJobScope,
     assertCurrentSessionScope,
     scopedTasks,
+    scopedActiveSessions,
   })) {
     return;
   }
@@ -425,6 +426,13 @@ async function scopedTasks(authUser: AuthenticatedUser, tasks: WebTasksDto): Pro
     external: tasks.external && canUseSession(authUser, tasks.external) ? tasks.external : null,
     queue: currentAllowed ? tasks.queue : [],
     recent: filterActivityByScope(authUser, tasks.recent),
+  };
+}
+
+function scopedActiveSessions(authUser: AuthenticatedUser, active: ActiveSessionsDto): ActiveSessionsDto {
+  return {
+    ...active,
+    sessions: active.sessions.filter((session) => canUseSession(authUser, session)),
   };
 }
 

@@ -20,7 +20,19 @@ describe("web dashboard browser-flow assets", () => {
     const js = dashboardJs();
 
     expect(js).toContain("await loadBootstrap();await reloadCurrentPage({agentId:selected})");
+    expect(js).toContain("if(name==='overview') await loadActiveSessions()");
     expect(js).toContain("if(name==='sessions') await loadSessions(true,options.agentId)");
+  });
+
+  it("renders active sessions on the overview instead of the single current session panel", () => {
+    const js = dashboardJs();
+    const pageSource = readFileSync("src/web-dashboard-pages.ts", "utf8");
+
+    expect(pageSource).toContain("Active Sessions");
+    expect(pageSource).toContain('id="activeSessions"');
+    expect(pageSource).not.toContain("Current Session");
+    expect(js).toContain("function renderActiveSessions");
+    expect(js).toContain("/api/active-sessions");
   });
 
   it("binds version agent update buttons after rendering version cards", () => {

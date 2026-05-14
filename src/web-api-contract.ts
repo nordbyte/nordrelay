@@ -30,6 +30,7 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   exact("/api/snapshot", ["GET"], "inspect"),
   exact("/api/tasks", ["GET"], "inspect"),
   exact("/api/progress", ["GET"], "inspect"),
+  exact("/api/active-sessions", ["GET"], "sessions.read"),
   exact("/api/version", ["GET"], "inspect"),
   exact("/api/update", ["POST"], "updates.run"),
   exact("/api/agent-updates", ["GET"], "updates.run"),

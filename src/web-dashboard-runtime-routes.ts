@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { AgentId } from "./agent.js";
-import type { RelayRuntime, WebTasksDto } from "./relay-runtime.js";
+import type { ActiveSessionsDto, RelayRuntime, WebTasksDto } from "./relay-runtime.js";
 import type { AuthenticatedUser, UserStore } from "./user-management.js";
 import {
   numberParam,
@@ -23,6 +23,7 @@ export interface DashboardRuntimeRouteOptions {
   assertAgentUpdateJobScope: (authUser: AuthenticatedUser, id: string) => void;
   assertCurrentSessionScope: (authUser: AuthenticatedUser) => Promise<void>;
   scopedTasks: (authUser: AuthenticatedUser, tasks: WebTasksDto) => Promise<WebTasksDto>;
+  scopedActiveSessions: (authUser: AuthenticatedUser, active: ActiveSessionsDto) => ActiveSessionsDto;
 }
 
 export async function handleDashboardRuntimeRoute(
@@ -97,6 +98,11 @@ export async function handleDashboardRuntimeRoute(
 
   if (req.method === "GET" && (url.pathname === "/api/tasks" || url.pathname === "/api/progress")) {
     sendJson(res, 200, await options.scopedTasks(authUser, runtime.tasks()));
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/active-sessions") {
+    sendJson(res, 200, options.scopedActiveSessions(authUser, await runtime.activeSessions()));
     return true;
   }
 

@@ -13,6 +13,8 @@ import {
   agentLabel,
   agentReasoningLabel,
   agentReasoningOptions,
+  isAgentId,
+  type AgentCapabilities,
   type AgentId,
   type AgentPromptInput,
   type AgentPromptObject,
@@ -43,7 +45,7 @@ import { RelayExternalActivityMonitor } from "./relay-external-activity-monitor.
 import { RelayQueueService, type RelayQueueAction } from "./relay-queue-service.js";
 import { renderSessionInfoPlain, renderSessionUsageRows } from "./session-format.js";
 import { SessionLockStore, type SessionLock } from "./session-locks.js";
-import { SessionRegistry } from "./session-registry.js";
+import { SessionRegistry, type ContextMetadata } from "./session-registry.js";
 import { createSupportBundle, type SupportBundleResult } from "./support-bundle.js";
 import { transcribeAudio, type TranscriptionBackend } from "./voice.js";
 import {
@@ -54,7 +56,10 @@ import {
   type WebActivityStatus,
   type WebChatMessage,
 } from "./web-state.js";
+import { isTelegramContextKey } from "./context-key.js";
 import type {
+  ActiveSessionDto,
+  ActiveSessionsDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
   DashboardControlOptions,
@@ -74,6 +79,8 @@ import type {
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "./workspace-policy.js";
 
 export type {
+  ActiveSessionDto,
+  ActiveSessionsDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
   DashboardControlOptions,
@@ -371,6 +378,35 @@ export class RelayRuntime {
       queue: this.queue(),
       queuePaused: this.queuePaused(),
       recent: this.activity({ limit: 20 }),
+    };
+  }
+
+  async activeSessions(): Promise<ActiveSessionsDto> {
+    const sessions = new Map<string, ActiveSessionDto>();
+    if (this.currentProgress?.status === "running") {
+      sessions.set(this.activeSessionKey(WEB_CONTEXT_KEY, this.currentProgress), {
+        ...this.currentProgress,
+        contextKey: WEB_CONTEXT_KEY,
+        source: "web",
+        status: "running",
+        queueLength: this.queueService.length(),
+        queuePaused: this.queueService.isPaused(),
+      });
+    }
+
+    for (const meta of this.listKnownContextMetadata()) {
+      if (meta.contextKey === WEB_CONTEXT_KEY && this.currentProgress?.status === "running") {
+        continue;
+      }
+      const active = this.externalActiveSession(meta);
+      if (active) {
+        sessions.set(this.activeSessionKey(meta.contextKey, active), active);
+      }
+    }
+
+    return {
+      sessions: [...sessions.values()].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)),
+      updatedAt: new Date().toISOString(),
     };
   }
 
@@ -1093,6 +1129,125 @@ export class RelayRuntime {
 
   private async getSession(deferThreadStart: boolean): Promise<AgentSessionService> {
     return this.registry.getOrCreate(WEB_CONTEXT_KEY, { deferThreadStart });
+  }
+
+  private listKnownContextMetadata(): ContextMetadata[] {
+    const contexts = new Map<string, ContextMetadata>();
+    const add = (meta: ContextMetadata | undefined): void => {
+      if (meta?.contextKey) {
+        contexts.set(meta.contextKey, meta);
+      }
+    };
+
+    for (const meta of this.registry.listContexts()) {
+      add(meta);
+    }
+
+    const sharedRegistry = new SessionRegistry(this.config);
+    try {
+      for (const meta of sharedRegistry.listContexts()) {
+        add(meta);
+      }
+    } finally {
+      sharedRegistry.disposeAll();
+    }
+
+    const current = this.registry.get(WEB_CONTEXT_KEY)?.getInfo();
+    if (current) {
+      add({
+        contextKey: WEB_CONTEXT_KEY,
+        agentId: current.agentId,
+        threadId: current.threadId,
+        workspace: current.workspace,
+        model: current.model,
+        reasoningEffort: current.reasoningEffort,
+        launchProfileId: current.nextLaunchProfileId ?? current.launchProfileId,
+        sessionPath: current.sessionPath,
+        updatedAt: Date.now(),
+      });
+    }
+
+    return [...contexts.values()];
+  }
+
+  private externalActiveSession(meta: ContextMetadata): ActiveSessionDto | null {
+    if (!meta.threadId) {
+      return null;
+    }
+    const agentId = isAgentId(meta.agentId) ? meta.agentId : this.config.defaultAgent;
+    if (!enabledAgents(this.config).includes(agentId)) {
+      return null;
+    }
+    const capabilities = this.capabilitiesForAgent(agentId);
+    if (!capabilities.externalActivity) {
+      return null;
+    }
+
+    const snapshot = getExternalSnapshotForSession(this.sessionStubForMetadata(meta, agentId, capabilities), this.config, {
+      maxEvents: 8,
+    });
+    if (!snapshot?.activity.active) {
+      return null;
+    }
+
+    const startedAt = snapshot.activity.startedAt?.toISOString() ?? new Date().toISOString();
+    const updatedAt = snapshot.activity.updatedAt?.toISOString() ?? new Date().toISOString();
+    const startedMs = Date.parse(startedAt);
+    return {
+      id: `${meta.contextKey}:${snapshot.activity.turnId ?? snapshot.threadId}`,
+      contextKey: meta.contextKey,
+      source: isTelegramContextKey(meta.contextKey) ? "telegram" : "cli",
+      status: "external",
+      agentId: snapshot.agentId,
+      agentLabel: snapshot.agentLabel,
+      threadId: snapshot.threadId,
+      workspace: meta.workspace,
+      prompt: snapshot.latestUserMessage ?? undefined,
+      currentTool: snapshot.latestToolName ?? undefined,
+      lastTool: snapshot.latestToolName ?? undefined,
+      startedAt,
+      updatedAt,
+      durationMs: Number.isFinite(startedMs) ? Math.max(0, Date.now() - startedMs) : 0,
+      queueLength: this.promptStore.list(meta.contextKey).length,
+      queuePaused: this.promptStore.isPaused(meta.contextKey),
+      detail: `${snapshot.sourceLabel}: ${snapshot.sourcePath}`,
+    };
+  }
+
+  private sessionStubForMetadata(
+    meta: ContextMetadata,
+    agentId: AgentId,
+    capabilities: AgentCapabilities,
+  ): AgentSessionService {
+    const info: AgentSessionInfo = {
+      agentId,
+      agentLabel: agentLabel(agentId),
+      threadId: meta.threadId,
+      workspace: meta.workspace,
+      model: meta.model,
+      reasoningEffort: meta.reasoningEffort,
+      launchProfileId: meta.launchProfileId ?? this.config.defaultLaunchProfileId,
+      launchProfileLabel: meta.launchProfileId ?? this.config.defaultLaunchProfileId,
+      launchProfileBehavior: "-",
+      sandboxMode: "-",
+      approvalPolicy: "-",
+      fastMode: false,
+      unsafeLaunch: false,
+      sessionPath: meta.sessionPath,
+      capabilities,
+    };
+    return {
+      getInfo: () => info,
+      getActiveThreadId: () => meta.threadId,
+    } as AgentSessionService;
+  }
+
+  private capabilitiesForAgent(agentId: AgentId): AgentCapabilities {
+    return listAgentAdapterDescriptors().find((descriptor) => descriptor.id === agentId)?.capabilities ?? CODEX_AGENT_CAPABILITIES;
+  }
+
+  private activeSessionKey(contextKey: string, session: Pick<ActiveSessionDto, "threadId" | "id">): string {
+    return `${contextKey}:${session.threadId ?? session.id}`;
   }
 
   private async getControlSession(agentId?: AgentId): Promise<{ session: AgentSessionService; dispose: boolean }> {

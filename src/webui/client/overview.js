@@ -26,6 +26,7 @@ async function loadBootstrap(){
   state.enabledAgents = data.enabledAgents || [];
   applyPermissions();
   renderSnapshot(state.snapshot);
+  safe(loadActiveSessions);
   renderSessionControls();
   populateNewSessionForm(data.enabledAgents);
   renderAdapters(data.channels, data.agentAdapters);
@@ -40,11 +41,34 @@ async function loadBootstrap(){
 }
 function renderSnapshot(s){
   document.getElementById('sessionLine').textContent=(s.session.agentLabel||'Agent')+' / '+(s.session.model||'default')+' / '+(s.session.threadId||'not started');
-  document.getElementById('sessionText').textContent=s.sessionText||'';
   document.getElementById('metrics').innerHTML=[
     ['Status',s.processing?'working':'idle'],['Agent',s.session.agentLabel],['Queue',s.queue.length],['Workspace',s.session.workspace],['Thread',s.session.threadId||'not started'],['Reasoning',s.session.reasoningEffort||'default'],['Fast',s.session.capabilities&&s.session.capabilities.fastMode?(s.session.fastMode?'on':'off'):'n/a']
   ].map(([k,v])=>'<div class="metric"><div class="label">'+esc(k)+'</div><div class="value">'+esc(v)+'</div></div>').join('');
   renderQueue(s.queue,s.queuePaused);
+}
+async function loadActiveSessions(){
+  const box=document.getElementById('activeSessions');
+  if(!box)return;
+  if(!can('sessions.read')){box.innerHTML='<div class="item">Permission required: sessions.read</div>';return}
+  const data=await api('/api/active-sessions');
+  renderActiveSessions(data.sessions||[]);
+}
+function renderActiveSessions(items){
+  const box=document.getElementById('activeSessions');
+  if(!box)return;
+  box.innerHTML=(items||[]).map(activeSessionCard).join('')||'<div class="item">No active sessions.</div>';
+  document.querySelectorAll('[data-active-copy]').forEach(b=>b.onclick=()=>copyText(b.dataset.activeCopy||'','Thread ID copied'));
+  document.querySelectorAll('[data-active-switch]').forEach(b=>b.onclick=()=>safe(async()=>{if(!can('sessions.write')){toast('Permission required: sessions.write');return}const agentId=b.dataset.activeAgent;const threadId=b.dataset.activeSwitch;if(agentId&&state.snapshot?.session?.agentId!==agentId){await api('/api/agent',{method:'POST',body:{agentId}})}if(threadId){await api('/api/sessions/switch',{method:'POST',body:{threadId}})}toast('Session switched');await loadBootstrap();page('chat')}));
+  document.querySelectorAll('[data-active-detail]').forEach(b=>b.onclick=()=>safe(async()=>{const agentId=b.dataset.activeAgent;const threadId=b.dataset.activeDetail;if(agentId&&state.snapshot?.session?.agentId!==agentId){await api('/api/agent',{method:'POST',body:{agentId}});await loadBootstrap()}if(threadId)await loadSessionDetail(threadId)}));
+  applyPermissions();
+}
+function activeSessionCard(s){
+  const thread=s.threadId||'not started';
+  const prompt=s.prompt?'<small>'+esc(short(s.prompt,250))+'</small>':'';
+  const tool=s.currentTool||s.lastTool||'-';
+  const queue=s.queueLength?(' · '+s.queueLength+' queued'+(s.queuePaused?' paused':'')):'';
+  const meta=[s.source,s.workspace,fmtDuration(s.durationMs),tool&&tool!=='-'?'tool '+tool:''].filter(Boolean).join(' | ');
+  return '<div class="item active-session-item"><strong>'+esc(s.agentLabel||s.agentId||'Agent')+' <span class="adapter-status enabled">'+esc(s.status)+'</span></strong><small><button type="button" class="copy-id" data-active-copy="'+attr(thread)+'" title="Copy thread ID">'+esc(short(thread,64))+'</button>'+esc(queue)+'</small><small>'+esc(meta)+'</small>'+prompt+'<div class="row"><button data-active-switch="'+attr(thread)+'" data-active-agent="'+attr(s.agentId||'')+'" '+(!s.threadId?'disabled ':'')+disabledAttr('sessions.write')+'>Switch</button><button class="secondary" data-active-detail="'+attr(thread)+'" data-active-agent="'+attr(s.agentId||'')+'" '+(!s.threadId?'disabled ':'')+'>Details</button></div></div>';
 }
 function renderSessionControls(){
   const c=state.controls||{};const s=state.snapshot?.session||{};const caps=c.capabilities||{};
@@ -90,3 +114,4 @@ function featureMatrix(caps){const c=caps||{};return '<div class="feature-matrix
 function versionStatusLabel(status){if(status==='current')return'Latest';if(status==='outdated')return'Outdated';if(status==='not-installed')return'Not installed';return'Unknown'}
 function versionStatusClass(status){if(status==='current')return'available';if(status==='outdated')return'planned';return'disabled'}
 function jobStatusClass(status){if(status==='completed')return'available';if(status==='running')return'planned';return'disabled'}
+state.activeSessionsTimer=setInterval(()=>{if(state.currentPage==='overview')safe(loadActiveSessions)},5000);

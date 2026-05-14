@@ -32,6 +32,9 @@ test.describe("NordRelay WebUI", () => {
     await page.goto(mock.baseUrl);
 
     await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Active Sessions" })).toBeVisible();
+    await expect(page.locator("#activeSessions")).toContainText("Run active smoke test");
+    await expect(page.locator("#activeSessions")).toContainText("exec_command");
     await expect(page.locator("#agentAdapters")).toContainText("Codex");
     await expect(page.locator("#chatAdapters")).toContainText("Telegram");
     await expect(page.locator("#footerHealth")).toContainText("Health: ready");
@@ -134,7 +137,7 @@ function dashboardHtml(): string {
     <aside class="sidebar" id="sidebar"><div class="brand"><span class="mark">NR</span><div><strong>NordRelay</strong><small>Remote control</small></div></div><nav>${renderDashboardNav()}</nav></aside>
     <main>
       <header><button class="menu" id="menuBtn">Menu</button><div><h1 id="pageTitle">Overview</h1><p id="sessionLine">Loading session...</p></div><div class="header-actions"><span id="connectionStatus" class="badge">Connecting</span><select id="agentSelect"></select><button id="themeBtn" class="secondary">Dark</button><button id="refreshBtn">Refresh</button><button id="logoutBtn" class="secondary">Logout</button></div></header>
-      <section class="page active" id="page-overview"><div class="metrics" id="metrics"></div><div class="stack"><div class="panel"><h2>Current Session</h2><pre id="sessionText"></pre></div><div class="overview-adapter-grid"><div class="panel"><h2>Agent Adapters</h2><div id="agentAdapters"></div></div><div class="panel"><h2>Chat Adapters</h2><div id="chatAdapters"></div></div></div></div></section>
+      <section class="page active" id="page-overview"><div class="metrics" id="metrics"></div><div class="stack"><div class="panel"><h2>Active Sessions</h2><div id="activeSessions" class="list"></div></div><div class="overview-adapter-grid"><div class="panel"><h2>Agent Adapters</h2><div id="agentAdapters"></div></div><div class="panel"><h2>Chat Adapters</h2><div id="chatAdapters"></div></div></div></div></section>
       <section class="page" id="page-chat"><div class="chat-layout"><div class="panel chat-panel"><div class="chat-toolbar"><button id="newSessionBtn">New session</button><button id="retryBtn" class="secondary">Retry</button><button id="editLastBtn" class="secondary">Edit last</button><button id="syncBtn" class="secondary">Sync</button><button id="notifyBtn" class="secondary">Notify</button><button id="clearChatBtn" class="secondary">Clear history</button><button id="abortBtn">Abort</button><button id="handbackBtn">Handback</button></div><div class="control-grid" id="sessionControls"></div><div id="messages" class="messages"></div><form id="promptForm" class="composer"><div class="composer-fields"><textarea id="promptInput" rows="3"></textarea><div class="attachment-row"><label class="file-button" for="fileInput">Attach files</label><input id="fileInput" type="file" multiple><button type="button" id="recordBtn" class="secondary">Record voice</button><span id="fileSummary">No files selected</span><button type="button" id="clearFilesBtn" class="secondary">Clear</button></div></div><button>Send</button></form></div><div class="panel side-panel"><h2>Tools / Plan</h2><div id="toolStream" class="tool-stream"></div></div></div></section>
       <section class="page" id="page-tasks"><div class="panel"><div class="row"><button id="reloadTasksBtn">Reload tasks</button></div><div id="tasksList" class="list"></div></div></section>
       <section class="page" id="page-sessions"><div class="panel"><div class="sessions-toolbar"><div class="row search-row"><input id="sessionSearch"><button id="sessionSearchBtn">Search</button></div><div class="row attach-row"><input id="attachInput"><button id="attachBtn">Attach</button></div></div><div id="sessionsList" class="list"></div><div id="sessionsPager" class="pager"></div></div></section>
@@ -165,6 +168,7 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   if (url.pathname === "/api/queue") return { queue: [], paused: false };
   if (url.pathname === "/api/prompt") return { queued: true, queueId: "queue-web-1", files: [] };
   if (url.pathname === "/api/settings") return method === "PATCH" ? { envPath: "/tmp/nordrelay.env", changedKeys: ["NORDRELAY_CODEX_ENABLED"], restartRequired: true, errors: [] } : settings();
+  if (url.pathname === "/api/active-sessions") return activeSessions();
   if (url.pathname === "/api/version") return version();
   if (url.pathname === "/api/agent-updates") return { jobs };
   if (url.pathname === "/api/agent-update") {
@@ -268,6 +272,31 @@ function sessions() {
   return {
     sessions: [{ id: "codex-thread-1", agentId: "codex", title: "Existing session", cwd: "/tmp/project", updatedAt: now(), firstUserMessage: "Existing web message" }],
     pagination: { page: 1, pageSize: 50, hasPrevious: false, hasNext: false },
+  };
+}
+
+function activeSessions() {
+  return {
+    updatedAt: now(),
+    sessions: [
+      {
+        id: "web:dashboard:codex-thread-1",
+        contextKey: "web:dashboard",
+        source: "web",
+        status: "running",
+        agentId: "codex",
+        agentLabel: "Codex",
+        threadId: "codex-thread-1",
+        workspace: "/tmp/project",
+        prompt: "Run active smoke test",
+        currentTool: "exec_command",
+        startedAt: now(),
+        updatedAt: now(),
+        durationMs: 12000,
+        queueLength: 1,
+        queuePaused: false,
+      },
+    ],
   };
 }
 
