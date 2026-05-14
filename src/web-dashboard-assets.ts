@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
 const clientSources = [
+  "client/core/api-routes.generated.js",
   "client/core/api-client.js",
   "client/core/runtime.js",
   "client/overview.js",

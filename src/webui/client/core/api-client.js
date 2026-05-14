@@ -6,73 +6,7 @@
 /** @typedef {{ path: string; methods: WebApiMethod[] } | { re: RegExp; methods: WebApiMethod[] }} ApiRouteRule */
 
 /** @type {ApiRouteRule[]} */
-const API_ROUTE_RULES = [
-  route('/api/auth/me', ['GET']),
-  route('/api/dashboard/logout', ['POST']),
-  route('/api/bootstrap', ['GET']),
-  route('/api/health', ['GET']),
-  route('/api/snapshot', ['GET']),
-  route('/api/tasks', ['GET']),
-  route('/api/progress', ['GET']),
-  route('/api/version', ['GET']),
-  route('/api/update', ['POST']),
-  route('/api/agent-updates', ['GET']),
-  route('/api/agent-update', ['POST']),
-  route('/api/adapters/health', ['GET']),
-  route('/api/permissions', ['GET']),
-  route('/api/users', ['GET', 'POST']),
-  route('/api/groups', ['GET', 'POST']),
-  route('/api/telegram-chats', ['GET', 'POST']),
-  route('/api/audit', ['GET']),
-  route('/api/locks', ['GET', 'POST', 'DELETE']),
-  route('/api/auth/status', ['GET']),
-  route('/api/auth/login', ['POST']),
-  route('/api/auth/logout', ['POST']),
-  route('/api/settings', ['GET', 'PATCH']),
-  route('/api/control-options', ['GET']),
-  route('/api/sessions', ['GET']),
-  route('/api/sessions/new', ['POST']),
-  route('/api/sessions/switch', ['POST']),
-  route('/api/sessions/attach', ['POST']),
-  route('/api/sessions/detail', ['GET']),
-  route('/api/agent', ['POST']),
-  route('/api/models', ['GET']),
-  route('/api/session/model', ['POST']),
-  route('/api/session/reasoning', ['POST']),
-  route('/api/session/fast', ['POST']),
-  route('/api/session/launch', ['POST']),
-  route('/api/prompt', ['POST']),
-  route('/api/prompt/upload', ['POST']),
-  route('/api/abort', ['POST']),
-  route('/api/stop', ['POST']),
-  route('/api/handback', ['POST']),
-  route('/api/retry', ['POST']),
-  route('/api/sync', ['POST']),
-  route('/api/queue', ['GET', 'POST']),
-  route('/api/chat/history', ['GET', 'DELETE']),
-  route('/api/activity', ['GET']),
-  route('/api/artifacts', ['GET', 'DELETE']),
-  route('/api/artifacts/bulk', ['POST']),
-  route('/api/artifacts/zip', ['GET']),
-  route('/api/artifacts/file', ['GET']),
-  route('/api/artifacts/preview', ['GET']),
-  route('/api/logs', ['GET']),
-  route('/api/logs/clear', ['POST']),
-  route('/api/diagnostics', ['GET']),
-  route('/api/diagnostics/bundle', ['GET']),
-  route('/api/runtime/restart', ['POST']),
-  pattern(/^\/api\/users\/[^/]+$/, ['PATCH']),
-  pattern(/^\/api\/users\/[^/]+\/password$/, ['POST']),
-  pattern(/^\/api\/users\/[^/]+\/sessions$/, ['GET', 'DELETE']),
-  pattern(/^\/api\/users\/[^/]+\/sessions\/[^/]+$/, ['DELETE']),
-  pattern(/^\/api\/users\/[^/]+\/telegram$/, ['POST']),
-  pattern(/^\/api\/users\/[^/]+\/telegram\/[^/]+$/, ['DELETE']),
-  pattern(/^\/api\/groups\/[^/]+$/, ['PATCH']),
-  pattern(/^\/api\/telegram-chats\/[^/]+$/, ['PATCH']),
-  pattern(/^\/api\/agent-update\/[^/]+\/log$/, ['GET', 'DELETE']),
-  pattern(/^\/api\/agent-update\/[^/]+\/input$/, ['POST']),
-  pattern(/^\/api\/agent-update\/[^/]+\/cancel$/, ['POST']),
-];
+const API_ROUTE_RULES = /** @type {{ NORDRELAY_WEB_API_CLIENT_ROUTE_RULES?: ApiRouteRule[] }} */ (globalThis).NORDRELAY_WEB_API_CLIENT_ROUTE_RULES ?? [];
 
 /**
  * @template {WebApiPath} P
@@ -166,22 +100,6 @@ function isNativeBody(body) {
     (typeof Blob !== 'undefined' && body instanceof Blob) ||
     (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) ||
     (typeof ArrayBuffer !== 'undefined' && body instanceof ArrayBuffer);
-}
-
-/**
- * @param {string} path
- * @param {WebApiMethod[]} methods
- */
-function route(path, methods) {
-  return { path, methods };
-}
-
-/**
- * @param {RegExp} re
- * @param {WebApiMethod[]} methods
- */
-function pattern(re, methods) {
-  return { re, methods };
 }
 
 /**

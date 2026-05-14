@@ -8,33 +8,26 @@ import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { isAgentId } from "./agent.js";
 import { AuditLogStore, type AuditEvent } from "./audit-log.js";
 import { listChannelDescriptors } from "./channel-adapter.js";
-import { ALL_PERMISSIONS, permissionForWebRequest } from "./access-control.js";
+import { permissionForWebRequest } from "./access-control.js";
 import { loadConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { RelayRuntime, type DashboardControlOptions, type RelayEvent, type SessionPageDto, type WebTasksDto } from "./relay-runtime.js";
 import { resolveDashboardEnvPath, SettingsService } from "./settings-service.js";
-import { UserStore, publicUser, publicUserSnapshot, type AuthenticatedUser } from "./user-management.js";
+import { UserStore, publicUser, type AuthenticatedUser } from "./user-management.js";
+import { handleDashboardAccessRoute } from "./web-dashboard-access-routes.js";
+import { handleDashboardArtifactRoute } from "./web-dashboard-artifact-routes.js";
 import { dashboardCss, dashboardJs } from "./web-dashboard-assets.js";
 import {
-  arrayNumberField,
-  arrayStringField,
-  numberField,
-  numberParam,
   objectRecord,
-  optionalBooleanField,
-  optionalNumberField,
   optionalStringField,
   parseCookies,
-  parseUploadFiles,
   readJsonBody,
-  requiredSearch,
-  sendFile,
   sendJson,
   sendText,
-  stringField,
 } from "./web-dashboard-http.js";
 import { renderDashboardApp, renderLoginPage } from "./web-dashboard-pages.js";
 import { handleDashboardRuntimeRoute } from "./web-dashboard-runtime-routes.js";
+import { handleDashboardSessionRoute } from "./web-dashboard-session-routes.js";
 
 interface DashboardOptions {
   host: string;
@@ -201,218 +194,12 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/permissions") {
-    sendJson(res, 200, { ...publicUserSnapshot(users.snapshot()), permissions: ALL_PERMISSIONS });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/users") {
-    sendJson(res, 200, { ...publicUserSnapshot(users.snapshot()), permissions: ALL_PERMISSIONS });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/users") {
-    const body = await readJsonBody(req);
-    const user = users.createUser({
-      email: stringField(body, "email"),
-      displayName: optionalStringField(body, "displayName") ?? stringField(body, "email"),
-      password: stringField(body, "password"),
-      groupIds: arrayStringField(body, "groupIds"),
-      active: optionalBooleanField(body, "active") ?? true,
-      telegramUserId: optionalNumberField(body, "telegramUserId"),
-    });
-    auditUserAction(authUser, "user_created", user.user.email);
-    sendJson(res, 201, { user: publicUser(user.user), groups: user.groups });
-    return;
-  }
-
-  const userMatch = url.pathname.match(/^\/api\/users\/([^/]+)$/);
-  if (userMatch?.[1] && req.method === "PATCH") {
-    const body = await readJsonBody(req);
-    const user = users.updateUser(decodeURIComponent(userMatch[1]), {
-      email: optionalStringField(body, "email"),
-      displayName: optionalStringField(body, "displayName"),
-      active: optionalBooleanField(body, "active"),
-      groupIds: body.groupIds === undefined ? undefined : arrayStringField(body, "groupIds"),
-    });
-    auditUserAction(authUser, "user_updated", user.user.email);
-    sendJson(res, 200, { user: publicUser(user.user), groups: user.groups });
-    return;
-  }
-
-  const passwordMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/password$/);
-  if (passwordMatch?.[1] && req.method === "POST") {
-    const body = await readJsonBody(req);
-    const userId = decodeURIComponent(passwordMatch[1]);
-    users.setPassword(userId, stringField(body, "password"));
-    auditUserAction(authUser, "user_password_changed", userId);
-    sendJson(res, 200, { ok: true });
-    return;
-  }
-
-  const userSessionsMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/sessions$/);
-  if (userSessionsMatch?.[1] && req.method === "GET") {
-    sendJson(res, 200, { sessions: users.listWebSessions(decodeURIComponent(userSessionsMatch[1])) });
-    return;
-  }
-
-  if (userSessionsMatch?.[1] && req.method === "DELETE") {
-    const userId = decodeURIComponent(userSessionsMatch[1]);
-    const revoked = users.revokeUserSessions(userId);
-    auditUserAction(authUser, "user_session_revoked", `${userId}: ${revoked} sessions`);
-    sendJson(res, 200, { revoked });
-    return;
-  }
-
-  const userSessionMatch = url.pathname.match(/^\/api\/users\/[^/]+\/sessions\/([^/]+)$/);
-  if (userSessionMatch?.[1] && req.method === "DELETE") {
-    const sessionId = decodeURIComponent(userSessionMatch[1]);
-    const revoked = users.revokeWebSession(sessionId);
-    auditUserAction(authUser, "user_session_revoked", sessionId);
-    sendJson(res, 200, { revoked });
-    return;
-  }
-
-  const telegramLinkMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/telegram$/);
-  if (telegramLinkMatch?.[1] && req.method === "POST") {
-    const body = await readJsonBody(req);
-    if (body.createCode === true) {
-      const userId = decodeURIComponent(telegramLinkMatch[1]);
-      const linkCode = users.createTelegramLinkCode(userId);
-      auditUserAction(authUser, "telegram_link_created", userId);
-      sendJson(res, 201, { linkCode });
-      return;
-    }
-    const identity = users.linkTelegramUser(decodeURIComponent(telegramLinkMatch[1]), {
-      telegramUserId: numberField(body, "telegramUserId"),
-      username: optionalStringField(body, "username"),
-    });
-    auditUserAction(authUser, "telegram_linked", String(identity.telegramUserId));
-    sendJson(res, 201, { identity });
-    return;
-  }
-
-  const telegramUnlinkMatch = url.pathname.match(/^\/api\/users\/[^/]+\/telegram\/([^/]+)$/);
-  if (telegramUnlinkMatch?.[1] && req.method === "DELETE") {
-    const identityId = decodeURIComponent(telegramUnlinkMatch[1]);
-    const removed = users.unlinkTelegramIdentity(identityId);
-    auditUserAction(authUser, "telegram_unlinked", identityId);
-    sendJson(res, 200, { removed });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/groups") {
-    sendJson(res, 200, { groups: users.listGroups() });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/groups") {
-    const body = await readJsonBody(req);
-    const group = users.createGroup({
-      name: stringField(body, "name"),
-      description: optionalStringField(body, "description"),
-      permissions: arrayStringField(body, "permissions"),
-      agentIds: arrayStringField(body, "agentIds"),
-      workspaceRoots: arrayStringField(body, "workspaceRoots"),
-      telegramChatIds: arrayNumberField(body, "telegramChatIds"),
-    });
-    auditUserAction(authUser, "group_created", group.id);
-    sendJson(res, 201, { group });
-    return;
-  }
-
-  const groupMatch = url.pathname.match(/^\/api\/groups\/([^/]+)$/);
-  if (groupMatch?.[1] && req.method === "PATCH") {
-    const body = await readJsonBody(req);
-    const group = users.updateGroup(decodeURIComponent(groupMatch[1]), {
-      name: optionalStringField(body, "name"),
-      description: optionalStringField(body, "description"),
-      permissions: body.permissions === undefined ? undefined : arrayStringField(body, "permissions"),
-      agentIds: body.agentIds === undefined ? undefined : arrayStringField(body, "agentIds"),
-      workspaceRoots: body.workspaceRoots === undefined ? undefined : arrayStringField(body, "workspaceRoots"),
-      telegramChatIds: body.telegramChatIds === undefined ? undefined : arrayNumberField(body, "telegramChatIds"),
-    });
-    auditUserAction(authUser, "group_updated", group.id);
-    sendJson(res, 200, { group });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/telegram-chats") {
-    sendJson(res, 200, { chats: users.snapshot().telegramChats });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/telegram-chats") {
-    const body = await readJsonBody(req);
-    const chat = users.registerTelegramChat({
-      chatId: numberField(body, "chatId"),
-      title: optionalStringField(body, "title"),
-      type: optionalStringField(body, "type"),
-      enabled: optionalBooleanField(body, "enabled") ?? true,
-      allowedGroupIds: arrayStringField(body, "allowedGroupIds"),
-    });
-    auditUserAction(authUser, "telegram_chat_updated", String(chat.chatId));
-    sendJson(res, 201, { chat });
-    return;
-  }
-
-  const chatMatch = url.pathname.match(/^\/api\/telegram-chats\/([^/]+)$/);
-  if (chatMatch?.[1] && req.method === "PATCH") {
-    const body = await readJsonBody(req);
-    const chat = users.updateTelegramChat(decodeURIComponent(chatMatch[1]), {
-      enabled: optionalBooleanField(body, "enabled"),
-      title: optionalStringField(body, "title"),
-      allowedGroupIds: body.allowedGroupIds === undefined ? undefined : arrayStringField(body, "allowedGroupIds"),
-    });
-    auditUserAction(authUser, "telegram_chat_updated", String(chat.chatId));
-    sendJson(res, 200, { chat });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/audit") {
-    sendJson(res, 200, { events: runtime.audit(numberParam(url, "limit", 50)) });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/locks") {
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { locks: runtime.locks() });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/locks") {
-    const body = await readJsonBody(req);
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { lock: runtime.lockWebSession(optionalStringField(body, "ownerName")), locks: runtime.locks() });
-    return;
-  }
-
-  if (req.method === "DELETE" && url.pathname === "/api/locks") {
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, runtime.unlockWebSession());
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/auth/status") {
-    const agentId = parseAgentId(url.searchParams.get("agent") ?? undefined);
-    assertScopedAgent(authUser, agentId);
-    sendJson(res, 200, await runtime.authStatus(agentId));
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/auth/login") {
-    const body = await readJsonBody(req);
-    const agentId = parseAgentId(optionalStringField(body, "agentId"));
-    assertScopedAgent(authUser, agentId);
-    sendJson(res, 200, await runtime.login(agentId));
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/auth/logout") {
-    const body = await readJsonBody(req);
-    const agentId = parseAgentId(optionalStringField(body, "agentId"));
-    assertScopedAgent(authUser, agentId);
-    sendJson(res, 200, await runtime.logout(agentId));
+  if (await handleDashboardAccessRoute(req, res, url, {
+    users,
+    runtime,
+    authUser,
+    auditUserAction,
+  })) {
     return;
   }
 
@@ -427,267 +214,26 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/snapshot") {
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, await runtime.snapshot());
+  if (await handleDashboardSessionRoute(req, res, url, {
+    runtime,
+    authUser,
+    parseAgentId,
+    assertScopedAgent,
+    assertScopedWorkspace,
+    assertCurrentSessionScope,
+    assertSessionScope,
+    assertSessionDetailScope,
+    scopedSessionPage,
+    filterActivityByScope,
+  })) {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/sessions") {
-    const agentId = parseAgentId(url.searchParams.get("agent") ?? undefined);
-    if (agentId) {
-      assertScopedAgent(authUser, agentId);
-    } else {
-      await assertCurrentSessionScope(authUser);
-    }
-    const page = await runtime.listSessionsPage(
-      numberParam(url, "page", 1),
-      numberParam(url, "limit", 50),
-      url.searchParams.get("query") ?? "",
-      agentId,
-    );
-    sendJson(
-      res,
-      200,
-      scopedSessionPage(authUser, page),
-    );
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/agent") {
-    const body = await readJsonBody(req);
-    const agentId = stringField(body, "agentId");
-    if (!isAgentId(agentId)) {
-      throw new Error(`Invalid agent: ${agentId}`);
-    }
-    assertScopedAgent(authUser, agentId);
-    sendJson(res, 200, { session: await runtime.setAgent(agentId) });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/sessions/new") {
-    const body = await readJsonBody(req);
-    const agentId = parseAgentId(optionalStringField(body, "agentId"));
-    const workspace = optionalStringField(body, "workspace");
-    assertScopedAgent(authUser, agentId);
-    assertScopedWorkspace(authUser, workspace);
-    sendJson(res, 200, {
-      session: await runtime.newSession({
-        agentId,
-        workspace,
-        model: optionalStringField(body, "model"),
-        reasoningEffort: optionalStringField(body, "reasoningEffort"),
-        launchProfileId: optionalStringField(body, "launchProfileId"),
-        fastMode: optionalBooleanField(body, "fastMode"),
-      }),
-    });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/sessions/switch") {
-    const body = await readJsonBody(req);
-    const threadId = stringField(body, "threadId");
-    const detail = await runtime.sessionDetail(threadId);
-    if (detail.record && typeof detail.record === "object") {
-      assertSessionScope(authUser, detail.record as Record<string, unknown>);
-    }
-    const session = await runtime.switchSession(threadId);
-    assertSessionScope(authUser, session);
-    sendJson(res, 200, { session });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/sessions/attach") {
-    const body = await readJsonBody(req);
-    const session = await runtime.attachSession(stringField(body, "threadId"));
-    assertSessionScope(authUser, session);
-    sendJson(res, 200, { session });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/sessions/detail") {
-    const threadId = requiredSearch(url, "threadId");
-    const detail = await runtime.sessionDetail(threadId);
-    assertSessionDetailScope(authUser, threadId, detail);
-    sendJson(res, 200, detail);
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/models") {
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { models: await runtime.listModels() });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/session/model") {
-    const body = await readJsonBody(req);
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { session: await runtime.setModel(stringField(body, "model")) });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/session/reasoning") {
-    const body = await readJsonBody(req);
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { session: await runtime.setReasoningEffort(stringField(body, "reasoning")) });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/session/fast") {
-    const body = await readJsonBody(req);
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { session: await runtime.setFastMode(Boolean(body?.enabled)) });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/session/launch") {
-    const body = await readJsonBody(req);
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { session: await runtime.setLaunchProfile(stringField(body, "profileId")) });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/prompt") {
-    const body = await readJsonBody(req);
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 202, await runtime.sendPrompt(stringField(body, "text")));
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/prompt/upload") {
-    const body = await readJsonBody(req);
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 202, await runtime.sendUploadPrompt({
-      text: optionalStringField(body, "text"),
-      files: parseUploadFiles(body.files),
-    }));
-    return;
-  }
-
-  if (req.method === "POST" && (url.pathname === "/api/abort" || url.pathname === "/api/stop")) {
-    await assertCurrentSessionScope(authUser);
-    await runtime.abort();
-    sendJson(res, 200, { ok: true });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/handback") {
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, await runtime.handback());
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/retry") {
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 202, await runtime.retry());
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/sync") {
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, await runtime.sync());
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/queue") {
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { queue: runtime.queue(), paused: runtime.queuePaused() });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/queue") {
-    const body = await readJsonBody(req);
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { queue: runtime.queueAction(stringField(body, "action") as never, optionalStringField(body, "id")), paused: runtime.queuePaused() });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/chat/history") {
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { messages: await runtime.chatHistory(numberParam(url, "limit", 200)) });
-    return;
-  }
-
-  if (req.method === "DELETE" && url.pathname === "/api/chat/history") {
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, await runtime.clearChatHistory());
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/activity") {
-    sendJson(res, 200, {
-      events: filterActivityByScope(authUser, runtime.activity({
-        limit: numberParam(url, "limit", 100),
-        source: (url.searchParams.get("source") || "all") as never,
-        status: (url.searchParams.get("status") || "all") as never,
-      })),
-    });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/artifacts") {
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { reports: await runtime.artifacts() });
-    return;
-  }
-
-  if (req.method === "DELETE" && url.pathname === "/api/artifacts") {
-    await assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { removed: await runtime.deleteArtifact(requiredSearch(url, "turnId")) });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/artifacts/bulk") {
-    const body = await readJsonBody(req);
-    await assertCurrentSessionScope(authUser);
-    const action = stringField(body, "action");
-    const turnIds = Array.isArray(body.turnIds) ? body.turnIds.filter((item): item is string => typeof item === "string") : [];
-    if (action !== "delete") {
-      throw new Error("Unsupported artifact bulk action.");
-    }
-    const removed = [];
-    for (const turnId of turnIds) {
-      if (await runtime.deleteArtifact(turnId)) {
-        removed.push(turnId);
-      }
-    }
-    sendJson(res, 200, { removed });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/artifacts/zip") {
-    await assertCurrentSessionScope(authUser);
-    const bundle = await runtime.createArtifactZip(requiredSearch(url, "turnId"));
-    if (!bundle) {
-      sendJson(res, 404, { error: "Artifact turn not found or ZIP could not be created" });
-      return;
-    }
-    sendFile(res, bundle.path, bundle.name);
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/artifacts/file") {
-    await assertCurrentSessionScope(authUser);
-    const turnId = requiredSearch(url, "turnId");
-    const relativePath = requiredSearch(url, "path");
-    const report = await runtime.artifact(turnId);
-    const artifact = report?.artifacts.find((candidate) => candidate.relativePath === relativePath);
-    if (!artifact) {
-      sendJson(res, 404, { error: "Artifact not found" });
-      return;
-    }
-    sendFile(res, artifact.localPath, artifact.name);
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/artifacts/preview") {
-    await assertCurrentSessionScope(authUser);
-    const preview = await runtime.artifactPreview(requiredSearch(url, "turnId"), requiredSearch(url, "path"));
-    if (!preview) {
-      sendJson(res, 404, { error: "Artifact not found" });
-      return;
-    }
-    sendJson(res, 200, preview);
+  if (await handleDashboardArtifactRoute(req, res, url, {
+    runtime,
+    authUser,
+    assertCurrentSessionScope,
+  })) {
     return;
   }
 

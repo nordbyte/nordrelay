@@ -5,6 +5,7 @@ import type { AgentUpdateJobSnapshot } from "./agent-updates.js";
 import type { AuditEvent } from "./audit-log.js";
 import type { ChannelDescriptor } from "./channel-adapter.js";
 import type { ClearLogResult, ConnectorHealth, ConnectorRuntimeState, FormattedLogTail, SelfUpdateResult, VersionChecks } from "./operations.js";
+import type { WebApiDynamicPathFromContract, WebApiStaticPathFromContract } from "./web-api-contract.js";
 import type {
   ArtifactPreviewDto,
   ArtifactReportDto,
@@ -27,74 +28,8 @@ export type WebApiMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 export type WebApiQueryValue = string | number | boolean | null | undefined;
 export type WebApiQuery = Record<string, WebApiQueryValue | WebApiQueryValue[]>;
 
-export type WebApiStaticPath =
-  | "/api/auth/me"
-  | "/api/dashboard/logout"
-  | "/api/bootstrap"
-  | "/api/health"
-  | "/api/snapshot"
-  | "/api/tasks"
-  | "/api/progress"
-  | "/api/version"
-  | "/api/update"
-  | "/api/agent-updates"
-  | "/api/agent-update"
-  | "/api/adapters/health"
-  | "/api/permissions"
-  | "/api/users"
-  | "/api/groups"
-  | "/api/telegram-chats"
-  | "/api/audit"
-  | "/api/locks"
-  | "/api/auth/status"
-  | "/api/auth/login"
-  | "/api/auth/logout"
-  | "/api/settings"
-  | "/api/control-options"
-  | "/api/sessions"
-  | "/api/sessions/new"
-  | "/api/sessions/switch"
-  | "/api/sessions/attach"
-  | "/api/sessions/detail"
-  | "/api/agent"
-  | "/api/models"
-  | "/api/session/model"
-  | "/api/session/reasoning"
-  | "/api/session/fast"
-  | "/api/session/launch"
-  | "/api/prompt"
-  | "/api/prompt/upload"
-  | "/api/abort"
-  | "/api/stop"
-  | "/api/handback"
-  | "/api/retry"
-  | "/api/sync"
-  | "/api/queue"
-  | "/api/chat/history"
-  | "/api/activity"
-  | "/api/artifacts"
-  | "/api/artifacts/bulk"
-  | "/api/artifacts/zip"
-  | "/api/artifacts/file"
-  | "/api/artifacts/preview"
-  | "/api/logs"
-  | "/api/logs/clear"
-  | "/api/diagnostics"
-  | "/api/diagnostics/bundle"
-  | "/api/runtime/restart";
-
-export type WebApiDynamicPath =
-  | `/api/users/${string}`
-  | `/api/users/${string}/password`
-  | `/api/users/${string}/sessions`
-  | `/api/users/${string}/sessions/${string}`
-  | `/api/users/${string}/telegram`
-  | `/api/users/${string}/telegram/${string}`
-  | `/api/groups/${string}`
-  | `/api/telegram-chats/${string}`
-  | `/api/agent-update/${string}/log`
-  | `/api/agent-update/${string}/input`
-  | `/api/agent-update/${string}/cancel`;
+export type WebApiStaticPath = WebApiStaticPathFromContract;
+export type WebApiDynamicPath = WebApiDynamicPathFromContract;
 
 export type WebApiPath = WebApiStaticPath | WebApiDynamicPath;
 
@@ -200,7 +135,8 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/auth/me" ? WebCurrentUserDto :
   P extends "/api/dashboard/logout" ? { ok: boolean } :
   P extends "/api/bootstrap" ? WebBootstrapResponse :
-  P extends "/api/health" | "/api/snapshot" ? WebStatusResponse :
+  P extends "/api/health" ? WebStatusResponse :
+  P extends "/api/snapshot" ? RelaySnapshot :
   P extends "/api/tasks" | "/api/progress" ? WebTasksDto :
   P extends "/api/version" ? WebVersionResponse :
   P extends "/api/update" ? SelfUpdateResult :

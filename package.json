@@ -39,8 +39,10 @@
     "docker-compose.yml"
   ],
   "scripts": {
-    "build": "node scripts/clean-dist.mjs && tsc && node scripts/build-web-assets.mjs",
-    "check": "node --check plugins/nordrelay/scripts/nordrelay.mjs && tsc --noEmit && npm run webui:check && node scripts/build-web-assets.mjs --check && node --import tsx scripts/generate-env-example.mjs --check",
+    "api:check": "node --import tsx scripts/generate-web-api-routes.mjs --check",
+    "api:generate": "node --import tsx scripts/generate-web-api-routes.mjs",
+    "build": "node scripts/clean-dist.mjs && npm run api:generate && tsc && node scripts/build-web-assets.mjs",
+    "check": "node --check plugins/nordrelay/scripts/nordrelay.mjs && npm run api:check && tsc --noEmit && npm run webui:check && node scripts/build-web-assets.mjs --check && node --import tsx scripts/generate-env-example.mjs --check",
     "dev": "tsx src/index.ts",
     "env:check": "node --import tsx scripts/generate-env-example.mjs --check",
     "env:generate": "node --import tsx scripts/generate-env-example.mjs",

@@ -9,6 +9,7 @@
   },
   "include": [
     "src/web-api-types.ts",
+    "src/webui/client/core/api-routes.generated.js",
     "src/webui/client/core/api-client.js"
   ]
 }

@@ -13,6 +13,7 @@ const assets = [
     name: "dashboard.js",
     loader: "js",
     sources: [
+      "src/webui/client/core/api-routes.generated.js",
       "src/webui/client/core/api-client.js",
       "src/webui/client/core/runtime.js",
       "src/webui/client/overview.js",

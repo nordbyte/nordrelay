@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFile, unlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import { autoRetry } from "@grammyjs/auto-retry";
@@ -19,12 +18,9 @@ import {
   createArtifactZipBundle,
   ensureOutDir,
   formatArtifactSummary,
-  getArtifactTurnReport,
   isTelegramImagePreview,
-  listRecentArtifactReports,
   persistWorkspaceArtifactReport,
   pruneConnectorTurnDirs,
-  removeArtifactTurn,
   telegramArtifactFilename,
   totalArtifactSize,
   type Artifact,
@@ -41,13 +37,7 @@ import {
   type TelegramNotifyMode,
   type VoiceBackendPreference,
 } from "./bot-preferences.js";
-import {
-  renderAgentUpdateJobAction,
-  renderArtifactReportsAction,
-  renderQueueListAction,
-  renderQueuedPromptDetailAction,
-  type ChannelActionResponse,
-} from "./channel-actions.js";
+import { renderAgentUpdateJobAction, type ChannelActionResponse } from "./channel-actions.js";
 import { deliverChannelAction } from "./channel-runtime.js";
 import {
   agentLabel,
@@ -63,7 +53,6 @@ import {
   type AgentThreadRecord,
 } from "./agent.js";
 import {
-  getAgentActivityLog,
   getExternalActivityForSession,
   getExternalSnapshotForSession,
 } from "./agent-activity.js";
@@ -113,19 +102,22 @@ import {
 import { createTelegramAccessMiddleware } from "./telegram-access-middleware.js";
 import { registerTelegramAccessCommands } from "./telegram-access-commands.js";
 import { registerTelegramAgentCommands } from "./telegram-agent-commands.js";
+import { registerTelegramArtifactCommands } from "./telegram-artifact-commands.js";
 import { registerTelegramDiagnosticsCommands } from "./telegram-diagnostics-command.js";
 import { registerTelegramGeneralCommands } from "./telegram-general-commands.js";
+import { registerTelegramOperationalCommands } from "./telegram-operational-commands.js";
 import { registerTelegramPreferenceCommands } from "./telegram-preference-commands.js";
+import {
+  createQueuedPromptCancelKeyboard,
+  registerTelegramQueueCommands,
+} from "./telegram-queue-commands.js";
 import { registerTelegramSupportCommands } from "./telegram-support-command.js";
 import { registerTelegramUpdateCommands } from "./telegram-update-commands.js";
 import {
   appendWithCap,
   authHelpText,
-  buildArtifactActionsKeyboard,
   buildStreamingPreview,
   capabilitiesOf,
-  filterActivityEvents,
-  filterArtifactReports,
   filterSessions,
   formatAgentLaunchProfileLabel,
   formatAgentSettingScope,
@@ -145,16 +137,10 @@ import {
   isQueuedPromptLike,
   labelOf,
   orderPinnedSessions,
-  parseActivityOptions,
   parseFastModeArgument,
-  renderActivityTimeline,
-  renderAuditEvents,
   renderExternalMirrorEvent,
   renderExternalMirrorStatus,
   renderPromptFailure,
-  renderProgressHTML,
-  renderProgressPlain,
-  renderSessionLocks,
   renderTodoList,
   renderToolEndMessage,
   renderToolStartMessage,
@@ -618,43 +604,6 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     await safeReply(ctx, escapeHTML("Still working on previous message..."), {
       fallbackText: "Still working on previous message...",
     });
-  };
-
-  const queueCancelCallbackData = (
-    action: "cancel" | "remove" | "top" | "up" | "down" | "run",
-    contextKey: TelegramContextKey,
-    queueId: string,
-  ): string => `queue_${action}:${contextKey}:${queueId}`;
-
-  const createQueuedPromptCancelKeyboard = (
-    contextKey: TelegramContextKey,
-    queueId: string,
-    label = "Cancel queued message",
-  ): InlineKeyboard => new InlineKeyboard().text(label, queueCancelCallbackData("cancel", contextKey, queueId));
-
-  const renderQueueList = (
-    contextKey: TelegramContextKey,
-    queue: QueuedPrompt[],
-  ): { plain: string; html: string; keyboard?: InlineKeyboard } => {
-    const paused = promptStore.isPaused(contextKey);
-    const rendered = renderQueueListAction(queue, paused);
-    if (queue.length === 0) {
-      return rendered;
-    }
-
-    const keyboard = new InlineKeyboard();
-    queue.forEach((item, index) => {
-      keyboard
-        .text(`Run ${index + 1}`, queueCancelCallbackData("run", contextKey, item.id))
-        .text("Top", queueCancelCallbackData("top", contextKey, item.id))
-        .text("Cancel", queueCancelCallbackData("remove", contextKey, item.id))
-        .row();
-      keyboard
-        .text("Up", queueCancelCallbackData("up", contextKey, item.id))
-        .text("Down", queueCancelCallbackData("down", contextKey, item.id))
-        .row();
-    });
-    return { ...rendered, keyboard };
   };
 
   const createSystemContext = (contextKey: TelegramContextKey): Context => {
@@ -2189,157 +2138,19 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     replyChannelAction,
   });
 
-  bot.command(["tasks", "progress"], async (ctx) => {
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession) {
-      return;
-    }
-
-    const progress = turnProgress.get(contextSession.contextKey);
-    const queue = promptStore.list(contextSession.contextKey);
-    const externalActivity = getExternalActivity(contextSession.session);
-    const busyState: BusyState = {
-      ...getBusyState(contextSession.contextKey),
-      external: Boolean(externalActivity?.active),
-    };
-    const info = contextSession.session.getInfo();
-    const plain = renderProgressPlain(progress, queue.length, busyState, info);
-    const html = renderProgressHTML(progress, queue.length, busyState, info);
-    await safeReply(ctx, html, { fallbackText: plain });
-  });
-
-  bot.command("activity", async (ctx) => {
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession) {
-      return;
-    }
-
-    const info = contextSession.session.getInfo();
-    if (!capabilitiesOf(info).activityLog) {
-      const text = `${labelOf(info)} activity timelines are not available yet.`;
-      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
-      return;
-    }
-
-    const threadId = contextSession.session.getActiveThreadId();
-    if (!threadId) {
-      await safeReply(ctx, escapeHTML("No active thread yet."), { fallbackText: "No active thread yet." });
-      return;
-    }
-
-    const options = parseActivityOptions((ctx.message?.text ?? "").replace(/^\/activity(?:@\w+)?\s*/i, "").trim());
-    const events = filterActivityEvents(getAgentActivityLog(contextSession.session, config, options.exportFile ? 200 : options.limit), options);
-    const rendered = renderActivityTimeline(threadId, events, options);
-    if (options.exportFile && ctx.chat) {
-      const exportPath = path.join(tmpdir(), `nordrelay-activity-${threadId}-${randomUUID().slice(0, 8)}.txt`);
-      await writeFile(exportPath, rendered.plain, "utf8");
-      try {
-        await telegramRateLimiter.run(chatBucket(ctx.chat.id), "sendDocument", () =>
-          ctx.api.sendDocument(ctx.chat!.id, new InputFile(exportPath, path.basename(exportPath)), {
-            ...(ctx.message?.message_thread_id ? { message_thread_id: ctx.message.message_thread_id } : {}),
-          })
-        );
-      } finally {
-        await unlink(exportPath).catch(() => {});
-      }
-      return;
-    }
-    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
-  });
-
-  bot.command("audit", async (ctx) => {
-    const rawText = ctx.message?.text ?? "";
-    const limitArg = rawText.replace(/^\/audit(?:@\w+)?\s*/i, "").trim();
-    const limit = /^\d+$/.test(limitArg) ? Number(limitArg) : 20;
-    const events = auditLog.list(limit);
-    const rendered = renderAuditEvents(events);
-    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
-  });
-
-  bot.command("lock", async (ctx) => {
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession || !ctx.from) {
-      return;
-    }
-    const { contextKey, session } = contextSession;
-    const existing = lockStore.get(contextKey);
-    if (existing && existing.ownerId !== ctx.from.id && !isAdminUser(ctx)) {
-      const text = `Session is already locked by ${formatLockOwner(existing)}.`;
-      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
-      return;
-    }
-    const lock = lockStore.set(contextKey, ctx.from.id, formatTelegramName(ctx), config.sessionLockTtlMs);
-    auditContext(ctx, contextKey, session, {
-      action: "lock_updated",
-      status: "ok",
-      detail: `locked by ${lock.ownerId}`,
-    });
-    const text = `Session locked by ${formatLockOwner(lock)}${lock.expiresAt ? ` until ${formatLocalDateTime(new Date(lock.expiresAt))}` : ""}.`;
-    await safeReply(ctx, escapeHTML(text), { fallbackText: text });
-  });
-
-  bot.command("unlock", async (ctx) => {
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession) {
-      return;
-    }
-    const { contextKey, session } = contextSession;
-    const lock = lockStore.get(contextKey);
-    if (lock && lock.ownerId !== ctx.from?.id && !isAdminUser(ctx)) {
-      const text = `Only ${formatLockOwner(lock)} or an admin can unlock this session.`;
-      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
-      return;
-    }
-    const removed = lockStore.clear(contextKey);
-    auditContext(ctx, contextKey, session, {
-      action: "lock_updated",
-      status: "ok",
-      detail: removed ? "unlocked" : "no lock",
-    });
-    const text = removed ? "Session lock released." : "No active lock for this session.";
-    await safeReply(ctx, escapeHTML(text), { fallbackText: text });
-  });
-
-  bot.command("locks", async (ctx) => {
-    const locks = lockStore.list();
-    const rendered = renderSessionLocks(locks);
-    await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
-  });
-
-  bot.command("sync", async (ctx) => {
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession) {
-      return;
-    }
-
-    const sessionInfo = contextSession.session.getInfo();
-    if (!capabilitiesOf(sessionInfo).externalActivity) {
-      const plain = [`${labelOf(sessionInfo)} has no external CLI state watcher to sync.`, "", renderSessionInfoPlain(sessionInfo)].join("\n");
-      const html = [`<b>${escapeHTML(labelOf(sessionInfo))} has no external CLI state watcher to sync.</b>`, "", renderSessionInfoHTML(sessionInfo)].join("\n");
-      await safeReply(ctx, html, { fallbackText: plain });
-      return;
-    }
-
-    const result = contextSession.session.syncFromAgentState({ reattach: true });
-    if (result.changed) {
-      updateSessionMetadata(contextSession.contextKey, contextSession.session);
-    }
-    const fields = result.changedFields.length > 0 ? result.changedFields.join(", ") : "none";
-    const plain = [
-      result.changed ? `Synced from ${labelOf(sessionInfo)} state.` : "Already in sync.",
-      `Changed: ${fields}`,
-      `Reattached: ${result.reattached ? "yes" : "no"}`,
-      "",
-      renderSessionInfoPlain(result.info),
-    ].join("\n");
-    const html = [
-      result.changed ? `<b>Synced from ${escapeHTML(labelOf(sessionInfo))} state.</b>` : "<b>Already in sync.</b>",
-      `<b>Changed:</b> <code>${escapeHTML(fields)}</code>`,
-      `<b>Reattached:</b> <code>${result.reattached ? "yes" : "no"}</code>`,
-      "",
-      renderSessionInfoHTML(result.info),
-    ].join("\n");
-    await safeReply(ctx, html, { fallbackText: plain });
+  registerTelegramOperationalCommands({
+    bot,
+    config,
+    promptStore,
+    auditLog,
+    lockStore,
+    turnProgress,
+    getContextSession,
+    getBusyState,
+    getExternalActivity,
+    isAdminUser,
+    auditContext,
+    updateSessionMetadata,
   });
 
   registerTelegramSupportCommands({ bot, config, auditLog, agentUpdates, getUserRole, audit });
@@ -2464,259 +2275,25 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
   });
 
-  bot.command("queue", async (ctx) => {
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession) {
-      return;
-    }
-    const chatId = ctx.chat?.id;
-    const { contextKey, session } = contextSession;
-    const rawText = ctx.message?.text ?? "";
-    const argument = rawText.replace(/^\/queue(?:@\w+)?\s*/i, "").trim();
-
-    const laterMatch = argument.match(/^later\s+(\d+)(?:m|min|minutes?)?\s+([\s\S]+)$/i);
-    if (laterMatch) {
-      const minutes = Math.min(7 * 24 * 60, Math.max(1, Number(laterMatch[1])));
-      const text = laterMatch[2]!.trim();
-      const notBefore = Date.now() + minutes * 60 * 1000;
-      const item = promptStore.enqueue(contextKey, toPromptEnvelope(text), { notBefore });
-      const message = `Queued prompt ${item.id} for ${formatLocalDateTime(new Date(notBefore))}.`;
-      await safeReply(ctx, escapeHTML(message), {
-        fallbackText: message,
-        replyMarkup: createQueuedPromptCancelKeyboard(contextKey, item.id),
-      });
-      auditContext(ctx, contextKey, session, {
-        action: "prompt_queued",
-        status: "ok",
-        promptId: item.id,
-        description: item.description,
-        detail: "scheduled",
-      });
-      return;
-    }
-
-    const inspectMatch = argument.match(/^inspect\s+([a-z0-9]+)$/i);
-    if (inspectMatch) {
-      const item = promptStore.get(contextKey, inspectMatch[1]!);
-      if (!item) {
-        await safeReply(ctx, escapeHTML(`No queued prompt found with id ${inspectMatch[1]}.`), {
-          fallbackText: `No queued prompt found with id ${inspectMatch[1]}.`,
-        });
-        return;
-      }
-      const rendered = renderQueuedPromptDetailAction(item);
-      await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
-      return;
-    }
-
-    if (/^pause$/i.test(argument)) {
-      promptStore.pause(contextKey);
-      const message = `Queue paused. ${promptStore.list(contextKey).length} queued.`;
-      await safeReply(ctx, escapeHTML(message), { fallbackText: message });
-      await updateQueueStatusMessage(contextKey, message);
-      return;
-    }
-
-    if (/^resume$/i.test(argument)) {
-      promptStore.resume(contextKey);
-      const message = `Queue resumed. ${promptStore.list(contextKey).length} queued.`;
-      await safeReply(ctx, escapeHTML(message), { fallbackText: message });
-      if (chatId) {
-        void drainQueuedPrompts(ctx, contextKey, chatId, session).catch((error) => {
-          console.error("Failed to drain queue after resume:", error);
-        });
-      }
-      return;
-    }
-
-    const moveMatch = argument.match(/^move\s+([a-z0-9]+)\s+(top|up|down)$/i);
-    if (moveMatch) {
-      const direction = moveMatch[2]!.toLowerCase();
-      const item = direction === "top"
-        ? promptStore.moveToTop(contextKey, moveMatch[1]!)
-        : direction === "up"
-          ? promptStore.moveUp(contextKey, moveMatch[1]!)
-          : promptStore.moveDown(contextKey, moveMatch[1]!);
-      if (!item) {
-        await safeReply(ctx, escapeHTML(`No queued prompt found with id ${moveMatch[1]}.`), {
-          fallbackText: `No queued prompt found with id ${moveMatch[1]}.`,
-        });
-        return;
-      }
-      const message = `Moved queued prompt ${item.id} ${direction}.`;
-      await safeReply(ctx, escapeHTML(message), { fallbackText: message });
-      return;
-    }
-
-    const runMatch = argument.match(/^run\s+([a-z0-9]+)$/i);
-    if (runMatch) {
-      const item = promptStore.remove(contextKey, runMatch[1]!);
-      if (!item) {
-        await safeReply(ctx, escapeHTML(`No queued prompt found with id ${runMatch[1]}.`), {
-          fallbackText: `No queued prompt found with id ${runMatch[1]}.`,
-        });
-        return;
-      }
-
-      promptStore.enqueueFront(contextKey, item);
-      promptStore.resume(contextKey);
-      if (!chatId) {
-        return;
-      }
-      const busy = getBusyReason(contextKey);
-      if (busy.busy) {
-        const message = `Queued prompt ${item.id} moved to top and will run when the current task finishes.`;
-        await safeReply(ctx, escapeHTML(message), { fallbackText: message });
-        if (busy.kind === "external") {
-          scheduleExternalQueueDrain(ctx, contextKey, chatId, session);
-        }
-        return;
-      }
-
-      const next = promptStore.dequeue(contextKey);
-      if (next) {
-        await handleUserPrompt(ctx, contextKey, chatId, session, next, { fromQueue: true });
-      }
-      return;
-    }
-
-    if (argument) {
-      await safeReply(ctx, escapeHTML("Usage: /queue, /queue pause, /queue resume, /queue later <minutes> <prompt>, /queue inspect <id>, /queue move <id> top|up|down, /queue run <id>"), {
-        fallbackText: "Usage: /queue, /queue pause, /queue resume, /queue later <minutes> <prompt>, /queue inspect <id>, /queue move <id> top|up|down, /queue run <id>",
-      });
-      return;
-    }
-
-    const queue = promptStore.list(contextKey);
-    if (queue.length === 0) {
-      const rendered = renderQueueList(contextKey, queue);
-      await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
-      return;
-    }
-
-    const rendered = renderQueueList(contextKey, queue);
-    await safeReply(ctx, rendered.html, {
-      fallbackText: rendered.plain,
-      replyMarkup: rendered.keyboard,
-    });
+  registerTelegramQueueCommands({
+    bot,
+    promptStore,
+    getContextSession,
+    getBusyReason,
+    getSession: (contextKey) => registry.get(contextKey),
+    updateQueueStatusMessage,
+    scheduleExternalQueueDrain,
+    drainQueuedPrompts,
+    handleUserPrompt,
+    auditContext,
   });
 
-  bot.command("clearqueue", async (ctx) => {
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession) {
-      return;
-    }
-
-    const count = promptStore.clear(contextSession.contextKey);
-    const message = `Cleared ${count} queued prompt${count === 1 ? "" : "s"}.`;
-    await safeReply(ctx, escapeHTML(message), { fallbackText: message });
-  });
-
-  bot.command("cancel", async (ctx) => {
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession) {
-      return;
-    }
-
-    const rawText = ctx.message?.text ?? "";
-    const id = rawText.replace(/^\/cancel(?:@\w+)?\s*/i, "").trim();
-    if (!id) {
-      await safeReply(ctx, escapeHTML("Usage: /cancel <queue-id>"), {
-        fallbackText: "Usage: /cancel <queue-id>",
-      });
-      return;
-    }
-
-    const removed = promptStore.remove(contextSession.contextKey, id);
-    if (!removed) {
-      await safeReply(ctx, escapeHTML(`No queued prompt found with id ${id}.`), {
-        fallbackText: `No queued prompt found with id ${id}.`,
-      });
-      return;
-    }
-
-    await safeReply(ctx, escapeHTML(`Cancelled queued prompt ${removed.id}.`), {
-      fallbackText: `Cancelled queued prompt ${removed.id}.`,
-    });
-  });
-
-  bot.command("artifacts", async (ctx) => {
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession || !ctx.chat) {
-      return;
-    }
-
-    const workspace = contextSession.session.getInfo().workspace;
-    const rawText = ctx.message?.text ?? "";
-    const argument = rawText.replace(/^\/artifacts(?:@\w+)?\s*/i, "").trim();
-    const reports = await listRecentArtifactReports(workspace, 10, config.maxFileSize);
-
-    if (reports.length === 0) {
-      await safeReply(ctx, escapeHTML("No generated artifacts found for this workspace."), {
-        fallbackText: "No generated artifacts found for this workspace.",
-      });
-      return;
-    }
-
-    if (argument) {
-      const parts = argument.split(/\s+/).filter(Boolean);
-      if (parts[0]?.toLowerCase() === "delete" && parts[1]) {
-        const selected = reports.find((report) => report.turnId === parts[1] || report.turnId.startsWith(parts[1]!));
-        if (!selected) {
-          await safeReply(ctx, escapeHTML(`No artifact turn found for "${parts[1]}".`), {
-            fallbackText: `No artifact turn found for "${parts[1]}".`,
-          });
-          return;
-        }
-        const removed = await removeArtifactTurn(workspace, selected.turnId);
-        const text = removed ? `Deleted artifact turn: ${selected.turnId}` : `Artifact turn not found: ${selected.turnId}`;
-        await safeReply(ctx, escapeHTML(text), { fallbackText: text });
-        return;
-      }
-
-      const filtered = filterArtifactReports(reports, argument);
-      if (filtered) {
-        if (filtered.length === 0) {
-          await safeReply(ctx, escapeHTML(`No artifacts matched "${argument}".`), {
-            fallbackText: `No artifacts matched "${argument}".`,
-          });
-          return;
-        }
-        const rendered = renderArtifactReportsAction(filtered);
-        await safeReply(ctx, rendered.html, {
-          fallbackText: rendered.plain,
-          replyMarkup: buildArtifactActionsKeyboard(filtered),
-        });
-        return;
-      }
-
-      const shouldZip = parts[0]?.toLowerCase() === "zip";
-      const requestedTurn = shouldZip ? parts[1] : parts[0];
-      const selected =
-        !requestedTurn || requestedTurn.toLowerCase() === "latest"
-          ? reports[0]
-          : reports.find((report) => report.turnId === requestedTurn || report.turnId.startsWith(requestedTurn));
-
-      if (!selected) {
-        await safeReply(ctx, escapeHTML(`No artifact turn found for "${argument}".`), {
-          fallbackText: `No artifact turn found for "${argument}".`,
-        });
-        return;
-      }
-
-      if (shouldZip) {
-        await deliverArtifactReportZip(ctx, ctx.chat.id, selected, ctx.message?.message_thread_id);
-      } else {
-        await deliverArtifactReport(ctx, ctx.chat.id, selected, ctx.message?.message_thread_id);
-      }
-      return;
-    }
-
-    const { html, plain } = renderArtifactReportsAction(reports);
-    await safeReply(ctx, html, {
-      fallbackText: plain,
-      replyMarkup: buildArtifactActionsKeyboard(reports),
-    });
+  registerTelegramArtifactCommands({
+    bot,
+    config,
+    getContextSession,
+    deliverArtifactReport,
+    deliverArtifactReportZip,
   });
 
   bot.command("session", async (ctx) => {
@@ -3342,103 +2919,6 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     await session.abort();
   });
 
-  bot.callbackQuery(/^queue_(cancel|remove|top|up|down|run):(-?\d+(?::\d+)?):([a-z0-9]+)$/, async (ctx) => {
-    const action = ctx.match?.[1] as "cancel" | "remove" | "top" | "up" | "down" | "run" | undefined;
-    const contextKey = ctx.match?.[2];
-    const queueId = ctx.match?.[3];
-    if (!action || !contextKey || !queueId) {
-      await ctx.answerCallbackQuery();
-      return;
-    }
-
-    const currentContextKey = contextKeyFromCtx(ctx);
-    if (currentContextKey && currentContextKey !== contextKey) {
-      await ctx.answerCallbackQuery({ text: "This queue button belongs to another chat or topic." });
-      return;
-    }
-
-    const chatId = ctx.chat?.id;
-    const messageId = ctx.callbackQuery.message?.message_id;
-
-    if (action === "top" || action === "up" || action === "down") {
-      const item = action === "top"
-        ? promptStore.moveToTop(contextKey, queueId)
-        : action === "up"
-          ? promptStore.moveUp(contextKey, queueId)
-          : promptStore.moveDown(contextKey, queueId);
-      await ctx.answerCallbackQuery({ text: item ? `Moved ${queueId} ${action}.` : "Queued prompt not found." });
-      if (chatId && messageId) {
-        const rendered = renderQueueList(contextKey, promptStore.list(contextKey));
-        await safeEditMessage(bot, chatId, messageId, rendered.html, {
-          fallbackText: rendered.plain,
-          replyMarkup: rendered.keyboard,
-        });
-      }
-      return;
-    }
-
-    if (action === "run") {
-      const item = promptStore.remove(contextKey, queueId);
-      if (!item) {
-        await ctx.answerCallbackQuery({ text: "Queued prompt already started or was cancelled." });
-        return;
-      }
-      promptStore.enqueueFront(contextKey, item);
-      promptStore.resume(contextKey);
-      await ctx.answerCallbackQuery({ text: `Queued prompt ${queueId} moved to next.` });
-      if (chatId && messageId) {
-        const rendered = renderQueueList(contextKey, promptStore.list(contextKey));
-        await safeEditMessage(bot, chatId, messageId, rendered.html, {
-          fallbackText: rendered.plain,
-          replyMarkup: rendered.keyboard,
-        });
-      }
-      const session = registry.get(contextKey);
-      if (chatId && session && !getBusyReason(contextKey).busy) {
-        void drainQueuedPrompts(ctx, contextKey, chatId, session).catch((error) => {
-          console.error("Failed to drain queue after run-now callback:", error);
-        });
-      }
-      return;
-    }
-
-    const removed = promptStore.remove(contextKey, queueId);
-
-    if (!removed) {
-      await ctx.answerCallbackQuery({ text: "Queued prompt already started or was cancelled." });
-      if (chatId && messageId) {
-        if (action === "remove") {
-          const rendered = renderQueueList(contextKey, promptStore.list(contextKey));
-          await safeEditMessage(bot, chatId, messageId, rendered.html, {
-            fallbackText: rendered.plain,
-            replyMarkup: rendered.keyboard,
-          });
-        } else {
-          const message = `Queued prompt ${queueId} is no longer queued.`;
-          await safeEditMessage(bot, chatId, messageId, escapeHTML(message), { fallbackText: message });
-        }
-      }
-      return;
-    }
-
-    const message = `Cancelled queued prompt ${removed.id}.`;
-    await ctx.answerCallbackQuery({ text: message });
-    if (!chatId || !messageId) {
-      return;
-    }
-
-    if (action === "remove") {
-      const rendered = renderQueueList(contextKey, promptStore.list(contextKey));
-      await safeEditMessage(bot, chatId, messageId, rendered.html, {
-        fallbackText: rendered.plain,
-        replyMarkup: rendered.keyboard,
-      });
-      return;
-    }
-
-    await safeEditMessage(bot, chatId, messageId, escapeHTML(message), { fallbackText: message });
-  });
-
   bot.callbackQuery(/^approval_(yes|no):([a-z0-9]+)$/, async (ctx) => {
     const action = ctx.match?.[1];
     const approvalId = ctx.match?.[2];
@@ -3906,68 +3386,6 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     await safeEditMessage(bot, chatId, messageId, html, {
       fallbackText: `⚡ ${label} set to ${effort} — ${scope}.`,
     });
-  });
-
-  bot.callbackQuery(/^artifact_(send|zip|delete|delete_confirm):([a-zA-Z0-9._-]+)$/, async (ctx) => {
-    const action = ctx.match?.[1];
-    const turnId = ctx.match?.[2];
-    const chatId = ctx.chat?.id;
-    const messageId = ctx.callbackQuery.message?.message_id;
-    if (!action || !turnId || !chatId) {
-      await ctx.answerCallbackQuery();
-      return;
-    }
-
-    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
-    if (!contextSession) {
-      await ctx.answerCallbackQuery({ text: "No context" });
-      return;
-    }
-
-    const workspace = contextSession.session.getInfo().workspace;
-    if (action === "delete") {
-      await ctx.answerCallbackQuery({ text: "Confirm deletion" });
-      const keyboard = new InlineKeyboard()
-        .text("Delete artifacts", `artifact_delete_confirm:${turnId}`)
-        .row()
-        .text("Cancel", NOOP_PAGE_CALLBACK_DATA);
-      const html = `<b>Delete artifact turn?</b>\n<code>${escapeHTML(turnId)}</code>`;
-      const plain = `Delete artifact turn?\n${turnId}`;
-      if (messageId) {
-        await safeEditMessage(bot, chatId, messageId, html, { fallbackText: plain, replyMarkup: keyboard });
-      } else {
-        await safeReply(ctx, html, { fallbackText: plain, replyMarkup: keyboard });
-      }
-      return;
-    }
-
-    if (action === "delete_confirm") {
-      const removed = await removeArtifactTurn(workspace, turnId);
-      await ctx.answerCallbackQuery({ text: removed ? "Deleted" : "Already gone" });
-      const html = removed
-        ? `<b>Deleted artifact turn:</b> <code>${escapeHTML(turnId)}</code>`
-        : `<b>Artifact turn not found:</b> <code>${escapeHTML(turnId)}</code>`;
-      const plain = removed ? `Deleted artifact turn: ${turnId}` : `Artifact turn not found: ${turnId}`;
-      if (messageId) {
-        await safeEditMessage(bot, chatId, messageId, html, { fallbackText: plain });
-      } else {
-        await safeReply(ctx, html, { fallbackText: plain });
-      }
-      return;
-    }
-
-    const report = await getArtifactTurnReport(workspace, turnId, config.maxFileSize);
-    if (!report) {
-      await ctx.answerCallbackQuery({ text: "Artifact turn not found" });
-      return;
-    }
-
-    await ctx.answerCallbackQuery({ text: action === "zip" ? "Sending ZIP..." : "Sending artifacts..." });
-    if (action === "zip") {
-      await deliverArtifactReportZip(ctx, chatId, report, ctx.callbackQuery.message?.message_thread_id);
-    } else {
-      await deliverArtifactReport(ctx, chatId, report, ctx.callbackQuery.message?.message_thread_id);
-    }
   });
 
   bot.on("message:text", async (ctx) => {

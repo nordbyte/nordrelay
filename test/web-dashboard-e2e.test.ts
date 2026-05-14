@@ -50,12 +50,13 @@ describe("web dashboard browser-flow assets", () => {
 
   it("guards dashboard stream and session data with scoped user access", () => {
     const source = readFileSync("src/web-dashboard.ts", "utf8");
+    const sessionRoutes = readFileSync("src/web-dashboard-session-routes.ts", "utf8");
 
     expect(source).toContain('users.hasPermission(authUser, "sessions.read")');
     expect(source).toContain("scopeRelayEvent(authUser, event, canUseCurrentSession)");
-    expect(source).toContain("assertSessionDetailScope(authUser, threadId, detail)");
-    expect(source).toContain("scopedSessionPage(authUser, page)");
-    expect(source).toContain("filterActivityByScope(authUser");
+    expect(sessionRoutes).toContain("assertSessionDetailScope(authUser, threadId, detail)");
+    expect(sessionRoutes).toContain("scopedSessionPage(authUser, page)");
+    expect(sessionRoutes).toContain("filterActivityByScope(authUser");
   });
 
   it("composes dashboard assets from focused WebUI modules", () => {
