@@ -56,6 +56,7 @@ export async function handleDashboardAccessRoute(
       groupIds: arrayStringField(body, "groupIds"),
       active: optionalBooleanField(body, "active") ?? true,
       telegramUserId: optionalNumberField(body, "telegramUserId"),
+      discordUserId: optionalStringField(body, "discordUserId"),
     });
     options.auditUserAction(authUser, "user_created", user.user.email);
     sendJson(res, 201, { user: publicUser(user.user), groups: user.groups });
@@ -137,6 +138,35 @@ export async function handleDashboardAccessRoute(
     return true;
   }
 
+  const discordLinkMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/discord$/);
+  if (discordLinkMatch?.[1] && req.method === "POST") {
+    const body = await readJsonBody(req);
+    if (body.createCode === true) {
+      const userId = decodeURIComponent(discordLinkMatch[1]);
+      const linkCode = users.createDiscordLinkCode(userId);
+      options.auditUserAction(authUser, "discord_link_created", userId);
+      sendJson(res, 201, { linkCode });
+      return true;
+    }
+    const identity = users.linkDiscordUser(decodeURIComponent(discordLinkMatch[1]), {
+      discordUserId: stringField(body, "discordUserId"),
+      username: optionalStringField(body, "username"),
+      globalName: optionalStringField(body, "globalName"),
+    });
+    options.auditUserAction(authUser, "discord_linked", identity.discordUserId);
+    sendJson(res, 201, { identity });
+    return true;
+  }
+
+  const discordUnlinkMatch = url.pathname.match(/^\/api\/users\/[^/]+\/discord\/([^/]+)$/);
+  if (discordUnlinkMatch?.[1] && req.method === "DELETE") {
+    const identityId = decodeURIComponent(discordUnlinkMatch[1]);
+    const removed = users.unlinkDiscordIdentity(identityId);
+    options.auditUserAction(authUser, "discord_unlinked", identityId);
+    sendJson(res, 200, { removed });
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/groups") {
     sendJson(res, 200, { groups: users.listGroups() });
     return true;
@@ -151,6 +181,7 @@ export async function handleDashboardAccessRoute(
       agentIds: arrayStringField(body, "agentIds"),
       workspaceRoots: arrayStringField(body, "workspaceRoots"),
       telegramChatIds: arrayNumberField(body, "telegramChatIds"),
+      discordChannelIds: arrayStringField(body, "discordChannelIds"),
     });
     options.auditUserAction(authUser, "group_created", group.id);
     sendJson(res, 201, { group });
@@ -167,6 +198,7 @@ export async function handleDashboardAccessRoute(
       agentIds: body.agentIds === undefined ? undefined : arrayStringField(body, "agentIds"),
       workspaceRoots: body.workspaceRoots === undefined ? undefined : arrayStringField(body, "workspaceRoots"),
       telegramChatIds: body.telegramChatIds === undefined ? undefined : arrayNumberField(body, "telegramChatIds"),
+      discordChannelIds: body.discordChannelIds === undefined ? undefined : arrayStringField(body, "discordChannelIds"),
     });
     options.auditUserAction(authUser, "group_updated", group.id);
     sendJson(res, 200, { group });
@@ -202,6 +234,39 @@ export async function handleDashboardAccessRoute(
     });
     options.auditUserAction(authUser, "telegram_chat_updated", String(chat.chatId));
     sendJson(res, 200, { chat });
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/discord-channels") {
+    sendJson(res, 200, { channels: users.snapshot().discordChannels });
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/discord-channels") {
+    const body = await readJsonBody(req);
+    const channel = users.registerDiscordChannel({
+      guildId: optionalStringField(body, "guildId"),
+      channelId: stringField(body, "channelId"),
+      title: optionalStringField(body, "title"),
+      type: optionalStringField(body, "type"),
+      enabled: optionalBooleanField(body, "enabled") ?? true,
+      allowedGroupIds: arrayStringField(body, "allowedGroupIds"),
+    });
+    options.auditUserAction(authUser, "discord_channel_updated", channel.channelId);
+    sendJson(res, 201, { channel });
+    return true;
+  }
+
+  const discordChannelMatch = url.pathname.match(/^\/api\/discord-channels\/([^/]+)$/);
+  if (discordChannelMatch?.[1] && req.method === "PATCH") {
+    const body = await readJsonBody(req);
+    const channel = users.updateDiscordChannel(decodeURIComponent(discordChannelMatch[1]), {
+      enabled: optionalBooleanField(body, "enabled"),
+      title: optionalStringField(body, "title"),
+      allowedGroupIds: body.allowedGroupIds === undefined ? undefined : arrayStringField(body, "allowedGroupIds"),
+    });
+    options.auditUserAction(authUser, "discord_channel_updated", channel.channelId);
+    sendJson(res, 200, { channel });
     return true;
   }
 

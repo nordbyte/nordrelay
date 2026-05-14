@@ -10,6 +10,7 @@ export interface SettingDefinition {
 
 export const SECRET_KEYS = new Set([
   "TELEGRAM_BOT_TOKEN",
+  "DISCORD_BOT_TOKEN",
   "CODEX_API_KEY",
   "HERMES_API_KEY",
   "OPENCLAW_GATEWAY_TOKEN",
@@ -19,6 +20,7 @@ export const SECRET_KEYS = new Set([
 ]);
 
 export const SETTING_DEFINITIONS: SettingDefinition[] = [
+  setting("TELEGRAM_ENABLED", "Enable Telegram", "Telegram", "boolean", "Start the Telegram bot adapter.", true),
   setting("TELEGRAM_BOT_TOKEN", "Telegram bot token", "Telegram", "secret", "BotFather token.", true),
   setting("TELEGRAM_TRANSPORT", "Telegram transport", "Telegram", "string", "polling or webhook.", true, ["polling", "webhook"]),
   setting("TELEGRAM_WEBHOOK_URL", "Webhook public URL", "Telegram", "string", "Public base URL for webhook mode.", true),
@@ -26,6 +28,16 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   setting("TELEGRAM_WEBHOOK_PORT", "Webhook bind port", "Telegram", "number", "Local webhook bind port.", true),
   setting("TELEGRAM_WEBHOOK_PATH", "Webhook path", "Telegram", "string", "Webhook request path.", true),
   setting("TELEGRAM_WEBHOOK_SECRET", "Webhook secret", "Telegram", "secret", "Optional Telegram webhook secret token.", true),
+
+  setting("DISCORD_ENABLED", "Enable Discord", "Discord", "boolean", "Start the Discord bot adapter.", true),
+  setting("DISCORD_BOT_TOKEN", "Discord bot token", "Discord", "secret", "Discord bot token.", true),
+  setting("DISCORD_CLIENT_ID", "Discord client ID", "Discord", "string", "Discord application/client id used for slash command registration.", true),
+  setting("DISCORD_GUILD_IDS", "Discord guild IDs", "Discord", "list", "Comma-separated guild ids for instant guild slash-command registration.", true),
+  setting("DISCORD_ALLOWED_GUILD_IDS", "Allowed Discord guilds", "Discord", "list", "Optional comma-separated guild allow-list.", true),
+  setting("DISCORD_ALLOWED_CHANNEL_IDS", "Allowed Discord channels", "Discord", "list", "Optional comma-separated channel allow-list before user/group checks.", true),
+  setting("DISCORD_MESSAGE_CONTENT_ENABLED", "Message content intent", "Discord", "boolean", "Read regular Discord text messages as prompts. Requires enabling the privileged intent in Discord.", true),
+  setting("DISCORD_COMMAND_MODE", "Discord command mode", "Discord", "string", "slash, message, or both.", true, ["slash", "message", "both"]),
+  setting("DISCORD_AUTO_REGISTER_COMMANDS", "Auto-register slash commands", "Discord", "boolean", "Register Discord slash commands on startup when client id is configured.", true),
 
   setting("NORDRELAY_CODEX_ENABLED", "Enable Codex", "Agents", "boolean", "Allow Codex sessions.", true),
   setting("NORDRELAY_PI_ENABLED", "Enable Pi", "Agents", "boolean", "Allow Pi sessions.", true),
@@ -126,7 +138,17 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
 ];
 
 const EXAMPLE_VALUES: Record<string, string> = {
+  "TELEGRAM_ENABLED": "true",
   "TELEGRAM_BOT_TOKEN": "123456789:replace-me",
+  "DISCORD_ENABLED": "false",
+  "DISCORD_BOT_TOKEN": "",
+  "DISCORD_CLIENT_ID": "",
+  "DISCORD_GUILD_IDS": "",
+  "DISCORD_ALLOWED_GUILD_IDS": "",
+  "DISCORD_ALLOWED_CHANNEL_IDS": "",
+  "DISCORD_MESSAGE_CONTENT_ENABLED": "true",
+  "DISCORD_COMMAND_MODE": "both",
+  "DISCORD_AUTO_REGISTER_COMMANDS": "true",
   "NORDRELAY_CODEX_ENABLED": "true",
   "NORDRELAY_PI_ENABLED": "false",
   "NORDRELAY_HERMES_ENABLED": "false",
@@ -222,7 +244,8 @@ const EXAMPLE_VALUES: Record<string, string> = {
 };
 
 const GROUP_INTROS: Record<string, string> = {
-  Telegram: "Required Telegram bot and transport settings.",
+  Telegram: "Telegram bot and transport settings.",
+  Discord: "Discord bot settings. Discord is opt-in and uses the same NordRelay users, groups, and permissions as Telegram.",
   Agents: "Agent access. Codex is enabled by default; Pi, Hermes, OpenClaw, and Claude Code are opt-in.",
   Codex: "Codex defaults for newly created or reattached sessions.",
   Pi: "Pi coding agent defaults.",
@@ -243,7 +266,7 @@ export function envExampleValue(key: string): string {
 export function renderEnvExample(): string {
   const lines: string[] = [
     "# NordRelay runtime config example.",
-    "# Access is managed with NordRelay users, groups, linked Telegram identities, and enabled Telegram group chats.",
+    "# Access is managed with NordRelay users, groups, linked chat identities, and enabled group/guild channels.",
     "# Create the first admin with `nordrelay init` or `nordrelay user create-admin`.",
   ];
   let currentGroup = "";

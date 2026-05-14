@@ -6,6 +6,7 @@ import { webhookCallback } from "grammy";
 
 import { agentLabel, type AgentId } from "./agent.js";
 import { createBot, registerCommands } from "./bot.js";
+import { createDiscordBridge } from "./discord-bot.js";
 import { checkAuthStatus } from "./codex-auth.js";
 import { describeCodexCli, resolveCodexCli } from "./codex-cli.js";
 import { checkClaudeCodeAuthStatus } from "./claude-code-auth.js";
@@ -26,6 +27,7 @@ import { UserStore } from "./user-management.js";
 
 let registry: SessionRegistry | undefined;
 let bot: ReturnType<typeof createBot> | undefined;
+let discordBridge: ReturnType<typeof createDiscordBridge> | undefined;
 let webhookServer: Server | undefined;
 let runtimeConfig: ConnectorConfig | undefined;
 
@@ -35,8 +37,12 @@ try {
   configureRedaction(config.telegramRedactPatterns);
   installConsoleLogger(config.logFormat);
   registry = new SessionRegistry(config);
-  bot = createBot(config, registry);
-  await registerCommands(bot);
+  if (config.telegramEnabled) {
+    bot = createBot(config, registry);
+    await registerCommands(bot);
+  }
+  discordBridge = createDiscordBridge(config, registry);
+  await discordBridge?.start();
 
   console.log("NordRelay running");
   const userStore = new UserStore();
@@ -80,14 +86,15 @@ try {
       console.warn("Warning: Default launch profile uses danger-full-access.");
     }
   }
-  console.log("Session mode: per Telegram context");
-  console.log(`Telegram transport: ${config.telegramTransport}`);
+  console.log("Session mode: per chat context");
+  console.log(`Telegram: ${config.telegramEnabled ? config.telegramTransport : "disabled"}`);
+  console.log(`Discord: ${config.discordEnabled ? "enabled" : "disabled"}`);
   await writeConnectorState({
     status: "ready",
     pid: Number(process.env.NORDRELAY_WRAPPER_PID) || process.pid,
     appPid: process.pid,
     workspace: config.workspace,
-    sessionMode: "per Telegram context",
+    sessionMode: "per chat context",
     authenticated: authStatus.authenticated,
     authMethod: authStatus.method,
     codexCli: describeCodexCli(codexCli),
@@ -97,6 +104,7 @@ try {
     claudeCodeCli: describeClaudeCodeCli(claudeCodeCli),
     openClawGateway: config.openClawGatewayUrl,
     telegramTransport: config.telegramTransport,
+    discordEnabled: config.discordEnabled,
   });
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
@@ -148,6 +156,9 @@ const shutdown = (signal: NodeJS.Signals) => {
 
   console.log(`Received ${signal}, shutting down NordRelay...`);
   if (bot && runtimeConfig?.telegramTransport !== "webhook") bot.stop();
+  void discordBridge?.stop().catch((error) => {
+    console.warn("Failed to stop Discord bridge:", error instanceof Error ? error.message : String(error));
+  });
   webhookServer?.close();
 
   setTimeout(() => {

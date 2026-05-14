@@ -30,7 +30,11 @@ export type AuditAction =
   | "telegram_link_created"
   | "telegram_linked"
   | "telegram_unlinked"
-  | "telegram_chat_updated";
+  | "telegram_chat_updated"
+  | "discord_link_created"
+  | "discord_linked"
+  | "discord_unlinked"
+  | "discord_channel_updated";
 
 export interface AuditEvent {
   id: string;
@@ -39,7 +43,7 @@ export interface AuditEvent {
   category?: WebActivityCategory;
   status: "ok" | "failed" | "denied";
   contextKey: TelegramContextKey;
-  channelId: "telegram" | "web";
+  channelId: "telegram" | "discord" | "web";
   actor?: WebActivityActor;
   actorId?: number | string;
   actorRole?: string;

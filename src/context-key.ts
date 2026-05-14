@@ -57,3 +57,28 @@ export function isTelegramContextKey(key: TelegramContextKey): boolean {
   const threadId = Number(threadIdText);
   return Number.isSafeInteger(threadId) && threadId > 0;
 }
+
+export function discordContextKey(input: { guildId?: string | null; channelId: string; threadId?: string | null }): TelegramContextKey {
+  const guildId = input.guildId || "dm";
+  const topic = input.threadId && input.threadId !== input.channelId ? `:${input.threadId}` : "";
+  return `discord:${guildId}:${input.channelId}${topic}`;
+}
+
+export function isDiscordContextKey(key: TelegramContextKey): boolean {
+  return /^discord:[^:]+:[^:]+(?::[^:]+)?$/.test(key);
+}
+
+export function parseDiscordContextKey(key: TelegramContextKey): { guildId?: string; channelId: string; threadId?: string } | null {
+  if (!isDiscordContextKey(key)) {
+    return null;
+  }
+  const [, guild, channelId, threadId] = key.split(":");
+  if (!channelId) {
+    return null;
+  }
+  return {
+    guildId: guild === "dm" ? undefined : guild,
+    channelId,
+    threadId,
+  };
+}

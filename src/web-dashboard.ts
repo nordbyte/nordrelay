@@ -628,6 +628,7 @@ function optionalEnv(key: string): string | undefined {
 
 function activeSettingsValues(current: typeof config): Record<string, string | undefined> {
   return {
+    TELEGRAM_ENABLED: boolValue(current.telegramEnabled),
     TELEGRAM_BOT_TOKEN: current.telegramBotToken,
     TELEGRAM_TRANSPORT: current.telegramTransport,
     TELEGRAM_WEBHOOK_URL: current.telegramWebhookUrl,
@@ -635,6 +636,15 @@ function activeSettingsValues(current: typeof config): Record<string, string | u
     TELEGRAM_WEBHOOK_PORT: String(current.telegramWebhookPort),
     TELEGRAM_WEBHOOK_PATH: current.telegramWebhookPath,
     TELEGRAM_WEBHOOK_SECRET: current.telegramWebhookSecret,
+    DISCORD_ENABLED: boolValue(current.discordEnabled),
+    DISCORD_BOT_TOKEN: current.discordBotToken,
+    DISCORD_CLIENT_ID: current.discordClientId,
+    DISCORD_GUILD_IDS: current.discordGuildIds.join(","),
+    DISCORD_ALLOWED_GUILD_IDS: current.discordAllowedGuildIds.join(","),
+    DISCORD_ALLOWED_CHANNEL_IDS: current.discordAllowedChannelIds.join(","),
+    DISCORD_MESSAGE_CONTENT_ENABLED: boolValue(current.discordMessageContentEnabled),
+    DISCORD_COMMAND_MODE: current.discordCommandMode,
+    DISCORD_AUTO_REGISTER_COMMANDS: boolValue(current.discordAutoRegisterCommands),
     NORDRELAY_CODEX_ENABLED: boolValue(current.codexEnabled),
     NORDRELAY_PI_ENABLED: boolValue(current.piEnabled),
     NORDRELAY_HERMES_ENABLED: boolValue(current.hermesEnabled),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { InMemoryChannelRuntime, ChannelCommandRouter, deliverChannelAction, parseChannelCommand } from "../src/channel-runtime.js";
+import { actionFromDiscordCustomId, discordActionId, discordMessageText, splitDiscordMessage } from "../src/discord-channel-runtime.js";
 
 describe("channel runtime abstraction", () => {
   it("parses channel commands independently from Telegram", () => {
@@ -50,5 +51,18 @@ describe("channel runtime abstraction", () => {
       parseMode: "html",
     });
     expect(runtime.sentMessages[0]?.message.buttons?.[0]?.[0]?.action).toBe("agent-update:start:codex");
+  });
+
+  it("maps Discord message formatting and component actions safely", () => {
+    expect(discordMessageText({
+      text: "<b>Working</b> &amp; done",
+      fallbackText: "Working & done",
+      parseMode: "html",
+    })).toBe("Working & done");
+
+    const actionId = discordActionId("discord_queue_cancel:ctx:abc");
+    expect(actionFromDiscordCustomId(actionId)).toBe("discord_queue_cancel:ctx:abc");
+    expect(actionId.length).toBeLessThanOrEqual(100);
+    expect(splitDiscordMessage("x".repeat(4000)).length).toBeGreaterThan(1);
   });
 });

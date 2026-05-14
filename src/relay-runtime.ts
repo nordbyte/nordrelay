@@ -415,7 +415,7 @@ export class RelayRuntime {
   permissions(): WebPermissionsDto {
     return {
       mode: "users",
-      message: "Access is managed by NordRelay users, groups, Telegram identities, and Telegram chat access records.",
+      message: "Access is managed by NordRelay users, groups, Telegram identities, Telegram chat access records, Discord identities, and Discord channel access records.",
     };
   }
 

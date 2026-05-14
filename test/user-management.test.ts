@@ -70,6 +70,23 @@ describe("UserStore", () => {
     expect(() => store.consumeTelegramLinkCode(code.code, { telegramUserId: 789 })).toThrow("Invalid or expired link code.");
   });
 
+  it("links Discord users with expiring link codes", () => {
+    const user = store.createUser({
+      email: "discord@example.com",
+      displayName: "Discord User",
+      password: "password123",
+    });
+    const code = store.createDiscordLinkCode(user.user.id);
+    const linked = store.consumeDiscordLinkCode(code.code.toLowerCase(), {
+      discordUserId: "112233445566",
+      username: "discorduser",
+    });
+
+    expect(linked.user.email).toBe("discord@example.com");
+    expect(store.resolveDiscordUser("112233445566")?.user.email).toBe("discord@example.com");
+    expect(() => store.consumeDiscordLinkCode(code.code, { discordUserId: "778899" })).toThrow("Invalid or expired link code.");
+  });
+
   it("uses groups and chat access for Telegram group authorization", () => {
     const readonly = store.createUser({
       email: "read@example.com",
@@ -135,6 +152,7 @@ describe("UserStore", () => {
       agentIds: ["codex"],
       workspaceRoots: [home],
       telegramChatIds: [-100],
+      discordChannelIds: ["123"],
     });
     const user = store.createUser({
       email: "scoped@example.com",
@@ -149,6 +167,39 @@ describe("UserStore", () => {
     expect(store.canUseWorkspace(user, path.join(tmpdir(), "other"))).toBe(false);
     expect(store.canUseTelegramChat(user, -100)).toBe(true);
     expect(store.canUseTelegramChat(user, -101)).toBe(false);
+    expect(store.canUseDiscordChannel(user, "123")).toBe(true);
+    expect(store.canUseDiscordChannel(user, "456")).toBe(false);
     expect(() => store.createGroup({ name: "Bad", permissions: ["not.real"] })).toThrow("Unknown permission");
+  });
+
+  it("uses groups and channel access for Discord guild authorization", () => {
+    const readonly = store.createUser({
+      email: "discord-read@example.com",
+      displayName: "Discord Read",
+      password: "password123",
+      groupIds: [READONLY_GROUP_ID],
+      discordUserId: "100",
+    });
+    const operator = store.createUser({
+      email: "discord-operator@example.com",
+      displayName: "Discord Operator",
+      password: "password123",
+      groupIds: [USER_GROUP_ID],
+      discordUserId: "101",
+    });
+
+    store.registerDiscordChannel({ guildId: "guild", channelId: "general" });
+    expect(store.isDiscordChannelAllowed({ guildId: "guild", channelId: "general" }, operator)).toBe(true);
+    expect(store.isDiscordChannelAllowed({ guildId: "guild", channelId: "general" }, readonly)).toBe(true);
+
+    store.registerDiscordChannel({
+      guildId: "guild",
+      channelId: "ops",
+      allowedGroupIds: [USER_GROUP_ID],
+    });
+
+    expect(store.isDiscordChannelAllowed({ guildId: "guild", channelId: "ops" }, operator)).toBe(true);
+    expect(store.isDiscordChannelAllowed({ guildId: "guild", channelId: "ops" }, readonly)).toBe(false);
+    expect(store.isDiscordChannelAllowed({ channelId: "dm", isDirectMessage: true }, readonly)).toBe(true);
   });
 });

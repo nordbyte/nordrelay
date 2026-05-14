@@ -170,6 +170,7 @@ function relevantEnvironment(): Record<string, string> {
   const prefixes = [
     "NORDRELAY_",
     "TELEGRAM_",
+    "DISCORD_",
     "CODEX_",
     "PI_",
     "HERMES_",

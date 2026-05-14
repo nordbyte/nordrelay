@@ -66,6 +66,10 @@ function parseArgs(argv) {
     else if (arg === "--no-restart") options.restartAfterUpdate = false;
     else if (arg === "--restart") options.restartAfterUpdate = true;
     else if (arg === "--token") options.telegramBotToken = requireValue(copy, ++i, arg);
+    else if (arg === "--disable-telegram") options.disableTelegram = true;
+    else if (arg === "--enable-discord") options.enableDiscord = true;
+    else if (arg === "--discord-token") options.discordBotToken = requireValue(copy, ++i, arg);
+    else if (arg === "--discord-client-id") options.discordClientId = requireValue(copy, ++i, arg);
     else if (arg === "--admin-email") options.adminEmail = requireValue(copy, ++i, arg);
     else if (arg === "--admin-name") options.adminName = requireValue(copy, ++i, arg);
     else if (arg === "--admin-password") options.adminPassword = requireValue(copy, ++i, arg);
@@ -660,9 +664,17 @@ async function commandInit(options) {
     return;
   }
 
-  const telegramBotToken = options.telegramBotToken ||
-    process.env.TELEGRAM_BOT_TOKEN ||
-    await ask(null, "Telegram bot token", "");
+  const enableTelegram = options.disableTelegram ? "false" : await askChoice(null, "Enable Telegram", "true");
+  const telegramBotToken = enableTelegram === "true"
+    ? options.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || await ask(null, "Telegram bot token", "")
+    : "";
+  const enableDiscord = options.enableDiscord ? "true" : await askChoice(null, "Enable Discord", "false");
+  const discordBotToken = enableDiscord === "true"
+    ? options.discordBotToken || process.env.DISCORD_BOT_TOKEN || await ask(null, "Discord bot token", "")
+    : "";
+  const discordClientId = enableDiscord === "true"
+    ? options.discordClientId || process.env.DISCORD_CLIENT_ID || await ask(null, "Discord client ID", "")
+    : "";
   const adminEmail = options.adminEmail || await ask(null, "Admin email", "");
   const adminName = options.adminName || await ask(null, "Admin name", "Admin");
   const adminPassword = options.adminPassword || await askSecret(null, "Admin password", "");
@@ -674,7 +686,9 @@ async function commandInit(options) {
   const enableClaudeCode = options.enableClaudeCode ? "true" : await askChoice(null, "Enable Claude Code", "false");
   const stateBackend = options.stateBackend || await askChoice(null, "State backend (json/sqlite)", "json");
 
-  if (!telegramBotToken) throw new Error("Telegram bot token is required.");
+  if (enableTelegram === "true" && !telegramBotToken) throw new Error("Telegram bot token is required when Telegram is enabled.");
+  if (enableDiscord === "true" && !discordBotToken) throw new Error("Discord bot token is required when Discord is enabled.");
+  if (enableTelegram !== "true" && enableDiscord !== "true") throw new Error("At least one chat adapter must be enabled.");
   if (!adminEmail) throw new Error("Admin email is required.");
   if (!adminPassword) throw new Error("Admin password is required.");
   if (enableCodex !== "true" && enablePi !== "true" && enableHermes !== "true" && enableOpenClaw !== "true" && enableClaudeCode !== "true") throw new Error("At least one agent must be enabled.");
@@ -691,7 +705,14 @@ async function commandInit(options) {
   const lines = [
     "# NordRelay local runtime config.",
     "# Keep this file private; it contains bot credentials.",
+    `TELEGRAM_ENABLED=${enableTelegram}`,
     `TELEGRAM_BOT_TOKEN=${telegramBotToken}`,
+    `DISCORD_ENABLED=${enableDiscord}`,
+    `DISCORD_BOT_TOKEN=${discordBotToken}`,
+    `DISCORD_CLIENT_ID=${discordClientId}`,
+    "DISCORD_COMMAND_MODE=both",
+    "DISCORD_MESSAGE_CONTENT_ENABLED=true",
+    "DISCORD_AUTO_REGISTER_COMMANDS=true",
     `NORDRELAY_CODEX_ENABLED=${enableCodex}`,
     `NORDRELAY_PI_ENABLED=${enablePi}`,
     `NORDRELAY_HERMES_ENABLED=${enableHermes}`,
@@ -745,6 +766,7 @@ function parseUserFlags(argv) {
     else if (arg === "--password") flags.password = requireValue(copy, ++i, arg);
     else if (arg === "--group" || arg === "--groups") flags.groups = requireValue(copy, ++i, arg);
     else if (arg === "--telegram-user-id") flags.telegramUserId = Number.parseInt(requireValue(copy, ++i, arg), 10);
+    else if (arg === "--discord-user-id") flags.discordUserId = requireValue(copy, ++i, arg);
     else if (arg === "--user-id") flags.userId = requireValue(copy, ++i, arg);
   }
   return flags;
@@ -776,8 +798,8 @@ async function commandUser(options) {
       ? ["admin"]
       : (flags.groups ? flags.groups.split(",").map((item) => item.trim()).filter(Boolean) : ["user"]);
     const created = flags.subcommand === "create-admin"
-      ? store.createAdmin({ email, displayName: name, password, telegramUserId: flags.telegramUserId })
-      : store.createUser({ email, displayName: name, password, groupIds, telegramUserId: flags.telegramUserId });
+      ? store.createAdmin({ email, displayName: name, password, telegramUserId: flags.telegramUserId, discordUserId: flags.discordUserId })
+      : store.createUser({ email, displayName: name, password, groupIds, telegramUserId: flags.telegramUserId, discordUserId: flags.discordUserId });
     console.log(`Created user ${created.user.email} (${created.groups.map((group) => group.name).join(", ")}).`);
     return;
   }
@@ -802,7 +824,17 @@ async function commandUser(options) {
     return;
   }
 
-  if (flags.subcommand === "link-code") {
+  if (flags.subcommand === "link-discord") {
+    const email = flags.email || await ask(null, "Email", "");
+    const discordUserId = flags.discordUserId || await ask(null, "Discord user id", "");
+    const user = store.getUserByEmail(email);
+    if (!user) throw new Error(`User not found: ${email}`);
+    store.linkDiscordUser(user.user.id, { discordUserId });
+    console.log(`Linked Discord user ${discordUserId} to ${user.user.email}.`);
+    return;
+  }
+
+  if (flags.subcommand === "link-code" || flags.subcommand === "telegram-link-code") {
     const email = flags.email || await ask(null, "Email", "");
     const user = store.getUserByEmail(email);
     if (!user) throw new Error(`User not found: ${email}`);
@@ -812,7 +844,17 @@ async function commandUser(options) {
     return;
   }
 
-  throw new Error("Usage: nordrelay user [list|create-admin|create|reset-password|link-telegram|link-code]");
+  if (flags.subcommand === "discord-link-code") {
+    const email = flags.email || await ask(null, "Email", "");
+    const user = store.getUserByEmail(email);
+    if (!user) throw new Error(`User not found: ${email}`);
+    const code = store.createDiscordLinkCode(user.user.id);
+    console.log(`Discord link code for ${user.user.email}: ${code.code}`);
+    console.log(`Expires: ${code.expiresAt}`);
+    return;
+  }
+
+  throw new Error("Usage: nordrelay user [list|create-admin|create|reset-password|link-telegram|link-discord|link-code|telegram-link-code|discord-link-code]");
 }
 
 async function commandDoctor(options) {
@@ -822,11 +864,16 @@ async function commandDoctor(options) {
   const userSnapshot = userStore?.snapshot();
   const checks = [];
   checks.push(check("Node.js >= 22", Number.parseInt(process.versions.node.split(".")[0], 10) >= 22, process.version));
-  checks.push(check("Telegram bot token", Boolean(process.env.TELEGRAM_BOT_TOKEN), process.env.TELEGRAM_BOT_TOKEN ? "configured" : "missing"));
+  const telegramEnabled = process.env.TELEGRAM_ENABLED !== "false";
+  const discordEnabled = process.env.DISCORD_ENABLED === "true";
+  checks.push(check("Telegram bot token", !telegramEnabled || Boolean(process.env.TELEGRAM_BOT_TOKEN), telegramEnabled ? (process.env.TELEGRAM_BOT_TOKEN ? "configured" : "missing") : "disabled", telegramEnabled ? "fail" : "warn"));
+  checks.push(check("Discord bot token", !discordEnabled || Boolean(process.env.DISCORD_BOT_TOKEN), discordEnabled ? (process.env.DISCORD_BOT_TOKEN ? "configured" : "missing") : "disabled", discordEnabled ? "fail" : "warn"));
+  checks.push(check("Discord client ID", !discordEnabled || Boolean(process.env.DISCORD_CLIENT_ID), discordEnabled ? (process.env.DISCORD_CLIENT_ID ? "configured" : "missing; slash command auto-registration disabled") : "disabled", "warn"));
   checks.push(check("User store", Boolean(userStore), userStore ? userStore.filePath : "missing runtime", userStore ? "pass" : "fail"));
   checks.push(check("Admin user", Boolean(userSnapshot?.adminConfigured), userSnapshot?.adminConfigured ? "configured" : "missing"));
   checks.push(check("WebUI login", true, "required for every dashboard request"));
   checks.push(check("Telegram access", true, "requires linked active users and enabled group chats"));
+  checks.push(check("Discord access", true, "requires linked active users and enabled channels"));
   checks.push(check("Codex enabled flag", process.env.NORDRELAY_CODEX_ENABLED !== "false", `NORDRELAY_CODEX_ENABLED=${process.env.NORDRELAY_CODEX_ENABLED ?? "true"}`));
   checks.push(check("Pi enabled flag", process.env.NORDRELAY_PI_ENABLED === "true" || process.env.NORDRELAY_PI_ENABLED === undefined, `NORDRELAY_PI_ENABLED=${process.env.NORDRELAY_PI_ENABLED ?? "false"}`, process.env.NORDRELAY_PI_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("Hermes enabled flag", process.env.NORDRELAY_HERMES_ENABLED === "true", `NORDRELAY_HERMES_ENABLED=${process.env.NORDRELAY_HERMES_ENABLED ?? "false"}`, process.env.NORDRELAY_HERMES_ENABLED === "true" ? "pass" : "warn"));

@@ -5,7 +5,7 @@ export interface SessionLock {
   contextKey: TelegramContextKey;
   ownerUserId: string;
   ownerLabel?: string;
-  ownerChannel?: "web" | "telegram" | "system";
+  ownerChannel?: "web" | "telegram" | "discord" | "system";
   ownerChannelUserId?: string;
   createdAt: number;
   expiresAt?: number;
@@ -14,7 +14,7 @@ export interface SessionLock {
 export interface SessionLockOwner {
   userId: string;
   label?: string;
-  channel?: "web" | "telegram" | "system";
+  channel?: "web" | "telegram" | "discord" | "system";
   channelUserId?: string;
 }
 

@@ -153,6 +153,7 @@ const COMMAND_PERMISSIONS = new Map<string, Permission>([
   ["abort", "prompt.abort"],
   ["stop", "prompt.abort"],
   ["register_chat", "users.write"],
+  ["register_channel", "users.write"],
   ["chat_access", "users.write"],
   ["link", "inspect"],
 ]);

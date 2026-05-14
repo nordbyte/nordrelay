@@ -21,23 +21,25 @@ Include:
 - Expected and actual impact.
 - Any suggested mitigation.
 
-Do not include real Telegram bot tokens, OpenAI API keys, Codex credentials, local rollout files, or private source code in reports.
+Do not include real Telegram or Discord bot tokens, OpenAI API keys, Codex credentials, local rollout files, or private source code in reports.
 
 ## Security Defaults
 
 NordRelay is designed to fail closed:
 
-- A fresh install requires a NordRelay admin user before Telegram or WebUI control can be used.
+- A fresh install requires a NordRelay admin user before chat adapters or WebUI control can be used.
 - WebUI login is required for every dashboard page, API route, SSE stream, artifact download, and health endpoint.
 - Telegram private chats require a linked active NordRelay user.
 - Telegram group and forum chats are disabled until an admin enables the chat.
-- Authorization is enforced through user groups, granular permissions, and optional group scopes for agents, workspace roots, and Telegram chats.
+- Discord DMs require a linked active NordRelay user.
+- Discord guild channels and threads are disabled until an admin enables the channel.
+- Authorization is enforced through user groups, granular permissions, and optional group scopes for agents, workspace roots, Telegram chats, and Discord channels.
 - Unknown commands, callback actions, and API routes are denied by default.
 - The last active admin user cannot be disabled or demoted.
-- WebUI login and Telegram account-link attempts are rate-limited.
+- WebUI login and chat account-link attempts are rate-limited.
 - Password changes and group membership changes revoke existing WebUI sessions.
-- User, group, Telegram-link, Telegram-chat, session-revocation, login, and permission-denied events are audited.
+- User, group, Telegram-link, Telegram-chat, Discord-link, Discord-channel, session-revocation, login, and permission-denied events are audited.
 - Uploaded files are staged inside the selected workspace.
-- Secrets are redacted from logs, Telegram diagnostics, and diagnostics support bundles where possible.
+- Secrets are redacted from logs, channel diagnostics, and diagnostics support bundles where possible.
 
-Treat enabling `danger-full-access`, broad write permissions, or Telegram group chat access as equivalent to granting remote shell-adjacent control over the host.
+Treat enabling `danger-full-access`, broad write permissions, Telegram group chat access, or Discord guild-channel access as equivalent to granting remote shell-adjacent control over the host.

@@ -30,6 +30,7 @@ export interface GroupRecord extends GroupDefinition {
   agentIds: string[];
   workspaceRoots: string[];
   telegramChatIds: number[];
+  discordChannelIds: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -62,6 +63,29 @@ export interface TelegramChatAccessRecord {
   updatedAt: string;
 }
 
+export interface DiscordIdentityRecord {
+  id: string;
+  userId: string;
+  discordUserId: string;
+  username?: string;
+  globalName?: string;
+  active: boolean;
+  linkedAt: string;
+  updatedAt: string;
+}
+
+export interface DiscordChannelAccessRecord {
+  id: string;
+  guildId?: string;
+  channelId: string;
+  title?: string;
+  type?: string;
+  enabled: boolean;
+  allowedGroupIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface WebSessionRecord {
   id: string;
   userId: string;
@@ -78,6 +102,13 @@ export interface TelegramLinkCodeRecord {
   expiresAt: string;
 }
 
+export interface DiscordLinkCodeRecord {
+  code: string;
+  userId: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
 export interface AuthenticatedUser {
   user: UserRecord;
   groups: GroupRecord[];
@@ -88,10 +119,12 @@ export interface UserManagementSnapshot {
   users: Array<UserRecord & {
     groups: GroupRecord[];
     telegramIdentities: TelegramIdentityRecord[];
+    discordIdentities: DiscordIdentityRecord[];
     webSessions: PublicWebSessionRecord[];
   }>;
   groups: GroupRecord[];
   telegramChats: TelegramChatAccessRecord[];
+  discordChannels: DiscordChannelAccessRecord[];
   adminConfigured: boolean;
 }
 
@@ -104,8 +137,11 @@ interface PersistedUsers {
   userGroups: UserGroupRecord[];
   telegramIdentities: TelegramIdentityRecord[];
   telegramChats: TelegramChatAccessRecord[];
+  discordIdentities: DiscordIdentityRecord[];
+  discordChannels: DiscordChannelAccessRecord[];
   webSessions: WebSessionRecord[];
   telegramLinkCodes: TelegramLinkCodeRecord[];
+  discordLinkCodes: DiscordLinkCodeRecord[];
 }
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -133,12 +169,14 @@ export class UserStore {
         ...user,
         groups: this.groupsForUser(payload, user.id),
         telegramIdentities: payload.telegramIdentities.filter((identity) => identity.userId === user.id),
+        discordIdentities: payload.discordIdentities.filter((identity) => identity.userId === user.id),
         webSessions: payload.webSessions
           .filter((session) => session.userId === user.id)
           .map(publicWebSession),
       })),
       groups: payload.groups,
       telegramChats: payload.telegramChats,
+      discordChannels: payload.discordChannels,
       adminConfigured: payload.users.some((user) => user.active && this.groupIdsForUser(payload, user.id).includes(ADMIN_GROUP_ID)),
     };
   }
@@ -174,6 +212,7 @@ export class UserStore {
     groupIds?: string[];
     active?: boolean;
     telegramUserId?: number;
+    discordUserId?: string;
   }): AuthenticatedUser {
     return this.mutatePayload((payload) => {
       const email = normalizeEmail(input.email);
@@ -203,6 +242,11 @@ export class UserStore {
           telegramUserId: input.telegramUserId,
         });
       }
+      if (input.discordUserId !== undefined) {
+        this.upsertDiscordIdentityInPayload(payload, user.id, {
+          discordUserId: input.discordUserId,
+        });
+      }
       return this.authenticatedUser(payload, user);
     });
   }
@@ -212,6 +256,7 @@ export class UserStore {
     displayName: string;
     password: string;
     telegramUserId?: number;
+    discordUserId?: string;
   }): AuthenticatedUser {
     return this.createUser({
       ...input,
@@ -370,6 +415,20 @@ export class UserStore {
     return user ? this.authenticatedUser(payload, user) : null;
   }
 
+  resolveDiscordUser(discordUserId: string | undefined): AuthenticatedUser | null {
+    const normalized = normalizeDiscordId(discordUserId);
+    if (!normalized) {
+      return null;
+    }
+    const payload = this.readPayload();
+    const identity = payload.discordIdentities.find((candidate) => candidate.discordUserId === normalized && candidate.active);
+    if (!identity) {
+      return null;
+    }
+    const user = payload.users.find((candidate) => candidate.id === identity.userId && candidate.active);
+    return user ? this.authenticatedUser(payload, user) : null;
+  }
+
   linkTelegramUser(userId: string, input: {
     telegramUserId: number;
     username?: string;
@@ -393,6 +452,28 @@ export class UserStore {
     });
   }
 
+  linkDiscordUser(userId: string, input: {
+    discordUserId: string;
+    username?: string;
+    globalName?: string;
+  }): DiscordIdentityRecord {
+    return this.mutatePayload((payload) => {
+      const user = payload.users.find((candidate) => candidate.id === userId);
+      if (!user) {
+        throw new Error("User not found.");
+      }
+      return this.upsertDiscordIdentityInPayload(payload, userId, input);
+    });
+  }
+
+  unlinkDiscordIdentity(identityId: string): boolean {
+    return this.mutatePayload((payload) => {
+      const before = payload.discordIdentities.length;
+      payload.discordIdentities = payload.discordIdentities.filter((identity) => identity.id !== identityId);
+      return payload.discordIdentities.length !== before;
+    });
+  }
+
   createTelegramLinkCode(userId: string): TelegramLinkCodeRecord {
     return this.mutatePayload((payload) => {
       if (!payload.users.some((user) => user.id === userId && user.active)) {
@@ -407,6 +488,24 @@ export class UserStore {
         expiresAt: new Date(now + LINK_CODE_TTL_MS).toISOString(),
       };
       payload.telegramLinkCodes.push(code);
+      return code;
+    });
+  }
+
+  createDiscordLinkCode(userId: string): DiscordLinkCodeRecord {
+    return this.mutatePayload((payload) => {
+      if (!payload.users.some((user) => user.id === userId && user.active)) {
+        throw new Error("Active user not found.");
+      }
+      const now = Date.now();
+      payload.discordLinkCodes = payload.discordLinkCodes.filter((code) => new Date(code.expiresAt).getTime() > now);
+      const code: DiscordLinkCodeRecord = {
+        code: randomLinkCode(),
+        userId,
+        createdAt: new Date(now).toISOString(),
+        expiresAt: new Date(now + LINK_CODE_TTL_MS).toISOString(),
+      };
+      payload.discordLinkCodes.push(code);
       return code;
     });
   }
@@ -430,6 +529,28 @@ export class UserStore {
       }
       this.upsertTelegramIdentityInPayload(payload, user.id, input);
       payload.telegramLinkCodes = payload.telegramLinkCodes.filter((candidate) => candidate.code !== normalized);
+      return this.authenticatedUser(payload, user);
+    });
+  }
+
+  consumeDiscordLinkCode(code: string, input: {
+    discordUserId: string;
+    username?: string;
+    globalName?: string;
+  }): AuthenticatedUser {
+    return this.mutatePayload((payload) => {
+      const normalized = code.trim().toUpperCase();
+      const now = Date.now();
+      const link = payload.discordLinkCodes.find((candidate) => candidate.code === normalized && new Date(candidate.expiresAt).getTime() > now);
+      if (!link) {
+        throw new Error("Invalid or expired link code.");
+      }
+      const user = payload.users.find((candidate) => candidate.id === link.userId && candidate.active);
+      if (!user) {
+        throw new Error("Linked user is not active.");
+      }
+      this.upsertDiscordIdentityInPayload(payload, user.id, input);
+      payload.discordLinkCodes = payload.discordLinkCodes.filter((candidate) => candidate.code !== normalized);
       return this.authenticatedUser(payload, user);
     });
   }
@@ -482,6 +603,61 @@ export class UserStore {
     });
   }
 
+  registerDiscordChannel(input: {
+    guildId?: string;
+    channelId: string;
+    title?: string;
+    type?: string;
+    enabled?: boolean;
+    allowedGroupIds?: string[];
+  }): DiscordChannelAccessRecord {
+    return this.mutatePayload((payload) => {
+      const now = new Date().toISOString();
+      const channelId = normalizeDiscordId(input.channelId);
+      if (!channelId) {
+        throw new Error("Discord channel id is required.");
+      }
+      const guildId = normalizeDiscordId(input.guildId);
+      const existing = payload.discordChannels.find((channel) => channel.channelId === channelId && channel.guildId === guildId);
+      const allowedGroupIds = normalizeGroupIds(payload, input.allowedGroupIds ?? [], null);
+      if (existing) {
+        existing.title = input.title ?? existing.title;
+        existing.type = input.type ?? existing.type;
+        existing.enabled = input.enabled ?? existing.enabled;
+        existing.allowedGroupIds = allowedGroupIds;
+        existing.updatedAt = now;
+        return existing;
+      }
+      const channel: DiscordChannelAccessRecord = {
+        id: randomId(),
+        guildId,
+        channelId,
+        title: input.title,
+        type: input.type,
+        enabled: input.enabled ?? true,
+        allowedGroupIds,
+        createdAt: now,
+        updatedAt: now,
+      };
+      payload.discordChannels.push(channel);
+      return channel;
+    });
+  }
+
+  updateDiscordChannel(id: string, patch: { enabled?: boolean; allowedGroupIds?: string[]; title?: string }): DiscordChannelAccessRecord {
+    return this.mutatePayload((payload) => {
+      const channel = payload.discordChannels.find((candidate) => candidate.id === id);
+      if (!channel) {
+        throw new Error("Discord channel not found.");
+      }
+      if (patch.enabled !== undefined) channel.enabled = patch.enabled;
+      if (patch.title !== undefined) channel.title = patch.title;
+      if (patch.allowedGroupIds !== undefined) channel.allowedGroupIds = normalizeGroupIds(payload, patch.allowedGroupIds, null);
+      channel.updatedAt = new Date().toISOString();
+      return channel;
+    });
+  }
+
   isTelegramChatAllowed(chatId: number | undefined, chatType: string | undefined, user: AuthenticatedUser): boolean {
     if (chatId === undefined) {
       return false;
@@ -499,6 +675,27 @@ export class UserStore {
     }
     const userGroupIds = new Set(user.groups.map((group) => group.id));
     return access.allowedGroupIds.some((groupId) => userGroupIds.has(groupId)) && this.canUseTelegramChat(user, chatId);
+  }
+
+  isDiscordChannelAllowed(input: { guildId?: string; channelId?: string; isDirectMessage?: boolean }, user: AuthenticatedUser): boolean {
+    const channelId = normalizeDiscordId(input.channelId);
+    if (!channelId) {
+      return false;
+    }
+    if (input.isDirectMessage) {
+      return this.canUseDiscordChannel(user, channelId);
+    }
+    const guildId = normalizeDiscordId(input.guildId);
+    const payload = this.readPayload();
+    const access = payload.discordChannels.find((channel) => channel.channelId === channelId && channel.guildId === guildId);
+    if (!access?.enabled) {
+      return false;
+    }
+    if (access.allowedGroupIds.length === 0) {
+      return this.canUseDiscordChannel(user, channelId);
+    }
+    const userGroupIds = new Set(user.groups.map((group) => group.id));
+    return access.allowedGroupIds.some((groupId) => userGroupIds.has(groupId)) && this.canUseDiscordChannel(user, channelId);
   }
 
   hasPermission(user: AuthenticatedUser | null | undefined, permission: Permission | null | undefined): boolean {
@@ -528,6 +725,14 @@ export class UserStore {
     return user.groups.some((group) => group.telegramChatIds.length === 0 || group.telegramChatIds.includes(chatId));
   }
 
+  canUseDiscordChannel(user: AuthenticatedUser | null | undefined, channelId: string | undefined): boolean {
+    const normalized = normalizeDiscordId(channelId);
+    if (!user || !normalized) {
+      return true;
+    }
+    return user.groups.some((group) => group.discordChannelIds.length === 0 || group.discordChannelIds.includes(normalized));
+  }
+
   createGroup(input: {
     name: string;
     description?: string;
@@ -535,6 +740,7 @@ export class UserStore {
     agentIds?: string[];
     workspaceRoots?: string[];
     telegramChatIds?: number[];
+    discordChannelIds?: string[];
   }): GroupRecord {
     return this.mutatePayload((payload) => {
       const now = new Date().toISOString();
@@ -554,6 +760,7 @@ export class UserStore {
         agentIds: normalizeStringList(input.agentIds ?? []),
         workspaceRoots: normalizeStringList(input.workspaceRoots ?? []),
         telegramChatIds: normalizeNumberList(input.telegramChatIds ?? []),
+        discordChannelIds: normalizeStringList(input.discordChannelIds ?? []),
         createdAt: now,
         updatedAt: now,
       };
@@ -569,6 +776,7 @@ export class UserStore {
     agentIds?: string[];
     workspaceRoots?: string[];
     telegramChatIds?: number[];
+    discordChannelIds?: string[];
   }): GroupRecord {
     return this.mutatePayload((payload) => {
       const group = payload.groups.find((candidate) => candidate.id === id);
@@ -585,6 +793,7 @@ export class UserStore {
       if (patch.agentIds !== undefined) group.agentIds = normalizeStringList(patch.agentIds);
       if (patch.workspaceRoots !== undefined) group.workspaceRoots = normalizeStringList(patch.workspaceRoots);
       if (patch.telegramChatIds !== undefined) group.telegramChatIds = normalizeNumberList(patch.telegramChatIds);
+      if (patch.discordChannelIds !== undefined) group.discordChannelIds = normalizeStringList(patch.discordChannelIds);
       group.updatedAt = new Date().toISOString();
       return group;
     });
@@ -641,6 +850,43 @@ export class UserStore {
       updatedAt: now,
     };
     payload.telegramIdentities.push(identity);
+    return identity;
+  }
+
+  private upsertDiscordIdentityInPayload(payload: PersistedUsers, userId: string, input: {
+    discordUserId: string;
+    username?: string;
+    globalName?: string;
+  }): DiscordIdentityRecord {
+    const discordUserId = normalizeDiscordId(input.discordUserId);
+    if (!discordUserId) {
+      throw new Error("Discord user id is required.");
+    }
+    const now = new Date().toISOString();
+    for (const identity of payload.discordIdentities) {
+      if (identity.discordUserId === discordUserId && identity.userId !== userId) {
+        identity.active = false;
+      }
+    }
+    const existing = payload.discordIdentities.find((identity) => identity.userId === userId && identity.discordUserId === discordUserId);
+    if (existing) {
+      existing.username = input.username ?? existing.username;
+      existing.globalName = input.globalName ?? existing.globalName;
+      existing.active = true;
+      existing.updatedAt = now;
+      return existing;
+    }
+    const identity: DiscordIdentityRecord = {
+      id: randomId(),
+      userId,
+      discordUserId,
+      username: input.username,
+      globalName: input.globalName,
+      active: true,
+      linkedAt: now,
+      updatedAt: now,
+    };
+    payload.discordIdentities.push(identity);
     return identity;
   }
 
@@ -741,6 +987,7 @@ function normalizePayload(payload: PersistedUsers | undefined): PersistedUsers {
       agentIds: [],
       workspaceRoots: [],
       telegramChatIds: [],
+      discordChannelIds: [],
       createdAt: now,
       updatedAt: now,
     });
@@ -754,6 +1001,7 @@ function normalizePayload(payload: PersistedUsers | undefined): PersistedUsers {
       agentIds: normalizeStringList(group.agentIds),
       workspaceRoots: normalizeStringList(group.workspaceRoots),
       telegramChatIds: normalizeNumberList(group.telegramChatIds),
+      discordChannelIds: normalizeStringList(group.discordChannelIds),
     });
   }
   const groups = Array.from(groupsById.values());
@@ -770,8 +1018,14 @@ function normalizePayload(payload: PersistedUsers | undefined): PersistedUsers {
       ...chat,
       allowedGroupIds: chat.allowedGroupIds.filter((groupId) => groupIds.has(groupId)),
     })),
+    discordIdentities: (payload?.discordIdentities ?? []).filter((item) => isDiscordIdentityRecord(item) && userIds.has(item.userId)),
+    discordChannels: (payload?.discordChannels ?? []).filter(isDiscordChannelAccessRecord).map((channel) => ({
+      ...channel,
+      allowedGroupIds: channel.allowedGroupIds.filter((groupId) => groupIds.has(groupId)),
+    })),
     webSessions: (payload?.webSessions ?? []).filter((item) => isWebSessionRecord(item) && userIds.has(item.userId)),
     telegramLinkCodes: (payload?.telegramLinkCodes ?? []).filter((item) => isTelegramLinkCodeRecord(item) && userIds.has(item.userId)),
+    discordLinkCodes: (payload?.discordLinkCodes ?? []).filter((item) => isDiscordLinkCodeRecord(item) && userIds.has(item.userId)),
   };
 }
 
@@ -812,6 +1066,11 @@ function normalizeStringList(values: string[] | undefined): string[] {
 
 function normalizeNumberList(values: number[] | undefined): number[] {
   return Array.from(new Set((values ?? []).filter((value) => Number.isInteger(value))));
+}
+
+function normalizeDiscordId(value: string | undefined | null): string | undefined {
+  const normalized = String(value ?? "").trim();
+  return normalized || undefined;
 }
 
 function assertActiveAdminExists(payload: PersistedUsers): void {
@@ -908,6 +1167,18 @@ function isTelegramChatAccessRecord(value: unknown): value is TelegramChatAccess
     typeof candidate.enabled === "boolean" && Array.isArray(candidate.allowedGroupIds);
 }
 
+function isDiscordIdentityRecord(value: unknown): value is DiscordIdentityRecord {
+  const candidate = value as DiscordIdentityRecord;
+  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.userId === "string" &&
+    typeof candidate.discordUserId === "string" && typeof candidate.active === "boolean";
+}
+
+function isDiscordChannelAccessRecord(value: unknown): value is DiscordChannelAccessRecord {
+  const candidate = value as DiscordChannelAccessRecord;
+  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.channelId === "string" &&
+    typeof candidate.enabled === "boolean" && Array.isArray(candidate.allowedGroupIds);
+}
+
 function isWebSessionRecord(value: unknown): value is WebSessionRecord {
   const candidate = value as WebSessionRecord;
   return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.userId === "string" &&
@@ -916,6 +1187,12 @@ function isWebSessionRecord(value: unknown): value is WebSessionRecord {
 
 function isTelegramLinkCodeRecord(value: unknown): value is TelegramLinkCodeRecord {
   const candidate = value as TelegramLinkCodeRecord;
+  return Boolean(candidate) && typeof candidate.code === "string" && typeof candidate.userId === "string" &&
+    typeof candidate.expiresAt === "string";
+}
+
+function isDiscordLinkCodeRecord(value: unknown): value is DiscordLinkCodeRecord {
+  const candidate = value as DiscordLinkCodeRecord;
   return Boolean(candidate) && typeof candidate.code === "string" && typeof candidate.userId === "string" &&
     typeof candidate.expiresAt === "string";
 }

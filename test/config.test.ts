@@ -13,6 +13,7 @@ describe("loadConfig", () => {
     tempDir = mkdtempSync(path.join(tmpdir(), "nordrelay-config-"));
     process.chdir(tempDir);
     process.env = { ...originalEnv };
+    delete process.env.TELEGRAM_ENABLED;
     delete process.env.TELEGRAM_BOT_TOKEN;
     delete process.env.TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS;
     delete process.env.TELEGRAM_EDIT_MIN_INTERVAL_MS;
@@ -27,6 +28,15 @@ describe("loadConfig", () => {
     delete process.env.TELEGRAM_WEBHOOK_PORT;
     delete process.env.TELEGRAM_WEBHOOK_PATH;
     delete process.env.TELEGRAM_WEBHOOK_SECRET;
+    delete process.env.DISCORD_ENABLED;
+    delete process.env.DISCORD_BOT_TOKEN;
+    delete process.env.DISCORD_CLIENT_ID;
+    delete process.env.DISCORD_GUILD_IDS;
+    delete process.env.DISCORD_ALLOWED_GUILD_IDS;
+    delete process.env.DISCORD_ALLOWED_CHANNEL_IDS;
+    delete process.env.DISCORD_MESSAGE_CONTENT_ENABLED;
+    delete process.env.DISCORD_COMMAND_MODE;
+    delete process.env.DISCORD_AUTO_REGISTER_COMMANDS;
     delete process.env.CODEX_API_KEY;
     delete process.env.CODEX_MODEL;
     delete process.env.CODEX_SYNC_INTERVAL_MS;
@@ -110,6 +120,7 @@ describe("loadConfig", () => {
     const config = loadConfig();
 
     expect(config).toEqual({
+      telegramEnabled: true,
       telegramBotToken: "bot-token",
       telegramRateLimitMinIntervalMs: 80,
       telegramEditMinIntervalMs: 1_200,
@@ -124,6 +135,15 @@ describe("loadConfig", () => {
       telegramWebhookPort: 8080,
       telegramWebhookPath: "/telegram/webhook",
       telegramWebhookSecret: undefined,
+      discordEnabled: false,
+      discordBotToken: undefined,
+      discordClientId: undefined,
+      discordGuildIds: [],
+      discordAllowedGuildIds: [],
+      discordAllowedChannelIds: [],
+      discordMessageContentEnabled: true,
+      discordCommandMode: "both",
+      discordAutoRegisterCommands: true,
       workspace: process.cwd(),
       workspaceAllowedRoots: [],
       workspaceWarnRoots: [],
@@ -273,6 +293,15 @@ describe("loadConfig", () => {
     expect(config.telegramWebhookPort).toBe(8080);
     expect(config.telegramWebhookPath).toBe("/telegram/webhook");
     expect(config.telegramWebhookSecret).toBeUndefined();
+    expect(config.discordEnabled).toBe(false);
+    expect(config.discordBotToken).toBeUndefined();
+    expect(config.discordClientId).toBeUndefined();
+    expect(config.discordGuildIds).toEqual([]);
+    expect(config.discordAllowedGuildIds).toEqual([]);
+    expect(config.discordAllowedChannelIds).toEqual([]);
+    expect(config.discordMessageContentEnabled).toBe(true);
+    expect(config.discordCommandMode).toBe("both");
+    expect(config.discordAutoRegisterCommands).toBe(true);
     expect(config.maxFileSize).toBe(20 * 1024 * 1024);
     expect(config.artifactRetentionDays).toBe(7);
     expect(config.artifactMaxTurnDirs).toBe(30);
@@ -349,6 +378,43 @@ describe("loadConfig", () => {
     process.env.TELEGRAM_TRANSPORT = "webhook";
 
     expect(() => loadConfig()).toThrow("TELEGRAM_TRANSPORT=webhook requires TELEGRAM_WEBHOOK_URL");
+  });
+
+  it("parses Discord adapter settings", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.DISCORD_ENABLED = "true";
+    process.env.DISCORD_BOT_TOKEN = "discord-token";
+    process.env.DISCORD_CLIENT_ID = "client-id";
+    process.env.DISCORD_GUILD_IDS = "guild-a,guild-b";
+    process.env.DISCORD_ALLOWED_GUILD_IDS = "guild-a";
+    process.env.DISCORD_ALLOWED_CHANNEL_IDS = "channel-a,channel-b";
+    process.env.DISCORD_MESSAGE_CONTENT_ENABLED = "false";
+    process.env.DISCORD_COMMAND_MODE = "slash";
+    process.env.DISCORD_AUTO_REGISTER_COMMANDS = "false";
+
+    const config = loadConfig();
+
+    expect(config.discordEnabled).toBe(true);
+    expect(config.discordBotToken).toBe("discord-token");
+    expect(config.discordClientId).toBe("client-id");
+    expect(config.discordGuildIds).toEqual(["guild-a", "guild-b"]);
+    expect(config.discordAllowedGuildIds).toEqual(["guild-a"]);
+    expect(config.discordAllowedChannelIds).toEqual(["channel-a", "channel-b"]);
+    expect(config.discordMessageContentEnabled).toBe(false);
+    expect(config.discordCommandMode).toBe("slash");
+    expect(config.discordAutoRegisterCommands).toBe(false);
+  });
+
+  it("allows Discord-only chat configuration when Telegram is disabled", () => {
+    process.env.TELEGRAM_ENABLED = "false";
+    process.env.DISCORD_ENABLED = "true";
+    process.env.DISCORD_BOT_TOKEN = "discord-token";
+
+    const config = loadConfig();
+
+    expect(config.telegramEnabled).toBe(false);
+    expect(config.telegramBotToken).toBe("");
+    expect(config.discordEnabled).toBe(true);
   });
 
   it("loads values from .env without overwriting existing environment variables", () => {

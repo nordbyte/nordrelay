@@ -86,14 +86,18 @@ const TELEGRAM_CAPABILITIES: ChannelCapability[] = [
   "webhooks",
 ];
 
+const DISCORD_CAPABILITIES: ChannelCapability[] = [
+  "text",
+  "streaming-edits",
+  "typing",
+  "inline-buttons",
+  "files",
+  "photos",
+  "voice",
+  "topics",
+];
+
 const PLANNED_CHANNELS: ChannelDescriptor[] = [
-  {
-    id: "discord",
-    label: "Discord",
-    capabilities: ["text", "streaming-edits", "typing", "inline-buttons", "files", "photos", "voice"],
-    status: "planned",
-    notes: "Adapter boundary is ready; runtime integration still needs bot credentials and event mapping.",
-  },
   {
     id: "whatsapp",
     label: "WhatsApp",
@@ -130,9 +134,28 @@ export class TelegramChannelAdapter implements ChannelAdapter {
   }
 }
 
+export class DiscordChannelAdapter implements ChannelAdapter {
+  readonly id = "discord";
+  readonly label = "Discord";
+  readonly capabilities = new Set<ChannelCapability>(DISCORD_CAPABILITIES);
+
+  describe(): ChannelDescriptor {
+    return {
+      id: this.id,
+      label: this.label,
+      capabilities: [...this.capabilities],
+      status: process.env.DISCORD_ENABLED === "true" ? "available" : "planned",
+      notes: process.env.DISCORD_ENABLED === "true"
+        ? "Discord bot runtime is enabled."
+        : "Enable with DISCORD_ENABLED=true and DISCORD_BOT_TOKEN.",
+    };
+  }
+}
+
 export function listChannelDescriptors(): ChannelDescriptor[] {
   return [
     new TelegramChannelAdapter().describe(),
+    new DiscordChannelAdapter().describe(),
     ...PLANNED_CHANNELS,
   ];
 }

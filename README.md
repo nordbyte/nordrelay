@@ -1,6 +1,6 @@
 # NordRelay
 
-NordRelay is a remote control plane for coding agents across messaging channels. The current implementation connects Codex, Pi, Hermes, OpenClaw, and Claude Code coding-agent sessions to Telegram, keeps independent sessions per chat or forum topic, streams replies and tool activity back to Telegram, supports files, photos, voice input, model controls, session browsing, retry/abort, and CLI handback.
+NordRelay is a remote control plane for coding agents across messaging channels. The current implementation connects Codex, Pi, Hermes, OpenClaw, and Claude Code coding-agent sessions to Telegram and Discord, keeps independent sessions per chat, thread, forum topic, or DM, streams replies and tool activity back to the active channel, supports files, photos, voice input, model controls, session browsing, retry/abort, and CLI handback.
 
 The repo is both a local Codex marketplace and a standalone Node app. The plugin lives in `plugins/nordrelay/`; the full bot runtime lives in `src/` and uses `@openai/codex-sdk` for Codex, Pi RPC mode for Pi, the Hermes API Server for Hermes, the OpenClaw Gateway WebSocket RPC surface for OpenClaw, and the Claude Agent SDK for Claude Code.
 
@@ -43,11 +43,12 @@ Session control:
 
 Adapter architecture:
 
-- Telegram is implemented as the first channel adapter with text, typing, streaming edits, inline buttons, files, photos, voice, topics, and webhook capability metadata.
-- `/channels` shows available and planned messaging adapters for Discord, WhatsApp, Slack, and Matrix.
+- Telegram supports text, typing, streaming edits, inline buttons, files, photos, voice, forum topics, and polling/webhook transport.
+- Discord supports text, typing, streaming edits, buttons, files, photos, voice/audio transcription, guild channels, threads, DMs, message commands, and slash commands.
+- `/channels` shows available and planned messaging adapters for Telegram, Discord, WhatsApp, Slack, and Matrix.
 - Codex, Pi, Hermes, OpenClaw, and Claude Code are implemented as agent adapters.
 - `/agents` shows available/planned agent adapters and whether Codex, Pi, Hermes, OpenClaw, and Claude Code are enabled.
-- Shared command-action renderers and a channel runtime contract keep inbound commands, outbound messages, typing, files, inline actions, and streaming-ready delivery separate from Telegram-specific API calls.
+- Shared command-action renderers and a channel runtime contract keep inbound commands, outbound messages, typing, files, inline actions, and streaming-ready delivery separate from channel-specific API calls.
 
 Codex runtime:
 
@@ -159,19 +160,33 @@ Telegram output:
 - Old artifact and inbox turn directories are pruned automatically with configurable retention.
 - Optional Telegram message reactions can acknowledge work start and completion with `ENABLE_TELEGRAM_REACTIONS=true`.
 
+Discord input and output:
+
+- Enable Discord with `DISCORD_ENABLED=true` and `DISCORD_BOT_TOKEN`.
+- Set `DISCORD_CLIENT_ID` to let NordRelay register slash commands automatically.
+- `DISCORD_COMMAND_MODE=both` supports slash commands and `/command` text messages. Set it to `slash` if the bot should not read message commands.
+- `DISCORD_MESSAGE_CONTENT_ENABLED=true` lets regular Discord messages become prompts. The matching privileged intent must also be enabled in the Discord Developer Portal.
+- Discord DMs, guild channels, and threads get independent NordRelay contexts.
+- Discord attachments are staged like Telegram uploads; images are passed as image inputs and audio files are transcribed before prompting.
+- Discord buttons cover session picks, model/reasoning picks, queue actions, and abort where Discord component limits allow.
+- Discord slash commands mirror the Telegram command surface where Discord supports it: `/agent`, `/session`, `/sessions`, `/new`, `/switch`, `/model`, `/reasoning`, `/fast`, `/queue`, `/stop`, `/retry`, `/sync`, `/activity`, `/artifacts`, `/logs`, `/version`, `/diagnostics`, `/update`, `/lock`, `/unlock`, `/mirror`, `/notify`, `/voice`, `/link`, `/whoami`, and `/register_channel`.
+
 Authentication and safety:
 
 - WebUI login is required for every dashboard page, API route, SSE stream, artifact download, and health endpoint.
-- Access is managed through NordRelay users, groups, permissions, web sessions, and linked Telegram identities.
-- Built-in groups are `Admin`, `User`, and `Read Only`; custom groups can be created in the WebUI and can restrict allowed agents, workspace roots, and Telegram chats.
+- Access is managed through NordRelay users, groups, permissions, web sessions, linked Telegram identities, and linked Discord identities.
+- Built-in groups are `Admin`, `User`, and `Read Only`; custom groups can be created in the WebUI and can restrict allowed agents, workspace roots, Telegram chats, and Discord channels.
 - The last active admin cannot be disabled or demoted, and web sessions are revoked when passwords or group memberships change.
 - Admins can review and revoke active WebUI sessions from the Users page.
 - Telegram private chats require a linked active NordRelay user.
 - Telegram group and forum chats must be registered before use; admins can run `/register_chat` in the chat or enable chats in the WebUI.
+- Discord DMs require a linked active NordRelay user.
+- Discord guild channels and threads must be registered before use; admins can run `/register_channel` in the channel or enable channels in the WebUI.
 - `/whoami` shows the linked NordRelay account and groups.
 - `/link <code>` links a Telegram account to a NordRelay user after a link code is created in the WebUI or with `nordrelay user link-code`.
-- WebUI login and Telegram link attempts are rate-limited to reduce brute-force risk.
-- User, group, Telegram-link, Telegram-chat, web-session, login, and permission-denied events are written to the audit log.
+- `/link <code>` also links a Discord account when the code was created as a Discord link code.
+- WebUI login and chat-account link attempts are rate-limited to reduce brute-force risk.
+- User, group, Telegram-link, Telegram-chat, Discord-link, Discord-channel, web-session, login, and permission-denied events are written to the audit log.
 - `/auth` reports Codex authentication, Pi provider environment health, Hermes API Server reachability, OpenClaw Gateway reachability, or Claude Code CLI auth for the selected agent.
 - `/login` starts Telegram-managed CLI auth for Codex, Hermes, or Claude Code when enabled.
 - `/logout` signs out of CLI auth for Codex, Hermes, or Claude Code; Codex logout is disabled while `CODEX_API_KEY` is in use.
@@ -224,6 +239,9 @@ Non-interactive setup is also supported:
 ```bash
 nordrelay init \
   --token 123456789:replace-me \
+  --enable-discord \
+  --discord-token "discord-bot-token" \
+  --discord-client-id "discord-client-id" \
   --admin-email you@example.com \
   --admin-name "Your Name" \
   --admin-password "replace-with-a-long-password" \
@@ -231,6 +249,7 @@ nordrelay init \
 ```
 
 `--telegram-user-id` is optional, but linking the first admin during setup is the fastest way to use Telegram immediately.
+Use `--discord-user-id <id>` with `nordrelay user create-admin` or `nordrelay user link-discord` to link Discord directly.
 
 Source checkout setup:
 
@@ -253,10 +272,23 @@ Create the Telegram bot:
 5. Create the first admin user with `nordrelay init` or `nordrelay user create-admin`.
 6. Link Telegram from the WebUI, with `nordrelay user link-telegram`, or by creating a link code and sending `/link <code>` to the bot.
 
+Create the Discord bot:
+
+1. Open the Discord Developer Portal and create an application.
+2. Add a bot user and copy the bot token into `DISCORD_BOT_TOKEN`.
+3. Copy the application client ID into `DISCORD_CLIENT_ID`.
+4. Enable the Message Content intent if you want regular Discord messages to become prompts.
+5. Invite the bot with application-command, message-send, message-read, attachment, and thread permissions.
+6. Link Discord from the WebUI, with `nordrelay user link-discord`, or by creating a Discord link code and sending `/link <code>` to the bot.
+7. In guild channels, run `/register_channel` once from an admin-linked Discord account.
+
 Minimal private-bot `~/.nordrelay/nordrelay.env`:
 
 ```dotenv
 TELEGRAM_BOT_TOKEN=123456789:replace-me
+DISCORD_ENABLED=false
+DISCORD_BOT_TOKEN=
+DISCORD_CLIENT_ID=
 NORDRELAY_CODEX_ENABLED=true
 NORDRELAY_PI_ENABLED=false
 NORDRELAY_HERMES_ENABLED=false
@@ -267,14 +299,17 @@ CODEX_SANDBOX_MODE=workspace-write
 CODEX_APPROVAL_POLICY=never
 ```
 
-User and Telegram access management:
+User and chat access management:
 
 - `nordrelay init` creates the first admin user and writes `~/.nordrelay/users.json`.
 - `nordrelay user create-admin --email you@example.com --name "Your Name"` creates another admin.
 - `nordrelay user create --email dev@example.com --name "Dev" --group user` creates a normal user.
 - `nordrelay user link-telegram --email you@example.com --telegram-user-id 123456789` links a Telegram account directly.
-- `nordrelay user link-code --email you@example.com` creates a short-lived code that the user sends as `/link <code>` to the bot.
-- Group chats are disabled until an admin enables them from the WebUI or runs `/register_chat` inside the group.
+- `nordrelay user link-discord --email you@example.com --discord-user-id 123456789012345678` links a Discord account directly.
+- `nordrelay user link-code --email you@example.com` creates a short-lived Telegram code that the user sends as `/link <code>` to the Telegram bot.
+- `nordrelay user discord-link-code --email you@example.com` creates a short-lived Discord code that the user sends as `/link <code>` to the Discord bot.
+- Telegram group chats are disabled until an admin enables them from the WebUI or runs `/register_chat` inside the group.
+- Discord guild channels are disabled until an admin enables them from the WebUI or runs `/register_channel` inside the channel.
 
 Codex authentication:
 
@@ -524,6 +559,16 @@ Run NordRelay behind your reverse proxy so the public URL forwards to `http://12
 - `/update` updates through npm or git depending on the detected install type, then restarts only on success. Requires `updates.run`.
 - `/update agents`, `/update <agent>`, `/update install <agent>`, `/update jobs`, `/update log <id>`, `/update cancel <id>`, and `/update input <id> <text>` manage agent CLI update and install jobs. Requires `updates.run`.
 
+## Discord Commands
+
+Discord supports slash commands and `/command` text messages for the shared command set. The primary differences from Telegram are:
+
+- `/register_channel` replaces `/register_chat` for guild channels and threads.
+- `/prompt <text>` is available for slash-command-only deployments where regular message content is disabled.
+- `/link <code>` consumes Discord link codes created in the WebUI or with `nordrelay user discord-link-code`.
+- `/queue`, `/sessions`, `/agent`, `/model`, `/reasoning`, `/launch`, and `/stop` use Discord buttons where component limits allow.
+- Discord does not support Telegram reactions or Telegram webhook transport; typing, message edits, attachments, files, DMs, guild channels, and threads are supported.
+
 ## Command Examples
 
 Switching to an existing thread:
@@ -704,6 +749,7 @@ Voice transcription uses `OPENAI_API_KEY`, not `CODEX_API_KEY`.
 
 Telegram:
 
+- `TELEGRAM_ENABLED`: starts the Telegram adapter. Defaults to `true`.
 - `TELEGRAM_BOT_TOKEN`: required BotFather token.
 - `TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS`: minimum interval for normal Telegram API sends. Defaults to `80`.
 - `TELEGRAM_EDIT_MIN_INTERVAL_MS`: minimum interval for Telegram message edits. Defaults to `1200`.
@@ -719,13 +765,25 @@ Telegram:
 - `TELEGRAM_QUIET_HOURS`: optional quiet-hour range in `HH-HH` format, for example `22-7`.
 - `TELEGRAM_REDACT_PATTERNS`: comma-separated regular expressions for additional Telegram/log redaction.
 
+Discord:
+
+- `DISCORD_ENABLED`: starts the Discord adapter. Defaults to `false`.
+- `DISCORD_BOT_TOKEN`: required Discord bot token when Discord is enabled.
+- `DISCORD_CLIENT_ID`: Discord application/client id used for slash-command registration.
+- `DISCORD_GUILD_IDS`: optional comma-separated guild ids for instant guild slash-command registration.
+- `DISCORD_ALLOWED_GUILD_IDS`: optional guild allow-list before user/group permissions are checked.
+- `DISCORD_ALLOWED_CHANNEL_IDS`: optional channel allow-list before user/group permissions are checked.
+- `DISCORD_MESSAGE_CONTENT_ENABLED`: reads regular Discord text messages as prompts. Defaults to `true`.
+- `DISCORD_COMMAND_MODE`: `slash`, `message`, or `both`. Defaults to `both`.
+- `DISCORD_AUTO_REGISTER_COMMANDS`: registers slash commands on startup when `DISCORD_CLIENT_ID` is set. Defaults to `true`.
+
 User management:
 
-- Users, groups, Telegram identities, Telegram group-chat access, and web sessions are stored in `~/.nordrelay/users.json`.
-- Manage users in the WebUI Users page or with `nordrelay user list`, `create-admin`, `create`, `reset-password`, `link-telegram`, and `link-code`.
+- Users, groups, Telegram identities, Telegram group-chat access, Discord identities, Discord channel access, and web sessions are stored in `~/.nordrelay/users.json`.
+- Manage users in the WebUI Users page or with `nordrelay user list`, `create-admin`, `create`, `reset-password`, `link-telegram`, `link-discord`, `link-code`, and `discord-link-code`.
 - Built-in groups are `admin`, `user`, and `readonly`.
 - Group permissions include `inspect`, `sessions.read`, `sessions.write`, `prompt.send`, `prompt.abort`, `files.read`, `files.write`, `settings.read`, `settings.write`, `auth.manage`, `diagnostics.read`, `logs.read`, `logs.clear`, `queue.read`, `queue.write`, `updates.run`, `system.restart`, `users.read`, `users.write`, and `audit.read`.
-- Custom groups can also restrict access to specific agent ids, workspace roots, and Telegram chat ids.
+- Custom groups can also restrict access to specific agent ids, workspace roots, Telegram chat ids, and Discord channel ids.
 
 Agent selection:
 
@@ -734,7 +792,7 @@ Agent selection:
 - `NORDRELAY_HERMES_ENABLED`: enables Hermes contexts through the Hermes API Server. Defaults to `false`.
 - `NORDRELAY_OPENCLAW_ENABLED`: enables OpenClaw contexts through the OpenClaw Gateway. Defaults to `false`.
 - `NORDRELAY_CLAUDE_CODE_ENABLED`: enables Claude Code contexts through the Claude Agent SDK. Defaults to `false`.
-- `NORDRELAY_DEFAULT_AGENT`: `codex`, `pi`, `hermes`, `openclaw`, or `claude-code`, used for new Telegram contexts. Defaults to the first enabled agent.
+- `NORDRELAY_DEFAULT_AGENT`: `codex`, `pi`, `hermes`, `openclaw`, or `claude-code`, used for new chat contexts. Defaults to the first enabled agent.
 - `NORDRELAY_STATE_BACKEND`: `json` or `sqlite`. JSON is the default; SQLite requires `better-sqlite3`.
 - `NORDRELAY_AUDIT_MAX_EVENTS`: maximum audit events retained. Defaults to `1000`.
 - `NORDRELAY_SESSION_LOCK_TTL_MS`: session write-lock TTL. Defaults to `1800000`.
