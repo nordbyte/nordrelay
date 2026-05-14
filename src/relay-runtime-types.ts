@@ -187,6 +187,46 @@ export interface WebTasksDto {
   recent: WebActivityEvent[];
 }
 
+export type UnifiedJobKind =
+  | "web-turn"
+  | "external-turn"
+  | "queued-prompt"
+  | "agent-update"
+  | "connector-update"
+  | "support-bundle";
+
+export type UnifiedJobStatus = "queued" | "running" | "completed" | "failed" | "aborted" | "info";
+
+export interface UnifiedJobDto {
+  id: string;
+  kind: UnifiedJobKind;
+  title: string;
+  status: UnifiedJobStatus;
+  source: WebActivitySource;
+  agentId?: AgentId;
+  agentLabel?: string;
+  threadId: string | null;
+  workspace?: string;
+  owner?: WebActivityActor;
+  startedAt: string;
+  updatedAt: string;
+  finishedAt?: string;
+  durationMs?: number;
+  summary?: string;
+  logPath?: string;
+  logTail?: string;
+  queueId?: string;
+  updateJobId?: string;
+  canCancel: boolean;
+  canRetry: boolean;
+  canReadLog: boolean;
+}
+
+export interface UnifiedJobsDto {
+  jobs: UnifiedJobDto[];
+  updatedAt: string;
+}
+
 export type { WebActivityActor, WebActivityCategory };
 
 export interface WebAdapterHealthDto {

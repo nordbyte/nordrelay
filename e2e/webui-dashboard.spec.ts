@@ -57,6 +57,10 @@ test.describe("NordRelay WebUI", () => {
     await page.getByRole("button", { name: "Version" }).click();
     await expect(page.locator("#versionPanel")).toContainText("NordRelay");
     await expect(page.locator("#agentUpdateJobs")).toContainText("No agent update jobs");
+
+    await page.getByRole("button", { name: "Tasks" }).click();
+    await expect(page.locator("#tasksList")).toContainText("Unified jobs");
+    await expect(page.locator("#tasksList")).toContainText("Queued prompt queue-web-1");
   });
 
   test("sends prompts through the typed API client and shows queued feedback", async ({ page }) => {
@@ -163,6 +167,9 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   }
   if (url.pathname === "/api/adapters/health") return { adapters: adaptersHealth() };
   if (url.pathname === "/api/tasks" || url.pathname === "/api/progress") return { current: null, external: null, queue: [], queuePaused: false, recent: [] };
+  if (url.pathname === "/api/jobs") return jobsList();
+  if (url.pathname.match(/^\/api\/jobs\/[^/]+\/log$/)) return { job: jobsList().jobs[0], plain: "Queued prompt log" };
+  if (url.pathname.match(/^\/api\/jobs\/[^/]+\/action$/)) return jobsList();
   if (url.pathname === "/api/sessions") return sessions();
   if (url.pathname === "/api/sessions/detail") return sessionDetail();
   if (url.pathname === "/api/control-options") return controls(url.searchParams.get("agent") || "codex");
@@ -291,6 +298,30 @@ function sessionDetail() {
     messages: chatMessages(),
     activity: [],
     usageRows: [["Context", "12%"], ["Tokens", "1.2K in / 320 out"]],
+  };
+}
+
+function jobsList() {
+  return {
+    updatedAt: now(),
+    jobs: [
+      {
+        id: "queue:queue-web-1",
+        kind: "queued-prompt",
+        title: "Queued prompt queue-web-1",
+        status: "queued",
+        source: "web",
+        threadId: "codex-thread-1",
+        workspace: "/tmp/project",
+        startedAt: now(),
+        updatedAt: now(),
+        summary: "Run a browser smoke test",
+        queueId: "queue-web-1",
+        canCancel: true,
+        canRetry: true,
+        canReadLog: true,
+      },
+    ],
   };
 }
 

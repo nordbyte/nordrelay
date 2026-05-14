@@ -165,6 +165,11 @@ function createConfig(overrides: Partial<ConnectorConfig> = {}): ConnectorConfig
     telegramBotToken: "123:token",
     telegramRateLimitMinIntervalMs: 0,
     telegramEditMinIntervalMs: 0,
+    mirrorMode: "status",
+    mirrorMinUpdateMs: 0,
+    notifyMode: "minimal",
+    quietHours: null,
+    autoSendArtifacts: false,
     telegramMirrorMode: "status",
     telegramMirrorMinUpdateMs: 0,
     telegramNotifyMode: "minimal",
@@ -176,6 +181,20 @@ function createConfig(overrides: Partial<ConnectorConfig> = {}): ConnectorConfig
     telegramWebhookPort: 8080,
     telegramWebhookPath: "/telegram/webhook",
     telegramWebhookSecret: undefined,
+    discordEnabled: false,
+    discordBotToken: undefined,
+    discordClientId: undefined,
+    discordGuildIds: [],
+    discordAllowedGuildIds: [],
+    discordAllowedChannelIds: [],
+    discordMessageContentEnabled: true,
+    discordCommandMode: "both",
+    discordAutoRegisterCommands: true,
+    discordMirrorMode: "status",
+    discordMirrorMinUpdateMs: 0,
+    discordNotifyMode: "minimal",
+    discordQuietHours: null,
+    discordAutoSendArtifacts: false,
     workspace,
     workspaceAllowedRoots: [],
     workspaceWarnRoots: [],
@@ -895,5 +914,45 @@ describe("bot flow integration", () => {
 
     expect(api.answeredCallbacks.at(-1)).toBe("Access denied: files.write permission required.");
     expect(registry.getOrCreate).not.toHaveBeenCalled();
+  });
+
+  it("denies unlinked Telegram prompts without typing or session execution", async () => {
+    const { registry, session } = createFakeRegistry();
+    const bot = createBot(createConfig(), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("run something", 555) as any);
+
+    expect(api.sentMessages.at(-1)?.text).toContain("Unauthorized");
+    expect(api.chatActions).toHaveLength(0);
+    expect(session.prompt).not.toHaveBeenCalled();
+    expect(registry.getOrCreate).not.toHaveBeenCalled();
+  });
+
+  it("denies Telegram prompt, logs, and artifacts when the linked user lacks permissions", async () => {
+    const { registry, session } = createFakeRegistry();
+    const config = createConfig();
+    const users = new UserStore(config.workspace);
+    const group = users.createGroup({ name: "Inspect Only", permissions: ["inspect"] });
+    users.createUser({
+      email: "inspect@example.com",
+      displayName: "Inspect",
+      password: "password123",
+      groupIds: [group.id],
+      telegramUserId: 777,
+    });
+    const bot = createBot(config, registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("run denied prompt", 777) as any);
+    await bot.handleUpdate(messageUpdate("/logs", 777) as any);
+    await bot.handleUpdate(messageUpdate("/artifacts", 777) as any);
+
+    expect(api.sentMessages.some((message) => message.text.includes("Access denied: prompt.send permission required."))).toBe(true);
+    expect(api.sentMessages.some((message) => message.text.includes("Access denied: logs.read permission required."))).toBe(true);
+    expect(api.sentMessages.some((message) => message.text.includes("Access denied: files.read permission required."))).toBe(true);
+    expect(api.chatActions).toHaveLength(0);
+    expect(session.prompt).not.toHaveBeenCalled();
+    expect(mockOperations.readFormattedLogTail).not.toHaveBeenCalled();
   });
 });

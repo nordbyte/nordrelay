@@ -79,5 +79,6 @@ describe("Discord security boundaries", () => {
     expect(requiredPermissionForDiscordCommand("queue", "cancel abc")).toBe("queue.write");
     expect(permissionForDiscordAction("discord_queue_cancel:ctx:abc")).toBe("queue.write");
     expect(permissionForDiscordAction("discord_abort:ctx")).toBe("prompt.abort");
+    expect(permissionForDiscordAction("discord_unknown:ctx")).toBeNull();
   });
 });

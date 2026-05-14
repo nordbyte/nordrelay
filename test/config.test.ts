@@ -17,6 +17,11 @@ describe("loadConfig", () => {
     delete process.env.TELEGRAM_BOT_TOKEN;
     delete process.env.TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS;
     delete process.env.TELEGRAM_EDIT_MIN_INTERVAL_MS;
+    delete process.env.NORDRELAY_CLI_MIRROR_MODE;
+    delete process.env.NORDRELAY_CLI_MIRROR_MIN_UPDATE_MS;
+    delete process.env.NORDRELAY_NOTIFY_MODE;
+    delete process.env.NORDRELAY_QUIET_HOURS;
+    delete process.env.NORDRELAY_AUTO_SEND_ARTIFACTS;
     delete process.env.TELEGRAM_CLI_MIRROR_MODE;
     delete process.env.TELEGRAM_CLI_MIRROR_MIN_UPDATE_MS;
     delete process.env.TELEGRAM_NOTIFY_MODE;
@@ -37,6 +42,11 @@ describe("loadConfig", () => {
     delete process.env.DISCORD_MESSAGE_CONTENT_ENABLED;
     delete process.env.DISCORD_COMMAND_MODE;
     delete process.env.DISCORD_AUTO_REGISTER_COMMANDS;
+    delete process.env.DISCORD_CLI_MIRROR_MODE;
+    delete process.env.DISCORD_CLI_MIRROR_MIN_UPDATE_MS;
+    delete process.env.DISCORD_NOTIFY_MODE;
+    delete process.env.DISCORD_QUIET_HOURS;
+    delete process.env.DISCORD_AUTO_SEND_ARTIFACTS;
     delete process.env.CODEX_API_KEY;
     delete process.env.CODEX_MODEL;
     delete process.env.CODEX_SYNC_INTERVAL_MS;
@@ -124,6 +134,11 @@ describe("loadConfig", () => {
       telegramBotToken: "bot-token",
       telegramRateLimitMinIntervalMs: 80,
       telegramEditMinIntervalMs: 1_200,
+      mirrorMode: "status",
+      mirrorMinUpdateMs: 4_000,
+      notifyMode: "minimal",
+      quietHours: null,
+      autoSendArtifacts: false,
       telegramMirrorMode: "status",
       telegramMirrorMinUpdateMs: 4_000,
       telegramNotifyMode: "minimal",
@@ -144,6 +159,11 @@ describe("loadConfig", () => {
       discordMessageContentEnabled: true,
       discordCommandMode: "both",
       discordAutoRegisterCommands: true,
+      discordMirrorMode: "status",
+      discordMirrorMinUpdateMs: 4_000,
+      discordNotifyMode: "minimal",
+      discordQuietHours: null,
+      discordAutoSendArtifacts: false,
       workspace: process.cwd(),
       workspaceAllowedRoots: [],
       workspaceWarnRoots: [],
@@ -282,6 +302,11 @@ describe("loadConfig", () => {
     expect(config.codexExternalBusyStaleMs).toBe(300_000);
     expect(config.telegramRateLimitMinIntervalMs).toBe(80);
     expect(config.telegramEditMinIntervalMs).toBe(1_200);
+    expect(config.mirrorMode).toBe("status");
+    expect(config.mirrorMinUpdateMs).toBe(4_000);
+    expect(config.notifyMode).toBe("minimal");
+    expect(config.quietHours).toBeNull();
+    expect(config.autoSendArtifacts).toBe(false);
     expect(config.telegramMirrorMode).toBe("status");
     expect(config.telegramMirrorMinUpdateMs).toBe(4_000);
     expect(config.telegramNotifyMode).toBe("minimal");
@@ -302,6 +327,11 @@ describe("loadConfig", () => {
     expect(config.discordMessageContentEnabled).toBe(true);
     expect(config.discordCommandMode).toBe("both");
     expect(config.discordAutoRegisterCommands).toBe(true);
+    expect(config.discordMirrorMode).toBe("status");
+    expect(config.discordMirrorMinUpdateMs).toBe(4_000);
+    expect(config.discordNotifyMode).toBe("minimal");
+    expect(config.discordQuietHours).toBeNull();
+    expect(config.discordAutoSendArtifacts).toBe(false);
     expect(config.maxFileSize).toBe(20 * 1024 * 1024);
     expect(config.artifactRetentionDays).toBe(7);
     expect(config.artifactMaxTurnDirs).toBe(30);
@@ -496,8 +526,39 @@ describe("loadConfig", () => {
     expect(config.artifactMaxInboxDirs).toBe(12);
   });
 
-  it("parses TELEGRAM_AUTO_SEND_ARTIFACTS", () => {
+  it("parses global channel defaults and channel overrides", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.NORDRELAY_CLI_MIRROR_MODE = "full";
+    process.env.NORDRELAY_CLI_MIRROR_MIN_UPDATE_MS = "9000";
+    process.env.NORDRELAY_NOTIFY_MODE = "all";
+    process.env.NORDRELAY_QUIET_HOURS = "22-7";
+    process.env.NORDRELAY_AUTO_SEND_ARTIFACTS = "true";
+    process.env.DISCORD_CLI_MIRROR_MODE = "final";
+    process.env.DISCORD_NOTIFY_MODE = "minimal";
+    process.env.DISCORD_QUIET_HOURS = "off";
+    process.env.DISCORD_AUTO_SEND_ARTIFACTS = "false";
+
+    const config = loadConfig();
+
+    expect(config.mirrorMode).toBe("full");
+    expect(config.mirrorMinUpdateMs).toBe(9000);
+    expect(config.notifyMode).toBe("all");
+    expect(config.quietHours).toEqual({ startHour: 22, endHour: 7 });
+    expect(config.autoSendArtifacts).toBe(true);
+    expect(config.telegramMirrorMode).toBe("full");
+    expect(config.telegramMirrorMinUpdateMs).toBe(9000);
+    expect(config.telegramNotifyMode).toBe("all");
+    expect(config.telegramQuietHours).toEqual({ startHour: 22, endHour: 7 });
+    expect(config.telegramAutoSendArtifacts).toBe(true);
+    expect(config.discordMirrorMode).toBe("final");
+    expect(config.discordNotifyMode).toBe("minimal");
+    expect(config.discordQuietHours).toBeNull();
+    expect(config.discordAutoSendArtifacts).toBe(false);
+  });
+
+  it("parses TELEGRAM_AUTO_SEND_ARTIFACTS as a Telegram override", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.NORDRELAY_AUTO_SEND_ARTIFACTS = "false";
     process.env.TELEGRAM_AUTO_SEND_ARTIFACTS = "true";
 
     expect(loadConfig().telegramAutoSendArtifacts).toBe(true);

@@ -16,6 +16,17 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("/api/agent-updates");
   });
 
+  it("includes unified jobs on the Tasks page", () => {
+    const js = dashboardJs();
+    const contract = readFileSync("src/web-api-contract.ts", "utf8");
+
+    expect(js).toContain("function renderUnifiedJobs");
+    expect(js).toContain("/api/jobs");
+    expect(js).toContain("data-job-action");
+    expect(contract).toContain('exact("/api/jobs"');
+    expect(contract).toContain('dynamic("/api/jobs/:id/action"');
+  });
+
   it("refreshes the active page after an agent switch", () => {
     const js = dashboardJs();
 

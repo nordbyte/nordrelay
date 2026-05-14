@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+import type { Permission } from "./access-control.js";
 import type { AgentId } from "./agent.js";
 import type { ActiveSessionsDto, RelayRuntime, WebTasksDto } from "./relay-runtime.js";
 import type { AuthenticatedUser, UserStore } from "./user-management.js";
@@ -103,6 +104,34 @@ export async function handleDashboardRuntimeRoute(
     return true;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/jobs") {
+    sendJson(res, 200, await runtime.jobs());
+    return true;
+  }
+
+  const jobLogMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/log$/);
+  if (req.method === "GET" && jobLogMatch?.[1]) {
+    sendJson(res, 200, await runtime.jobLog(decodeURIComponent(jobLogMatch[1])));
+    return true;
+  }
+
+  const jobActionMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/action$/);
+  if (req.method === "POST" && jobActionMatch?.[1]) {
+    const body = await readJsonBody(req);
+    const id = decodeURIComponent(jobActionMatch[1]);
+    const action = stringField(body, "action");
+    if (action !== "cancel" && action !== "retry") {
+      throw new Error("Unsupported job action.");
+    }
+    const permission = permissionForJobAction(id, action);
+    if (!users.hasPermission(authUser, permission)) {
+      sendJson(res, 403, { error: `Access denied: ${permission} permission required.` });
+      return true;
+    }
+    sendJson(res, 200, await runtime.jobAction(id, action, options.activityActor));
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/active-sessions") {
     sendJson(res, 200, options.scopedActiveSessions(authUser, await runtime.activeSessions()));
     return true;
@@ -145,4 +174,17 @@ export async function handleDashboardRuntimeRoute(
   }
 
   return false;
+}
+
+function permissionForJobAction(id: string, action: "cancel" | "retry"): Permission {
+  if (id === "web:current" && action === "cancel") {
+    return "prompt.abort";
+  }
+  if (id.startsWith("queue:")) {
+    return "queue.write";
+  }
+  if (id.startsWith("support-bundle:")) {
+    return "diagnostics.read";
+  }
+  return "updates.run";
 }

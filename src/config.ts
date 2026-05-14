@@ -26,6 +26,8 @@ import {
   parseNotifyMode,
   parseQuietHours,
   parseVoiceBackendPreference,
+  type ChannelMirrorMode,
+  type ChannelNotifyMode,
   type QuietHours,
   type TelegramMirrorMode,
   type TelegramNotifyMode,
@@ -41,6 +43,11 @@ export interface ConnectorConfig {
   telegramBotToken: string;
   telegramRateLimitMinIntervalMs: number;
   telegramEditMinIntervalMs: number;
+  mirrorMode: ChannelMirrorMode;
+  mirrorMinUpdateMs: number;
+  notifyMode: ChannelNotifyMode;
+  quietHours: QuietHours | null;
+  autoSendArtifacts: boolean;
   telegramMirrorMode: TelegramMirrorMode;
   telegramMirrorMinUpdateMs: number;
   telegramNotifyMode: TelegramNotifyMode;
@@ -61,6 +68,11 @@ export interface ConnectorConfig {
   discordMessageContentEnabled: boolean;
   discordCommandMode: "slash" | "message" | "both";
   discordAutoRegisterCommands: boolean;
+  discordMirrorMode: ChannelMirrorMode;
+  discordMirrorMinUpdateMs: number;
+  discordNotifyMode: ChannelNotifyMode;
+  discordQuietHours: QuietHours | null;
+  discordAutoSendArtifacts: boolean;
   workspace: string;
   workspaceAllowedRoots: string[];
   workspaceWarnRoots: string[];
@@ -136,10 +148,15 @@ export function loadConfig(): ConnectorConfig {
   const telegramBotToken = telegramEnabled ? requireEnv("TELEGRAM_BOT_TOKEN") : "";
   const telegramRateLimitMinIntervalMs = parseNonNegativeIntegerEnv(optionalString(process.env.TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS), 80, "TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS");
   const telegramEditMinIntervalMs = parseNonNegativeIntegerEnv(optionalString(process.env.TELEGRAM_EDIT_MIN_INTERVAL_MS), 1_200, "TELEGRAM_EDIT_MIN_INTERVAL_MS");
-  const telegramMirrorMode = parseMirrorMode(optionalString(process.env.TELEGRAM_CLI_MIRROR_MODE), "status");
-  const telegramMirrorMinUpdateMs = parseNonNegativeIntegerEnv(optionalString(process.env.TELEGRAM_CLI_MIRROR_MIN_UPDATE_MS), 4_000, "TELEGRAM_CLI_MIRROR_MIN_UPDATE_MS");
-  const telegramNotifyMode = parseNotifyMode(optionalString(process.env.TELEGRAM_NOTIFY_MODE), "minimal");
-  const telegramQuietHours = parseQuietHours(optionalString(process.env.TELEGRAM_QUIET_HOURS));
+  const mirrorMode = parseMirrorMode(optionalString(process.env.NORDRELAY_CLI_MIRROR_MODE), "status");
+  const mirrorMinUpdateMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_CLI_MIRROR_MIN_UPDATE_MS), 4_000, "NORDRELAY_CLI_MIRROR_MIN_UPDATE_MS");
+  const notifyMode = parseNotifyMode(optionalString(process.env.NORDRELAY_NOTIFY_MODE), "minimal");
+  const quietHours = parseQuietHoursOverride(process.env.NORDRELAY_QUIET_HOURS, null);
+  const autoSendArtifacts = parseBooleanEnv(optionalString(process.env.NORDRELAY_AUTO_SEND_ARTIFACTS), false);
+  const telegramMirrorMode = parseMirrorMode(optionalString(process.env.TELEGRAM_CLI_MIRROR_MODE), mirrorMode);
+  const telegramMirrorMinUpdateMs = parseNonNegativeIntegerEnv(optionalString(process.env.TELEGRAM_CLI_MIRROR_MIN_UPDATE_MS), mirrorMinUpdateMs, "TELEGRAM_CLI_MIRROR_MIN_UPDATE_MS");
+  const telegramNotifyMode = parseNotifyMode(optionalString(process.env.TELEGRAM_NOTIFY_MODE), notifyMode);
+  const telegramQuietHours = parseQuietHoursOverride(process.env.TELEGRAM_QUIET_HOURS, quietHours);
   const telegramRedactPatterns = parseOptionalStringList(optionalString(process.env.TELEGRAM_REDACT_PATTERNS));
   const telegramTransport = parseTelegramTransport(optionalString(process.env.TELEGRAM_TRANSPORT));
   const telegramWebhookUrl = optionalString(process.env.TELEGRAM_WEBHOOK_URL);
@@ -156,6 +173,10 @@ export function loadConfig(): ConnectorConfig {
   const discordMessageContentEnabled = parseBooleanEnv(optionalString(process.env.DISCORD_MESSAGE_CONTENT_ENABLED), true);
   const discordCommandMode = parseDiscordCommandMode(optionalString(process.env.DISCORD_COMMAND_MODE));
   const discordAutoRegisterCommands = parseBooleanEnv(optionalString(process.env.DISCORD_AUTO_REGISTER_COMMANDS), true);
+  const discordMirrorMode = parseMirrorMode(optionalString(process.env.DISCORD_CLI_MIRROR_MODE), mirrorMode);
+  const discordMirrorMinUpdateMs = parseNonNegativeIntegerEnv(optionalString(process.env.DISCORD_CLI_MIRROR_MIN_UPDATE_MS), mirrorMinUpdateMs, "DISCORD_CLI_MIRROR_MIN_UPDATE_MS");
+  const discordNotifyMode = parseNotifyMode(optionalString(process.env.DISCORD_NOTIFY_MODE), notifyMode);
+  const discordQuietHours = parseQuietHoursOverride(process.env.DISCORD_QUIET_HOURS, quietHours);
   const workspace = resolveWorkspace();
   const workspaceAllowedRoots = parsePathList(optionalString(process.env.WORKSPACE_ALLOWED_ROOTS));
   const workspaceWarnRoots = parsePathList(optionalString(process.env.WORKSPACE_WARN_ROOTS));
@@ -166,7 +187,8 @@ export function loadConfig(): ConnectorConfig {
   const artifactMaxInboxDirs = parsePositiveIntegerEnv(optionalString(process.env.ARTIFACT_MAX_INBOX_DIRS), 30, "ARTIFACT_MAX_INBOX_DIRS");
   const artifactIgnoreDirs = parseOptionalStringList(optionalString(process.env.ARTIFACT_IGNORE_DIRS));
   const artifactIgnoreGlobs = parseOptionalStringList(optionalString(process.env.ARTIFACT_IGNORE_GLOBS));
-  const telegramAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.TELEGRAM_AUTO_SEND_ARTIFACTS), false);
+  const telegramAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.TELEGRAM_AUTO_SEND_ARTIFACTS), autoSendArtifacts);
+  const discordAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.DISCORD_AUTO_SEND_ARTIFACTS), autoSendArtifacts);
   const codexEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_CODEX_ENABLED), true);
   const codexApiKey = optionalString(process.env.CODEX_API_KEY);
   const codexModel = optionalString(process.env.CODEX_MODEL);
@@ -268,6 +290,11 @@ export function loadConfig(): ConnectorConfig {
     telegramBotToken,
     telegramRateLimitMinIntervalMs,
     telegramEditMinIntervalMs,
+    mirrorMode,
+    mirrorMinUpdateMs,
+    notifyMode,
+    quietHours,
+    autoSendArtifacts,
     telegramMirrorMode,
     telegramMirrorMinUpdateMs,
     telegramNotifyMode,
@@ -288,6 +315,11 @@ export function loadConfig(): ConnectorConfig {
     discordMessageContentEnabled,
     discordCommandMode,
     discordAutoRegisterCommands,
+    discordMirrorMode,
+    discordMirrorMinUpdateMs,
+    discordNotifyMode,
+    discordQuietHours,
+    discordAutoSendArtifacts,
     workspace,
     workspaceAllowedRoots,
     workspaceWarnRoots,
@@ -420,6 +452,17 @@ function requireEnv(name: string): string {
 function optionalString(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function parseQuietHoursOverride(value: string | undefined, fallback: QuietHours | null): QuietHours | null {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+  if (normalized === "off" || normalized === "none" || normalized === "false" || normalized === "0") {
+    return null;
+  }
+  return parseQuietHours(normalized);
 }
 
 function parseOptionalStringList(raw: string | undefined): string[] {

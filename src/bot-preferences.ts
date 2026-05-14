@@ -1,8 +1,10 @@
 import type { ChannelContextKey } from "./context-key.js";
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "./state-backend.js";
 
-export type TelegramMirrorMode = "off" | "status" | "final" | "full";
-export type TelegramNotifyMode = "off" | "minimal" | "all";
+export type ChannelMirrorMode = "off" | "status" | "final" | "full";
+export type ChannelNotifyMode = "off" | "minimal" | "all";
+export type TelegramMirrorMode = ChannelMirrorMode;
+export type TelegramNotifyMode = ChannelNotifyMode;
 export type VoiceBackendPreference = "auto" | "parakeet" | "faster-whisper" | "openai";
 
 export interface QuietHours {

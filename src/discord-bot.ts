@@ -399,7 +399,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       externalMirrors.set(contextKey, state);
     }
 
-    const mirrorMode = preferencesStore.get(contextKey).mirrorMode ?? config.telegramMirrorMode;
+    const mirrorMode = preferencesStore.get(contextKey).mirrorMode ?? config.discordMirrorMode;
     if (snapshot.activity.active) {
       state.turnId = snapshot.activity.turnId;
       state.startedAt = snapshot.activity.startedAt;
@@ -439,7 +439,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       const status = renderExternalMirrorStatus(snapshot, promptStore.list(contextKey).length);
       const statusMessage = { text: status.html, fallbackText: status.plain, parseMode: "html" as const };
       const now = Date.now();
-      const canUpdateStatus = !state.latestStatusAt || now - state.latestStatusAt >= config.telegramMirrorMinUpdateMs;
+      const canUpdateStatus = !state.latestStatusAt || now - state.latestStatusAt >= config.discordMirrorMinUpdateMs;
       if (!state.statusMessageId) {
         const sent = await runtime.sendMessage(context, statusMessage);
         state.statusMessageId = sent.messageId;
@@ -792,7 +792,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       updateSession(request, session);
       await finalize();
       await artifactService.persistWorkspaceArtifactsForTurn(session.getInfo().workspace, turnId, new Date(startedAt));
-      if (config.telegramAutoSendArtifacts) {
+      if (config.discordAutoSendArtifacts) {
         await sendRecentArtifacts(request, session, new Date(startedAt), turnId);
       }
       appendActivity(request, {
@@ -927,7 +927,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       await runtime.sendMessage(context, { text: summary, fallbackText: summary });
     }
 
-    if (config.telegramAutoSendArtifacts) {
+    if (config.discordAutoSendArtifacts) {
       for (const artifact of (persisted?.artifacts ?? report.artifacts).slice(0, 5)) {
         await runtime.sendFile(context, { localPath: artifact.localPath, name: artifact.name }).catch((error) => {
           console.error(`Failed to send Discord CLI artifact ${artifact.name}:`, error);
@@ -939,7 +939,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     activityStore.append({
       source: "cli",
       status: "info",
-      type: config.telegramAutoSendArtifacts ? "artifacts_sent" : "artifacts_detected",
+      type: config.discordAutoSendArtifacts ? "artifacts_sent" : "artifacts_detected",
       contextKey,
       threadId: info.threadId,
       workspace: info.workspace,
@@ -1406,13 +1406,13 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
   };
 
   const commandMirror = async (request: DiscordRequest, argument: string): Promise<void> => {
-    const mode = parseMirrorMode(argument, preferencesStore.get(request.contextKey).mirrorMode ?? config.telegramMirrorMode);
+    const mode = parseMirrorMode(argument, preferencesStore.get(request.contextKey).mirrorMode ?? config.discordMirrorMode);
     preferencesStore.update(request.contextKey, { mirrorMode: mode });
     await reply(request, `CLI mirror mode: ${mode}`);
   };
 
   const commandNotify = async (request: DiscordRequest, argument: string): Promise<void> => {
-    const mode = parseNotifyMode(argument, preferencesStore.get(request.contextKey).notifyMode ?? config.telegramNotifyMode);
+    const mode = parseNotifyMode(argument, preferencesStore.get(request.contextKey).notifyMode ?? config.discordNotifyMode);
     preferencesStore.update(request.contextKey, { notifyMode: mode });
     await reply(request, `Notify mode: ${mode}`);
   };
@@ -1808,7 +1808,7 @@ export function permissionForDiscordAction(action: string): Permission | null {
   if (action.startsWith("discord_queue_")) return "queue.write";
   if (action.startsWith("discord_abort:")) return "prompt.abort";
   if (action.startsWith("discord_pick:")) return "sessions.write";
-  return "inspect";
+  return null;
 }
 
 function discordCommands(): Array<Record<string, unknown>> {

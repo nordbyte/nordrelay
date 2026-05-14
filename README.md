@@ -205,6 +205,8 @@ Operations:
 - `/logs` renders redacted connector, NordRelay update, and agent update logs with local-time timestamps, levels, file path, last-modified time, and highlighted warnings/errors.
 - Logs can be emitted as timestamped plain text or JSON records with `CONNECTOR_LOG_FORMAT`.
 - Telegram sends/edits/documents are routed through a rate-limit queue that honors Telegram retry-after responses.
+- Mirror, notification, quiet-hour, and automatic artifact-delivery defaults are configured through channel-neutral `NORDRELAY_*` settings, with Telegram and Discord override keys when a channel should differ.
+- The WebUI Tasks page includes a unified Jobs view for active WebUI turns, external CLI turns, queued prompts, agent update/install jobs, self-updates, and diagnostics bundle exports, with log, cancel, and retry actions where supported.
 - Context metadata, queues, and preferences are written atomically with backup recovery.
 - Context metadata, queues, preferences, audit events, and locks can use JSON files or the optional SQLite state backend with `NORDRELAY_STATE_BACKEND=sqlite`.
 - Runtime config, state, and logs are written under `~/.nordrelay/`.
@@ -457,6 +459,7 @@ The dashboard is a second NordRelay client next to Telegram. It can:
 - Control the active session model, reasoning/thinking, fast mode, and launch profile directly from the chat view.
 - Abort turns, hand sessions back to the native CLI, and inspect the active session.
 - Manage queued prompts with pause/resume, run, cancel, reorder buttons, and drag-and-drop prioritization.
+- Inspect unified jobs across queued prompts, active turns, mirrored CLI work, agent updates, self-updates, and support-bundle exports.
 - Browse, preview, download, ZIP, and delete artifacts.
 - Inspect the activity timeline for WebUI and mirrored CLI turns.
 - Edit all supported runtime settings from tabbed Settings groups with option selects, validation feedback, and restart actions.
@@ -759,10 +762,12 @@ Telegram:
 - `TELEGRAM_WEBHOOK_PORT`: local bind port for webhook mode. Defaults to `8080`.
 - `TELEGRAM_WEBHOOK_PATH`: webhook request path. Defaults to `/telegram/webhook`.
 - `TELEGRAM_WEBHOOK_SECRET`: optional Telegram webhook secret token.
-- `TELEGRAM_CLI_MIRROR_MODE`: default CLI mirror mode: `off`, `status`, `final`, or `full`. Defaults to `status`.
-- `TELEGRAM_CLI_MIRROR_MIN_UPDATE_MS`: minimum interval for mirrored CLI status edits. Defaults to `4000`.
-- `TELEGRAM_NOTIFY_MODE`: default notification mode: `off`, `minimal`, or `all`. Defaults to `minimal`.
-- `TELEGRAM_QUIET_HOURS`: optional quiet-hour range in `HH-HH` format, for example `22-7`.
+- `NORDRELAY_CLI_MIRROR_MODE`: default CLI mirror mode for chat adapters: `off`, `status`, `final`, or `full`. Defaults to `status`.
+- `NORDRELAY_CLI_MIRROR_MIN_UPDATE_MS`: default minimum interval for mirrored CLI status edits. Defaults to `4000`.
+- `NORDRELAY_NOTIFY_MODE`: default notification mode for chat adapters: `off`, `minimal`, or `all`. Defaults to `minimal`.
+- `NORDRELAY_QUIET_HOURS`: optional default quiet-hour range in `HH-HH` format, for example `22-7`; use `off` in a channel override to disable inherited quiet hours.
+- `NORDRELAY_AUTO_SEND_ARTIFACTS`: default automatic artifact summaries/uploads for chat adapters. Defaults to `false`.
+- `TELEGRAM_CLI_MIRROR_MODE`, `TELEGRAM_CLI_MIRROR_MIN_UPDATE_MS`, `TELEGRAM_NOTIFY_MODE`, `TELEGRAM_QUIET_HOURS`, and `TELEGRAM_AUTO_SEND_ARTIFACTS`: optional Telegram-specific overrides.
 - `TELEGRAM_REDACT_PATTERNS`: comma-separated regular expressions for additional Telegram/log redaction.
 
 Discord:
@@ -776,6 +781,7 @@ Discord:
 - `DISCORD_MESSAGE_CONTENT_ENABLED`: reads regular Discord text messages as prompts. Defaults to `true`.
 - `DISCORD_COMMAND_MODE`: `slash`, `message`, or `both`. Defaults to `both`.
 - `DISCORD_AUTO_REGISTER_COMMANDS`: registers slash commands on startup when `DISCORD_CLIENT_ID` is set. Defaults to `true`.
+- `DISCORD_CLI_MIRROR_MODE`, `DISCORD_CLI_MIRROR_MIN_UPDATE_MS`, `DISCORD_NOTIFY_MODE`, `DISCORD_QUIET_HOURS`, and `DISCORD_AUTO_SEND_ARTIFACTS`: optional Discord-specific overrides for the channel-neutral defaults.
 
 User management:
 

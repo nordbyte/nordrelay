@@ -69,6 +69,8 @@ import type {
   RelayEvent,
   RelaySnapshot,
   SessionPageDto,
+  UnifiedJobDto,
+  UnifiedJobsDto,
   UploadPromptFile,
   UploadPromptResult,
   WebAdapterHealthDto,
@@ -91,6 +93,8 @@ export type {
   RelayEvent,
   RelaySnapshot,
   SessionPageDto,
+  UnifiedJobDto,
+  UnifiedJobsDto,
   UploadPromptFile,
   UploadPromptResult,
   WebAdapterHealthDto,
@@ -427,6 +431,166 @@ export class RelayRuntime {
       queuePaused: this.queuePaused(),
       recent: this.activity({ limit: 20 }),
     };
+  }
+
+  async jobs(): Promise<UnifiedJobsDto> {
+    const jobs: UnifiedJobDto[] = [];
+    const current = this.currentProgress;
+    if (current) {
+      jobs.push(taskToUnifiedJob("web:current", "web-turn", "Current WebUI turn", current, {
+        canCancel: current.status === "running",
+        canRetry: false,
+        canReadLog: false,
+      }));
+    }
+
+    const external = this.externalActivityMonitor.task();
+    if (external) {
+      jobs.push(taskToUnifiedJob(`external:${external.agentId ?? "agent"}:${external.threadId ?? "pending"}`, "external-turn", "External CLI turn", external, {
+        canCancel: false,
+        canRetry: false,
+        canReadLog: false,
+      }));
+    }
+
+    for (const item of this.queueService.rawList()) {
+      const createdAt = new Date(item.createdAt).toISOString();
+      jobs.push({
+        id: `queue:${item.id}`,
+        kind: "queued-prompt",
+        title: `Queued prompt ${item.id}`,
+        status: "queued",
+        source: "web",
+        threadId: null,
+        workspace: this.config.workspace,
+        owner: item.activityActor,
+        startedAt: createdAt,
+        updatedAt: createdAt,
+        summary: item.description,
+        queueId: item.id,
+        logTail: item.lastError,
+        canCancel: true,
+        canRetry: true,
+        canReadLog: true,
+      });
+    }
+
+    for (const job of this.agentUpdates.list()) {
+      jobs.push({
+        id: `agent-update:${job.id}`,
+        kind: "agent-update",
+        title: `${job.agentLabel} ${job.operation}`,
+        status: agentUpdateStatusToUnified(job.status),
+        source: "web",
+        agentId: job.agentId,
+        agentLabel: job.agentLabel,
+        threadId: null,
+        workspace: this.config.workspace,
+        owner: this.agentUpdateActors.get(job.id),
+        startedAt: job.startedAt,
+        updatedAt: job.updatedAt,
+        finishedAt: job.finishedAt,
+        summary: job.error || job.summary,
+        logPath: job.logPath,
+        logTail: job.outputTail,
+        updateJobId: job.id,
+        canCancel: job.status === "running",
+        canRetry: job.status !== "running",
+        canReadLog: true,
+      });
+    }
+
+    for (const event of this.activity({ limit: 100 })) {
+      if (event.type === "diagnostics_bundle_exported") {
+        jobs.push(activityToUnifiedJob(event, "support-bundle", "Diagnostics support bundle", {
+          canCancel: false,
+          canRetry: true,
+          canReadLog: Boolean(event.detail),
+        }));
+      } else if (event.type === "update_started") {
+        jobs.push(activityToUnifiedJob(event, "connector-update", "NordRelay update", {
+          canCancel: false,
+          canRetry: true,
+          canReadLog: Boolean(event.detail),
+        }));
+      }
+    }
+
+    return {
+      jobs: dedupeJobs(jobs).sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  async jobLog(id: string): Promise<{ job: UnifiedJobDto | null; plain: string }> {
+    if (id.startsWith("agent-update:")) {
+      const updateId = id.slice("agent-update:".length);
+      const log = this.agentUpdates.readLog(updateId);
+      return { job: (await this.jobs()).jobs.find((job) => job.id === id) ?? null, plain: log.plain };
+    }
+    if (id.startsWith("queue:")) {
+      const queueId = id.slice("queue:".length);
+      const item = this.queueService.rawList().find((candidate) => candidate.id === queueId);
+      return {
+        job: (await this.jobs()).jobs.find((job) => job.id === id) ?? null,
+        plain: item ? [
+          `Queued prompt: ${item.id}`,
+          `Created: ${new Date(item.createdAt).toISOString()}`,
+          `Attempts: ${item.attempts ?? 0}`,
+          `Description: ${item.description}`,
+          item.lastError ? `Last error: ${item.lastError}` : "",
+        ].filter(Boolean).join("\n") : "Queued prompt not found.",
+      };
+    }
+    const job = (await this.jobs()).jobs.find((candidate) => candidate.id === id) ?? null;
+    return { job, plain: job?.logTail || job?.logPath || job?.summary || "No log available for this job." };
+  }
+
+  async jobAction(id: string, action: "cancel" | "retry", actor?: WebActivityActor): Promise<UnifiedJobsDto> {
+    if (id === "web:current" && action === "cancel") {
+      await this.abort(actor);
+      return this.jobs();
+    }
+    if (id.startsWith("queue:")) {
+      const queueId = id.slice("queue:".length);
+      this.queueService.apply(action === "cancel" ? "cancel" : "run", queueId);
+      this.broadcast({ type: "queue_update", queue: this.queue(), paused: this.queuePaused() });
+      this.appendActivity({
+        source: "web",
+        status: action === "cancel" ? "aborted" : "queued",
+        type: action === "cancel" ? "job_cancelled" : "job_retried",
+        threadId: null,
+        workspace: this.config.workspace,
+        actor,
+        detail: `queue:${queueId}`,
+      });
+      if (action === "retry") {
+        void this.drainQueue();
+      }
+      return this.jobs();
+    }
+    if (id.startsWith("agent-update:")) {
+      const updateId = id.slice("agent-update:".length);
+      const current = this.agentUpdates.get(updateId);
+      if (!current) {
+        throw new Error("Unknown agent update job.");
+      }
+      if (action === "cancel") {
+        this.cancelAgentUpdate(updateId, actor);
+      } else {
+        this.startAgentUpdate(current.agentId, current.operation, actor);
+      }
+      return this.jobs();
+    }
+    if (id.startsWith("support-bundle:") && action === "retry") {
+      await this.supportBundle(actor);
+      return this.jobs();
+    }
+    if (id.startsWith("connector-update:") && action === "retry") {
+      this.updateConnector(actor);
+      return this.jobs();
+    }
+    throw new Error(`Unsupported job action: ${action} ${id}`);
   }
 
   async activeSessions(): Promise<ActiveSessionsDto> {
@@ -1986,6 +2150,77 @@ function activeSessionSourceForContext(contextKey: string): ActiveSessionDto["so
     return "discord";
   }
   return "cli";
+}
+
+function taskToUnifiedJob(
+  id: string,
+  kind: UnifiedJobDto["kind"],
+  title: string,
+  task: WebTaskDto,
+  options: Pick<UnifiedJobDto, "canCancel" | "canRetry" | "canReadLog">,
+): UnifiedJobDto {
+  return {
+    id,
+    kind,
+    title,
+    status: task.status,
+    source: task.source,
+    agentId: task.agentId,
+    agentLabel: task.agentLabel,
+    threadId: task.threadId,
+    workspace: task.workspace,
+    startedAt: task.startedAt,
+    updatedAt: task.updatedAt,
+    durationMs: task.durationMs,
+    summary: task.prompt || task.detail,
+    logTail: task.currentTool || task.lastTool ? `Current tool: ${task.currentTool ?? "-"}\nLast tool: ${task.lastTool ?? "-"}` : undefined,
+    ...options,
+  };
+}
+
+function activityToUnifiedJob(
+  event: WebActivityEvent,
+  kind: UnifiedJobDto["kind"],
+  title: string,
+  options: Pick<UnifiedJobDto, "canCancel" | "canRetry" | "canReadLog">,
+): UnifiedJobDto {
+  return {
+    id: `${kind}:${event.id}`,
+    kind,
+    title,
+    status: event.status,
+    source: event.source,
+    agentId: event.agentId,
+    threadId: event.threadId,
+    workspace: event.workspace,
+    owner: event.actor,
+    startedAt: event.timestamp,
+    updatedAt: event.timestamp,
+    finishedAt: event.timestamp,
+    durationMs: event.durationMs,
+    summary: event.prompt || event.detail,
+    logPath: event.detail,
+    logTail: event.detail,
+    ...options,
+  };
+}
+
+function agentUpdateStatusToUnified(status: AgentUpdateJobSnapshot["status"]): UnifiedJobDto["status"] {
+  if (status === "cancelled") return "aborted";
+  if (status === "running") return "running";
+  if (status === "completed") return "completed";
+  return "failed";
+}
+
+function dedupeJobs(jobs: UnifiedJobDto[]): UnifiedJobDto[] {
+  const seen = new Set<string>();
+  return jobs.filter((job) => {
+    if (seen.has(job.id)) {
+      return false;
+    }
+    seen.add(job.id);
+    return true;
+  });
 }
 
 function normalizeMimeType(value: string | undefined, name: string): string {

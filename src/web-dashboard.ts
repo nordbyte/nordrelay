@@ -645,6 +645,11 @@ function activeSettingsValues(current: typeof config): Record<string, string | u
     DISCORD_MESSAGE_CONTENT_ENABLED: boolValue(current.discordMessageContentEnabled),
     DISCORD_COMMAND_MODE: current.discordCommandMode,
     DISCORD_AUTO_REGISTER_COMMANDS: boolValue(current.discordAutoRegisterCommands),
+    DISCORD_CLI_MIRROR_MODE: current.discordMirrorMode === current.mirrorMode ? "" : current.discordMirrorMode,
+    DISCORD_CLI_MIRROR_MIN_UPDATE_MS: current.discordMirrorMinUpdateMs === current.mirrorMinUpdateMs ? "" : String(current.discordMirrorMinUpdateMs),
+    DISCORD_NOTIFY_MODE: current.discordNotifyMode === current.notifyMode ? "" : current.discordNotifyMode,
+    DISCORD_QUIET_HOURS: quietOverrideValue(current.discordQuietHours, current.quietHours),
+    DISCORD_AUTO_SEND_ARTIFACTS: current.discordAutoSendArtifacts === current.autoSendArtifacts ? "" : boolValue(current.discordAutoSendArtifacts),
     NORDRELAY_CODEX_ENABLED: boolValue(current.codexEnabled),
     NORDRELAY_PI_ENABLED: boolValue(current.piEnabled),
     NORDRELAY_HERMES_ENABLED: boolValue(current.hermesEnabled),
@@ -699,10 +704,15 @@ function activeSettingsValues(current: typeof config): Record<string, string | u
     ENABLE_TELEGRAM_REACTIONS: boolValue(current.enableTelegramReactions),
     TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS: String(current.telegramRateLimitMinIntervalMs),
     TELEGRAM_EDIT_MIN_INTERVAL_MS: String(current.telegramEditMinIntervalMs),
-    TELEGRAM_CLI_MIRROR_MODE: current.telegramMirrorMode,
-    TELEGRAM_CLI_MIRROR_MIN_UPDATE_MS: String(current.telegramMirrorMinUpdateMs),
-    TELEGRAM_NOTIFY_MODE: current.telegramNotifyMode,
-    TELEGRAM_QUIET_HOURS: current.telegramQuietHours ? `${current.telegramQuietHours.startHour}-${current.telegramQuietHours.endHour}` : "",
+    NORDRELAY_CLI_MIRROR_MODE: current.mirrorMode,
+    NORDRELAY_CLI_MIRROR_MIN_UPDATE_MS: String(current.mirrorMinUpdateMs),
+    NORDRELAY_NOTIFY_MODE: current.notifyMode,
+    NORDRELAY_QUIET_HOURS: quietValue(current.quietHours),
+    NORDRELAY_AUTO_SEND_ARTIFACTS: boolValue(current.autoSendArtifacts),
+    TELEGRAM_CLI_MIRROR_MODE: current.telegramMirrorMode === current.mirrorMode ? "" : current.telegramMirrorMode,
+    TELEGRAM_CLI_MIRROR_MIN_UPDATE_MS: current.telegramMirrorMinUpdateMs === current.mirrorMinUpdateMs ? "" : String(current.telegramMirrorMinUpdateMs),
+    TELEGRAM_NOTIFY_MODE: current.telegramNotifyMode === current.notifyMode ? "" : current.telegramNotifyMode,
+    TELEGRAM_QUIET_HOURS: quietOverrideValue(current.telegramQuietHours, current.quietHours),
     TELEGRAM_REDACT_PATTERNS: current.telegramRedactPatterns.join(","),
     NORDRELAY_UPDATE_METHOD: process.env.NORDRELAY_UPDATE_METHOD || "auto",
     MAX_FILE_SIZE: String(current.maxFileSize),
@@ -711,7 +721,7 @@ function activeSettingsValues(current: typeof config): Record<string, string | u
     ARTIFACT_MAX_INBOX_DIRS: String(current.artifactMaxInboxDirs),
     ARTIFACT_IGNORE_DIRS: current.artifactIgnoreDirs.join(","),
     ARTIFACT_IGNORE_GLOBS: current.artifactIgnoreGlobs.join(","),
-    TELEGRAM_AUTO_SEND_ARTIFACTS: boolValue(current.telegramAutoSendArtifacts),
+    TELEGRAM_AUTO_SEND_ARTIFACTS: current.telegramAutoSendArtifacts === current.autoSendArtifacts ? "" : boolValue(current.telegramAutoSendArtifacts),
     WORKSPACE_ALLOWED_ROOTS: current.workspaceAllowedRoots.join(","),
     WORKSPACE_WARN_ROOTS: current.workspaceWarnRoots.join(","),
     NORDRELAY_STATE_BACKEND: current.stateBackend,
@@ -735,6 +745,17 @@ function activeSettingsValues(current: typeof config): Record<string, string | u
 
 function boolValue(value: boolean): string {
   return value ? "true" : "false";
+}
+
+function quietValue(value: { startHour: number; endHour: number } | null | undefined): string {
+  return value ? `${value.startHour}-${value.endHour}` : "";
+}
+
+function quietOverrideValue(
+  channelValue: { startHour: number; endHour: number } | null | undefined,
+  defaultValue: { startHour: number; endHour: number } | null | undefined,
+): string {
+  return quietValue(channelValue) === quietValue(defaultValue) ? "" : quietValue(channelValue);
 }
 
 function requireArg(argv: string[], index: number, flag: string): string {
