@@ -80,6 +80,7 @@ export type WebApiStaticPath =
   | "/api/logs"
   | "/api/logs/clear"
   | "/api/diagnostics"
+  | "/api/diagnostics/bundle"
   | "/api/runtime/restart";
 
 export type WebApiDynamicPath =
@@ -233,6 +234,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/logs" ? FormattedLogTail :
   P extends "/api/logs/clear" ? ClearLogResult :
   P extends "/api/diagnostics" ? WebDiagnosticsDto :
+  P extends "/api/diagnostics/bundle" ? never :
   P extends `/api/users/${string}/sessions` ? { sessions?: PublicWebSession[]; revoked?: number } :
   P extends `/api/users/${string}/password` ? { ok: boolean } :
   P extends `/api/users/${string}/telegram` ? { linkCode?: unknown; identity?: TelegramIdentityRecord } :

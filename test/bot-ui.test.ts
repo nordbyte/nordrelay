@@ -34,12 +34,13 @@ describe("bot-ui", () => {
       expect(plain).toContain("/tasks");
       expect(plain).toContain("/logs");
       expect(plain).toContain("/diagnostics");
+      expect(plain).toContain("/support");
     });
 
-    it("lists all 45 commands", () => {
+    it("lists all 46 commands", () => {
       const { plain } = renderHelpMessage();
       const commandMatches = plain.match(/\/\w+/g) ?? [];
-      expect(commandMatches.length).toBe(45);
+      expect(commandMatches.length).toBe(46);
     });
 
     it("returns valid HTML with bold tags", () => {

@@ -73,6 +73,7 @@ export function renderHelpMessage(): DualText {
       commands: [
         ["/logs", "Show connector log tail"],
         ["/diagnostics", "Connector diagnostics"],
+        ["/support", "Export diagnostics bundle"],
         ["/lock", "Lock session writes to you"],
         ["/unlock", "Release session write lock"],
         ["/locks", "List active write locks"],

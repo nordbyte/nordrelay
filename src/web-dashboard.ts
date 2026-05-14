@@ -1,4 +1,3 @@
-import { createReadStream } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -7,18 +6,36 @@ import { URL } from "node:url";
 import { enabledAgents } from "./agent-factory.js";
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { isAgentId } from "./agent.js";
-import type { AgentUpdateOperation } from "./agent-updates.js";
 import { AuditLogStore, type AuditEvent } from "./audit-log.js";
 import { listChannelDescriptors } from "./channel-adapter.js";
 import { ALL_PERMISSIONS, permissionForWebRequest } from "./access-control.js";
 import { loadConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
-import { escapeHTML } from "./format.js";
 import { RelayRuntime, type DashboardControlOptions, type RelayEvent, type SessionPageDto, type WebTasksDto } from "./relay-runtime.js";
 import { resolveDashboardEnvPath, SettingsService } from "./settings-service.js";
 import { UserStore, publicUser, publicUserSnapshot, type AuthenticatedUser } from "./user-management.js";
 import { dashboardCss, dashboardJs } from "./web-dashboard-assets.js";
-import { renderDashboardNav } from "./web-dashboard-ui.js";
+import {
+  arrayNumberField,
+  arrayStringField,
+  numberField,
+  numberParam,
+  objectRecord,
+  optionalBooleanField,
+  optionalNumberField,
+  optionalStringField,
+  parseAgentUpdateOperation,
+  parseCookies,
+  parseLogTarget,
+  parseUploadFiles,
+  readJsonBody,
+  requiredSearch,
+  sendFile,
+  sendJson,
+  sendText,
+  stringField,
+} from "./web-dashboard-http.js";
+import { renderDashboardApp, renderLoginPage } from "./web-dashboard-pages.js";
 
 interface DashboardOptions {
   host: string;
@@ -33,7 +50,6 @@ interface RateLimitBucket {
 }
 
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
-const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
 
 const options = parseOptions(process.argv.slice(2));
 const config = loadConfig();
@@ -752,6 +768,13 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/diagnostics/bundle") {
+    await assertCurrentSessionScope(authUser);
+    const bundle = await runtime.supportBundle();
+    sendFile(res, bundle.path, bundle.name);
+    return;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/runtime/restart") {
     sendJson(res, 202, runtime.restartConnector());
     return;
@@ -1086,107 +1109,6 @@ function resetRateLimit(buckets: Map<string, RateLimitBucket>, key: string): voi
   buckets.delete(key);
 }
 
-function parseCookies(cookieHeader: string): Record<string, string> {
-  const cookies: Record<string, string> = {};
-  for (const part of cookieHeader.split(";")) {
-    const [key, ...valueParts] = part.trim().split("=");
-    if (key) cookies[key] = decodeURIComponent(valueParts.join("=") ?? "");
-  }
-  return cookies;
-}
-
-async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  const text = Buffer.concat(chunks).toString("utf8").trim();
-  if (!text) {
-    return {};
-  }
-  return JSON.parse(text) as Record<string, unknown>;
-}
-
-function sendJson(res: ServerResponse, status: number, value: unknown): void {
-  res.writeHead(status, JSON_HEADERS);
-  res.end(`${JSON.stringify(value)}\n`);
-}
-
-function sendText(res: ServerResponse, status: number, text: string, contentType: string): void {
-  res.writeHead(status, { "content-type": contentType, "cache-control": "no-store" });
-  res.end(text);
-}
-
-function sendFile(res: ServerResponse, filePath: string, filename: string): void {
-  res.writeHead(200, {
-    "content-type": "application/octet-stream",
-    "content-disposition": `attachment; filename="${filename.replace(/"/g, "")}"`,
-  });
-  createReadStream(filePath).pipe(res);
-}
-
-function stringField(value: Record<string, unknown>, key: string): string {
-  const field = value[key];
-  if (typeof field !== "string" || !field.trim()) {
-    throw new Error(`${key} is required`);
-  }
-  return field.trim();
-}
-
-function optionalStringField(value: Record<string, unknown>, key: string): string | undefined {
-  const field = value[key];
-  return typeof field === "string" && field.trim() ? field.trim() : undefined;
-}
-
-function optionalBooleanField(value: Record<string, unknown>, key: string): boolean | undefined {
-  const field = value[key];
-  return typeof field === "boolean" ? field : undefined;
-}
-
-function numberField(value: Record<string, unknown>, key: string): number {
-  const field = value[key];
-  const parsed = typeof field === "number" ? field : typeof field === "string" ? Number(field) : Number.NaN;
-  if (!Number.isInteger(parsed)) {
-    throw new Error(`${key} must be an integer`);
-  }
-  return parsed;
-}
-
-function optionalNumberField(value: Record<string, unknown>, key: string): number | undefined {
-  if (value[key] === undefined || value[key] === "") {
-    return undefined;
-  }
-  return numberField(value, key);
-}
-
-function arrayStringField(value: Record<string, unknown>, key: string): string[] {
-  const field = value[key];
-  if (field === undefined || field === null || field === "") {
-    return [];
-  }
-  if (Array.isArray(field)) {
-    return field.filter((item): item is string => typeof item === "string");
-  }
-  if (typeof field === "string") {
-    return field.split(",").map((item) => item.trim()).filter(Boolean);
-  }
-  throw new Error(`${key} must be a string list`);
-}
-
-function arrayNumberField(value: Record<string, unknown>, key: string): number[] {
-  const field = value[key];
-  if (field === undefined || field === null || field === "") {
-    return [];
-  }
-  if (Array.isArray(field)) {
-    return field.map((item) => typeof item === "number" ? item : Number(item)).filter((item) => Number.isInteger(item));
-  }
-  if (typeof field === "string") {
-    return field.split(",").map((item) => Number(item.trim())).filter((item) => Number.isInteger(item));
-  }
-  throw new Error(`${key} must be a number list`);
-}
-
 function parseAgentId(value: string | undefined) {
   if (!value) {
     return undefined;
@@ -1197,64 +1119,6 @@ function parseAgentId(value: string | undefined) {
 function parseAgentIdRequired(value: string) {
   if (!isAgentId(value)) {
     throw new Error(`Invalid agent: ${value}`);
-  }
-  return value;
-}
-
-function parseAgentUpdateOperation(value: string | undefined): AgentUpdateOperation {
-  if (!value || value === "update") {
-    return "update";
-  }
-  if (value === "install") {
-    return "install";
-  }
-  throw new Error(`Invalid agent update operation: ${value}`);
-}
-
-function parseLogTarget(value: string | undefined): "connector" | "update" | "agent-updates" {
-  return value === "update" || value === "agent-updates" ? value : "connector";
-}
-
-function objectRecord(value: unknown): Record<string, string> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-  return value as Record<string, string>;
-}
-
-function parseUploadFiles(value: unknown): Array<{ name: string; mimeType?: string; data: Buffer }> {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.map((item, index) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) {
-      throw new Error(`files[${index}] must be an object`);
-    }
-    const record = item as Record<string, unknown>;
-    const name = typeof record.name === "string" && record.name.trim() ? record.name.trim() : `upload-${index + 1}`;
-    const mimeType = typeof record.mimeType === "string" ? record.mimeType.trim() : undefined;
-    const dataBase64 = typeof record.dataBase64 === "string" ? record.dataBase64 : "";
-    if (!dataBase64) {
-      throw new Error(`files[${index}].dataBase64 is required`);
-    }
-    return { name, mimeType, data: Buffer.from(stripDataUrlPrefix(dataBase64), "base64") };
-  });
-}
-
-function stripDataUrlPrefix(value: string): string {
-  const comma = value.indexOf(",");
-  return value.startsWith("data:") && comma !== -1 ? value.slice(comma + 1) : value;
-}
-
-function numberParam(url: URL, key: string, fallback: number): number {
-  const value = Number(url.searchParams.get(key));
-  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
-}
-
-function requiredSearch(url: URL, key: string): string {
-  const value = url.searchParams.get(key);
-  if (!value) {
-    throw new Error(`${key} is required`);
   }
   return value;
 }
@@ -1375,259 +1239,4 @@ function requireArg(argv: string[], index: number, flag: string): string {
 function shutdown(): void {
   runtime.dispose();
   server.close(() => process.exit(0));
-}
-
-function renderLoginPage(options: { adminConfigured: boolean }): string {
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NordRelay Login</title>
-  <style>
-    body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f5f2;color:#181c19;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
-    form{width:min(420px,calc(100vw - 32px));background:white;border:1px solid #dfe3dc;border-radius:8px;padding:24px;box-shadow:0 20px 60px rgba(20,30,24,.08)}
-    h1{font-size:24px;margin:0 0 8px}
-    p{color:#5d665d;margin:0 0 18px}
-    label{display:block;font-size:13px;color:#4b544d;margin:14px 0 6px}
-    input{box-sizing:border-box;width:100%;height:40px;border:1px solid #cfd6ce;border-radius:6px;padding:0 10px;font:inherit}
-    button{margin-top:18px;width:100%;height:42px;border:0;border-radius:6px;background:#205c43;color:white;font-weight:650;cursor:pointer}
-    .error{color:#9b1c1c;min-height:22px;margin-top:12px}
-  </style>
-</head>
-<body>
-  <form id="login">
-    <h1>NordRelay Dashboard</h1>
-    <p>${options.adminConfigured ? "Sign in with your NordRelay user account." : "No admin user exists. Run nordrelay user create-admin on this host first."}</p>
-    <label>Email</label><input id="email" name="email" type="email" autocomplete="username" ${options.adminConfigured ? "" : "disabled"}>
-    <label>Password</label><input id="password" name="password" type="password" autocomplete="current-password" ${options.adminConfigured ? "" : "disabled"}>
-    <button ${options.adminConfigured ? "" : "disabled"}>Sign in</button>
-    <div class="error" id="error"></div>
-  </form>
-  <script>
-    document.getElementById('login').addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const payload = {
-        email: document.getElementById('email')?.value || undefined,
-        password: document.getElementById('password')?.value || undefined,
-      };
-      const res = await fetch('/api/auth', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(payload) });
-      if (!res.ok) {
-        document.getElementById('error').textContent = 'Invalid credentials';
-        return;
-      }
-      location.href = '/';
-    });
-  </script>
-</body>
-</html>`;
-}
-
-function renderDashboardApp(): string {
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NordRelay Dashboard</title>
-  <script>document.documentElement.dataset.theme = localStorage.getItem('nordrelayTheme') || 'light';</script>
-  <link rel="stylesheet" href="/assets/dashboard.css">
-</head>
-<body>
-  <div class="app">
-    <aside class="sidebar" id="sidebar">
-      <div class="brand"><span class="mark">NR</span><div><strong>NordRelay</strong><small>Remote control</small></div></div>
-      <nav>
-        ${renderDashboardNav()}
-      </nav>
-    </aside>
-    <main>
-      <header>
-        <button class="menu" id="menuBtn">Menu</button>
-        <div>
-          <h1 id="pageTitle">Overview</h1>
-          <p id="sessionLine">Loading session...</p>
-        </div>
-        <div class="header-actions">
-          <span id="connectionStatus" class="badge">Connecting</span>
-          <select id="agentSelect"></select>
-          <button id="themeBtn" class="secondary" title="Toggle dark theme">Dark</button>
-          <button id="refreshBtn">Refresh</button>
-          <button id="logoutBtn" class="secondary">Logout</button>
-        </div>
-      </header>
-
-      <section class="page active" id="page-overview">
-        <div class="metrics" id="metrics"></div>
-        <div class="stack">
-          <div class="panel"><h2>Current Session</h2><pre id="sessionText"></pre></div>
-          <div class="overview-adapter-grid">
-            <div class="panel"><h2>Agent Adapters</h2><div id="agentAdapters"></div></div>
-            <div class="panel"><h2>Chat Adapters</h2><div id="chatAdapters"></div></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="page" id="page-chat">
-        <div class="chat-layout">
-          <div class="panel chat-panel">
-            <div class="chat-toolbar">
-              <button id="newSessionBtn">New session</button>
-              <button id="retryBtn" class="secondary">Retry</button>
-              <button id="editLastBtn" class="secondary">Edit last</button>
-              <button id="syncBtn" class="secondary">Sync</button>
-              <button id="notifyBtn" class="secondary">Notify</button>
-              <button id="clearChatBtn" class="secondary">Clear history</button>
-              <button id="abortBtn">Abort</button>
-              <button id="handbackBtn">Handback</button>
-            </div>
-            <div class="control-grid" id="sessionControls"></div>
-            <div id="messages" class="messages"></div>
-            <form id="promptForm" class="composer">
-              <div class="composer-fields">
-                <textarea id="promptInput" placeholder="Send a message to the active coding agent..." rows="3"></textarea>
-                <div class="attachment-row">
-                  <label class="file-button" for="fileInput">Attach files</label>
-                  <input id="fileInput" type="file" multiple>
-                  <button type="button" id="recordBtn" class="secondary">Record voice</button>
-                  <span id="fileSummary">No files selected</span>
-                  <button type="button" id="clearFilesBtn" class="secondary">Clear</button>
-                </div>
-              </div>
-              <button>Send</button>
-            </form>
-          </div>
-          <div class="panel side-panel"><h2>Tools / Plan</h2><div id="toolStream" class="tool-stream"></div></div>
-        </div>
-      </section>
-
-      <section class="page" id="page-tasks">
-        <div class="panel">
-          <div class="row"><button id="reloadTasksBtn">Reload tasks</button></div>
-          <div id="tasksList" class="list"></div>
-        </div>
-      </section>
-
-      <section class="page" id="page-sessions">
-        <div class="panel">
-          <div class="sessions-toolbar">
-            <div class="row search-row"><input id="sessionSearch" placeholder="Search sessions"><button id="sessionSearchBtn">Search</button></div>
-            <div class="row attach-row"><input id="attachInput" placeholder="Thread ID to attach/switch"><button id="attachBtn">Attach</button></div>
-          </div>
-          <div id="sessionsList" class="list"></div>
-          <div id="sessionsPager" class="pager"></div>
-        </div>
-      </section>
-
-      <section class="page" id="page-queue">
-        <div class="panel">
-          <div class="row"><button data-queue="pause">Pause</button><button data-queue="resume">Resume</button><button data-queue="clear" class="danger">Clear</button><span id="queueStatus"></span></div>
-          <div id="queueList" class="list"></div>
-        </div>
-      </section>
-
-      <section class="page" id="page-activity">
-        <div class="panel">
-          <div class="row"><select id="activitySource"><option value="all">All sources</option><option value="web">Web</option><option value="cli">CLI</option></select><select id="activityStatus"><option value="all">All statuses</option><option value="queued">Queued</option><option value="running">Running</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="aborted">Aborted</option><option value="info">Info</option></select><input id="activitySince" type="datetime-local"><input id="activityLimit" type="number" value="100" min="1" max="500"><button id="loadActivityBtn">Load activity</button><button id="exportActivityBtn" class="secondary">Export</button></div>
-          <div id="activityList" class="list"></div>
-        </div>
-      </section>
-
-      <section class="page" id="page-artifacts">
-        <div class="panel">
-          <div class="row"><button id="reloadArtifactsBtn">Reload artifacts</button><input id="artifactSearch" placeholder="Search artifacts"><select id="artifactKind"><option value="all">All files</option><option value="images">Images</option><option value="docs">Docs/code</option></select><button id="zipSelectedArtifactsBtn" class="secondary">ZIP selected</button><button id="deleteSelectedArtifactsBtn" class="danger">Delete selected</button></div>
-          <div id="artifactPreview" class="preview"></div>
-          <div id="artifactList" class="list"></div>
-        </div>
-      </section>
-
-      <section class="page" id="page-adapters">
-        <div class="panel">
-          <div class="row"><button id="reloadAdaptersBtn">Reload adapters</button></div>
-          <div id="adapterHealth" class="list"></div>
-        </div>
-      </section>
-
-      <section class="page" id="page-access">
-        <div class="panel">
-          <div class="row"><button id="loadAccessBtn">Reload users</button><button id="createUserBtn">Create user</button><button id="createGroupBtn" class="secondary">Create group</button><button id="createChatBtn" class="secondary">Add Telegram chat</button><button id="lockSessionBtn" class="secondary">Lock web session</button><button id="unlockSessionBtn" class="secondary">Unlock web session</button></div>
-          <div id="accessPanel" class="settings-grid"></div>
-          <h2>Groups</h2>
-          <div id="groupsList" class="list"></div>
-          <h2>Telegram chats</h2>
-          <div id="telegramChatsList" class="list"></div>
-          <h2>Locks</h2>
-          <div id="locksList" class="list"></div>
-          <h2>Audit</h2>
-          <div class="row"><input id="auditLimit" type="number" value="50" min="1" max="200"><button id="loadAuditBtn">Load audit</button></div>
-          <div id="auditList" class="list"></div>
-        </div>
-      </section>
-
-      <section class="page" id="page-version">
-        <div class="panel">
-          <div class="row version-actions"><button id="loadVersionBtn">Check versions</button><button id="updateBtn" class="secondary">Update NordRelay</button></div>
-          <div id="versionPanel" class="list"></div>
-          <h2 class="version-update-title">Agent update jobs</h2>
-          <div id="agentUpdateJobs" class="list"></div>
-        </div>
-      </section>
-
-      <section class="page" id="page-settings">
-        <div class="panel">
-          <div class="row"><button id="saveSettingsBtn">Save settings</button><button id="restartBtn" class="secondary">Restart NordRelay</button><span id="settingsStatus"></span></div>
-          <div id="settingsTabs" class="tabs"></div>
-          <div id="settingsForm" class="settings-grid"></div>
-        </div>
-      </section>
-
-      <section class="page" id="page-logs">
-        <div class="panel">
-          <div class="row"><select id="logTarget"><option value="connector">Connector</option><option value="update">NordRelay Update</option><option value="agent-updates">Agent Updates</option></select><select id="logLevel"><option value="all">All levels</option><option value="ERROR">Error</option><option value="WARN">Warn</option><option value="INFO">Info</option></select><input id="logSearch" placeholder="Search logs"><input id="logSince" type="datetime-local" title="Show entries after this time"><input id="logLines" type="number" value="120" min="1" max="300"><label class="checkbox"><input id="logAutoRefresh" type="checkbox"> Auto</label><label class="checkbox"><input id="logFollow" type="checkbox"> Follow</label><button id="loadLogsBtn">Load logs</button><button id="downloadLogsBtn" class="secondary">Download</button><button id="clearLogsBtn" class="danger">Clear</button></div>
-          <pre id="logs" class="log-view"></pre>
-        </div>
-      </section>
-
-      <section class="page" id="page-diagnostics">
-        <div class="panel"><div id="diagnostics" class="list"></div></div>
-      </section>
-
-      <footer>
-        <span id="footerVersion">NordRelay</span>
-        <span id="footerHealth">Health: loading</span>
-        <span id="footerUser">User: loading</span>
-      </footer>
-    </main>
-  </div>
-  <dialog id="newSessionDialog">
-    <form method="dialog" id="newSessionForm">
-      <h2>New Session</h2>
-      <div class="form-grid">
-        <label>Agent<select id="newAgent"></select></label>
-        <label>Workspace<input id="newWorkspace" list="workspaceOptions" placeholder="Current workspace"></label>
-        <label>Model<select id="newModel"></select></label>
-        <label id="newReasoningWrap">Reasoning<select id="newReasoning"></select></label>
-        <label id="newLaunchWrap">Launch profile<select id="newLaunch"></select></label>
-        <label id="newFastWrap" class="checkbox"><input id="newFast" type="checkbox"> Fast mode</label>
-      </div>
-      <datalist id="workspaceOptions"></datalist>
-      <div class="row dialog-actions"><button type="button" id="cancelSessionBtn" class="secondary">Cancel</button><button id="createSessionBtn" value="default">Create session</button></div>
-    </form>
-  </dialog>
-  <dialog id="sessionDetailDialog">
-    <div id="sessionDetail"></div>
-    <div class="row dialog-actions"><button id="closeSessionDetailBtn" class="secondary">Close</button></div>
-  </dialog>
-  <dialog id="adminDialog">
-    <form method="dialog" id="adminDialogForm">
-      <h2 id="adminDialogTitle">Edit</h2>
-      <div id="adminDialogBody" class="form-grid"></div>
-      <div class="row dialog-actions"><button type="button" id="adminDialogCancel" class="secondary">Cancel</button><button id="adminDialogSubmit" value="default">Save</button></div>
-    </form>
-  </dialog>
-  <div id="toolTooltip" class="tool-tooltip"></div>
-  <div id="toast"></div>
-  <script src="/assets/dashboard.js"></script>
-</body>
-</html>`;
 }

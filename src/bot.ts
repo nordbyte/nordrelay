@@ -140,6 +140,7 @@ import {
 } from "./telegram-channel-runtime.js";
 import { createTelegramAccessMiddleware } from "./telegram-access-middleware.js";
 import { registerTelegramAccessCommands } from "./telegram-access-commands.js";
+import { registerTelegramSupportCommands } from "./telegram-support-command.js";
 import { registerTelegramUpdateCommands } from "./telegram-update-commands.js";
 import {
   appendWithCap,
@@ -2840,6 +2841,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }, 300);
   });
 
+  registerTelegramSupportCommands({ bot, config, auditLog, agentUpdates, getUserRole, audit });
   registerTelegramUpdateCommands({ bot, agentUpdates, replyChannelAction, startTelegramAgentUpdate });
 
   bot.command("new", async (ctx) => {

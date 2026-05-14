@@ -38,6 +38,6 @@ NordRelay is designed to fail closed:
 - Password changes and group membership changes revoke existing WebUI sessions.
 - User, group, Telegram-link, Telegram-chat, session-revocation, login, and permission-denied events are audited.
 - Uploaded files are staged inside the selected workspace.
-- Secrets are redacted from logs and Telegram diagnostics where possible.
+- Secrets are redacted from logs, Telegram diagnostics, and diagnostics support bundles where possible.
 
 Treat enabling `danger-full-access`, broad write permissions, or Telegram group chat access as equivalent to granting remote shell-adjacent control over the host.

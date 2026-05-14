@@ -18,7 +18,7 @@ export interface WebApiRouteRule {
 export const WEB_API_ROUTES: WebApiRouteRule[] = [
   ...exact(["/api/bootstrap", "/api/health", "/api/snapshot", "/api/tasks", "/api/progress"], "inspect"),
   ...exact(["/api/version", "/api/adapters/health"], "inspect"),
-  ...exact(["/api/diagnostics"], "diagnostics.read"),
+  ...exact(["/api/diagnostics", "/api/diagnostics/bundle"], "diagnostics.read"),
   ...prefix(["/api/users", "/api/groups", "/api/telegram-chats"], readWrite("users.read", "users.write")),
   ...exact(["/api/permissions"], "users.read"),
   ...exact(["/api/audit"], "audit.read"),

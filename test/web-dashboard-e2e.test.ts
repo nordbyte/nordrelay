@@ -37,14 +37,15 @@ describe("web dashboard browser-flow assets", () => {
   });
 
   it("loads dashboard CSS and JavaScript through static asset routes", () => {
-    const source = readFileSync("src/web-dashboard.ts", "utf8");
+    const serverSource = readFileSync("src/web-dashboard.ts", "utf8");
+    const pageSource = readFileSync("src/web-dashboard-pages.ts", "utf8");
 
-    expect(source).toContain('/assets/dashboard.css');
-    expect(source).toContain('/assets/dashboard.js');
-    expect(source).toContain('href="/assets/dashboard.css"');
-    expect(source).toContain('src="/assets/dashboard.js"');
-    expect(source).not.toContain("<style>${dashboardCss()}</style>");
-    expect(source).not.toContain("<script>${dashboardJs()}</script>");
+    expect(serverSource).toContain('/assets/dashboard.css');
+    expect(serverSource).toContain('/assets/dashboard.js');
+    expect(pageSource).toContain('href="/assets/dashboard.css"');
+    expect(pageSource).toContain('src="/assets/dashboard.js"');
+    expect(pageSource).not.toContain("<style>${dashboardCss()}</style>");
+    expect(pageSource).not.toContain("<script>${dashboardJs()}</script>");
   });
 
   it("guards dashboard stream and session data with scoped user access", () => {

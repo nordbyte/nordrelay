@@ -23,6 +23,7 @@ describe("access-control", () => {
     expect(permissionForCommand("model")).toBe("settings.write");
     expect(permissionForCommand("login")).toBe("auth.manage");
     expect(permissionForCommand("diagnostics")).toBe("diagnostics.read");
+    expect(permissionForCommand("support")).toBe("diagnostics.read");
     expect(permissionForCommand("queue")).toBe("queue.read");
     expect(permissionForCommand("unknown")).toBeNull();
     expect(permissionForCommand("restart")).toBe("system.restart");
@@ -53,6 +54,7 @@ describe("access-control", () => {
     expect(permissionForWebRequest("GET", "/api/queue")).toBe("queue.read");
     expect(permissionForWebRequest("POST", "/api/queue")).toBe("queue.write");
     expect(permissionForWebRequest("GET", "/api/diagnostics")).toBe("diagnostics.read");
+    expect(permissionForWebRequest("GET", "/api/diagnostics/bundle")).toBe("diagnostics.read");
     expect(permissionForWebRequest("POST", "/api/logs/clear")).toBe("logs.clear");
     expect(permissionForWebRequest("POST", "/api/abort")).toBe("prompt.abort");
     expect(permissionForWebRequest("GET", "/api/artifacts")).toBe("files.read");

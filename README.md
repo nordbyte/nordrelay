@@ -37,6 +37,7 @@ Session control:
 - `/tasks` and `/progress` show the current turn status, queue length, active tool, elapsed time, and last error.
 - `/activity` shows a compact timeline of recent rollout events for the active thread, with filters and export.
 - `/diagnostics` reports redacted runtime, config, user/group authorization, Telegram rate-limit, mirror, voice, session, queue, and progress details.
+- `/support` exports a redacted diagnostics ZIP with config, health, versions, agent paths, recent logs, audit events, update jobs, state backend, and OS/Node/npm info.
 - `/lock`, `/unlock`, and `/locks` provide a team write-lock for shared sessions so one user can operate while others watch.
 - `/audit` shows recent prompt, queue, lock, command, authentication, permission-denied, user, group, Telegram-link, Telegram-chat, and web-session audit events for admins.
 
@@ -183,7 +184,7 @@ Operations:
 
 - Plugin command/skill starts, stops, restarts, and inspects the connector process.
 - Manual process commands support `start`, `stop`, `restart`, `status`, and `foreground`.
-- Telegram admin commands support `/logs`, `/diagnostics`, `/restart`, and `/update` for NordRelay and agent CLIs.
+- Telegram admin commands support `/logs`, `/diagnostics`, `/support`, `/restart`, and `/update` for NordRelay and agent CLIs.
 - `/update` detects the install type: npm installs update with `npm install -g @nordbyte/nordrelay@latest`; source checkouts pull `origin/main`, install dependencies, run check, tests, and build, then restart.
 - `/update agents`, `/update <agent>`, `/update install <agent>`, `/update jobs`, `/update log <id>`, `/update cancel <id>`, and `/update input <id> <text>` manage Codex, Pi, Hermes, OpenClaw, and Claude Code updater or installer jobs from Telegram.
 - `/logs` renders redacted connector, NordRelay update, and agent update logs with local-time timestamps, levels, file path, last-modified time, and highlighted warnings/errors.
@@ -195,7 +196,7 @@ Operations:
 - `nordrelay init` creates a private runtime config, `nordrelay doctor` validates host prerequisites, and `nordrelay web` starts the connector plus a full local WebUI dashboard.
 - The WebUI has responsive header/sidebar/footer navigation, live chat streaming, session controls, queue/artifact/log/diagnostic views, and settings management.
 - The WebUI supports light and dark themes, tabbed settings groups, paginated session browsing, and chat uploads for images, documents, and audio transcription.
-- The WebUI exposes REST and SSE endpoints for chat streaming, sessions, settings, queue, artifacts, logs, health, and diagnostics.
+- The WebUI exposes REST and SSE endpoints for chat streaming, sessions, settings, queue, artifacts, logs, health, diagnostics, and redacted diagnostics bundle export.
 - The dashboard can bind to `127.0.0.1` or `0.0.0.0`; user login and session cookies are mandatory in both modes.
 - Telegram can run with long polling or an HTTP webhook via `TELEGRAM_TRANSPORT=webhook`.
 - Version freshness checks are cached with `NORDRELAY_VERSION_CACHE_TTL_MS` to keep `/version` responsive.
@@ -515,7 +516,8 @@ Run NordRelay behind your reverse proxy so the public URL forwards to `http://12
 - `/logs update [lines]` shows the self-update log. Requires `logs.read`.
 - `/logs agent [lines]` shows the aggregate agent updater log. Requires `logs.read`.
 - `/logs all [lines]` shows connector, self-update, and agent update logs together. Requires `logs.read`.
-- `/diagnostics` shows redacted connector diagnostics. Requires `logs.read`.
+- `/diagnostics` shows redacted connector diagnostics. Requires `diagnostics.read`.
+- `/support` exports a redacted diagnostics ZIP. Requires `diagnostics.read`.
 - `/restart` restarts the connector process. Requires `system.restart`.
 - `/update` updates through npm or git depending on the detected install type, then restarts only on success. Requires `updates.run`.
 - `/update agents`, `/update <agent>`, `/update install <agent>`, `/update jobs`, `/update log <id>`, `/update cancel <id>`, and `/update input <id> <text>` manage agent CLI update and install jobs. Requires `updates.run`.
@@ -1041,9 +1043,12 @@ npm run build
 - `plugins/nordrelay/scripts/nordrelay.mjs`: process manager for `start`, `stop`, `restart`, `status`, and `foreground`.
 - `src/index.ts`: runtime entrypoint, config load, auth check, state-file writes, polling lifecycle, shutdown.
 - `src/bot.ts`: Telegram prompt/session runtime, streaming, file/photo/voice handling, artifacts, and error handling.
-- `src/telegram-access-commands.ts`, `src/telegram-update-commands.ts`, and `src/telegram-command-menu.ts`: focused Telegram command groups for access linking, update jobs, and command menu registration.
+- `src/telegram-access-commands.ts`, `src/telegram-update-commands.ts`, `src/telegram-support-command.ts`, and `src/telegram-command-menu.ts`: focused Telegram command groups for access linking, update jobs, diagnostics bundle export, and command menu registration.
 - `src/channel-adapter.ts`, `src/channel-runtime.ts`, and `src/channel-actions.ts`: channel descriptors, generic command routing, outbound delivery contracts, and channel-neutral command responses.
 - `src/config-metadata.ts`: shared setting metadata used by the WebUI settings page and generated `.env.example`.
+- `src/support-bundle.ts` and `src/zip-writer.ts`: redacted diagnostics bundle creation with a dependency-free ZIP writer.
+- `src/relay-runtime-types.ts`: shared Runtime/WebUI DTO types used by runtime, API contracts, and dashboard code.
+- `src/web-dashboard-http.ts` and `src/web-dashboard-pages.ts`: dashboard HTTP helpers and HTML shell rendering.
 - `src/webui/`: focused WebUI source assets for core runtime state/API helpers, overview rendering, live events, chat/session workflows, admin pages, and CSS sections.
 - `src/bot-preferences.ts`: per-context mirror, notification, quiet-hour, and voice preference persistence.
 - `src/telegram-rate-limit.ts`: centralized Telegram API send/edit/document rate limiting and retry-after tracking.

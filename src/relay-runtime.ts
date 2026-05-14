@@ -24,13 +24,10 @@ import {
   agentLabel,
   agentReasoningLabel,
   agentReasoningOptions,
-  type AgentCapabilities,
   type AgentExternalSnapshot,
   type AgentId,
-  type AgentModelRecord,
   type AgentPromptInput,
   type AgentPromptObject,
-  type AgentReasoningEffort,
   type AgentSessionCallbacks,
   type AgentSessionInfo,
   type AgentSessionService,
@@ -56,6 +53,7 @@ import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt }
 import { renderSessionInfoPlain, renderSessionUsageRows } from "./session-format.js";
 import { SessionLockStore, type SessionLock } from "./session-locks.js";
 import { SessionRegistry } from "./session-registry.js";
+import { createSupportBundle, type SupportBundleResult } from "./support-bundle.js";
 import { transcribeAudio, type TranscriptionBackend } from "./voice.js";
 import {
   WebActivityStore,
@@ -65,203 +63,44 @@ import {
   type WebActivityStatus,
   type WebChatMessage,
 } from "./web-state.js";
+import type {
+  ArtifactPreviewDto,
+  ArtifactReportDto,
+  DashboardControlOptions,
+  ExternalMirrorState,
+  QueueItemDto,
+  RelayEvent,
+  RelaySnapshot,
+  SessionPageDto,
+  UploadPromptFile,
+  UploadPromptResult,
+  WebAdapterHealthDto,
+  WebAuthDto,
+  WebDiagnosticsDto,
+  WebPermissionsDto,
+  WebTaskDto,
+  WebTasksDto,
+} from "./relay-runtime-types.js";
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "./workspace-policy.js";
 
-export type RelayEvent =
-  | { type: "snapshot"; data: RelaySnapshot }
-  | { type: "chat_history"; messages: WebChatMessage[] }
-  | { type: "activity_update"; events: WebActivityEvent[] }
-  | { type: "turn_start"; id: string; prompt: string; at: string; source?: WebActivitySource }
-  | { type: "text_delta"; id: string; delta: string }
-  | { type: "tool_start"; id: string; toolCallId: string; toolName: string }
-  | { type: "tool_update"; id: string; toolCallId: string; partialResult: string }
-  | { type: "tool_end"; id: string; toolCallId: string; isError: boolean }
-  | { type: "todo_update"; id: string; items: Array<{ text: string; completed: boolean }> }
-  | { type: "turn_complete"; id: string; at: string }
-  | { type: "turn_error"; id: string; error: string; at: string }
-  | { type: "queue_update"; queue: QueueItemDto[]; paused: boolean }
-  | { type: "session_update"; session: AgentSessionInfo }
-  | { type: "agent_update"; job: AgentUpdateJobSnapshot }
-  | { type: "status"; message: string; level: "info" | "warn" | "error"; at: string };
-
-export interface RelaySnapshot {
-  session: AgentSessionInfo;
-  sessionText: string;
-  queue: QueueItemDto[];
-  queuePaused: boolean;
-  processing: boolean;
-  enabledAgents: AgentId[];
-  workspaces: string[];
-}
-
-export interface QueueItemDto {
-  id: string;
-  description: string;
-  createdAt: string;
-  attempts: number;
-  notBefore?: string;
-  lastError?: string;
-}
-
-export interface ArtifactReportDto {
-  turnId: string;
-  updatedAt: string;
-  source?: string;
-  fileCount: number;
-  totalSizeBytes: number;
-  skippedCount: number;
-  omittedCount?: number;
-  artifacts: Array<{
-    name: string;
-    relativePath: string;
-    sizeBytes: number;
-  }>;
-}
-
-export interface SessionPageDto {
-  sessions: AgentThreadRecord[];
-  pagination: {
-    page: number;
-    pageSize: number;
-    hasPrevious: boolean;
-    hasNext: boolean;
-  };
-}
-
-export interface UploadPromptFile {
-  name: string;
-  mimeType?: string;
-  data: Buffer;
-}
-
-export interface UploadPromptResult {
-  queued: boolean;
-  queueId?: string;
-  transcript?: string;
-  transcribeOnly?: boolean;
-  files: Array<{
-    name: string;
-    mimeType: string;
-    sizeBytes: number;
-  }>;
-}
-
-export interface DashboardControlOptions {
-  models: AgentModelRecord[];
-  reasoningLabel: string;
-  reasoningOptions: AgentReasoningEffort[];
-  launchProfiles: Array<{
-    id: string;
-    label: string;
-    behavior: string;
-    unsafe: boolean;
-  }>;
-  workspaces: string[];
-  capabilities: AgentCapabilities;
-}
-
-export interface ArtifactPreviewDto {
-  kind: "text" | "image" | "unsupported";
-  name: string;
-  sizeBytes: number;
-  text?: string;
-  truncated?: boolean;
-  detail?: string;
-}
-
-export interface WebDiagnosticsDto {
-  health: Awaited<ReturnType<typeof getConnectorHealth>>;
-  versionChecks: Awaited<ReturnType<typeof getVersionChecks>>;
-  snapshot: RelaySnapshot;
-  runtime: {
-    stateBackend: string;
-    sourceWorkspace: string;
-    queuePaused: boolean;
-    externalMirror: ExternalMirrorState | null;
-    agentDiagnostics: ReturnType<typeof getAgentDiagnostics>;
-  };
-}
-
-export interface WebTaskDto {
-  id: string;
-  source: WebActivitySource;
-  status: WebActivityStatus;
-  prompt?: string;
-  agentId?: AgentId;
-  agentLabel?: string;
-  threadId: string | null;
-  workspace?: string;
-  startedAt: string;
-  updatedAt: string;
-  durationMs: number;
-  currentTool?: string;
-  lastTool?: string;
-  outputChars: number;
-  tools: Array<{ name: string; count: number }>;
-  detail?: string;
-}
-
-export interface WebTasksDto {
-  current: WebTaskDto | null;
-  external: WebTaskDto | null;
-  queue: QueueItemDto[];
-  queuePaused: boolean;
-  recent: WebActivityEvent[];
-}
-
-export interface WebAdapterHealthDto {
-  id: AgentId;
-  label: string;
-  enabled: boolean;
-  status: "enabled" | "disabled" | "planned";
-  auth: {
-    supported: boolean;
-    authenticated: boolean | null;
-    method?: string;
-    detail?: string;
-  };
-  cli: {
-    path: string | null;
-    label: string;
-    version: string;
-  };
-  version: {
-    installed: string;
-    latest: string | null;
-    status: string;
-    detail?: string;
-  };
-  capabilities: AgentCapabilities;
-  notes?: string;
-}
-
-export interface WebAuthDto {
-  agentId: AgentId;
-  agentLabel: string;
-  supported: boolean;
-  authenticated: boolean | null;
-  method?: string;
-  detail: string;
-  loginSupported: boolean;
-  logoutSupported: boolean;
-  hostLoginCommand?: string;
-  hostLogoutCommand?: string;
-}
-
-export interface WebPermissionsDto {
-  mode: "users";
-  message: string;
-}
-
-export interface ExternalMirrorState {
-  threadId: string;
-  rolloutPath: string;
-  lastLine: number;
-  turnId: string | null;
-  startedAt: string | null;
-  latestAgentLine?: number;
-  latestStatus?: string;
-}
+export type {
+  ArtifactPreviewDto,
+  ArtifactReportDto,
+  DashboardControlOptions,
+  ExternalMirrorState,
+  QueueItemDto,
+  RelayEvent,
+  RelaySnapshot,
+  SessionPageDto,
+  UploadPromptFile,
+  UploadPromptResult,
+  WebAdapterHealthDto,
+  WebAuthDto,
+  WebDiagnosticsDto,
+  WebPermissionsDto,
+  WebTaskDto,
+  WebTasksDto,
+} from "./relay-runtime-types.js";
 
 const WEB_CONTEXT_KEY = "web:dashboard";
 const MAX_WEB_SESSION_PAGE_SIZE = 50;
@@ -509,6 +348,33 @@ export class RelayRuntime {
 
   audit(limit = 50): AuditEvent[] {
     return this.auditStore.list(limit);
+  }
+
+  async supportBundle(): Promise<SupportBundleResult> {
+    const bundle = await createSupportBundle({
+      config: this.config,
+      diagnostics: await this.diagnostics(),
+      adapterHealth: await this.adapterHealth(),
+      auditEvents: this.auditStore.list(100),
+      agentUpdateJobs: this.agentUpdates.list(),
+      source: "web",
+    });
+    this.appendActivity({
+      source: "web",
+      status: "info",
+      type: "diagnostics_bundle_exported",
+      threadId: null,
+      workspace: this.config.workspace,
+      detail: bundle.path,
+    });
+    this.appendAudit({
+      action: "command",
+      status: "ok",
+      contextKey: WEB_CONTEXT_KEY,
+      description: "export diagnostics bundle",
+      detail: bundle.path,
+    });
+    return bundle;
   }
 
   locks(): SessionLock[] {

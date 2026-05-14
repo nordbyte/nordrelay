@@ -113,6 +113,8 @@ const COMMAND_PERMISSIONS = new Map<string, Permission>([
   ["voice", "inspect"],
   ["whoami", "inspect"],
   ["diagnostics", "diagnostics.read"],
+  ["support", "diagnostics.read"],
+  ["diagnostics_bundle", "diagnostics.read"],
   ["logs", "logs.read"],
   ["audit", "audit.read"],
   ["restart", "system.restart"],

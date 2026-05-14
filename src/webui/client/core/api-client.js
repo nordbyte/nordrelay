@@ -59,6 +59,7 @@ const API_ROUTE_RULES = [
   route('/api/logs', ['GET']),
   route('/api/logs/clear', ['POST']),
   route('/api/diagnostics', ['GET']),
+  route('/api/diagnostics/bundle', ['GET']),
   route('/api/runtime/restart', ['POST']),
   pattern(/^\/api\/users\/[^/]+$/, ['PATCH']),
   pattern(/^\/api\/users\/[^/]+\/password$/, ['POST']),

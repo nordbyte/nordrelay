@@ -44,6 +44,7 @@ export async function registerCommands(bot: Bot<Context>): Promise<void> {
     { command: "version", description: "Connector version" },
     { command: "logs", description: "Admin: show connector logs" },
     { command: "diagnostics", description: "Admin: connector diagnostics" },
+    { command: "support", description: "Admin: export diagnostics bundle" },
     { command: "lock", description: "Lock session writes to you" },
     { command: "unlock", description: "Release session write lock" },
     { command: "locks", description: "List session write locks" },
