@@ -20,6 +20,7 @@ import {
   safeReply,
   type TelegramChatId,
 } from "./telegram-output.js";
+import type { WebActivityEvent } from "./web-state.js";
 
 export interface TelegramArtifactCommandOptions {
   bot: Bot<Context>;
@@ -37,6 +38,10 @@ export interface TelegramArtifactCommandOptions {
     report: ArtifactTurnReport,
     messageThreadId?: number,
   ) => Promise<void>;
+  appendActivity?: (
+    ctx: Context,
+    input: Partial<Omit<WebActivityEvent, "id" | "timestamp" | "source">> & Pick<WebActivityEvent, "status" | "type"> & { timestamp?: string },
+  ) => void;
 }
 
 export function registerTelegramArtifactCommands(options: TelegramArtifactCommandOptions): void {
@@ -73,6 +78,16 @@ export function registerTelegramArtifactCommands(options: TelegramArtifactComman
         const removed = await removeArtifactTurn(workspace, selected.turnId);
         const text = removed ? `Deleted artifact turn: ${selected.turnId}` : `Artifact turn not found: ${selected.turnId}`;
         await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+        if (removed) {
+          options.appendActivity?.(ctx, {
+            status: "info",
+            type: "artifact_deleted",
+            threadId: contextSession.session.getInfo().threadId,
+            workspace,
+            agentId: contextSession.session.getInfo().agentId,
+            detail: selected.turnId,
+          });
+        }
         return;
       }
 
@@ -107,8 +122,24 @@ export function registerTelegramArtifactCommands(options: TelegramArtifactComman
       }
 
       if (shouldZip) {
+        options.appendActivity?.(ctx, {
+          status: "info",
+          type: "artifact_zip_sent",
+          threadId: contextSession.session.getInfo().threadId,
+          workspace,
+          agentId: contextSession.session.getInfo().agentId,
+          detail: selected.turnId,
+        });
         await options.deliverArtifactReportZip(ctx, ctx.chat.id, selected, ctx.message?.message_thread_id);
       } else {
+        options.appendActivity?.(ctx, {
+          status: "info",
+          type: "artifacts_sent",
+          threadId: contextSession.session.getInfo().threadId,
+          workspace,
+          agentId: contextSession.session.getInfo().agentId,
+          detail: selected.turnId,
+        });
         await options.deliverArtifactReport(ctx, ctx.chat.id, selected, ctx.message?.message_thread_id);
       }
       return;
@@ -157,6 +188,17 @@ export function registerTelegramArtifactCommands(options: TelegramArtifactComman
     if (action === "delete_confirm") {
       const removed = await removeArtifactTurn(workspace, turnId);
       await ctx.answerCallbackQuery({ text: removed ? "Deleted" : "Already gone" });
+      if (removed) {
+        const info = contextSession.session.getInfo();
+        options.appendActivity?.(ctx, {
+          status: "info",
+          type: "artifact_deleted",
+          threadId: info.threadId,
+          workspace,
+          agentId: info.agentId,
+          detail: turnId,
+        });
+      }
       const html = removed
         ? `<b>Deleted artifact turn:</b> <code>${escapeHTML(turnId)}</code>`
         : `<b>Artifact turn not found:</b> <code>${escapeHTML(turnId)}</code>`;
@@ -176,6 +218,15 @@ export function registerTelegramArtifactCommands(options: TelegramArtifactComman
     }
 
     await ctx.answerCallbackQuery({ text: action === "zip" ? "Sending ZIP..." : "Sending artifacts..." });
+    const info = contextSession.session.getInfo();
+    options.appendActivity?.(ctx, {
+      status: "info",
+      type: action === "zip" ? "artifact_zip_sent" : "artifacts_sent",
+      threadId: info.threadId,
+      workspace,
+      agentId: info.agentId,
+      detail: turnId,
+    });
     if (action === "zip") {
       await options.deliverArtifactReportZip(ctx, chatId, report, ctx.callbackQuery.message?.message_thread_id);
     } else {

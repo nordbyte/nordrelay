@@ -14,6 +14,7 @@ import { friendlyErrorText } from "./error-messages.js";
 import { RelayRuntime, type ActiveSessionsDto, type DashboardControlOptions, type RelayEvent, type SessionPageDto, type WebTasksDto } from "./relay-runtime.js";
 import { resolveDashboardEnvPath, SettingsService } from "./settings-service.js";
 import { UserStore, publicUser, type AuthenticatedUser } from "./user-management.js";
+import type { WebActivityActor } from "./web-state.js";
 import { handleDashboardAccessRoute } from "./web-dashboard-access-routes.js";
 import { handleDashboardArtifactRoute } from "./web-dashboard-artifact-routes.js";
 import { dashboardCss, dashboardJs } from "./web-dashboard-assets.js";
@@ -171,6 +172,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     assertCurrentSessionScope,
     scopedTasks,
     scopedActiveSessions,
+    activityActor: webActivityActor(authUser),
   })) {
     return;
   }
@@ -226,6 +228,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     assertSessionDetailScope,
     scopedSessionPage,
     filterActivityByScope,
+    activityActor: webActivityActor(authUser),
   })) {
     return;
   }
@@ -234,6 +237,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     runtime,
     authUser,
     assertCurrentSessionScope,
+    activityActor: webActivityActor(authUser),
   })) {
     return;
   }
@@ -333,6 +337,14 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse): Promise<v
     actorRole: authUser.groups.map((group) => group.name).join(", "),
     description: `Login ${authUser.user.email}`,
   });
+  runtime.recordActivity({
+    source: "web",
+    status: "info",
+    type: "auth_login",
+    threadId: null,
+    actor: webActivityActor(authUser),
+    detail: authUser.user.email,
+  });
   setSessionCookie(res, session.token);
   sendJson(res, 200, currentUserDto(authUser));
 }
@@ -402,6 +414,23 @@ function auditUserAction(authUser: AuthenticatedUser, action: AuditEvent["action
     actorRole: authUser.groups.map((group) => group.name).join(", "),
     description,
   });
+  runtime.recordActivity({
+    source: "web",
+    status: "info",
+    type: action,
+    threadId: null,
+    actor: webActivityActor(authUser),
+    detail: description,
+  });
+}
+
+function webActivityActor(authUser: AuthenticatedUser): WebActivityActor {
+  return {
+    channel: "web",
+    id: authUser.user.id,
+    label: authUser.user.displayName || authUser.user.email,
+    username: authUser.user.email,
+  };
 }
 
 function scopedControlOptions(authUser: AuthenticatedUser, options: DashboardControlOptions): DashboardControlOptions {

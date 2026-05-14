@@ -27,6 +27,7 @@ import {
   safeEditMessage,
   safeReply,
 } from "./telegram-output.js";
+import type { WebActivityEvent } from "./web-state.js";
 
 export interface TelegramAgentCommandOptions {
   bot: Bot<Context>;
@@ -43,6 +44,10 @@ export interface TelegramAgentCommandOptions {
   startAgentLogout: (info?: AgentSessionInfo) => Promise<{ success: boolean; message: string }>;
   hostLoginCommand: (info?: AgentSessionInfo) => string;
   hostLogoutCommand: (info?: AgentSessionInfo) => string;
+  appendActivity?: (
+    ctx: Context,
+    input: Partial<Omit<WebActivityEvent, "id" | "timestamp" | "source">> & Pick<WebActivityEvent, "status" | "type"> & { timestamp?: string },
+  ) => void;
 }
 
 export function registerTelegramAgentCommands(options: TelegramAgentCommandOptions): void {
@@ -152,6 +157,14 @@ export function registerTelegramAgentCommands(options: TelegramAgentCommandOptio
     }
 
     const result = await options.startAgentLogin(info);
+    options.appendActivity?.(ctx, {
+      status: result.success ? "info" : "failed",
+      type: result.success ? "login_started" : "login_failed",
+      threadId: info?.threadId ?? null,
+      workspace: info?.workspace,
+      agentId: options.agentIdForAuth(info),
+      detail: redactText(result.message),
+    });
     if (result.success) {
       await safeReply(ctx, `<b>🔑 Login initiated.</b>\n\n<code>${escapeHTML(redactText(result.message))}</code>`, {
         fallbackText: `🔑 Login initiated.\n\n${redactText(result.message)}`,
@@ -220,6 +233,14 @@ export function registerTelegramAgentCommands(options: TelegramAgentCommandOptio
     }
 
     const result = await options.startAgentLogout(info);
+    options.appendActivity?.(ctx, {
+      status: result.success ? "info" : "failed",
+      type: result.success ? "logout_completed" : "logout_failed",
+      threadId: info?.threadId ?? null,
+      workspace: info?.workspace,
+      agentId: options.agentIdForAuth(info),
+      detail: redactText(result.message),
+    });
     if (result.success) {
       await safeReply(ctx, `<b>🔓 Logged out.</b>\n\n${escapeHTML(redactText(result.message))}`, {
         fallbackText: `🔓 Logged out.\n\n${redactText(result.message)}`,
@@ -257,6 +278,15 @@ export function registerTelegramAgentCommands(options: TelegramAgentCommandOptio
     try {
       const session = await options.registry.switchAgent(contextKey, selectedAgent);
       const info = session.getInfo();
+      options.appendActivity?.(ctx, {
+        status: "info",
+        type: "agent_switch",
+        contextKey,
+        threadId: info.threadId,
+        workspace: info.workspace,
+        agentId: info.agentId,
+        detail: labelOf(info),
+      });
       const html = [`<b>Agent switched to ${escapeHTML(labelOf(info))}.</b>`, "", renderSessionInfoHTML(info)].join("\n");
       const plain = [`Agent switched to ${labelOf(info)}.`, "", renderSessionInfoPlain(info)].join("\n");
       if (messageId) {

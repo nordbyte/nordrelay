@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AgentId } from "./agent.js";
 import type { ActiveSessionsDto, RelayRuntime, WebTasksDto } from "./relay-runtime.js";
 import type { AuthenticatedUser, UserStore } from "./user-management.js";
+import type { WebActivityActor } from "./web-state.js";
 import {
   numberParam,
   optionalStringField,
@@ -24,6 +25,7 @@ export interface DashboardRuntimeRouteOptions {
   assertCurrentSessionScope: (authUser: AuthenticatedUser) => Promise<void>;
   scopedTasks: (authUser: AuthenticatedUser, tasks: WebTasksDto) => Promise<WebTasksDto>;
   scopedActiveSessions: (authUser: AuthenticatedUser, active: ActiveSessionsDto) => ActiveSessionsDto;
+  activityActor: WebActivityActor;
 }
 
 export async function handleDashboardRuntimeRoute(
@@ -46,7 +48,7 @@ export async function handleDashboardRuntimeRoute(
   }
 
   if (req.method === "POST" && url.pathname === "/api/update") {
-    sendJson(res, 202, runtime.updateConnector());
+    sendJson(res, 202, runtime.updateConnector(options.activityActor));
     return true;
   }
 
@@ -60,7 +62,7 @@ export async function handleDashboardRuntimeRoute(
     const agentId = options.parseAgentIdRequired(stringField(body, "agentId"));
     const operation = parseAgentUpdateOperation(optionalStringField(body, "operation"));
     options.assertScopedAgent(authUser, agentId);
-    sendJson(res, 202, { job: runtime.startAgentUpdate(agentId, operation) });
+    sendJson(res, 202, { job: runtime.startAgentUpdate(agentId, operation, options.activityActor) });
     return true;
   }
 
@@ -75,7 +77,7 @@ export async function handleDashboardRuntimeRoute(
   if (req.method === "DELETE" && agentUpdateLogMatch?.[1]) {
     const id = decodeURIComponent(agentUpdateLogMatch[1]);
     options.assertAgentUpdateJobScope(authUser, id);
-    sendJson(res, 200, { deletedId: id, job: runtime.deleteAgentUpdateLog(id) });
+    sendJson(res, 200, { deletedId: id, job: runtime.deleteAgentUpdateLog(id, options.activityActor) });
     return true;
   }
 
@@ -84,7 +86,7 @@ export async function handleDashboardRuntimeRoute(
     const body = await readJsonBody(req);
     const id = decodeURIComponent(agentUpdateInputMatch[1]);
     options.assertAgentUpdateJobScope(authUser, id);
-    sendJson(res, 200, { job: runtime.sendAgentUpdateInput(id, stringField(body, "input")) });
+    sendJson(res, 200, { job: runtime.sendAgentUpdateInput(id, stringField(body, "input"), options.activityActor) });
     return true;
   }
 
@@ -92,7 +94,7 @@ export async function handleDashboardRuntimeRoute(
   if (req.method === "POST" && agentUpdateCancelMatch?.[1]) {
     const id = decodeURIComponent(agentUpdateCancelMatch[1]);
     options.assertAgentUpdateJobScope(authUser, id);
-    sendJson(res, 200, { job: runtime.cancelAgentUpdate(id) });
+    sendJson(res, 200, { job: runtime.cancelAgentUpdate(id, options.activityActor) });
     return true;
   }
 
@@ -120,7 +122,7 @@ export async function handleDashboardRuntimeRoute(
   if (req.method === "POST" && url.pathname === "/api/logs/clear") {
     const body = await readJsonBody(req);
     const target = parseLogTarget(optionalStringField(body, "target"));
-    sendJson(res, 200, runtime.clearLogs(target));
+    sendJson(res, 200, runtime.clearLogs(target, options.activityActor));
     return true;
   }
 
@@ -132,13 +134,13 @@ export async function handleDashboardRuntimeRoute(
 
   if (req.method === "GET" && url.pathname === "/api/diagnostics/bundle") {
     await options.assertCurrentSessionScope(authUser);
-    const bundle = await runtime.supportBundle();
+    const bundle = await runtime.supportBundle(options.activityActor);
     sendFile(res, bundle.path, bundle.name);
     return true;
   }
 
   if (req.method === "POST" && url.pathname === "/api/runtime/restart") {
-    sendJson(res, 202, runtime.restartConnector());
+    sendJson(res, 202, runtime.restartConnector(options.activityActor));
     return true;
   }
 

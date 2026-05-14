@@ -4,8 +4,25 @@ import type { AgentId } from "./agent.js";
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "./state-backend.js";
 
 export type WebChatRole = "user" | "agent" | "system" | "tool";
-export type WebActivitySource = "web" | "cli";
+export type WebActivitySource = "web" | "telegram" | "cli";
 export type WebActivityStatus = "queued" | "running" | "completed" | "failed" | "aborted" | "info";
+export type WebActivityCategory =
+  | "prompt"
+  | "session"
+  | "queue"
+  | "agent-update"
+  | "artifact"
+  | "system"
+  | "auth"
+  | "security"
+  | "tool";
+
+export interface WebActivityActor {
+  channel: "web" | "telegram" | "cli" | "system";
+  id?: string;
+  label?: string;
+  username?: string;
+}
 
 export interface WebChatMessage {
   id: string;
@@ -21,11 +38,14 @@ export interface WebActivityEvent {
   id: string;
   timestamp: string;
   source: WebActivitySource;
+  category?: WebActivityCategory;
   status: WebActivityStatus;
   type: string;
+  contextKey?: string;
   threadId: string | null;
   workspace?: string;
   agentId?: AgentId;
+  actor?: WebActivityActor;
   prompt?: string;
   detail?: string;
   durationMs?: number;
@@ -127,6 +147,7 @@ export class WebActivityStore {
       id: randomId(),
       timestamp: input.timestamp ?? new Date().toISOString(),
       ...input,
+      category: input.category ?? activityCategoryForType(input.type),
     };
     payload.events.push(event);
     if (payload.events.length > this.maxEvents) {
@@ -136,11 +157,12 @@ export class WebActivityStore {
     return event;
   }
 
-  list(options: { limit?: number; source?: WebActivitySource | "all"; status?: WebActivityStatus | "all" } = {}): WebActivityEvent[] {
+  list(options: { limit?: number; source?: WebActivitySource | "all"; status?: WebActivityStatus | "all"; category?: WebActivityCategory | "all" } = {}): WebActivityEvent[] {
     const limit = Math.max(1, Math.min(500, options.limit ?? 100));
     return this.readPayload().events
       .filter((event) => !options.source || options.source === "all" || event.source === options.source)
       .filter((event) => !options.status || options.status === "all" || event.status === options.status)
+      .filter((event) => !options.category || options.category === "all" || (event.category ?? activityCategoryForType(event.type)) === options.category)
       .slice(-limit)
       .reverse();
   }
@@ -167,7 +189,7 @@ function isWebChatMessage(value: unknown): value is WebChatMessage {
     typeof candidate.text === "string" &&
     typeof candidate.timestamp === "string" &&
     ["user", "agent", "system", "tool"].includes(candidate.role) &&
-    ["web", "cli"].includes(candidate.source);
+    ["web", "telegram", "cli"].includes(candidate.source);
 }
 
 function isWebActivityEvent(value: unknown): value is WebActivityEvent {
@@ -178,8 +200,20 @@ function isWebActivityEvent(value: unknown): value is WebActivityEvent {
   return typeof candidate.id === "string" &&
     typeof candidate.timestamp === "string" &&
     typeof candidate.type === "string" &&
-    ["web", "cli"].includes(candidate.source) &&
+    ["web", "telegram", "cli"].includes(candidate.source) &&
     ["queued", "running", "completed", "failed", "aborted", "info"].includes(candidate.status);
+}
+
+export function activityCategoryForType(type: string): WebActivityCategory {
+  if (/^(prompt|cli_turn|voice|upload|attachment)/.test(type)) return "prompt";
+  if (/^(session|agent_switch|handback|model_|reasoning_|fast_|launch_)/.test(type)) return "session";
+  if (/^queue_/.test(type)) return "queue";
+  if (/^agent_(install|update)/.test(type)) return "agent-update";
+  if (/^(artifact|artifacts)/.test(type)) return "artifact";
+  if (/^(auth|login|logout)/.test(type)) return "auth";
+  if (/^(user_|group_|telegram_chat_|telegram_link|permission_|access_|lock_)/.test(type)) return "security";
+  if (/^(tool_|cli_tool)/.test(type)) return "tool";
+  return "system";
 }
 
 function randomId(): string {

@@ -13,9 +13,15 @@ import type {
 } from "./relay-runtime-types.js";
 import {
   type WebActivityEvent,
+  type WebActivityActor,
   type WebChatMessage,
   type WebChatStore,
 } from "./web-state.js";
+
+const CLI_ACTIVITY_ACTOR: WebActivityActor = {
+  channel: "cli",
+  label: "CLI",
+};
 
 export interface RelayExternalActivityMonitorOptions {
   config: ConnectorConfig;
@@ -45,7 +51,9 @@ export class RelayExternalActivityMonitor {
     if (!this.mirror) {
       return null;
     }
-    const startedAt = this.mirror.startedAt ?? new Date().toISOString();
+    const startedAt = this.mirror.startedAt instanceof Date
+      ? this.mirror.startedAt.toISOString()
+      : this.mirror.startedAt ?? new Date().toISOString();
     const startedMs = new Date(startedAt).getTime();
     return {
       id: this.mirror.turnId ?? "cli",
@@ -106,7 +114,7 @@ export class RelayExternalActivityMonitor {
         startedAt: snapshot.activity.startedAt?.toISOString() ?? null,
       };
       if (snapshot.activity.active) {
-        this.startExternalTurn(snapshot);
+        this.startExternalTurn(snapshot, info);
       }
       return;
     }
@@ -117,9 +125,9 @@ export class RelayExternalActivityMonitor {
         mirror.turnId = snapshot.activity.turnId;
         mirror.startedAt = snapshot.activity.startedAt?.toISOString() ?? null;
         mirror.latestAgentLine = undefined;
-        this.startExternalTurn(snapshot);
+        this.startExternalTurn(snapshot, info);
       }
-      this.broadcastExternalEvents(snapshot, snapshot.events.filter((event) => event.lineNumber > mirror.lastLine));
+      this.broadcastExternalEvents(snapshot, snapshot.events.filter((event) => event.lineNumber > mirror.lastLine), info);
       mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);
       mirror.latestStatus = externalStatusLine(snapshot, this.options.queueLength());
       this.options.broadcastStatus(mirror.latestStatus, "info");
@@ -155,6 +163,7 @@ export class RelayExternalActivityMonitor {
         threadId: snapshot.threadId,
         workspace: info.workspace,
         agentId: info.agentId,
+        actor: CLI_ACTIVITY_ACTOR,
         prompt: snapshot.latestUserMessage ?? undefined,
         detail: `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`,
         durationMs: durationFromDates(externalStartedAt, terminalEvent.timestamp),
@@ -173,7 +182,7 @@ export class RelayExternalActivityMonitor {
     mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);
   }
 
-  private startExternalTurn(snapshot: AgentExternalSnapshot): void {
+  private startExternalTurn(snapshot: AgentExternalSnapshot, info: AgentSessionInfo): void {
     const prompt = snapshot.latestUserMessage ?? `${snapshot.agentLabel} CLI task`;
     this.options.chatStore.append({
       threadId: snapshot.threadId,
@@ -195,12 +204,15 @@ export class RelayExternalActivityMonitor {
       status: "running",
       type: "cli_turn_started",
       threadId: snapshot.threadId,
+      workspace: info.workspace,
+      agentId: info.agentId,
+      actor: CLI_ACTIVITY_ACTOR,
       prompt,
       detail: `${snapshot.sourceLabel}: ${snapshot.sourcePath}`,
     });
   }
 
-  private broadcastExternalEvents(snapshot: AgentExternalSnapshot, events: AgentExternalSnapshot["events"]): void {
+  private broadcastExternalEvents(snapshot: AgentExternalSnapshot, events: AgentExternalSnapshot["events"], info: AgentSessionInfo): void {
     for (const event of events) {
       if (event.kind === "tool" && event.status === "started") {
         this.options.broadcast({
@@ -214,6 +226,9 @@ export class RelayExternalActivityMonitor {
           status: "running",
           type: "cli_tool_started",
           threadId: snapshot.threadId,
+          workspace: info.workspace,
+          agentId: info.agentId,
+          actor: CLI_ACTIVITY_ACTOR,
           detail: event.toolName ?? "tool",
         });
       }
@@ -223,6 +238,34 @@ export class RelayExternalActivityMonitor {
           id: snapshot.activity.turnId ?? "cli",
           toolCallId: `cli-${event.lineNumber}`,
           isError: false,
+        });
+        this.options.appendActivity({
+          source: "cli",
+          status: "completed",
+          type: "cli_tool_completed",
+          threadId: snapshot.threadId,
+          workspace: info.workspace,
+          agentId: info.agentId,
+          actor: CLI_ACTIVITY_ACTOR,
+          detail: event.toolName ?? "tool",
+        });
+      }
+      if (event.kind === "tool" && event.status === "failed") {
+        this.options.broadcast({
+          type: "tool_end",
+          id: snapshot.activity.turnId ?? "cli",
+          toolCallId: `cli-${event.lineNumber}`,
+          isError: true,
+        });
+        this.options.appendActivity({
+          source: "cli",
+          status: "failed",
+          type: "cli_tool_failed",
+          threadId: snapshot.threadId,
+          workspace: info.workspace,
+          agentId: info.agentId,
+          actor: CLI_ACTIVITY_ACTOR,
+          detail: event.toolName ?? "tool",
         });
       }
     }

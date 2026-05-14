@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { isAgentId, type AgentId } from "./agent.js";
 import type { RelayRuntime, SessionPageDto } from "./relay-runtime.js";
 import type { AuthenticatedUser } from "./user-management.js";
+import type { WebActivityActor, WebActivityCategory } from "./web-state.js";
 import {
   numberParam,
   optionalBooleanField,
@@ -25,6 +26,7 @@ export interface DashboardSessionRouteOptions {
   assertSessionDetailScope: (authUser: AuthenticatedUser, threadId: string, detail: Record<string, unknown>) => void;
   scopedSessionPage: (authUser: AuthenticatedUser, page: SessionPageDto) => SessionPageDto;
   filterActivityByScope: <T extends { agentId?: string; workspace?: string }>(authUser: AuthenticatedUser, events: T[]) => T[];
+  activityActor: WebActivityActor;
 }
 
 export async function handleDashboardSessionRoute(
@@ -44,13 +46,13 @@ export async function handleDashboardSessionRoute(
   if (req.method === "POST" && url.pathname === "/api/locks") {
     const body = await readJsonBody(req);
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { lock: runtime.lockWebSession(optionalStringField(body, "ownerName")), locks: runtime.locks() });
+    sendJson(res, 200, { lock: runtime.lockWebSession(optionalStringField(body, "ownerName"), options.activityActor), locks: runtime.locks() });
     return true;
   }
 
   if (req.method === "DELETE" && url.pathname === "/api/locks") {
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 200, runtime.unlockWebSession());
+    sendJson(res, 200, runtime.unlockWebSession(options.activityActor));
     return true;
   }
 
@@ -65,7 +67,7 @@ export async function handleDashboardSessionRoute(
     const body = await readJsonBody(req);
     const agentId = options.parseAgentId(optionalStringField(body, "agentId"));
     options.assertScopedAgent(authUser, agentId);
-    sendJson(res, 200, await runtime.login(agentId));
+    sendJson(res, 200, await runtime.login(agentId, options.activityActor));
     return true;
   }
 
@@ -73,7 +75,7 @@ export async function handleDashboardSessionRoute(
     const body = await readJsonBody(req);
     const agentId = options.parseAgentId(optionalStringField(body, "agentId"));
     options.assertScopedAgent(authUser, agentId);
-    sendJson(res, 200, await runtime.logout(agentId));
+    sendJson(res, 200, await runtime.logout(agentId, options.activityActor));
     return true;
   }
 
@@ -107,7 +109,7 @@ export async function handleDashboardSessionRoute(
       throw new Error(`Invalid agent: ${agentId}`);
     }
     options.assertScopedAgent(authUser, agentId);
-    sendJson(res, 200, { session: await runtime.setAgent(agentId) });
+    sendJson(res, 200, { session: await runtime.setAgent(agentId, options.activityActor) });
     return true;
   }
 
@@ -125,7 +127,7 @@ export async function handleDashboardSessionRoute(
         reasoningEffort: optionalStringField(body, "reasoningEffort"),
         launchProfileId: optionalStringField(body, "launchProfileId"),
         fastMode: optionalBooleanField(body, "fastMode"),
-      }),
+      }, options.activityActor),
     });
     return true;
   }
@@ -137,7 +139,7 @@ export async function handleDashboardSessionRoute(
     if (detail.record && typeof detail.record === "object") {
       options.assertSessionScope(authUser, detail.record as Record<string, unknown>);
     }
-    const session = await runtime.switchSession(threadId);
+    const session = await runtime.switchSession(threadId, options.activityActor);
     options.assertSessionScope(authUser, session);
     sendJson(res, 200, { session });
     return true;
@@ -145,7 +147,7 @@ export async function handleDashboardSessionRoute(
 
   if (req.method === "POST" && url.pathname === "/api/sessions/attach") {
     const body = await readJsonBody(req);
-    const session = await runtime.attachSession(stringField(body, "threadId"));
+    const session = await runtime.attachSession(stringField(body, "threadId"), options.activityActor);
     options.assertSessionScope(authUser, session);
     sendJson(res, 200, { session });
     return true;
@@ -168,35 +170,35 @@ export async function handleDashboardSessionRoute(
   if (req.method === "POST" && url.pathname === "/api/session/model") {
     const body = await readJsonBody(req);
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { session: await runtime.setModel(stringField(body, "model")) });
+    sendJson(res, 200, { session: await runtime.setModel(stringField(body, "model"), options.activityActor) });
     return true;
   }
 
   if (req.method === "POST" && url.pathname === "/api/session/reasoning") {
     const body = await readJsonBody(req);
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { session: await runtime.setReasoningEffort(stringField(body, "reasoning")) });
+    sendJson(res, 200, { session: await runtime.setReasoningEffort(stringField(body, "reasoning"), options.activityActor) });
     return true;
   }
 
   if (req.method === "POST" && url.pathname === "/api/session/fast") {
     const body = await readJsonBody(req);
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { session: await runtime.setFastMode(Boolean(body?.enabled)) });
+    sendJson(res, 200, { session: await runtime.setFastMode(Boolean(body?.enabled), options.activityActor) });
     return true;
   }
 
   if (req.method === "POST" && url.pathname === "/api/session/launch") {
     const body = await readJsonBody(req);
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { session: await runtime.setLaunchProfile(stringField(body, "profileId")) });
+    sendJson(res, 200, { session: await runtime.setLaunchProfile(stringField(body, "profileId"), options.activityActor) });
     return true;
   }
 
   if (req.method === "POST" && url.pathname === "/api/prompt") {
     const body = await readJsonBody(req);
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 202, await runtime.sendPrompt(stringField(body, "text")));
+    sendJson(res, 202, await runtime.sendPrompt(stringField(body, "text"), options.activityActor));
     return true;
   }
 
@@ -206,32 +208,32 @@ export async function handleDashboardSessionRoute(
     sendJson(res, 202, await runtime.sendUploadPrompt({
       text: optionalStringField(body, "text"),
       files: parseUploadFiles(body.files),
-    }));
+    }, options.activityActor));
     return true;
   }
 
   if (req.method === "POST" && (url.pathname === "/api/abort" || url.pathname === "/api/stop")) {
     await options.assertCurrentSessionScope(authUser);
-    await runtime.abort();
+    await runtime.abort(options.activityActor);
     sendJson(res, 200, { ok: true });
     return true;
   }
 
   if (req.method === "POST" && url.pathname === "/api/handback") {
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 200, await runtime.handback());
+    sendJson(res, 200, await runtime.handback(options.activityActor));
     return true;
   }
 
   if (req.method === "POST" && url.pathname === "/api/retry") {
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 202, await runtime.retry());
+    sendJson(res, 202, await runtime.retry(options.activityActor));
     return true;
   }
 
   if (req.method === "POST" && url.pathname === "/api/sync") {
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 200, await runtime.sync());
+    sendJson(res, 200, await runtime.sync(options.activityActor));
     return true;
   }
 
@@ -244,7 +246,7 @@ export async function handleDashboardSessionRoute(
   if (req.method === "POST" && url.pathname === "/api/queue") {
     const body = await readJsonBody(req);
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { queue: runtime.queueAction(stringField(body, "action") as never, optionalStringField(body, "id")), paused: runtime.queuePaused() });
+    sendJson(res, 200, { queue: runtime.queueAction(stringField(body, "action") as never, optionalStringField(body, "id"), options.activityActor), paused: runtime.queuePaused() });
     return true;
   }
 
@@ -256,7 +258,7 @@ export async function handleDashboardSessionRoute(
 
   if (req.method === "DELETE" && url.pathname === "/api/chat/history") {
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 200, await runtime.clearChatHistory());
+    sendJson(res, 200, await runtime.clearChatHistory(options.activityActor));
     return true;
   }
 
@@ -266,6 +268,7 @@ export async function handleDashboardSessionRoute(
         limit: numberParam(url, "limit", 100),
         source: (url.searchParams.get("source") || "all") as never,
         status: (url.searchParams.get("status") || "all") as never,
+        category: (url.searchParams.get("category") || "all") as WebActivityCategory | "all",
       })),
     });
     return true;

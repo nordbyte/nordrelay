@@ -51,6 +51,8 @@ import { transcribeAudio, type TranscriptionBackend } from "./voice.js";
 import {
   WebActivityStore,
   WebChatStore,
+  type WebActivityActor,
+  type WebActivityCategory,
   type WebActivityEvent,
   type WebActivitySource,
   type WebActivityStatus,
@@ -115,6 +117,8 @@ export class RelayRuntime {
   private readonly artifactService: RelayArtifactService;
   private readonly externalActivityMonitor: RelayExternalActivityMonitor;
   private readonly subscribers = new Set<(event: RelayEvent) => void>();
+  private readonly agentUpdateActors = new Map<string, WebActivityActor>();
+  private readonly agentUpdateStates = new Map<string, { status: AgentUpdateJobSnapshot["status"]; needsInput: boolean }>();
   private readonly externalMonitor?: NodeJS.Timeout;
   private draining = false;
   private currentTurnId: string | null = null;
@@ -135,7 +139,10 @@ export class RelayRuntime {
     this.queueService = new RelayQueueService(this.promptStore, WEB_CONTEXT_KEY);
     this.artifactService = new RelayArtifactService(config);
     this.agentUpdates = new AgentUpdateManager({
-      onUpdate: (job) => this.broadcast({ type: "agent_update", job }),
+      onUpdate: (job) => {
+        this.broadcast({ type: "agent_update", job });
+        this.recordAgentUpdateLifecycle(job);
+      },
     });
     this.externalActivityMonitor = new RelayExternalActivityMonitor({
       config,
@@ -219,7 +226,7 @@ export class RelayRuntime {
     };
   }
 
-  updateConnector(): ReturnType<typeof spawnSelfUpdate> {
+  updateConnector(actor?: WebActivityActor): ReturnType<typeof spawnSelfUpdate> {
     const update = spawnSelfUpdate();
     this.broadcastStatus(`Update started with ${update.method}. Log: ${update.logPath}`, "warn");
     this.appendActivity({
@@ -228,6 +235,7 @@ export class RelayRuntime {
       type: "update_started",
       threadId: null,
       workspace: this.config.workspace,
+      actor,
       detail: `${update.method}: ${update.summary}`,
     });
     this.appendAudit({
@@ -244,13 +252,17 @@ export class RelayRuntime {
     return this.agentUpdates.list();
   }
 
-  startAgentUpdate(agentId: AgentId, operation: AgentUpdateOperation = "update"): AgentUpdateJobSnapshot {
+  startAgentUpdate(agentId: AgentId, operation: AgentUpdateOperation = "update", actor?: WebActivityActor): AgentUpdateJobSnapshot {
     const job = this.agentUpdates.start(agentId, {
       piCliPath: this.config.piCliPath,
       hermesCliPath: this.config.hermesCliPath,
       openClawCliPath: this.config.openClawCliPath,
       claudeCodeCliPath: this.config.claudeCodeCliPath,
     }, operation);
+    if (actor) {
+      this.agentUpdateActors.set(job.id, actor);
+    }
+    this.agentUpdateStates.set(job.id, { status: job.status, needsInput: job.needsInput });
     this.broadcastStatus(`${job.agentLabel} ${operation} started. Log: ${job.logPath}`, "warn");
     this.appendActivity({
       source: "web",
@@ -259,6 +271,7 @@ export class RelayRuntime {
       agentId,
       threadId: null,
       workspace: this.config.workspace,
+      actor,
       detail: `${job.method}: ${job.summary}`,
     });
     this.appendAudit({
@@ -276,8 +289,18 @@ export class RelayRuntime {
     return this.agentUpdates.readLog(id);
   }
 
-  deleteAgentUpdateLog(id: string): AgentUpdateJobSnapshot {
+  deleteAgentUpdateLog(id: string, actor?: WebActivityActor): AgentUpdateJobSnapshot {
     const job = this.agentUpdates.deleteLog(id);
+    this.appendActivity({
+      source: "web",
+      status: "info",
+      type: "agent_update_log_deleted",
+      agentId: job.agentId,
+      threadId: null,
+      workspace: this.config.workspace,
+      actor,
+      detail: job.logPath,
+    });
     this.appendAudit({
       action: "command",
       status: "ok",
@@ -289,12 +312,34 @@ export class RelayRuntime {
     return job;
   }
 
-  sendAgentUpdateInput(id: string, input: string): AgentUpdateJobSnapshot {
-    return this.agentUpdates.sendInput(id, input);
+  sendAgentUpdateInput(id: string, input: string, actor?: WebActivityActor): AgentUpdateJobSnapshot {
+    const job = this.agentUpdates.sendInput(id, input);
+    this.appendActivity({
+      source: "web",
+      status: "info",
+      type: "agent_update_input_sent",
+      agentId: job.agentId,
+      threadId: null,
+      workspace: this.config.workspace,
+      actor: actor ?? this.agentUpdateActors.get(id),
+      detail: `Input sent to ${job.agentLabel} ${job.operation}.`,
+    });
+    return job;
   }
 
-  cancelAgentUpdate(id: string): AgentUpdateJobSnapshot {
-    return this.agentUpdates.cancel(id);
+  cancelAgentUpdate(id: string, actor?: WebActivityActor): AgentUpdateJobSnapshot {
+    const job = this.agentUpdates.cancel(id);
+    this.appendActivity({
+      source: "web",
+      status: "aborted",
+      type: "agent_update_cancel_requested",
+      agentId: job.agentId,
+      threadId: null,
+      workspace: this.config.workspace,
+      actor: actor ?? this.agentUpdateActors.get(id),
+      detail: `${job.agentLabel} ${job.operation} cancellation requested.`,
+    });
+    return job;
   }
 
   async diagnostics(): Promise<WebDiagnosticsDto> {
@@ -414,7 +459,7 @@ export class RelayRuntime {
     return this.auditStore.list(limit);
   }
 
-  async supportBundle(): Promise<SupportBundleResult> {
+  async supportBundle(actor?: WebActivityActor): Promise<SupportBundleResult> {
     const bundle = await createSupportBundle({
       config: this.config,
       diagnostics: await this.diagnostics(),
@@ -429,6 +474,7 @@ export class RelayRuntime {
       type: "diagnostics_bundle_exported",
       threadId: null,
       workspace: this.config.workspace,
+      actor,
       detail: bundle.path,
     });
     this.appendAudit({
@@ -445,8 +491,17 @@ export class RelayRuntime {
     return this.lockStore.list();
   }
 
-  lockWebSession(ownerName = "Web dashboard"): SessionLock {
+  lockWebSession(ownerName = "Web dashboard", actor?: WebActivityActor): SessionLock {
     const lock = this.lockStore.set(WEB_CONTEXT_KEY, 0, ownerName, this.config.sessionLockTtlMs);
+    this.appendActivity({
+      source: "web",
+      status: "info",
+      type: "lock_created",
+      threadId: null,
+      workspace: this.config.workspace,
+      actor,
+      detail: `locked by ${ownerName}`,
+    });
     this.appendAudit({
       action: "lock_updated",
       status: "ok",
@@ -457,8 +512,17 @@ export class RelayRuntime {
     return lock;
   }
 
-  unlockWebSession(): { removed: boolean; locks: SessionLock[] } {
+  unlockWebSession(actor?: WebActivityActor): { removed: boolean; locks: SessionLock[] } {
     const removed = this.lockStore.clear(WEB_CONTEXT_KEY);
+    this.appendActivity({
+      source: "web",
+      status: "info",
+      type: "lock_removed",
+      threadId: null,
+      workspace: this.config.workspace,
+      actor,
+      detail: removed ? "unlocked" : "no lock",
+    });
     this.appendAudit({
       action: "lock_updated",
       status: "ok",
@@ -534,7 +598,7 @@ export class RelayRuntime {
     }
   }
 
-  async login(agentId?: AgentId): Promise<WebAuthDto & { result: LoginResult | null }> {
+  async login(agentId?: AgentId, actor?: WebActivityActor): Promise<WebAuthDto & { result: LoginResult | null }> {
     const { session, dispose } = await this.getControlSession(agentId);
     try {
       const info = this.publicInfo(session);
@@ -558,6 +622,16 @@ export class RelayRuntime {
         };
       }
       const result = await this.startAgentLogin(info);
+      this.appendActivity({
+        source: "web",
+        status: result.success ? "info" : "failed",
+        type: result.success ? "login_started" : "login_failed",
+        threadId: info.threadId,
+        workspace: info.workspace,
+        agentId: info.agentId,
+        actor,
+        detail: result.message,
+      });
       this.appendAudit({
         action: "command",
         status: result.success ? "ok" : "failed",
@@ -576,7 +650,7 @@ export class RelayRuntime {
     }
   }
 
-  async logout(agentId?: AgentId): Promise<WebAuthDto & { result: LoginResult | null }> {
+  async logout(agentId?: AgentId, actor?: WebActivityActor): Promise<WebAuthDto & { result: LoginResult | null }> {
     const { session, dispose } = await this.getControlSession(agentId);
     try {
       const info = this.publicInfo(session);
@@ -610,6 +684,16 @@ export class RelayRuntime {
         };
       }
       const result = await this.startAgentLogout(info);
+      this.appendActivity({
+        source: "web",
+        status: result.success ? "info" : "failed",
+        type: result.success ? "logout_completed" : "logout_failed",
+        threadId: info.threadId,
+        workspace: info.workspace,
+        agentId: info.agentId,
+        actor,
+        detail: result.message,
+      });
       this.appendAudit({
         action: "command",
         status: result.success ? "ok" : "failed",
@@ -646,20 +730,31 @@ export class RelayRuntime {
     };
   }
 
-  async clearChatHistory(): Promise<{ removed: number; messages: WebChatMessage[] }> {
+  async clearChatHistory(actor?: WebActivityActor): Promise<{ removed: number; messages: WebChatMessage[] }> {
     const session = await this.getSession(true);
-    const removed = this.chatStore.clear(this.publicInfo(session).threadId);
+    const info = this.publicInfo(session);
+    const removed = this.chatStore.clear(info.threadId);
     const messages = await this.chatHistory();
     this.broadcast({ type: "chat_history", messages });
+    this.appendActivity({
+      source: "web",
+      status: "info",
+      type: "chat_history_cleared",
+      threadId: info.threadId,
+      workspace: info.workspace,
+      agentId: info.agentId,
+      actor,
+      detail: `${removed} messages removed.`,
+    });
     return { removed, messages };
   }
 
-  activity(options: { limit?: number; source?: WebActivitySource | "all"; status?: WebActivityStatus | "all" } = {}): WebActivityEvent[] {
+  activity(options: { limit?: number; source?: WebActivitySource | "all"; status?: WebActivityStatus | "all"; category?: WebActivityCategory | "all" } = {}): WebActivityEvent[] {
     const currentInfo = this.registry.get(WEB_CONTEXT_KEY)?.getInfo();
     return this.activityStore.list(options).map((event) => this.enrichActivityEvent(event, currentInfo));
   }
 
-  async retry(): Promise<{ queued: boolean; queueId?: string }> {
+  async retry(actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }> {
     const cached = this.queueService.getLastPrompt();
     if (!cached) {
       throw new Error("Nothing to retry. Send a message first.");
@@ -671,10 +766,10 @@ export class RelayRuntime {
       description: "retry",
       detail: cached.description,
     });
-    return this.sendEnvelope(cached);
+    return this.sendEnvelope({ ...cached, activityActor: cached.activityActor ?? actor }, actor);
   }
 
-  async sync(): Promise<ReturnType<AgentSessionService["syncFromAgentState"]>> {
+  async sync(actor?: WebActivityActor): Promise<ReturnType<AgentSessionService["syncFromAgentState"]>> {
     const session = await this.getSession(true);
     const info = this.publicInfo(session);
     if (!(info.capabilities ?? CODEX_AGENT_CAPABILITIES).externalActivity) {
@@ -691,6 +786,7 @@ export class RelayRuntime {
       threadId: result.info.threadId,
       workspace: result.info.workspace,
       agentId: result.info.agentId,
+      actor,
       detail: result.changedFields.length > 0 ? result.changedFields.join(", ") : "already in sync",
     });
     this.appendAudit({
@@ -771,12 +867,23 @@ export class RelayRuntime {
     return session.listModels();
   }
 
-  async setAgent(agentId: AgentId): Promise<AgentSessionInfo> {
+  async setAgent(agentId: AgentId, actor?: WebActivityActor): Promise<AgentSessionInfo> {
     if (!enabledAgents(this.config).includes(agentId)) {
       throw new Error(`Agent is not enabled: ${agentId}`);
     }
     const session = await this.registry.switchAgent(WEB_CONTEXT_KEY, agentId);
     this.updateSession(session);
+    const info = this.publicInfo(session);
+    this.appendActivity({
+      source: "web",
+      status: "info",
+      type: "agent_switch",
+      threadId: info.threadId,
+      workspace: info.workspace,
+      agentId: info.agentId,
+      actor,
+      detail: `Dashboard switched agent to ${info.agentLabel}.`,
+    });
     return this.publicInfo(session);
   }
 
@@ -787,7 +894,7 @@ export class RelayRuntime {
     reasoningEffort?: string;
     launchProfileId?: string;
     fastMode?: boolean;
-  } = {}): Promise<AgentSessionInfo> {
+  } = {}, actor?: WebActivityActor): Promise<AgentSessionInfo> {
     const session = options.agentId ? await this.registry.switchAgent(WEB_CONTEXT_KEY, options.agentId) : await this.getSession(true);
     this.ensureIdle(session);
     if (options.reasoningEffort) {
@@ -812,12 +919,13 @@ export class RelayRuntime {
       threadId: info.threadId,
       workspace: info.workspace,
       agentId: info.agentId,
+      actor,
       detail: "New dashboard session created.",
     });
     return this.publicInfo(session);
   }
 
-  async switchSession(threadId: string): Promise<AgentSessionInfo> {
+  async switchSession(threadId: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
     const session = await this.getSession(true);
     this.ensureIdle(session);
     const info = await session.switchSession(threadId);
@@ -830,24 +938,27 @@ export class RelayRuntime {
       threadId: info.threadId,
       workspace: info.workspace,
       agentId: info.agentId,
+      actor,
       detail: "Dashboard switched session.",
     });
     return this.publicInfo(session);
   }
 
-  async attachSession(threadId: string): Promise<AgentSessionInfo> {
-    return this.switchSession(threadId);
+  async attachSession(threadId: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
+    return this.switchSession(threadId, actor);
   }
 
-  async setModel(model: string): Promise<AgentSessionInfo> {
+  async setModel(model: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
     const session = await this.getSession(true);
     this.ensureIdle(session);
     await session.setModelForCurrentSession(model);
     this.updateSession(session);
-    return this.publicInfo(session);
+    const info = this.publicInfo(session);
+    this.appendActivity({ source: "web", status: "info", type: "model_changed", threadId: info.threadId, workspace: info.workspace, agentId: info.agentId, actor, detail: model });
+    return info;
   }
 
-  async setReasoningEffort(effort: string): Promise<AgentSessionInfo> {
+  async setReasoningEffort(effort: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
     const session = await this.getSession(true);
     this.ensureIdle(session);
     const options = agentReasoningOptions(session.getInfo().agentId);
@@ -856,10 +967,12 @@ export class RelayRuntime {
     }
     await session.setReasoningEffortForCurrentSession(effort);
     this.updateSession(session);
-    return this.publicInfo(session);
+    const info = this.publicInfo(session);
+    this.appendActivity({ source: "web", status: "info", type: "reasoning_changed", threadId: info.threadId, workspace: info.workspace, agentId: info.agentId, actor, detail: effort });
+    return info;
   }
 
-  async setFastMode(enabled: boolean): Promise<AgentSessionInfo> {
+  async setFastMode(enabled: boolean, actor?: WebActivityActor): Promise<AgentSessionInfo> {
     const session = await this.getSession(true);
     this.ensureIdle(session);
     if (!(session.getInfo().capabilities ?? CODEX_AGENT_CAPABILITIES).fastMode) {
@@ -867,26 +980,32 @@ export class RelayRuntime {
     }
     session.setFastMode(enabled);
     this.updateSession(session);
-    return this.publicInfo(session);
+    const info = this.publicInfo(session);
+    this.appendActivity({ source: "web", status: "info", type: "fast_mode_changed", threadId: info.threadId, workspace: info.workspace, agentId: info.agentId, actor, detail: enabled ? "on" : "off" });
+    return info;
   }
 
-  async setLaunchProfile(profileId: string): Promise<AgentSessionInfo> {
+  async setLaunchProfile(profileId: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
     const session = await this.getSession(true);
     this.ensureIdle(session);
     session.setLaunchProfile(profileId);
     this.updateSession(session);
-    return this.publicInfo(session);
+    const info = this.publicInfo(session);
+    this.appendActivity({ source: "web", status: "info", type: "launch_profile_changed", threadId: info.threadId, workspace: info.workspace, agentId: info.agentId, actor, detail: info.launchProfileLabel ?? profileId });
+    return info;
   }
 
-  async handback(): Promise<ReturnType<AgentSessionService["handback"]>> {
+  async handback(actor?: WebActivityActor): Promise<ReturnType<AgentSessionService["handback"]>> {
     const session = await this.getSession(true);
     this.ensureIdle(session);
     const result = session.handback();
     this.updateSession(session);
+    const info = this.publicInfo(session);
+    this.appendActivity({ source: "web", status: "info", type: "handback", threadId: result.threadId, workspace: result.workspace, agentId: info.agentId, actor, detail: result.command ?? "Thread handed back." });
     return result;
   }
 
-  async abort(): Promise<void> {
+  async abort(actor?: WebActivityActor): Promise<void> {
     const session = await this.getSession(true);
     const snapshot = getExternalSnapshotForSession(session, this.config, { maxEvents: 0 });
     if (snapshot?.activity.active && !session.isProcessing()) {
@@ -896,21 +1015,25 @@ export class RelayRuntime {
         message: `Cannot abort the external ${snapshot.agentLabel} CLI task from NordRelay. Stop it in the terminal where it is running.`,
         at: new Date().toISOString(),
       });
+      const info = this.publicInfo(session);
+      this.appendActivity({ source: "web", status: "aborted", type: "prompt_abort_rejected", threadId: info.threadId, workspace: info.workspace, agentId: info.agentId, actor, detail: `External ${snapshot.agentLabel} CLI task is active.` });
       return;
     }
     await session.abort();
+    const info = this.publicInfo(session);
+    this.appendActivity({ source: "web", status: "aborted", type: "prompt_aborted", threadId: info.threadId, workspace: info.workspace, agentId: info.agentId, actor, detail: "Current operation aborted." });
     this.broadcast({ type: "status", level: "warn", message: "Current operation aborted.", at: new Date().toISOString() });
   }
 
-  async sendPrompt(text: string): Promise<{ queued: boolean; queueId?: string }> {
+  async sendPrompt(text: string, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }> {
     const trimmed = text.trim();
     if (!trimmed) {
       throw new Error("Prompt is empty.");
     }
-    return this.sendEnvelope(toPromptEnvelope(trimmed));
+    return this.sendEnvelope({ ...toPromptEnvelope(trimmed), activityActor: actor }, actor);
   }
 
-  async sendUploadPrompt(options: { text?: string; files: UploadPromptFile[] }): Promise<UploadPromptResult> {
+  async sendUploadPrompt(options: { text?: string; files: UploadPromptFile[] }, actor?: WebActivityActor): Promise<UploadPromptResult> {
     const text = options.text?.trim() ?? "";
     const files = options.files.filter((file) => file.data.byteLength > 0);
     if (!text && files.length === 0) {
@@ -950,8 +1073,32 @@ export class RelayRuntime {
         const transcript = result.text.trim();
         if (transcript) {
           transcriptParts.push(`Audio transcript (${staged.safeName}, via ${result.backend}):\n${transcript}`);
+          this.appendActivity({
+            source: "web",
+            status: "completed",
+            type: "voice_transcribed",
+            threadId: session.getInfo().threadId,
+            workspace,
+            agentId: session.getInfo().agentId,
+            actor,
+            detail: `${staged.safeName} via ${result.backend}`,
+            durationMs: result.durationMs,
+          });
         }
       }
+    }
+
+    if (stagedFiles.length > 0) {
+      this.appendActivity({
+        source: "web",
+        status: "info",
+        type: "attachment_staged",
+        threadId: session.getInfo().threadId,
+        workspace,
+        agentId: session.getInfo().agentId,
+        actor,
+        detail: `${stagedFiles.length} file(s): ${stagedFiles.map((file) => file.safeName).join(", ")}`,
+      });
     }
 
     const audioOnly = stagedFiles.length > 0 && stagedFiles.every((file) => file.mimeType.startsWith("audio/"));
@@ -976,7 +1123,7 @@ export class RelayRuntime {
       promptInput.stagedFileInstructions = buildFileInstructions(stagedFiles, outDir);
     }
 
-    const result = await this.sendEnvelope(toPromptEnvelope(promptInput, outDir));
+    const result = await this.sendEnvelope({ ...toPromptEnvelope(promptInput, outDir), activityActor: actor }, actor);
     return {
       ...result,
       transcript: transcriptParts.join("\n\n") || undefined,
@@ -984,7 +1131,8 @@ export class RelayRuntime {
     };
   }
 
-  private async sendEnvelope(envelope: PromptEnvelope): Promise<{ queued: boolean; queueId?: string }> {
+  private async sendEnvelope(envelope: PromptEnvelope, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }> {
+    const activityActor = envelope.activityActor ?? actor;
     const session = await this.getSession(false);
     const external = getExternalSnapshotForSession(session, this.config, { maxEvents: 0 });
     if (session.isProcessing() || external?.activity.active) {
@@ -997,6 +1145,7 @@ export class RelayRuntime {
         threadId: info.threadId,
         workspace: info.workspace,
         agentId: info.agentId,
+        actor: activityActor,
         prompt: envelope.description,
         detail: external?.activity.active
           ? `Queued because ${external.agentLabel} CLI is still processing another task.`
@@ -1019,7 +1168,7 @@ export class RelayRuntime {
       return { queued: true, queueId: queued.id };
     }
 
-    void this.runPrompt(session, envelope).catch((error) => {
+    void this.runPrompt(session, { ...envelope, activityActor }).catch((error) => {
       this.broadcast({ type: "turn_error", id: this.currentTurnId ?? "turn", error: friendlyErrorText(error), at: new Date().toISOString() });
     });
     return { queued: false };
@@ -1033,7 +1182,9 @@ export class RelayRuntime {
     return this.queueService.isPaused();
   }
 
-  queueAction(action: RelayQueueAction, id?: string): QueueItemDto[] {
+  queueAction(action: RelayQueueAction, id?: string, actor?: WebActivityActor): QueueItemDto[] {
+    const before = this.queueService.rawList();
+    const affected = id ? before.find((item) => item.id === id) : undefined;
     this.queueService.apply(action, id);
     if (id && action === "run") {
       void this.drainQueue().catch((error) => this.broadcastStatus(friendlyErrorText(error), "error"));
@@ -1041,10 +1192,12 @@ export class RelayRuntime {
     this.appendActivity({
       source: "web",
       status: "info",
-      type: "queue_updated",
+      type: `queue_${action}`,
       threadId: null,
       workspace: this.config.workspace,
-      detail: id ? `${action}: ${id}` : action,
+      actor,
+      prompt: affected?.description,
+      detail: id ? `${action}: ${id}` : `${action}: ${before.length} queued`,
     });
     this.appendAudit({
       action: "queue_updated",
@@ -1066,14 +1219,40 @@ export class RelayRuntime {
     return this.artifactService.get(session.getInfo().workspace, turnId);
   }
 
-  async deleteArtifact(turnId: string): Promise<boolean> {
+  async deleteArtifact(turnId: string, actor?: WebActivityActor): Promise<boolean> {
     const session = await this.getSession(true);
-    return this.artifactService.delete(session.getInfo().workspace, turnId);
+    const info = this.publicInfo(session);
+    const removed = await this.artifactService.delete(info.workspace, turnId);
+    this.appendActivity({
+      source: "web",
+      status: removed ? "info" : "failed",
+      type: "artifact_deleted",
+      threadId: info.threadId,
+      workspace: info.workspace,
+      agentId: info.agentId,
+      actor,
+      detail: turnId,
+    });
+    return removed;
   }
 
-  async createArtifactZip(turnId: string): Promise<{ path: string; name: string } | null> {
+  async createArtifactZip(turnId: string, actor?: WebActivityActor): Promise<{ path: string; name: string } | null> {
     const session = await this.getSession(true);
-    return this.artifactService.createZip(session.getInfo().workspace, turnId);
+    const info = this.publicInfo(session);
+    const zip = await this.artifactService.createZip(info.workspace, turnId);
+    if (zip) {
+      this.appendActivity({
+        source: "web",
+        status: "info",
+        type: "artifact_zip_created",
+        threadId: info.threadId,
+        workspace: info.workspace,
+        agentId: info.agentId,
+        actor,
+        detail: zip.name,
+      });
+    }
+    return zip;
   }
 
   async artifactPreview(turnId: string, relativePath: string): Promise<ArtifactPreviewDto | null> {
@@ -1091,7 +1270,7 @@ export class RelayRuntime {
     return readFormattedLogTail(lines);
   }
 
-  clearLogs(target: "connector" | "update" | "agent-updates" = "connector"): { ok: true; filePath: string; clearedAt: string } {
+  clearLogs(target: "connector" | "update" | "agent-updates" = "connector", actor?: WebActivityActor): { ok: true; filePath: string; clearedAt: string } {
     const result = clearLogFile(target === "update" ? getUpdateLogPath() : target === "agent-updates" ? getAgentUpdateLogPath() : getConnectorLogPath());
     this.appendActivity({
       source: "web",
@@ -1099,12 +1278,13 @@ export class RelayRuntime {
       type: "logs_cleared",
       threadId: null,
       workspace: this.config.workspace,
+      actor,
       detail: `Cleared ${target} log.`,
     });
     return { ok: true, filePath: result.filePath, clearedAt: result.clearedAt.toISOString() };
   }
 
-  restartConnector(): { ok: true; message: string } {
+  restartConnector(actor?: WebActivityActor): { ok: true; message: string } {
     spawnConnectorRestart();
     this.broadcastStatus("Restart requested. The dashboard may disconnect briefly.", "warn");
     this.appendActivity({
@@ -1113,6 +1293,7 @@ export class RelayRuntime {
       type: "restart_requested",
       threadId: null,
       workspace: this.config.workspace,
+      actor,
       detail: "Dashboard requested a connector restart.",
     });
     return { ok: true, message: "Restart requested." };
@@ -1344,6 +1525,7 @@ export class RelayRuntime {
   }
 
   private async runPrompt(session: AgentSessionService, envelope: PromptEnvelope): Promise<void> {
+    const actor = envelope.activityActor;
     await this.ensureActiveThread(session);
     const info = session.getInfo();
     if ((info.capabilities ?? CODEX_AGENT_CAPABILITIES).auth) {
@@ -1394,6 +1576,7 @@ export class RelayRuntime {
       threadId: info.threadId,
       workspace: info.workspace,
       agentId: info.agentId,
+      actor,
       prompt: envelope.description,
     });
     this.appendAudit({
@@ -1415,6 +1598,17 @@ export class RelayRuntime {
       },
       onToolStart: (toolName, toolCallId) => {
         this.addCurrentTool(toolName);
+        this.appendActivity({
+          source: "web",
+          status: "running",
+          type: "tool_started",
+          threadId: info.threadId,
+          workspace: info.workspace,
+          agentId: info.agentId,
+          actor,
+          prompt: envelope.description,
+          detail: toolName,
+        });
         this.broadcast({ type: "tool_start", id: turnId, toolCallId, toolName });
       },
       onToolUpdate: (toolCallId, partialResult) => {
@@ -1422,7 +1616,19 @@ export class RelayRuntime {
         this.broadcast({ type: "tool_update", id: turnId, toolCallId, partialResult });
       },
       onToolEnd: (toolCallId, isError) => {
+        const toolName = this.currentProgress?.currentTool ?? this.currentProgress?.lastTool ?? toolCallId;
         this.updateCurrentProgress({ currentTool: undefined });
+        this.appendActivity({
+          source: "web",
+          status: isError ? "failed" : "completed",
+          type: isError ? "tool_failed" : "tool_completed",
+          threadId: info.threadId,
+          workspace: info.workspace,
+          agentId: info.agentId,
+          actor,
+          prompt: envelope.description,
+          detail: toolName,
+        });
         this.broadcast({ type: "tool_end", id: turnId, toolCallId, isError });
       },
       onTodoUpdate: (items) => {
@@ -1453,6 +1659,7 @@ export class RelayRuntime {
         threadId: info.threadId,
         workspace: info.workspace,
         agentId: info.agentId,
+        actor,
         prompt: envelope.description,
         durationMs: Date.now() - this.currentTurnStartedAt,
       });
@@ -1484,6 +1691,7 @@ export class RelayRuntime {
         threadId: info.threadId,
         workspace: info.workspace,
         agentId: info.agentId,
+        actor,
         prompt: envelope.description,
         detail: errorText,
         durationMs: Date.now() - this.currentTurnStartedAt,
@@ -1540,6 +1748,42 @@ export class RelayRuntime {
   private updateSession(session: AgentSessionService): void {
     this.registry.updateMetadata(WEB_CONTEXT_KEY, session);
     this.broadcast({ type: "session_update", session: this.publicInfo(session) });
+  }
+
+  recordActivity(input: Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }): WebActivityEvent {
+    return this.appendActivity(input);
+  }
+
+  private recordAgentUpdateLifecycle(job: AgentUpdateJobSnapshot): void {
+    const previous = this.agentUpdateStates.get(job.id);
+    const actor = this.agentUpdateActors.get(job.id);
+    if (job.needsInput && !previous?.needsInput) {
+      this.appendActivity({
+        source: "web",
+        status: "info",
+        type: "agent_update_input_required",
+        agentId: job.agentId,
+        threadId: null,
+        workspace: this.config.workspace,
+        actor,
+        detail: `${job.agentLabel} ${job.operation} may require input.`,
+      });
+    }
+    if (job.status !== "running" && previous?.status === "running") {
+      this.appendActivity({
+        source: "web",
+        status: job.status === "completed" ? "completed" : job.status === "cancelled" ? "aborted" : "failed",
+        type: job.operation === "install" ? `agent_install_${job.status}` : `agent_update_${job.status}`,
+        agentId: job.agentId,
+        threadId: null,
+        workspace: this.config.workspace,
+        actor,
+        detail: job.error ?? `${job.agentLabel} ${job.operation} ${job.status}.`,
+        durationMs: Math.max(0, Date.parse(job.finishedAt ?? job.updatedAt) - Date.parse(job.startedAt)),
+      });
+      this.agentUpdateActors.delete(job.id);
+    }
+    this.agentUpdateStates.set(job.id, { status: job.status, needsInput: job.needsInput });
   }
 
   private appendActivity(input: Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }): WebActivityEvent {

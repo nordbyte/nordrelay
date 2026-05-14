@@ -18,6 +18,7 @@ import {
   safeReply,
   type TelegramChatId,
 } from "./telegram-output.js";
+import type { WebActivityActor, WebActivityEvent } from "./web-state.js";
 
 type BusyReasonLike =
   | { busy: false; kind: string }
@@ -48,6 +49,13 @@ export interface TelegramQueueCommandOptions {
     options?: { fromQueue?: boolean; approved?: boolean },
   ) => Promise<void>;
   auditContext: AuditContextWriter;
+  activityActor?: (ctx: Context) => WebActivityActor;
+  appendActivity?: (
+    ctx: Context,
+    contextKey: TelegramContextKey,
+    session: AgentSessionService,
+    input: Partial<Omit<WebActivityEvent, "id" | "timestamp" | "source" | "actor" | "contextKey">> & Pick<WebActivityEvent, "status" | "type"> & { timestamp?: string },
+  ) => void;
 }
 
 export function queueCancelCallbackData(
@@ -110,11 +118,20 @@ export function registerTelegramQueueCommands(options: TelegramQueueCommandOptio
       const minutes = Math.min(7 * 24 * 60, Math.max(1, Number(laterMatch[1])));
       const text = laterMatch[2]!.trim();
       const notBefore = Date.now() + minutes * 60 * 1000;
-      const item = promptStore.enqueue(contextKey, toPromptEnvelope(text), { notBefore });
+      const item = promptStore.enqueue(contextKey, {
+        ...toPromptEnvelope(text),
+        activityActor: options.activityActor?.(ctx),
+      }, { notBefore });
       const message = `Queued prompt ${item.id} for ${formatLocalDateTime(new Date(notBefore))}.`;
       await safeReply(ctx, escapeHTML(message), {
         fallbackText: message,
         replyMarkup: createQueuedPromptCancelKeyboard(contextKey, item.id),
+      });
+      options.appendActivity?.(ctx, contextKey, session, {
+        status: "queued",
+        type: "prompt_queued",
+        prompt: item.description,
+        detail: `Queued prompt ${item.id} for ${formatLocalDateTime(new Date(notBefore))}.`,
       });
       options.auditContext(ctx, contextKey, session, {
         action: "prompt_queued",
@@ -145,6 +162,11 @@ export function registerTelegramQueueCommands(options: TelegramQueueCommandOptio
       const message = `Queue paused. ${promptStore.list(contextKey).length} queued.`;
       await safeReply(ctx, escapeHTML(message), { fallbackText: message });
       await options.updateQueueStatusMessage(contextKey, message);
+      options.appendActivity?.(ctx, contextKey, session, {
+        status: "info",
+        type: "queue_pause",
+        detail: message,
+      });
       return;
     }
 
@@ -152,6 +174,11 @@ export function registerTelegramQueueCommands(options: TelegramQueueCommandOptio
       promptStore.resume(contextKey);
       const message = `Queue resumed. ${promptStore.list(contextKey).length} queued.`;
       await safeReply(ctx, escapeHTML(message), { fallbackText: message });
+      options.appendActivity?.(ctx, contextKey, session, {
+        status: "info",
+        type: "queue_resume",
+        detail: message,
+      });
       if (chatId) {
         void options.drainQueuedPrompts(ctx, contextKey, chatId, session).catch((error) => {
           console.error("Failed to drain queue after resume:", error);
@@ -176,6 +203,12 @@ export function registerTelegramQueueCommands(options: TelegramQueueCommandOptio
       }
       const message = `Moved queued prompt ${item.id} ${direction}.`;
       await safeReply(ctx, escapeHTML(message), { fallbackText: message });
+      options.appendActivity?.(ctx, contextKey, session, {
+        status: "info",
+        type: "queue_move",
+        prompt: item.description,
+        detail: message,
+      });
       return;
     }
 
@@ -191,6 +224,12 @@ export function registerTelegramQueueCommands(options: TelegramQueueCommandOptio
 
       promptStore.enqueueFront(contextKey, item);
       promptStore.resume(contextKey);
+      options.appendActivity?.(ctx, contextKey, session, {
+        status: "info",
+        type: "queue_run",
+        prompt: item.description,
+        detail: `Queued prompt ${item.id} moved to next.`,
+      });
       if (!chatId) {
         return;
       }
@@ -232,9 +271,15 @@ export function registerTelegramQueueCommands(options: TelegramQueueCommandOptio
       return;
     }
 
-    const count = promptStore.clear(contextSession.contextKey);
+    const { contextKey, session } = contextSession;
+    const count = promptStore.clear(contextKey);
     const message = `Cleared ${count} queued prompt${count === 1 ? "" : "s"}.`;
     await safeReply(ctx, escapeHTML(message), { fallbackText: message });
+    options.appendActivity?.(ctx, contextKey, session, {
+      status: "info",
+      type: "queue_clear",
+      detail: message,
+    });
   });
 
   bot.command("cancel", async (ctx) => {
@@ -252,7 +297,8 @@ export function registerTelegramQueueCommands(options: TelegramQueueCommandOptio
       return;
     }
 
-    const removed = promptStore.remove(contextSession.contextKey, id);
+    const { contextKey, session } = contextSession;
+    const removed = promptStore.remove(contextKey, id);
     if (!removed) {
       await safeReply(ctx, escapeHTML(`No queued prompt found with id ${id}.`), {
         fallbackText: `No queued prompt found with id ${id}.`,
@@ -262,6 +308,12 @@ export function registerTelegramQueueCommands(options: TelegramQueueCommandOptio
 
     await safeReply(ctx, escapeHTML(`Cancelled queued prompt ${removed.id}.`), {
       fallbackText: `Cancelled queued prompt ${removed.id}.`,
+    });
+    options.appendActivity?.(ctx, contextKey, session, {
+      status: "aborted",
+      type: "queue_cancel",
+      prompt: removed.description,
+      detail: `Cancelled queued prompt ${removed.id}.`,
     });
   });
 
@@ -290,6 +342,15 @@ export function registerTelegramQueueCommands(options: TelegramQueueCommandOptio
           ? promptStore.moveUp(contextKey, queueId)
           : promptStore.moveDown(contextKey, queueId);
       await ctx.answerCallbackQuery({ text: item ? `Moved ${queueId} ${action}.` : "Queued prompt not found." });
+      const session = item ? options.getSession(contextKey) : undefined;
+      if (item && session) {
+        options.appendActivity?.(ctx, contextKey, session, {
+          status: "info",
+          type: "queue_move",
+          prompt: item.description,
+          detail: `Moved queued prompt ${item.id} ${action}.`,
+        });
+      }
       if (chatId && messageId) {
         const rendered = renderQueueList(promptStore, contextKey, promptStore.list(contextKey));
         await safeEditMessage(bot, chatId, messageId, rendered.html, {
@@ -309,6 +370,15 @@ export function registerTelegramQueueCommands(options: TelegramQueueCommandOptio
       promptStore.enqueueFront(contextKey, item);
       promptStore.resume(contextKey);
       await ctx.answerCallbackQuery({ text: `Queued prompt ${queueId} moved to next.` });
+      const session = options.getSession(contextKey);
+      if (session) {
+        options.appendActivity?.(ctx, contextKey, session, {
+          status: "info",
+          type: "queue_run",
+          prompt: item.description,
+          detail: `Queued prompt ${item.id} moved to next.`,
+        });
+      }
       if (chatId && messageId) {
         const rendered = renderQueueList(promptStore, contextKey, promptStore.list(contextKey));
         await safeEditMessage(bot, chatId, messageId, rendered.html, {
@@ -316,7 +386,6 @@ export function registerTelegramQueueCommands(options: TelegramQueueCommandOptio
           replyMarkup: rendered.keyboard,
         });
       }
-      const session = options.getSession(contextKey);
       if (chatId && session && !options.getBusyReason(contextKey).busy) {
         void options.drainQueuedPrompts(ctx, contextKey, chatId, session).catch((error) => {
           console.error("Failed to drain queue after run-now callback:", error);
@@ -346,6 +415,15 @@ export function registerTelegramQueueCommands(options: TelegramQueueCommandOptio
 
     const message = `Cancelled queued prompt ${removed.id}.`;
     await ctx.answerCallbackQuery({ text: message });
+    const session = options.getSession(contextKey);
+    if (session) {
+      options.appendActivity?.(ctx, contextKey, session, {
+        status: "aborted",
+        type: "queue_cancel",
+        prompt: removed.description,
+        detail: message,
+      });
+    }
     if (!chatId || !messageId) {
       return;
     }

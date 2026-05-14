@@ -39,19 +39,36 @@ describe("web dashboard state stores", () => {
     try {
       const store = new WebActivityStore(workspace, "json", 10);
       store.append({
-        source: "web",
+        source: "telegram",
         status: "queued",
         type: "prompt_queued",
         threadId: "thread-a",
+        actor: {
+          channel: "telegram",
+          id: "296626516",
+          label: "Ricardo",
+          username: "ricardo",
+        },
       });
       store.append({
         source: "cli",
         status: "completed",
-        type: "cli_turn_finished",
+        type: "cli_tool_completed",
         threadId: "thread-a",
+        actor: {
+          channel: "cli",
+          label: "CLI",
+        },
       });
 
-      expect(store.list({ source: "web" })).toHaveLength(1);
+      expect(store.list({ source: "telegram" })[0]).toMatchObject({
+        category: "prompt",
+        actor: { label: "Ricardo" },
+      });
+      expect(store.list({ category: "tool" })[0]).toMatchObject({
+        source: "cli",
+        type: "cli_tool_completed",
+      });
       expect(store.list({ status: "completed" })[0]?.source).toBe("cli");
     } finally {
       rmSync(workspace, { recursive: true, force: true });

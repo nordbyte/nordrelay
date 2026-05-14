@@ -10,7 +10,9 @@ import type {
 import type { AgentUpdateJobSnapshot } from "./agent-updates.js";
 import type { ConnectorHealth, VersionChecks } from "./operations.js";
 import type {
+  WebActivityActor,
   WebActivityEvent,
+  WebActivityCategory,
   WebActivitySource,
   WebActivityStatus,
   WebChatMessage,
@@ -185,6 +187,8 @@ export interface WebTasksDto {
   recent: WebActivityEvent[];
 }
 
+export type { WebActivityActor, WebActivityCategory };
+
 export interface WebAdapterHealthDto {
   id: AgentId;
   label: string;
@@ -234,7 +238,17 @@ export interface ExternalMirrorState {
   rolloutPath: string;
   lastLine: number;
   turnId: string | null;
-  startedAt: string | null;
+  startedAt: string | Date | null;
   latestAgentLine?: number;
   latestStatus?: string;
+  latestStatusAt?: number;
+  latestMirroredEventLine?: number;
+  statusMessageId?: number;
+  lastTypingAt?: number;
+  workingNoticeTurnKey?: string;
+  artifactsDeliveredForTurnId?: string;
+  activityStartedTurnKey?: string;
+  activityFinishedTurnKey?: string;
+  activityToolStartLines?: number[];
+  activityToolEndLines?: number[];
 }

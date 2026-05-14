@@ -148,6 +148,7 @@ import {
   trimLine,
 } from "./bot-rendering.js";
 import { UserStore, type AuthenticatedUser } from "./user-management.js";
+import { WebActivityStore, type WebActivityActor, type WebActivityEvent } from "./web-state.js";
 import {
   evaluateWorkspacePolicy,
   filterAllowedWorkspaces,
@@ -175,6 +176,11 @@ type ToolState = {
   partialResult: string;
   messageId?: number;
   finalStatus?: RenderedText;
+};
+
+const CLI_ACTIVITY_ACTOR: WebActivityActor = {
+  channel: "cli",
+  label: "CLI",
 };
 
 type MediaGroupPart =
@@ -244,6 +250,10 @@ type ExternalMirrorState = {
   latestAgentLine?: number;
   latestMirroredEventLine?: number;
   artifactsDeliveredForTurnId?: string | null;
+  activityStartedTurnKey?: string;
+  activityFinishedTurnKey?: string;
+  activityToolStartLines?: number[];
+  activityToolEndLines?: number[];
 };
 
 type QueueStatusState = {
@@ -289,11 +299,16 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const turnProgress = new Map<TelegramContextKey, TurnProgress>();
   const promptStore = new PromptStore(config.workspace, config.stateBackend);
   const preferencesStore = new BotPreferencesStore(config.workspace, config.stateBackend);
+  const activityStore = new WebActivityStore(config.workspace, config.stateBackend, config.auditMaxEvents);
   const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
   const lockStore = new SessionLockStore(config.workspace, config.stateBackend);
   const userStore = new UserStore();
   const contextUsers = new WeakMap<Context, AuthenticatedUser>();
-  const agentUpdates = new AgentUpdateManager();
+  const agentUpdateActors = new Map<string, WebActivityActor>();
+  const agentUpdateStates = new Map<string, { status: string; needsInput: boolean }>();
+  const agentUpdates = new AgentUpdateManager({
+    onUpdate: (job) => recordTelegramAgentUpdateLifecycle(job),
+  });
   const linkAttempts = new Map<string, RateLimitBucket>();
   const drainingQueues = new Set<TelegramContextKey>();
   const externalQueueTimers = new Map<TelegramContextKey, NodeJS.Timeout>();
@@ -459,6 +474,19 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const startTelegramAgentUpdate = async (ctx: Context, agentId: AgentId, operation: AgentUpdateOperation = "update"): Promise<void> => {
     try {
       const job = agentUpdates.start(agentId, agentUpdateContext(), operation);
+      const actor = telegramActivityActor(ctx);
+      agentUpdateActors.set(job.id, actor);
+      agentUpdateStates.set(job.id, { status: job.status, needsInput: job.needsInput });
+      appendActivity({
+        source: "telegram",
+        status: "info",
+        type: operation === "install" ? "agent_install_started" : "agent_update_started",
+        threadId: null,
+        workspace: config.workspace,
+        agentId,
+        actor,
+        detail: `${job.method}: ${job.summary}`,
+      });
       const contextKey = contextKeyFromCtx(ctx);
       if (contextKey) {
         audit({
@@ -800,6 +828,26 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     if (snapshot.activity.active) {
       state.turnId = snapshot.activity.turnId;
       state.startedAt = snapshot.activity.startedAt;
+      const turnKey = snapshot.activity.turnId ?? snapshot.activity.startedAt?.toISOString() ?? "unknown";
+      if (state.activityStartedTurnKey !== turnKey) {
+        const info = session.getInfo();
+        appendActivity({
+          source: "cli",
+          status: "running",
+          type: "cli_turn_started",
+          contextKey,
+          threadId: snapshot.threadId,
+          workspace: info.workspace,
+          agentId: info.agentId,
+          actor: CLI_ACTIVITY_ACTOR,
+          prompt: snapshot.latestUserMessage ?? `${snapshot.agentLabel} CLI task`,
+          detail: `${snapshot.sourceLabel}: ${snapshot.sourcePath}`,
+        });
+        state.activityStartedTurnKey = turnKey;
+        state.activityFinishedTurnKey = undefined;
+        state.activityToolStartLines = [];
+        state.activityToolEndLines = [];
+      }
       if (mirrorMode !== "off") {
         await sendExternalMirrorTyping(chatId, parsed.messageThreadId, state);
       }
@@ -846,6 +894,43 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
           state.latestMirroredEventLine = event.lineNumber;
         }
       }
+      const info = session.getInfo();
+      const loggedStartLines = new Set(state.activityToolStartLines ?? []);
+      const loggedEndLines = new Set(state.activityToolEndLines ?? []);
+      for (const event of snapshot.events.filter((event) => event.lineNumber > state.lastLine && event.kind === "tool")) {
+        if (event.status === "started" && !loggedStartLines.has(event.lineNumber)) {
+          appendActivity({
+            source: "cli",
+            status: "running",
+            type: "cli_tool_started",
+            contextKey,
+            threadId: snapshot.threadId,
+            workspace: info.workspace,
+            agentId: info.agentId,
+            actor: CLI_ACTIVITY_ACTOR,
+            prompt: snapshot.latestUserMessage ?? undefined,
+            detail: event.toolName ?? "tool",
+          });
+          loggedStartLines.add(event.lineNumber);
+        }
+        if ((event.status === "finished" || event.status === "failed") && !loggedEndLines.has(event.lineNumber)) {
+          appendActivity({
+            source: "cli",
+            status: event.status === "failed" ? "failed" : "completed",
+            type: event.status === "failed" ? "cli_tool_failed" : "cli_tool_completed",
+            contextKey,
+            threadId: snapshot.threadId,
+            workspace: info.workspace,
+            agentId: info.agentId,
+            actor: CLI_ACTIVITY_ACTOR,
+            prompt: snapshot.latestUserMessage ?? undefined,
+            detail: event.toolName ?? "tool",
+          });
+          loggedEndLines.add(event.lineNumber);
+        }
+      }
+      state.activityToolStartLines = [...loggedStartLines].slice(-200);
+      state.activityToolEndLines = [...loggedEndLines].slice(-200);
       state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
       return;
     }
@@ -857,6 +942,25 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
     const terminalEvent = [...snapshot.events].reverse().find((event) => event.kind === "task" && event.status && event.status !== "started");
     if (terminalEvent) {
+      const turnKey = terminalEvent.turnId ?? snapshot.activity.turnId ?? state.startedAt?.toString() ?? "unknown";
+      if (state.activityFinishedTurnKey !== turnKey) {
+        const info = session.getInfo();
+        const startedAt = state.startedAt instanceof Date ? state.startedAt : state.startedAt ? new Date(state.startedAt) : snapshot.activity.startedAt;
+        appendActivity({
+          source: "cli",
+          status: terminalEvent.status === "aborted" ? "aborted" : terminalEvent.status === "failed" ? "failed" : "completed",
+          type: "cli_turn_finished",
+          contextKey,
+          threadId: snapshot.threadId,
+          workspace: info.workspace,
+          agentId: info.agentId,
+          actor: CLI_ACTIVITY_ACTOR,
+          prompt: snapshot.latestUserMessage ?? undefined,
+          detail: `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`,
+          durationMs: startedAt && terminalEvent.timestamp ? Math.max(0, terminalEvent.timestamp.getTime() - startedAt.getTime()) : undefined,
+        });
+        state.activityFinishedTurnKey = turnKey;
+      }
       if (mirrorMode !== "off") {
         const doneText = `${snapshot.agentLabel} CLI task ${terminalEvent.status}.`;
         if (state.statusMessageId) {
@@ -957,6 +1061,18 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     for (const artifact of (persistedReport?.artifacts ?? report.artifacts)) {
       await sendArtifactFileByApi(bot.api, chatId, artifact, messageThreadId);
     }
+    const info = session.getInfo();
+    appendActivity({
+      source: "cli",
+      status: "info",
+      type: "artifacts_sent",
+      contextKey,
+      threadId: info.threadId,
+      workspace: info.workspace,
+      agentId: info.agentId,
+      actor: CLI_ACTIVITY_ACTOR,
+      detail: summary,
+    });
     if (state) state.artifactsDeliveredForTurnId = turnId;
   };
 
@@ -1040,6 +1156,72 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     });
   };
 
+  function telegramActivityActor(ctx: Context): WebActivityActor {
+    const user = ctx.from;
+    const authUser = getAuthenticatedUser(ctx);
+    const label = authUser?.user.displayName || formatTelegramName(ctx) || user?.username || (user?.id ? String(user.id) : "Telegram user");
+    return {
+      channel: "telegram",
+      id: user?.id !== undefined ? String(user.id) : authUser?.user.id,
+      label,
+      username: user?.username ?? authUser?.user.email,
+    };
+  }
+
+  function appendActivity(input: Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }): WebActivityEvent {
+    return activityStore.append(input);
+  }
+
+  function appendTelegramActivity(
+    ctx: Context,
+    contextKey: TelegramContextKey,
+    session: AgentSessionService,
+    input: Partial<Omit<WebActivityEvent, "id" | "timestamp" | "source" | "contextKey">> & Pick<WebActivityEvent, "status" | "type"> & { timestamp?: string },
+  ): WebActivityEvent {
+    const info = session.getInfo();
+    return appendActivity({
+      source: "telegram",
+      contextKey,
+      ...input,
+      threadId: input.threadId ?? info.threadId,
+      workspace: input.workspace ?? info.workspace,
+      agentId: input.agentId ?? idOf(info),
+      actor: input.actor ?? telegramActivityActor(ctx),
+    });
+  }
+
+  function recordTelegramAgentUpdateLifecycle(job: { id: string; agentId: AgentId; agentLabel: string; operation: AgentUpdateOperation; status: string; needsInput: boolean; startedAt: string; updatedAt: string; finishedAt?: string; error?: string }): void {
+    const previous = agentUpdateStates.get(job.id);
+    const actor = agentUpdateActors.get(job.id);
+    if (job.needsInput && !previous?.needsInput) {
+      appendActivity({
+        source: "telegram",
+        status: "info",
+        type: "agent_update_input_required",
+        threadId: null,
+        workspace: config.workspace,
+        agentId: job.agentId,
+        actor,
+        detail: `${job.agentLabel} ${job.operation} may require input.`,
+      });
+    }
+    if (job.status !== "running" && previous?.status === "running") {
+      appendActivity({
+        source: "telegram",
+        status: job.status === "completed" ? "completed" : job.status === "cancelled" ? "aborted" : "failed",
+        type: job.operation === "install" ? `agent_install_${job.status}` : `agent_update_${job.status}`,
+        threadId: null,
+        workspace: config.workspace,
+        agentId: job.agentId,
+        actor,
+        detail: job.error ?? `${job.agentLabel} ${job.operation} ${job.status}.`,
+        durationMs: Math.max(0, Date.parse(job.finishedAt ?? job.updatedAt) - Date.parse(job.startedAt)),
+      });
+      agentUpdateActors.delete(job.id);
+    }
+    agentUpdateStates.set(job.id, { status: job.status, needsInput: job.needsInput });
+  }
+
   const denyIfLocked = async (
     ctx: Context,
     contextKey: TelegramContextKey,
@@ -1056,6 +1238,11 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     auditContext(ctx, contextKey, session, {
       action: "prompt_started",
       status: "denied",
+      detail: text,
+    });
+    appendTelegramActivity(ctx, contextKey, session, {
+      status: "failed",
+      type: "lock_denied",
       detail: text,
     });
     await safeReply(ctx, escapeHTML(text), { fallbackText: text });
@@ -1177,7 +1364,11 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
     const parsed = parseContextKey(contextKey);
     const messageThreadId = parsed.messageThreadId;
-    const envelope = isPromptEnvelopeLike(prompt) ? prompt : toPromptEnvelope(prompt);
+    const rawEnvelope = isPromptEnvelopeLike(prompt) ? prompt : toPromptEnvelope(prompt);
+    const envelope: PromptEnvelope = {
+      ...rawEnvelope,
+      activityActor: rawEnvelope.activityActor ?? telegramActivityActor(ctx),
+    };
 
     if (!options.fromQueue && await denyIfLocked(ctx, contextKey, session)) {
       return;
@@ -1210,6 +1401,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         promptId: item.id,
         description: item.description,
         detail: busy.kind,
+      });
+      appendTelegramActivity(ctx, contextKey, session, {
+        status: "queued",
+        type: "prompt_queued",
+        prompt: item.description,
+        detail: `Queued prompt ${item.id} at position ${position}; busy=${busy.kind}`,
+        actor: envelope.activityActor,
       });
       if (busy.kind === "external") {
         scheduleExternalQueueDrain(ctx, contextKey, chatId, session);
@@ -1251,6 +1449,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     let lastRenderedPlan = "";
     let planMessageSending = false;
     let lastTurnUsage: { inputTokens: number; cachedInputTokens: number; outputTokens: number } | undefined;
+    let promptStartedAt: number | undefined;
+    const toolActivityNames = new Map<string, string>();
+    const toolActivityStartedAt = new Map<string, number>();
 
     const typingInterval = setInterval(() => {
       void sendChatActionSafe(bot.api, chatId, "typing", messageThreadId).catch(() => {});
@@ -1479,6 +1680,15 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         progress.lastTool = toolName;
         progress.updatedAt = Date.now();
         progress.toolCounts.set(toolName, (progress.toolCounts.get(toolName) ?? 0) + 1);
+        toolActivityNames.set(toolCallId, toolName);
+        toolActivityStartedAt.set(toolCallId, Date.now());
+        appendTelegramActivity(ctx, contextKey, session, {
+          status: "running",
+          type: "tool_started",
+          prompt: envelope.description,
+          detail: toolName,
+          actor: envelope.activityActor,
+        });
         if (toolVerbosity === "summary") {
           toolCounts.set(toolName, (toolCounts.get(toolName) ?? 0) + 1);
           return;
@@ -1533,6 +1743,18 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       onToolEnd: (toolCallId: string, isError: boolean) => {
         progress.currentTool = undefined;
         progress.updatedAt = Date.now();
+        const activityToolName = toolActivityNames.get(toolCallId) ?? "tool";
+        const activityStartedAt = toolActivityStartedAt.get(toolCallId);
+        appendTelegramActivity(ctx, contextKey, session, {
+          status: isError ? "failed" : "completed",
+          type: isError ? "tool_failed" : "tool_completed",
+          prompt: envelope.description,
+          detail: activityToolName,
+          actor: envelope.activityActor,
+          durationMs: activityStartedAt ? Date.now() - activityStartedAt : undefined,
+        });
+        toolActivityNames.delete(toolCallId);
+        toolActivityStartedAt.delete(toolCallId);
         if (toolVerbosity === "none" || toolVerbosity === "summary") {
           return;
         }
@@ -1704,12 +1926,26 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
           replyMarkup: createQueuedPromptCancelKeyboard(contextKey, item.id),
         });
         await updateQueueStatusMessage(contextKey, `Waiting for ${label} CLI task... ${promptStore.list(contextKey).length} queued.`);
+        appendTelegramActivity(ctx, contextKey, session, {
+          status: "queued",
+          type: "prompt_queued",
+          prompt: item.description,
+          detail: `Queued prompt ${item.id} at position 1; external ${label} CLI task active`,
+          actor: envelope.activityActor,
+        });
         scheduleExternalQueueDrain(ctx, contextKey, chatId, session);
         turnProgress.delete(contextKey);
         return;
       }
 
       promptStore.setLastPrompt(contextKey, envelope);
+      promptStartedAt = Date.now();
+      appendTelegramActivity(ctx, contextKey, session, {
+        status: "running",
+        type: "prompt_started",
+        prompt: envelope.description,
+        actor: envelope.activityActor,
+      });
       auditContext(ctx, contextKey, session, {
         action: "prompt_started",
         status: "ok",
@@ -1738,6 +1974,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         status: "ok",
         description: envelope.description,
       });
+      appendTelegramActivity(ctx, contextKey, session, {
+        status: "completed",
+        type: "prompt_completed",
+        prompt: envelope.description,
+        actor: envelope.activityActor,
+        durationMs: promptStartedAt ? Date.now() - promptStartedAt : undefined,
+      });
     } catch (error) {
       progress.status = "failed";
       progress.error = friendlyErrorText(error);
@@ -1747,6 +1990,16 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         description: envelope.description,
         detail: progress.error,
       });
+      if (promptStartedAt) {
+        appendTelegramActivity(ctx, contextKey, session, {
+          status: "failed",
+          type: "prompt_failed",
+          prompt: envelope.description,
+          detail: progress.error,
+          actor: envelope.activityActor,
+          durationMs: Date.now() - promptStartedAt,
+        });
+      }
       progress.completedAt = Date.now();
       progress.updatedAt = progress.completedAt;
       stopTyping();
@@ -1851,6 +2104,15 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       source: "turn",
     };
     await deliverArtifactReport(ctx, chatId, report, messageThreadId);
+    const contextKey = contextKeyFromCtx(ctx);
+    const session = contextKey ? registry.get(contextKey) : undefined;
+    if (contextKey && session) {
+      appendTelegramActivity(ctx, contextKey, session, {
+        status: "info",
+        type: "artifacts_sent",
+        detail: formatArtifactSummary(report.artifacts, report.skippedCount, report.omittedCount),
+      });
+    }
     await pruneArtifacts(workspace);
   };
 
@@ -2098,6 +2360,11 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
     const receivedText = `Received ${stagedFiles.length} media group file${stagedFiles.length === 1 ? "" : "s"}${skippedCount > 0 ? ` (${skippedCount} skipped)` : ""}.`;
     await safeReply(pending.ctx, escapeHTML(receivedText), { fallbackText: receivedText });
+    appendTelegramActivity(pending.ctx, pending.contextKey, pending.session, {
+      status: "info",
+      type: "attachment_staged",
+      detail: receivedText,
+    });
     await sendChatActionSafe(pending.ctx.api, pending.chatId, "typing", pending.messageThreadId).catch(() => {});
 
     const promptInput: AgentPromptInput = {
@@ -2148,6 +2415,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     startAgentLogout,
     hostLoginCommand,
     hostLogoutCommand,
+    appendActivity: (ctx, input) => appendActivity({
+      source: "telegram",
+      ...input,
+      threadId: input.threadId ?? null,
+      workspace: input.workspace ?? config.workspace,
+      actor: input.actor ?? telegramActivityActor(ctx),
+    }),
   });
 
   registerTelegramPreferenceCommands({
@@ -2200,7 +2474,19 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   });
 
   registerTelegramSupportCommands({ bot, config, auditLog, agentUpdates, getUserRole, audit });
-  registerTelegramUpdateCommands({ bot, agentUpdates, replyChannelAction, startTelegramAgentUpdate });
+  registerTelegramUpdateCommands({
+    bot,
+    agentUpdates,
+    replyChannelAction,
+    startTelegramAgentUpdate,
+    appendActivity: (ctx, input) => appendActivity({
+      source: "telegram",
+      ...input,
+      threadId: input.threadId ?? null,
+      workspace: input.workspace ?? config.workspace,
+      actor: input.actor ?? telegramActivityActor(ctx),
+    }),
+  });
 
   bot.command("new", async (ctx) => {
     const chatId = ctx.chat?.id;
@@ -2234,6 +2520,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       try {
         const info = await session.newThread();
         updateSessionMetadata(contextKey, session);
+        appendTelegramActivity(ctx, contextKey, session, {
+          status: "info",
+          type: "session_new",
+          threadId: info.threadId,
+          workspace: info.workspace,
+          agentId: info.agentId,
+          detail: info.workspace,
+        });
         const label = isTopicContext(contextKey) ? "New thread created for this topic." : "New thread created.";
         const policyLine = renderWorkspacePolicyLine(info.workspace, config);
         const plainText = [label, policyLine, "", renderSessionInfoPlain(info)].filter((line): line is string => line !== undefined).join("\n");
@@ -2274,11 +2568,21 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       if (busy.kind === "external") {
         const text = `Cannot abort the external ${busy.activity.agentLabel} CLI task from NordRelay. Stop it in the terminal where it is running; queued Telegram messages will wait.`;
         await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+        appendTelegramActivity(ctx, contextKey, session, {
+          status: "failed",
+          type: "prompt_abort_rejected",
+          detail: text,
+        });
         return;
       }
       await session.abort();
       await safeReply(ctx, escapeHTML("Aborted current operation"), {
         fallbackText: "Aborted current operation",
+      });
+      appendTelegramActivity(ctx, contextKey, session, {
+        status: "aborted",
+        type: "prompt_aborted",
+        detail: "Abort requested from Telegram.",
       });
     } catch (error) {
       await safeReply(ctx, `<b>Failed:</b> ${escapeHTML(friendlyErrorText(error))}`, {
@@ -2332,6 +2636,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     drainQueuedPrompts,
     handleUserPrompt,
     auditContext,
+    activityActor: telegramActivityActor,
+    appendActivity: appendTelegramActivity,
   });
 
   registerTelegramArtifactCommands({
@@ -2340,6 +2646,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     getContextSession,
     deliverArtifactReport,
     deliverArtifactReportZip,
+    appendActivity: (ctx, input) => appendActivity({
+      source: "telegram",
+      ...input,
+      threadId: input.threadId ?? null,
+      workspace: input.workspace ?? config.workspace,
+      actor: input.actor ?? telegramActivityActor(ctx),
+    }),
   });
 
   bot.command("session", async (ctx) => {
@@ -2455,6 +2768,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     try {
       const info = session.handback();
       updateSessionMetadata(contextKey, session);
+      appendTelegramActivity(ctx, contextKey, session, {
+        status: "info",
+        type: "handback",
+        threadId: info.threadId,
+        workspace: info.workspace,
+        agentId: idOf(session.getInfo()),
+        detail: info.command ?? info.threadId ?? "handback",
+      });
 
       if (!info.threadId) {
         await safeReply(
@@ -2567,6 +2888,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     try {
       const info = await session.switchSession(threadId);
       updateSessionMetadata(contextKey, session);
+      appendTelegramActivity(ctx, contextKey, session, {
+        status: "info",
+        type: "session_attach",
+        threadId: info.threadId,
+        workspace: info.workspace,
+        agentId: info.agentId,
+        detail: threadId,
+      });
       const policyLine = renderWorkspacePolicyLine(info.workspace, config);
       const html = ["<b>Attached to thread.</b>", policyLine ? `<i>${escapeHTML(policyLine)}</i>` : undefined, "", renderSessionInfoHTML(info)].filter((line): line is string => line !== undefined).join("\n");
       const plain = ["Attached to thread.", policyLine, "", renderSessionInfoPlain(info)].filter((line): line is string => line !== undefined).join("\n");
@@ -2616,6 +2945,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       try {
         const info = await session.switchSession(threadId);
         updateSessionMetadata(contextKey, session);
+        appendTelegramActivity(ctx, contextKey, session, {
+          status: "info",
+          type: "session_switch",
+          threadId: info.threadId,
+          workspace: info.workspace,
+          agentId: info.agentId,
+          detail: threadId,
+        });
         const policyLine = renderWorkspacePolicyLine(info.workspace, config);
         const html = ["<b>Switched thread.</b>", policyLine ? `<i>${escapeHTML(policyLine)}</i>` : undefined, "", renderSessionInfoHTML(info)].filter((line): line is string => line !== undefined).join("\n");
         const plain = ["Switched thread.", policyLine, "", renderSessionInfoPlain(info)].filter((line): line is string => line !== undefined).join("\n");
@@ -2714,6 +3051,12 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const pinned = registry.pinThread(contextKey, threadId);
+    appendTelegramActivity(ctx, contextKey, session, {
+      status: "info",
+      type: "session_pinned",
+      threadId,
+      detail: threadId,
+    });
     await safeReply(ctx, `<b>Pinned thread:</b> <code>${escapeHTML(threadId)}</code>\n<b>Total pinned:</b> <code>${pinned.length}</code>`, {
       fallbackText: `Pinned thread: ${threadId}\nTotal pinned: ${pinned.length}`,
     });
@@ -2736,6 +3079,12 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const pinned = registry.unpinThread(contextKey, threadId);
+    appendTelegramActivity(ctx, contextKey, session, {
+      status: "info",
+      type: "session_unpinned",
+      threadId,
+      detail: threadId,
+    });
     await safeReply(ctx, `<b>Unpinned thread:</b> <code>${escapeHTML(threadId)}</code>\n<b>Total pinned:</b> <code>${pinned.length}</code>`, {
       fallbackText: `Unpinned thread: ${threadId}\nTotal pinned: ${pinned.length}`,
     });
@@ -2870,6 +3219,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       const result = session.setFastMode(nextFastMode);
       updateSessionMetadata(contextKey, session);
       const info = session.getInfo();
+      appendTelegramActivity(ctx, contextKey, session, {
+        status: "info",
+        type: "fast_mode_changed",
+        threadId: info.threadId,
+        workspace: info.workspace,
+        agentId: info.agentId,
+        detail: result.enabled ? "on" : "off",
+      });
       const plain = [
         `Fast mode: ${result.enabled ? "on" : "off"}`,
         `Launch profile: ${result.profile.label} (${formatLaunchProfileBehavior(result.profile)})`,
@@ -2999,6 +3356,15 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         });
       }
       const session = registry.get(pending.contextKey);
+      if (session) {
+        appendTelegramActivity(ctx, pending.contextKey, session, {
+          status: "aborted",
+          type: "prompt_approval_denied",
+          prompt: pending.prompt.description,
+          detail: approvalId,
+          actor: pending.prompt.activityActor,
+        });
+      }
       if (chatId && session) {
         void drainQueuedPrompts(ctx, pending.contextKey, chatId, session).catch((error) => {
           console.error("Failed to drain queue after approval denial:", error);
@@ -3019,6 +3385,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         fallbackText: `Approved prompt ${approvalId}.`,
       });
     }
+    appendTelegramActivity(ctx, pending.contextKey, contextSession.session, {
+      status: "info",
+      type: "prompt_approval_approved",
+      prompt: pending.prompt.description,
+      detail: approvalId,
+      actor: pending.prompt.activityActor,
+    });
 
     await handleUserPrompt(ctx, pending.contextKey, chatId ?? parseContextKey(pending.contextKey).chatId, contextSession.session, pending.prompt, {
       approved: true,
@@ -3070,6 +3443,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     try {
       const info = await session.switchSession(threadId);
       updateSessionMetadata(contextKey, session);
+      appendTelegramActivity(ctx, contextKey, session, {
+        status: "info",
+        type: "session_switch",
+        threadId: info.threadId,
+        workspace: info.workspace,
+        agentId: info.agentId,
+        detail: threadId,
+      });
       const policyLine = renderWorkspacePolicyLine(info.workspace, config);
       const plainText = ["Switched session.", policyLine, "", renderSessionInfoPlain(info)].filter((line): line is string => line !== undefined).join("\n");
       const html = ["<b>Switched session.</b>", policyLine ? `<i>${escapeHTML(policyLine)}</i>` : undefined, "", renderSessionInfoHTML(info)].filter((line): line is string => line !== undefined).join("\n");
@@ -3136,6 +3517,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     try {
       const info = await session.newThread(workspace);
       updateSessionMetadata(contextKey, session);
+      appendTelegramActivity(ctx, contextKey, session, {
+        status: "info",
+        type: "session_new",
+        threadId: info.threadId,
+        workspace: info.workspace,
+        agentId: info.agentId,
+        detail: workspace,
+      });
       const label = isTopicContext(contextKey) ? "New thread created for this topic." : "New thread created.";
       const policyLine = renderWorkspacePolicyLine(info.workspace, config);
       const plainText = [label, policyLine, "", renderSessionInfoPlain(info)].filter((line): line is string => line !== undefined).join("\n");
@@ -3237,6 +3626,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     session.setLaunchProfile(profile.id);
     updateSessionMetadata(contextKey, session);
     const info = session.getInfo();
+    appendTelegramActivity(ctx, contextKey, session, {
+      status: "info",
+      type: "launch_profile_changed",
+      threadId: info.threadId,
+      workspace: info.workspace,
+      agentId: info.agentId,
+      detail: info.launchProfileLabel,
+    });
 
     const html = [
       `<b>Launch profile set to</b> <code>${escapeHTML(info.launchProfileLabel)}</code>`,
@@ -3320,6 +3717,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     session.setLaunchProfile(profile.id);
     updateSessionMetadata(contextKey, session);
     const info = session.getInfo();
+    appendTelegramActivity(ctx, contextKey, session, {
+      status: "info",
+      type: "launch_profile_changed",
+      threadId: info.threadId,
+      workspace: info.workspace,
+      agentId: info.agentId,
+      detail: info.launchProfileLabel,
+    });
     await ctx.answerCallbackQuery({ text: `Launch set to ${info.launchProfileLabel}` });
 
     const html = [
@@ -3376,6 +3781,15 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     try {
       const result = await session.setModelForCurrentSession(slug);
       updateSessionMetadata(contextKey, session);
+      const info = session.getInfo();
+      appendTelegramActivity(ctx, contextKey, session, {
+        status: "info",
+        type: "model_changed",
+        threadId: info.threadId,
+        workspace: info.workspace,
+        agentId: info.agentId,
+        detail: result.value,
+      });
       const scope = formatAgentSettingScope(session.getInfo(), result.appliedToActiveThread);
       const html = `<b>Model set to</b> <code>${escapeHTML(result.value)}</code> — ${escapeHTML(scope)}.`;
       const plainText = `Model set to ${result.value} — ${scope}.`;
@@ -3426,6 +3840,15 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     pendingEffortButtons.delete(contextKey);
     const result = await session.setReasoningEffortForCurrentSession(effort);
     updateSessionMetadata(contextKey, session);
+    const info = session.getInfo();
+    appendTelegramActivity(ctx, contextKey, session, {
+      status: "info",
+      type: "reasoning_changed",
+      threadId: info.threadId,
+      workspace: info.workspace,
+      agentId: info.agentId,
+      detail: result.value,
+    });
     const label = agentReasoningLabel(idOf(session.getInfo()));
     const scope = formatAgentSettingScope(session.getInfo(), result.appliedToActiveThread);
     const html = `⚡ ${escapeHTML(label)} set to <code>${escapeHTML(effort)}</code> — ${escapeHTML(scope)}.`;
@@ -3498,10 +3921,22 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         `🎙️ <b>Transcribed:</b> ${escapeHTML(preview)} <i>(via ${escapeHTML(result.backend)}, ${formatDurationSeconds(result.durationMs / 1000)})</i>`,
         { fallbackText: `🎙️ Transcribed: ${preview} (via ${result.backend}, ${formatDurationSeconds(result.durationMs / 1000)})` },
       );
+      appendTelegramActivity(ctx, contextKey, session, {
+        status: "info",
+        type: "voice_transcribed",
+        prompt: preview,
+        detail: result.backend,
+        durationMs: result.durationMs,
+      });
     } catch (error) {
       const note = "Voice uses faster-whisper/parakeet locally or OPENAI_API_KEY for cloud transcription, not CODEX_API_KEY.";
       await safeReply(ctx, `<b>Transcription failed:</b>\n${escapeHTML(friendlyErrorText(error))}\n\n<i>${escapeHTML(note)}</i>`, {
         fallbackText: `Transcription failed:\n${friendlyErrorText(error)}\n\n${note}`,
+      });
+      appendTelegramActivity(ctx, contextKey, session, {
+        status: "failed",
+        type: "voice_transcription_failed",
+        detail: friendlyErrorText(error),
       });
       return;
     } finally {
@@ -3602,6 +4037,11 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     if (caption) {
       promptInput.text = caption;
     }
+    appendTelegramActivity(ctx, contextKey, session, {
+      status: "info",
+      type: "attachment_staged",
+      detail: stagedPhoto.safeName,
+    });
     await setReaction(ctx, "👀");
     try {
       await handleUserPrompt(ctx, contextKey, chatId, session, toPromptEnvelope(promptInput, outDir));
@@ -3688,6 +4128,11 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
     await safeReply(ctx, `📎 <b>Received:</b> <code>${escapeHTML(stagedFile.safeName)}</code>`, {
       fallbackText: `📎 Received: ${stagedFile.safeName}`,
+    });
+    appendTelegramActivity(ctx, contextKey, session, {
+      status: "info",
+      type: "attachment_staged",
+      detail: stagedFile.safeName,
     });
 
     // Keep typing visible during the gap between staging and prompt execution

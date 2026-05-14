@@ -3,6 +3,7 @@ import type { Bot, Context } from "grammy";
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { agentLabel, type AgentId } from "./agent.js";
 import type { AgentUpdateManager, AgentUpdateOperation } from "./agent-updates.js";
+import type { WebActivityEvent } from "./web-state.js";
 import {
   parseAgentUpdateId,
   renderAgentUpdateJobAction,
@@ -21,6 +22,7 @@ interface UpdateCommandDeps {
   agentUpdates: AgentUpdateManager;
   replyChannelAction: (ctx: Context, rendered: ChannelActionResponse) => Promise<void>;
   startTelegramAgentUpdate: (ctx: Context, agentId: AgentId, operation?: AgentUpdateOperation) => Promise<void>;
+  appendActivity?: (ctx: Context, input: Omit<WebActivityEvent, "id" | "timestamp" | "source"> & { timestamp?: string }) => void;
 }
 
 export function registerTelegramUpdateCommands(deps: UpdateCommandDeps): void {
@@ -57,6 +59,13 @@ export function registerTelegramUpdateCommands(deps: UpdateCommandDeps): void {
 
     if (subcommand === "cancel" && tokens[1]) {
       const job = agentUpdates.cancel(tokens[1]);
+      deps.appendActivity?.(ctx, {
+        status: "aborted",
+        type: "agent_update_cancel_requested",
+        threadId: null,
+        agentId: job.agentId,
+        detail: `${job.agentLabel} ${job.operation} cancellation requested.`,
+      });
       const rendered = renderAgentUpdateJobAction(job);
       await replyChannelAction(ctx, rendered);
       return;
@@ -64,6 +73,13 @@ export function registerTelegramUpdateCommands(deps: UpdateCommandDeps): void {
 
     if ((subcommand === "input" || subcommand === "send") && tokens[1] && tokens.slice(2).join(" ").trim()) {
       const job = agentUpdates.sendInput(tokens[1], tokens.slice(2).join(" "));
+      deps.appendActivity?.(ctx, {
+        status: "info",
+        type: "agent_update_input_sent",
+        threadId: null,
+        agentId: job.agentId,
+        detail: `Input sent to ${job.agentLabel} ${job.operation}.`,
+      });
       const rendered = renderAgentUpdateJobAction(job);
       await replyChannelAction(ctx, rendered);
       return;
@@ -82,6 +98,12 @@ export function registerTelegramUpdateCommands(deps: UpdateCommandDeps): void {
     }
 
     const update = spawnSelfUpdate();
+    deps.appendActivity?.(ctx, {
+      status: "info",
+      type: "update_started",
+      threadId: null,
+      detail: `${update.method}: ${update.summary}`,
+    });
     const rendered = renderSelfUpdateStartedAction(update);
     await replyChannelAction(ctx, rendered);
   });
@@ -119,6 +141,13 @@ export function registerTelegramUpdateCommands(deps: UpdateCommandDeps): void {
       return;
     }
     const job = agentUpdates.cancel(id);
+    deps.appendActivity?.(ctx, {
+      status: "aborted",
+      type: "agent_update_cancel_requested",
+      threadId: null,
+      agentId: job.agentId,
+      detail: `${job.agentLabel} ${job.operation} cancellation requested.`,
+    });
     const rendered = renderAgentUpdateJobAction(job);
     await replyChannelAction(ctx, rendered);
   });

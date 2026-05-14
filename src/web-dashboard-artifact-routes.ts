@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { RelayRuntime } from "./relay-runtime.js";
 import type { AuthenticatedUser } from "./user-management.js";
+import type { WebActivityActor } from "./web-state.js";
 import {
   readJsonBody,
   requiredSearch,
@@ -14,6 +15,7 @@ export interface DashboardArtifactRouteOptions {
   runtime: RelayRuntime;
   authUser: AuthenticatedUser;
   assertCurrentSessionScope: (authUser: AuthenticatedUser) => Promise<void>;
+  activityActor: WebActivityActor;
 }
 
 export async function handleDashboardArtifactRoute(
@@ -32,7 +34,7 @@ export async function handleDashboardArtifactRoute(
 
   if (req.method === "DELETE" && url.pathname === "/api/artifacts") {
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { removed: await runtime.deleteArtifact(requiredSearch(url, "turnId")) });
+    sendJson(res, 200, { removed: await runtime.deleteArtifact(requiredSearch(url, "turnId"), options.activityActor) });
     return true;
   }
 
@@ -46,7 +48,7 @@ export async function handleDashboardArtifactRoute(
     }
     const removed = [];
     for (const turnId of turnIds) {
-      if (await runtime.deleteArtifact(turnId)) {
+      if (await runtime.deleteArtifact(turnId, options.activityActor)) {
         removed.push(turnId);
       }
     }
@@ -56,7 +58,7 @@ export async function handleDashboardArtifactRoute(
 
   if (req.method === "GET" && url.pathname === "/api/artifacts/zip") {
     await options.assertCurrentSessionScope(authUser);
-    const bundle = await runtime.createArtifactZip(requiredSearch(url, "turnId"));
+    const bundle = await runtime.createArtifactZip(requiredSearch(url, "turnId"), options.activityActor);
     if (!bundle) {
       sendJson(res, 404, { error: "Artifact turn not found or ZIP could not be created" });
       return true;

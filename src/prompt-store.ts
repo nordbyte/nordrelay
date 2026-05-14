@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 import type { AgentPromptInput } from "./agent.js";
 import type { TelegramContextKey } from "./context-key.js";
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "./state-backend.js";
+import type { WebActivityActor } from "./web-state.js";
 
 export interface PromptEnvelope {
   input: AgentPromptInput;
   description: string;
   artifactOutDir?: string;
+  activityActor?: WebActivityActor;
 }
 
 export interface QueuedPrompt extends PromptEnvelope {
