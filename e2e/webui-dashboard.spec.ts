@@ -7,7 +7,7 @@ import { CODEX_AGENT_CAPABILITIES, PI_AGENT_CAPABILITIES } from "../src/agent.js
 import { listAgentAdapterDescriptors } from "../src/agent-adapter.js";
 import { listChannelDescriptors } from "../src/channel-adapter.js";
 import { dashboardCss, dashboardJs } from "../src/web-dashboard-assets.js";
-import { renderDashboardNav } from "../src/web-dashboard-ui.js";
+import { renderDashboardApp } from "../src/web-dashboard-pages.js";
 
 interface MockServer {
   baseUrl: string;
@@ -47,6 +47,13 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#settingsTabs")).toContainText("Agents");
     await expect(page.locator("#settingsForm")).toContainText("Enable Codex");
 
+    await page.locator('[data-setting="NORDRELAY_PI_ENABLED"]').selectOption("true");
+    await expect(page.locator("#settingsStatus")).toContainText("1 unsaved change");
+    await page.getByRole("button", { name: "Save settings" }).click();
+    await expect(page.locator("#settingsStatus")).toContainText("Saved 1 setting");
+    const settingsRequest = mock.requests.find((request) => request.path === "/api/settings" && request.method === "PATCH");
+    expect(settingsRequest?.body).toMatchObject({ settings: { NORDRELAY_PI_ENABLED: "true" } });
+
     await page.getByRole("button", { name: "Version" }).click();
     await expect(page.locator("#versionPanel")).toContainText("NordRelay");
     await expect(page.locator("#agentUpdateJobs")).toContainText("No agent update jobs");
@@ -63,6 +70,22 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#messages")).toContainText("Queued prompt queue-web-1");
     const promptRequest = mock.requests.find((request) => request.path === "/api/prompt");
     expect(promptRequest?.body).toMatchObject({ text: "Run a browser smoke test" });
+  });
+
+  test("renders Discord access controls and filters registered channels", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
+    await page.goto(mock.baseUrl);
+    await page.getByRole("button", { name: "Users" }).click();
+
+    await expect(page.locator("#accessTabs")).toContainText("Discord");
+    await page.locator('[data-access-tab="discord"]').click();
+    await expect(page.locator("#discordChannelsList")).toContainText("Engineering Ops");
+    await expect(page.locator("#createDiscordChannelBtn")).toBeVisible();
+
+    await page.locator("#discordChannelSearch").fill("ops");
+    await expect(page.locator("#discordChannelsList")).toContainText("Engineering Ops");
+    await page.locator("#discordChannelSearch").fill("missing");
+    await expect(page.locator("#discordChannelsList")).toContainText("No Discord channels registered.");
   });
 
   test("starts agent install/update jobs from the version page", async ({ page }) => {
@@ -96,7 +119,7 @@ async function startMockDashboardServer(): Promise<MockServer> {
   const jobs: unknown[] = [];
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    if (url.pathname === "/") return sendText(res, 200, dashboardHtml(), "text/html; charset=utf-8");
+    if (url.pathname === "/") return sendText(res, 200, renderDashboardApp(), "text/html; charset=utf-8");
     if (url.pathname === "/assets/dashboard.css") return sendText(res, 200, dashboardCss(), "text/css; charset=utf-8");
     if (url.pathname === "/assets/dashboard.js") return sendText(res, 200, dashboardJs(), "application/javascript; charset=utf-8");
     if (url.pathname === "/api/events") return sendSse(res);
@@ -123,51 +146,13 @@ async function startMockDashboardServer(): Promise<MockServer> {
   };
 }
 
-function dashboardHtml(): string {
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NordRelay Dashboard Test</title>
-  <link rel="stylesheet" href="/assets/dashboard.css">
-</head>
-<body>
-  <div class="app">
-    <aside class="sidebar" id="sidebar"><div class="brand"><span class="mark">NR</span><div><strong>NordRelay</strong><small>Remote control</small></div></div><nav>${renderDashboardNav()}</nav></aside>
-    <main>
-      <header><button class="menu" id="menuBtn">Menu</button><div><h1 id="pageTitle">Overview</h1><p id="sessionLine">Loading session...</p></div><div class="header-actions"><span id="connectionStatus" class="badge">Connecting</span><select id="agentSelect"></select><button id="themeBtn" class="secondary">Dark</button><button id="refreshBtn">Refresh</button><button id="logoutBtn" class="secondary">Logout</button></div></header>
-      <section class="page active" id="page-overview"><div class="metrics" id="metrics"></div><div class="stack"><div class="panel"><h2>Active Sessions</h2><div id="activeSessions" class="list"></div></div><div class="overview-adapter-grid"><div class="panel"><h2>Agent Adapters</h2><div id="agentAdapters"></div></div><div class="panel"><h2>Chat Adapters</h2><div id="chatAdapters"></div></div></div></div></section>
-      <section class="page" id="page-chat"><div class="chat-layout"><div class="panel chat-panel"><div class="chat-toolbar"><button id="newSessionBtn">New session</button><button id="retryBtn" class="secondary">Retry</button><button id="editLastBtn" class="secondary">Edit last</button><button id="syncBtn" class="secondary">Sync</button><button id="notifyBtn" class="secondary">Notify</button><button id="clearChatBtn" class="secondary">Clear history</button><button id="abortBtn">Abort</button><button id="handbackBtn">Handback</button></div><div class="control-grid" id="sessionControls"></div><div id="messages" class="messages"></div><form id="promptForm" class="composer"><div class="composer-fields"><textarea id="promptInput" rows="3"></textarea><div class="attachment-row"><label class="file-button" for="fileInput">Attach files</label><input id="fileInput" type="file" multiple><button type="button" id="recordBtn" class="secondary">Record voice</button><span id="fileSummary">No files selected</span><button type="button" id="clearFilesBtn" class="secondary">Clear</button></div></div><button>Send</button></form></div><div class="panel side-panel"><h2>Tools / Plan</h2><div id="toolStream" class="tool-stream"></div></div></div></section>
-      <section class="page" id="page-tasks"><div class="panel"><div class="row"><button id="reloadTasksBtn">Reload tasks</button></div><div id="tasksList" class="list"></div></div></section>
-      <section class="page" id="page-sessions"><div class="panel"><div class="sessions-toolbar"><div class="row search-row"><input id="sessionSearch"><button id="sessionSearchBtn">Search</button></div><div class="row attach-row"><input id="attachInput"><button id="attachBtn">Attach</button></div></div><div id="sessionsList" class="list"></div><div id="sessionsPager" class="pager"></div></div></section>
-      <section class="page" id="page-queue"><div class="panel"><div class="row"><button data-queue="pause">Pause</button><button data-queue="resume">Resume</button><button data-queue="clear" class="danger">Clear</button><span id="queueStatus"></span></div><div id="queueList" class="list"></div></div></section>
-      <section class="page" id="page-activity"><div class="panel"><div class="row"><select id="activitySource"><option value="all">All</option></select><select id="activityStatus"><option value="all">All</option></select><input id="activitySince" type="datetime-local"><input id="activityLimit" value="100"><button id="loadActivityBtn">Load activity</button><button id="exportActivityBtn" class="secondary">Export</button></div><div id="activityList" class="list"></div></div></section>
-      <section class="page" id="page-artifacts"><div class="panel"><div class="row"><button id="reloadArtifactsBtn">Reload artifacts</button><input id="artifactSearch"><select id="artifactKind"><option value="all">All files</option><option value="images">Images</option><option value="docs">Docs/code</option></select><button id="zipSelectedArtifactsBtn" class="secondary">ZIP selected</button><button id="deleteSelectedArtifactsBtn" class="danger">Delete selected</button></div><div id="artifactPreview" class="preview"></div><div id="artifactList" class="list"></div></div></section>
-      <section class="page" id="page-adapters"><div class="panel"><div class="row"><button id="reloadAdaptersBtn">Reload adapters</button></div><div id="adapterHealth" class="list"></div></div></section>
-      <section class="page" id="page-access"><div class="panel"><div class="row"><button id="loadAccessBtn">Reload users</button><button id="createUserBtn">Create user</button><button id="createGroupBtn" class="secondary">Create group</button><button id="createChatBtn" class="secondary">Add Telegram chat</button><button id="lockSessionBtn" class="secondary">Lock web session</button><button id="unlockSessionBtn" class="secondary">Unlock web session</button></div><div id="accessPanel" class="settings-grid"></div><h2>Groups</h2><div id="groupsList" class="list"></div><h2>Telegram chats</h2><div id="telegramChatsList" class="list"></div><h2>Locks</h2><div id="locksList" class="list"></div><h2>Audit</h2><div class="row"><input id="auditLimit" value="50"><button id="loadAuditBtn">Load audit</button></div><div id="auditList" class="list"></div></div></section>
-      <section class="page" id="page-version"><div class="panel"><div class="row version-actions"><button id="loadVersionBtn">Check versions</button><button id="updateBtn" class="secondary">Update NordRelay</button></div><div id="versionPanel" class="list"></div><h2 class="version-update-title">Agent update jobs</h2><div id="agentUpdateJobs" class="list"></div></div></section>
-      <section class="page" id="page-settings"><div class="panel"><div class="row"><button id="saveSettingsBtn">Save settings</button><button id="restartBtn" class="secondary">Restart NordRelay</button><span id="settingsStatus"></span></div><div id="settingsTabs" class="tabs"></div><div id="settingsForm" class="settings-grid"></div></div></section>
-      <section class="page" id="page-logs"><div class="panel"><div class="row"><select id="logTarget"><option value="connector">Connector</option><option value="update">NordRelay Update</option><option value="agent-updates">Agent Updates</option></select><select id="logLevel"><option value="all">All levels</option><option value="ERROR">Error</option><option value="WARN">Warn</option><option value="INFO">Info</option></select><input id="logSearch"><input id="logSince" type="datetime-local"><input id="logLines" value="120"><label class="checkbox"><input id="logAutoRefresh" type="checkbox"> Auto</label><label class="checkbox"><input id="logFollow" type="checkbox"> Follow</label><button id="loadLogsBtn">Load logs</button><button id="downloadLogsBtn" class="secondary">Download</button><button id="clearLogsBtn" class="danger">Clear</button></div><pre id="logs" class="log-view"></pre></div></section>
-      <section class="page" id="page-diagnostics"><div class="panel"><div id="diagnostics" class="list"></div></div></section>
-      <footer><span id="footerVersion">NordRelay</span><span id="footerHealth">Health: loading</span><span id="footerUser">User: loading</span></footer>
-    </main>
-  </div>
-  <dialog id="newSessionDialog"><form method="dialog" id="newSessionForm"><h2>New Session</h2><div class="form-grid"><label>Agent<select id="newAgent"></select></label><label>Workspace<input id="newWorkspace" list="workspaceOptions"></label><label>Model<select id="newModel"></select></label><label id="newReasoningWrap">Reasoning<select id="newReasoning"></select></label><label id="newLaunchWrap">Launch profile<select id="newLaunch"></select></label><label id="newFastWrap" class="checkbox"><input id="newFast" type="checkbox"> Fast mode</label></div><datalist id="workspaceOptions"></datalist><div class="row dialog-actions"><button type="button" id="cancelSessionBtn" class="secondary">Cancel</button><button id="createSessionBtn" value="default">Create session</button></div></form></dialog>
-  <dialog id="sessionDetailDialog"><div id="sessionDetail"></div><div class="row dialog-actions"><button id="closeSessionDetailBtn" class="secondary">Close</button></div></dialog>
-  <dialog id="adminDialog"><form method="dialog" id="adminDialogForm"><h2 id="adminDialogTitle">Edit</h2><div id="adminDialogBody" class="form-grid"></div><div class="row dialog-actions"><button type="button" id="adminDialogCancel" class="secondary">Cancel</button><button id="adminDialogSubmit" value="default">Save</button></div></form></dialog>
-  <div id="toolTooltip" class="tool-tooltip"></div><div id="toast"></div><script src="/assets/dashboard.js"></script>
-</body>
-</html>`;
-}
-
 function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): unknown {
   const session = sessionInfo((body as { agentId?: string } | null)?.agentId || "codex");
   if (url.pathname === "/api/bootstrap") return bootstrap(session);
   if (url.pathname === "/api/chat/history") return method === "DELETE" ? { messages: [], removed: 1 } : { messages: chatMessages() };
   if (url.pathname === "/api/queue") return { queue: [], paused: false };
   if (url.pathname === "/api/prompt") return { queued: true, queueId: "queue-web-1", files: [] };
-  if (url.pathname === "/api/settings") return method === "PATCH" ? { envPath: "/tmp/nordrelay.env", changedKeys: ["NORDRELAY_CODEX_ENABLED"], restartRequired: true, errors: [] } : settings();
+  if (url.pathname === "/api/settings") return method === "PATCH" ? { envPath: "/tmp/nordrelay.env", changedKeys: ["NORDRELAY_PI_ENABLED"], restartRequired: true, errors: [] } : settings();
   if (url.pathname === "/api/active-sessions") return activeSessions();
   if (url.pathname === "/api/version") return version();
   if (url.pathname === "/api/agent-updates") return { jobs };
@@ -252,7 +237,7 @@ function controls(agentId = "codex") {
 function currentUser() {
   return {
     user: { id: "user-1", email: "admin@example.com", displayName: "Admin", active: true, createdAt: now(), updatedAt: now() },
-    groups: [{ id: "admin", name: "Admin", description: "Full access", permissions: permissions(), system: true, agentIds: [], workspaceRoots: [], telegramChatIds: [], createdAt: now(), updatedAt: now() }],
+    groups: [{ id: "admin", name: "Admin", description: "Full access", permissions: permissions(), system: true, agentIds: [], workspaceRoots: [], telegramChatIds: [], discordChannelIds: [], createdAt: now(), updatedAt: now() }],
     permissions: permissions(),
   };
 }
@@ -402,9 +387,30 @@ function updateJob(body: unknown) {
 function users() {
   const auth = currentUser();
   return {
-    users: [{ ...auth.user, groups: auth.groups, telegramIdentities: [], webSessions: [] }],
+    users: [
+      {
+        ...auth.user,
+        groups: auth.groups,
+        telegramIdentities: [],
+        discordIdentities: [{ id: "discord-identity-1", userId: "user-1", discordUserId: "112233445566778899", username: "admin", createdAt: now(), updatedAt: now() }],
+        webSessions: [],
+      },
+    ],
     groups: auth.groups,
     telegramChats: [],
+    discordChannels: [
+      {
+        id: "discord-channel-1",
+        guildId: "987654321012345678",
+        channelId: "123456789012345678",
+        title: "Engineering Ops",
+        type: "guild",
+        enabled: true,
+        allowedGroupIds: ["admin"],
+        createdAt: now(),
+        updatedAt: now(),
+      },
+    ],
     adminConfigured: true,
     permissions: permissions(),
   };
