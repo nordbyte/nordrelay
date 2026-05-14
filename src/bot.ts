@@ -234,6 +234,7 @@ type ExternalMirrorState = {
   threadId: string;
   rolloutPath: string;
   lastLine: number;
+  lastTypingAt?: number;
   statusMessageId?: number;
   turnId?: string | null;
   startedAt?: Date | null;
@@ -738,6 +739,19 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
   };
 
+  const sendExternalMirrorTyping = async (
+    chatId: TelegramChatId,
+    messageThreadId: number | undefined,
+    state: ExternalMirrorState,
+  ): Promise<void> => {
+    const now = Date.now();
+    if (state.lastTypingAt && now - state.lastTypingAt < TYPING_INTERVAL_MS) {
+      return;
+    }
+    state.lastTypingAt = now;
+    await sendChatActionSafe(bot.api, chatId, "typing", messageThreadId).catch(() => {});
+  };
+
   const mirrorExternalSnapshot = async (
     contextKey: TelegramContextKey,
     chatId: TelegramChatId,
@@ -762,6 +776,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     if (snapshot.activity.active) {
       state.turnId = snapshot.activity.turnId;
       state.startedAt = snapshot.activity.startedAt;
+      if (mirrorMode !== "off") {
+        await sendExternalMirrorTyping(chatId, parsed.messageThreadId, state);
+      }
       if (mirrorMode === "off" || mirrorMode === "final") {
         state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
         return;
@@ -800,7 +817,6 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
           state.latestMirroredEventLine = event.lineNumber;
         }
       }
-      await sendChatActionSafe(bot.api, chatId, "typing", parsed.messageThreadId).catch(() => {});
       state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
       return;
     }

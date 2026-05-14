@@ -555,6 +555,45 @@ describe("bot flow integration", () => {
     expect(registry.getOrCreate).not.toHaveBeenCalled();
   });
 
+  it("sends typing for active external CLI turns in final mirror mode", async () => {
+    const config = createConfig({
+      codexExternalBusyCheckMs: 999_999,
+      telegramMirrorMode: "final",
+    });
+    mockCodexState.getThreadRolloutSnapshot.mockReturnValue({
+      threadId: "thread-1",
+      rolloutPath: "/tmp/rollout.jsonl",
+      lineCount: 2,
+      activity: {
+        threadId: "thread-1",
+        rolloutPath: "/tmp/rollout.jsonl",
+        active: true,
+        stale: false,
+        turnId: "turn-1",
+        startedAt: new Date("2026-05-13T10:00:00Z"),
+        updatedAt: new Date("2026-05-13T10:00:01Z"),
+      },
+      events: [],
+      latestAgentMessage: null,
+      latestUserMessage: "do work",
+      latestToolName: "exec_command",
+    });
+    const { registry } = createFakeRegistry();
+    registry.listContexts.mockReturnValue([{ contextKey: "123" }]);
+    const bot = createBot(config, registry as any);
+    const api = installFakeApi(bot);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(api.chatActions).toEqual([
+      expect.objectContaining({
+        chatId: 123,
+        action: "typing",
+      }),
+    ]);
+    expect(api.sentMessages).toEqual([]);
+  });
+
   it("does not send approval timeout messages after Telegram access is revoked", async () => {
     vi.useFakeTimers();
     const config = createConfig();
