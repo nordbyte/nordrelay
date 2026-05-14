@@ -765,9 +765,12 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const prompt = trimLine(snapshot.latestUserMessage ?? "", 250);
-    const text = prompt ? `Working on ${prompt}` : `Working on external ${snapshot.agentLabel} task...`;
-    await sendTextMessage(bot.api, chatId, escapeHTML(text), {
-      fallbackText: text,
+    const fallbackText = prompt ? `Working on ${prompt}` : `Working on external ${snapshot.agentLabel} task...`;
+    const html = prompt
+      ? `<b>Working on</b> ${escapeHTML(prompt)}`
+      : `<b>Working on</b> external ${escapeHTML(snapshot.agentLabel)} task...`;
+    await sendTextMessage(bot.api, chatId, html, {
+      fallbackText,
       messageThreadId,
     });
     state.workingNoticeTurnKey = turnKey;

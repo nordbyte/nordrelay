@@ -594,7 +594,7 @@ describe("bot flow integration", () => {
     expect(api.sentMessages).toEqual([
       expect.objectContaining({
         chatId: 123,
-        text: "Working on do work",
+        text: "<b>Working on</b> do work",
       }),
     ]);
     expect(api.sentMessages.at(-1)?.text).not.toContain("CLI task running");

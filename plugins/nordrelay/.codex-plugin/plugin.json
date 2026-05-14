@@ -1,6 +1,6 @@
 {
   "name": "nordrelay",
-  "version": "0.5.0",
+  "version": "0.5.2",
   "description": "Run a remote-control bridge for coding agents. Current adapters connect Codex, Pi, Hermes, and OpenClaw sessions to Telegram with streaming replies, multi-session controls, attachments, voice input, model selection, thread browsing, and handback.",
   "author": {
     "name": "Ricardo",
