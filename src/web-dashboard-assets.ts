@@ -14,6 +14,7 @@ const clientSources = [
   "client/jobs.js",
   "client/metrics.js",
   "client/admin.js",
+  "client/settings-wizard.js",
 ];
 
 const styleSources = [

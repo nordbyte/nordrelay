@@ -22,6 +22,7 @@ const assets = [
       "src/webui/client/jobs.js",
       "src/webui/client/metrics.js",
       "src/webui/client/admin.js",
+      "src/webui/client/settings-wizard.js",
     ],
   },
   {

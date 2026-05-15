@@ -151,6 +151,47 @@ test.describe("NordRelay WebUI", () => {
     expect(updateRequest?.body).toMatchObject({ agentId: "pi", operation: "install" });
   });
 
+  test("guides channel setup through the settings wizard", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
+    await page.goto(mock.baseUrl);
+    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "Setup wizard" }).click();
+
+    await expect(page.locator("#settingsForm")).toContainText("Telegram");
+    await expect(page.locator("#settingsForm")).toContainText("Discord");
+    await expect(page.locator("#settingsForm")).toContainText("Slack");
+    const firstWizardLink = page.locator(".wizard-links a").first();
+    await expect(firstWizardLink).toHaveAttribute("target", "_blank");
+    await expect(firstWizardLink).toHaveAttribute("rel", /noopener/);
+
+    await page.locator('[data-start-wizard="telegram"]').click();
+    await page.locator('[data-wizard-setting="TELEGRAM_BOT_TOKEN"]').fill("123456789:AABCDEFGHIJKLMNOPQRSTUVXYZ123456");
+    await page.getByRole("button", { name: "Test setup" }).click();
+    await expect(page.locator("#wizardTestResult")).toContainText("Telegram API");
+
+    await page.getByRole("button", { name: "Save wizard settings" }).click();
+    const wizardRequest = mock.requests.find((request) => request.path === "/api/settings" && request.method === "PATCH" && JSON.stringify(request.body).includes("TELEGRAM_BOT_TOKEN"));
+    expect(wizardRequest?.body).toMatchObject({
+      settings: {
+        TELEGRAM_ENABLED: "true",
+        TELEGRAM_TRANSPORT: "polling",
+        TELEGRAM_BOT_TOKEN: "123456789:AABCDEFGHIJKLMNOPQRSTUVXYZ123456",
+      },
+    });
+  });
+
+  test("blocks wizard save while required settings are missing", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
+    await page.goto(mock.baseUrl);
+    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "Setup wizard" }).click();
+    await page.locator('[data-start-wizard="discord"]').click();
+
+    await expect(page.locator("#wizardErrors")).toContainText("Discord bot token is required");
+    await expect(page.locator("#wizardErrors")).toContainText("Discord client ID is required");
+    await expect(page.getByRole("button", { name: "Save wizard settings" })).toBeDisabled();
+  });
+
   test("keeps the responsive navigation usable on mobile", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(mock.baseUrl);
@@ -202,7 +243,8 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   if (url.pathname === "/api/chat/history") return method === "DELETE" ? { messages: [], removed: 1 } : { messages: chatMessages() };
   if (url.pathname === "/api/queue") return { queue: [], paused: false };
   if (url.pathname === "/api/prompt") return { queued: true, queueId: "queue-web-1", files: [] };
-  if (url.pathname === "/api/settings") return method === "PATCH" ? { envPath: "/tmp/nordrelay.env", changedKeys: ["NORDRELAY_PI_ENABLED"], restartRequired: true, errors: [] } : settings();
+  if (url.pathname === "/api/settings") return method === "PATCH" ? settingsPatchResponse(body) : settings();
+  if (url.pathname === "/api/settings/wizard/test") return wizardTestResponse(body);
   if (url.pathname === "/api/active-sessions") return activeSessions();
   if (url.pathname === "/api/version") return version();
   if (url.pathname === "/api/agent-updates") return { jobs };
@@ -464,10 +506,61 @@ function settings() {
   return {
     envPath: "/tmp/nordrelay.env",
     settings: [
-      { key: "NORDRELAY_CODEX_ENABLED", label: "Enable Codex", description: "Allow Codex sessions.", group: "Agents", kind: "boolean", value: "true", effectiveValue: "true", configured: true, masked: false, restartRequired: true },
-      { key: "NORDRELAY_PI_ENABLED", label: "Enable Pi", description: "Allow Pi sessions.", group: "Agents", kind: "boolean", value: "", effectiveValue: "false", configured: false, masked: false, restartRequired: true },
-      { key: "DISCORD_BOT_TOKEN", label: "Discord bot token", description: "Discord bot token.", help: "Discord Developer Portal: open your application, go to Bot, then copy or reset the bot token.", group: "Discord", kind: "secret", value: "", effectiveValue: "", configured: false, masked: false, restartRequired: true },
-      { key: "SLACK_BOT_TOKEN", label: "Slack bot token", description: "Slack bot token.", help: "Slack API Apps: open your app, then copy the OAuth bot token from OAuth & Permissions.", group: "Slack", kind: "secret", value: "", effectiveValue: "", configured: false, masked: false, restartRequired: true },
+      settingRecord("NORDRELAY_CODEX_ENABLED", "Enable Codex", "Agents", "boolean", "Allow Codex sessions.", "true", "true", true),
+      settingRecord("NORDRELAY_PI_ENABLED", "Enable Pi", "Agents", "boolean", "Allow Pi sessions.", "", "false", false),
+      settingRecord("TELEGRAM_ENABLED", "Enable Telegram", "Telegram", "boolean", "Start the Telegram bot adapter.", "", "false", false),
+      settingRecord("TELEGRAM_BOT_TOKEN", "Telegram bot token", "Telegram", "secret", "BotFather token.", "", "", false, undefined, "Telegram BotFather: open @BotFather, create a bot with /newbot, then paste only the token value."),
+      settingRecord("TELEGRAM_TRANSPORT", "Telegram transport", "Telegram", "string", "polling or webhook.", "", "polling", false, ["polling", "webhook"]),
+      settingRecord("TELEGRAM_WEBHOOK_URL", "Webhook public URL", "Telegram", "string", "Public base URL for webhook mode.", "", "", false),
+      settingRecord("TELEGRAM_WEBHOOK_HOST", "Webhook bind host", "Telegram", "string", "Local webhook bind host.", "", "127.0.0.1", false),
+      settingRecord("TELEGRAM_WEBHOOK_PORT", "Webhook bind port", "Telegram", "number", "Local webhook bind port.", "", "8080", false),
+      settingRecord("TELEGRAM_WEBHOOK_PATH", "Webhook path", "Telegram", "string", "Webhook request path.", "", "/telegram/webhook", false),
+      settingRecord("TELEGRAM_WEBHOOK_SECRET", "Webhook secret", "Telegram", "secret", "Optional Telegram webhook secret token.", "", "", false),
+      settingRecord("DISCORD_ENABLED", "Enable Discord", "Discord", "boolean", "Start the Discord bot adapter.", "", "false", false),
+      settingRecord("DISCORD_BOT_TOKEN", "Discord bot token", "Discord", "secret", "Discord bot token.", "", "", false, undefined, "Discord Developer Portal: open your application, go to Bot, then copy or reset the bot token."),
+      settingRecord("DISCORD_CLIENT_ID", "Discord client ID", "Discord", "string", "Discord application/client id used for slash command registration.", "", "", false, undefined, "Discord Developer Portal: open your application, go to General Information, then copy Application ID."),
+      settingRecord("DISCORD_GUILD_IDS", "Discord guild IDs", "Discord", "list", "Comma-separated guild ids for instant guild slash-command registration.", "", "", false),
+      settingRecord("DISCORD_ALLOWED_GUILD_IDS", "Allowed Discord guilds", "Discord", "list", "Optional comma-separated guild allow-list.", "", "", false),
+      settingRecord("DISCORD_ALLOWED_CHANNEL_IDS", "Allowed Discord channels", "Discord", "list", "Optional comma-separated channel allow-list before user/group checks.", "", "", false),
+      settingRecord("DISCORD_MESSAGE_CONTENT_ENABLED", "Message content intent", "Discord", "boolean", "Read regular Discord text messages as prompts.", "", "true", false),
+      settingRecord("DISCORD_COMMAND_MODE", "Discord command mode", "Discord", "string", "slash, message, or both.", "", "both", false, ["slash", "message", "both"]),
+      settingRecord("DISCORD_AUTO_REGISTER_COMMANDS", "Auto-register slash commands", "Discord", "boolean", "Register Discord slash commands on startup.", "", "true", false),
+      settingRecord("SLACK_ENABLED", "Enable Slack", "Slack", "boolean", "Start the Slack bot adapter.", "", "false", false),
+      settingRecord("SLACK_BOT_TOKEN", "Slack bot token", "Slack", "secret", "Slack bot token.", "", "", false, undefined, "Slack API Apps: open your app, then copy the OAuth bot token from OAuth & Permissions."),
+      settingRecord("SLACK_APP_TOKEN", "Slack app token", "Slack", "secret", "Slack app-level token for Socket Mode.", "", "", false),
+      settingRecord("SLACK_SIGNING_SECRET", "Slack signing secret", "Slack", "secret", "Slack signing secret for HTTP Events mode.", "", "", false),
+      settingRecord("SLACK_SOCKET_MODE", "Slack Socket Mode", "Slack", "boolean", "Use Slack Socket Mode instead of an HTTP events receiver.", "", "true", false),
+      settingRecord("SLACK_PORT", "Slack HTTP port", "Slack", "number", "HTTP port used when Slack Socket Mode is disabled.", "", "3000", false),
+      settingRecord("SLACK_ALLOWED_TEAM_IDS", "Allowed Slack teams", "Slack", "list", "Optional comma-separated Slack team/workspace allow-list.", "", "", false),
+      settingRecord("SLACK_ALLOWED_CHANNEL_IDS", "Allowed Slack channels", "Slack", "list", "Optional comma-separated Slack channel allow-list.", "", "", false),
+      settingRecord("SLACK_MESSAGE_CONTENT_ENABLED", "Slack message content", "Slack", "boolean", "Read regular Slack text messages as prompts.", "", "true", false),
+      settingRecord("SLACK_COMMAND", "Slack Slash command", "Slack", "string", "Slash command configured in Slack.", "", "/nordrelay", false),
+    ],
+  };
+}
+
+function settingRecord(key: string, label: string, group: string, kind: string, description: string, value: string, effectiveValue: string, configured: boolean, options?: string[], help?: string) {
+  return { key, label, group, kind, description, value, effectiveValue, configured, options, help, masked: kind === "secret" && Boolean(effectiveValue), restartRequired: true };
+}
+
+function settingsPatchResponse(body: unknown) {
+  const payload = body as { settings?: Record<string, string> };
+  return {
+    envPath: "/tmp/nordrelay.env",
+    changedKeys: Object.keys(payload.settings || {}),
+    restartRequired: true,
+    errors: [],
+  };
+}
+
+function wizardTestResponse(body: unknown) {
+  const payload = body as { channel?: string };
+  return {
+    channel: payload.channel || "telegram",
+    checkedAt: now(),
+    checks: [
+      { label: "Local validation", status: "ok", detail: "Required settings are present." },
+      { label: `${payload.channel === "discord" ? "Discord" : payload.channel === "slack" ? "Slack" : "Telegram"} API`, status: "warn", detail: "Mock live check." },
     ],
   };
 }

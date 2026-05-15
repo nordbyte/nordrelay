@@ -7,7 +7,7 @@ function renderActivity(events){document.getElementById('activityList').innerHTM
 document.getElementById('loadActivityBtn').onclick=()=>loadActivity();
 document.getElementById('activitySince').onchange=()=>loadActivity();
 document.getElementById('exportActivityBtn').onclick=()=>{const rows=(state.activityEvents||[]).map(e=>[e.timestamp,e.source,e.category||'',e.status,e.type,activityActorText(e),e.agentId||'',e.threadId||'',activityWorkspace(e),e.prompt||e.detail||''].join('\\t')).join('\\n');const blob=new Blob([rows],{type:'text/tab-separated-values'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='nordrelay-activity.tsv';a.click();URL.revokeObjectURL(a.href)};
-async function loadSettings(){setLoading('settingsForm','Loading settings...');const data=await api('/api/settings');state.settings=data.settings;renderSettings()}
+async function loadSettings(){state.settingsWizard=null;document.getElementById('settingsTabs').style.display='';setLoading('settingsForm','Loading settings...');const data=await api('/api/settings');state.settings=data.settings;renderSettings()}
 const settingsGroupOrder=['Agents','Codex','Pi','Hermes','OpenClaw','Claude Code','Telegram','Discord','Slack','Operations','Artifacts','Workspace','Peers','Voice','Dashboard'];
 const agentSettingGroups=['Codex','Pi','Hermes','OpenClaw','Claude Code'];
 function orderedSettingsGroups(groups){const known=settingsGroupOrder.filter(name=>groups[name]);const extra=Object.keys(groups).filter(name=>!settingsGroupOrder.includes(name)).sort();return known.concat(extra)}

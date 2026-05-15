@@ -50,15 +50,26 @@ const SLACK_SETTING_HELP: Record<string, string> = {
   SLACK_COMMAND: "Slash command configured in the Slack app. Defaults to /nordrelay.",
 };
 
+const TELEGRAM_SETTING_HELP: Record<string, string> = {
+  TELEGRAM_ENABLED: "Enable this only after the BotFather token is configured and NordRelay users/chats are allowed through the user management system.",
+  TELEGRAM_BOT_TOKEN: "Telegram BotFather: open @BotFather, create a bot with /newbot, then paste only the token value.",
+  TELEGRAM_TRANSPORT: "Use polling for the simplest setup. Use webhook only when this NordRelay instance is reachable from Telegram through public HTTPS.",
+  TELEGRAM_WEBHOOK_URL: "Public HTTPS base URL for Telegram webhook delivery, for example https://relay.example.com.",
+  TELEGRAM_WEBHOOK_HOST: "Local interface where NordRelay binds the webhook listener. Use 127.0.0.1 behind a reverse proxy or 0.0.0.0 only when the endpoint is protected.",
+  TELEGRAM_WEBHOOK_PORT: "Local port for the Telegram webhook listener.",
+  TELEGRAM_WEBHOOK_PATH: "Webhook request path registered with Telegram. It must start with /.",
+  TELEGRAM_WEBHOOK_SECRET: "Optional secret token Telegram sends in X-Telegram-Bot-Api-Secret-Token. Use a random value for webhook mode.",
+};
+
 export const SETTING_DEFINITIONS: SettingDefinition[] = [
-  setting("TELEGRAM_ENABLED", "Enable Telegram", "Telegram", "boolean", "Start the Telegram bot adapter.", true),
-  setting("TELEGRAM_BOT_TOKEN", "Telegram bot token", "Telegram", "secret", "BotFather token.", true),
-  setting("TELEGRAM_TRANSPORT", "Telegram transport", "Telegram", "string", "polling or webhook.", true, ["polling", "webhook"]),
-  setting("TELEGRAM_WEBHOOK_URL", "Webhook public URL", "Telegram", "string", "Public base URL for webhook mode.", true),
-  setting("TELEGRAM_WEBHOOK_HOST", "Webhook bind host", "Telegram", "string", "Local webhook bind host.", true),
-  setting("TELEGRAM_WEBHOOK_PORT", "Webhook bind port", "Telegram", "number", "Local webhook bind port.", true),
-  setting("TELEGRAM_WEBHOOK_PATH", "Webhook path", "Telegram", "string", "Webhook request path.", true),
-  setting("TELEGRAM_WEBHOOK_SECRET", "Webhook secret", "Telegram", "secret", "Optional Telegram webhook secret token.", true),
+  telegramSetting("TELEGRAM_ENABLED", "Enable Telegram", "boolean", "Start the Telegram bot adapter.", true),
+  telegramSetting("TELEGRAM_BOT_TOKEN", "Telegram bot token", "secret", "BotFather token.", true),
+  telegramSetting("TELEGRAM_TRANSPORT", "Telegram transport", "string", "polling or webhook.", true, ["polling", "webhook"]),
+  telegramSetting("TELEGRAM_WEBHOOK_URL", "Webhook public URL", "string", "Public base URL for webhook mode.", true),
+  telegramSetting("TELEGRAM_WEBHOOK_HOST", "Webhook bind host", "string", "Local webhook bind host.", true),
+  telegramSetting("TELEGRAM_WEBHOOK_PORT", "Webhook bind port", "number", "Local webhook bind port.", true),
+  telegramSetting("TELEGRAM_WEBHOOK_PATH", "Webhook path", "string", "Webhook request path.", true),
+  telegramSetting("TELEGRAM_WEBHOOK_SECRET", "Webhook secret", "secret", "Optional Telegram webhook secret token.", true),
 
   discordSetting("DISCORD_ENABLED", "Enable Discord", "boolean", "Start the Discord bot adapter.", true),
   discordSetting("DISCORD_BOT_TOKEN", "Discord bot token", "secret", "Discord bot token.", true),
@@ -409,6 +420,17 @@ function discordSetting(
   options?: string[],
 ): SettingDefinition {
   return setting(key, label, "Discord", kind, description, restartRequired, options, DISCORD_SETTING_HELP[key]);
+}
+
+function telegramSetting(
+  key: string,
+  label: string,
+  kind: SettingDefinition["kind"],
+  description: string,
+  restartRequired: boolean,
+  options?: string[],
+): SettingDefinition {
+  return setting(key, label, "Telegram", kind, description, restartRequired, options, TELEGRAM_SETTING_HELP[key]);
 }
 
 function slackSetting(

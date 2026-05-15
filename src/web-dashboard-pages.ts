@@ -305,7 +305,7 @@ export function renderDashboardApp(): string {
 
       <section class="page" id="page-settings">
         <div class="panel">
-          <div class="row"><button id="saveSettingsBtn">Save settings</button><button id="restartBtn" class="secondary">Restart NordRelay</button><span id="settingsStatus"></span></div>
+          <div class="row"><button id="saveSettingsBtn">Save settings</button><button id="settingsWizardBtn" class="secondary">Setup wizard</button><button id="restartBtn" class="secondary">Restart NordRelay</button><span id="settingsStatus"></span></div>
           <div id="settingsTabs" class="tabs"></div>
           <div id="settingsForm" class="settings-grid"></div>
         </div>

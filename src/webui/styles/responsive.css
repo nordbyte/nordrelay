@@ -27,4 +27,6 @@ header{display:grid;grid-template-columns:auto 1fr}
 .pager-actions,.pager button{width:100%}
 .attachment-row>*,.sessions-toolbar,.sessions-toolbar .row,.sessions-toolbar input,.sessions-toolbar button{width:100%}
 .sessions-toolbar .attach-row{margin-left:0;justify-content:stretch}
+.wizard-header,.wizard-actions{align-items:stretch;flex-direction:column}
+.wizard-header button,.wizard-actions button{width:100%}
 }

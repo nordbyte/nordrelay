@@ -1,4 +1,4 @@
-const state = { snapshot:null, controls:null, newSessionControls:null, enabledAgents:[], auth:null, permissions:[], settings:[], currentPage:'overview', settingsGroup:null, accessTab:'users', logsPlain:'', logTimer:null, toastTimer:null, cliStatusActive:false, selectedArtifactTurns:new Set(), mediaRecorder:null, recordedChunks:[], events:null, reconnectTimer:null, notifications:false, toolTooltipTimer:null, toolTooltipTarget:null, agentUpdateJobs:[], sessionsRequestId:0, activeSessions:null, peers:null, selectedPeer:localStorage.getItem('nordrelayPeerTarget')||'local' };
+const state = { snapshot:null, controls:null, newSessionControls:null, enabledAgents:[], auth:null, permissions:[], settings:[], currentPage:'overview', settingsGroup:null, settingsWizard:null, accessTab:'users', logsPlain:'', logTimer:null, toastTimer:null, cliStatusActive:false, selectedArtifactTurns:new Set(), mediaRecorder:null, recordedChunks:[], events:null, reconnectTimer:null, notifications:false, toolTooltipTimer:null, toolTooltipTarget:null, agentUpdateJobs:[], sessionsRequestId:0, activeSessions:null, peers:null, selectedPeer:localStorage.getItem('nordrelayPeerTarget')||'local' };
 globalThis.NORDRELAY_WEBUI_RUNTIME_STATE=state;
 function toast(msg,options={}){const el=document.getElementById('toast');el.textContent=msg;el.style.display='block';if(state.toastTimer)clearTimeout(state.toastTimer);state.toastTimer=null;if(!options.sticky){state.toastTimer=setTimeout(()=>{el.style.display='none';state.toastTimer=null},options.duration||3500)}}
 function esc(s){return String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
@@ -28,6 +28,7 @@ function applyPermissions(){
     ['#abortBtn','prompt.abort'],
     ['#clearChatBtn','sessions.write'],
     ['#saveSettingsBtn','settings.write'],
+    ['#settingsWizardBtn','settings.write'],
     ['#restartBtn','system.restart'],
     ['#updateBtn','updates.run'],
     ['#clearLogsBtn','logs.clear'],

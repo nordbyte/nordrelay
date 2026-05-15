@@ -78,6 +78,7 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   exact("/api/auth/login", ["POST"], "auth.manage"),
   exact("/api/auth/logout", ["POST"], "auth.manage"),
   exact("/api/settings", ["GET", "PATCH"], readWrite("settings.read", "settings.write")),
+  exact("/api/settings/wizard/test", ["POST"], "settings.write"),
   exact("/api/control-options", ["GET"], "settings.read"),
   exact("/api/sessions", ["GET"], "sessions.read"),
   exact("/api/sessions/new", ["POST"], "sessions.write"),

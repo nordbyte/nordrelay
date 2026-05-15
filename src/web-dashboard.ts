@@ -15,6 +15,7 @@ import { loadConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { RelayRuntime, type ActiveSessionsDto, type DashboardControlOptions, type RelayEvent, type SessionPageDto, type WebTasksDto } from "./relay-runtime.js";
 import { resolveDashboardEnvPath, SettingsService } from "./settings-service.js";
+import { runSettingsWizardTest } from "./settings-wizard-test.js";
 import { UserStore, publicUser, type AuthenticatedUser } from "./user-management.js";
 import type { WebActivityActor } from "./web-state.js";
 import { handleDashboardAccessRoute } from "./web-dashboard-access-routes.js";
@@ -249,6 +250,12 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   if (req.method === "PATCH" && url.pathname === "/api/settings") {
     const body = await readJsonBody(req);
     sendJson(res, 200, await settings.update(objectRecord(body?.settings)));
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/settings/wizard/test") {
+    const body = await readJsonBody(req);
+    sendJson(res, 200, await runSettingsWizardTest(optionalStringField(body, "channel") ?? "", objectRecord(body?.settings)));
     return;
   }
 
