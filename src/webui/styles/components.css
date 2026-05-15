@@ -37,7 +37,7 @@
 .setting-actions{display:flex;gap:8px;align-items:center;margin-top:8px}
 .setting-help{font-size:12px;color:var(--muted)}
 .restart-banner{border:1px solid #d9c27a;background:var(--warn);border-radius:8px;padding:10px;margin:0 0 12px}
-.settings-wizard{display:grid;gap:14px}
+.settings-wizard{display:grid;gap:14px;margin-top:14px}
 .wizard-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .wizard-header h2{margin:0 0 4px}
 .wizard-header p,.wizard-step p,.wizard-card p{margin:0;color:var(--muted);line-height:1.45}
@@ -48,6 +48,7 @@
 .wizard-links a:hover{text-decoration:underline}
 .wizard-progress{display:flex;gap:8px;flex-wrap:wrap}
 .wizard-progress button{background:var(--surface);color:var(--text);border-color:var(--border);min-height:32px;height:32px;line-height:1}
+.wizard-progress button:hover{background:var(--accent-strong);color:white;border-color:var(--accent-strong)}
 .wizard-progress button.active{background:var(--accent);color:white;border-color:var(--accent)}
 .wizard-step{display:grid;gap:12px}
 .wizard-step h3{margin:0}
