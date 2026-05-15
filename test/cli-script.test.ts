@@ -21,4 +21,12 @@ describe("nordrelay CLI script", () => {
     expect(source).toContain("nordrelay [init|user|doctor|web|start|stop|restart|status|update|foreground|version]");
     expect(source).toContain("@nordbyte/nordrelay@latest");
   });
+
+  it("handles --help before the foreground default", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain('copy[0] === "--help" || copy[0] === "-h"');
+    expect(source).toContain("function printHelp()");
+    expect(source).toContain('if (options.command === "help")');
+  });
 });

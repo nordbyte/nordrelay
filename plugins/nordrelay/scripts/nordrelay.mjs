@@ -35,6 +35,10 @@ function readRuntimePackageVersion() {
 function parseArgs(argv) {
   const copy = [...argv];
   let command = "foreground";
+  if (copy[0] === "--help" || copy[0] === "-h") {
+    command = "help";
+    copy.shift();
+  }
   if (copy[0] === "--version" || copy[0] === "-v") {
     command = "version";
     copy.shift();
@@ -1368,8 +1372,39 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function printHelp() {
+  console.log(`${APP_NAME} ${VERSION}`);
+  console.log("");
+  console.log("Usage: nordrelay <command> [options]");
+  console.log("");
+  console.log("Commands:");
+  console.log("  init                 Create local config and first admin user");
+  console.log("  user                 Manage users, groups, and channel links");
+  console.log("  doctor               Validate the local setup");
+  console.log("  web, dashboard       Start the WebUI and connector");
+  console.log("  start                Start the connector");
+  console.log("  stop                 Stop the connector and WebUI");
+  console.log("  restart              Restart the connector");
+  console.log("  status               Show connector and WebUI status");
+  console.log("  update               Update NordRelay");
+  console.log("  foreground           Run the connector in the foreground");
+  console.log("  version              Print the installed version");
+  console.log("");
+  console.log("Options:");
+  console.log("  --home <path>        Runtime home directory");
+  console.log("  --host <host>        WebUI bind host");
+  console.log("  --port <port>        WebUI port");
+  console.log("  --force              Overwrite existing config during init");
+  console.log("  --help, -h           Show this help");
+  console.log("  --version, -v        Show the installed version");
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  if (options.command === "help") {
+    printHelp();
+    return;
+  }
   if (options.command === "start") return commandStart(options);
   if (options.command === "stop") return commandStop(options);
   if (options.command === "status") return commandStatus(options);
@@ -1397,6 +1432,7 @@ async function main() {
 
   console.error(`Unknown command: ${options.command}`);
   console.error("Usage: nordrelay [init|user|doctor|web|start|stop|restart|status|update|foreground|version]");
+  console.error("Run `nordrelay --help` for details.");
   process.exitCode = 2;
 }
 
