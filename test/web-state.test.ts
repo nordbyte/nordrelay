@@ -34,6 +34,36 @@ describe("web dashboard state stores", () => {
     }
   });
 
+  it("deduplicates repeated chat messages for the same turn", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-web-chat-dedupe-"));
+    try {
+      const store = new WebChatStore(workspace, "json", 10);
+      const first = store.appendWithResult({
+        threadId: "thread-a",
+        role: "user",
+        text: "same prompt",
+        source: "cli",
+        turnId: "turn-1",
+        timestamp: "2026-05-15T16:23:03.000Z",
+      });
+      const second = store.appendWithResult({
+        threadId: "thread-a",
+        role: "user",
+        text: "same prompt",
+        source: "cli",
+        turnId: "turn-1",
+        timestamp: "2026-05-15T16:23:03.000Z",
+      });
+
+      expect(first.inserted).toBe(true);
+      expect(second.inserted).toBe(false);
+      expect(second.message.id).toBe(first.message.id);
+      expect(store.list("thread-a")).toHaveLength(1);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("filters activity timeline events", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-web-activity-"));
     try {

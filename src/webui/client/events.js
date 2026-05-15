@@ -1,7 +1,7 @@
 function scrollChatToBottom(){const box=document.getElementById('messages');if(!box)return;requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight})})}
 function appendMessage(cls,text){const box=document.getElementById('messages');const div=document.createElement('div');div.className='message '+cls;div.textContent=text;box.appendChild(div);scrollChatToBottom();return div}
 function appendQueuedMessage(id){const div=appendMessage('system','Queued prompt '+id);const btn=document.createElement('button');btn.textContent='Cancel queued message';btn.className='danger';btn.onclick=()=>safe(async()=>{const r=await api('/api/queue',{method:'POST',body:JSON.stringify({action:'cancel',id})});renderQueue(r.queue,r.paused);div.textContent='Cancelled queued prompt '+id});div.appendChild(document.createElement('br'));div.appendChild(btn)}
-function renderChatMessages(messages){state.chatMessages=messages||[];const box=document.getElementById('messages');box.innerHTML=(messages||[]).map(m=>'<div class="message '+esc(m.role)+'"><small>'+esc((m.source||'web')+' / '+fmtDate(m.timestamp))+'</small>\\n'+esc(m.text)+'</div>').join('');scrollChatToBottom()}
+function renderChatMessages(messages){state.chatMessages=messages||[];const box=document.getElementById('messages');box.innerHTML=(messages||[]).map(m=>'<div class="message '+esc(m.role)+'"><small>'+esc((m.source||'web')+' / '+fmtDate(m.timestamp))+'</small><br>'+esc(m.text)+'</div>').join('');scrollChatToBottom()}
 async function loadChatHistory(){const data=await api('/api/chat/history');renderChatMessages(data.messages||[])}
 let currentAgentMessage=null;
 function connectEvents(){
@@ -25,7 +25,7 @@ function connectEvents(){
   events.addEventListener('tool_start', e=>{const d=JSON.parse(e.data);tool('tool','Started '+d.toolName);if(state.currentPage==='tasks')loadTasks()});
   events.addEventListener('tool_update', e=>{const d=JSON.parse(e.data);if(d.partialResult)tool('tool',d.partialResult.slice(-600))});
   events.addEventListener('tool_end', e=>{const d=JSON.parse(e.data);tool(d.isError?'danger':'tool','Finished '+d.toolCallId+(d.isError?' with error':''))});
-  events.addEventListener('todo_update', e=>{const d=JSON.parse(e.data);tool('tool','Plan:\\n'+d.items.map(i=>(i.completed?'[x] ':'[ ] ')+i.text).join('\\n'))});
+  events.addEventListener('todo_update', e=>{const d=JSON.parse(e.data);tool('tool','Plan:\n'+d.items.map(i=>(i.completed?'[x] ':'[ ] ')+i.text).join('\n'))});
   events.addEventListener('turn_error', e=>{const d=JSON.parse(e.data);appendMessage('system','Error: '+d.error);currentAgentMessage=null});
   events.addEventListener('turn_complete', ()=>{currentAgentMessage=null;notify('NordRelay turn finished','The active task completed.');loadBootstrap();if(state.currentPage==='tasks')loadTasks()});
   events.addEventListener('status', e=>{const d=JSON.parse(e.data);const msg=d.message||'';if(isCliRunningStatus(msg)){state.cliStatusActive=true;toast(msg,{sticky:true});return}if(isCliDoneStatus(msg))state.cliStatusActive=false;toast(msg)});

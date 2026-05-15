@@ -68,9 +68,17 @@ export class WebChatStore {
   }
 
   append(input: Omit<WebChatMessage, "id" | "timestamp"> & { timestamp?: string }): WebChatMessage {
+    return this.appendWithResult(input).message;
+  }
+
+  appendWithResult(input: Omit<WebChatMessage, "id" | "timestamp"> & { timestamp?: string }): { message: WebChatMessage; inserted: boolean } {
     const payload = this.readPayload();
     const threadId = input.threadId || "pending";
     const messages = payload.messagesByThread[threadId] ?? [];
+    const duplicate = findDuplicateWebChatMessage(messages, { ...input, threadId });
+    if (duplicate) {
+      return { message: duplicate, inserted: false };
+    }
     const message: WebChatMessage = {
       id: randomId(),
       timestamp: input.timestamp ?? new Date().toISOString(),
@@ -83,7 +91,7 @@ export class WebChatStore {
     }
     payload.messagesByThread[threadId] = messages;
     this.store.write(payload);
-    return message;
+    return { message, inserted: true };
   }
 
   list(threadId: string | null | undefined, limit = 200): WebChatMessage[] {
@@ -109,7 +117,7 @@ export class WebChatStore {
     const messagesByThread: Record<string, WebChatMessage[]> = {};
     for (const [threadId, messages] of Object.entries(payload.messagesByThread)) {
       if (Array.isArray(messages)) {
-        messagesByThread[threadId] = messages.filter(isWebChatMessage).slice(-this.maxMessages);
+        messagesByThread[threadId] = dedupeWebChatMessages(messages.filter(isWebChatMessage)).slice(-this.maxMessages);
       }
     }
     return { version: 1, messagesByThread };
@@ -235,6 +243,40 @@ function activityActorMatches(actor: WebActivityActor | undefined, query: string
 
 function randomId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 12);
+}
+
+function dedupeWebChatMessages(messages: WebChatMessage[]): WebChatMessage[] {
+  const seen = new Set<string>();
+  return messages.filter((message) => {
+    const key = webChatDedupKey(message);
+    if (!key) {
+      return true;
+    }
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function findDuplicateWebChatMessage(
+  messages: WebChatMessage[],
+  input: Omit<WebChatMessage, "id" | "timestamp"> & { timestamp?: string },
+): WebChatMessage | undefined {
+  const key = webChatDedupKey(input);
+  return key ? messages.find((message) => webChatDedupKey(message) === key) : undefined;
+}
+
+function webChatDedupKey(message: Omit<WebChatMessage, "id" | "timestamp"> & { timestamp?: string }): string | null {
+  const threadId = message.threadId || "pending";
+  if (message.turnId) {
+    return [threadId, message.role, message.source, message.turnId, message.text].join("\0");
+  }
+  if (message.timestamp) {
+    return [threadId, message.role, message.source, message.timestamp, message.text].join("\0");
+  }
+  return null;
 }
 
 export {

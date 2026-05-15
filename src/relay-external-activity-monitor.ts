@@ -184,7 +184,7 @@ export class RelayExternalActivityMonitor {
 
   private startExternalTurn(snapshot: AgentExternalSnapshot, info: AgentSessionInfo): void {
     const prompt = snapshot.latestUserMessage ?? `${snapshot.agentLabel} CLI task`;
-    this.options.chatStore.append({
+    const stored = this.options.chatStore.appendWithResult({
       threadId: snapshot.threadId,
       role: "user",
       text: prompt,
@@ -192,13 +192,15 @@ export class RelayExternalActivityMonitor {
       turnId: snapshot.activity.turnId ?? undefined,
       timestamp: snapshot.activity.startedAt?.toISOString(),
     });
-    this.options.broadcast({
-      type: "turn_start",
-      id: snapshot.activity.turnId ?? "cli",
-      prompt,
-      at: snapshot.activity.startedAt?.toISOString() ?? new Date().toISOString(),
-      source: "cli",
-    });
+    if (stored.inserted) {
+      this.options.broadcast({
+        type: "turn_start",
+        id: snapshot.activity.turnId ?? "cli",
+        prompt,
+        at: snapshot.activity.startedAt?.toISOString() ?? new Date().toISOString(),
+        source: "cli",
+      });
+    }
     this.options.appendActivity({
       source: "cli",
       status: "running",
