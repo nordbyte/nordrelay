@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto";
-
 import type { AgentSessionCallbacks } from "./agent.js";
 import type { TurnProgress } from "./bot-rendering.js";
 import type { ChannelContext, ChannelRuntime } from "./channel-adapter.js";
+import { createChannelTurnLifecycle, createChannelTypingLoop } from "./channel-turn-lifecycle.js";
 import type { ToolVerbosity } from "./config.js";
 
 export interface ChannelPromptEngineOptions {
@@ -35,23 +34,17 @@ export interface ChannelPromptEngine {
 }
 
 export function createChannelPromptEngine(options: ChannelPromptEngineOptions): ChannelPromptEngine {
-  const toolCounts = new Map<string, number>();
-  const startedAt = Date.now();
-  const turnId = randomUUID().slice(0, 12);
-  const progress: TurnProgress = {
-    status: "running",
-    promptDescription: options.promptDescription,
-    startedAt,
-    updatedAt: startedAt,
-    toolCounts,
-    textCharacters: 0,
-  };
+  const lifecycle = createChannelTurnLifecycle(options.promptDescription);
+  const { progress, startedAt, turnId } = lifecycle;
 
   let accumulated = "";
   let responseMessageId: string | undefined;
   let planMessageId: string | undefined;
   let flushTimer: NodeJS.Timeout | undefined;
-  let typingTimer: NodeJS.Timeout | undefined;
+  const typingLoop = createChannelTypingLoop({
+    intervalMs: options.typingIntervalMs,
+    sendTyping: () => options.runtime.sendTyping(options.context),
+  });
   let lastEditAt = 0;
   let running = false;
   let finalized = false;
@@ -117,10 +110,7 @@ export function createChannelPromptEngine(options: ChannelPromptEngineOptions): 
 
   const stop = (): void => {
     running = false;
-    if (typingTimer) {
-      clearInterval(typingTimer);
-      typingTimer = undefined;
-    }
+    typingLoop.stop();
     clearFlushTimer();
   };
 
@@ -129,9 +119,7 @@ export function createChannelPromptEngine(options: ChannelPromptEngineOptions): 
       return;
     }
     finalized = true;
-    progress.status = "completed";
-    progress.completedAt = Date.now();
-    progress.updatedAt = progress.completedAt;
+    lifecycle.recordCompleted();
     stop();
     const finalText = accumulated.trim() || "Done.";
     const chunks = options.splitMessage(finalText);
@@ -153,9 +141,7 @@ export function createChannelPromptEngine(options: ChannelPromptEngineOptions): 
 
   const fail = async (text: string): Promise<void> => {
     finalized = true;
-    progress.status = "failed";
-    progress.completedAt = Date.now();
-    progress.updatedAt = progress.completedAt;
+    lifecycle.recordFailed(text);
     stop();
     const rendered = options.trimMessage(text);
     if (responseMessageId) {
@@ -174,17 +160,13 @@ export function createChannelPromptEngine(options: ChannelPromptEngineOptions): 
   const callbacks: AgentSessionCallbacks = {
     onTextDelta: (delta) => {
       accumulated += delta;
-      progress.textCharacters = accumulated.length;
-      progress.updatedAt = Date.now();
+      lifecycle.recordTextDelta(delta.length);
       void ensureResponse()
         .then(() => scheduleFlush())
         .catch((error) => console.error(`Failed to send ${options.logPrefix} response:`, error));
     },
     onToolStart: (toolName) => {
-      toolCounts.set(toolName, (toolCounts.get(toolName) ?? 0) + 1);
-      progress.currentTool = toolName;
-      progress.lastTool = toolName;
-      progress.updatedAt = Date.now();
+      lifecycle.recordToolStart(toolName);
       options.onToolStart?.(toolName);
       if (options.toolVerbosity === "all") {
         const text = `Tool started: ${toolName}`;
@@ -192,15 +174,14 @@ export function createChannelPromptEngine(options: ChannelPromptEngineOptions): 
       }
     },
     onToolUpdate: () => {
-      progress.updatedAt = Date.now();
+      lifecycle.recordToolUpdate();
     },
     onToolEnd: (_toolCallId, isError) => {
-      progress.currentTool = undefined;
-      progress.updatedAt = Date.now();
+      lifecycle.recordToolEnd();
       options.onToolEnd?.(isError);
     },
     onTodoUpdate: (items) => {
-      progress.updatedAt = Date.now();
+      lifecycle.touch();
       const text = [
         "Plan:",
         ...items.map((item) => `${item.completed ? "[x]" : "[ ]"} ${item.text}`),
@@ -215,9 +196,7 @@ export function createChannelPromptEngine(options: ChannelPromptEngineOptions): 
     },
     onTurnComplete: () => {},
     onAgentEnd: () => {
-      progress.status = "completed";
-      progress.completedAt = Date.now();
-      progress.updatedAt = progress.completedAt;
+      lifecycle.recordCompleted();
       void finalize().catch((error) => console.error(`Failed to finalize ${options.logPrefix} response:`, error));
     },
   };
@@ -233,11 +212,7 @@ export function createChannelPromptEngine(options: ChannelPromptEngineOptions): 
         return;
       }
       running = true;
-      typingTimer = setInterval(() => {
-        void options.runtime.sendTyping(options.context).catch(() => {});
-      }, options.typingIntervalMs);
-      typingTimer.unref?.();
-      void options.runtime.sendTyping(options.context).catch(() => {});
+      typingLoop.start();
     },
     stop,
     finalize,

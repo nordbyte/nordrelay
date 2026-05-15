@@ -41,6 +41,7 @@ import { renderAgentUpdateJobAction, type ChannelActionResponse } from "./channe
 import { ChannelCommandService } from "./channel-command-service.js";
 import { runChannelPeerPrompt } from "./channel-peer-prompt.js";
 import { deliverChannelAction } from "./channel-runtime.js";
+import { createChannelTurnLifecycle, createChannelTypingLoop } from "./channel-turn-lifecycle.js";
 import {
   agentLabel,
   agentReasoningLabel,
@@ -149,6 +150,7 @@ import {
   renderToolStartMessage,
   requiresTurnApproval,
   trimLine,
+  type TurnProgress,
 } from "./bot-rendering.js";
 import { UserStore, type AuthenticatedUser } from "./user-management.js";
 import { WebActivityStore, type WebActivityActor, type WebActivityEvent } from "./web-state.js";
@@ -211,19 +213,6 @@ type PendingMediaGroup = {
   messageThreadId?: number;
   parts: MediaGroupPart[];
   timer: NodeJS.Timeout;
-};
-
-type TurnProgress = {
-  status: "running" | "completed" | "failed";
-  promptDescription: string;
-  startedAt: number;
-  updatedAt: number;
-  completedAt?: number;
-  currentTool?: string;
-  lastTool?: string;
-  toolCounts: Map<string, number>;
-  textCharacters: number;
-  error?: string;
 };
 
 type BusyState = {
@@ -1513,14 +1502,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
     const busyState = getBusyState(contextKey);
     busyState.processing = true;
-    const progress: TurnProgress = {
-      status: "running",
-      promptDescription: envelope.description,
-      startedAt: Date.now(),
-      updatedAt: Date.now(),
-      toolCounts: new Map(),
-      textCharacters: 0,
-    };
+    const turnLifecycle = createChannelTurnLifecycle(envelope.description);
+    const progress = turnLifecycle.progress;
     turnProgress.set(contextKey, progress);
 
     const abortKeyboard = new InlineKeyboard().text("⏹ Abort", `agent_abort:${contextKey}`);
@@ -1544,13 +1527,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const toolActivityNames = new Map<string, string>();
     const toolActivityStartedAt = new Map<string, number>();
 
-    const typingInterval = setInterval(() => {
-      void sendChatActionSafe(bot.api, chatId, "typing", messageThreadId).catch(() => {});
-    }, TYPING_INTERVAL_MS);
-    void sendChatActionSafe(bot.api, chatId, "typing", messageThreadId).catch(() => {});
+    const typingLoop = createChannelTypingLoop({
+      intervalMs: TYPING_INTERVAL_MS,
+      sendTyping: () => sendChatActionSafe(bot.api, chatId, "typing", messageThreadId),
+    });
+    typingLoop.start();
 
     const stopTyping = (): void => {
-      clearInterval(typingInterval);
+      typingLoop.stop();
     };
 
     const clearFlushTimer = (): void => {
@@ -1720,6 +1704,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         return;
       }
       finalized = true;
+      turnLifecycle.recordCompleted();
 
       stopTyping();
       clearFlushTimer();
@@ -1751,8 +1736,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const callbacks: AgentSessionCallbacks = {
       onTextDelta: (delta: string) => {
         accumulatedText += delta;
-        progress.textCharacters += delta.length;
-        progress.updatedAt = Date.now();
+        turnLifecycle.recordTextDelta(delta.length);
         if (!responseMessageId) {
           void ensureResponseMessage()
             .then(() => {
@@ -1767,10 +1751,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         scheduleFlush();
       },
       onToolStart: (toolName: string, toolCallId: string) => {
-        progress.currentTool = toolName;
-        progress.lastTool = toolName;
-        progress.updatedAt = Date.now();
-        progress.toolCounts.set(toolName, (progress.toolCounts.get(toolName) ?? 0) + 1);
+        turnLifecycle.recordToolStart(toolName);
         toolActivityNames.set(toolCallId, toolName);
         toolActivityStartedAt.set(toolCallId, Date.now());
         appendTelegramActivity(ctx, contextKey, session, {
@@ -1819,7 +1800,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         });
       },
       onToolUpdate: (toolCallId: string, partialResult: string) => {
-        progress.updatedAt = Date.now();
+        turnLifecycle.recordToolUpdate();
         if (toolVerbosity === "none" || toolVerbosity === "summary") {
           return;
         }
@@ -1832,8 +1813,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         state.partialResult = appendWithCap(state.partialResult, partialResult, TOOL_OUTPUT_PREVIEW_LIMIT);
       },
       onToolEnd: (toolCallId: string, isError: boolean) => {
-        progress.currentTool = undefined;
-        progress.updatedAt = Date.now();
+        turnLifecycle.recordToolEnd();
         const activityToolName = toolActivityNames.get(toolCallId) ?? "tool";
         const activityStartedAt = toolActivityStartedAt.get(toolCallId);
         appendTelegramActivity(ctx, contextKey, session, {
@@ -1883,7 +1863,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         });
       },
       onTodoUpdate: (items) => {
-        progress.updatedAt = Date.now();
+        turnLifecycle.touch();
         if (toolVerbosity === "none") {
           return;
         }
@@ -1915,7 +1895,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       },
       onTurnComplete: (usage) => {
         lastTurnUsage = usage;
-        progress.updatedAt = Date.now();
+        turnLifecycle.touch();
       },
       onAgentEnd: () => {
         void finalizeResponse().catch((error) => {
@@ -2057,9 +2037,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
           await pruneArtifacts(session.getInfo().workspace);
         }
       }
-      progress.status = "completed";
-      progress.completedAt = Date.now();
-      progress.updatedAt = progress.completedAt;
+      turnLifecycle.recordCompleted();
       auditContext(ctx, contextKey, session, {
         action: "prompt_completed",
         status: "ok",
@@ -2073,8 +2051,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         durationMs: promptStartedAt ? Date.now() - promptStartedAt : undefined,
       });
     } catch (error) {
-      progress.status = "failed";
-      progress.error = friendlyErrorText(error);
+      turnLifecycle.recordFailed(friendlyErrorText(error));
       auditContext(ctx, contextKey, session, {
         action: "prompt_failed",
         status: "failed",
@@ -2091,8 +2068,6 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
           durationMs: Date.now() - promptStartedAt,
         });
       }
-      progress.completedAt = Date.now();
-      progress.updatedAt = progress.completedAt;
       stopTyping();
       clearFlushTimer();
       if (responseMessagePromise) {

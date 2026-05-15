@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { expect, test } from "@playwright/test";
 
 import { CODEX_AGENT_CAPABILITIES, PI_AGENT_CAPABILITIES } from "../src/agent.js";
+import { buildAdapterConformanceMatrix } from "../src/adapter-conformance.js";
 import { listAgentAdapterDescriptors } from "../src/agent-adapter.js";
 import { listChannelDescriptors } from "../src/channel-adapter.js";
 import { dashboardCss, dashboardJs } from "../src/web-dashboard-assets.js";
@@ -114,6 +115,29 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#slackChannelsList")).toContainText("No Slack channels registered.");
   });
 
+  test("renders adapter conformance, artifact previews, and peer global sessions", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
+    await page.goto(mock.baseUrl);
+
+    await page.getByRole("button", { name: "Adapters" }).click();
+    await expect(page.locator("#adapterConformance")).toContainText("Agent capability contract");
+    await expect(page.locator("#adapterConformance")).toContainText("Channel command contract");
+    await expect(page.locator("#adapterConformance")).toContainText("Codex");
+    await expect(page.locator("#adapterConformance")).toContainText("Telegram");
+
+    await page.getByRole("button", { name: "Artifacts" }).click();
+    await expect(page.locator("#artifactList")).toContainText("turn-web-1");
+    await page.getByRole("button", { name: "Preview" }).click();
+    await expect(page.locator("#artifactPreview")).toContainText("report.txt");
+    await expect(page.locator("#artifactPreview")).toContainText("Artifact preview smoke");
+
+    await page.getByRole("button", { name: "Peers" }).click();
+    await expect(page.locator("#peerStatus")).toContainText("Local peer identity");
+    await expect(page.locator("#peersList")).toContainText("Ubuntu Workstation");
+    await page.getByRole("button", { name: "Load global sessions" }).click();
+    await expect(page.locator("#globalPeerSessionsList")).toContainText("peer-thread-1");
+  });
+
   test("starts agent install/update jobs from the version page", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
@@ -188,6 +212,7 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
     return { job };
   }
   if (url.pathname === "/api/adapters/health") return { adapters: adaptersHealth() };
+  if (url.pathname === "/api/adapters/conformance") return buildAdapterConformanceMatrix();
   if (url.pathname === "/api/tasks" || url.pathname === "/api/progress") return { current: null, external: null, queue: [], queuePaused: false, recent: [] };
   if (url.pathname === "/api/metrics") return metrics();
   if (url.pathname === "/api/jobs") return jobsList();
@@ -198,7 +223,10 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   if (url.pathname === "/api/control-options") return controls(url.searchParams.get("agent") || "codex");
   if (url.pathname === "/api/agent") return { session };
   if (url.pathname === "/api/activity") return { events: [] };
-  if (url.pathname === "/api/artifacts") return { reports: [] };
+  if (url.pathname === "/api/artifacts") return artifacts();
+  if (url.pathname === "/api/artifacts/preview") return artifactPreview(url.searchParams.get("path") || "report.txt");
+  if (url.pathname === "/api/artifacts/file") return { name: "report.txt", mimeType: "text/plain", dataBase64: Buffer.from("Artifact preview smoke\n").toString("base64") };
+  if (url.pathname === "/api/artifacts/zip") return { name: "turn-web-1.zip", mimeType: "application/zip", dataBase64: Buffer.from("zip").toString("base64") };
   if (url.pathname === "/api/logs") return { filePath: "/tmp/nordrelay.log", requestedLines: 120, lineCount: 2, updatedAt: new Date().toISOString(), plain: "2026-05-14 10:00:00 INFO Started\n2026-05-14 10:01:00 WARN Slow check" };
   if (url.pathname === "/api/logs/clear") return { filePath: "/tmp/nordrelay.log", clearedAt: new Date().toISOString() };
   if (url.pathname === "/api/diagnostics") return { health: health(), versionChecks: version().versionChecks, snapshot: bootstrap(session).status.snapshot, runtime: { stateBackend: "json", sourceWorkspace: "/tmp/project", queuePaused: false, externalMirror: null, agentDiagnostics: { lines: [] } } };
@@ -208,6 +236,9 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   if (url.pathname === "/api/auth/status") return { agentId: url.searchParams.get("agent") || "codex", agentLabel: "Codex", supported: true, authenticated: true, detail: "authenticated", loginSupported: true, logoutSupported: true };
   if (url.pathname === "/api/auth/login" || url.pathname === "/api/auth/logout") return { agentId: "codex", agentLabel: "Codex", supported: true, authenticated: true, detail: "ok", loginSupported: true, logoutSupported: true };
   if (url.pathname === "/api/update") return { method: "npm", logPath: "/tmp/update.log", sourceRoot: "/tmp/nordrelay", summary: "mock update" };
+  if (url.pathname === "/api/peers") return peers();
+  if (url.pathname === "/api/peers/global-sessions") return globalPeerSessions();
+  if (url.pathname.match(/^\/api\/peers\/[^/]+\/health$/)) return { data: { version: "0.7.0" } };
   if (url.pathname === "/api/runtime/restart" || url.pathname === "/api/abort" || url.pathname === "/api/stop") return { ok: true };
   if (url.pathname === "/api/sync") return { changed: false, changedFields: [] };
   if (url.pathname === "/api/retry") return { queued: true, queueId: "queue-retry", files: [] };
@@ -313,7 +344,7 @@ function currentUser() {
 }
 
 function permissions() {
-  return ["inspect", "sessions.read", "sessions.write", "prompt.send", "prompt.abort", "files.read", "files.write", "settings.read", "settings.write", "auth.manage", "diagnostics.read", "logs.read", "logs.clear", "queue.read", "queue.write", "updates.run", "system.restart", "users.read", "users.write", "audit.read"];
+  return ["inspect", "sessions.read", "sessions.write", "prompt.send", "prompt.abort", "files.read", "files.write", "settings.read", "settings.write", "auth.manage", "diagnostics.read", "logs.read", "logs.clear", "queue.read", "queue.write", "updates.run", "system.restart", "users.read", "users.write", "audit.read", "peers.read", "peers.write"];
 }
 
 function chatMessages() {
@@ -391,6 +422,41 @@ function jobsList() {
         canReadLog: true,
       },
     ],
+  };
+}
+
+function artifacts() {
+  return {
+    reports: [
+      {
+        turnId: "turn-web-1",
+        outDir: "/tmp/project/.nordrelay-artifacts/turn-web-1",
+        updatedAt: now(),
+        fileCount: 1,
+        skippedCount: 0,
+        totalSizeBytes: 42,
+        source: "turn",
+        artifacts: [
+          {
+            name: "report.txt",
+            relativePath: "report.txt",
+            sizeBytes: 42,
+            mimeType: "text/plain",
+            modifiedAt: now(),
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function artifactPreview(path: string) {
+  return {
+    kind: "text",
+    name: path.split("/").pop() || "report.txt",
+    sizeBytes: 42,
+    truncated: false,
+    text: "const message = 'Artifact preview smoke';\n",
   };
 }
 
@@ -529,6 +595,67 @@ function users() {
     ],
     adminConfigured: true,
     permissions: permissions(),
+  };
+}
+
+function peers() {
+  return {
+    enabled: true,
+    listenUrl: "https://127.0.0.1:31979",
+    requireTls: true,
+    identity: { nodeId: "local-node", fingerprint: "local-fingerprint" },
+    peers: [
+      {
+        id: "peer-ubuntu",
+        name: "Ubuntu Workstation",
+        enabled: true,
+        url: "https://10.0.0.12:31979",
+        nodeId: "remote-node",
+        fingerprint: "remote-fingerprint",
+        direction: "outbound",
+        scopes: ["inspect", "sessions.read", "prompt.send"],
+        allowedAgents: ["codex", "pi"],
+        allowedWorkspaceRoots: ["/srv/projects"],
+        workspaceAliases: { demo: "/srv/projects/demo" },
+        remoteStatus: "ready",
+        remoteVersion: "0.7.0",
+        lastLatencyMs: 24,
+        lastCheckedAt: now(),
+        lastSeenAt: now(),
+      },
+    ],
+    invitations: [
+      {
+        id: "invite-1",
+        name: "MacBook invite",
+        expiresAt: "2026-05-14T10:10:00.000Z",
+        scopes: ["inspect", "sessions.read"],
+        allowedAgents: ["codex"],
+        usedAt: null,
+      },
+    ],
+  };
+}
+
+function globalPeerSessions() {
+  return {
+    targets: [
+      {
+        peerId: "peer-ubuntu",
+        peerName: "Ubuntu Workstation",
+        ok: true,
+        data: {
+          sessions: [
+            {
+              id: "peer-thread-1",
+              title: "Peer smoke session",
+              cwd: "/srv/projects/demo",
+              updatedAt: now(),
+            },
+          ],
+        },
+      },
+    ],
   };
 }
 
