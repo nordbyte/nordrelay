@@ -81,8 +81,8 @@
 .peer-invite-details{display:grid;gap:6px;margin:10px 0;padding:10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface)}
 .peer-invite-details small{margin-top:0;font-weight:700}
 .peer-invite-copy,.peer-invite-command{display:block;width:100%;text-align:left;overflow-wrap:anywhere;white-space:pre-wrap}
-.peer-invite-command{padding:8px;border:1px solid var(--border-soft);border-radius:6px;background:var(--pre);color:var(--pre-text)}
-.peer-invite-command:hover{background:var(--pre);color:var(--pre-text)}
+.copy-id.peer-invite-command{padding:8px;border:1px solid var(--border-soft);border-radius:6px;background:var(--surface);color:var(--text);text-decoration:none}
+.copy-id.peer-invite-command:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--link);text-decoration:none}
 .peer-warning{display:grid;gap:4px;margin:10px 0;padding:10px;border:1px solid #d9c27a;border-radius:8px;background:var(--warn);color:#8a6a12}
 .peer-warning small{color:#8a6a12}
 .peer-probe-result{margin-top:10px;padding:10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface)}
