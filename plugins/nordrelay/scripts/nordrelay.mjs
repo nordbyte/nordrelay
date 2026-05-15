@@ -802,12 +802,18 @@ function parsePeerFlags(argv) {
     else if (arg === "--scopes") flags.scopes = requireValue(copy, ++i, arg);
     else if (arg === "--agents") flags.agents = requireValue(copy, ++i, arg);
     else if (arg === "--workspaces") flags.workspaces = requireValue(copy, ++i, arg);
+    else if (arg === "--workspace-aliases" || arg === "--aliases") flags.workspaceAliases = requireValue(copy, ++i, arg);
   }
   return flags;
 }
 
 function csv(value) {
   return value ? value.split(",").map((item) => item.trim()).filter(Boolean) : undefined;
+}
+
+function aliasMap(value) {
+  if (!value) return undefined;
+  return Object.fromEntries(value.split(",").map((item) => item.split("=", 2).map((part) => part.trim())).filter(([alias, workspace]) => alias && workspace));
 }
 
 async function commandPeer(options) {
@@ -840,7 +846,11 @@ async function commandPeer(options) {
       console.log(`  Direction: ${peer.direction}`);
       console.log(`  Scopes: ${peer.scopes.join(",") || "-"}`);
       console.log(`  Agents: ${peer.allowedAgents.join(",") || "all"}`);
+      const aliases = Object.entries(peer.workspaceAliases || {}).map(([alias, workspace]) => `${alias}=${workspace}`).join(",");
+      if (aliases) console.log(`  Workspace aliases: ${aliases}`);
       if (peer.lastSeenAt) console.log(`  Last seen: ${peer.lastSeenAt}`);
+      if (peer.lastLatencyMs !== undefined) console.log(`  Latency: ${peer.lastLatencyMs}ms`);
+      if (peer.remoteVersion) console.log(`  Remote version: ${peer.remoteVersion}`);
       if (peer.lastError) console.log(`  Last error: ${peer.lastError}`);
     }
     return;
@@ -854,6 +864,7 @@ async function commandPeer(options) {
       scopes: csv(flags.scopes),
       allowedAgents: csv(flags.agents),
       allowedWorkspaceRoots: csv(flags.workspaces),
+      workspaceAliases: aliasMap(flags.workspaceAliases),
     });
     console.log(`Pairing code: ${created.code}`);
     console.log(`Expires: ${created.invitation.expiresAt}`);

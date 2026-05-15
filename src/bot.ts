@@ -1434,15 +1434,17 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         accumulated += `\n\nRemote event stream failed: ${error.message}`;
         clearTimeout(timeout);
         resolve();
-      });
+      }, contextKey);
     });
 
     try {
-      const result = await remoteClient.webProxy(targetPeerId, await peerPromptProxyPayload(prompt), prompt.activityActor);
+      const result = await remoteClient.webProxy(targetPeerId, await peerPromptProxyPayload(prompt), prompt.activityActor, contextKey);
       if (result && typeof result === "object" && "queued" in result && (result as { queued?: boolean }).queued) {
         const queueId = String((result as { queueId?: unknown }).queueId ?? "");
+        const keyboard = queueId ? new InlineKeyboard().text("Cancel queued message", `peer_queue_cancel:${targetPeerId}:${queueId}`) : undefined;
         await safeReply(ctx, escapeHTML(`Remote prompt queued${queueId ? `: ${queueId}` : ""}.`), {
           fallbackText: `Remote prompt queued${queueId ? `: ${queueId}` : ""}.`,
+          replyMarkup: keyboard,
         });
         return true;
       }
@@ -1461,6 +1463,34 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       clearInterval(typing);
     }
   };
+
+  bot.callbackQuery(/^peer_queue_cancel:([^:]+):([a-z0-9]+)$/, async (ctx) => {
+    const targetPeerId = ctx.match?.[1];
+    const queueId = ctx.match?.[2];
+    const contextKey = contextKeyFromCtx(ctx);
+    if (!targetPeerId || !queueId || !contextKey) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    try {
+      await remoteClient.webProxy(targetPeerId, {
+        method: "POST",
+        path: "/api/queue",
+        body: { action: "cancel", id: queueId },
+        contextKey,
+      }, telegramActivityActor(ctx), contextKey);
+      await ctx.answerCallbackQuery({ text: `Cancelled remote queued prompt ${queueId}.` });
+      const chatId = ctx.chat?.id;
+      const messageId = ctx.callbackQuery.message?.message_id;
+      if (chatId && messageId) {
+        await safeEditMessage(bot, chatId, messageId, escapeHTML(`Cancelled remote queued prompt ${queueId}.`), {
+          fallbackText: `Cancelled remote queued prompt ${queueId}.`,
+        });
+      }
+    } catch (error) {
+      await ctx.answerCallbackQuery({ text: friendlyErrorText(error), show_alert: true });
+    }
+  });
 
   const handleUserPrompt = async (
     ctx: Context,

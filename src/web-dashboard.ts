@@ -227,6 +227,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   if (await handleDashboardPeerRoute(req, res, url, {
     config,
     home: options.home,
+    runtime,
     activityActor: webActivityActor(authUser),
     auditPeerAction: (action, description) => auditUserAction(authUser, action, description),
   })) {

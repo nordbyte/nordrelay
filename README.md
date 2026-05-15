@@ -56,8 +56,8 @@ Peer federation:
 - Peer serving is disabled by default and uses a dedicated API port separate from the dashboard.
 - Pairing requires an explicit one-time invitation code, Ed25519 node identity verification, a per-peer shared secret, request HMAC signatures, timestamp/nonce replay protection, and TLS fingerprint pinning.
 - Peer scopes restrict which remote WebUI/API actions are allowed, including read, prompt, queue, file, diagnostic, log, and session permissions.
-- Peer records can also restrict allowed agent ids and workspace roots.
-- The WebUI has a Peers page plus a local/remote target selector; dashboard pages and SSE streaming proxy through the selected peer when allowed.
+- Peer records can also restrict allowed agent ids, allowed workspace roots, and per-peer workspace aliases such as `app=/srv/app`.
+- The WebUI has a Peers page plus a local/remote target selector; dashboard pages, SSE streaming, queue actions, artifact downloads, health checks, and the global session browser proxy through the selected peer when allowed.
 - Telegram and Discord expose `/peers` and `/target` so a linked user can choose whether prompts run locally or on a paired NordRelay instance.
 - Remote prompts stream text, tool status, turn completion, and errors back to the originating Telegram or Discord context.
 
@@ -355,7 +355,7 @@ nordrelay peer list
 nordrelay peer test <peer-id>
 ```
 
-Use the WebUI Peers page for the same invite, pair, enable/disable, test, and revoke workflow. Use `/peers` from Telegram or Discord to inspect paired nodes and `/target <peer-id>` or `/target local` to choose where subsequent prompts run.
+Use `--workspace-aliases app=/srv/app,demo=/home/me/demo` on invites when a controller should be able to start remote sessions with short workspace names. Use the WebUI Peers page for the same invite, pair, enable/disable, test, alias, global-session, and revoke workflow. Use `/peers` from Telegram or Discord to inspect paired nodes and `/target <peer-id>` or `/target local` to choose where subsequent prompts run.
 
 Codex authentication:
 
@@ -855,6 +855,7 @@ Peers:
 - `NORDRELAY_PEER_TLS_ENABLED`: serves the peer API over HTTPS with an automatically generated local certificate. Defaults to `true`.
 - `NORDRELAY_PEER_REQUIRE_TLS`: refuses plaintext peer serving on non-loopback hosts. Defaults to `true`.
 - Peer identity, TLS certificate, peers, and invitations are stored under `~/.nordrelay/identity.json`, `~/.nordrelay/tls/`, and `~/.nordrelay/peers.json`.
+- Peer invitations expire after at most 24 hours even if a longer lifetime is requested.
 
 Agent selection:
 

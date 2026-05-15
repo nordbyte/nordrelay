@@ -36,6 +36,7 @@ import { checkAuthStatus, startLogin as startCodexLogin, startLogout as startCod
 import { checkClaudeCodeAuthStatus, startClaudeCodeLogin, startClaudeCodeLogout } from "./claude-code-auth.js";
 import { listThreads as listCodexThreads } from "./codex-state.js";
 import type { ConnectorConfig } from "./config.js";
+import type { ChannelContextKey } from "./context-key.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./hermes-auth.js";
 import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
@@ -110,13 +111,20 @@ export type {
   WebTasksDto,
 } from "./relay-runtime-types.js";
 
-const WEB_CONTEXT_KEY = "web:dashboard";
+export const WEB_CONTEXT_KEY = "web:dashboard";
 const ACTIVE_CODEX_DISCOVERY_LIMIT = 200;
 const ACTIVE_ACTIVITY_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_WEB_SESSION_PAGE_SIZE = 50;
 const MAX_CHAT_HISTORY = 250;
 
+export interface RelayRuntimeOptions {
+  contextKey?: ChannelContextKey;
+  registryFileName?: string;
+  registrySqliteKey?: string;
+}
+
 export class RelayRuntime {
+  private readonly contextKey: ChannelContextKey;
   private readonly registry: SessionRegistry;
   private readonly promptStore: PromptStore;
   private readonly chatStore: WebChatStore;
@@ -143,17 +151,18 @@ export class RelayRuntime {
   private currentTurnStartedAt = 0;
   private currentProgress: WebTaskDto | null = null;
 
-  constructor(private readonly config: ConnectorConfig) {
+  constructor(private readonly config: ConnectorConfig, options: RelayRuntimeOptions = {}) {
+    this.contextKey = options.contextKey ?? WEB_CONTEXT_KEY;
     this.registry = new SessionRegistry(config, {
-      fileName: "web-contexts.json",
-      sqliteKey: "web-contexts",
+      fileName: options.registryFileName ?? "web-contexts.json",
+      sqliteKey: options.registrySqliteKey ?? "web-contexts",
     });
     this.promptStore = new PromptStore(config.workspace, config.stateBackend);
     this.chatStore = new WebChatStore(config.workspace, config.stateBackend, MAX_CHAT_HISTORY);
     this.activityStore = new WebActivityStore(config.workspace, config.stateBackend, config.auditMaxEvents);
     this.auditStore = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
     this.lockStore = new SessionLockStore(config.workspace, config.stateBackend);
-    this.queueService = new RelayQueueService(this.promptStore, WEB_CONTEXT_KEY);
+    this.queueService = new RelayQueueService(this.promptStore, this.contextKey);
     this.jobStore = new UnifiedJobStore(config.workspace, config.stateBackend, config.unifiedJobMaxItems);
     this.artifactService = new RelayArtifactService(config);
     this.mirrorRegistry = new ChannelMirrorRegistry(config, this.promptStore);
@@ -185,7 +194,7 @@ export class RelayRuntime {
     }
     this.turnService = new ChannelTurnService({
       source: "web",
-      contextKey: WEB_CONTEXT_KEY,
+      contextKey: this.contextKey,
       chatStore: this.chatStore,
       artifactService: this.artifactService,
       checkAuth: (info) => this.checkAgentAuth(info),
@@ -292,7 +301,7 @@ export class RelayRuntime {
     this.appendAudit({
       action: "command",
       status: "ok",
-      contextKey: WEB_CONTEXT_KEY,
+      contextKey: this.contextKey,
       actor,
       description: "update",
       detail: update.summary,
@@ -331,7 +340,7 @@ export class RelayRuntime {
     this.appendAudit({
       action: "command",
       status: "ok",
-      contextKey: WEB_CONTEXT_KEY,
+      contextKey: this.contextKey,
       agentId,
       actor,
       description: `${operation} ${agentId}`,
@@ -359,7 +368,7 @@ export class RelayRuntime {
     this.appendAudit({
       action: "command",
       status: "ok",
-      contextKey: WEB_CONTEXT_KEY,
+      contextKey: this.contextKey,
       agentId: job.agentId,
       actor,
       description: `delete update log ${id}`,
@@ -670,8 +679,8 @@ export class RelayRuntime {
     if (this.currentProgress?.status === "running") {
       addActiveSession({
         ...this.currentProgress,
-        contextKey: WEB_CONTEXT_KEY,
-        sourceContextKey: WEB_CONTEXT_KEY,
+        contextKey: this.contextKey,
+        sourceContextKey: this.contextKey,
         source: "web",
         status: "running",
         queueLength: this.queueService.length(),
@@ -688,7 +697,7 @@ export class RelayRuntime {
     }
 
     for (const meta of knownContexts) {
-      if (meta.contextKey === WEB_CONTEXT_KEY && this.currentProgress?.status === "running") {
+      if (meta.contextKey === this.contextKey && this.currentProgress?.status === "running") {
         continue;
       }
       const active = this.externalActiveSession(meta, knownContexts, preferences);
@@ -742,7 +751,7 @@ export class RelayRuntime {
     this.appendAudit({
       action: "command",
       status: "ok",
-      contextKey: WEB_CONTEXT_KEY,
+      contextKey: this.contextKey,
       actor,
       description: "export diagnostics bundle",
       detail: bundle.path,
@@ -756,7 +765,7 @@ export class RelayRuntime {
 
   lockWebSession(ownerName = "Web dashboard", actor?: WebActivityActor): SessionLock {
     const label = ownerName || actor?.label || "Web dashboard";
-    const lock = this.lockStore.set(WEB_CONTEXT_KEY, {
+    const lock = this.lockStore.set(this.contextKey, {
       userId: actor?.id ?? "web",
       label,
       channel: "web",
@@ -773,7 +782,7 @@ export class RelayRuntime {
     this.appendAudit({
       action: "lock_updated",
       status: "ok",
-      contextKey: WEB_CONTEXT_KEY,
+      contextKey: this.contextKey,
       actor,
       description: "lock",
       detail: `locked by ${label}`,
@@ -782,7 +791,7 @@ export class RelayRuntime {
   }
 
   unlockWebSession(actor?: WebActivityActor): { removed: boolean; locks: SessionLock[] } {
-    const removed = this.lockStore.clear(WEB_CONTEXT_KEY);
+    const removed = this.lockStore.clear(this.contextKey);
     this.appendActivity({
       source: "web",
       status: "info",
@@ -795,7 +804,7 @@ export class RelayRuntime {
     this.appendAudit({
       action: "lock_updated",
       status: "ok",
-      contextKey: WEB_CONTEXT_KEY,
+      contextKey: this.contextKey,
       actor,
       description: "unlock",
       detail: removed ? "unlocked" : "no lock",
@@ -905,7 +914,7 @@ export class RelayRuntime {
       this.appendAudit({
         action: "command",
         status: result.success ? "ok" : "failed",
-        contextKey: WEB_CONTEXT_KEY,
+        contextKey: this.contextKey,
         agentId: info.agentId,
         threadId: info.threadId,
         workspace: info.workspace,
@@ -968,7 +977,7 @@ export class RelayRuntime {
       this.appendAudit({
         action: "command",
         status: result.success ? "ok" : "failed",
-        contextKey: WEB_CONTEXT_KEY,
+        contextKey: this.contextKey,
         agentId: info.agentId,
         threadId: info.threadId,
         workspace: info.workspace,
@@ -1033,7 +1042,7 @@ export class RelayRuntime {
     type?: string;
     since?: string | number;
   } = {}): WebActivityEvent[] {
-    const currentInfo = this.registry.get(WEB_CONTEXT_KEY)?.getInfo();
+    const currentInfo = this.registry.get(this.contextKey)?.getInfo();
     return this.activityStore.list(options).map((event) => this.enrichActivityEvent(event, currentInfo));
   }
 
@@ -1045,7 +1054,7 @@ export class RelayRuntime {
     this.appendAudit({
       action: "command",
       status: "ok",
-      contextKey: WEB_CONTEXT_KEY,
+      contextKey: this.contextKey,
       actor,
       description: "retry",
       detail: cached.description,
@@ -1076,7 +1085,7 @@ export class RelayRuntime {
     this.appendAudit({
       action: "command",
       status: "ok",
-      contextKey: WEB_CONTEXT_KEY,
+      contextKey: this.contextKey,
       agentId: result.info.agentId,
       threadId: result.info.threadId,
       workspace: result.info.workspace,
@@ -1156,7 +1165,7 @@ export class RelayRuntime {
     if (!enabledAgents(this.config).includes(agentId)) {
       throw new Error(`Agent is not enabled: ${agentId}`);
     }
-    const session = await this.registry.switchAgent(WEB_CONTEXT_KEY, agentId);
+    const session = await this.registry.switchAgent(this.contextKey, agentId);
     this.updateSession(session);
     const info = this.publicInfo(session);
     this.appendActivity({
@@ -1180,7 +1189,7 @@ export class RelayRuntime {
     launchProfileId?: string;
     fastMode?: boolean;
   } = {}, actor?: WebActivityActor): Promise<AgentSessionInfo> {
-    const session = options.agentId ? await this.registry.switchAgent(WEB_CONTEXT_KEY, options.agentId) : await this.getSession(true);
+    const session = options.agentId ? await this.registry.switchAgent(this.contextKey, options.agentId) : await this.getSession(true);
     this.ensureIdle(session);
     if (options.reasoningEffort) {
       const reasoningOptions = agentReasoningOptions(session.getInfo().agentId);
@@ -1439,7 +1448,7 @@ export class RelayRuntime {
       this.appendAudit({
         action: "prompt_queued",
         status: "ok",
-        contextKey: WEB_CONTEXT_KEY,
+        contextKey: this.contextKey,
         agentId: info.agentId,
         threadId: info.threadId,
         workspace: info.workspace,
@@ -1488,7 +1497,7 @@ export class RelayRuntime {
     this.appendAudit({
       action: "queue_updated",
       status: "ok",
-      contextKey: WEB_CONTEXT_KEY,
+      contextKey: this.contextKey,
       actor,
       description: id ? `${action}: ${id}` : action,
     });
@@ -1571,7 +1580,7 @@ export class RelayRuntime {
     this.appendAudit({
       action: "command",
       status: "ok",
-      contextKey: WEB_CONTEXT_KEY,
+      contextKey: this.contextKey,
       actor,
       description: `clear ${target} log`,
       detail: result.filePath,
@@ -1594,7 +1603,7 @@ export class RelayRuntime {
     this.appendAudit({
       action: "command",
       status: "ok",
-      contextKey: WEB_CONTEXT_KEY,
+      contextKey: this.contextKey,
       actor,
       description: "restart connector",
     });
@@ -1611,7 +1620,7 @@ export class RelayRuntime {
   }
 
   private async getSession(deferThreadStart: boolean): Promise<AgentSessionService> {
-    return this.registry.getOrCreate(WEB_CONTEXT_KEY, { deferThreadStart });
+    return this.registry.getOrCreate(this.contextKey, { deferThreadStart });
   }
 
   private async cached<T>(key: string, producer: () => Promise<T>): Promise<T> {
@@ -1639,10 +1648,10 @@ export class RelayRuntime {
       sharedRegistry.disposeAll();
     }
 
-    const current = this.registry.get(WEB_CONTEXT_KEY)?.getInfo();
+    const current = this.registry.get(this.contextKey)?.getInfo();
     if (current) {
       add({
-        contextKey: WEB_CONTEXT_KEY,
+        contextKey: this.contextKey,
         agentId: current.agentId,
         threadId: current.threadId,
         workspace: current.workspace,
@@ -1982,7 +1991,7 @@ export class RelayRuntime {
   }
 
   private updateSession(session: AgentSessionService): void {
-    this.registry.updateMetadata(WEB_CONTEXT_KEY, session);
+    this.registry.updateMetadata(this.contextKey, session);
     this.broadcast({ type: "session_update", session: this.publicInfo(session) });
   }
 

@@ -58,6 +58,55 @@ describe("PeerRuntimeService", () => {
 
     expect(calls).toEqual([{ text: "hello", actorLabel: "Ricardo via Peer" }]);
   });
+
+  it("routes proxied requests through a source-context runtime", async () => {
+    const contexts: Array<string | undefined> = [];
+    const calls: string[] = [];
+    const service = new PeerRuntimeService(config(), runtime(), {
+      runtimeForContext: (_peer, contextKey) => {
+        contexts.push(contextKey);
+        return runtime({
+          snapshot: async () => ({ session: { agentId: "codex", workspace: "/allowed/app" }, enabledAgents: ["codex"], workspaces: ["/allowed/app"] }),
+          sendPrompt: async (text: string) => {
+            calls.push(text);
+            return { queued: false };
+          },
+        });
+      },
+    });
+
+    await expect(service.handle(peer({ scopes: ["prompt.send"] }), {
+      protocolVersion: 1,
+      type: "web.proxy",
+      payload: { method: "POST", path: "/api/prompt", contextKey: "telegram:123", body: { text: "remote hello" } },
+    })).resolves.toEqual({ queued: false });
+
+    expect(contexts).toEqual(["telegram:123"]);
+    expect(calls).toEqual(["remote hello"]);
+  });
+
+  it("resolves peer workspace aliases before starting a session", async () => {
+    const calls: string[] = [];
+    const service = new PeerRuntimeService(config(), runtime({
+      newSession: async (options: { workspace?: string }) => {
+        calls.push(options.workspace ?? "");
+        return { agentId: "codex", workspace: options.workspace, threadId: "thread" };
+      },
+    }));
+
+    await expect(service.handle(peer({
+      scopes: ["sessions.write"],
+      allowedAgents: ["codex"],
+      allowedWorkspaceRoots: ["/allowed"],
+      workspaceAliases: { app: "/allowed/app" },
+    }), {
+      protocolVersion: 1,
+      type: "web.proxy",
+      payload: { method: "POST", path: "/api/sessions/new", body: { agentId: "codex", workspace: "app" } },
+    })).resolves.toEqual({ session: { agentId: "codex", workspace: "/allowed/app", threadId: "thread" } });
+
+    expect(calls).toEqual(["/allowed/app"]);
+  });
 });
 
 function peer(patch: Partial<PeerRecord> = {}): PeerRecord {
@@ -74,6 +123,7 @@ function peer(patch: Partial<PeerRecord> = {}): PeerRecord {
     scopes: ["inspect"],
     allowedAgents: [],
     allowedWorkspaceRoots: [],
+    workspaceAliases: {},
     createdAt: "2026-05-15T10:00:00.000Z",
     updatedAt: "2026-05-15T10:00:00.000Z",
     ...patch,

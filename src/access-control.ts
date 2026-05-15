@@ -192,7 +192,7 @@ export function permissionForCallbackData(callbackData: string | undefined): Per
   if (callbackData.startsWith("approval_") || callbackData.startsWith("codex_abort:") || callbackData.startsWith("agent_abort:")) {
     return "prompt.abort";
   }
-  if (callbackData.startsWith("queue_")) {
+  if (callbackData.startsWith("queue_") || callbackData.startsWith("peer_queue_")) {
     return "queue.write";
   }
   if (callbackData.startsWith("artifact_delete")) {

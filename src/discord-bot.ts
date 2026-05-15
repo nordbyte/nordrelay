@@ -699,13 +699,16 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
         accumulated += `\n\nRemote event stream failed: ${error.message}`;
         clearTimeout(timeout);
         resolve();
-      });
+      }, request.contextKey);
     });
 
     try {
-      const result = await remoteClient.webProxy(targetPeerId, await peerPromptProxyPayload(envelope), actorFor(request));
+      const result = await remoteClient.webProxy(targetPeerId, await peerPromptProxyPayload(envelope), actorFor(request), request.contextKey);
       if (result && typeof result === "object" && "queued" in result && (result as { queued?: boolean }).queued) {
-        await reply(request, `Remote prompt queued${(result as { queueId?: unknown }).queueId ? `: ${(result as { queueId?: unknown }).queueId}` : ""}.`);
+        const queueId = String((result as { queueId?: unknown }).queueId ?? "");
+        await reply(request, `Remote prompt queued${queueId ? `: ${queueId}` : ""}.`, queueId ? {
+          buttons: [[{ label: "Cancel queued message", action: `discord_peer_queue_cancel:${targetPeerId}:${queueId}` }]],
+        } : undefined);
         return true;
       }
       await done;
@@ -2030,6 +2033,17 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     const queueMatch = action.match(/^discord_queue_(run|cancel|top|up|down):(.+):([^:]+)$/);
     if (queueMatch?.[1] && queueMatch[2] === request.contextKey) {
       await commandQueue(request, `${queueMatch[1]} ${queueMatch[3]}`);
+      return;
+    }
+    const peerQueueMatch = action.match(/^discord_peer_queue_cancel:([^:]+):([^:]+)$/);
+    if (peerQueueMatch?.[1] && peerQueueMatch[2]) {
+      await remoteClient.webProxy(peerQueueMatch[1], {
+        method: "POST",
+        path: "/api/queue",
+        body: { action: "cancel", id: peerQueueMatch[2] },
+        contextKey: request.contextKey,
+      }, actorFor(request), request.contextKey);
+      await reply(request, `Cancelled remote queued prompt ${peerQueueMatch[2]}.`, { ephemeral: true });
       return;
     }
     const artifactMatch = action.match(/^discord_artifact_(send|zip|delete):(.+):([^:]+)$/);

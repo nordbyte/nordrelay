@@ -6,7 +6,9 @@ import { isAgentId, type AgentId, type AgentSessionInfo, type AgentThreadRecord 
 import { permissionForWebRequest, type Permission } from "./access-control.js";
 import { listChannelDescriptors } from "./channel-adapter.js";
 import type { ConnectorConfig } from "./config.js";
+import type { ChannelContextKey } from "./context-key.js";
 import { friendlyErrorText } from "./error-messages.js";
+import { getPackageVersion } from "./operations.js";
 import type { PeerRecord, PeerRpcRequest, PeerWebProxyPayload } from "./peer-types.js";
 import type { RelayRuntime } from "./relay-runtime.js";
 import type { ActiveSessionsDto, RelayEvent, RelaySnapshot, SessionPageDto, UnifiedJobDto, UnifiedJobsDto, WebDiagnosticsDto, WebTasksDto } from "./relay-runtime-types.js";
@@ -16,6 +18,9 @@ export class PeerRuntimeService {
   constructor(
     private readonly config: ConnectorConfig,
     private readonly runtime: RelayRuntime,
+    private readonly options: {
+      runtimeForContext?: (peer: PeerRecord, sourceContextKey?: ChannelContextKey) => RelayRuntime;
+    } = {},
   ) {}
 
   async handle(peer: PeerRecord, request: PeerRpcRequest): Promise<unknown> {
@@ -27,15 +32,16 @@ export class PeerRuntimeService {
     }
     if (request.type === "peer.ping") {
       this.assertScope(peer, "inspect");
-      return { ok: true, at: new Date().toISOString() };
+      return { ok: true, status: "online", version: await getPackageVersion(), at: new Date().toISOString() };
     }
     throw new Error(`Unsupported peer RPC type: ${request.type}`);
   }
 
-  subscribe(peer: PeerRecord, send: (event: RelayEvent) => void): () => void {
+  subscribe(peer: PeerRecord, sourceContextKey: ChannelContextKey | undefined, send: (event: RelayEvent) => void): () => void {
     this.assertScope(peer, "sessions.read");
-    return this.runtime.subscribe((event) => {
-      void this.scopeRelayEvent(peer, event)
+    const runtime = this.runtimeFor(peer, sourceContextKey);
+    return runtime.subscribe((event) => {
+      void this.scopeRelayEvent(peer, runtime, event)
         .then((scoped) => {
           if (scoped) send(scoped);
         })
@@ -46,6 +52,7 @@ export class PeerRuntimeService {
   }
 
   private async handleWebProxy(peer: PeerRecord, payload: PeerWebProxyPayload, actor?: WebActivityActor): Promise<unknown> {
+    const runtime = this.runtimeFor(peer, stringValue(payload?.contextKey) || undefined);
     const method = normalizeMethod(payload?.method);
     const path = normalizePath(payload?.path);
     const query = objectRecord(payload?.query);
@@ -60,7 +67,7 @@ export class PeerRuntimeService {
     if (method === "GET" && path === "/api/bootstrap") {
       const agentId = parseAgentId(query.agent);
       this.assertAgentScope(peer, agentId);
-      const status = this.scopedBootstrapStatus(peer, await this.runtime.bootstrapStatus());
+      const status = this.scopedBootstrapStatus(peer, await runtime.bootstrapStatus());
       return {
         auth: {
           user: { id: `peer:${peer.id}`, email: `${peer.name}@peer.local`, displayName: peer.name, active: true },
@@ -70,53 +77,53 @@ export class PeerRuntimeService {
         channels: listChannelDescriptors(),
         agentAdapters: listAgentAdapterDescriptors().filter((adapter) => this.canUseAgent(peer, adapter.id)),
         enabledAgents: enabledAgents(this.config).filter((agentId) => this.canUseAgent(peer, agentId)),
-        controls: this.scopedControlOptions(peer, await this.runtime.controlOptions(agentId)),
+        controls: this.scopedControlOptions(peer, await runtime.controlOptions(agentId)),
         status,
       };
     }
-    if (method === "GET" && path === "/api/health") return this.runtime.status();
-    if (method === "GET" && path === "/api/snapshot") return this.scopedSnapshot(peer, await this.runtime.snapshot());
-    if (method === "GET" && path === "/api/version") return this.runtime.version();
-    if (method === "POST" && path === "/api/update") return this.runtime.updateConnector(remoteActor);
+    if (method === "GET" && path === "/api/health") return runtime.status();
+    if (method === "GET" && path === "/api/snapshot") return this.scopedSnapshot(peer, await runtime.snapshot());
+    if (method === "GET" && path === "/api/version") return runtime.version();
+    if (method === "POST" && path === "/api/update") return runtime.updateConnector(remoteActor);
     if (method === "GET" && path === "/api/agent-updates") {
-      return { jobs: this.runtime.agentUpdateJobs().filter((job) => this.canUseAgent(peer, job.agentId)) };
+      return { jobs: runtime.agentUpdateJobs().filter((job) => this.canUseAgent(peer, job.agentId)) };
     }
     if (method === "POST" && path === "/api/agent-update") {
       const agentId = parseRequiredAgentId(body.agentId);
       this.assertAgentScope(peer, agentId);
-      return { job: this.runtime.startAgentUpdate(agentId, parseAgentUpdateOperation(stringValue(body.operation)), remoteActor) };
+      return { job: runtime.startAgentUpdate(agentId, parseAgentUpdateOperation(stringValue(body.operation)), remoteActor) };
     }
     const agentUpdateLogMatch = path.match(/^\/api\/agent-update\/([^/]+)\/log$/);
     if (agentUpdateLogMatch?.[1] && method === "GET") {
       const id = decodeURIComponent(agentUpdateLogMatch[1]);
-      this.assertAgentUpdateJobScope(peer, id);
-      return this.runtime.agentUpdateLog(id);
+      this.assertAgentUpdateJobScope(peer, runtime, id);
+      return runtime.agentUpdateLog(id);
     }
     if (agentUpdateLogMatch?.[1] && method === "DELETE") {
       const id = decodeURIComponent(agentUpdateLogMatch[1]);
-      this.assertAgentUpdateJobScope(peer, id);
-      return { deletedId: id, job: this.runtime.deleteAgentUpdateLog(id, remoteActor) };
+      this.assertAgentUpdateJobScope(peer, runtime, id);
+      return { deletedId: id, job: runtime.deleteAgentUpdateLog(id, remoteActor) };
     }
     const agentUpdateInputMatch = path.match(/^\/api\/agent-update\/([^/]+)\/input$/);
     if (agentUpdateInputMatch?.[1] && method === "POST") {
       const id = decodeURIComponent(agentUpdateInputMatch[1]);
-      this.assertAgentUpdateJobScope(peer, id);
-      return { job: this.runtime.sendAgentUpdateInput(id, requiredString(body.input, "input"), remoteActor) };
+      this.assertAgentUpdateJobScope(peer, runtime, id);
+      return { job: runtime.sendAgentUpdateInput(id, requiredString(body.input, "input"), remoteActor) };
     }
     const agentUpdateCancelMatch = path.match(/^\/api\/agent-update\/([^/]+)\/cancel$/);
     if (agentUpdateCancelMatch?.[1] && method === "POST") {
       const id = decodeURIComponent(agentUpdateCancelMatch[1]);
-      this.assertAgentUpdateJobScope(peer, id);
-      return { job: this.runtime.cancelAgentUpdate(id, remoteActor) };
+      this.assertAgentUpdateJobScope(peer, runtime, id);
+      return { job: runtime.cancelAgentUpdate(id, remoteActor) };
     }
-    if (method === "GET" && path === "/api/tasks") return this.scopedTasks(peer, await this.runtime.tasks());
-    if (method === "GET" && path === "/api/progress") return this.scopedTasks(peer, await this.runtime.tasks());
-    if (method === "GET" && path === "/api/metrics") return this.runtime.metrics();
-    if (method === "GET" && path === "/api/jobs") return this.scopedJobs(peer, await this.runtime.jobs());
+    if (method === "GET" && path === "/api/tasks") return this.scopedTasks(peer, await runtime.tasks());
+    if (method === "GET" && path === "/api/progress") return this.scopedTasks(peer, await runtime.tasks());
+    if (method === "GET" && path === "/api/metrics") return runtime.metrics();
+    if (method === "GET" && path === "/api/jobs") return this.scopedJobs(peer, await runtime.jobs());
     const jobLogMatch = path.match(/^\/api\/jobs\/([^/]+)\/log$/);
     if (jobLogMatch?.[1] && method === "GET") {
       const id = decodeURIComponent(jobLogMatch[1]);
-      const data = await this.runtime.jobLog(id);
+      const data = await runtime.jobLog(id);
       if (data.job && !this.canUseJob(peer, data.job)) {
         throw new Error("Peer is not allowed to read this job.");
       }
@@ -130,16 +137,16 @@ export class PeerRuntimeService {
         throw new Error("Unsupported job action.");
       }
       this.assertScope(peer, permissionForJobAction(id, action));
-      return this.scopedJobs(peer, await this.runtime.jobAction(id, action, remoteActor));
+      return this.scopedJobs(peer, await runtime.jobAction(id, action, remoteActor));
     }
-    if (method === "GET" && path === "/api/active-sessions") return this.scopedActiveSessions(peer, await this.runtime.activeSessions());
+    if (method === "GET" && path === "/api/active-sessions") return this.scopedActiveSessions(peer, await runtime.activeSessions());
     if (method === "GET" && path === "/api/adapters/health") {
-      return { adapters: (await this.runtime.adapterHealth()).filter((adapter) => this.canUseAgent(peer, adapter.id)) };
+      return { adapters: (await runtime.adapterHealth()).filter((adapter) => this.canUseAgent(peer, adapter.id)) };
     }
-    if (method === "GET" && path === "/api/diagnostics") return this.scopedDiagnostics(peer, await this.runtime.diagnostics());
+    if (method === "GET" && path === "/api/diagnostics") return this.scopedDiagnostics(peer, await runtime.diagnostics());
     if (method === "GET" && path === "/api/diagnostics/bundle") {
-      await this.assertCurrentSessionScope(peer);
-      const bundle = await this.runtime.supportBundle(remoteActor);
+      await this.assertCurrentSessionScope(peer, runtime);
+      const bundle = await runtime.supportBundle(remoteActor);
       return {
         ...bundle,
         mimeType: "application/zip",
@@ -149,45 +156,45 @@ export class PeerRuntimeService {
     if (method === "GET" && path === "/api/control-options") {
       const agentId = parseAgentId(query.agent);
       this.assertAgentScope(peer, agentId);
-      return this.scopedControlOptions(peer, await this.runtime.controlOptions(agentId));
+      return this.scopedControlOptions(peer, await runtime.controlOptions(agentId));
     }
     if (method === "GET" && path === "/api/auth/status") {
       const agentId = parseAgentId(query.agent);
       this.assertAgentScope(peer, agentId);
-      return this.runtime.authStatus(agentId);
+      return runtime.authStatus(agentId);
     }
     if (method === "POST" && path === "/api/auth/login") {
       const agentId = parseAgentId(body.agentId);
       this.assertAgentScope(peer, agentId);
-      return this.runtime.login(agentId, remoteActor);
+      return runtime.login(agentId, remoteActor);
     }
     if (method === "POST" && path === "/api/auth/logout") {
       const agentId = parseAgentId(body.agentId);
       this.assertAgentScope(peer, agentId);
-      return this.runtime.logout(agentId, remoteActor);
+      return runtime.logout(agentId, remoteActor);
     }
     if (method === "GET" && path === "/api/sessions") {
       const agentId = parseAgentId(query.agent);
       this.assertAgentScope(peer, agentId);
-      return this.scopedSessionPage(peer, await this.runtime.listSessionsPage(numberValue(query.page, 1), numberValue(query.limit, 50), stringValue(query.query), agentId));
+      return this.scopedSessionPage(peer, await runtime.listSessionsPage(numberValue(query.page, 1), numberValue(query.limit, 50), stringValue(query.query), agentId));
     }
     if (method === "GET" && path === "/api/sessions/detail") {
-      const detail = await this.runtime.sessionDetail(requiredString(query.threadId, "threadId"));
+      const detail = await runtime.sessionDetail(requiredString(query.threadId, "threadId"));
       this.assertSessionDetailScope(peer, detail);
       return detail;
     }
     if (method === "POST" && path === "/api/agent") {
       const agentId = parseRequiredAgentId(body.agentId);
       this.assertAgentScope(peer, agentId);
-      return { session: await this.runtime.setAgent(agentId, remoteActor) };
+      return { session: await runtime.setAgent(agentId, remoteActor) };
     }
     if (method === "POST" && path === "/api/sessions/new") {
       const agentId = parseAgentId(body.agentId);
-      const workspace = stringValue(body.workspace) || undefined;
+      const workspace = this.resolveWorkspaceAlias(peer, stringValue(body.workspace) || undefined);
       this.assertAgentScope(peer, agentId);
       this.assertWorkspaceScope(peer, workspace);
       return {
-        session: await this.runtime.newSession({
+        session: await runtime.newSession({
           agentId,
           workspace,
           model: stringValue(body.model) || undefined,
@@ -199,98 +206,124 @@ export class PeerRuntimeService {
     }
     if (method === "POST" && path === "/api/sessions/switch") {
       const threadId = requiredString(body.threadId, "threadId");
-      this.assertSessionDetailScope(peer, await this.runtime.sessionDetail(threadId));
-      const session = await this.runtime.switchSession(threadId, remoteActor);
+      this.assertSessionDetailScope(peer, await runtime.sessionDetail(threadId));
+      const session = await runtime.switchSession(threadId, remoteActor);
       this.assertSessionScope(peer, session);
       return { session };
     }
     if (method === "POST" && path === "/api/sessions/attach") {
       const threadId = requiredString(body.threadId, "threadId");
-      this.assertSessionDetailScope(peer, await this.runtime.sessionDetail(threadId));
-      const session = await this.runtime.attachSession(threadId, remoteActor);
+      this.assertSessionDetailScope(peer, await runtime.sessionDetail(threadId));
+      const session = await runtime.attachSession(threadId, remoteActor);
       this.assertSessionScope(peer, session);
       return { session };
     }
     if (method === "GET" && path === "/api/models") {
-      await this.assertCurrentSessionScope(peer);
-      return { models: await this.runtime.listModels() };
+      await this.assertCurrentSessionScope(peer, runtime);
+      return { models: await runtime.listModels() };
     }
     if (method === "POST" && path === "/api/session/model") {
-      await this.assertCurrentSessionScope(peer);
-      return { session: await this.runtime.setModel(requiredString(body.model, "model"), remoteActor) };
+      await this.assertCurrentSessionScope(peer, runtime);
+      return { session: await runtime.setModel(requiredString(body.model, "model"), remoteActor) };
     }
     if (method === "POST" && path === "/api/session/reasoning") {
-      await this.assertCurrentSessionScope(peer);
-      return { session: await this.runtime.setReasoningEffort(requiredString(body.reasoning, "reasoning"), remoteActor) };
+      await this.assertCurrentSessionScope(peer, runtime);
+      return { session: await runtime.setReasoningEffort(requiredString(body.reasoning, "reasoning"), remoteActor) };
     }
     if (method === "POST" && path === "/api/session/fast") {
-      await this.assertCurrentSessionScope(peer);
-      return { session: await this.runtime.setFastMode(Boolean(body.enabled), remoteActor) };
+      await this.assertCurrentSessionScope(peer, runtime);
+      return { session: await runtime.setFastMode(Boolean(body.enabled), remoteActor) };
     }
     if (method === "POST" && path === "/api/session/launch") {
-      await this.assertCurrentSessionScope(peer);
-      return { session: await this.runtime.setLaunchProfile(requiredString(body.profileId, "profileId"), remoteActor) };
+      await this.assertCurrentSessionScope(peer, runtime);
+      return { session: await runtime.setLaunchProfile(requiredString(body.profileId, "profileId"), remoteActor) };
     }
     if (method === "POST" && path === "/api/prompt") {
-      await this.assertCurrentSessionScope(peer);
-      return this.runtime.sendPrompt(requiredString(body.text, "text"), remoteActor);
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.sendPrompt(requiredString(body.text, "text"), remoteActor);
     }
     if (method === "POST" && path === "/api/prompt/upload") {
-      await this.assertCurrentSessionScope(peer);
+      await this.assertCurrentSessionScope(peer, runtime);
       const files = Array.isArray(body.files) ? body.files.map((file, index) => parseUploadFile(file, index)) : [];
-      return this.runtime.sendUploadPrompt({ text: stringValue(body.text), files }, remoteActor);
+      return runtime.sendUploadPrompt({ text: stringValue(body.text), files }, remoteActor);
     }
     if (method === "POST" && (path === "/api/abort" || path === "/api/stop")) {
-      await this.assertCurrentSessionScope(peer);
-      await this.runtime.abort(remoteActor);
+      await this.assertCurrentSessionScope(peer, runtime);
+      await runtime.abort(remoteActor);
       return { ok: true };
     }
     if (method === "POST" && path === "/api/handback") {
-      await this.assertCurrentSessionScope(peer);
-      return this.runtime.handback(remoteActor);
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.handback(remoteActor);
     }
     if (method === "POST" && path === "/api/retry") {
-      await this.assertCurrentSessionScope(peer);
-      return this.runtime.retry(remoteActor);
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.retry(remoteActor);
     }
     if (method === "POST" && path === "/api/sync") {
-      await this.assertCurrentSessionScope(peer);
-      return this.runtime.sync(remoteActor);
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.sync(remoteActor);
     }
     if (method === "GET" && path === "/api/queue") {
-      await this.assertCurrentSessionScope(peer);
-      return { queue: this.runtime.queue(), paused: this.runtime.queuePaused() };
+      await this.assertCurrentSessionScope(peer, runtime);
+      return { queue: runtime.queue(), paused: runtime.queuePaused() };
     }
     if (method === "POST" && path === "/api/queue") {
-      await this.assertCurrentSessionScope(peer);
-      return { queue: this.runtime.queueAction(requiredString(body.action, "action") as never, stringValue(body.id) || undefined, remoteActor), paused: this.runtime.queuePaused() };
+      await this.assertCurrentSessionScope(peer, runtime);
+      return { queue: runtime.queueAction(requiredString(body.action, "action") as never, stringValue(body.id) || undefined, remoteActor), paused: runtime.queuePaused() };
     }
     if (method === "GET" && path === "/api/chat/history") {
-      await this.assertCurrentSessionScope(peer);
-      return { messages: await this.runtime.chatHistory(numberValue(query.limit, 200)) };
+      await this.assertCurrentSessionScope(peer, runtime);
+      return { messages: await runtime.chatHistory(numberValue(query.limit, 200)) };
     }
     if (method === "DELETE" && path === "/api/chat/history") {
-      await this.assertCurrentSessionScope(peer);
-      return this.runtime.clearChatHistory(remoteActor);
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.clearChatHistory(remoteActor);
     }
     if (method === "GET" && path === "/api/activity") {
-      return { events: this.runtime.activity({ limit: numberValue(query.limit, 100), source: stringValue(query.source) as never || "all", status: stringValue(query.status) as never || "all", category: stringValue(query.category) as never || "all", actor: stringValue(query.actor), agentId: stringValue(query.agentId), threadId: stringValue(query.threadId), workspace: stringValue(query.workspace), type: stringValue(query.type), since: stringValue(query.since) }).filter((event) => this.canUseSession(peer, event)) };
+      return { events: runtime.activity({ limit: numberValue(query.limit, 100), source: stringValue(query.source) as never || "all", status: stringValue(query.status) as never || "all", category: stringValue(query.category) as never || "all", actor: stringValue(query.actor), agentId: stringValue(query.agentId), threadId: stringValue(query.threadId), workspace: stringValue(query.workspace), type: stringValue(query.type), since: stringValue(query.since) }).filter((event) => this.canUseSession(peer, event)) };
     }
     if (method === "GET" && path === "/api/artifacts") {
-      await this.assertCurrentSessionScope(peer);
-      return { reports: await this.runtime.artifacts() };
+      await this.assertCurrentSessionScope(peer, runtime);
+      return { reports: await runtime.artifacts() };
     }
     if (method === "GET" && path === "/api/artifacts/preview") {
-      await this.assertCurrentSessionScope(peer);
-      return this.runtime.artifactPreview(requiredString(query.turnId, "turnId"), requiredString(query.path, "path"));
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.artifactPreview(requiredString(query.turnId, "turnId"), requiredString(query.path, "path"));
     }
     if (method === "DELETE" && path === "/api/artifacts") {
-      await this.assertCurrentSessionScope(peer);
-      return { removed: await this.runtime.deleteArtifact(requiredString(query.turnId, "turnId"), remoteActor) };
+      await this.assertCurrentSessionScope(peer, runtime);
+      return { removed: await runtime.deleteArtifact(requiredString(query.turnId, "turnId"), remoteActor) };
     }
-    if (method === "GET" && path === "/api/logs") return this.runtime.logs((stringValue(query.target) || "connector") as never, numberValue(query.lines, 100));
-    if (method === "POST" && path === "/api/logs/clear") return this.runtime.clearLogs((stringValue(body.target) || "connector") as never, remoteActor);
-    if (method === "POST" && path === "/api/runtime/restart") return this.runtime.restartConnector(remoteActor);
+    if (method === "POST" && path === "/api/artifacts/bulk") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      const action = requiredString(body.action, "action");
+      if (action !== "delete") throw new Error("Unsupported artifact bulk action.");
+      const turnIds = Array.isArray(body.turnIds) ? body.turnIds.filter((item): item is string => typeof item === "string") : [];
+      const removed: string[] = [];
+      for (const turnId of turnIds) {
+        if (await runtime.deleteArtifact(turnId, remoteActor)) removed.push(turnId);
+      }
+      return { removed };
+    }
+    if (method === "GET" && path === "/api/artifacts/zip") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      const bundle = await runtime.createArtifactZip(requiredString(query.turnId, "turnId"), remoteActor);
+      if (!bundle) throw new Error("Artifact turn not found or ZIP could not be created.");
+      return { name: bundle.name, mimeType: "application/zip", dataBase64: readFileSync(bundle.path).toString("base64") };
+    }
+    if (method === "GET" && path === "/api/artifacts/file") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      const turnId = requiredString(query.turnId, "turnId");
+      const relativePath = requiredString(query.path, "path");
+      const report = await runtime.artifact(turnId);
+      const artifact = report?.artifacts.find((candidate) => candidate.relativePath === relativePath);
+      if (!artifact) throw new Error("Artifact not found.");
+      return { name: artifact.name, mimeType: mimeTypeFromName(artifact.name), dataBase64: readFileSync(artifact.localPath).toString("base64"), sizeBytes: artifact.sizeBytes };
+    }
+    if (method === "GET" && path === "/api/logs") return runtime.logs((stringValue(query.target) || "connector") as never, numberValue(query.lines, 100));
+    if (method === "POST" && path === "/api/logs/clear") return runtime.clearLogs((stringValue(body.target) || "connector") as never, remoteActor);
+    if (method === "POST" && path === "/api/runtime/restart") return runtime.restartConnector(remoteActor);
 
     throw new Error(`Remote endpoint is not implemented: ${method} ${path}`);
   }
@@ -299,6 +332,10 @@ export class PeerRuntimeService {
     if (!peer.scopes.includes(permission)) {
       throw new Error(`Peer permission denied: ${permission}`);
     }
+  }
+
+  private runtimeFor(peer: PeerRecord, sourceContextKey?: ChannelContextKey): RelayRuntime {
+    return this.options.runtimeForContext?.(peer, sourceContextKey) ?? this.runtime;
   }
 
   private assertAgentScope(peer: PeerRecord, agentId?: AgentId): void {
@@ -312,10 +349,11 @@ export class PeerRuntimeService {
   }
 
   private assertWorkspaceScope(peer: PeerRecord, workspace: string | undefined): void {
-    if (!workspace || peer.allowedWorkspaceRoots.length === 0) {
+    const resolved = this.resolveWorkspaceAlias(peer, workspace);
+    if (!resolved || peer.allowedWorkspaceRoots.length === 0) {
       return;
     }
-    const normalized = workspace.replace(/\\/g, "/");
+    const normalized = resolved.replace(/\\/g, "/");
     const allowed = peer.allowedWorkspaceRoots.some((root) => {
       const normalizedRoot = root.replace(/\\/g, "/").replace(/\/+$/, "");
       return normalized === normalizedRoot || normalized.startsWith(`${normalizedRoot}/`);
@@ -325,8 +363,8 @@ export class PeerRuntimeService {
     }
   }
 
-  private async assertCurrentSessionScope(peer: PeerRecord): Promise<void> {
-    const snapshot = await this.runtime.snapshot();
+  private async assertCurrentSessionScope(peer: PeerRecord, runtime: RelayRuntime): Promise<void> {
+    const snapshot = await runtime.snapshot();
     this.assertSessionScope(peer, snapshot.session);
   }
 
@@ -362,7 +400,10 @@ export class PeerRuntimeService {
     return {
       ...snapshot,
       enabledAgents: snapshot.enabledAgents.filter((agentId) => this.canUseAgent(peer, agentId)),
-      workspaces: snapshot.workspaces.filter((workspace) => this.workspaceAllowed(peer, workspace)),
+      workspaces: uniqueStrings([
+        ...Object.keys(peer.workspaceAliases ?? {}),
+        ...snapshot.workspaces.filter((workspace) => this.workspaceAllowed(peer, workspace)),
+      ]),
     };
   }
 
@@ -387,7 +428,10 @@ export class PeerRuntimeService {
   private scopedControlOptions<T extends { workspaces: string[] }>(peer: PeerRecord, options: T): T {
     return {
       ...options,
-      workspaces: options.workspaces.filter((workspace) => this.workspaceAllowed(peer, workspace)),
+      workspaces: uniqueStrings([
+        ...Object.keys(peer.workspaceAliases ?? {}),
+        ...options.workspaces.filter((workspace) => this.workspaceAllowed(peer, workspace)),
+      ]),
     };
   }
 
@@ -427,14 +471,14 @@ export class PeerRuntimeService {
     return this.canUseSession(peer, job);
   }
 
-  private assertAgentUpdateJobScope(peer: PeerRecord, id: string): void {
-    const job = this.runtime.agentUpdateJobs().find((candidate) => candidate.id === id);
+  private assertAgentUpdateJobScope(peer: PeerRecord, runtime: RelayRuntime, id: string): void {
+    const job = runtime.agentUpdateJobs().find((candidate) => candidate.id === id);
     if (job) {
       this.assertAgentScope(peer, job.agentId);
     }
   }
 
-  private async scopeRelayEvent(peer: PeerRecord, event: RelayEvent): Promise<RelayEvent | null> {
+  private async scopeRelayEvent(peer: PeerRecord, runtime: RelayRuntime, event: RelayEvent): Promise<RelayEvent | null> {
     switch (event.type) {
       case "snapshot":
         return { ...event, data: this.scopedSnapshot(peer, event.data) };
@@ -458,13 +502,13 @@ export class PeerRuntimeService {
       case "todo_update":
       case "turn_complete":
       case "turn_error":
-        return await this.currentSessionAllowed(peer) ? event : null;
+        return await this.currentSessionAllowed(peer, runtime) ? event : null;
     }
   }
 
-  private async currentSessionAllowed(peer: PeerRecord): Promise<boolean> {
+  private async currentSessionAllowed(peer: PeerRecord, runtime: RelayRuntime): Promise<boolean> {
     try {
-      await this.assertCurrentSessionScope(peer);
+      await this.assertCurrentSessionScope(peer, runtime);
       return true;
     } catch {
       return false;
@@ -486,6 +530,11 @@ export class PeerRuntimeService {
     } catch {
       return false;
     }
+  }
+
+  private resolveWorkspaceAlias(peer: PeerRecord, workspace: string | undefined): string | undefined {
+    if (!workspace) return undefined;
+    return peer.workspaceAliases?.[workspace] ?? workspace;
   }
 }
 
@@ -588,4 +637,22 @@ function permissionForJobAction(id: string, action: "cancel" | "retry"): Permiss
     return "diagnostics.read";
   }
   return "updates.run";
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function mimeTypeFromName(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".svg")) return "image/svg+xml";
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".json")) return "application/json";
+  if (lower.endsWith(".csv")) return "text/csv";
+  if (lower.endsWith(".md") || lower.endsWith(".txt") || lower.endsWith(".log")) return "text/plain";
+  return "application/octet-stream";
 }

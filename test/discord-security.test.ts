@@ -84,6 +84,7 @@ describe("Discord security boundaries", () => {
     expect(requiredPermissionForDiscordCommand("queue", "")).toBe("queue.read");
     expect(requiredPermissionForDiscordCommand("queue", "cancel abc")).toBe("queue.write");
     expect(permissionForDiscordAction("discord_queue_cancel:ctx:abc")).toBe("queue.write");
+    expect(permissionForDiscordAction("discord_peer_queue_cancel:peer:abc")).toBe("queue.write");
     expect(permissionForDiscordAction("discord_abort:ctx")).toBe("prompt.abort");
     expect(permissionForDiscordAction("discord_artifact_send:ctx:turn")).toBe("files.read");
     expect(permissionForDiscordAction("discord_artifact_delete:ctx:turn")).toBe("files.write");

@@ -88,6 +88,8 @@ export class ChannelCommandService {
       `URL: ${peer.url ?? "-"}`,
       `Node: ${peer.nodeId}`,
       `Scopes: ${peer.scopes.join(", ") || "-"}`,
+      peer.remoteStatus || peer.lastLatencyMs !== undefined ? `Health: ${peer.remoteStatus ?? "seen"}${peer.lastLatencyMs !== undefined ? ` / ${peer.lastLatencyMs}ms` : ""}${peer.remoteVersion ? ` / v${peer.remoteVersion}` : ""}` : "",
+      Object.keys(peer.workspaceAliases ?? {}).length > 0 ? `Aliases: ${Object.entries(peer.workspaceAliases).map(([alias, workspace]) => `${alias}=${workspace}`).join(", ")}` : "",
       peer.lastSeenAt ? `Last seen: ${peer.lastSeenAt}` : "",
       peer.lastError ? `Last error: ${peer.lastError}` : "",
     ].filter(Boolean).join("\n")).join("\n\n");
@@ -96,6 +98,8 @@ export class ChannelCommandService {
       `<b>URL:</b> <code>${escapeHTML(peer.url ?? "-")}</code>`,
       `<b>Node:</b> <code>${escapeHTML(peer.nodeId)}</code>`,
       `<b>Scopes:</b> <code>${escapeHTML(peer.scopes.join(", ") || "-")}</code>`,
+      peer.remoteStatus || peer.lastLatencyMs !== undefined ? `<b>Health:</b> <code>${escapeHTML(`${peer.remoteStatus ?? "seen"}${peer.lastLatencyMs !== undefined ? ` / ${peer.lastLatencyMs}ms` : ""}${peer.remoteVersion ? ` / v${peer.remoteVersion}` : ""}`)}</code>` : "",
+      Object.keys(peer.workspaceAliases ?? {}).length > 0 ? `<b>Aliases:</b> <code>${escapeHTML(Object.entries(peer.workspaceAliases).map(([alias, workspace]) => `${alias}=${workspace}`).join(", "))}</code>` : "",
       peer.lastSeenAt ? `<b>Last seen:</b> <code>${escapeHTML(peer.lastSeenAt)}</code>` : "",
       peer.lastError ? `<b>Last error:</b> <code>${escapeHTML(peer.lastError)}</code>` : "",
     ].filter(Boolean).join("\n")).join("\n\n");

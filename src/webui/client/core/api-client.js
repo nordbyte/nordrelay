@@ -25,6 +25,7 @@ async function api(path, options = {}) {
       path: url.pathname,
       query: queryObject(url),
       body: bodyObject(options.body),
+      contextKey: 'web:dashboard',
     });
     const res = await fetch('/api/peers/'+encodeURIComponent(peerId)+'/proxy', {
       method: 'POST',
@@ -63,8 +64,27 @@ function shouldProxyApi(path) {
     path === '/api/peers' ||
     path === '/api/peers/invite' ||
     path === '/api/peers/pair' ||
-    /^\/api\/peers\/[^/]+(?:\/events|\/proxy)?$/.test(path)
+    /^\/api\/peers\/[^/]+(?:\/events|\/proxy)?$/.test(path) ||
+    isLocalAdminApi(path)
   );
+}
+
+/**
+ * @param {string} path
+ */
+function isLocalAdminApi(path) {
+  return path === '/api/permissions' ||
+    path === '/api/settings' ||
+    path === '/api/audit' ||
+    path === '/api/locks' ||
+    path === '/api/users' ||
+    path === '/api/groups' ||
+    path === '/api/telegram-chats' ||
+    path === '/api/discord-channels' ||
+    /^\/api\/users\//.test(path) ||
+    /^\/api\/groups\//.test(path) ||
+    /^\/api\/telegram-chats\//.test(path) ||
+    /^\/api\/discord-channels\//.test(path);
 }
 
 function selectedPeerTarget() {

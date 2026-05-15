@@ -11,6 +11,7 @@ import {
 import { pairPeer, RemoteRelayClient } from "./peer-client.js";
 import { PeerStore } from "./peer-store.js";
 import { publicPeer, type PeerWebProxyPayload } from "./peer-types.js";
+import type { RelayRuntime } from "./relay-runtime.js";
 import type { WebActivityActor } from "./web-state.js";
 import {
   arrayStringField,
@@ -25,6 +26,7 @@ import {
 export interface DashboardPeerRouteOptions {
   config: ConnectorConfig;
   home: string;
+  runtime?: RelayRuntime;
   activityActor: WebActivityActor;
   auditPeerAction?: (action: AuditEvent["action"], description: string) => void;
 }
@@ -56,6 +58,7 @@ export async function handleDashboardPeerRoute(
       scopes: parseScopes(arrayStringField(body, "scopes")),
       allowedAgents: parseAgents(arrayStringField(body, "allowedAgents")),
       allowedWorkspaceRoots: arrayStringField(body, "allowedWorkspaceRoots"),
+      workspaceAliases: parseWorkspaceAliases(body.workspaceAliases),
     });
     const listenUrl = peerListenUrl(options.config);
     const command = `nordrelay peer add ${listenUrl} --code ${created.code}`;
@@ -94,9 +97,43 @@ export async function handleDashboardPeerRoute(
       scopes: body.scopes === undefined ? undefined : parseScopes(arrayStringField(body, "scopes")),
       allowedAgents: body.allowedAgents === undefined ? undefined : parseAgents(arrayStringField(body, "allowedAgents")),
       allowedWorkspaceRoots: body.allowedWorkspaceRoots === undefined ? undefined : arrayStringField(body, "allowedWorkspaceRoots"),
+      workspaceAliases: body.workspaceAliases === undefined ? undefined : parseWorkspaceAliases(body.workspaceAliases),
     });
     sendJson(res, 200, { peer: publicPeer(peer) });
     options.auditPeerAction?.("peer_updated", `${peer.name} (${peer.id})`);
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/peers/global-sessions") {
+    const query = optionalStringField(Object.fromEntries(url.searchParams), "query") ?? "";
+    const agent = parseAgent(optionalStringField(Object.fromEntries(url.searchParams), "agent"));
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 50), 1), 50);
+    const client = new RemoteRelayClient(store);
+    const targets = [];
+    if (options.runtime) {
+      targets.push({
+        peerId: "local",
+        peerName: "Local",
+        ok: true,
+        data: await options.runtime.listSessionsPage(1, limit, query, agent),
+      });
+    }
+    const peers = store.listPublic().filter((peer) => peer.enabled && peer.url);
+    const remoteTargets = await Promise.all(peers.map(async (peer) => {
+      try {
+        const data = await client.webProxy(peer.id, {
+          method: "GET",
+          path: "/api/sessions",
+          query: { query, page: 1, limit, agent },
+          body: {},
+          contextKey: "web:dashboard",
+        }, options.activityActor, "web:dashboard");
+        return { peerId: peer.id, peerName: peer.name, ok: true, data };
+      } catch (error) {
+        return { peerId: peer.id, peerName: peer.name, ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    }));
+    sendJson(res, 200, { targets: [...targets, ...remoteTargets] });
     return true;
   }
 
@@ -114,8 +151,16 @@ export async function handleDashboardPeerRoute(
   if (proxyMatch?.[1] && req.method === "POST") {
     const body = await readJsonBody(req);
     const payload = parseProxyPayload(body);
-    const data = await new RemoteRelayClient(store).webProxy(decodeURIComponent(proxyMatch[1]), payload, options.activityActor);
+    const data = await new RemoteRelayClient(store).webProxy(decodeURIComponent(proxyMatch[1]), payload, options.activityActor, payload.contextKey);
     sendJson(res, 200, data);
+    return true;
+  }
+
+  const healthMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/health$/);
+  if (healthMatch?.[1] && req.method === "GET") {
+    const peerId = decodeURIComponent(healthMatch[1]);
+    const data = await new RemoteRelayClient(store).rpc(peerId, "peer.ping", undefined, options.activityActor);
+    sendJson(res, 200, { data, peer: publicPeer(store.get(peerId)!) });
     return true;
   }
 
@@ -126,6 +171,7 @@ export async function handleDashboardPeerRoute(
       "cache-control": "no-cache, no-transform",
       connection: "keep-alive",
     });
+    const sourceContextKey = url.searchParams.get("contextKey") || undefined;
     const subscription = new RemoteRelayClient(store).subscribe(decodeURIComponent(eventsMatch[1]), (event) => {
       if (res.destroyed || res.writableEnded) return;
       res.write(`event: ${event.type}\n`);
@@ -135,7 +181,7 @@ export async function handleDashboardPeerRoute(
         res.write("event: status\n");
         res.write(`data: ${JSON.stringify({ type: "status", level: "error", message: error.message, at: new Date().toISOString() })}\n\n`);
       }
-    });
+    }, sourceContextKey);
     const heartbeat = setInterval(() => {
       if (!res.destroyed && !res.writableEnded) res.write(": heartbeat\n\n");
     }, 25_000);
@@ -167,13 +213,31 @@ function parseAgents(values: string[]): AgentId[] {
   return parsed.length > 0 ? parsed : [...AGENT_IDS];
 }
 
+function parseAgent(value: string | undefined): AgentId | undefined {
+  return value && isAgentId(value) ? value : undefined;
+}
+
 function parseProxyPayload(body: Record<string, unknown>): PeerWebProxyPayload {
   return {
     method: requiredString(body, "method"),
     path: requiredString(body, "path"),
     query: objectRecord(body.query),
     body: objectRecord(body.body),
+    contextKey: optionalStringField(body, "contextKey"),
   };
+}
+
+function parseWorkspaceAliases(value: unknown): Record<string, string> {
+  if (typeof value === "string") {
+    return Object.fromEntries(value.split(",").map((item) => {
+      const [alias, workspace] = item.split("=", 2);
+      return [alias?.trim() ?? "", workspace?.trim() ?? ""];
+    }).filter(([alias, workspace]) => alias && workspace));
+  }
+  const record = objectRecord(value);
+  return Object.fromEntries(Object.entries(record).filter((entry): entry is [string, string] =>
+    typeof entry[1] === "string" && entry[0].trim().length > 0 && entry[1].trim().length > 0
+  ));
 }
 
 function requiredString(body: Record<string, unknown>, key: string): string {

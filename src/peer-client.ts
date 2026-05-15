@@ -71,6 +71,7 @@ export async function pairPeer(options: PairPeerOptions, identity: LoadedPeerIde
     scopes: result.data.scopes,
     allowedAgents: result.data.allowedAgents,
     allowedWorkspaceRoots: result.data.allowedWorkspaceRoots,
+    workspaceAliases: result.data.workspaceAliases,
   });
   return { peer, tlsFingerprint: result.tlsFingerprint };
 }
@@ -89,6 +90,7 @@ export class RemoteRelayClient {
     const bodyText = JSON.stringify(body);
     const signed = signPeerRequest(peer, "POST", "/peer/rpc", bodyText);
     try {
+      const startedAt = Date.now();
       const result = await requestJson<PeerRpcResult>({
         url: joinPeerUrl(requiredPeerUrl(peer), "/peer/rpc"),
         method: "POST",
@@ -97,7 +99,7 @@ export class RemoteRelayClient {
         expectedTlsFingerprint: peer.tlsFingerprint,
         allowSelfSigned: Boolean(peer.tlsFingerprint),
       });
-      this.store.markSeen(peer.id);
+      this.store.markSeen(peer.id, healthPatchFromRpc(type, result.data.ok ? result.data.data : null, Date.now() - startedAt));
       if (!result.data.ok) {
         throw new Error(result.data.error);
       }
@@ -108,14 +110,17 @@ export class RemoteRelayClient {
     }
   }
 
-  async webProxy(peerId: string, payload: PeerWebProxyPayload, actor?: WebActivityActor): Promise<unknown> {
-    return this.rpc(peerId, "web.proxy", payload, actor);
+  async webProxy(peerId: string, payload: PeerWebProxyPayload, actor?: WebActivityActor, sourceContextKey?: string): Promise<unknown> {
+    return this.rpc(peerId, "web.proxy", sourceContextKey ? { ...payload, contextKey: sourceContextKey } : payload, actor);
   }
 
-  subscribe(peerId: string, onEvent: (event: PeerEventEnvelope) => void, onError?: (error: Error) => void): { close: () => void } {
+  subscribe(peerId: string, onEvent: (event: PeerEventEnvelope) => void, onError?: (error: Error) => void, sourceContextKey?: string): { close: () => void } {
     const peer = this.requiredPeer(peerId);
-    const signed = signPeerRequest(peer, "GET", "/peer/events", "");
     const url = new URL(joinPeerUrl(requiredPeerUrl(peer), "/peer/events"));
+    if (sourceContextKey) {
+      url.searchParams.set("contextKey", sourceContextKey);
+    }
+    const signed = signPeerRequest(peer, "GET", `${url.pathname}${url.search}`, "");
     const transport = url.protocol === "https:" ? https : http;
     const req = transport.request({
       method: "GET",
@@ -136,7 +141,7 @@ export class RemoteRelayClient {
         req.destroy(new Error(`Peer events failed with HTTP ${res.statusCode}`));
         return;
       }
-      this.store.markSeen(peer.id);
+      this.store.markSeen(peer.id, { remoteStatus: "online" });
       let buffer = "";
       res.setEncoding("utf8");
       res.on("data", (chunk) => {
@@ -177,6 +182,18 @@ export class RemoteRelayClient {
     }
     return peer;
   }
+}
+
+function healthPatchFromRpc(type: string, data: unknown, latencyMs: number): Parameters<PeerStore["markSeen"]>[1] {
+  if (type !== "peer.ping" || !data || typeof data !== "object") {
+    return { latencyMs, remoteStatus: "online" };
+  }
+  const record = data as { version?: unknown; status?: unknown };
+  return {
+    latencyMs,
+    remoteVersion: typeof record.version === "string" ? record.version : undefined,
+    remoteStatus: typeof record.status === "string" ? record.status : "online",
+  };
 }
 
 interface JsonRequestOptions {

@@ -7,7 +7,7 @@ let currentAgentMessage=null;
 function connectEvents(){
   if(state.events) state.events.close();
   const eventsUrl = state.selectedPeer && state.selectedPeer !== 'local'
-    ? '/api/peers/'+encodeURIComponent(state.selectedPeer)+'/events'
+    ? '/api/peers/'+encodeURIComponent(state.selectedPeer)+'/events?contextKey='+encodeURIComponent('web:dashboard')
     : '/api/events';
   const events = new EventSource(eventsUrl);
   state.events=events;

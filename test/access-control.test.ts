@@ -40,6 +40,7 @@ describe("access-control", () => {
     expect(permissionForCallbackData("codex_abort:123")).toBe("prompt.abort");
     expect(permissionForCallbackData("approval_yes:abc123")).toBe("prompt.abort");
     expect(permissionForCallbackData("queue_cancel:123:abc123")).toBe("queue.write");
+    expect(permissionForCallbackData("peer_queue_cancel:peer123:abc123")).toBe("queue.write");
     expect(permissionForCallbackData("queue_remove:-100:4:abc123")).toBe("queue.write");
     expect(permissionForCallbackData("artifact_send:turn")).toBe("files.read");
     expect(permissionForCallbackData("artifact_delete:turn")).toBe("files.write");
@@ -62,6 +63,8 @@ describe("access-control", () => {
     expect(permissionForWebRequest("POST", "/api/peers")).toBe("peers.write");
     expect(permissionForWebRequest("POST", "/api/peers/invite")).toBe("peers.write");
     expect(permissionForWebRequest("POST", "/api/peers/pair")).toBe("peers.write");
+    expect(permissionForWebRequest("GET", "/api/peers/global-sessions")).toBe("sessions.read");
+    expect(permissionForWebRequest("GET", "/api/peers/abc/health")).toBe("peers.connect");
     expect(permissionForWebRequest("POST", "/api/peers/abc/proxy")).toBe("peers.connect");
     expect(permissionForWebRequest("GET", "/api/peers/abc/events")).toBe("peers.connect");
     expect(permissionForWebRequest("POST", "/api/jobs/queue%3Aabc/action")).toBe("inspect");

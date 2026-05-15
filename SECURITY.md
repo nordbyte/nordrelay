@@ -37,7 +37,8 @@ NordRelay is designed to fail closed:
 - Authorization is enforced through user groups, granular permissions, and optional group scopes for agents, workspace roots, Telegram chats, and Discord channels.
 - NordRelay peer federation is disabled by default and uses a dedicated API port separate from the WebUI.
 - Peer pairing requires an explicit one-time invitation code, Ed25519 node identity verification, request HMAC signatures, timestamp and nonce replay protection, and TLS fingerprint pinning.
-- Peer permissions are scoped with `peers.read`, `peers.write`, and `peers.connect`, plus per-peer remote scopes, allowed agent ids, and allowed workspace roots.
+- Peer permissions are scoped with `peers.read`, `peers.write`, and `peers.connect`, plus per-peer remote scopes, allowed agent ids, allowed workspace roots, and optional workspace aliases.
+- Peer invitations are one-time use and capped to a maximum lifetime of 24 hours.
 - Plaintext peer serving is refused on non-loopback hosts when TLS is required.
 - Unknown commands, callback actions, and API routes are denied by default.
 - The last active admin user cannot be disabled or demoted.

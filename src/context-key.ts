@@ -1,11 +1,12 @@
 import type { Context } from "grammy";
 import type { ChannelId } from "./channel-adapter.js";
+import { parsePeerRuntimeContextKey } from "./peer-context.js";
 
 export type ChannelContextKey = string;
 export type TelegramContextKey = ChannelContextKey;
 
 export interface ParsedChannelContextKey {
-  channelId: ChannelId | "web" | "cli";
+  channelId: ChannelId | "web" | "cli" | "peer";
   contextKey: ChannelContextKey;
   chatId?: string;
   topicId?: string;
@@ -140,6 +141,15 @@ export function parseChannelContextKey(key: ChannelContextKey): ParsedChannelCon
       channelId: "cli",
       contextKey: rawKey,
       chatId: rawKey.slice("cli:".length) || "local",
+    };
+  }
+  const peer = parsePeerRuntimeContextKey(rawKey);
+  if (peer) {
+    return {
+      channelId: "peer",
+      contextKey: rawKey,
+      chatId: peer.peerId,
+      topicId: peer.sourceContextKey,
     };
   }
   return null;

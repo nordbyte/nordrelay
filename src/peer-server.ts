@@ -13,6 +13,7 @@ import {
   verifyPeerPayload,
 } from "./peer-identity.js";
 import { header, PeerNonceCache, verifyPeerRequest } from "./peer-auth.js";
+import { peerRuntimeContextKey } from "./peer-context.js";
 import { PeerStore } from "./peer-store.js";
 import { PeerRuntimeService, peerError } from "./peer-runtime-service.js";
 import {
@@ -22,7 +23,7 @@ import {
   type PeerRpcRequest,
   type PeerRpcResult,
 } from "./peer-types.js";
-import type { RelayRuntime } from "./relay-runtime.js";
+import { RelayRuntime } from "./relay-runtime.js";
 
 export interface PeerServerHandle {
   close(): Promise<void>;
@@ -43,7 +44,22 @@ export async function startPeerServer(options: {
   const identity = loadOrCreatePeerIdentity(home, config.peerName);
   const store = new PeerStore(home);
   const nonces = new PeerNonceCache();
-  const service = new PeerRuntimeService(config, runtime);
+  const contextRuntimes = new Map<string, RelayRuntime>();
+  const service = new PeerRuntimeService(config, runtime, {
+    runtimeForContext: (peer, sourceContextKey) => {
+      const contextKey = peerRuntimeContextKey(peer, sourceContextKey);
+      let scoped = contextRuntimes.get(contextKey);
+      if (!scoped) {
+        scoped = new RelayRuntime(config, {
+          contextKey,
+          registryFileName: "peer-contexts.json",
+          registrySqliteKey: "peer-contexts",
+        });
+        contextRuntimes.set(contextKey, scoped);
+      }
+      return scoped;
+    },
+  });
   const useTls = config.peerTlsEnabled;
   const tls = useTls ? ensurePeerTlsFiles(home, identity.public) : null;
   if (!useTls && config.peerRequireTls && !isLoopbackHost(config.peerHost)) {
@@ -58,13 +74,20 @@ export async function startPeerServer(options: {
   const scheme = useTls ? "https" : "http";
   const host = config.peerHost === "0.0.0.0" || config.peerHost === "::" ? "127.0.0.1" : config.peerHost;
   const displayHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
-  const url = config.peerPublicUrl || `${scheme}://${displayHost}:${config.peerPort}`;
+  const address = server.address();
+  const actualPort = typeof address === "object" && address ? address.port : config.peerPort;
+  const url = config.peerPublicUrl || `${scheme}://${displayHost}:${actualPort}`;
   console.log(`Peer server: ${url} (${useTls ? `TLS ${tls!.fingerprint}` : "plaintext loopback"})`);
 
   return {
     url,
     tlsFingerprint: tls?.fingerprint,
-    close: () => closeServer(server),
+    close: async () => {
+      await closeServer(server);
+      for (const scoped of contextRuntimes.values()) {
+        scoped.dispose();
+      }
+    },
   };
 
   async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -83,14 +106,14 @@ export async function startPeerServer(options: {
         return;
       }
       if (req.method === "POST" && url.pathname === "/peer/pair") {
-        const bodyText = await readBody(req);
+        const bodyText = await readBody(req, 128 * 1024);
         const body = parseJson<PeerPairRequest>(bodyText);
         const response = handlePair(body);
         sendJson(res, 201, response);
         return;
       }
       if (req.method === "POST" && url.pathname === "/peer/rpc") {
-        const bodyText = await readBody(req);
+        const bodyText = await readBody(req, 64 * 1024 * 1024);
         const peer = authenticate(req, "POST", "/peer/rpc", bodyText);
         const body = parseJson<PeerRpcRequest>(bodyText);
         const data = await service.handle(peer, body);
@@ -99,13 +122,14 @@ export async function startPeerServer(options: {
         return;
       }
       if (req.method === "GET" && url.pathname === "/peer/events") {
-        const peer = authenticate(req, "GET", "/peer/events", "");
+        const peer = authenticate(req, "GET", `${url.pathname}${url.search}`, "");
         res.writeHead(200, {
           "content-type": "text/event-stream; charset=utf-8",
           "cache-control": "no-cache, no-transform",
           connection: "keep-alive",
         });
-        const unsubscribe = service.subscribe(peer, (event) => {
+        const sourceContextKey = url.searchParams.get("contextKey") || undefined;
+        const unsubscribe = service.subscribe(peer, sourceContextKey, (event) => {
           if (res.destroyed || res.writableEnded) return;
           res.write(`event: ${event.type}\n`);
           res.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -134,6 +158,9 @@ export async function startPeerServer(options: {
     if (fingerprintForPublicKey(body.identity.publicKey) !== body.identity.fingerprint) {
       throw new Error("Pairing identity fingerprint mismatch.");
     }
+    if (body.identity.nodeId === identity.public.nodeId) {
+      throw new Error("Refusing to pair this NordRelay instance with itself.");
+    }
     if (Math.abs(Date.now() - Date.parse(body.timestamp)) > 5 * 60 * 1000) {
       throw new Error("Pairing request timestamp is outside the allowed clock skew.");
     }
@@ -155,6 +182,7 @@ export async function startPeerServer(options: {
       scopes: invitation.scopes,
       allowedAgents: invitation.allowedAgents,
       allowedWorkspaceRoots: invitation.allowedWorkspaceRoots,
+      workspaceAliases: invitation.workspaceAliases,
     });
     return {
       protocolVersion: PEER_PROTOCOL_VERSION,
@@ -164,6 +192,7 @@ export async function startPeerServer(options: {
       scopes: peer.scopes,
       allowedAgents: peer.allowedAgents,
       allowedWorkspaceRoots: peer.allowedWorkspaceRoots,
+      workspaceAliases: peer.workspaceAliases,
     };
   }
 
@@ -182,10 +211,16 @@ export async function startPeerServer(options: {
   }
 }
 
-async function readBody(req: IncomingMessage): Promise<string> {
+async function readBody(req: IncomingMessage, maxBytes: number): Promise<string> {
   const chunks: Buffer[] = [];
+  let size = 0;
   for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > maxBytes) {
+      throw new Error("Peer request body is too large.");
+    }
+    chunks.push(buffer);
   }
   return Buffer.concat(chunks).toString("utf8");
 }

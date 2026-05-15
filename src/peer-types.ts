@@ -29,9 +29,14 @@ export interface PeerRecord {
   scopes: Permission[];
   allowedAgents: AgentId[];
   allowedWorkspaceRoots: string[];
+  workspaceAliases: Record<string, string>;
   createdAt: string;
   updatedAt: string;
   lastSeenAt?: string;
+  lastCheckedAt?: string;
+  lastLatencyMs?: number;
+  remoteVersion?: string;
+  remoteStatus?: string;
   lastError?: string;
 }
 
@@ -44,6 +49,7 @@ export interface PeerInvitationRecord {
   scopes: Permission[];
   allowedAgents: AgentId[];
   allowedWorkspaceRoots: string[];
+  workspaceAliases: Record<string, string>;
   usedAt?: string;
   usedByNodeId?: string;
 }
@@ -66,9 +72,14 @@ export interface PublicPeerRecord {
   scopes: Permission[];
   allowedAgents: AgentId[];
   allowedWorkspaceRoots: string[];
+  workspaceAliases: Record<string, string>;
   createdAt: string;
   updatedAt: string;
   lastSeenAt?: string;
+  lastCheckedAt?: string;
+  lastLatencyMs?: number;
+  remoteVersion?: string;
+  remoteStatus?: string;
   lastError?: string;
 }
 
@@ -80,6 +91,7 @@ export interface PublicPeerInvitationRecord {
   scopes: Permission[];
   allowedAgents: AgentId[];
   allowedWorkspaceRoots: string[];
+  workspaceAliases: Record<string, string>;
   usedAt?: string;
   usedByNodeId?: string;
 }
@@ -118,6 +130,7 @@ export interface PeerPairResponse {
   scopes: Permission[];
   allowedAgents: AgentId[];
   allowedWorkspaceRoots: string[];
+  workspaceAliases: Record<string, string>;
 }
 
 export interface PeerRpcRequest {
@@ -144,6 +157,7 @@ export interface PeerWebProxyPayload {
   path: string;
   query?: Record<string, unknown>;
   body?: Record<string, unknown>;
+  contextKey?: string;
 }
 
 export type PeerEventEnvelope = RelayEvent;
@@ -175,9 +189,14 @@ export function publicPeer(record: PeerRecord): PublicPeerRecord {
     scopes: [...record.scopes],
     allowedAgents: [...record.allowedAgents],
     allowedWorkspaceRoots: [...record.allowedWorkspaceRoots],
+    workspaceAliases: { ...record.workspaceAliases },
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     lastSeenAt: record.lastSeenAt,
+    lastCheckedAt: record.lastCheckedAt,
+    lastLatencyMs: record.lastLatencyMs,
+    remoteVersion: record.remoteVersion,
+    remoteStatus: record.remoteStatus,
     lastError: record.lastError,
   };
 }
@@ -191,6 +210,7 @@ export function publicInvitation(record: PeerInvitationRecord): PublicPeerInvita
     scopes: [...record.scopes],
     allowedAgents: [...record.allowedAgents],
     allowedWorkspaceRoots: [...record.allowedWorkspaceRoots],
+    workspaceAliases: { ...record.workspaceAliases },
     usedAt: record.usedAt,
     usedByNodeId: record.usedByNodeId,
   };

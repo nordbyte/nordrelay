@@ -46,6 +46,8 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   exact("/api/peers", ["GET", "POST"], readWrite("peers.read", "peers.write")),
   exact("/api/peers/invite", ["POST"], "peers.write"),
   exact("/api/peers/pair", ["POST"], "peers.write"),
+  exact("/api/peers/global-sessions", ["GET"], "sessions.read"),
+  dynamic("/api/peers/:id/health", "^/api/peers/[^/]+/health$", ["GET"], "peers.connect", `/api/peers/${stringToken}/health`),
   dynamic("/api/peers/:id", "^/api/peers/[^/]+$", ["PATCH", "DELETE"], "peers.write", `/api/peers/${stringToken}`),
   dynamic("/api/peers/:id/proxy", "^/api/peers/[^/]+/proxy$", ["POST"], "peers.connect", `/api/peers/${stringToken}/proxy`),
   dynamic("/api/peers/:id/events", "^/api/peers/[^/]+/events$", ["GET"], "peers.connect", `/api/peers/${stringToken}/events`),

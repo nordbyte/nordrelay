@@ -20,6 +20,7 @@ import {
 
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 const INVITE_CODE_BYTES = 18;
+const MAX_INVITATION_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface PeerInviteOptions {
   name?: string;
@@ -27,6 +28,7 @@ export interface PeerInviteOptions {
   scopes?: Permission[];
   allowedAgents?: AgentId[];
   allowedWorkspaceRoots?: string[];
+  workspaceAliases?: Record<string, string>;
 }
 
 export interface PeerUpsertInput {
@@ -43,6 +45,13 @@ export interface PeerUpsertInput {
   scopes?: Permission[];
   allowedAgents?: AgentId[];
   allowedWorkspaceRoots?: string[];
+  workspaceAliases?: Record<string, string>;
+}
+
+export interface PeerHealthPatch {
+  latencyMs?: number;
+  remoteVersion?: string;
+  remoteStatus?: string;
 }
 
 export class PeerStore {
@@ -79,7 +88,9 @@ export class PeerStore {
   createInvitation(options: PeerInviteOptions = {}): { invitation: PublicPeerInvitationRecord; code: string } {
     const code = randomBytes(INVITE_CODE_BYTES).toString("base64url");
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + (options.expiresInMs ?? 10 * 60 * 1000));
+    const requestedTtl = options.expiresInMs ?? 10 * 60 * 1000;
+    const ttl = Math.max(1_000, Math.min(requestedTtl, MAX_INVITATION_TTL_MS));
+    const expiresAt = new Date(now.getTime() + ttl);
     const invitation: PeerInvitationRecord = {
       id: randomUUID().replace(/-/g, "").slice(0, 12),
       name: options.name?.trim() || "NordRelay peer",
@@ -89,6 +100,7 @@ export class PeerStore {
       scopes: normalizeScopes(options.scopes ?? DEFAULT_PEER_SCOPES),
       allowedAgents: normalizeAgents(options.allowedAgents ?? [...AGENT_IDS]),
       allowedWorkspaceRoots: normalizeWorkspaceRoots(options.allowedWorkspaceRoots ?? []),
+      workspaceAliases: normalizeWorkspaceAliases(options.workspaceAliases ?? {}),
     };
     this.mutatePayload((payload) => {
       payload.invitations = payload.invitations.filter((item) => !item.usedAt && Date.parse(item.expiresAt) > Date.now());
@@ -138,9 +150,10 @@ export class PeerStore {
         existing.scopes = normalizeScopes(input.scopes ?? existing.scopes);
         existing.allowedAgents = normalizeAgents(input.allowedAgents ?? existing.allowedAgents);
         existing.allowedWorkspaceRoots = normalizeWorkspaceRoots(input.allowedWorkspaceRoots ?? existing.allowedWorkspaceRoots);
+        existing.workspaceAliases = normalizeWorkspaceAliases(input.workspaceAliases ?? existing.workspaceAliases ?? {});
         existing.updatedAt = now;
         delete existing.lastError;
-        next = { ...existing, scopes: [...existing.scopes], allowedAgents: [...existing.allowedAgents], allowedWorkspaceRoots: [...existing.allowedWorkspaceRoots] };
+        next = clonePeer(existing);
         return;
       }
       const record: PeerRecord = {
@@ -157,11 +170,12 @@ export class PeerStore {
         scopes: normalizeScopes(input.scopes ?? DEFAULT_PEER_SCOPES),
         allowedAgents: normalizeAgents(input.allowedAgents ?? [...AGENT_IDS]),
         allowedWorkspaceRoots: normalizeWorkspaceRoots(input.allowedWorkspaceRoots ?? []),
+        workspaceAliases: normalizeWorkspaceAliases(input.workspaceAliases ?? {}),
         createdAt: now,
         updatedAt: now,
       };
       payload.peers.push(record);
-      next = { ...record, scopes: [...record.scopes], allowedAgents: [...record.allowedAgents], allowedWorkspaceRoots: [...record.allowedWorkspaceRoots] };
+      next = clonePeer(record);
     });
     if (!next) {
       throw new Error("Peer could not be saved.");
@@ -169,7 +183,7 @@ export class PeerStore {
     return next;
   }
 
-  updatePeer(id: string, patch: Partial<Pick<PeerRecord, "name" | "url" | "enabled" | "scopes" | "allowedAgents" | "allowedWorkspaceRoots">>): PeerRecord {
+  updatePeer(id: string, patch: Partial<Pick<PeerRecord, "name" | "url" | "enabled" | "scopes" | "allowedAgents" | "allowedWorkspaceRoots" | "workspaceAliases">>): PeerRecord {
     let next: PeerRecord | null = null;
     this.mutatePayload((payload) => {
       const peer = payload.peers.find((candidate) => candidate.id === id || candidate.nodeId === id);
@@ -182,8 +196,9 @@ export class PeerStore {
       if (patch.scopes !== undefined) peer.scopes = normalizeScopes(patch.scopes);
       if (patch.allowedAgents !== undefined) peer.allowedAgents = normalizeAgents(patch.allowedAgents);
       if (patch.allowedWorkspaceRoots !== undefined) peer.allowedWorkspaceRoots = normalizeWorkspaceRoots(patch.allowedWorkspaceRoots);
+      if (patch.workspaceAliases !== undefined) peer.workspaceAliases = normalizeWorkspaceAliases(patch.workspaceAliases);
       peer.updatedAt = new Date().toISOString();
-      next = { ...peer, scopes: [...peer.scopes], allowedAgents: [...peer.allowedAgents], allowedWorkspaceRoots: [...peer.allowedWorkspaceRoots] };
+      next = clonePeer(peer);
     });
     if (!next) {
       throw new Error("Peer not found.");
@@ -191,12 +206,19 @@ export class PeerStore {
     return next;
   }
 
-  markSeen(id: string): void {
-    this.patchPeer(id, { lastSeenAt: new Date().toISOString(), lastError: undefined });
+  markSeen(id: string, patch: PeerHealthPatch = {}): void {
+    this.patchPeer(id, {
+      lastSeenAt: new Date().toISOString(),
+      lastCheckedAt: new Date().toISOString(),
+      lastLatencyMs: patch.latencyMs,
+      remoteVersion: patch.remoteVersion,
+      remoteStatus: patch.remoteStatus ?? "online",
+      lastError: undefined,
+    });
   }
 
   markError(id: string, error: string): void {
-    this.patchPeer(id, { lastError: error, updatedAt: new Date().toISOString() });
+    this.patchPeer(id, { lastError: error, remoteStatus: "offline", lastCheckedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
   }
 
   revokePeer(id: string): boolean {
@@ -237,12 +259,14 @@ export class PeerStore {
         scopes: normalizeScopes(peer.scopes),
         allowedAgents: normalizeAgents(peer.allowedAgents),
         allowedWorkspaceRoots: normalizeWorkspaceRoots(peer.allowedWorkspaceRoots),
+        workspaceAliases: normalizeWorkspaceAliases(peer.workspaceAliases ?? {}),
       })),
       invitations: payload.invitations.filter(isInvitationRecord).map((invitation) => ({
         ...invitation,
         scopes: normalizeScopes(invitation.scopes),
         allowedAgents: normalizeAgents(invitation.allowedAgents),
         allowedWorkspaceRoots: normalizeWorkspaceRoots(invitation.allowedWorkspaceRoots),
+        workspaceAliases: normalizeWorkspaceAliases(invitation.workspaceAliases ?? {}),
       })),
     };
   }
@@ -275,6 +299,30 @@ function normalizeAgents(values: readonly string[]): AgentId[] {
 
 function normalizeWorkspaceRoots(values: readonly string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function normalizeWorkspaceAliases(value: Record<string, string>): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  const aliases: Record<string, string> = {};
+  for (const [rawAlias, rawWorkspace] of Object.entries(value ?? {})) {
+    const alias = rawAlias.trim();
+    const workspace = String(rawWorkspace ?? "").trim();
+    if (!alias || !workspace || /[,\s]/.test(alias)) continue;
+    aliases[alias] = workspace;
+  }
+  return aliases;
+}
+
+function clonePeer(peer: PeerRecord): PeerRecord {
+  return {
+    ...peer,
+    scopes: [...peer.scopes],
+    allowedAgents: [...peer.allowedAgents],
+    allowedWorkspaceRoots: [...peer.allowedWorkspaceRoots],
+    workspaceAliases: { ...peer.workspaceAliases },
+  };
 }
 
 function mergeDirection(left: PeerRecord["direction"], right: PeerRecord["direction"]): PeerRecord["direction"] {
