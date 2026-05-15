@@ -115,7 +115,9 @@ test.describe("NordRelay WebUI", () => {
     await page.goto(mock.baseUrl);
 
     await page.evaluate(() => {
-      const api = window as unknown as { toast: (message: string, options?: { sticky?: boolean; duration?: number }) => void };
+      const api = window as unknown as { isCliDoneStatus: (message: string) => boolean; toast: (message: string, options?: { sticky?: boolean; duration?: number }) => void };
+      if (api.isCliDoneStatus("Waiting for Codex CLI task... 1 queued")) throw new Error("waiting status must not be terminal");
+      if (!api.isCliDoneStatus("Codex CLI task finished.")) throw new Error("finished status must be terminal");
       api.toast("Codex CLI running · 7m 41s · tool write_stdin · 0 queued", { sticky: true });
       api.toast("Temporary notice", { duration: 50 });
     });

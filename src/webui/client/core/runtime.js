@@ -49,8 +49,8 @@ function applyPermissions(){
 }
 function modelLabel(m){const meta=[m.contextWindow?compactNum(m.contextWindow):'',m.supportsImages===true?'img':m.supportsImages===false?'text':'',m.supportsThinking===true?'think':''].filter(Boolean).join(' ');return (m.displayName||m.slug)+(meta?' · '+meta:'')}
 function fmtAge(ms){const sec=Math.max(0,Math.floor(ms/1000));if(sec<60)return sec+'s ago';const min=Math.floor(sec/60);if(min<60)return min+'m ago';return Math.floor(min/60)+'h ago'}
-function isCliRunningStatus(msg){return / CLI running\\b/.test(String(msg||''))}
-function isCliDoneStatus(msg){return / CLI task\\b/.test(String(msg||''))}
+function isCliRunningStatus(msg){return / CLI running\b/.test(String(msg||''))}
+function isCliDoneStatus(msg){return / CLI task (?:finished|completed|failed|aborted)\b/i.test(String(msg||''))}
 function applyTheme(theme){document.documentElement.dataset.theme=theme;localStorage.setItem('nordrelayTheme',theme);document.getElementById('themeBtn').textContent=theme==='dark'?'Light':'Dark'}
 function toggleTheme(){applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark')}
 function setToolsVisible(visible){state.toolsVisible=Boolean(visible);const layout=document.getElementById('chatLayout');const panel=document.getElementById('toolPanel');const button=document.getElementById('toggleToolsBtn');layout?.classList.toggle('tools-hidden',!state.toolsVisible);if(panel)panel.hidden=!state.toolsVisible;if(button){button.textContent=state.toolsVisible?'Hide Tools':'Show Tools';button.setAttribute('aria-expanded',state.toolsVisible?'true':'false')}}
