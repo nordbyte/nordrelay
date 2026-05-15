@@ -22,6 +22,8 @@
 .artifact-card{border:1px solid var(--border-soft);border-radius:8px;padding:8px;background:var(--surface-soft);min-width:0}
 .artifact-card img{width:100%;aspect-ratio:1.4;object-fit:cover;border:1px solid var(--border);border-radius:6px;background:var(--surface)}
 .artifact-card small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#activeSessions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media(min-width:1320px){#activeSessions{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .overview-adapter-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .session-detail-section{margin-top:20px}
 .session-detail-section summary{cursor:pointer;font-weight:700;margin-bottom:0;line-height:1.25}

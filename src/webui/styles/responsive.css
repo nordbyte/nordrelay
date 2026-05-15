@@ -4,6 +4,7 @@
 .menu{display:inline-flex}
 .header-actions{justify-content:flex-end}
 .page{padding:14px}
+#activeSessions{grid-template-columns:1fr}
 .overview-adapter-grid{grid-template-columns:1fr}
 .chat-layout{grid-template-columns:1fr}
 .chat-panel{height:auto;min-height:0}
