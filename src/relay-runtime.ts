@@ -29,8 +29,9 @@ import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { AgentUpdateManager, type AgentUpdateJobSnapshot, type AgentUpdateOperation } from "./agent-updates.js";
 import { createAgentSessionService, enabledAgents } from "./agent-factory.js";
 import { AuditLogStore, type AuditEvent, type AuditListOptions } from "./audit-log.js";
-import { BotPreferencesStore, type ChannelMirrorMode } from "./bot-preferences.js";
+import { BotPreferencesStore } from "./bot-preferences.js";
 import { ChannelTurnService } from "./channel-turn-service.js";
+import { activeSessionSourceForContextKey, ChannelMirrorRegistry } from "./channel-mirror-registry.js";
 import { checkAuthStatus, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
 import { checkClaudeCodeAuthStatus, startClaudeCodeLogin, startClaudeCodeLogout } from "./claude-code-auth.js";
 import { listThreads as listCodexThreads } from "./codex-state.js";
@@ -62,10 +63,8 @@ import {
   type WebActivityStatus,
   type WebChatMessage,
 } from "./web-state.js";
-import { channelIdForContextKey } from "./context-key.js";
 import type {
   ActiveSessionDto,
-  ActiveSessionMirrorDto,
   ActiveSessionsDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
@@ -128,6 +127,7 @@ export class RelayRuntime {
   private readonly queueService: RelayQueueService;
   private readonly jobStore: UnifiedJobStore;
   private readonly artifactService: RelayArtifactService;
+  private readonly mirrorRegistry: ChannelMirrorRegistry;
   private readonly externalActivityMonitor: RelayExternalActivityMonitor;
   private readonly cache = new RuntimeSnapshotCache();
   private readonly turnService: ChannelTurnService;
@@ -154,6 +154,7 @@ export class RelayRuntime {
     this.queueService = new RelayQueueService(this.promptStore, WEB_CONTEXT_KEY);
     this.jobStore = new UnifiedJobStore(config.workspace, config.stateBackend, config.unifiedJobMaxItems);
     this.artifactService = new RelayArtifactService(config);
+    this.mirrorRegistry = new ChannelMirrorRegistry(config, this.promptStore);
     this.agentUpdates = new AgentUpdateManager({
       onUpdate: (job) => {
         this.broadcast({ type: "agent_update", job });
@@ -1758,8 +1759,8 @@ export class RelayRuntime {
     const updatedAt = snapshot.activity.updatedAt?.toISOString() ?? new Date().toISOString();
     const startedMs = Date.parse(startedAt);
     const sourceContextKey = `cli:${snapshot.agentId}:${snapshot.threadId}`;
-    const mirrorChannels = this.activeMirrorChannels(snapshot.agentId, snapshot.threadId, knownContexts, preferences);
-    const queueLength = mirrorChannels.reduce((sum, mirror) => sum + mirror.queueLength, this.promptStore.list(sourceContextKey).length);
+    const mirrorChannels = this.mirrorRegistry.activeMirrorsForThread(snapshot.agentId, snapshot.threadId, knownContexts, preferences);
+    const queueLength = this.mirrorRegistry.queueLengthForExternalSource(sourceContextKey, mirrorChannels);
     const mirrorDetail = mirrorChannels.length > 0
       ? `Mirroring: ${mirrorChannels.map((mirror) => `${mirror.source} ${mirror.mode}`).join(", ")}`
       : "Mirroring: none";
@@ -1780,52 +1781,10 @@ export class RelayRuntime {
       updatedAt,
       durationMs: Number.isFinite(startedMs) ? Math.max(0, Date.now() - startedMs) : 0,
       queueLength,
-      queuePaused: mirrorChannels.some((mirror) => mirror.queuePaused) || this.promptStore.isPaused(sourceContextKey),
+      queuePaused: this.mirrorRegistry.queuePausedForExternalSource(sourceContextKey, mirrorChannels),
       mirrorChannels,
       detail: `${mirrorDetail} | ${snapshot.sourceLabel}: ${snapshot.sourcePath}`,
     };
-  }
-
-  private activeMirrorChannels(
-    agentId: AgentId,
-    threadId: string,
-    knownContexts: ContextMetadata[],
-    preferences: BotPreferencesStore,
-  ): ActiveSessionMirrorDto[] {
-    const mirrors: ActiveSessionMirrorDto[] = [];
-    const seen = new Set<string>();
-    for (const meta of knownContexts) {
-      const metaAgentId = meta.agentId ?? this.config.defaultAgent ?? "codex";
-      if (meta.threadId !== threadId || metaAgentId !== agentId) {
-        continue;
-      }
-      const source = activeSessionSourceForContext(meta.contextKey);
-      if (source !== "telegram" && source !== "discord") {
-        continue;
-      }
-      const mode = this.effectiveMirrorMode(meta.contextKey, source, preferences);
-      if (mode === "off" || seen.has(meta.contextKey)) {
-        continue;
-      }
-      seen.add(meta.contextKey);
-      mirrors.push({
-        source,
-        contextKey: meta.contextKey,
-        mode,
-        queueLength: this.promptStore.list(meta.contextKey).length,
-        queuePaused: this.promptStore.isPaused(meta.contextKey),
-      });
-    }
-    return mirrors;
-  }
-
-  private effectiveMirrorMode(
-    contextKey: string,
-    source: "telegram" | "discord",
-    preferences: BotPreferencesStore,
-  ): Exclude<ChannelMirrorMode, "off"> | "off" {
-    const configured = source === "telegram" ? this.config.telegramMirrorMode : this.config.discordMirrorMode;
-    return preferences.get(contextKey).mirrorMode ?? configured;
   }
 
   private sessionStubForMetadata(
@@ -2191,20 +2150,6 @@ function hostLogoutCommand(info: AgentSessionInfo, config: ConnectorConfig): str
     return `${config.openClawCliPath ?? "openclaw"} logout`;
   }
   return "codex logout";
-}
-
-function activeSessionSourceForContext(contextKey: string): ActiveSessionDto["source"] {
-  const channelId = channelIdForContextKey(contextKey);
-  if (channelId === "telegram") {
-    return "telegram";
-  }
-  if (channelId === "discord") {
-    return "discord";
-  }
-  if (channelId === "web") {
-    return "web";
-  }
-  return "cli";
 }
 
 function activeSessionPriority(session: ActiveSessionDto): number {
