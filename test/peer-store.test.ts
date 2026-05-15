@@ -19,6 +19,7 @@ describe("PeerStore", () => {
     const store = newStore();
     const created = store.createInvitation({
       name: "Laptop",
+      group: "LAN",
       scopes: ["inspect", "prompt.send"],
       allowedAgents: ["codex"],
       allowedWorkspaceRoots: ["/work/project"],
@@ -27,6 +28,7 @@ describe("PeerStore", () => {
 
     expect(created.invitation).toMatchObject({
       name: "Laptop",
+      group: "LAN",
       scopes: ["inspect", "prompt.send"],
       allowedAgents: ["codex"],
       allowedWorkspaceRoots: ["/work/project"],
@@ -66,6 +68,7 @@ describe("PeerStore", () => {
     const store = newStore();
     const peer = store.upsertPeer({
       name: "Remote",
+      group: "Servers",
       url: "https://remote.example:31979",
       nodeId: "node-remote",
       publicKey: "public-key",
@@ -82,6 +85,7 @@ describe("PeerStore", () => {
     const [updated] = store.listPublic();
     expect(updated).toMatchObject({
       name: "Remote",
+      group: "Servers",
       nodeId: "node-remote",
       fingerprint: "sha256:abc",
       tlsFingerprint: "aa:bb",
@@ -92,7 +96,30 @@ describe("PeerStore", () => {
       remoteVersion: "0.6.0",
       remoteStatus: "online",
     });
+    expect(updated.healthHistory?.at(-1)).toMatchObject({ status: "online", latencyMs: 42 });
     expect(updated).not.toHaveProperty("secret");
+  });
+
+  it("tracks peer groups and bounded health history", () => {
+    const store = newStore();
+    const peer = store.upsertPeer({
+      name: "Remote",
+      group: "Servers",
+      url: "https://remote.example:31979",
+      nodeId: "node-remote",
+      publicKey: "public-key",
+      fingerprint: "sha256:abc",
+      secret: "shared-secret",
+    });
+
+    for (let index = 0; index < 25; index += 1) {
+      store.markError(peer.id, `offline ${index}`);
+    }
+    const snapshot = store.snapshot(localIdentity(), { enabled: true, listenUrl: "https://local", requireTls: true });
+
+    expect(snapshot.groups).toEqual(["Servers"]);
+    expect(snapshot.peers[0].healthHistory).toHaveLength(20);
+    expect(snapshot.peers[0].healthHistory?.at(-1)).toMatchObject({ status: "offline", error: "offline 24" });
   });
 
   it("caps invitation lifetime at 24 hours", () => {

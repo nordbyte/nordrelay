@@ -20,10 +20,7 @@ import {
   type AgentSessionService,
   type AgentThreadRecord,
 } from "./agent.js";
-import {
-  getAgentDiagnostics,
-  getExternalSnapshotForSession,
-} from "./agent-activity.js";
+import { getExternalSnapshotForSession } from "./agent-activity.js";
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { AgentUpdateManager, type AgentUpdateJobSnapshot, type AgentUpdateOperation } from "./agent-updates.js";
 import { createAgentSessionService, enabledAgents } from "./agent-factory.js";
@@ -53,7 +50,6 @@ import {
   activeSessionPriority,
   activityToUnifiedJob,
   agentUpdateStatusToUnified,
-  cliHealthForAgent,
   dedupeJobs,
   hostLoginCommand,
   hostLogoutCommand,
@@ -63,14 +59,12 @@ import {
   shouldRefreshActiveSessions,
   taskToUnifiedJob,
   uploadFileDtos,
-  versionCheckForAgent,
 } from "./relay-runtime-helpers.js";
+import { RelayDashboardService } from "./relay-dashboard-service.js";
 import { capabilitiesOf } from "./bot-rendering.js";
 import { renderSessionInfoPlain, renderSessionUsageRows } from "./session-format.js";
 import { SessionLockStore, type SessionLock } from "./session-locks.js";
 import { SessionRegistry, type ContextMetadata } from "./session-registry.js";
-import { collectSlackDiagnostics } from "./slack-diagnostics.js";
-import { getSlackRateLimitMetrics } from "./slack-rate-limit.js";
 import { createSupportBundle, type SupportBundleResult } from "./support-bundle.js";
 import { transcribeAudio, type TranscriptionBackend } from "./voice.js";
 import {
@@ -158,6 +152,7 @@ export class RelayRuntime {
   private readonly mirrorRegistry: ChannelMirrorRegistry;
   private readonly externalActivityMonitor: RelayExternalActivityMonitor;
   private readonly cache = new RuntimeSnapshotCache();
+  private readonly dashboardService: RelayDashboardService;
   private readonly turnService: ChannelTurnService;
   private readonly subscribers = new Set<(event: RelayEvent) => void>();
   private readonly agentUpdateActors = new Map<string, WebActivityActor>();
@@ -209,6 +204,17 @@ export class RelayRuntime {
       broadcast: (event) => this.broadcast(event),
       broadcastStatus: (message, level) => this.broadcastStatus(message, level),
     });
+    this.dashboardService = new RelayDashboardService({
+      config,
+      cache: this.cache,
+      snapshot: () => this.snapshot(),
+      getSession: () => this.getSession(true),
+      queuePaused: () => this.queueService.isPaused(),
+      externalMirror: () => this.externalActivityMonitor.snapshot(),
+      authStatus: (agentId) => this.authStatus(agentId),
+      cliPathOptions: () => this.cliPathOptions(),
+    });
+    this.dashboardService.startBackgroundRefresh();
     if (config.codexExternalBusyCheckMs > 0) {
       this.externalMonitor = setInterval(() => {
         void this.externalActivityMonitor.monitorSafe();
@@ -293,23 +299,11 @@ export class RelayRuntime {
   }
 
   async version(): Promise<Record<string, unknown>> {
-    return this.cached("version", async () => {
-      const cliOptions = this.cliPathOptions();
-      const [health, state, versionChecks] = await Promise.all([
-        getConnectorHealth(cliOptions),
-        readConnectorState(),
-        getVersionChecks(cliOptions),
-      ]);
-      return {
-        health,
-        state,
-        versionChecks,
-      };
-    });
+    return this.dashboardService.version();
   }
 
   updateConnector(actor?: WebActivityActor): ReturnType<typeof spawnSelfUpdate> {
-    this.cache.invalidate("version");
+    this.dashboardService.invalidate("version");
     const update = spawnSelfUpdate();
     this.broadcastStatus(`Update started with ${update.method}. Log: ${update.logPath}`, "warn");
     this.appendActivity({
@@ -337,8 +331,8 @@ export class RelayRuntime {
   }
 
   startAgentUpdate(agentId: AgentId, operation: AgentUpdateOperation = "update", actor?: WebActivityActor): AgentUpdateJobSnapshot {
-    this.cache.invalidate("adapterHealth");
-    this.cache.invalidate("version");
+    this.dashboardService.invalidate("adapterHealth");
+    this.dashboardService.invalidate("version");
     const job = this.agentUpdates.start(agentId, {
       piCliPath: this.config.piCliPath,
       hermesCliPath: this.config.hermesCliPath,
@@ -431,79 +425,11 @@ export class RelayRuntime {
   }
 
   async diagnostics(): Promise<WebDiagnosticsDto> {
-    return this.cached("diagnostics", async () => {
-      const cliOptions = this.cliPathOptions();
-      const [health, versionChecks, snapshot, session] = await Promise.all([
-        getConnectorHealth(cliOptions),
-        getVersionChecks(cliOptions),
-        this.snapshot(),
-        this.getSession(true),
-      ]);
-      return {
-        health,
-        versionChecks,
-        snapshot,
-        runtime: {
-          stateBackend: this.config.stateBackend,
-          sourceWorkspace: this.config.workspace,
-          queuePaused: this.queueService.isPaused(),
-          externalMirror: this.externalActivityMonitor.snapshot(),
-          agentDiagnostics: getAgentDiagnostics(session, this.config),
-          slackDiagnostics: await collectSlackDiagnostics({
-            config: this.config,
-            timeoutMs: 2_500,
-            rateLimit: getSlackRateLimitMetrics(),
-          }),
-        },
-      };
-    });
+    return this.dashboardService.diagnostics();
   }
 
   async adapterHealth(): Promise<WebAdapterHealthDto[]> {
-    return this.cached("adapterHealth", async () => {
-      const cliOptions = this.cliPathOptions();
-      const [health, versions] = await Promise.all([
-        getConnectorHealth(cliOptions),
-        getVersionChecks(cliOptions),
-      ]);
-      return Promise.all(listAgentAdapterDescriptors().map(async (descriptor) => {
-        const enabled = enabledAgents(this.config).includes(descriptor.id);
-        const auth = descriptor.capabilities.auth && enabled
-          ? await this.authStatus(descriptor.id).catch((error): WebAuthDto => ({
-            agentId: descriptor.id,
-            agentLabel: descriptor.label,
-            supported: descriptor.capabilities.auth,
-            authenticated: false,
-            detail: friendlyErrorText(error),
-            loginSupported: descriptor.capabilities.login,
-            logoutSupported: descriptor.capabilities.logout,
-          }))
-          : null;
-        const cli = cliHealthForAgent(descriptor.id, health);
-        const version = versionCheckForAgent(descriptor.id, versions);
-        return {
-          id: descriptor.id,
-          label: descriptor.label,
-          enabled,
-          status: descriptor.status === "available" ? (enabled ? "enabled" : "disabled") : "planned",
-          auth: {
-            supported: descriptor.capabilities.auth,
-            authenticated: auth ? auth.authenticated : null,
-            method: auth?.method,
-            detail: auth?.detail,
-          },
-          cli,
-          version: {
-            installed: version.installedLabel,
-            latest: version.latestVersion,
-            status: version.status,
-            detail: version.detail,
-          },
-          capabilities: descriptor.capabilities,
-          notes: descriptor.notes,
-        };
-      }));
-    });
+    return this.dashboardService.adapterHealth();
   }
 
   permissions(): WebPermissionsDto {
@@ -1691,6 +1617,7 @@ export class RelayRuntime {
     if (this.externalMonitor) {
       clearInterval(this.externalMonitor);
     }
+    this.dashboardService.stopBackgroundRefresh();
     this.agentUpdates.cancelAll();
     this.registry.disposeAll();
     this.subscribers.clear();
@@ -1698,10 +1625,6 @@ export class RelayRuntime {
 
   private async getSession(deferThreadStart: boolean): Promise<AgentSessionService> {
     return this.registry.getOrCreate(this.contextKey, { deferThreadStart });
-  }
-
-  private async cached<T>(key: string, producer: () => Promise<T>): Promise<T> {
-    return (await this.cache.get(key, this.config.dashboardCacheTtlMs, producer)).value;
   }
 
   private listKnownContextMetadata(): ContextMetadata[] {

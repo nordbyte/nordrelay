@@ -65,6 +65,7 @@ function shouldProxyApi(path) {
     path === '/api/peers/invite' ||
     path === '/api/peers/pair' ||
     path === '/api/peers/probe' ||
+    path === '/api/peers/discover' ||
     /^\/api\/peers\/[^/]+(?:\/events|\/proxy)?$/.test(path) ||
     isLocalAdminApi(path)
   );

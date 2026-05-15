@@ -112,12 +112,26 @@ describe("web dashboard browser-flow assets", () => {
   it("composes dashboard assets from focused WebUI modules", () => {
     expect(readFileSync("src/webui/client/core/api-client.js", "utf8")).toContain("async function api");
     expect(readFileSync("src/webui/client/core/runtime.js", "utf8")).toContain("const state");
+    expect(readFileSync("src/webui/client/core/components.js", "utf8")).toContain("function uiItem");
     expect(readFileSync("src/webui/client/overview.js", "utf8")).toContain("function renderSnapshot");
     expect(readFileSync("src/webui/client/workflows.js", "utf8")).toContain("function loadSessions");
     expect(readFileSync("src/webui/client/jobs.js", "utf8")).toContain("function renderUnifiedJobs");
     expect(readFileSync("src/webui/client/metrics.js", "utf8")).toContain("function loadMetrics");
     expect(readFileSync("src/webui/styles/theme.css", "utf8")).toContain(":root");
     expect(readFileSync("src/webui/styles/layout.css", "utf8")).toContain(".chat-layout");
+  });
+
+  it("includes peer discovery and peer health history in the WebUI", () => {
+    const js = dashboardJs();
+    const pageSource = readFileSync("src/web-dashboard-pages.ts", "utf8");
+    const contract = readFileSync("src/web-api-contract.ts", "utf8");
+
+    expect(pageSource).toContain("Discover LAN peers");
+    expect(pageSource).toContain('id="peerDiscovery"');
+    expect(js).toContain("function discoverPeers");
+    expect(js).toContain("/api/peers/discover");
+    expect(js).toContain("Health history");
+    expect(contract).toContain('exact("/api/peers/discover"');
   });
 
   it("normalizes dashboard control typography across platforms", () => {

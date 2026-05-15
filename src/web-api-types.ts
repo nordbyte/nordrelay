@@ -6,6 +6,7 @@ import type { AgentUpdateJobSnapshot } from "./agent-updates.js";
 import type { AuditEvent } from "./audit-log.js";
 import type { ChannelDescriptor } from "./channel-adapter.js";
 import type { ClearLogResult, ConnectorHealth, ConnectorRuntimeState, FormattedLogTail, SelfUpdateResult, VersionChecks } from "./operations.js";
+import type { PeerDiscoveryResult, PeerSnapshot } from "./peer-types.js";
 import type { WebApiDynamicPathFromContract, WebApiStaticPathFromContract } from "./web-api-contract.js";
 import type {
   ActiveSessionsDto,
@@ -27,6 +28,8 @@ import type {
   DiscordChannelAccessRecord,
   DiscordIdentityRecord,
   GroupRecord,
+  SlackChannelAccessRecord,
+  SlackIdentityRecord,
   TelegramChatAccessRecord,
   TelegramIdentityRecord,
   UserRecord,
@@ -87,11 +90,13 @@ export interface WebUserManagementResponse {
     groups: GroupRecord[];
     telegramIdentities: TelegramIdentityRecord[];
     discordIdentities: DiscordIdentityRecord[];
+    slackIdentities: SlackIdentityRecord[];
     webSessions: PublicWebSession[];
   }>;
   groups: GroupRecord[];
   telegramChats: TelegramChatAccessRecord[];
   discordChannels: DiscordChannelAccessRecord[];
+  slackChannels: SlackChannelAccessRecord[];
   adminConfigured: boolean;
   permissions: Permission[];
 }
@@ -135,13 +140,16 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends `/api/users/${string}/password` ? { password: string } :
   P extends `/api/users/${string}/telegram` ? { createCode?: boolean; telegramUserId?: number; username?: string } :
   P extends `/api/users/${string}/discord` ? { createCode?: boolean; discordUserId?: string; username?: string; globalName?: string } :
+  P extends `/api/users/${string}/slack` ? { createCode?: boolean; slackUserId?: string; teamId?: string; username?: string; realName?: string } :
   P extends `/api/users/${string}` ? { email?: string; displayName?: string; active?: boolean; groupIds?: string[] } :
-  P extends "/api/groups" ? { name: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[]; discordChannelIds?: string[] } :
-  P extends `/api/groups/${string}` ? { name?: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[]; discordChannelIds?: string[] } :
+  P extends "/api/groups" ? { name: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[]; discordChannelIds?: string[]; slackChannelIds?: string[] } :
+  P extends `/api/groups/${string}` ? { name?: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[]; discordChannelIds?: string[]; slackChannelIds?: string[] } :
   P extends "/api/telegram-chats" ? { chatId: number; title?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[] } :
   P extends `/api/telegram-chats/${string}` ? { title?: string; enabled?: boolean; allowedGroupIds?: string[] } :
   P extends "/api/discord-channels" ? { guildId?: string; channelId: string; title?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[] } :
   P extends `/api/discord-channels/${string}` ? { title?: string; enabled?: boolean; allowedGroupIds?: string[] } :
+  P extends "/api/slack-channels" ? { teamId?: string; channelId: string; title?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[] } :
+  P extends `/api/slack-channels/${string}` ? { title?: string; enabled?: boolean; allowedGroupIds?: string[] } :
   P extends "/api/locks" ? { ownerName?: string } :
   P extends "/api/auth/login" | "/api/auth/logout" ? { agentId?: AgentId } :
   P extends `/api/agent-update/${string}/input` ? { input: string } :
@@ -163,10 +171,15 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends `/api/agent-update/${string}/input` | `/api/agent-update/${string}/cancel` ? { job: AgentUpdateJobSnapshot } :
   P extends "/api/adapters/health" ? { adapters: WebAdapterHealthDto[] } :
   P extends "/api/adapters/conformance" ? AdapterConformanceMatrix :
+  P extends "/api/peers" ? PeerSnapshot :
+  P extends "/api/peers/discover" ? PeerDiscoveryResult :
+  P extends "/api/peers/probe" ? unknown :
+  P extends "/api/peers/global-sessions" ? unknown :
   P extends "/api/permissions" | "/api/users" ? WebUserManagementResponse :
   P extends "/api/groups" ? { groups: GroupRecord[] } :
   P extends "/api/telegram-chats" ? { chats: TelegramChatAccessRecord[] } :
   P extends "/api/discord-channels" ? { channels: DiscordChannelAccessRecord[] } :
+  P extends "/api/slack-channels" ? { channels: SlackChannelAccessRecord[] } :
   P extends "/api/audit" ? { events: AuditEvent[] } :
   P extends "/api/locks" ? { locks: SessionLock[]; lock?: SessionLock } :
   P extends "/api/auth/status" | "/api/auth/login" | "/api/auth/logout" ? WebAuthDto :
@@ -197,8 +210,11 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends `/api/users/${string}/telegram/${string}` ? { removed: boolean } :
   P extends `/api/users/${string}/discord` ? { linkCode?: unknown; identity?: DiscordIdentityRecord } :
   P extends `/api/users/${string}/discord/${string}` ? { removed: boolean } :
+  P extends `/api/users/${string}/slack` ? { linkCode?: unknown; identity?: SlackIdentityRecord } :
+  P extends `/api/users/${string}/slack/${string}` ? { removed: boolean } :
   P extends `/api/users/${string}` ? { user: PublicUser; groups: GroupRecord[] } :
   P extends `/api/groups/${string}` ? { group: GroupRecord } :
   P extends `/api/telegram-chats/${string}` ? { chat: TelegramChatAccessRecord } :
   P extends `/api/discord-channels/${string}` ? { channel: DiscordChannelAccessRecord } :
+  P extends `/api/slack-channels/${string}` ? { channel: SlackChannelAccessRecord } :
   Record<string, unknown>;

@@ -200,6 +200,8 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   setting("NORDRELAY_PEER_PUBLIC_URL", "Peer public URL", "Peers", "string", "Optional public URL other instances should use for this node.", true),
   setting("NORDRELAY_PEER_TLS_ENABLED", "Peer TLS enabled", "Peers", "boolean", "Serve the peer API over HTTPS with an automatically generated local certificate.", true),
   setting("NORDRELAY_PEER_REQUIRE_TLS", "Require peer TLS", "Peers", "boolean", "Reject plaintext peer serving on non-loopback hosts.", true),
+  setting("NORDRELAY_PEER_HEALTH_CHECK_MS", "Peer health interval", "Peers", "number", "Background reachability check interval for configured peers. Use 0 to disable.", true),
+  setting("NORDRELAY_PEER_DISCOVERY_TIMEOUT_MS", "Peer discovery timeout", "Peers", "number", "Per-host LAN discovery timeout in milliseconds.", true),
 
   setting("OPENAI_API_KEY", "OpenAI API key", "Voice", "secret", "Whisper fallback API key.", true),
   setting("VOICE_PREFERRED_BACKEND", "Voice backend", "Voice", "string", "auto, parakeet, faster-whisper, or openai.", false, ["auto", "parakeet", "faster-whisper", "openai"]),
@@ -342,6 +344,8 @@ const EXAMPLE_VALUES: Record<string, string> = {
   "NORDRELAY_PEER_PUBLIC_URL": "",
   "NORDRELAY_PEER_TLS_ENABLED": "true",
   "NORDRELAY_PEER_REQUIRE_TLS": "true",
+  "NORDRELAY_PEER_HEALTH_CHECK_MS": "60000",
+  "NORDRELAY_PEER_DISCOVERY_TIMEOUT_MS": "650",
   "NORDRELAY_DASHBOARD_HOST": "127.0.0.1",
   "NORDRELAY_DASHBOARD_PORT": "31878",
   "NORDRELAY_ENV_FILE": "",

@@ -166,6 +166,8 @@ export interface ConnectorConfig {
   peerPublicUrl?: string;
   peerTlsEnabled: boolean;
   peerRequireTls: boolean;
+  peerHealthCheckMs: number;
+  peerDiscoveryTimeoutMs: number;
 }
 
 export function loadConfig(): ConnectorConfig {
@@ -328,6 +330,8 @@ export function loadConfig(): ConnectorConfig {
   const peerPublicUrl = optionalString(process.env.NORDRELAY_PEER_PUBLIC_URL);
   const peerTlsEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_PEER_TLS_ENABLED), true);
   const peerRequireTls = parseBooleanEnv(optionalString(process.env.NORDRELAY_PEER_REQUIRE_TLS), true);
+  const peerHealthCheckMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_PEER_HEALTH_CHECK_MS), 60_000, "NORDRELAY_PEER_HEALTH_CHECK_MS");
+  const peerDiscoveryTimeoutMs = parsePositiveIntegerEnv(optionalString(process.env.NORDRELAY_PEER_DISCOVERY_TIMEOUT_MS), 650, "NORDRELAY_PEER_DISCOVERY_TIMEOUT_MS");
 
   let telegramEnabled = requestedTelegramEnabled;
   if (telegramEnabled && telegramTransport === "webhook" && !telegramWebhookUrl) {
@@ -489,6 +493,8 @@ export function loadConfig(): ConnectorConfig {
     peerPublicUrl,
     peerTlsEnabled,
     peerRequireTls,
+    peerHealthCheckMs,
+    peerDiscoveryTimeoutMs,
   };
 }
 

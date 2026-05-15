@@ -22,6 +22,7 @@ import { describeOpenClawCli, resolveOpenClawCli } from "./openclaw-cli.js";
 import { installConsoleLogger } from "./logger.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
 import { describePiCli, resolvePiCli } from "./pi-cli.js";
+import { startPeerHealthMonitor, type PeerHealthMonitorHandle } from "./peer-health-monitor.js";
 import { startPeerServer, type PeerServerHandle } from "./peer-server.js";
 import { RelayRuntime } from "./relay-runtime.js";
 import { configureRedaction } from "./redaction.js";
@@ -34,6 +35,7 @@ let discordBridge: ReturnType<typeof createDiscordBridge> | undefined;
 let slackBridge: ReturnType<typeof createSlackBridge> | undefined;
 let webhookServer: Server | undefined;
 let peerServer: PeerServerHandle | null | undefined;
+let peerHealthMonitor: PeerHealthMonitorHandle | undefined;
 let peerRuntime: RelayRuntime | undefined;
 let runtimeConfig: ConnectorConfig | undefined;
 
@@ -55,6 +57,7 @@ try {
     peerRuntime = new RelayRuntime(config);
     peerServer = await startPeerServer({ config, runtime: peerRuntime });
   }
+  peerHealthMonitor = startPeerHealthMonitor({ config });
 
   console.log("NordRelay running");
   const userStore = new UserStore();
@@ -188,6 +191,7 @@ const shutdown = (signal: NodeJS.Signals) => {
   void peerServer?.close().catch((error) => {
     console.warn("Failed to stop peer server:", error instanceof Error ? error.message : String(error));
   });
+  peerHealthMonitor?.close();
 
   setTimeout(() => {
     registry?.disposeAll();

@@ -18,4 +18,15 @@ describe("RuntimeSnapshotCache", () => {
     expect(fresh.value).toBe(2);
     expect(fresh.stale).toBe(false);
   });
+
+  it("warms registered producers without blocking a foreground request", async () => {
+    const cache = new RuntimeSnapshotCache();
+    let value = 0;
+    cache.register("expensive", async () => ++value);
+
+    cache.warm(["expensive"]);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    await expect(cache.get("expensive", 1000)).resolves.toMatchObject({ value: 1, stale: false });
+  });
 });

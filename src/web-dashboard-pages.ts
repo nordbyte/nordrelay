@@ -246,10 +246,12 @@ export function renderDashboardApp(): string {
 
       <section class="page" id="page-peers">
         <div class="panel">
-          <div class="row"><button id="loadPeersBtn">Reload peers</button><button id="createPeerInviteBtn">Create invite</button><button id="addPeerBtn" class="secondary">Add peer</button></div>
+          <div class="row"><button id="loadPeersBtn">Reload peers</button><button id="createPeerInviteBtn">Create invite</button><button id="addPeerBtn" class="secondary">Add peer</button><button id="discoverPeersBtn" class="secondary">Discover LAN peers</button></div>
           <div id="peerStatus" class="list"></div>
           <h2>Configured peers</h2>
           <div id="peersList" class="list"></div>
+          <h2>LAN discovery</h2>
+          <div id="peerDiscovery" class="list"></div>
           <h2>Open invitations</h2>
           <div id="peerInvites" class="list"></div>
         </div>

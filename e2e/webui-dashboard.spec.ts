@@ -119,12 +119,12 @@ test.describe("NordRelay WebUI", () => {
       if (api.isCliDoneStatus("Waiting for Codex CLI task... 1 queued")) throw new Error("waiting status must not be terminal");
       if (!api.isCliDoneStatus("Codex CLI task finished.")) throw new Error("finished status must be terminal");
       api.toast("Codex CLI running · 7m 41s · tool write_stdin · 0 queued", { sticky: true });
-      api.toast("Temporary notice", { duration: 50 });
+      api.toast("Temporary notice", { duration: 500 });
     });
 
     await expect(page.locator("#toast")).toBeVisible();
     await expect(page.locator("#toast")).toContainText("Temporary notice");
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(600);
     await expect(page.locator("#toast")).toBeVisible();
     await expect(page.locator("#toast")).toContainText("Codex CLI running");
 
@@ -274,7 +274,7 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#peerInvites")).toContainText("MacBook invite");
     page.once("dialog", (dialog) => dialog.accept());
     await page.locator('[data-peer-invite-delete="invite-1"]').click();
-    expect(mock.requests.find((request) => request.path === "/api/peers/invitations/invite-1" && request.method === "DELETE")).toBeTruthy();
+    await expect.poll(() => mock.requests.some((request) => request.path === "/api/peers/invitations/invite-1" && request.method === "DELETE")).toBe(true);
     await page.getByRole("button", { name: "Load global sessions" }).click();
     await expect(page.locator("#globalPeerSessionsList")).toContainText("peer-thread-1");
   });

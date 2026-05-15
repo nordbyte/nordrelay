@@ -8,6 +8,7 @@ const clientSources = [
   "client/core/api-routes.generated.js",
   "client/core/api-client.js",
   "client/core/runtime.js",
+  "client/core/components.js",
   "client/overview.js",
   "client/events.js",
   "client/workflows.js",

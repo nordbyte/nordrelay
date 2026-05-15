@@ -16,6 +16,7 @@ const assets = [
       "src/webui/client/core/api-routes.generated.js",
       "src/webui/client/core/api-client.js",
       "src/webui/client/core/runtime.js",
+      "src/webui/client/core/components.js",
       "src/webui/client/overview.js",
       "src/webui/client/events.js",
       "src/webui/client/workflows.js",

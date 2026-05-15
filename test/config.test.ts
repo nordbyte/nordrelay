@@ -277,6 +277,8 @@ describe("loadConfig", () => {
       claudeCodeDefaultLaunchProfileId: "default",
       claudeCodeMaxTurns: 100,
       peerEnabled: false,
+      peerHealthCheckMs: 60_000,
+      peerDiscoveryTimeoutMs: 650,
       peerName: undefined,
       peerHost: "127.0.0.1",
       peerPort: 31979,

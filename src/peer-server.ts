@@ -175,6 +175,7 @@ export async function startPeerServer(options: {
     const secret = createSharedSecret();
     const peer = store.upsertPeer({
       name: body.name?.trim() || body.identity.name || invitation.name,
+      group: invitation.group,
       url: publicUrl,
       nodeId: body.identity.nodeId,
       publicKey: body.identity.publicKey,

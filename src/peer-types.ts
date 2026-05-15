@@ -15,9 +15,19 @@ export interface PeerNodeIdentity {
   createdAt: string;
 }
 
+export interface PeerHealthSample {
+  checkedAt: string;
+  status: "online" | "offline";
+  latencyMs?: number;
+  remoteVersion?: string;
+  remoteStatus?: string;
+  error?: string;
+}
+
 export interface PeerRecord {
   id: string;
   name: string;
+  group?: string;
   url?: string;
   nodeId: string;
   publicKey: string;
@@ -38,11 +48,13 @@ export interface PeerRecord {
   remoteVersion?: string;
   remoteStatus?: string;
   lastError?: string;
+  healthHistory?: PeerHealthSample[];
 }
 
 export interface PeerInvitationRecord {
   id: string;
   name: string;
+  group?: string;
   codeHash: string;
   expiresAt: string;
   createdAt: string;
@@ -63,6 +75,7 @@ export interface PeerStorePayload {
 export interface PublicPeerRecord {
   id: string;
   name: string;
+  group?: string;
   url?: string;
   nodeId: string;
   fingerprint: string;
@@ -81,11 +94,13 @@ export interface PublicPeerRecord {
   remoteVersion?: string;
   remoteStatus?: string;
   lastError?: string;
+  healthHistory?: PeerHealthSample[];
 }
 
 export interface PublicPeerInvitationRecord {
   id: string;
   name: string;
+  group?: string;
   expiresAt: string;
   createdAt: string;
   scopes: Permission[];
@@ -102,6 +117,7 @@ export interface PeerSnapshot {
   listenUrl: string;
   requireTls: boolean;
   readiness?: PeerReadiness;
+  groups: string[];
   peers: PublicPeerRecord[];
   invitations: PublicPeerInvitationRecord[];
 }
@@ -128,6 +144,24 @@ export interface PeerEndpointProbeResult {
   statusCode?: number;
   tlsFingerprint?: string;
   detail: string;
+}
+
+export interface PeerDiscoveryCandidate {
+  url: string;
+  host: string;
+  port: number;
+  scheme: "http" | "https";
+  nodeId: string;
+  name: string;
+  fingerprint: string;
+  tlsFingerprint?: string;
+  latencyMs?: number;
+}
+
+export interface PeerDiscoveryResult {
+  scanned: number;
+  candidates: PeerDiscoveryCandidate[];
+  warnings: string[];
 }
 
 export interface PeerInviteResult {
@@ -205,6 +239,7 @@ export function publicPeer(record: PeerRecord): PublicPeerRecord {
   return {
     id: record.id,
     name: record.name,
+    group: record.group,
     url: record.url,
     nodeId: record.nodeId,
     fingerprint: record.fingerprint,
@@ -223,6 +258,7 @@ export function publicPeer(record: PeerRecord): PublicPeerRecord {
     remoteVersion: record.remoteVersion,
     remoteStatus: record.remoteStatus,
     lastError: record.lastError,
+    healthHistory: record.healthHistory?.map((sample) => ({ ...sample })),
   };
 }
 
@@ -230,6 +266,7 @@ export function publicInvitation(record: PeerInvitationRecord): PublicPeerInvita
   return {
     id: record.id,
     name: record.name,
+    group: record.group,
     expiresAt: record.expiresAt,
     createdAt: record.createdAt,
     scopes: [...record.scopes],

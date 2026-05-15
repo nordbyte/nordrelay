@@ -10,6 +10,7 @@ import {
   DEFAULT_PEER_SCOPES,
   publicInvitation,
   publicPeer,
+  type PeerHealthSample,
   type PeerInvitationRecord,
   type PeerRecord,
   type PeerSnapshot,
@@ -21,9 +22,11 @@ import {
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 const INVITE_CODE_BYTES = 18;
 const MAX_INVITATION_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_HEALTH_HISTORY = 20;
 
 export interface PeerInviteOptions {
   name?: string;
+  group?: string;
   expiresInMs?: number;
   scopes?: Permission[];
   allowedAgents?: AgentId[];
@@ -34,6 +37,7 @@ export interface PeerInviteOptions {
 export interface PeerUpsertInput {
   id?: string;
   name: string;
+  group?: string;
   url?: string;
   nodeId: string;
   publicKey: string;
@@ -69,6 +73,7 @@ export class PeerStore {
       listenUrl: options.listenUrl,
       requireTls: options.requireTls,
       readiness: options.readiness,
+      groups: listGroups(payload),
       peers: payload.peers.map(publicPeer),
       invitations: payload.invitations.map(publicInvitation),
     };
@@ -95,6 +100,7 @@ export class PeerStore {
     const invitation: PeerInvitationRecord = {
       id: randomUUID().replace(/-/g, "").slice(0, 12),
       name: options.name?.trim() || "NordRelay peer",
+      group: normalizeGroup(options.group),
       codeHash: hashSecret(code),
       createdAt: now.toISOString(),
       expiresAt: expiresAt.toISOString(),
@@ -141,6 +147,7 @@ export class PeerStore {
       const existing = payload.peers.find((peer) => peer.nodeId === input.nodeId || (input.id && peer.id === input.id));
       if (existing) {
         existing.name = input.name.trim() || existing.name;
+        existing.group = normalizeGroup(input.group) ?? existing.group;
         existing.url = input.url ?? existing.url;
         existing.publicKey = input.publicKey;
         existing.fingerprint = input.fingerprint;
@@ -162,6 +169,7 @@ export class PeerStore {
       const record: PeerRecord = {
         id: input.id ?? randomUUID().replace(/-/g, "").slice(0, 12),
         name: input.name.trim() || "NordRelay peer",
+        group: normalizeGroup(input.group),
         url: input.url,
         nodeId: input.nodeId,
         publicKey: input.publicKey,
@@ -176,6 +184,7 @@ export class PeerStore {
         workspaceAliases: normalizeWorkspaceAliases(input.workspaceAliases ?? {}),
         createdAt: now,
         updatedAt: now,
+        healthHistory: [],
       };
       payload.peers.push(record);
       next = clonePeer(record);
@@ -186,7 +195,7 @@ export class PeerStore {
     return next;
   }
 
-  updatePeer(id: string, patch: Partial<Pick<PeerRecord, "name" | "url" | "enabled" | "scopes" | "allowedAgents" | "allowedWorkspaceRoots" | "workspaceAliases">>): PeerRecord {
+  updatePeer(id: string, patch: Partial<Pick<PeerRecord, "name" | "group" | "url" | "enabled" | "scopes" | "allowedAgents" | "allowedWorkspaceRoots" | "workspaceAliases">>): PeerRecord {
     let next: PeerRecord | null = null;
     this.mutatePayload((payload) => {
       const peer = payload.peers.find((candidate) => candidate.id === id || candidate.nodeId === id);
@@ -194,6 +203,7 @@ export class PeerStore {
         throw new Error("Peer not found.");
       }
       if (patch.name !== undefined) peer.name = patch.name.trim() || peer.name;
+      if (patch.group !== undefined) peer.group = normalizeGroup(patch.group);
       if (patch.url !== undefined) peer.url = patch.url.trim() || undefined;
       if (patch.enabled !== undefined) peer.enabled = patch.enabled;
       if (patch.scopes !== undefined) peer.scopes = normalizeScopes(patch.scopes);
@@ -210,18 +220,37 @@ export class PeerStore {
   }
 
   markSeen(id: string, patch: PeerHealthPatch = {}): void {
-    this.patchPeer(id, {
-      lastSeenAt: new Date().toISOString(),
-      lastCheckedAt: new Date().toISOString(),
+    const checkedAt = new Date().toISOString();
+    this.patchPeer(id, (peer) => ({
+      lastSeenAt: checkedAt,
+      lastCheckedAt: checkedAt,
       lastLatencyMs: patch.latencyMs,
       remoteVersion: patch.remoteVersion,
       remoteStatus: patch.remoteStatus ?? "online",
       lastError: undefined,
-    });
+      healthHistory: appendHealthSample(peer.healthHistory, {
+        checkedAt,
+        status: "online",
+        latencyMs: patch.latencyMs,
+        remoteVersion: patch.remoteVersion,
+        remoteStatus: patch.remoteStatus ?? "online",
+      }),
+    }));
   }
 
   markError(id: string, error: string): void {
-    this.patchPeer(id, { lastError: error, remoteStatus: "offline", lastCheckedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    const checkedAt = new Date().toISOString();
+    this.patchPeer(id, (peer) => ({
+      lastError: error,
+      remoteStatus: "offline",
+      lastCheckedAt: checkedAt,
+      updatedAt: checkedAt,
+      healthHistory: appendHealthSample(peer.healthHistory, {
+        checkedAt,
+        status: "offline",
+        error,
+      }),
+    }));
   }
 
   revokePeer(id: string): boolean {
@@ -247,11 +276,11 @@ export class PeerStore {
     return removed ? publicInvitation(removed) : null;
   }
 
-  private patchPeer(id: string, patch: Partial<PeerRecord>): void {
+  private patchPeer(id: string, patch: Partial<PeerRecord> | ((peer: PeerRecord) => Partial<PeerRecord>)): void {
     this.mutatePayload((payload) => {
       const peer = payload.peers.find((candidate) => candidate.id === id || candidate.nodeId === id);
       if (!peer) return;
-      Object.assign(peer, patch);
+      Object.assign(peer, typeof patch === "function" ? patch(peer) : patch);
     });
   }
 
@@ -272,13 +301,16 @@ export class PeerStore {
       version: 1,
       peers: payload.peers.filter(isPeerRecord).map((peer) => ({
         ...peer,
+        group: normalizeGroup(peer.group),
         scopes: normalizeScopes(peer.scopes),
         allowedAgents: normalizeAgents(peer.allowedAgents),
         allowedWorkspaceRoots: normalizeWorkspaceRoots(peer.allowedWorkspaceRoots),
         workspaceAliases: normalizeWorkspaceAliases(peer.workspaceAliases ?? {}),
+        healthHistory: normalizeHealthHistory(peer.healthHistory),
       })),
       invitations: payload.invitations.filter(isInvitationRecord).map((invitation) => ({
         ...invitation,
+        group: normalizeGroup(invitation.group),
         scopes: normalizeScopes(invitation.scopes),
         allowedAgents: normalizeAgents(invitation.allowedAgents),
         allowedWorkspaceRoots: normalizeWorkspaceRoots(invitation.allowedWorkspaceRoots),
@@ -331,6 +363,33 @@ function normalizeWorkspaceAliases(value: Record<string, string>): Record<string
   return aliases;
 }
 
+function normalizeGroup(value: unknown): string | undefined {
+  const group = typeof value === "string" ? value.trim() : "";
+  return group ? group.slice(0, 80) : undefined;
+}
+
+function normalizeHealthHistory(value: unknown): PeerHealthSample[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item): item is PeerHealthSample => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+      const record = item as PeerHealthSample;
+      return typeof record.checkedAt === "string" && (record.status === "online" || record.status === "offline");
+    })
+    .slice(-MAX_HEALTH_HISTORY)
+    .map((item) => ({ ...item }));
+}
+
+function appendHealthSample(history: PeerHealthSample[] | undefined, sample: PeerHealthSample): PeerHealthSample[] {
+  return [...normalizeHealthHistory(history), sample].slice(-MAX_HEALTH_HISTORY);
+}
+
+function listGroups(payload: PeerStorePayload): string[] {
+  return [...new Set(payload.peers.map((peer) => normalizeGroup(peer.group)).filter((group): group is string => Boolean(group)))].sort();
+}
+
 function clonePeer(peer: PeerRecord): PeerRecord {
   return {
     ...peer,
@@ -338,6 +397,7 @@ function clonePeer(peer: PeerRecord): PeerRecord {
     allowedAgents: [...peer.allowedAgents],
     allowedWorkspaceRoots: [...peer.allowedWorkspaceRoots],
     workspaceAliases: { ...peer.workspaceAliases },
+    healthHistory: normalizeHealthHistory(peer.healthHistory),
   };
 }
 

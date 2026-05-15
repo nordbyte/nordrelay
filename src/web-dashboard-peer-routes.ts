@@ -10,6 +10,7 @@ import {
 } from "./peer-identity.js";
 import { checkPeerEndpoint, pairPeer, RemoteRelayClient } from "./peer-client.js";
 import { buildPeerReadiness, peerListenUrl } from "./peer-readiness.js";
+import { discoverLanPeers } from "./peer-discovery.js";
 import { PeerStore } from "./peer-store.js";
 import { publicPeer, type PeerWebProxyPayload } from "./peer-types.js";
 import type { RelayRuntime } from "./relay-runtime.js";
@@ -58,6 +59,7 @@ export async function handleDashboardPeerRoute(
     const readiness = await buildPeerReadiness(options.config);
     const created = store.createInvitation({
       name: optionalStringField(body, "name"),
+      group: optionalStringField(body, "group"),
       expiresInMs: (optionalNumberField(body, "expiresMinutes") ?? 10) * 60 * 1000,
       scopes: parseScopes(arrayStringField(body, "scopes")),
       allowedAgents: parseAgents(arrayStringField(body, "allowedAgents")),
@@ -95,6 +97,12 @@ export async function handleDashboardPeerRoute(
     return true;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/peers/discover") {
+    const result = await discoverLanPeers(options.config);
+    sendJson(res, 200, result);
+    return true;
+  }
+
   const invitationMatch = url.pathname.match(/^\/api\/peers\/invitations\/([^/]+)$/);
   if (invitationMatch?.[1] && req.method === "DELETE") {
     const invitation = store.deleteInvitation(decodeURIComponent(invitationMatch[1]));
@@ -123,6 +131,7 @@ export async function handleDashboardPeerRoute(
     const body = await readJsonBody(req);
     const peer = store.updatePeer(decodeURIComponent(peerMatch[1]), {
       name: optionalStringField(body, "name"),
+      group: optionalStringField(body, "group"),
       url: optionalStringField(body, "url"),
       enabled: optionalBooleanField(body, "enabled"),
       scopes: body.scopes === undefined ? undefined : parseScopes(arrayStringField(body, "scopes")),
