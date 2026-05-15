@@ -1,6 +1,6 @@
 {
   "name": "@nordbyte/nordrelay",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Remote control plane for coding agents across messaging channels.",
   "type": "module",
   "author": "Ricardo",
@@ -61,7 +61,7 @@
     "webui:check": "tsc -p tsconfig.webui.json"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.140",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.141",
     "@grammyjs/auto-retry": "^2.0.2",
     "@openai/codex-sdk": "^0.130.0",
     "discord.js": "^14.26.4",

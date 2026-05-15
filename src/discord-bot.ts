@@ -27,6 +27,7 @@ import { capabilitiesOf, filterActivityEvents, formatLocalDateTime, parseActivit
 import { renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction } from "./channel-actions.js";
 import { ChannelCommandService } from "./channel-command-service.js";
 import { discordHelpCommandList } from "./channel-command-catalog.js";
+import { runChannelPeerPrompt } from "./channel-peer-prompt.js";
 import { deliverChannelAction } from "./channel-runtime.js";
 import type { ChannelContext } from "./channel-adapter.js";
 import { checkAuthStatus, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
@@ -43,8 +44,7 @@ import { spawnConnectorRestart, spawnSelfUpdate } from "./operations.js";
 import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
 import { RemoteRelayClient } from "./peer-client.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
-import { peerPromptProxyPayload } from "./remote-prompt.js";
-import { PromptStore, toPromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
+import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
 import { RelayArtifactService } from "./relay-artifact-service.js";
 import { configureRedaction, redactText } from "./redaction.js";
 import { renderSessionInfoPlain } from "./session-format.js";
@@ -646,83 +646,35 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
 
   const remoteClient = new RemoteRelayClient();
 
-  const handleRemotePrompt = async (request: DiscordRequest, envelope: ReturnType<typeof toPromptEnvelope>): Promise<boolean> => {
-    const targetPeerId = preferencesStore.get(request.contextKey).targetPeerId;
-    if (!targetPeerId) {
-      return false;
-    }
-    let accumulated = "";
-    let responseMessageId: string | undefined;
-    let lastEditAt = 0;
-    const typing = setInterval(() => {
-      void runtime.sendTyping(request.context).catch(() => {});
-    }, TYPING_INTERVAL_MS);
-    typing.unref?.();
-    void runtime.sendTyping(request.context).catch(() => {});
-
-    const flush = async (force = false): Promise<void> => {
-      if (!accumulated.trim()) return;
-      const now = Date.now();
-      if (!force && now - lastEditAt < EDIT_DEBOUNCE_MS) return;
-      const text = trimDiscordMessage(accumulated);
-      if (!responseMessageId) {
-        const sent = await runtime.sendMessage(request.context, { text, fallbackText: text });
-        responseMessageId = sent.messageId;
-      } else {
-        await runtime.editMessage(request.context, responseMessageId, { text, fallbackText: text });
-      }
-      lastEditAt = now;
-    };
-
-    const done = new Promise<void>((resolve) => {
-      const timeout = setTimeout(resolve, 30 * 60 * 1000);
-      timeout.unref?.();
-      const subscription = remoteClient.subscribe(targetPeerId, (event) => {
-        if (event.type === "turn_start") {
-          void reply(request, `Remote peer working on:\n${event.prompt}`).catch(() => {});
-        } else if (event.type === "text_delta") {
-          accumulated += event.delta;
-          void flush(false).catch(() => {});
-        } else if (event.type === "tool_start") {
-          void reply(request, `Remote tool: ${event.toolName}`).catch(() => {});
-        } else if (event.type === "turn_complete") {
-          clearTimeout(timeout);
-          subscription.close();
-          resolve();
-        } else if (event.type === "turn_error") {
-          accumulated += `\n\nError: ${event.error}`;
-          clearTimeout(timeout);
-          subscription.close();
-          resolve();
-        }
-      }, (error) => {
-        accumulated += `\n\nRemote event stream failed: ${error.message}`;
-        clearTimeout(timeout);
-        resolve();
-      }, request.contextKey);
-    });
-
-    try {
-      const result = await remoteClient.webProxy(targetPeerId, await peerPromptProxyPayload(envelope), actorFor(request), request.contextKey);
-      if (result && typeof result === "object" && "queued" in result && (result as { queued?: boolean }).queued) {
-        const queueId = String((result as { queueId?: unknown }).queueId ?? "");
+  const handleRemotePrompt = async (request: DiscordRequest, envelope: PromptEnvelope): Promise<boolean> => {
+    const targetPeerId = preferencesStore.get(request.contextKey).targetPeerId ?? undefined;
+    return runChannelPeerPrompt<string>({
+      targetPeerId,
+      contextKey: request.contextKey,
+      prompt: envelope,
+      remoteClient,
+      editMinIntervalMs: EDIT_DEBOUNCE_MS,
+      typingIntervalMs: TYPING_INTERVAL_MS,
+      sendTyping: () => runtime.sendTyping(request.context),
+      sendResponse: async (text) => {
+        const rendered = trimDiscordMessage(text);
+        const sent = await runtime.sendMessage(request.context, { text: rendered, fallbackText: rendered });
+        return sent.messageId;
+      },
+      editResponse: async (messageId, text) => {
+        const rendered = trimDiscordMessage(text);
+        await runtime.editMessage(request.context, messageId, { text: rendered, fallbackText: rendered });
+      },
+      sendTurnStart: (remotePrompt) => reply(request, `Remote peer working on:\n${remotePrompt}`),
+      sendToolStart: (toolName) => reply(request, `Remote tool: ${toolName}`),
+      sendQueued: async (queueId) => {
         await reply(request, `Remote prompt queued${queueId ? `: ${queueId}` : ""}.`, queueId ? {
           buttons: [[{ label: "Cancel queued message", action: `discord_peer_queue_cancel:${targetPeerId}:${queueId}` }]],
         } : undefined);
-        return true;
-      }
-      await done;
-      await flush(true);
-      if (!accumulated.trim()) {
-        await reply(request, "Remote turn completed.");
-      }
-      return true;
-    } catch (error) {
-      await reply(request, `Remote peer failed: ${friendlyErrorText(error)}`);
-      return true;
-    } finally {
-      clearInterval(typing);
-    }
+      },
+      sendCompleted: () => reply(request, "Remote turn completed."),
+      sendFailure: (message) => reply(request, `Remote peer failed: ${message}`),
+    });
   };
 
   const handlePrompt = async (request: DiscordRequest, input: AgentPromptInput, artifactOutDir?: string, options: { fromQueue?: boolean } = {}): Promise<void> => {

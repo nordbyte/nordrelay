@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -139,7 +139,7 @@ async function startRuntimeServer(): Promise<RuntimeServer> {
     await waitForServer(baseUrl, child, () => output);
   } catch (error) {
     await stopChild(child);
-    rmSync(home, { recursive: true, force: true });
+    removeHome(home);
     throw error;
   }
 
@@ -150,7 +150,7 @@ async function startRuntimeServer(): Promise<RuntimeServer> {
     password,
     close: async () => {
       await stopChild(child);
-      rmSync(home, { recursive: true, force: true });
+      removeHome(home);
     },
   };
 }
@@ -186,13 +186,46 @@ async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
   if (child.exitCode !== null) {
     return;
   }
+  const gracefulExit = waitForChildExit(child, 3_000);
   child.kill("SIGTERM");
-  await Promise.race([
-    new Promise<void>((resolve) => child.once("exit", () => resolve())),
-    new Promise<void>((resolve) => setTimeout(resolve, 3_000)),
-  ]);
-  if (child.exitCode === null) {
-    child.kill("SIGKILL");
-    await new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  if (await gracefulExit) {
+    return;
   }
+
+  if (child.exitCode === null && child.pid && process.platform === "win32") {
+    await taskkill(child.pid);
+  } else if (child.exitCode === null) {
+    child.kill("SIGKILL");
+  }
+  await waitForChildExit(child, 3_000);
+  child.stdout.destroy();
+  child.stderr.destroy();
+}
+
+function waitForChildExit(child: ChildProcessWithoutNullStreams, timeoutMs: number): Promise<boolean> {
+  if (child.exitCode !== null) {
+    return Promise.resolve(true);
+  }
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      child.off("exit", onExit);
+      resolve(false);
+    }, timeoutMs);
+    timeout.unref?.();
+    const onExit = (): void => {
+      clearTimeout(timeout);
+      resolve(true);
+    };
+    child.once("exit", onExit);
+  });
+}
+
+async function taskkill(pid: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    execFile("taskkill.exe", ["/pid", String(pid), "/t", "/f"], () => resolve());
+  });
+}
+
+function removeHome(home: string): void {
+  rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

@@ -39,6 +39,7 @@ import {
 } from "./bot-preferences.js";
 import { renderAgentUpdateJobAction, type ChannelActionResponse } from "./channel-actions.js";
 import { ChannelCommandService } from "./channel-command-service.js";
+import { runChannelPeerPrompt } from "./channel-peer-prompt.js";
 import { deliverChannelAction } from "./channel-runtime.js";
 import {
   agentLabel,
@@ -69,7 +70,6 @@ import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./he
 import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
 import { RemoteRelayClient } from "./peer-client.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
-import { peerPromptProxyPayload } from "./remote-prompt.js";
 import { configureRedaction, redactText } from "./redaction.js";
 import { canWriteWithLock, SessionLockStore } from "./session-locks.js";
 import {
@@ -1369,99 +1369,45 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     chatId: TelegramChatId,
     prompt: PromptEnvelope,
   ): Promise<boolean> => {
-    const targetPeerId = preferencesStore.get(contextKey).targetPeerId;
-    if (!targetPeerId) {
-      return false;
-    }
+    const targetPeerId = preferencesStore.get(contextKey).targetPeerId ?? undefined;
     const parsed = parseContextKey(contextKey);
     const messageThreadId = parsed.messageThreadId;
-    let responseMessageId: number | undefined;
-    let accumulated = "";
-    let lastEditAt = 0;
-    let completed = false;
-    const typing = setInterval(() => {
-      void sendChatActionSafe(ctx.api, chatId, "typing", messageThreadId).catch(() => {});
-    }, 4_000);
-    typing.unref?.();
-    void sendChatActionSafe(ctx.api, chatId, "typing", messageThreadId).catch(() => {});
-
-    const flush = async (force = false): Promise<void> => {
-      if (!accumulated.trim()) return;
-      const now = Date.now();
-      if (!force && now - lastEditAt < config.telegramEditMinIntervalMs) return;
-      if (!responseMessageId) {
-        const message = await sendTextMessage(ctx.api, chatId, escapeHTML(accumulated), {
-          fallbackText: accumulated,
+    return runChannelPeerPrompt<number>({
+      targetPeerId,
+      contextKey,
+      prompt,
+      remoteClient,
+      editMinIntervalMs: config.telegramEditMinIntervalMs,
+      typingIntervalMs: TYPING_INTERVAL_MS,
+      sendTyping: () => sendChatActionSafe(ctx.api, chatId, "typing", messageThreadId),
+      sendResponse: async (text) => {
+        const message = await sendTextMessage(ctx.api, chatId, escapeHTML(text), {
+          fallbackText: text,
           messageThreadId,
         });
-        responseMessageId = message.message_id;
-      } else {
-        await safeEditMessage(bot, chatId, responseMessageId, escapeHTML(accumulated), {
-          fallbackText: accumulated,
-        });
-      }
-      lastEditAt = now;
-    };
-
-    const done = new Promise<void>((resolve) => {
-      const timeout = setTimeout(resolve, 30 * 60 * 1000);
-      timeout.unref?.();
-      const subscription = remoteClient.subscribe(targetPeerId, (event) => {
-        if (event.type === "turn_start") {
-          void safeReply(ctx, `<b>Remote peer working on:</b>\n${escapeHTML(event.prompt)}`, {
-            fallbackText: `Remote peer working on:\n${event.prompt}`,
-          });
-        } else if (event.type === "text_delta") {
-          accumulated += event.delta;
-          void flush(false).catch(() => {});
-        } else if (event.type === "tool_start") {
-          void safeReply(ctx, `<b>Remote tool:</b> <code>${escapeHTML(event.toolName)}</code>`, {
-            fallbackText: `Remote tool: ${event.toolName}`,
-          }).catch(() => {});
-        } else if (event.type === "turn_complete") {
-          completed = true;
-          clearTimeout(timeout);
-          subscription.close();
-          resolve();
-        } else if (event.type === "turn_error") {
-          accumulated += `\n\nError: ${event.error}`;
-          completed = true;
-          clearTimeout(timeout);
-          subscription.close();
-          resolve();
-        }
-      }, (error) => {
-        accumulated += `\n\nRemote event stream failed: ${error.message}`;
-        clearTimeout(timeout);
-        resolve();
-      }, contextKey);
-    });
-
-    try {
-      const result = await remoteClient.webProxy(targetPeerId, await peerPromptProxyPayload(prompt), prompt.activityActor, contextKey);
-      if (result && typeof result === "object" && "queued" in result && (result as { queued?: boolean }).queued) {
-        const queueId = String((result as { queueId?: unknown }).queueId ?? "");
+        return message.message_id;
+      },
+      editResponse: (messageId, text) => safeEditMessage(bot, chatId, messageId, escapeHTML(text), {
+        fallbackText: text,
+      }),
+      sendTurnStart: (remotePrompt) => safeReply(ctx, `<b>Remote peer working on:</b>\n${escapeHTML(remotePrompt)}`, {
+        fallbackText: `Remote peer working on:\n${remotePrompt}`,
+      }),
+      sendToolStart: (toolName) => safeReply(ctx, `<b>Remote tool:</b> <code>${escapeHTML(toolName)}</code>`, {
+        fallbackText: `Remote tool: ${toolName}`,
+      }),
+      sendQueued: async (queueId) => {
         const keyboard = queueId ? new InlineKeyboard().text("Cancel queued message", `peer_queue_cancel:${targetPeerId}:${queueId}`) : undefined;
         await safeReply(ctx, escapeHTML(`Remote prompt queued${queueId ? `: ${queueId}` : ""}.`), {
           fallbackText: `Remote prompt queued${queueId ? `: ${queueId}` : ""}.`,
           replyMarkup: keyboard,
         });
-        return true;
-      }
-      await done;
-      await flush(true);
-      if (!accumulated.trim() && completed) {
-        await safeReply(ctx, escapeHTML("Remote turn completed."), { fallbackText: "Remote turn completed." });
-      }
-      return true;
-    } catch (error) {
-      await safeReply(ctx, escapeHTML(`Remote peer failed: ${friendlyErrorText(error)}`), {
-        fallbackText: `Remote peer failed: ${friendlyErrorText(error)}`,
-      });
-      return true;
-    } finally {
-      clearInterval(typing);
-    }
+      },
+      sendCompleted: () => safeReply(ctx, escapeHTML("Remote turn completed."), { fallbackText: "Remote turn completed." }),
+      sendFailure: (message) => safeReply(ctx, escapeHTML(`Remote peer failed: ${message}`), {
+        fallbackText: `Remote peer failed: ${message}`,
+      }),
+    });
   };
 
   bot.callbackQuery(/^peer_queue_cancel:([^:]+):([a-z0-9]+)$/, async (ctx) => {
