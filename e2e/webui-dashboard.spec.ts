@@ -230,6 +230,32 @@ function metrics() {
     queue: { length: 1, paused: false },
     turns: { active: 1, completed: 4, failed: 0, aborted: 0, averageDurationMs: 1200 },
     jobs: { total: 2, queued: 1, running: 1, completed: 0, failed: 0, aborted: 0 },
+    process: {
+      pid: 1234,
+      nodeVersion: "v24.13.0",
+      platform: "linux",
+      arch: "x64",
+      uptimeMs: 12_000,
+      startedAt: new Date().toISOString(),
+      memory: {
+        rssBytes: 128 * 1024 * 1024,
+        heapTotalBytes: 64 * 1024 * 1024,
+        heapUsedBytes: 32 * 1024 * 1024,
+        externalBytes: 1024,
+        arrayBuffersBytes: 512,
+      },
+      cpu: {
+        userMs: 120,
+        systemMs: 30,
+        totalMs: 150,
+        percentSinceStart: 1.25,
+      },
+      eventLoop: {
+        delayMeanMs: 1.1,
+        delayMaxMs: 8.5,
+        delayP95Ms: 3.4,
+      },
+    },
     adapters: {
       telegram: { queued: 0, running: 0, completed: 2, failed: 0, retries: 0, rateLimitHits: 0, buckets: [] },
       discord: { queued: 0, running: 0, completed: 1, failed: 0, retries: 0, rateLimitHits: 0, buckets: [] },

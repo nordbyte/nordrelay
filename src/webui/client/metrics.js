@@ -25,6 +25,29 @@ function metricJobRows(d){
     ['Aborted',jobs.aborted]
   ];
 }
+function metricProcessRows(d){
+  const p=d.process||{};
+  const memory=p.memory||{};
+  const cpu=p.cpu||{};
+  const loop=p.eventLoop||{};
+  return [
+    ['PID',p.pid],
+    ['Node',p.nodeVersion],
+    ['Platform',[p.platform,p.arch].filter(Boolean).join(' ')],
+    ['Uptime',fmtDuration(p.uptimeMs)],
+    ['Started',fmtDate(p.startedAt)],
+    ['RSS',fmtBytes(memory.rssBytes||0)],
+    ['Heap used',fmtBytes(memory.heapUsedBytes||0)],
+    ['Heap total',fmtBytes(memory.heapTotalBytes||0)],
+    ['CPU total',fmtDuration(cpu.totalMs)],
+    ['CPU avg',cpu.percentSinceStart===null||cpu.percentSinceStart===undefined?'-':cpu.percentSinceStart+'%'],
+    ['Event loop p95',formatMs(loop.delayP95Ms)],
+    ['Event loop max',formatMs(loop.delayMaxMs)]
+  ];
+}
+function formatMs(value){
+  return value===null||value===undefined?'-':value+'ms';
+}
 function rateRows(name,rate){
   return [
     ['Queued',rate?.queued??0],
@@ -42,6 +65,7 @@ function renderMetrics(d){
   const adapters=d.adapters||{};
   document.getElementById('metricsPanel').innerHTML='<div class="metrics-grid">'+
     card('Runtime',metricStatusRows(d))+
+    card('Process',metricProcessRows(d))+
     card('Jobs',metricJobRows(d))+
     card('Telegram rate limits',rateRows('',adapters.telegram).map(([k,v])=>[String(k).trim(),v]))+
     card('Discord rate limits',rateRows('',adapters.discord).map(([k,v])=>[String(k).trim(),v]))+

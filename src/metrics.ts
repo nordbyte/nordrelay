@@ -1,7 +1,13 @@
+import { monitorEventLoopDelay } from "node:perf_hooks";
+
 import { getDiscordRateLimitMetrics } from "./discord-rate-limit.js";
 import type { UnifiedJobDto } from "./relay-runtime-types.js";
 import { getTelegramRateLimitMetrics } from "./telegram-rate-limit.js";
 import type { WebActivityEvent } from "./web-state.js";
+
+const startedAt = Date.now();
+const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
+eventLoopDelay.enable();
 
 export interface RuntimeMetricsDto {
   generatedAt: string;
@@ -23,6 +29,32 @@ export interface RuntimeMetricsDto {
     completed: number;
     failed: number;
     aborted: number;
+  };
+  process: {
+    pid: number;
+    nodeVersion: string;
+    platform: string;
+    arch: string;
+    uptimeMs: number;
+    startedAt: string;
+    memory: {
+      rssBytes: number;
+      heapTotalBytes: number;
+      heapUsedBytes: number;
+      externalBytes: number;
+      arrayBuffersBytes: number;
+    };
+    cpu: {
+      userMs: number;
+      systemMs: number;
+      totalMs: number;
+      percentSinceStart: number | null;
+    };
+    eventLoop: {
+      delayMeanMs: number | null;
+      delayMaxMs: number | null;
+      delayP95Ms: number | null;
+    };
   };
   adapters: {
     telegram: ReturnType<typeof getTelegramRateLimitMetrics>;
@@ -63,11 +95,56 @@ export function buildRuntimeMetrics(input: {
       failed: countJobs(input.jobs, "failed"),
       aborted: countJobs(input.jobs, "aborted"),
     },
+    process: processMetrics(),
     adapters: {
       telegram: getTelegramRateLimitMetrics(),
       discord: getDiscordRateLimitMetrics(),
     },
   };
+}
+
+function processMetrics(): RuntimeMetricsDto["process"] {
+  const memory = process.memoryUsage();
+  const cpu = process.cpuUsage();
+  const uptimeMs = Math.max(0, Math.round(process.uptime() * 1000));
+  const totalMs = Math.round((cpu.user + cpu.system) / 1000);
+  return {
+    pid: process.pid,
+    nodeVersion: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    uptimeMs,
+    startedAt: new Date(startedAt).toISOString(),
+    memory: {
+      rssBytes: memory.rss,
+      heapTotalBytes: memory.heapTotal,
+      heapUsedBytes: memory.heapUsed,
+      externalBytes: memory.external,
+      arrayBuffersBytes: memory.arrayBuffers,
+    },
+    cpu: {
+      userMs: Math.round(cpu.user / 1000),
+      systemMs: Math.round(cpu.system / 1000),
+      totalMs,
+      percentSinceStart: uptimeMs > 0 ? roundMetric((totalMs / uptimeMs) * 100) : null,
+    },
+    eventLoop: {
+      delayMeanMs: nanosecondsToMilliseconds(eventLoopDelay.mean),
+      delayMaxMs: nanosecondsToMilliseconds(eventLoopDelay.max),
+      delayP95Ms: nanosecondsToMilliseconds(eventLoopDelay.percentile(95)),
+    },
+  };
+}
+
+function nanosecondsToMilliseconds(value: number): number | null {
+  if (!Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  return roundMetric(value / 1_000_000);
+}
+
+function roundMetric(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function countJobs(jobs: UnifiedJobDto[], status: UnifiedJobDto["status"]): number {
