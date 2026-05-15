@@ -426,6 +426,19 @@ OpenClaw setup:
 - Optional: set `OPENCLAW_HOME` or `OPENCLAW_STATE_DIR` if your OpenClaw session state is stored outside `~/.openclaw`.
 - Optional: set `OPENCLAW_DEFAULT_MODEL`, `OPENCLAW_DEFAULT_THINKING`, and `OPENCLAW_DEFAULT_PROFILE`.
 
+Optional X/Twitter workflow for OpenClaw:
+
+- Use [TweetClaw](https://github.com/Xquik-dev/tweetclaw) when NordRelay is driving an OpenClaw agent that needs to scrape tweets, search tweet replies, post tweets or replies, run follower exports, look up users, upload or download media, send direct messages, manage monitors, deliver webhooks, or run giveaway draws.
+- Install the official [`@xquik/tweetclaw`](https://www.npmjs.com/package/@xquik/tweetclaw) package in the same OpenClaw host:
+
+```bash
+openclaw plugins install @xquik/tweetclaw
+openclaw config set tools.alsoAllow '["explore", "tweetclaw"]'
+```
+
+- Keep Xquik API keys or MPP signing keys in OpenClaw local config. Do not send those credentials through Telegram, Discord, Slack, WebUI, or peer prompts.
+- Use NordRelay approvals and locks for the chat control plane, then review OpenClaw approvals before write-like actions such as posting, replying, following, direct messages, monitors, webhooks, profile changes, or deletes.
+
 Claude Code setup:
 
 - Install Claude Code and confirm `claude --help` works on the host, or use the SDK bundled runtime.
