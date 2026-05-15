@@ -28,6 +28,25 @@ export async function runSettingsWizardTest(
   return { channel: parsedChannel, checkedAt: new Date().toISOString(), checks };
 }
 
+export function mergeSettingsWizardTestSettings(
+  activeSettings: Record<string, string | undefined>,
+  submittedSettings: Record<string, string>,
+): Record<string, string> {
+  const merged: Record<string, string> = {};
+  for (const [key, value] of Object.entries(activeSettings)) {
+    if (value !== undefined) {
+      merged[key] = value;
+    }
+  }
+  for (const [key, value] of Object.entries(submittedSettings)) {
+    if (typeof value !== "string" || isMaskedSecret(value)) {
+      continue;
+    }
+    merged[key] = value;
+  }
+  return merged;
+}
+
 function parseSettingsWizardChannel(value: string): SettingsWizardChannel {
   if (value === "telegram" || value === "discord" || value === "slack") {
     return value;

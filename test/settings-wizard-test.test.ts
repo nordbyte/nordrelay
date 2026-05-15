@@ -1,8 +1,26 @@
 import { describe, expect, it } from "vitest";
 
-import { runSettingsWizardTest } from "../src/settings-wizard-test.js";
+import { mergeSettingsWizardTestSettings, runSettingsWizardTest } from "../src/settings-wizard-test.js";
 
 describe("settings wizard test checks", () => {
+  it("keeps existing secrets for live checks when the WebUI submits masked values", () => {
+    const settings = mergeSettingsWizardTestSettings(
+      {
+        TELEGRAM_BOT_TOKEN: "123456789:real-token-from-local-config",
+        TELEGRAM_TRANSPORT: "polling",
+      },
+      {
+        TELEGRAM_BOT_TOKEN: "1234...nfig",
+        TELEGRAM_TRANSPORT: "webhook",
+      },
+    );
+
+    expect(settings).toMatchObject({
+      TELEGRAM_BOT_TOKEN: "123456789:real-token-from-local-config",
+      TELEGRAM_TRANSPORT: "webhook",
+    });
+  });
+
   it("validates Telegram webhook settings without leaking configured secrets", async () => {
     const result = await runSettingsWizardTest("telegram", {
       TELEGRAM_BOT_TOKEN: "1234...abcd",
