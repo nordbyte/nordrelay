@@ -180,6 +180,29 @@ test.describe("NordRelay WebUI", () => {
     });
   });
 
+  test("treats configured masked Telegram secrets as present in setup wizard status", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
+    await page.route("**/api/settings", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(settingsWithConfiguredTelegramToken()),
+      });
+    });
+
+    await page.goto(mock.baseUrl);
+    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "Setup wizard" }).click();
+
+    const telegramCard = page.locator(".wizard-card").filter({ hasText: "Telegram" });
+    await expect(telegramCard).toContainText("ready");
+    await expect(telegramCard).not.toContainText("Missing: TELEGRAM_BOT_TOKEN");
+  });
+
   test("blocks wizard save while required settings are missing", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
@@ -537,6 +560,18 @@ function settings() {
       settingRecord("SLACK_COMMAND", "Slack Slash command", "Slack", "string", "Slash command configured in Slack.", "", "/nordrelay", false),
     ],
   };
+}
+
+function settingsWithConfiguredTelegramToken() {
+  const snapshot = settings();
+  const token = snapshot.settings.find((setting) => setting.key === "TELEGRAM_BOT_TOKEN");
+  if (token) {
+    token.value = "12345...masked";
+    token.effectiveValue = "12345...masked";
+    token.configured = true;
+    token.masked = true;
+  }
+  return snapshot;
 }
 
 function settingRecord(key: string, label: string, group: string, kind: string, description: string, value: string, effectiveValue: string, configured: boolean, options?: string[], help?: string) {
