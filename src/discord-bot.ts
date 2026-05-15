@@ -121,7 +121,8 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     return null;
   }
   if (!config.discordBotToken) {
-    throw new Error("DISCORD_ENABLED=true requires DISCORD_BOT_TOKEN.");
+    console.warn("Discord adapter disabled: DISCORD_ENABLED=true requires DISCORD_BOT_TOKEN.");
+    return null;
   }
 
   configureRedaction(config.telegramRedactPatterns);

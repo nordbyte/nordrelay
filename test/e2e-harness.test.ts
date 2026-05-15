@@ -25,21 +25,35 @@ const sqliteAvailable = (() => {
 describe("adapter and e2e harness primitives", () => {
   it("exposes implemented channels separately from runtime enabled state", () => {
     const previousTelegram = process.env.TELEGRAM_ENABLED;
+    const previousTelegramToken = process.env.TELEGRAM_BOT_TOKEN;
     const previousDiscord = process.env.DISCORD_ENABLED;
+    const previousDiscordToken = process.env.DISCORD_BOT_TOKEN;
     delete process.env.TELEGRAM_ENABLED;
+    delete process.env.TELEGRAM_BOT_TOKEN;
     delete process.env.DISCORD_ENABLED;
+    delete process.env.DISCORD_BOT_TOKEN;
     try {
-      const channels = listChannelDescriptors();
+      const disabledChannels = listChannelDescriptors();
 
+      expect(disabledChannels.find((channel) => channel.id === "telegram")).toMatchObject({ status: "available", enabled: false });
+      expect(disabledChannels.find((channel) => channel.id === "discord")).toMatchObject({ status: "available", enabled: false });
+      process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+      process.env.DISCORD_ENABLED = "true";
+      process.env.DISCORD_BOT_TOKEN = "discord-token";
+      const channels = listChannelDescriptors();
       expect(channels.find((channel) => channel.id === "telegram")).toMatchObject({ status: "available", enabled: true });
-      expect(channels.find((channel) => channel.id === "discord")).toMatchObject({ status: "available", enabled: false });
+      expect(channels.find((channel) => channel.id === "discord")).toMatchObject({ status: "available", enabled: true });
       expect(channels.find((channel) => channel.id === "whatsapp")?.status).toBe("planned");
       expect(new TelegramChannelAdapter().capabilities.has("typing")).toBe(true);
     } finally {
       if (previousTelegram === undefined) delete process.env.TELEGRAM_ENABLED;
       else process.env.TELEGRAM_ENABLED = previousTelegram;
+      if (previousTelegramToken === undefined) delete process.env.TELEGRAM_BOT_TOKEN;
+      else process.env.TELEGRAM_BOT_TOKEN = previousTelegramToken;
       if (previousDiscord === undefined) delete process.env.DISCORD_ENABLED;
       else process.env.DISCORD_ENABLED = previousDiscord;
+      if (previousDiscordToken === undefined) delete process.env.DISCORD_BOT_TOKEN;
+      else process.env.DISCORD_BOT_TOKEN = previousDiscordToken;
     }
   });
 

@@ -21,6 +21,7 @@ export interface ConnectorRuntimeState {
   sessionMode?: string;
   authenticated?: boolean;
   authMethod?: string;
+  adapterWarnings?: string[];
   codexCli?: string;
   piCli?: string;
   hermesCli?: string;

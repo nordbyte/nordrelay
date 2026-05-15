@@ -39,6 +39,7 @@ import type { StateBackendKind } from "./state-backend.js";
 export type ToolVerbosity = "all" | "summary" | "errors-only" | "none";
 
 export interface ConnectorConfig {
+  adapterWarnings?: string[];
   telegramEnabled: boolean;
   telegramBotToken: string;
   telegramRateLimitMinIntervalMs: number;
@@ -146,8 +147,9 @@ export interface ConnectorConfig {
 export function loadConfig(): ConnectorConfig {
   loadEnvFile(path.resolve(process.cwd(), ".env"));
 
-  const telegramEnabled = parseBooleanEnv(optionalString(process.env.TELEGRAM_ENABLED), true);
-  const telegramBotToken = telegramEnabled ? requireEnv("TELEGRAM_BOT_TOKEN") : "";
+  const adapterWarnings: string[] = [];
+  const requestedTelegramEnabled = parseBooleanEnv(optionalString(process.env.TELEGRAM_ENABLED), true);
+  const telegramBotToken = optionalString(process.env.TELEGRAM_BOT_TOKEN) ?? "";
   const telegramRateLimitMinIntervalMs = parseNonNegativeIntegerEnv(optionalString(process.env.TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS), 80, "TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS");
   const telegramEditMinIntervalMs = parseNonNegativeIntegerEnv(optionalString(process.env.TELEGRAM_EDIT_MIN_INTERVAL_MS), 1_200, "TELEGRAM_EDIT_MIN_INTERVAL_MS");
   const mirrorMode = parseMirrorMode(optionalString(process.env.NORDRELAY_CLI_MIRROR_MODE), "status");
@@ -166,7 +168,7 @@ export function loadConfig(): ConnectorConfig {
   const telegramWebhookPort = parsePositiveIntegerEnv(optionalString(process.env.TELEGRAM_WEBHOOK_PORT), 8080, "TELEGRAM_WEBHOOK_PORT");
   const telegramWebhookPath = parseWebhookPath(optionalString(process.env.TELEGRAM_WEBHOOK_PATH));
   const telegramWebhookSecret = optionalString(process.env.TELEGRAM_WEBHOOK_SECRET);
-  const discordEnabled = parseBooleanEnv(optionalString(process.env.DISCORD_ENABLED), false);
+  const requestedDiscordEnabled = parseBooleanEnv(optionalString(process.env.DISCORD_ENABLED), false);
   const discordBotToken = optionalString(process.env.DISCORD_BOT_TOKEN);
   const discordClientId = optionalString(process.env.DISCORD_CLIENT_ID);
   const discordGuildIds = parseOptionalStringList(optionalString(process.env.DISCORD_GUILD_IDS));
@@ -279,17 +281,27 @@ export function loadConfig(): ConnectorConfig {
   const dashboardCacheTtlMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_DASHBOARD_CACHE_TTL_MS), 10_000, "NORDRELAY_DASHBOARD_CACHE_TTL_MS");
   const unifiedJobMaxItems = parsePositiveIntegerEnv(optionalString(process.env.NORDRELAY_UNIFIED_JOB_MAX_ITEMS), 1000, "NORDRELAY_UNIFIED_JOB_MAX_ITEMS");
 
+  let telegramEnabled = requestedTelegramEnabled;
   if (telegramEnabled && telegramTransport === "webhook" && !telegramWebhookUrl) {
-    throw new Error("TELEGRAM_TRANSPORT=webhook requires TELEGRAM_WEBHOOK_URL");
+    telegramEnabled = false;
+    adapterWarnings.push("Telegram disabled: TELEGRAM_TRANSPORT=webhook requires TELEGRAM_WEBHOOK_URL.");
   }
+  if (telegramEnabled && !telegramBotToken) {
+    telegramEnabled = false;
+    adapterWarnings.push("Telegram disabled: TELEGRAM_BOT_TOKEN is missing.");
+  }
+  let discordEnabled = requestedDiscordEnabled;
   if (discordEnabled && !discordBotToken) {
-    throw new Error("DISCORD_ENABLED=true requires DISCORD_BOT_TOKEN");
+    discordEnabled = false;
+    adapterWarnings.push("Discord disabled: DISCORD_ENABLED=true requires DISCORD_BOT_TOKEN.");
   }
   if (!telegramEnabled && !discordEnabled) {
-    throw new Error("At least one chat adapter must be enabled.");
+    const detail = adapterWarnings.length > 0 ? ` ${adapterWarnings.join(" ")}` : "";
+    throw new Error(`At least one usable chat adapter must be enabled.${detail}`);
   }
 
   return {
+    adapterWarnings,
     telegramEnabled,
     telegramBotToken,
     telegramRateLimitMinIntervalMs,

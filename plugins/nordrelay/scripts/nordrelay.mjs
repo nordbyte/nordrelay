@@ -864,11 +864,29 @@ async function commandDoctor(options) {
   const userSnapshot = userStore?.snapshot();
   const checks = [];
   checks.push(check("Node.js >= 22", Number.parseInt(process.versions.node.split(".")[0], 10) >= 22, process.version));
-  const telegramEnabled = process.env.TELEGRAM_ENABLED !== "false";
-  const discordEnabled = process.env.DISCORD_ENABLED === "true";
-  checks.push(check("Telegram bot token", !telegramEnabled || Boolean(process.env.TELEGRAM_BOT_TOKEN), telegramEnabled ? (process.env.TELEGRAM_BOT_TOKEN ? "configured" : "missing") : "disabled", telegramEnabled ? "fail" : "warn"));
-  checks.push(check("Discord bot token", !discordEnabled || Boolean(process.env.DISCORD_BOT_TOKEN), discordEnabled ? (process.env.DISCORD_BOT_TOKEN ? "configured" : "missing") : "disabled", discordEnabled ? "fail" : "warn"));
-  checks.push(check("Discord client ID", !discordEnabled || Boolean(process.env.DISCORD_CLIENT_ID), discordEnabled ? (process.env.DISCORD_CLIENT_ID ? "configured" : "missing; slash command auto-registration disabled") : "disabled", "warn"));
+  const telegramRequested = process.env.TELEGRAM_ENABLED !== "false";
+  const discordRequested = process.env.DISCORD_ENABLED === "true";
+  const telegramUsable = telegramRequested && Boolean(process.env.TELEGRAM_BOT_TOKEN);
+  const discordUsable = discordRequested && Boolean(process.env.DISCORD_BOT_TOKEN);
+  checks.push(check(
+    "Telegram bot token",
+    !telegramRequested || telegramUsable,
+    telegramRequested ? (telegramUsable ? "configured" : "missing; Telegram adapter will be disabled") : "disabled",
+    telegramRequested && !discordUsable ? "fail" : "warn",
+  ));
+  checks.push(check(
+    "Discord bot token",
+    !discordRequested || discordUsable,
+    discordRequested ? (discordUsable ? "configured" : "missing; Discord adapter will be disabled") : "disabled",
+    discordRequested && !telegramUsable ? "fail" : "warn",
+  ));
+  checks.push(check(
+    "Usable chat adapter",
+    telegramUsable || discordUsable,
+    telegramUsable && discordUsable ? "Telegram and Discord" : telegramUsable ? "Telegram" : discordUsable ? "Discord" : "none",
+    "fail",
+  ));
+  checks.push(check("Discord client ID", !discordUsable || Boolean(process.env.DISCORD_CLIENT_ID), discordUsable ? (process.env.DISCORD_CLIENT_ID ? "configured" : "missing; slash command auto-registration disabled") : "disabled", "warn"));
   checks.push(check("User store", Boolean(userStore), userStore ? userStore.filePath : "missing runtime", userStore ? "pass" : "fail"));
   checks.push(check("Admin user", Boolean(userSnapshot?.adminConfigured), userSnapshot?.adminConfigured ? "configured" : "missing"));
   checks.push(check("WebUI login", true, "required for every dashboard request"));

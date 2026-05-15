@@ -126,7 +126,8 @@ export class TelegramChannelAdapter implements ChannelAdapter {
   readonly capabilities = new Set<ChannelCapability>(TELEGRAM_CAPABILITIES);
 
   describe(): ChannelDescriptor {
-    const enabled = process.env.TELEGRAM_ENABLED !== "false";
+    const requested = process.env.TELEGRAM_ENABLED !== "false";
+    const enabled = requested && Boolean(process.env.TELEGRAM_BOT_TOKEN);
     return {
       id: this.id,
       label: this.label,
@@ -134,8 +135,10 @@ export class TelegramChannelAdapter implements ChannelAdapter {
       status: "available",
       enabled,
       notes: enabled
-        ? "Telegram bot runtime is enabled by default."
-        : "Telegram bot runtime is disabled.",
+        ? "Telegram bot runtime is enabled."
+        : requested
+          ? "Telegram bot runtime is disabled because TELEGRAM_BOT_TOKEN is missing."
+          : "Telegram bot runtime is disabled.",
     };
   }
 }
@@ -146,7 +149,8 @@ export class DiscordChannelAdapter implements ChannelAdapter {
   readonly capabilities = new Set<ChannelCapability>(DISCORD_CAPABILITIES);
 
   describe(): ChannelDescriptor {
-    const enabled = process.env.DISCORD_ENABLED === "true";
+    const requested = process.env.DISCORD_ENABLED === "true";
+    const enabled = requested && Boolean(process.env.DISCORD_BOT_TOKEN);
     return {
       id: this.id,
       label: this.label,
@@ -155,7 +159,9 @@ export class DiscordChannelAdapter implements ChannelAdapter {
       enabled,
       notes: enabled
         ? "Discord bot runtime is enabled."
-        : "Enable with DISCORD_ENABLED=true and DISCORD_BOT_TOKEN.",
+        : requested
+          ? "Discord bot runtime is disabled because DISCORD_BOT_TOKEN is missing."
+          : "Enable with DISCORD_ENABLED=true and DISCORD_BOT_TOKEN.",
     };
   }
 }

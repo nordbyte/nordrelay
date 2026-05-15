@@ -115,8 +115,8 @@ describe("loadConfig", () => {
     vi.restoreAllMocks();
   });
 
-  it("throws when TELEGRAM_BOT_TOKEN is missing", () => {
-    expect(() => loadConfig()).toThrow("Missing required environment variable: TELEGRAM_BOT_TOKEN");
+  it("throws when no usable chat adapter is configured", () => {
+    expect(() => loadConfig()).toThrow("At least one usable chat adapter must be enabled");
   });
 
   it("parses a valid config correctly", () => {
@@ -130,6 +130,7 @@ describe("loadConfig", () => {
     const config = loadConfig();
 
     expect(config).toEqual({
+      adapterWarnings: [],
       telegramEnabled: true,
       telegramBotToken: "bot-token",
       telegramRateLimitMinIntervalMs: 80,
@@ -407,7 +408,7 @@ describe("loadConfig", () => {
     expect(config.stateBackend).toBe("sqlite");
   });
 
-  it("requires a webhook URL when webhook transport is enabled", () => {
+  it("disables Telegram when webhook transport has no URL and no other chat adapter is usable", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
     process.env.TELEGRAM_TRANSPORT = "webhook";
 
@@ -449,6 +450,29 @@ describe("loadConfig", () => {
     expect(config.telegramEnabled).toBe(false);
     expect(config.telegramBotToken).toBe("");
     expect(config.discordEnabled).toBe(true);
+  });
+
+  it("disables requested Telegram without a token when Discord is usable", () => {
+    process.env.DISCORD_ENABLED = "true";
+    process.env.DISCORD_BOT_TOKEN = "discord-token";
+
+    const config = loadConfig();
+
+    expect(config.telegramEnabled).toBe(false);
+    expect(config.telegramBotToken).toBe("");
+    expect(config.discordEnabled).toBe(true);
+    expect(config.adapterWarnings).toContain("Telegram disabled: TELEGRAM_BOT_TOKEN is missing.");
+  });
+
+  it("disables requested Discord without a token when Telegram is usable", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.DISCORD_ENABLED = "true";
+
+    const config = loadConfig();
+
+    expect(config.telegramEnabled).toBe(true);
+    expect(config.discordEnabled).toBe(false);
+    expect(config.adapterWarnings).toContain("Discord disabled: DISCORD_ENABLED=true requires DISCORD_BOT_TOKEN.");
   });
 
   it("loads values from .env without overwriting existing environment variables", () => {

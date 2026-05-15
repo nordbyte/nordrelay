@@ -56,6 +56,9 @@ try {
   if (!authStatus.authenticated) {
     console.warn(`Warning: ${agentLabel(config.defaultAgent)} is not authenticated. ${authStatus.detail}`);
   }
+  for (const warning of config.adapterWarnings ?? []) {
+    console.warn(`Warning: ${warning}`);
+  }
   console.log(`Workspace: ${config.workspace}`);
   console.log(`Enabled agents: ${enabledAgents(config).join(", ")} (default: ${config.defaultAgent})`);
   if (config.codexModel) {
@@ -105,6 +108,7 @@ try {
     openClawGateway: config.openClawGatewayUrl,
     telegramTransport: config.telegramTransport,
     discordEnabled: config.discordEnabled,
+    adapterWarnings: config.adapterWarnings ?? [],
   });
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);

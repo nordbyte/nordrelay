@@ -162,7 +162,7 @@ Telegram output:
 
 Discord input and output:
 
-- Enable Discord with `DISCORD_ENABLED=true` and `DISCORD_BOT_TOKEN`.
+- Enable Discord with `DISCORD_ENABLED=true` and `DISCORD_BOT_TOKEN`. If a requested chat adapter is missing its token, NordRelay disables that adapter and keeps running as long as another chat adapter is usable.
 - Set `DISCORD_CLIENT_ID` to let NordRelay register slash commands automatically.
 - `DISCORD_COMMAND_MODE=both` supports slash commands and `/command` text messages. Set it to `slash` if the bot should not read message commands.
 - `DISCORD_MESSAGE_CONTENT_ENABLED=true` lets regular Discord messages become prompts. The matching privileged intent must also be enabled in the Discord Developer Portal.
@@ -760,7 +760,7 @@ Voice transcription uses `OPENAI_API_KEY`, not `CODEX_API_KEY`.
 Telegram:
 
 - `TELEGRAM_ENABLED`: starts the Telegram adapter. Defaults to `true`.
-- `TELEGRAM_BOT_TOKEN`: required BotFather token.
+- `TELEGRAM_BOT_TOKEN`: BotFather token. Required for the Telegram adapter to start.
 - `TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS`: minimum interval for normal Telegram API sends. Defaults to `80`.
 - `TELEGRAM_EDIT_MIN_INTERVAL_MS`: minimum interval for Telegram message edits. Defaults to `1200`.
 - `TELEGRAM_TRANSPORT`: `polling` or `webhook`. Defaults to `polling`.
@@ -780,7 +780,7 @@ Telegram:
 Discord:
 
 - `DISCORD_ENABLED`: starts the Discord adapter. Defaults to `false`.
-- `DISCORD_BOT_TOKEN`: required Discord bot token when Discord is enabled.
+- `DISCORD_BOT_TOKEN`: Discord bot token. Required for the Discord adapter to start.
 - `DISCORD_CLIENT_ID`: Discord application/client id used for slash-command registration.
 - `DISCORD_GUILD_IDS`: optional comma-separated guild ids for instant guild slash-command registration.
 - `DISCORD_ALLOWED_GUILD_IDS`: optional guild allow-list before user/group permissions are checked.
