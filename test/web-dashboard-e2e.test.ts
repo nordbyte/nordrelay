@@ -27,6 +27,19 @@ describe("web dashboard browser-flow assets", () => {
     expect(contract).toContain('dynamic("/api/jobs/:id/action"');
   });
 
+  it("renders Discord setting help icons from setting metadata", () => {
+    const js = dashboardJs();
+    const css = dashboardCss();
+    const metadata = readFileSync("src/config-metadata.ts", "utf8");
+
+    expect(metadata).toContain("DISCORD_SETTING_HELP");
+    expect(metadata).toContain("DISCORD_BOT_TOKEN");
+    expect(metadata).toContain("Discord Developer Portal");
+    expect(js).toContain("function settingHelp");
+    expect(js).toContain("class=\"setting-info\"");
+    expect(css).toContain(".setting-info");
+  });
+
   it("refreshes the active page after an agent switch", () => {
     const js = dashboardJs();
 

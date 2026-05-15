@@ -46,6 +46,9 @@ test.describe("NordRelay WebUI", () => {
     await page.getByRole("button", { name: "Settings" }).click();
     await expect(page.locator("#settingsTabs")).toContainText("Agents");
     await expect(page.locator("#settingsForm")).toContainText("Enable Codex");
+    await page.locator('[data-setting-tab="Discord"]').click();
+    await expect(page.locator('[data-setting-box="DISCORD_BOT_TOKEN"] .setting-info')).toHaveAttribute("title", /Discord Developer Portal/);
+    await page.locator('[data-setting-tab="Agents"]').click();
 
     await page.locator('[data-setting="NORDRELAY_PI_ENABLED"]').selectOption("true");
     await expect(page.locator("#settingsStatus")).toContainText("1 unsaved change");
@@ -349,6 +352,7 @@ function settings() {
     settings: [
       { key: "NORDRELAY_CODEX_ENABLED", label: "Enable Codex", description: "Allow Codex sessions.", group: "Agents", kind: "boolean", value: "true", effectiveValue: "true", configured: true, masked: false, restartRequired: true },
       { key: "NORDRELAY_PI_ENABLED", label: "Enable Pi", description: "Allow Pi sessions.", group: "Agents", kind: "boolean", value: "", effectiveValue: "false", configured: false, masked: false, restartRequired: true },
+      { key: "DISCORD_BOT_TOKEN", label: "Discord bot token", description: "Discord bot token.", help: "Discord Developer Portal: open your application, go to Bot, then copy or reset the bot token.", group: "Discord", kind: "secret", value: "", effectiveValue: "", configured: false, masked: false, restartRequired: true },
     ],
   };
 }

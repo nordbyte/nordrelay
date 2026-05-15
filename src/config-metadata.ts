@@ -4,6 +4,7 @@ export interface SettingDefinition {
   group: string;
   kind: "string" | "boolean" | "number" | "secret" | "list" | "json";
   description: string;
+  help?: string;
   restartRequired: boolean;
   options?: string[];
 }
@@ -19,6 +20,23 @@ export const SECRET_KEYS = new Set([
   "TELEGRAM_WEBHOOK_SECRET",
 ]);
 
+const DISCORD_SETTING_HELP: Record<string, string> = {
+  DISCORD_ENABLED: "Set this to true after you create the Discord application, configure the bot token, and invite the bot to the server.",
+  DISCORD_BOT_TOKEN: "Discord Developer Portal: open your application, go to Bot, then copy or reset the bot token. Store only the token value here.",
+  DISCORD_CLIENT_ID: "Discord Developer Portal: open your application, go to General Information, then copy Application ID. This is the client id used for slash commands.",
+  DISCORD_GUILD_IDS: "Enable Developer Mode in Discord, right-click a server, choose Copy Server ID, then paste one or more comma-separated ids for fast guild slash-command registration.",
+  DISCORD_ALLOWED_GUILD_IDS: "Enable Developer Mode in Discord, right-click each allowed server, choose Copy Server ID, then enter the comma-separated allow-list. Leave blank to rely on NordRelay user/group access.",
+  DISCORD_ALLOWED_CHANNEL_IDS: "Enable Developer Mode in Discord, right-click a channel or thread, choose Copy Channel ID or Copy Thread ID, then enter the comma-separated allow-list. Leave blank to rely on registered channel access.",
+  DISCORD_MESSAGE_CONTENT_ENABLED: "Turn this on only if the bot has Message Content Intent enabled in the Discord Developer Portal under Bot > Privileged Gateway Intents.",
+  DISCORD_COMMAND_MODE: "Use slash for registered slash commands only, message for text commands like /session only, or both when Message Content Intent is enabled.",
+  DISCORD_AUTO_REGISTER_COMMANDS: "When enabled, NordRelay registers slash commands at startup. Guild ids update quickly; global command registration can take longer to appear in Discord.",
+  DISCORD_CLI_MIRROR_MODE: "Overrides the channel-neutral mirror default for Discord only. Leave blank to use NORDRELAY_CLI_MIRROR_MODE.",
+  DISCORD_CLI_MIRROR_MIN_UPDATE_MS: "Discord edit/update throttle for mirrored CLI activity. Increase this if Discord rate limits streaming status updates.",
+  DISCORD_NOTIFY_MODE: "Overrides the channel-neutral completion notification default for Discord only. Leave blank to use NORDRELAY_NOTIFY_MODE.",
+  DISCORD_QUIET_HOURS: "Use a local-time range like 22-7, off, or blank to inherit the channel-neutral quiet-hours setting.",
+  DISCORD_AUTO_SEND_ARTIFACTS: "Overrides automatic artifact upload behavior for Discord only. Leave blank to use NORDRELAY_AUTO_SEND_ARTIFACTS.",
+};
+
 export const SETTING_DEFINITIONS: SettingDefinition[] = [
   setting("TELEGRAM_ENABLED", "Enable Telegram", "Telegram", "boolean", "Start the Telegram bot adapter.", true),
   setting("TELEGRAM_BOT_TOKEN", "Telegram bot token", "Telegram", "secret", "BotFather token.", true),
@@ -29,20 +47,20 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   setting("TELEGRAM_WEBHOOK_PATH", "Webhook path", "Telegram", "string", "Webhook request path.", true),
   setting("TELEGRAM_WEBHOOK_SECRET", "Webhook secret", "Telegram", "secret", "Optional Telegram webhook secret token.", true),
 
-  setting("DISCORD_ENABLED", "Enable Discord", "Discord", "boolean", "Start the Discord bot adapter.", true),
-  setting("DISCORD_BOT_TOKEN", "Discord bot token", "Discord", "secret", "Discord bot token.", true),
-  setting("DISCORD_CLIENT_ID", "Discord client ID", "Discord", "string", "Discord application/client id used for slash command registration.", true),
-  setting("DISCORD_GUILD_IDS", "Discord guild IDs", "Discord", "list", "Comma-separated guild ids for instant guild slash-command registration.", true),
-  setting("DISCORD_ALLOWED_GUILD_IDS", "Allowed Discord guilds", "Discord", "list", "Optional comma-separated guild allow-list.", true),
-  setting("DISCORD_ALLOWED_CHANNEL_IDS", "Allowed Discord channels", "Discord", "list", "Optional comma-separated channel allow-list before user/group checks.", true),
-  setting("DISCORD_MESSAGE_CONTENT_ENABLED", "Message content intent", "Discord", "boolean", "Read regular Discord text messages as prompts. Requires enabling the privileged intent in Discord.", true),
-  setting("DISCORD_COMMAND_MODE", "Discord command mode", "Discord", "string", "slash, message, or both.", true, ["slash", "message", "both"]),
-  setting("DISCORD_AUTO_REGISTER_COMMANDS", "Auto-register slash commands", "Discord", "boolean", "Register Discord slash commands on startup when client id is configured.", true),
-  setting("DISCORD_CLI_MIRROR_MODE", "Discord mirror override", "Discord", "string", "Optional Discord override for CLI mirror mode. Uses the NordRelay default when unset.", false, ["off", "status", "final", "full"]),
-  setting("DISCORD_CLI_MIRROR_MIN_UPDATE_MS", "Discord mirror update override", "Discord", "number", "Optional Discord override for mirrored edit interval.", true),
-  setting("DISCORD_NOTIFY_MODE", "Discord notify override", "Discord", "string", "Optional Discord override for completion notifications.", false, ["off", "minimal", "all"]),
-  setting("DISCORD_QUIET_HOURS", "Discord quiet hours override", "Discord", "string", "Optional Discord quiet hours override. Use HH-HH, off, or leave blank for default.", false),
-  setting("DISCORD_AUTO_SEND_ARTIFACTS", "Discord auto-send artifacts override", "Discord", "boolean", "Optional Discord override for automatic artifact summaries/uploads.", false),
+  discordSetting("DISCORD_ENABLED", "Enable Discord", "boolean", "Start the Discord bot adapter.", true),
+  discordSetting("DISCORD_BOT_TOKEN", "Discord bot token", "secret", "Discord bot token.", true),
+  discordSetting("DISCORD_CLIENT_ID", "Discord client ID", "string", "Discord application/client id used for slash command registration.", true),
+  discordSetting("DISCORD_GUILD_IDS", "Discord guild IDs", "list", "Comma-separated guild ids for instant guild slash-command registration.", true),
+  discordSetting("DISCORD_ALLOWED_GUILD_IDS", "Allowed Discord guilds", "list", "Optional comma-separated guild allow-list.", true),
+  discordSetting("DISCORD_ALLOWED_CHANNEL_IDS", "Allowed Discord channels", "list", "Optional comma-separated channel allow-list before user/group checks.", true),
+  discordSetting("DISCORD_MESSAGE_CONTENT_ENABLED", "Message content intent", "boolean", "Read regular Discord text messages as prompts. Requires enabling the privileged intent in Discord.", true),
+  discordSetting("DISCORD_COMMAND_MODE", "Discord command mode", "string", "slash, message, or both.", true, ["slash", "message", "both"]),
+  discordSetting("DISCORD_AUTO_REGISTER_COMMANDS", "Auto-register slash commands", "boolean", "Register Discord slash commands on startup when client id is configured.", true),
+  discordSetting("DISCORD_CLI_MIRROR_MODE", "Discord mirror override", "string", "Optional Discord override for CLI mirror mode. Uses the NordRelay default when unset.", false, ["off", "status", "final", "full"]),
+  discordSetting("DISCORD_CLI_MIRROR_MIN_UPDATE_MS", "Discord mirror update override", "number", "Optional Discord override for mirrored edit interval.", true),
+  discordSetting("DISCORD_NOTIFY_MODE", "Discord notify override", "string", "Optional Discord override for completion notifications.", false, ["off", "minimal", "all"]),
+  discordSetting("DISCORD_QUIET_HOURS", "Discord quiet hours override", "string", "Optional Discord quiet hours override. Use HH-HH, off, or leave blank for default.", false),
+  discordSetting("DISCORD_AUTO_SEND_ARTIFACTS", "Discord auto-send artifacts override", "boolean", "Optional Discord override for automatic artifact summaries/uploads.", false),
 
   setting("NORDRELAY_CODEX_ENABLED", "Enable Codex", "Agents", "boolean", "Allow Codex sessions.", true),
   setting("NORDRELAY_PI_ENABLED", "Enable Pi", "Agents", "boolean", "Allow Pi sessions.", true),
@@ -316,6 +334,18 @@ function setting(
   description: string,
   restartRequired: boolean,
   options?: string[],
+  help?: string,
 ): SettingDefinition {
-  return { key, label, group, kind, description, restartRequired, options };
+  return { key, label, group, kind, description, help, restartRequired, options };
+}
+
+function discordSetting(
+  key: string,
+  label: string,
+  kind: SettingDefinition["kind"],
+  description: string,
+  restartRequired: boolean,
+  options?: string[],
+): SettingDefinition {
+  return setting(key, label, "Discord", kind, description, restartRequired, options, DISCORD_SETTING_HELP[key]);
 }
