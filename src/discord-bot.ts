@@ -26,6 +26,7 @@ import { BotPreferencesStore } from "./bot-preferences.js";
 import { capabilitiesOf, filterActivityEvents, formatLocalDateTime, parseActivityOptions, renderExternalMirrorEvent, renderExternalMirrorStatus, renderPromptFailure, trimLine, type TurnProgress } from "./bot-rendering.js";
 import { renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction } from "./channel-actions.js";
 import { ChannelCommandService } from "./channel-command-service.js";
+import { discordHelpCommandList } from "./channel-command-catalog.js";
 import { deliverChannelAction } from "./channel-runtime.js";
 import type { ChannelContext } from "./channel-adapter.js";
 import { checkAuthStatus, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
@@ -1178,7 +1179,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       "",
       "Send a message to prompt the selected agent, or use slash commands.",
       "",
-      "Core commands: `/agent`, `/agents`, `/auth`, `/login`, `/logout`, `/session`, `/sessions`, `/new`, `/switch`, `/attach`, `/handback`, `/workspaces`, `/pin`, `/unpin`, `/pinned`, `/model`, `/reasoning`, `/fast`, `/launch`, `/launch_profiles`, `/queue`, `/clearqueue`, `/cancel`, `/stop`, `/retry`, `/sync`, `/progress`, `/activity`, `/audit`, `/artifacts`, `/logs`, `/version`, `/diagnostics`, `/support`, `/restart`, `/update`, `/lock`, `/unlock`, `/locks`, `/mirror`, `/notify`, `/voice`, `/channels`, `/whoami`, `/link`, `/register_channel`.",
+      `Core commands: ${discordHelpCommandList()}.`,
       "",
       renderSessionInfoPlain(session.getInfo()),
     ].join("\n"));
