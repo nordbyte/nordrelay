@@ -105,6 +105,35 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#messages")).toContainText("Minimum update interval: 4000 ms");
   });
 
+  test("formats chat markdown and copies code snippets", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text: string) => {
+            (window as unknown as { __copiedText?: string }).__copiedText = text;
+          },
+        },
+      });
+    });
+    await page.goto(mock.baseUrl);
+    await page.getByRole("button", { name: "Chat" }).click();
+
+    await expect(page.locator("#messages .chat-inline-code")).toContainText("npm test");
+    await expect(page.locator("#messages .chat-code-block code")).toContainText("const value = 1;");
+    await expect(page.locator("#messages strong")).toContainText("bold");
+    await expect(page.locator("#messages em")).toContainText("italic");
+    await expect(page.locator('#messages a[href="https://example.com"]')).toContainText("docs");
+    await expect(page.locator("#messages .chat-list li")).toContainText("bullet item");
+    await expect(page.locator("#messages .chat-blockquote")).toContainText("quoted line");
+
+    await page.locator("#messages .chat-inline-code").first().click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __copiedText?: string }).__copiedText)).toBe("npm test");
+    await page.locator("#messages .chat-code-block").first().click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __copiedText?: string }).__copiedText)).toContain("const value = 1;");
+  });
+
   test("renders Discord and Slack access controls and filters registered channels", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
@@ -533,6 +562,7 @@ function chatMessages() {
   return [
     { id: "m1", threadId: "codex-thread-1", role: "user", text: "Existing web message", timestamp: now(), source: "web" },
     { id: "m2", threadId: "codex-thread-1", role: "agent", text: "Existing agent response", timestamp: now(), source: "web" },
+    { id: "m3", threadId: "codex-thread-1", role: "agent", text: "Run `npm test` with **bold** and _italic_ text plus [docs](https://example.com).\n```ts\nconst value = 1;\n```\n- bullet item\n> quoted line", timestamp: now(), source: "web" },
   ];
 }
 
