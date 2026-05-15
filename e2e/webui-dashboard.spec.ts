@@ -123,6 +123,9 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#messages .chat-inline-code")).toContainText("npm test");
     await expect(page.locator("#messages .chat-inline-code").first()).toHaveClass(/copy-id/);
     await expect(page.locator("#messages .chat-inline-code").first()).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    expect(await page.locator("#messages .chat-inline-code").first().evaluate((el) => getComputedStyle(el).fontSize)).toBe(
+      await page.locator("#messages .message-body").first().evaluate((el) => getComputedStyle(el).fontSize),
+    );
     await expect(page.locator("#messages .chat-code-block code")).toContainText("const value = 1;");
     await expect(page.locator("#messages strong")).toContainText("bold");
     await expect(page.locator("#messages em")).toContainText("italic");

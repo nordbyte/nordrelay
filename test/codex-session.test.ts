@@ -451,7 +451,7 @@ describe("CodexSessionService", () => {
     }));
   });
 
-  it("reports attached no-approval Codex threads as fast even when the default is off", async () => {
+  it("does not report attached no-approval Codex threads as fast when the Codex default is off", async () => {
     mockCodexConfig.readCodexFastMode.mockReturnValue(false);
     const service = await CodexSessionService.create(createConfig(), {
       resumeThreadId: "thread-full-access",
@@ -472,7 +472,7 @@ describe("CodexSessionService", () => {
     expect(service.getInfo()).toEqual(expect.objectContaining({
       launchProfileId: "attached-thread",
       approvalPolicy: "never",
-      fastMode: true,
+      fastMode: false,
       unsafeLaunch: true,
     }));
   });
