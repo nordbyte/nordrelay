@@ -101,8 +101,33 @@ export interface PeerSnapshot {
   enabled: boolean;
   listenUrl: string;
   requireTls: boolean;
+  readiness?: PeerReadiness;
   peers: PublicPeerRecord[];
   invitations: PublicPeerInvitationRecord[];
+}
+
+export interface PeerReadiness {
+  enabled: boolean;
+  listenUrl: string;
+  bindHost: string;
+  port: number;
+  tlsEnabled: boolean;
+  requireTls: boolean;
+  localListening: boolean;
+  loopbackOnly: boolean;
+  bindLoopbackOnly: boolean;
+  manualCheckCommand: string;
+  warnings: string[];
+}
+
+export interface PeerEndpointProbeResult {
+  ok: boolean;
+  status: "reachable" | "unreachable";
+  url: string;
+  latencyMs?: number;
+  statusCode?: number;
+  tlsFingerprint?: string;
+  detail: string;
 }
 
 export interface PeerInviteResult {

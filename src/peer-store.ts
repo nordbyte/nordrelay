@@ -61,13 +61,14 @@ export class PeerStore {
     this.filePath = path.join(home, "peers.json");
   }
 
-  snapshot(identity: PeerSnapshot["identity"], options: { enabled: boolean; listenUrl: string; requireTls: boolean }): PeerSnapshot {
+  snapshot(identity: PeerSnapshot["identity"], options: Pick<PeerSnapshot, "enabled" | "listenUrl" | "requireTls" | "readiness">): PeerSnapshot {
     const payload = this.readPayload();
     return {
       identity,
       enabled: options.enabled,
       listenUrl: options.listenUrl,
       requireTls: options.requireTls,
+      readiness: options.readiness,
       peers: payload.peers.map(publicPeer),
       invitations: payload.invitations.map(publicInvitation),
     };

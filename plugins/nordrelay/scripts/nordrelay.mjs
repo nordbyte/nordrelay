@@ -818,7 +818,7 @@ function parsePeerFlags(argv) {
   const copy = [...argv];
   const subcommand = copy[0] && !copy[0].startsWith("-") ? copy.shift() : "list";
   const flags = { subcommand, url: undefined };
-  if (["add", "test", "revoke"].includes(subcommand) && copy[0] && !copy[0].startsWith("-")) {
+  if (["add", "test", "check", "revoke"].includes(subcommand) && copy[0] && !copy[0].startsWith("-")) {
     flags.url = copy.shift();
     flags.id = flags.url;
   }
@@ -826,6 +826,7 @@ function parsePeerFlags(argv) {
     const arg = copy[i];
     if (arg === "--name") flags.name = requireValue(copy, ++i, arg);
     else if (arg === "--code") flags.code = requireValue(copy, ++i, arg);
+    else if (arg === "--expect-fingerprint") flags.expectFingerprint = requireValue(copy, ++i, arg);
     else if (arg === "--public-url") flags.publicUrl = requireValue(copy, ++i, arg);
     else if (arg === "--expires" || arg === "--expires-minutes") flags.expiresMinutes = Number.parseInt(requireValue(copy, ++i, arg), 10);
     else if (arg === "--scopes") flags.scopes = requireValue(copy, ++i, arg);
@@ -887,6 +888,15 @@ async function commandPeer(options) {
 
   if (flags.subcommand === "invite") {
     const url = process.env.NORDRELAY_PEER_PUBLIC_URL || `${process.env.NORDRELAY_PEER_TLS_ENABLED === "false" ? "http" : "https"}://${process.env.NORDRELAY_PEER_HOST || "127.0.0.1"}:${process.env.NORDRELAY_PEER_PORT || "31979"}`;
+    const peerEnabled = process.env.NORDRELAY_PEER_ENABLED === "true";
+    if (!peerEnabled) {
+      console.log("Warning: peer server is disabled. The invite can be created, but pairing will fail until NORDRELAY_PEER_ENABLED=true and NordRelay is restarted.");
+    } else {
+      const probe = await clientMod.checkPeerEndpoint(url, { timeoutMs: 2500 });
+      if (!probe.ok) {
+        console.log(`Warning: peer endpoint is not reachable from this machine: ${probe.detail}`);
+      }
+    }
     const created = store.createInvitation({
       name: flags.name,
       expiresInMs: Number.isFinite(flags.expiresMinutes) ? flags.expiresMinutes * 60 * 1000 : undefined,
@@ -925,13 +935,26 @@ async function commandPeer(options) {
     return;
   }
 
+  if (flags.subcommand === "check") {
+    const url = flags.url || await ask(null, "Peer URL", "");
+    const probe = await clientMod.checkPeerEndpoint(url, { expectedTlsFingerprint: flags.expectFingerprint });
+    console.log(`Peer endpoint: ${probe.url}`);
+    console.log(`Status: ${probe.ok ? "reachable" : "unreachable"}`);
+    if (probe.latencyMs !== undefined) console.log(`Latency: ${probe.latencyMs}ms`);
+    if (probe.statusCode !== undefined) console.log(`HTTP status: ${probe.statusCode}`);
+    if (probe.tlsFingerprint) console.log(`TLS fingerprint: ${probe.tlsFingerprint}`);
+    console.log(`Detail: ${probe.detail}`);
+    if (!probe.ok) process.exitCode = 1;
+    return;
+  }
+
   if (flags.subcommand === "revoke") {
     const id = flags.id || await ask(null, "Peer id", "");
     console.log(store.revokePeer(id) ? `Revoked peer ${id}.` : `Peer not found: ${id}`);
     return;
   }
 
-  throw new Error("Usage: nordrelay peer [identity|list|invite|add|test|revoke]");
+  throw new Error("Usage: nordrelay peer [identity|list|invite|add|test|check|revoke]");
 }
 
 function parseUserFlags(argv) {

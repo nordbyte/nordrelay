@@ -133,7 +133,14 @@ test.describe("NordRelay WebUI", () => {
 
     await page.getByRole("button", { name: "Peers" }).click();
     await expect(page.locator("#peerStatus")).toContainText("Local peer identity");
+    await expect(page.locator("#peerStatus")).toContainText("Manual reachability check");
+    await expect(page.locator("#peerStatus")).toContainText("nordrelay peer check https://127.0.0.1:31979");
+    await page.getByRole("button", { name: "Check local endpoint" }).click();
+    await expect(page.locator("#peerProbeResult")).toContainText("Local endpoint check");
+    await expect(page.locator("#peerProbeResult")).toContainText("reachable");
     await expect(page.locator("#peersList")).toContainText("Ubuntu Workstation");
+    await page.locator('[data-peer-probe="peer-ubuntu"]').click();
+    await expect(page.locator("#peerProbeResult")).toContainText("Remote probe from Ubuntu Workstation");
     await expect(page.locator("#peerInvites")).toContainText("MacBook invite");
     page.once("dialog", (dialog) => dialog.accept());
     await page.locator('[data-peer-invite-delete="invite-1"]').click();
@@ -195,6 +202,38 @@ test.describe("NordRelay WebUI", () => {
     await expect.poll(() => page.evaluate(() => (window as unknown as { __copiedText?: string }).__copiedText)).toBe(pairingCode);
     await page.locator('[data-peer-invite-copy^="nordrelay peer add"]').click();
     await expect.poll(() => page.evaluate(() => (window as unknown as { __copiedText?: string }).__copiedText)).toBe(command);
+  });
+
+  test("warns before creating invites when the peer server is not reachable", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
+    await page.route("**/api/peers", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...peers(),
+          enabled: false,
+          readiness: peerReadiness({
+            enabled: false,
+            localListening: false,
+            warnings: ["Peer server is disabled. Invites can be created, but pairing will fail until NORDRELAY_PEER_ENABLED=true and NordRelay is restarted."],
+          }),
+        }),
+      });
+    });
+
+    await page.goto(mock.baseUrl);
+    await page.getByRole("button", { name: "Peers" }).click();
+
+    await expect(page.locator("#peerStatus")).toContainText("Peer server is disabled");
+    await page.getByRole("button", { name: "Create invite" }).click();
+    await expect(page.locator("#adminDialogBody")).toContainText("Pairing warning");
+    await expect(page.locator("#adminDialogBody")).toContainText("pairing will fail");
+    await expect(page.locator("#adminDialogSubmit")).toHaveText("Create invite anyway");
   });
 
   test("starts agent install/update jobs from the version page", async ({ page }) => {
@@ -361,6 +400,7 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   if (url.pathname === "/api/auth/login" || url.pathname === "/api/auth/logout") return { agentId: "codex", agentLabel: "Codex", supported: true, authenticated: true, detail: "ok", loginSupported: true, logoutSupported: true };
   if (url.pathname === "/api/update") return { method: "npm", logPath: "/tmp/update.log", sourceRoot: "/tmp/nordrelay", summary: "mock update" };
   if (url.pathname === "/api/peers") return peers();
+  if (url.pathname === "/api/peers/probe") return peerProbe(body);
   if (url.pathname === "/api/peers/global-sessions") return globalPeerSessions();
   if (url.pathname.match(/^\/api\/peers\/invitations\/[^/]+$/) && method === "DELETE") return { removed: true };
   if (url.pathname.match(/^\/api\/peers\/[^/]+\/health$/)) return { data: { version: "0.7.0" } };
@@ -469,7 +509,7 @@ function currentUser() {
 }
 
 function permissions() {
-  return ["inspect", "sessions.read", "sessions.write", "prompt.send", "prompt.abort", "files.read", "files.write", "settings.read", "settings.write", "auth.manage", "diagnostics.read", "logs.read", "logs.clear", "queue.read", "queue.write", "updates.run", "system.restart", "users.read", "users.write", "audit.read", "peers.read", "peers.write"];
+  return ["inspect", "sessions.read", "sessions.write", "prompt.send", "prompt.abort", "files.read", "files.write", "settings.read", "settings.write", "auth.manage", "diagnostics.read", "logs.read", "logs.clear", "queue.read", "queue.write", "updates.run", "system.restart", "users.read", "users.write", "audit.read", "peers.read", "peers.write", "peers.connect"];
 }
 
 function chatMessages() {
@@ -791,6 +831,7 @@ function peers(extraInvitations: unknown[] = []) {
     enabled: true,
     listenUrl: "https://127.0.0.1:31979",
     requireTls: true,
+    readiness: peerReadiness(),
     identity: { nodeId: "local-node", fingerprint: "local-fingerprint" },
     peers: [
       {
@@ -823,6 +864,41 @@ function peers(extraInvitations: unknown[] = []) {
       },
       ...extraInvitations,
     ],
+  };
+}
+
+function peerReadiness(patch: Record<string, unknown> = {}) {
+  return {
+    enabled: true,
+    listenUrl: "https://127.0.0.1:31979",
+    bindHost: "127.0.0.1",
+    port: 31979,
+    tlsEnabled: true,
+    requireTls: true,
+    localListening: true,
+    loopbackOnly: true,
+    bindLoopbackOnly: true,
+    manualCheckCommand: "nordrelay peer check https://127.0.0.1:31979",
+    warnings: ["Listen URL uses a loopback host. Other machines cannot reach this URL unless they run on the same host."],
+    ...patch,
+  };
+}
+
+function peerProbe(body: unknown) {
+  const payload = body as { peerId?: string };
+  return {
+    type: payload.peerId ? "remote" : "local",
+    peerId: payload.peerId,
+    readiness: peerReadiness(),
+    probe: {
+      ok: true,
+      status: "reachable",
+      url: "https://127.0.0.1:31979/peer/healthz",
+      latencyMs: 12,
+      statusCode: 200,
+      tlsFingerprint: "mock-tls-fingerprint",
+      detail: "Peer health endpoint is reachable.",
+    },
   };
 }
 

@@ -8,7 +8,8 @@ import {
   ensurePeerTlsFiles,
   loadOrCreatePeerIdentity,
 } from "./peer-identity.js";
-import { pairPeer, RemoteRelayClient } from "./peer-client.js";
+import { checkPeerEndpoint, pairPeer, RemoteRelayClient } from "./peer-client.js";
+import { buildPeerReadiness, peerListenUrl } from "./peer-readiness.js";
 import { PeerStore } from "./peer-store.js";
 import { publicPeer, type PeerWebProxyPayload } from "./peer-types.js";
 import type { RelayRuntime } from "./relay-runtime.js";
@@ -42,16 +43,19 @@ export async function handleDashboardPeerRoute(
   const tls = options.config.peerTlsEnabled ? ensurePeerTlsFiles(options.home, identity.public) : null;
 
   if (req.method === "GET" && url.pathname === "/api/peers") {
+    const readiness = await buildPeerReadiness(options.config);
     sendJson(res, 200, store.snapshot(identity.public, {
       enabled: options.config.peerEnabled,
-      listenUrl: peerListenUrl(options.config),
+      listenUrl: readiness.listenUrl,
       requireTls: options.config.peerRequireTls,
+      readiness,
     }));
     return true;
   }
 
   if (req.method === "POST" && url.pathname === "/api/peers/invite") {
     const body = await readJsonBody(req);
+    const readiness = await buildPeerReadiness(options.config);
     const created = store.createInvitation({
       name: optionalStringField(body, "name"),
       expiresInMs: (optionalNumberField(body, "expiresMinutes") ?? 10) * 60 * 1000,
@@ -60,7 +64,7 @@ export async function handleDashboardPeerRoute(
       allowedWorkspaceRoots: arrayStringField(body, "allowedWorkspaceRoots"),
       workspaceAliases: parseWorkspaceAliases(body.workspaceAliases),
     });
-    const listenUrl = peerListenUrl(options.config);
+    const listenUrl = readiness.listenUrl;
     const command = `nordrelay peer add ${listenUrl} --code ${created.code}`;
     sendJson(res, 201, {
       invitation: created.invitation,
@@ -69,8 +73,25 @@ export async function handleDashboardPeerRoute(
       fingerprint: identity.public.fingerprint,
       tlsFingerprint: tls?.fingerprint,
       command,
+      readiness,
+      warnings: readiness.warnings,
     });
     options.auditPeerAction?.("peer_invite_created", created.invitation.name);
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/peers/probe") {
+    const body = await readJsonBody(req);
+    const readiness = await buildPeerReadiness(options.config);
+    const peerId = optionalStringField(body, "peerId");
+    if (peerId) {
+      const probe = await new RemoteRelayClient(store).rpc(peerId, "peer.probe", {}, options.activityActor);
+      sendJson(res, 200, { type: "remote", peerId, readiness, probe });
+      return true;
+    }
+    const expectedTlsFingerprint = options.config.peerPublicUrl ? undefined : tls?.fingerprint;
+    const probe = await checkPeerEndpoint(readiness.listenUrl, { expectedTlsFingerprint });
+    sendJson(res, 200, { type: "local", readiness, probe });
     return true;
   }
 
@@ -204,14 +225,6 @@ export async function handleDashboardPeerRoute(
   }
 
   return false;
-}
-
-function peerListenUrl(config: ConnectorConfig): string {
-  if (config.peerPublicUrl) return config.peerPublicUrl;
-  const scheme = config.peerTlsEnabled ? "https" : "http";
-  const host = config.peerHost === "0.0.0.0" || config.peerHost === "::" ? "127.0.0.1" : config.peerHost;
-  const displayHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
-  return `${scheme}://${displayHost}:${config.peerPort}`;
 }
 
 function parseScopes(values: string[]): Permission[] {

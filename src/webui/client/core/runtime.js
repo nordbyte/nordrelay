@@ -1,4 +1,4 @@
-const state = { snapshot:null, controls:null, newSessionControls:null, enabledAgents:[], auth:null, permissions:[], settings:[], currentPage:'overview', settingsGroup:null, settingsWizard:null, accessTab:'users', logsPlain:'', logTimer:null, toastTimer:null, cliStatusActive:false, selectedArtifactTurns:new Set(), mediaRecorder:null, recordedChunks:[], events:null, reconnectTimer:null, notifications:false, toolTooltipTimer:null, toolTooltipTarget:null, agentUpdateJobs:[], sessionsRequestId:0, activeSessions:null, peers:null, peerInviteSecrets:{}, selectedPeer:localStorage.getItem('nordrelayPeerTarget')||'local' };
+const state = { snapshot:null, controls:null, newSessionControls:null, enabledAgents:[], auth:null, permissions:[], settings:[], currentPage:'overview', settingsGroup:null, settingsWizard:null, accessTab:'users', logsPlain:'', logTimer:null, toastTimer:null, cliStatusActive:false, selectedArtifactTurns:new Set(), mediaRecorder:null, recordedChunks:[], events:null, reconnectTimer:null, notifications:false, toolTooltipTimer:null, toolTooltipTarget:null, agentUpdateJobs:[], sessionsRequestId:0, activeSessions:null, peers:null, peerInviteSecrets:{}, peerProbeResult:null, selectedPeer:localStorage.getItem('nordrelayPeerTarget')||'local' };
 globalThis.NORDRELAY_WEBUI_RUNTIME_STATE=state;
 function toast(msg,options={}){const el=document.getElementById('toast');el.textContent=msg;el.style.display='block';if(state.toastTimer)clearTimeout(state.toastTimer);state.toastTimer=null;if(!options.sticky){state.toastTimer=setTimeout(()=>{el.style.display='none';state.toastTimer=null},options.duration||3500)}}
 function esc(s){return String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
@@ -34,6 +34,7 @@ function applyPermissions(){
     ['#clearLogsBtn','logs.clear'],
     ['#createUserBtn,#createGroupBtn,#createChatBtn,#createDiscordChannelBtn,#createSlackChannelBtn','users.write'],
     ['#createPeerInviteBtn,#addPeerBtn,[data-peer-edit],[data-peer-toggle],[data-peer-revoke],[data-peer-invite-delete]','peers.write'],
+    ['#checkPeerReachabilityBtn,[data-peer-probe]','peers.connect'],
     ['#lockSessionBtn,#unlockSessionBtn','sessions.write'],
     ['[data-switch]','sessions.write'],
     ['[data-queue],[data-q]','queue.write'],

@@ -30,6 +30,7 @@ const WEB_API_CLIENT_ROUTE_RULES = [
   { path: "/api/peers", methods: ['GET', 'POST'] },
   { path: "/api/peers/invite", methods: ['POST'] },
   { path: "/api/peers/pair", methods: ['POST'] },
+  { path: "/api/peers/probe", methods: ['POST'] },
   { path: "/api/peers/global-sessions", methods: ['GET'] },
   { re: /^\/api\/peers\/invitations\/[^\/]+$/, methods: ['DELETE'] },
   { re: /^\/api\/peers\/[^\/]+\/health$/, methods: ['GET'] },

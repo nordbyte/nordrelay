@@ -9,6 +9,7 @@ import type { ConnectorConfig } from "./config.js";
 import type { ChannelContextKey } from "./context-key.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { getPackageVersion } from "./operations.js";
+import { checkPeerEndpoint } from "./peer-client.js";
 import type { PeerRecord, PeerRpcRequest, PeerWebProxyPayload } from "./peer-types.js";
 import type { RelayRuntime } from "./relay-runtime.js";
 import type { ActiveSessionsDto, RelayEvent, RelaySnapshot, SessionPageDto, UnifiedJobDto, UnifiedJobsDto, WebDiagnosticsDto, WebTasksDto } from "./relay-runtime-types.js";
@@ -33,6 +34,10 @@ export class PeerRuntimeService {
     if (request.type === "peer.ping") {
       this.assertScope(peer, "inspect");
       return { ok: true, status: "online", version: await getPackageVersion(), at: new Date().toISOString() };
+    }
+    if (request.type === "peer.probe") {
+      this.assertScope(peer, "inspect");
+      return await this.handlePeerProbe(peer, request.payload);
     }
     throw new Error(`Unsupported peer RPC type: ${request.type}`);
   }
@@ -328,6 +333,17 @@ export class PeerRuntimeService {
     throw new Error(`Remote endpoint is not implemented: ${method} ${path}`);
   }
 
+  private async handlePeerProbe(peer: PeerRecord, payload: unknown): Promise<unknown> {
+    const requestedUrl = stringValue(objectRecord(payload).url);
+    if (!peer.url) {
+      throw new Error("Remote probe refused because this peer has no registered URL. Pair with --public-url or set the peer URL first.");
+    }
+    if (requestedUrl && normalizePeerUrl(requestedUrl) !== normalizePeerUrl(peer.url)) {
+      throw new Error("Remote probe refused because the requested URL does not match this peer's registered URL.");
+    }
+    return await checkPeerEndpoint(peer.url, { expectedTlsFingerprint: peer.tlsFingerprint });
+  }
+
   private assertScope(peer: PeerRecord, permission: Permission): void {
     if (!peer.scopes.includes(permission)) {
       throw new Error(`Peer permission denied: ${permission}`);
@@ -563,6 +579,14 @@ function normalizePath(value: unknown): string {
     throw new Error("Only /api routes can be proxied.");
   }
   return path;
+}
+
+function normalizePeerUrl(value: string): string {
+  const url = new URL(value);
+  url.pathname = "";
+  url.search = "";
+  url.hash = "";
+  return url.toString().replace(/\/$/, "");
 }
 
 function objectRecord(value: unknown): Record<string, unknown> {

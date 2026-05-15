@@ -13,6 +13,7 @@ import { PeerStore } from "./peer-store.js";
 import {
   PEER_PROTOCOL_VERSION,
   type PeerEventEnvelope,
+  type PeerEndpointProbeResult,
   type PeerPairRequest,
   type PeerPairResponse,
   type PeerRecord,
@@ -32,6 +33,37 @@ export interface PairPeerOptions {
 export interface PairPeerResult {
   peer: PeerRecord;
   tlsFingerprint?: string;
+}
+
+export async function checkPeerEndpoint(url: string, options: { expectedTlsFingerprint?: string; timeoutMs?: number } = {}): Promise<PeerEndpointProbeResult> {
+  const target = joinPeerUrl(url, "/peer/healthz");
+  const startedAt = Date.now();
+  try {
+    const result = await requestJson<{ ok?: unknown; protocolVersion?: unknown }>({
+      url: target,
+      method: "GET",
+      expectedTlsFingerprint: options.expectedTlsFingerprint,
+      allowSelfSigned: true,
+      timeoutMs: options.timeoutMs ?? 4_000,
+    });
+    return {
+      ok: true,
+      status: "reachable",
+      url: target,
+      latencyMs: Date.now() - startedAt,
+      statusCode: result.statusCode,
+      tlsFingerprint: result.tlsFingerprint,
+      detail: result.data?.ok === true ? "Peer health endpoint is reachable." : "Endpoint responded, but did not return the expected peer health payload.",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "unreachable",
+      url: target,
+      latencyMs: Date.now() - startedAt,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 export async function pairPeer(options: PairPeerOptions, identity: LoadedPeerIdentity, store = new PeerStore()): Promise<PairPeerResult> {
@@ -204,9 +236,10 @@ interface JsonRequestOptions {
   headers?: Record<string, string>;
   expectedTlsFingerprint?: string;
   allowSelfSigned?: boolean;
+  timeoutMs?: number;
 }
 
-async function requestJson<T>(options: JsonRequestOptions): Promise<{ data: T; tlsFingerprint?: string }> {
+async function requestJson<T>(options: JsonRequestOptions): Promise<{ data: T; statusCode?: number; tlsFingerprint?: string }> {
   const url = new URL(options.url);
   const bodyText = options.bodyText ?? (options.body === undefined ? "" : JSON.stringify(options.body));
   const transport = url.protocol === "https:" ? https : http;
@@ -248,10 +281,11 @@ async function requestJson<T>(options: JsonRequestOptions): Promise<{ data: T; t
           reject(new Error(message));
           return;
         }
-        resolve({ data: data as T, tlsFingerprint });
+        resolve({ data: data as T, statusCode: res.statusCode, tlsFingerprint });
       });
     });
     req.on("error", reject);
+    req.setTimeout(options.timeoutMs ?? 15_000, () => req.destroy(new Error(`Peer request timed out after ${options.timeoutMs ?? 15_000}ms.`)));
     if (bodyText) req.write(bodyText);
     req.end();
   });

@@ -83,3 +83,8 @@
 .peer-invite-copy,.peer-invite-command{display:block;width:100%;text-align:left;overflow-wrap:anywhere;white-space:pre-wrap}
 .peer-invite-command{padding:8px;border:1px solid var(--border-soft);border-radius:6px;background:var(--pre);color:var(--pre-text)}
 .peer-invite-command:hover{background:var(--pre);color:var(--pre-text)}
+.peer-warning{display:grid;gap:4px;margin:10px 0;padding:10px;border:1px solid #d9c27a;border-radius:8px;background:var(--warn);color:#8a6a12}
+.peer-warning small{color:#8a6a12}
+.peer-probe-result{margin-top:10px;padding:10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface)}
+.peer-probe-result.ok{border-color:#8ed0aa;background:color-mix(in srgb,var(--accent-soft) 45%,var(--surface))}
+.peer-probe-result.warn{border-color:#d9c27a;background:var(--warn)}
