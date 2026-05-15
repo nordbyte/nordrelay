@@ -57,6 +57,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).not.toContain("Current Session");
     expect(js).toContain("function renderActiveSessions");
     expect(js).toContain("/api/active-sessions");
+    expect(js).toContain("active_sessions_update");
+    expect(js).not.toContain("activeSessionsTimer=setInterval");
   });
 
   it("binds version agent update buttons after rendering version cards", () => {

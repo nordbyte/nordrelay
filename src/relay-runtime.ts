@@ -135,6 +135,8 @@ export class RelayRuntime {
   private readonly agentUpdateActors = new Map<string, WebActivityActor>();
   private readonly agentUpdateStates = new Map<string, { status: AgentUpdateJobSnapshot["status"]; needsInput: boolean }>();
   private readonly externalMonitor?: NodeJS.Timeout;
+  private activeSessionsBroadcastTimer: NodeJS.Timeout | null = null;
+  private activeSessionsLastBroadcastAt = 0;
   private draining = false;
   private currentTurnId: string | null = null;
   private accumulatedText = "";
@@ -215,6 +217,7 @@ export class RelayRuntime {
     this.subscribers.add(callback);
     void this.snapshot().then((data) => callback({ type: "snapshot", data })).catch(() => {});
     void this.chatHistory().then((messages) => callback({ type: "chat_history", messages })).catch(() => {});
+    void this.activeSessions().then((active) => callback({ type: "active_sessions_update", active })).catch(() => {});
     callback({ type: "activity_update", events: this.activity({ limit: 50 }) });
     return () => this.subscribers.delete(callback);
   }
@@ -2081,6 +2084,24 @@ export class RelayRuntime {
         this.subscribers.delete(subscriber);
       }
     }
+    if (shouldRefreshActiveSessions(event)) {
+      this.scheduleActiveSessionsBroadcast();
+    }
+  }
+
+  private scheduleActiveSessionsBroadcast(): void {
+    if (this.activeSessionsBroadcastTimer) {
+      return;
+    }
+    const delayMs = Math.max(0, 1_000 - (Date.now() - this.activeSessionsLastBroadcastAt));
+    this.activeSessionsBroadcastTimer = setTimeout(() => {
+      this.activeSessionsBroadcastTimer = null;
+      this.activeSessionsLastBroadcastAt = Date.now();
+      void this.activeSessions()
+        .then((active) => this.broadcast({ type: "active_sessions_update", active }))
+        .catch(() => {});
+    }, delayMs);
+    this.activeSessionsBroadcastTimer.unref?.();
   }
 
   private publicInfo(session: AgentSessionService): AgentSessionInfo {
@@ -2157,6 +2178,21 @@ function activeSessionPriority(session: ActiveSessionDto): number {
     return 3;
   }
   return session.contextKey.startsWith("cli:") ? 1 : 2;
+}
+
+function shouldRefreshActiveSessions(event: RelayEvent): boolean {
+  return event.type === "activity_update" ||
+    event.type === "queue_update" ||
+    event.type === "session_update" ||
+    event.type === "status" ||
+    event.type === "turn_start" ||
+    event.type === "text_delta" ||
+    event.type === "tool_start" ||
+    event.type === "tool_update" ||
+    event.type === "tool_end" ||
+    event.type === "todo_update" ||
+    event.type === "turn_complete" ||
+    event.type === "turn_error";
 }
 
 function isPromptTerminalActivity(event: WebActivityEvent): boolean {

@@ -54,6 +54,7 @@ async function loadActiveSessions(){
   renderActiveSessions(data.sessions||[]);
 }
 function renderActiveSessions(items){
+  state.activeSessions={sessions:items||[],updatedAt:new Date().toISOString()};
   const box=document.getElementById('activeSessions');
   if(!box)return;
   box.innerHTML=(items||[]).map(activeSessionCard).join('')||'<div class="item">No active sessions.</div>';
@@ -124,4 +125,3 @@ function featureMatrix(caps){const c=caps||{};return '<div class="feature-matrix
 function versionStatusLabel(status){if(status==='current')return'Latest';if(status==='outdated')return'Outdated';if(status==='not-installed')return'Not installed';return'Unknown'}
 function versionStatusClass(status){if(status==='current')return'available';if(status==='outdated')return'planned';return'disabled'}
 function jobStatusClass(status){if(status==='completed')return'available';if(status==='running')return'planned';return'disabled'}
-state.activeSessionsTimer=setInterval(()=>{if(state.currentPage==='overview')safe(loadActiveSessions)},5000);

@@ -561,6 +561,8 @@ async function scopeRelayEvent(
       return canUseSession(authUser, event.session) ? event : null;
     case "activity_update":
       return { ...event, events: filterActivityByScope(authUser, event.events) };
+    case "active_sessions_update":
+      return { ...event, active: scopedActiveSessions(authUser, event.active) };
     case "agent_update":
       return users.canUseAgent(authUser, event.job.agentId) ? event : null;
     case "status":

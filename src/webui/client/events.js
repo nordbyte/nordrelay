@@ -13,6 +13,7 @@ function connectEvents(){
   events.addEventListener('snapshot', e=>{const d=JSON.parse(e.data).data;state.snapshot=d;renderSnapshot(d);renderSessionControls()});
   events.addEventListener('chat_history', e=>renderChatMessages(JSON.parse(e.data).messages||[]));
   events.addEventListener('activity_update', e=>renderActivity(JSON.parse(e.data).events||[]));
+  events.addEventListener('active_sessions_update', e=>{const d=JSON.parse(e.data);state.activeSessions=d.active||null;if(state.currentPage==='overview')renderActiveSessions(state.activeSessions?.sessions||[])});
   events.addEventListener('session_update', e=>{loadBootstrap();loadChatHistory()});
   events.addEventListener('agent_update', e=>{const d=JSON.parse(e.data);upsertAgentUpdateJob(d.job);if(state.currentPage==='version'){renderAgentUpdateJobs();if(d.job&&d.job.status!=='running')setTimeout(loadVersion,800)}});
   events.addEventListener('queue_update', e=>{const d=JSON.parse(e.data);renderQueue(d.queue,d.paused)});

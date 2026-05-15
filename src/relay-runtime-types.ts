@@ -22,6 +22,7 @@ export type RelayEvent =
   | { type: "snapshot"; data: RelaySnapshot }
   | { type: "chat_history"; messages: WebChatMessage[] }
   | { type: "activity_update"; events: WebActivityEvent[] }
+  | { type: "active_sessions_update"; active: ActiveSessionsDto }
   | { type: "turn_start"; id: string; prompt: string; at: string; source?: WebActivitySource }
   | { type: "text_delta"; id: string; delta: string }
   | { type: "tool_start"; id: string; toolCallId: string; toolName: string }
