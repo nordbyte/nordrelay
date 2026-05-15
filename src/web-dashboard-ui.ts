@@ -12,6 +12,7 @@ export const DASHBOARD_PAGES: DashboardPage[] = [
   { id: "sessions", label: "Sessions", permission: "sessions.read" },
   { id: "queue", label: "Queue", permission: "queue.read" },
   { id: "tasks", label: "Tasks", permission: "inspect" },
+  { id: "metrics", label: "Metrics", permission: "inspect" },
   { id: "activity", label: "Activity", permission: "sessions.read" },
   { id: "artifacts", label: "Artifacts", permission: "files.read" },
   { id: "adapters", label: "Adapters", permission: "inspect" },

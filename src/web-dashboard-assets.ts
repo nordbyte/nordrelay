@@ -11,6 +11,8 @@ const clientSources = [
   "client/overview.js",
   "client/events.js",
   "client/workflows.js",
+  "client/jobs.js",
+  "client/metrics.js",
   "client/admin.js",
 ];
 

@@ -13,6 +13,7 @@ const WEB_API_CLIENT_ROUTE_RULES = [
   { path: "/api/snapshot", methods: ['GET'] },
   { path: "/api/tasks", methods: ['GET'] },
   { path: "/api/progress", methods: ['GET'] },
+  { path: "/api/metrics", methods: ['GET'] },
   { path: "/api/jobs", methods: ['GET'] },
   { re: /^\/api\/jobs\/[^\/]+\/log$/, methods: ['GET'] },
   { re: /^\/api\/jobs\/[^\/]+\/action$/, methods: ['POST'] },

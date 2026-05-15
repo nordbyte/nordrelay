@@ -16,9 +16,7 @@ import {
   isAgentId,
   type AgentCapabilities,
   type AgentId,
-  type AgentPromptInput,
   type AgentPromptObject,
-  type AgentSessionCallbacks,
   type AgentSessionInfo,
   type AgentSessionService,
   type AgentThreadRecord,
@@ -31,8 +29,10 @@ import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { AgentUpdateManager, type AgentUpdateJobSnapshot, type AgentUpdateOperation } from "./agent-updates.js";
 import { createAgentSessionService, enabledAgents } from "./agent-factory.js";
 import { AuditLogStore, type AuditEvent, type AuditListOptions } from "./audit-log.js";
+import { ChannelTurnService } from "./channel-turn-service.js";
 import { checkAuthStatus, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
 import { checkClaudeCodeAuthStatus, startClaudeCodeLogin, startClaudeCodeLogout } from "./claude-code-auth.js";
+import { listThreads as listCodexThreads } from "./codex-state.js";
 import type { ConnectorConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./hermes-auth.js";
@@ -40,9 +40,12 @@ import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
 import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "./operations.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "./prompt-store.js";
+import { UnifiedJobStore } from "./job-store.js";
+import { buildRuntimeMetrics, type RuntimeMetricsDto } from "./metrics.js";
 import { RelayArtifactService } from "./relay-artifact-service.js";
 import { RelayExternalActivityMonitor } from "./relay-external-activity-monitor.js";
 import { RelayQueueService, type RelayQueueAction } from "./relay-queue-service.js";
+import { RuntimeSnapshotCache } from "./runtime-cache.js";
 import { renderSessionInfoPlain, renderSessionUsageRows } from "./session-format.js";
 import { SessionLockStore, type SessionLock } from "./session-locks.js";
 import { SessionRegistry, type ContextMetadata } from "./session-registry.js";
@@ -58,7 +61,7 @@ import {
   type WebActivityStatus,
   type WebChatMessage,
 } from "./web-state.js";
-import { isDiscordContextKey, isTelegramContextKey } from "./context-key.js";
+import { channelIdForContextKey } from "./context-key.js";
 import type {
   ActiveSessionDto,
   ActiveSessionsDto,
@@ -80,6 +83,7 @@ import type {
   WebTaskDto,
   WebTasksDto,
 } from "./relay-runtime-types.js";
+export type { RuntimeMetricsDto } from "./metrics.js";
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "./workspace-policy.js";
 
 export type {
@@ -106,6 +110,7 @@ export type {
 } from "./relay-runtime-types.js";
 
 const WEB_CONTEXT_KEY = "web:dashboard";
+const ACTIVE_CODEX_DISCOVERY_LIMIT = 200;
 const MAX_WEB_SESSION_PAGE_SIZE = 50;
 const MAX_CHAT_HISTORY = 250;
 
@@ -118,8 +123,11 @@ export class RelayRuntime {
   private readonly lockStore: SessionLockStore;
   private readonly agentUpdates: AgentUpdateManager;
   private readonly queueService: RelayQueueService;
+  private readonly jobStore: UnifiedJobStore;
   private readonly artifactService: RelayArtifactService;
   private readonly externalActivityMonitor: RelayExternalActivityMonitor;
+  private readonly cache = new RuntimeSnapshotCache();
+  private readonly turnService: ChannelTurnService;
   private readonly subscribers = new Set<(event: RelayEvent) => void>();
   private readonly agentUpdateActors = new Map<string, WebActivityActor>();
   private readonly agentUpdateStates = new Map<string, { status: AgentUpdateJobSnapshot["status"]; needsInput: boolean }>();
@@ -141,6 +149,7 @@ export class RelayRuntime {
     this.auditStore = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
     this.lockStore = new SessionLockStore(config.workspace, config.stateBackend);
     this.queueService = new RelayQueueService(this.promptStore, WEB_CONTEXT_KEY);
+    this.jobStore = new UnifiedJobStore(config.workspace, config.stateBackend, config.unifiedJobMaxItems);
     this.artifactService = new RelayArtifactService(config);
     this.agentUpdates = new AgentUpdateManager({
       onUpdate: (job) => {
@@ -168,6 +177,34 @@ export class RelayRuntime {
       }, config.codexExternalBusyCheckMs);
       this.externalMonitor.unref?.();
     }
+    this.turnService = new ChannelTurnService({
+      source: "web",
+      contextKey: WEB_CONTEXT_KEY,
+      chatStore: this.chatStore,
+      artifactService: this.artifactService,
+      checkAuth: (info) => this.checkAgentAuth(info),
+      ensureActiveThread: (session) => this.ensureActiveThread(session),
+      updateSession: (session) => this.updateSession(session),
+      appendActivity: (input) => this.appendActivity(input),
+      appendAudit: (input) => this.appendAudit(input),
+      broadcast: (event) => this.broadcast(event),
+      chatHistory: () => this.chatHistory(),
+      setLastPrompt: (envelope) => this.queueService.setLastPrompt(envelope),
+      getCurrentProgress: () => this.currentProgress,
+      setCurrentProgress: (progress) => {
+        this.currentProgress = progress;
+      },
+      setCurrentTurn: (id, startedAt, accumulatedText) => {
+        this.currentTurnId = id;
+        if (startedAt !== undefined) this.currentTurnStartedAt = startedAt;
+        if (accumulatedText !== undefined) this.accumulatedText = accumulatedText;
+      },
+      getCurrentTurnStartedAt: () => this.currentTurnStartedAt,
+      getAccumulatedText: () => this.accumulatedText,
+      setAccumulatedText: (text) => {
+        this.accumulatedText = text;
+      },
+    });
   }
 
   subscribe(callback: (event: RelayEvent) => void): () => void {
@@ -217,20 +254,23 @@ export class RelayRuntime {
   }
 
   async version(): Promise<Record<string, unknown>> {
-    const cliOptions = this.cliPathOptions();
-    const [health, state, versionChecks] = await Promise.all([
-      getConnectorHealth(cliOptions),
-      readConnectorState(),
-      getVersionChecks(cliOptions),
-    ]);
-    return {
-      health,
-      state,
-      versionChecks,
-    };
+    return this.cached("version", async () => {
+      const cliOptions = this.cliPathOptions();
+      const [health, state, versionChecks] = await Promise.all([
+        getConnectorHealth(cliOptions),
+        readConnectorState(),
+        getVersionChecks(cliOptions),
+      ]);
+      return {
+        health,
+        state,
+        versionChecks,
+      };
+    });
   }
 
   updateConnector(actor?: WebActivityActor): ReturnType<typeof spawnSelfUpdate> {
+    this.cache.invalidate("version");
     const update = spawnSelfUpdate();
     this.broadcastStatus(`Update started with ${update.method}. Log: ${update.logPath}`, "warn");
     this.appendActivity({
@@ -258,6 +298,8 @@ export class RelayRuntime {
   }
 
   startAgentUpdate(agentId: AgentId, operation: AgentUpdateOperation = "update", actor?: WebActivityActor): AgentUpdateJobSnapshot {
+    this.cache.invalidate("adapterHealth");
+    this.cache.invalidate("version");
     const job = this.agentUpdates.start(agentId, {
       piCliPath: this.config.piCliPath,
       hermesCliPath: this.config.hermesCliPath,
@@ -350,70 +392,74 @@ export class RelayRuntime {
   }
 
   async diagnostics(): Promise<WebDiagnosticsDto> {
-    const cliOptions = this.cliPathOptions();
-    const [health, versionChecks, snapshot, session] = await Promise.all([
-      getConnectorHealth(cliOptions),
-      getVersionChecks(cliOptions),
-      this.snapshot(),
-      this.getSession(true),
-    ]);
-    return {
-      health,
-      versionChecks,
-      snapshot,
-      runtime: {
-        stateBackend: this.config.stateBackend,
-        sourceWorkspace: this.config.workspace,
-        queuePaused: this.queueService.isPaused(),
-        externalMirror: this.externalActivityMonitor.snapshot(),
-        agentDiagnostics: getAgentDiagnostics(session, this.config),
-      },
-    };
+    return this.cached("diagnostics", async () => {
+      const cliOptions = this.cliPathOptions();
+      const [health, versionChecks, snapshot, session] = await Promise.all([
+        getConnectorHealth(cliOptions),
+        getVersionChecks(cliOptions),
+        this.snapshot(),
+        this.getSession(true),
+      ]);
+      return {
+        health,
+        versionChecks,
+        snapshot,
+        runtime: {
+          stateBackend: this.config.stateBackend,
+          sourceWorkspace: this.config.workspace,
+          queuePaused: this.queueService.isPaused(),
+          externalMirror: this.externalActivityMonitor.snapshot(),
+          agentDiagnostics: getAgentDiagnostics(session, this.config),
+        },
+      };
+    });
   }
 
   async adapterHealth(): Promise<WebAdapterHealthDto[]> {
-    const cliOptions = this.cliPathOptions();
-    const [health, versions] = await Promise.all([
-      getConnectorHealth(cliOptions),
-      getVersionChecks(cliOptions),
-    ]);
-    return Promise.all(listAgentAdapterDescriptors().map(async (descriptor) => {
-      const enabled = enabledAgents(this.config).includes(descriptor.id);
-      const auth = descriptor.capabilities.auth && enabled
-        ? await this.authStatus(descriptor.id).catch((error): WebAuthDto => ({
-          agentId: descriptor.id,
-          agentLabel: descriptor.label,
-          supported: descriptor.capabilities.auth,
-          authenticated: false,
-          detail: friendlyErrorText(error),
-          loginSupported: descriptor.capabilities.login,
-          logoutSupported: descriptor.capabilities.logout,
-        }))
-        : null;
-      const cli = cliHealthForAgent(descriptor.id, health);
-      const version = versionCheckForAgent(descriptor.id, versions);
-      return {
-        id: descriptor.id,
-        label: descriptor.label,
-        enabled,
-        status: descriptor.status === "available" ? (enabled ? "enabled" : "disabled") : "planned",
-        auth: {
-          supported: descriptor.capabilities.auth,
-          authenticated: auth ? auth.authenticated : null,
-          method: auth?.method,
-          detail: auth?.detail,
-        },
-        cli,
-        version: {
-          installed: version.installedLabel,
-          latest: version.latestVersion,
-          status: version.status,
-          detail: version.detail,
-        },
-        capabilities: descriptor.capabilities,
-        notes: descriptor.notes,
-      };
-    }));
+    return this.cached("adapterHealth", async () => {
+      const cliOptions = this.cliPathOptions();
+      const [health, versions] = await Promise.all([
+        getConnectorHealth(cliOptions),
+        getVersionChecks(cliOptions),
+      ]);
+      return Promise.all(listAgentAdapterDescriptors().map(async (descriptor) => {
+        const enabled = enabledAgents(this.config).includes(descriptor.id);
+        const auth = descriptor.capabilities.auth && enabled
+          ? await this.authStatus(descriptor.id).catch((error): WebAuthDto => ({
+            agentId: descriptor.id,
+            agentLabel: descriptor.label,
+            supported: descriptor.capabilities.auth,
+            authenticated: false,
+            detail: friendlyErrorText(error),
+            loginSupported: descriptor.capabilities.login,
+            logoutSupported: descriptor.capabilities.logout,
+          }))
+          : null;
+        const cli = cliHealthForAgent(descriptor.id, health);
+        const version = versionCheckForAgent(descriptor.id, versions);
+        return {
+          id: descriptor.id,
+          label: descriptor.label,
+          enabled,
+          status: descriptor.status === "available" ? (enabled ? "enabled" : "disabled") : "planned",
+          auth: {
+            supported: descriptor.capabilities.auth,
+            authenticated: auth ? auth.authenticated : null,
+            method: auth?.method,
+            detail: auth?.detail,
+          },
+          cli,
+          version: {
+            installed: version.installedLabel,
+            latest: version.latestVersion,
+            status: version.status,
+            detail: version.detail,
+          },
+          capabilities: descriptor.capabilities,
+          notes: descriptor.notes,
+        };
+      }));
+    });
   }
 
   permissions(): WebPermissionsDto {
@@ -513,11 +559,15 @@ export class RelayRuntime {
           canRetry: true,
           canReadLog: Boolean(event.detail),
         }));
+      } else if (event.category === "prompt" && event.type.startsWith("prompt_")) {
+        jobs.push(promptActivityToUnifiedJob(event));
       }
     }
 
+    const liveJobs = dedupeJobs(jobs);
+    const storedJobs = this.jobStore.upsertMany(liveJobs);
     return {
-      jobs: dedupeJobs(jobs).sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)),
+      jobs: dedupeJobs([...liveJobs, ...storedJobs]).sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)),
       updatedAt: new Date().toISOString(),
     };
   }
@@ -543,7 +593,7 @@ export class RelayRuntime {
       };
     }
     const job = (await this.jobs()).jobs.find((candidate) => candidate.id === id) ?? null;
-    return { job, plain: job?.logTail || job?.logPath || job?.summary || "No log available for this job." };
+    return { job, plain: job?.logTail || job?.logPath || job?.summary || this.jobStore.get(id)?.summary || "No log available for this job." };
   }
 
   async jobAction(id: string, action: "cancel" | "retry", actor?: WebActivityActor): Promise<UnifiedJobsDto> {
@@ -554,6 +604,13 @@ export class RelayRuntime {
     if (id.startsWith("queue:")) {
       const queueId = id.slice("queue:".length);
       this.queueService.apply(action === "cancel" ? "cancel" : "run", queueId);
+      this.jobStore.patch(id, {
+        status: action === "cancel" ? "aborted" : "queued",
+        summary: action === "cancel" ? `Cancelled queued prompt ${queueId}.` : `Queued prompt ${queueId} moved to the front.`,
+        canCancel: action !== "cancel",
+        canRetry: action === "cancel",
+        finishedAt: action === "cancel" ? new Date().toISOString() : undefined,
+      });
       this.broadcast({ type: "queue_update", queue: this.queue(), paused: this.queuePaused() });
       this.appendActivity({
         source: "web",
@@ -595,8 +652,14 @@ export class RelayRuntime {
 
   async activeSessions(): Promise<ActiveSessionsDto> {
     const sessions = new Map<string, ActiveSessionDto>();
+    const addActiveSession = (session: ActiveSessionDto): void => {
+      const key = this.activeSessionKey(session);
+      const existing = sessions.get(key);
+      sessions.set(key, this.preferredActiveSession(existing, session));
+    };
+
     if (this.currentProgress?.status === "running") {
-      sessions.set(this.activeSessionKey(WEB_CONTEXT_KEY, this.currentProgress), {
+      addActiveSession({
         ...this.currentProgress,
         contextKey: WEB_CONTEXT_KEY,
         source: "web",
@@ -606,13 +669,17 @@ export class RelayRuntime {
       });
     }
 
+    for (const active of this.discoverActiveCodexSessions()) {
+      addActiveSession(active);
+    }
+
     for (const meta of this.listKnownContextMetadata()) {
       if (meta.contextKey === WEB_CONTEXT_KEY && this.currentProgress?.status === "running") {
         continue;
       }
       const active = this.externalActiveSession(meta);
       if (active) {
-        sessions.set(this.activeSessionKey(meta.contextKey, active), active);
+        addActiveSession(active);
       }
     }
 
@@ -620,6 +687,20 @@ export class RelayRuntime {
       sessions: [...sessions.values()].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)),
       updatedAt: new Date().toISOString(),
     };
+  }
+
+  async metrics(): Promise<RuntimeMetricsDto> {
+    const [active, jobs] = await Promise.all([
+      this.activeSessions(),
+      this.jobs(),
+    ]);
+    return buildRuntimeMetrics({
+      queueLength: this.queueService.length(),
+      queuePaused: this.queueService.isPaused(),
+      activeTurnCount: active.sessions.length,
+      jobs: jobs.jobs,
+      activity: this.activity({ limit: 500 }),
+    });
   }
 
   audit(options: number | AuditListOptions = 50): AuditEvent[] {
@@ -1519,6 +1600,10 @@ export class RelayRuntime {
     return this.registry.getOrCreate(WEB_CONTEXT_KEY, { deferThreadStart });
   }
 
+  private async cached<T>(key: string, producer: () => Promise<T>): Promise<T> {
+    return (await this.cache.get(key, this.config.dashboardCacheTtlMs, producer)).value;
+  }
+
   private listKnownContextMetadata(): ContextMetadata[] {
     const contexts = new Map<string, ContextMetadata>();
     const add = (meta: ContextMetadata | undefined): void => {
@@ -1556,6 +1641,35 @@ export class RelayRuntime {
     }
 
     return [...contexts.values()];
+  }
+
+  private discoverActiveCodexSessions(): ActiveSessionDto[] {
+    if (!this.config.codexEnabled || !enabledAgents(this.config).includes("codex")) {
+      return [];
+    }
+
+    const capabilities = this.capabilitiesForAgent("codex");
+    if (!capabilities.externalActivity) {
+      return [];
+    }
+
+    const active: ActiveSessionDto[] = [];
+    for (const thread of listCodexThreads(ACTIVE_CODEX_DISCOVERY_LIMIT)) {
+      const meta: ContextMetadata = {
+        contextKey: `cli:codex:${thread.id}`,
+        agentId: "codex",
+        threadId: thread.id,
+        workspace: thread.cwd,
+        model: thread.model ?? undefined,
+        reasoningEffort: thread.reasoningEffort ?? undefined,
+        updatedAt: thread.updatedAt.getTime(),
+      };
+      const session = this.externalActiveSession(meta);
+      if (session) {
+        active.push(session);
+      }
+    }
+    return active;
   }
 
   private externalActiveSession(meta: ContextMetadata): ActiveSessionDto | null {
@@ -1634,8 +1748,20 @@ export class RelayRuntime {
     return listAgentAdapterDescriptors().find((descriptor) => descriptor.id === agentId)?.capabilities ?? CODEX_AGENT_CAPABILITIES;
   }
 
-  private activeSessionKey(contextKey: string, session: Pick<ActiveSessionDto, "threadId" | "id">): string {
-    return `${contextKey}:${session.threadId ?? session.id}`;
+  private activeSessionKey(session: Pick<ActiveSessionDto, "agentId" | "threadId" | "id">): string {
+    return session.threadId ? `${session.agentId ?? "unknown"}:${session.threadId}` : session.id;
+  }
+
+  private preferredActiveSession(existing: ActiveSessionDto | undefined, candidate: ActiveSessionDto): ActiveSessionDto {
+    if (!existing) {
+      return candidate;
+    }
+    const existingPriority = activeSessionPriority(existing);
+    const candidatePriority = activeSessionPriority(candidate);
+    if (candidatePriority !== existingPriority) {
+      return candidatePriority > existingPriority ? candidate : existing;
+    }
+    return Date.parse(candidate.updatedAt) >= Date.parse(existing.updatedAt) ? candidate : existing;
   }
 
   private async getControlSession(agentId?: AgentId): Promise<{ session: AgentSessionService; dispose: boolean }> {
@@ -1732,200 +1858,13 @@ export class RelayRuntime {
   }
 
   private async runPrompt(session: AgentSessionService, envelope: PromptEnvelope): Promise<void> {
-    const actor = envelope.activityActor;
-    await this.ensureActiveThread(session);
-    const info = session.getInfo();
-    if ((info.capabilities ?? CODEX_AGENT_CAPABILITIES).auth) {
-      const auth = await this.checkAgentAuth(info);
-      if (!auth.authenticated) {
-        throw new Error(`${agentLabel(info.agentId)} is not authenticated: ${auth.detail}`);
-      }
-    }
     const workspacePolicy = evaluateWorkspacePolicy(session.getInfo().workspace, this.config);
     if (!workspacePolicy.allowed) {
       throw new Error(workspacePolicy.warning ?? "Current workspace is blocked by policy.");
     }
-
-    const turnId = randomUUID().slice(0, 12);
-    this.currentTurnId = turnId;
-    this.currentTurnStartedAt = Date.now();
-    this.accumulatedText = "";
-    this.currentProgress = {
-      id: turnId,
-      source: "web",
-      status: "running",
-      prompt: envelope.description,
-      agentId: info.agentId,
-      agentLabel: info.agentLabel,
-      threadId: info.threadId,
-      workspace: info.workspace,
-      startedAt: new Date(this.currentTurnStartedAt).toISOString(),
-      updatedAt: new Date(this.currentTurnStartedAt).toISOString(),
-      durationMs: 0,
-      outputChars: 0,
-      tools: [],
-    };
-    this.queueService.setLastPrompt(envelope);
-    const startedDate = new Date();
-    const startedAt = startedDate.toISOString();
-    this.chatStore.append({
-      threadId: info.threadId ?? "pending",
-      role: "user",
-      text: envelope.description,
-      source: "web",
-      turnId,
-      timestamp: startedAt,
-    });
-    this.appendActivity({
-      source: "web",
-      status: "running",
-      type: "prompt_started",
-      threadId: info.threadId,
-      workspace: info.workspace,
-      agentId: info.agentId,
-      actor,
-      prompt: envelope.description,
-    });
-    this.appendAudit({
-      action: "prompt_started",
-      status: "ok",
-      contextKey: WEB_CONTEXT_KEY,
-      agentId: info.agentId,
-      threadId: info.threadId,
-      workspace: info.workspace,
-      actor,
-      description: envelope.description,
-    });
-    this.broadcast({ type: "turn_start", id: turnId, prompt: envelope.description, at: startedAt, source: "web" });
-
-    const callbacks: AgentSessionCallbacks = {
-      onTextDelta: (delta) => {
-        this.accumulatedText += delta;
-        this.updateCurrentProgress({ outputChars: this.accumulatedText.length });
-        this.broadcast({ type: "text_delta", id: turnId, delta });
-      },
-      onToolStart: (toolName, toolCallId) => {
-        this.addCurrentTool(toolName);
-        this.appendActivity({
-          source: "web",
-          status: "running",
-          type: "tool_started",
-          threadId: info.threadId,
-          workspace: info.workspace,
-          agentId: info.agentId,
-          actor,
-          prompt: envelope.description,
-          detail: toolName,
-        });
-        this.broadcast({ type: "tool_start", id: turnId, toolCallId, toolName });
-      },
-      onToolUpdate: (toolCallId, partialResult) => {
-        this.updateCurrentProgress();
-        this.broadcast({ type: "tool_update", id: turnId, toolCallId, partialResult });
-      },
-      onToolEnd: (toolCallId, isError) => {
-        const toolName = this.currentProgress?.currentTool ?? this.currentProgress?.lastTool ?? toolCallId;
-        this.updateCurrentProgress({ currentTool: undefined });
-        this.appendActivity({
-          source: "web",
-          status: isError ? "failed" : "completed",
-          type: isError ? "tool_failed" : "tool_completed",
-          threadId: info.threadId,
-          workspace: info.workspace,
-          agentId: info.agentId,
-          actor,
-          prompt: envelope.description,
-          detail: toolName,
-        });
-        this.broadcast({ type: "tool_end", id: turnId, toolCallId, isError });
-      },
-      onTodoUpdate: (items) => {
-        this.updateCurrentProgress({ detail: `Plan: ${items.filter((item) => item.completed).length}/${items.length} done` });
-        this.broadcast({ type: "todo_update", id: turnId, items });
-      },
-      onTurnComplete: () => {},
-      onAgentEnd: () => this.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString() }),
-    };
-
     try {
-      await session.prompt(envelope.input as AgentPromptInput, callbacks);
-      this.updateSession(session);
-      await this.artifactService.persistWorkspaceArtifactsForTurn(session.getInfo().workspace, turnId, startedDate);
-      if (this.accumulatedText.trim()) {
-        this.chatStore.append({
-          threadId: info.threadId ?? "pending",
-          role: "agent",
-          text: this.accumulatedText,
-          source: "web",
-          turnId,
-        });
-      }
-      this.appendActivity({
-        source: "web",
-        status: "completed",
-        type: "prompt_completed",
-        threadId: info.threadId,
-        workspace: info.workspace,
-        agentId: info.agentId,
-        actor,
-        prompt: envelope.description,
-        durationMs: Date.now() - this.currentTurnStartedAt,
-      });
-      this.appendAudit({
-        action: "prompt_completed",
-        status: "ok",
-        contextKey: WEB_CONTEXT_KEY,
-        agentId: info.agentId,
-        threadId: info.threadId,
-        workspace: info.workspace,
-        actor,
-        description: envelope.description,
-      });
-      this.updateCurrentProgress({ status: "completed" });
-      this.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString() });
-      this.broadcast({ type: "chat_history", messages: await this.chatHistory() });
-    } catch (error) {
-      const errorText = friendlyErrorText(error);
-      this.chatStore.append({
-        threadId: info.threadId ?? "pending",
-        role: "system",
-        text: `Error: ${errorText}`,
-        source: "web",
-        turnId,
-      });
-      this.appendActivity({
-        source: "web",
-        status: "failed",
-        type: "prompt_failed",
-        threadId: info.threadId,
-        workspace: info.workspace,
-        agentId: info.agentId,
-        actor,
-        prompt: envelope.description,
-        detail: errorText,
-        durationMs: Date.now() - this.currentTurnStartedAt,
-      });
-      this.appendAudit({
-        action: "prompt_failed",
-        status: "failed",
-        contextKey: WEB_CONTEXT_KEY,
-        agentId: info.agentId,
-        threadId: info.threadId,
-        workspace: info.workspace,
-        actor,
-        description: envelope.description,
-        detail: errorText,
-      });
-      this.updateCurrentProgress({ status: "failed", detail: errorText });
-      this.broadcast({ type: "turn_error", id: turnId, error: errorText, at: new Date().toISOString() });
-      this.broadcast({ type: "chat_history", messages: await this.chatHistory() });
-      throw error;
+      await this.turnService.run(session, envelope);
     } finally {
-      this.currentTurnId = null;
-      if (this.currentProgress) {
-        this.currentProgress.durationMs = Date.now() - this.currentTurnStartedAt;
-        this.currentProgress.updatedAt = new Date().toISOString();
-      }
       await this.drainQueue();
     }
   }
@@ -2143,13 +2082,24 @@ function hostLogoutCommand(info: AgentSessionInfo, config: ConnectorConfig): str
 }
 
 function activeSessionSourceForContext(contextKey: string): ActiveSessionDto["source"] {
-  if (isTelegramContextKey(contextKey)) {
+  const channelId = channelIdForContextKey(contextKey);
+  if (channelId === "telegram") {
     return "telegram";
   }
-  if (isDiscordContextKey(contextKey)) {
+  if (channelId === "discord") {
     return "discord";
   }
+  if (channelId === "web") {
+    return "web";
+  }
   return "cli";
+}
+
+function activeSessionPriority(session: ActiveSessionDto): number {
+  if (session.status === "running") {
+    return 3;
+  }
+  return session.contextKey.startsWith("cli:") ? 1 : 2;
 }
 
 function taskToUnifiedJob(
@@ -2202,6 +2152,38 @@ function activityToUnifiedJob(
     logPath: event.detail,
     logTail: event.detail,
     ...options,
+  };
+}
+
+function promptActivityToUnifiedJob(event: WebActivityEvent): UnifiedJobDto {
+  const status: UnifiedJobDto["status"] = event.status === "info" ? "completed" : event.status;
+  const sourceLabel = event.source === "web"
+    ? "WebUI"
+    : event.source === "telegram"
+      ? "Telegram"
+      : event.source === "discord"
+        ? "Discord"
+        : "CLI";
+  const promptKey = event.threadId ?? event.contextKey ?? event.id;
+  return {
+    id: `prompt:${event.source}:${promptKey}:${event.id}`,
+    kind: event.source === "cli" ? "external-turn" : "web-turn",
+    title: `${sourceLabel} prompt`,
+    status,
+    source: event.source,
+    agentId: event.agentId,
+    threadId: event.threadId,
+    workspace: event.workspace,
+    owner: event.actor,
+    startedAt: event.timestamp,
+    updatedAt: event.timestamp,
+    finishedAt: status === "running" || status === "queued" ? undefined : event.timestamp,
+    durationMs: event.durationMs,
+    summary: event.prompt || event.detail,
+    logTail: event.detail,
+    canCancel: status === "running" && event.source === "web",
+    canRetry: status !== "running",
+    canReadLog: Boolean(event.detail || event.prompt),
   };
 }
 

@@ -7,6 +7,7 @@ import {
   isDiscordContextKey,
   isTelegramContextKey,
   isTopicContextKey,
+  parseChannelContextKey,
   parseContextKey,
   parseDiscordContextKey,
 } from "../src/context-key.js";
@@ -86,5 +87,23 @@ describe("context-key", () => {
       threadId: "thread-1",
     });
     expect(isTelegramContextKey(key)).toBe(false);
+  });
+
+  it("parses channel context keys through the generic parser", () => {
+    expect(parseChannelContextKey("-1003929308812:2")).toMatchObject({
+      channelId: "telegram",
+      chatId: "-1003929308812",
+      topicId: "2",
+    });
+    expect(parseChannelContextKey("discord:guild-1:channel-1:thread-1")).toMatchObject({
+      channelId: "discord",
+      guildId: "guild-1",
+      chatId: "channel-1",
+      topicId: "thread-1",
+    });
+    expect(parseChannelContextKey("web:dashboard")).toMatchObject({
+      channelId: "web",
+      chatId: "dashboard",
+    });
   });
 });

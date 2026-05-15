@@ -55,6 +55,7 @@ describe("access-control", () => {
     expect(permissionForWebRequest("GET", "/api/queue")).toBe("queue.read");
     expect(permissionForWebRequest("POST", "/api/queue")).toBe("queue.write");
     expect(permissionForWebRequest("GET", "/api/jobs")).toBe("inspect");
+    expect(permissionForWebRequest("GET", "/api/metrics")).toBe("inspect");
     expect(permissionForWebRequest("POST", "/api/jobs/queue%3Aabc/action")).toBe("inspect");
     expect(permissionForWebRequest("GET", "/api/jobs/agent-update%3Aabc/log")).toBe("inspect");
     expect(permissionForWebRequest("GET", "/api/diagnostics")).toBe("diagnostics.read");

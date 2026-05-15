@@ -61,6 +61,10 @@ test.describe("NordRelay WebUI", () => {
     await page.getByRole("button", { name: "Tasks" }).click();
     await expect(page.locator("#tasksList")).toContainText("Unified jobs");
     await expect(page.locator("#tasksList")).toContainText("Queued prompt queue-web-1");
+
+    await page.getByRole("button", { name: "Metrics" }).click();
+    await expect(page.locator("#metricsPanel")).toContainText("Runtime");
+    await expect(page.locator("#metricsPanel")).toContainText("Telegram rate limits");
   });
 
   test("sends prompts through the typed API client and shows queued feedback", async ({ page }) => {
@@ -167,6 +171,7 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   }
   if (url.pathname === "/api/adapters/health") return { adapters: adaptersHealth() };
   if (url.pathname === "/api/tasks" || url.pathname === "/api/progress") return { current: null, external: null, queue: [], queuePaused: false, recent: [] };
+  if (url.pathname === "/api/metrics") return metrics();
   if (url.pathname === "/api/jobs") return jobsList();
   if (url.pathname.match(/^\/api\/jobs\/[^/]+\/log$/)) return { job: jobsList().jobs[0], plain: "Queued prompt log" };
   if (url.pathname.match(/^\/api\/jobs\/[^/]+\/action$/)) return jobsList();
@@ -210,6 +215,19 @@ function bootstrap(session = sessionInfo("codex")) {
         enabledAgents: ["codex", "pi"],
         workspaces: ["/tmp/project"],
       },
+    },
+  };
+}
+
+function metrics() {
+  return {
+    generatedAt: new Date().toISOString(),
+    queue: { length: 1, paused: false },
+    turns: { active: 1, completed: 4, failed: 0, aborted: 0, averageDurationMs: 1200 },
+    jobs: { total: 2, queued: 1, running: 1, completed: 0, failed: 0, aborted: 0 },
+    adapters: {
+      telegram: { queued: 0, running: 0, completed: 2, failed: 0, retries: 0, rateLimitHits: 0, buckets: [] },
+      discord: { queued: 0, running: 0, completed: 1, failed: 0, retries: 0, rateLimitHits: 0, buckets: [] },
     },
   };
 }

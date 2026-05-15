@@ -82,11 +82,25 @@ describe("web dashboard browser-flow assets", () => {
     expect(sessionRoutes).toContain("filterActivityByScope(authUser");
   });
 
+  it("includes first-run admin setup guarded by a setup token", () => {
+    const source = readFileSync("src/web-dashboard.ts", "utf8");
+    const pageSource = readFileSync("src/web-dashboard-pages.ts", "utf8");
+
+    expect(source).toContain("firstRunSetupToken");
+    expect(source).toContain("/api/setup/admin");
+    expect(source).toContain("isLoopbackRequest");
+    expect(source).toContain("isLoopbackHost");
+    expect(pageSource).toContain("NordRelay Setup");
+    expect(pageSource).toContain("setupToken");
+  });
+
   it("composes dashboard assets from focused WebUI modules", () => {
     expect(readFileSync("src/webui/client/core/api-client.js", "utf8")).toContain("async function api");
     expect(readFileSync("src/webui/client/core/runtime.js", "utf8")).toContain("const state");
     expect(readFileSync("src/webui/client/overview.js", "utf8")).toContain("function renderSnapshot");
     expect(readFileSync("src/webui/client/workflows.js", "utf8")).toContain("function loadSessions");
+    expect(readFileSync("src/webui/client/jobs.js", "utf8")).toContain("function renderUnifiedJobs");
+    expect(readFileSync("src/webui/client/metrics.js", "utf8")).toContain("function loadMetrics");
     expect(readFileSync("src/webui/styles/theme.css", "utf8")).toContain(":root");
     expect(readFileSync("src/webui/styles/layout.css", "utf8")).toContain(".chat-layout");
   });

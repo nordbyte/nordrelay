@@ -104,6 +104,11 @@ export async function handleDashboardRuntimeRoute(
     return true;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/metrics") {
+    sendJson(res, 200, await runtime.metrics());
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/jobs") {
     sendJson(res, 200, await runtime.jobs());
     return true;

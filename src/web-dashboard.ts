@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { randomBytes } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { URL } from "node:url";
@@ -26,7 +27,7 @@ import {
   sendJson,
   sendText,
 } from "./web-dashboard-http.js";
-import { renderDashboardApp, renderLoginPage } from "./web-dashboard-pages.js";
+import { renderDashboardApp, renderFirstRunSetupPage, renderLoginPage } from "./web-dashboard-pages.js";
 import { handleDashboardRuntimeRoute } from "./web-dashboard-runtime-routes.js";
 import { handleDashboardSessionRoute } from "./web-dashboard-session-routes.js";
 
@@ -51,6 +52,12 @@ const settings = new SettingsService(resolveDashboardEnvPath(options.home));
 const users = new UserStore(options.home);
 const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
 const loginAttempts = new Map<string, RateLimitBucket>();
+const firstRunSetupToken = users.hasAdminUser() ? undefined : randomBytes(18).toString("base64url");
+const firstRunSetupRequiresToken = !isLoopbackHost(options.host);
+
+if (firstRunSetupToken) {
+  console.log(`NordRelay first-run setup token: ${firstRunSetupToken}`);
+}
 
 class AccessDeniedError extends Error {}
 
@@ -72,6 +79,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     await handleLogin(req, res);
     return;
   }
+  if (url.pathname === "/api/setup/admin" && req.method === "POST") {
+    await handleFirstRunSetup(req, res);
+    return;
+  }
   if (url.pathname === "/api/dashboard/logout" && req.method === "POST") {
     handleLogout(req, res);
     return;
@@ -89,6 +100,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   if (!authenticated) {
     if (url.pathname === "/" || url.pathname === "/index.html") {
+      if (!users.hasAdminUser()) {
+        sendText(res, 200, renderFirstRunSetupPage({ tokenRequired: firstRunSetupRequiresToken || !isLoopbackRequest(req) }), "text/html; charset=utf-8");
+        return;
+      }
       sendText(res, 200, renderLoginPage({ adminConfigured: users.hasAdminUser() }), "text/html; charset=utf-8");
       return;
     }
@@ -294,6 +309,59 @@ async function handleEvents(req: IncomingMessage, res: ServerResponse): Promise<
   });
 }
 
+async function handleFirstRunSetup(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (users.hasAdminUser()) {
+    sendJson(res, 409, { error: "Admin user already exists." });
+    return;
+  }
+  const body = await readJsonBody(req);
+  const email = optionalStringField(body, "email") ?? "";
+  const displayName = optionalStringField(body, "displayName") ?? email;
+  const password = optionalStringField(body, "password") ?? "";
+  const setupToken = optionalStringField(body, "setupToken") ?? "";
+  if ((firstRunSetupRequiresToken || !isLoopbackRequest(req)) && setupToken !== firstRunSetupToken) {
+    audit({
+      action: "auth_login_failed",
+      status: "denied",
+      channelId: "web",
+      contextKey: "web",
+      description: `Rejected remote first-run setup for ${email || "unknown"}`,
+    });
+    sendJson(res, 403, { error: "Setup token required." });
+    return;
+  }
+  if (setupToken && setupToken !== firstRunSetupToken) {
+    sendJson(res, 403, { error: "Invalid setup token." });
+    return;
+  }
+  if (!email || !password || password.length < 12) {
+    sendJson(res, 400, { error: "Email and a password with at least 12 characters are required." });
+    return;
+  }
+  const authUser = users.createAdmin({ email, displayName, password });
+  const session = users.createWebSession(authUser.user.id);
+  audit({
+    action: "user_created",
+    status: "ok",
+    channelId: "web",
+    contextKey: "web",
+    actor: webActivityActor(authUser),
+    actorId: authUser.user.id,
+    actorRole: authUser.groups.map((group) => group.name).join(", "),
+    description: `First admin created: ${authUser.user.email}`,
+  });
+  runtime.recordActivity({
+    source: "web",
+    status: "info",
+    type: "first_run_admin_created",
+    threadId: null,
+    actor: webActivityActor(authUser),
+    detail: authUser.user.email,
+  });
+  setSessionCookie(res, session.token);
+  sendJson(res, 201, currentUserDto(authUser));
+}
+
 async function handleLogin(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = await readJsonBody(req);
   const email = optionalStringField(body, "email");
@@ -350,6 +418,18 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse): Promise<v
   });
   setSessionCookie(res, session.token);
   sendJson(res, 200, currentUserDto(authUser));
+}
+
+function isLoopbackRequest(req: IncomingMessage): boolean {
+  const address = req.socket.remoteAddress ?? "";
+  return address === "127.0.0.1" ||
+    address === "::1" ||
+    address === "::ffff:127.0.0.1" ||
+    address === "localhost";
+}
+
+function isLoopbackHost(host: string): boolean {
+  return host === "127.0.0.1" || host === "::1" || host === "localhost";
 }
 
 function handleLogout(req: IncomingMessage, res: ServerResponse): void {
@@ -727,6 +807,8 @@ function activeSettingsValues(current: typeof config): Record<string, string | u
     NORDRELAY_STATE_BACKEND: current.stateBackend,
     NORDRELAY_AUDIT_MAX_EVENTS: String(current.auditMaxEvents),
     NORDRELAY_SESSION_LOCK_TTL_MS: String(current.sessionLockTtlMs),
+    NORDRELAY_DASHBOARD_CACHE_TTL_MS: String(current.dashboardCacheTtlMs),
+    NORDRELAY_UNIFIED_JOB_MAX_ITEMS: String(current.unifiedJobMaxItems),
     NORDRELAY_VERSION_CACHE_TTL_MS: process.env.NORDRELAY_VERSION_CACHE_TTL_MS,
     NORDRELAY_CLI_VERSION_CACHE_TTL_MS: process.env.NORDRELAY_CLI_VERSION_CACHE_TTL_MS,
     VOICE_PREFERRED_BACKEND: current.voicePreferredBackend,

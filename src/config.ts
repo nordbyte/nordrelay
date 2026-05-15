@@ -139,6 +139,8 @@ export interface ConnectorConfig {
   voiceTranscribeOnly: boolean;
   auditMaxEvents: number;
   sessionLockTtlMs: number;
+  dashboardCacheTtlMs: number;
+  unifiedJobMaxItems: number;
 }
 
 export function loadConfig(): ConnectorConfig {
@@ -274,6 +276,8 @@ export function loadConfig(): ConnectorConfig {
   const voiceTranscribeOnly = parseBooleanEnv(optionalString(process.env.VOICE_TRANSCRIBE_ONLY), false);
   const auditMaxEvents = parsePositiveIntegerEnv(optionalString(process.env.NORDRELAY_AUDIT_MAX_EVENTS), 1000, "NORDRELAY_AUDIT_MAX_EVENTS");
   const sessionLockTtlMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_SESSION_LOCK_TTL_MS), 30 * 60 * 1000, "NORDRELAY_SESSION_LOCK_TTL_MS");
+  const dashboardCacheTtlMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_DASHBOARD_CACHE_TTL_MS), 10_000, "NORDRELAY_DASHBOARD_CACHE_TTL_MS");
+  const unifiedJobMaxItems = parsePositiveIntegerEnv(optionalString(process.env.NORDRELAY_UNIFIED_JOB_MAX_ITEMS), 1000, "NORDRELAY_UNIFIED_JOB_MAX_ITEMS");
 
   if (telegramEnabled && telegramTransport === "webhook" && !telegramWebhookUrl) {
     throw new Error("TELEGRAM_TRANSPORT=webhook requires TELEGRAM_WEBHOOK_URL");
@@ -386,6 +390,8 @@ export function loadConfig(): ConnectorConfig {
     voiceTranscribeOnly,
     auditMaxEvents,
     sessionLockTtlMs,
+    dashboardCacheTtlMs,
+    unifiedJobMaxItems,
   };
 }
 

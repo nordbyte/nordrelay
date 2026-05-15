@@ -252,6 +252,8 @@ describe("loadConfig", () => {
       voiceTranscribeOnly: false,
       auditMaxEvents: 1000,
       sessionLockTtlMs: 1_800_000,
+      dashboardCacheTtlMs: 10_000,
+      unifiedJobMaxItems: 1000,
     });
   });
 
@@ -342,6 +344,8 @@ describe("loadConfig", () => {
     expect(config.stateBackend).toBe("json");
     expect(config.auditMaxEvents).toBe(1000);
     expect(config.sessionLockTtlMs).toBe(1_800_000);
+    expect(config.dashboardCacheTtlMs).toBe(10_000);
+    expect(config.unifiedJobMaxItems).toBe(1000);
     expect(config.codexSandboxMode).toBe("workspace-write");
     expect(config.codexApprovalPolicy).toBe("never");
     expect(config.launchProfiles).toEqual([

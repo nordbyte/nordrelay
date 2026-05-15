@@ -207,10 +207,14 @@ Operations:
 - Telegram sends/edits/documents are routed through a rate-limit queue that honors Telegram retry-after responses.
 - Mirror, notification, quiet-hour, and automatic artifact-delivery defaults are configured through channel-neutral `NORDRELAY_*` settings, with Telegram and Discord override keys when a channel should differ.
 - The WebUI Tasks page includes a unified Jobs view for active WebUI turns, external CLI turns, queued prompts, agent update/install jobs, self-updates, and diagnostics bundle exports, with log, cancel, and retry actions where supported.
+- Unified Jobs are persisted across restarts and retain recent prompt, queue, update, connector-update, and support-bundle history for WebUI inspection.
+- The WebUI Metrics page reports queue state, active/completed/failed turns, job counts, average prompt duration, and Telegram/Discord rate-limit counters.
+- Expensive dashboard views such as version checks, adapter health, and diagnostics use a short stale-while-refresh server cache so the UI can render recent data while fresh checks run in the background.
 - Context metadata, queues, and preferences are written atomically with backup recovery.
 - Context metadata, queues, preferences, audit events, and locks can use JSON files or the optional SQLite state backend with `NORDRELAY_STATE_BACKEND=sqlite`.
 - Runtime config, state, and logs are written under `~/.nordrelay/`.
 - `nordrelay init` creates a private runtime config, `nordrelay doctor` validates host prerequisites, and `nordrelay web` starts the connector plus a full local WebUI dashboard.
+- On first WebUI startup without an admin account, NordRelay shows a setup wizard for creating the first admin; remote setup requires the one-time token printed in the server console.
 - The WebUI has responsive header/sidebar/footer navigation, live chat streaming, session controls, queue/artifact/log/diagnostic views, and settings management.
 - The WebUI supports light and dark themes, tabbed settings groups, paginated session browsing, and chat uploads for images, documents, and audio transcription.
 - The WebUI exposes REST and SSE endpoints for chat streaming, sessions, settings, queue, artifacts, logs, health, diagnostics, and redacted diagnostics bundle export.
@@ -235,6 +239,7 @@ nordrelay start
 ```
 
 npm is the fastest install path and is the recommended default for normal use. `nordrelay init` writes the private runtime config to `~/.nordrelay/nordrelay.env`.
+If you start `nordrelay web` before creating an admin, the dashboard opens a first-run setup wizard. Remote setup requires the one-time setup token printed in the NordRelay console.
 
 Non-interactive setup is also supported:
 

@@ -19,6 +19,8 @@ const assets = [
       "src/webui/client/overview.js",
       "src/webui/client/events.js",
       "src/webui/client/workflows.js",
+      "src/webui/client/jobs.js",
+      "src/webui/client/metrics.js",
       "src/webui/client/admin.js",
     ],
   },

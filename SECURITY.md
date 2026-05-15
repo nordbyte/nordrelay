@@ -28,6 +28,7 @@ Do not include real Telegram or Discord bot tokens, OpenAI API keys, Codex crede
 NordRelay is designed to fail closed:
 
 - A fresh install requires a NordRelay admin user before chat adapters or WebUI control can be used.
+- If the WebUI first-run setup wizard is used remotely, creating the first admin requires the one-time setup token printed in the server console.
 - WebUI login is required for every dashboard page, API route, SSE stream, artifact download, and health endpoint.
 - Telegram private chats require a linked active NordRelay user.
 - Telegram group and forum chats are disabled until an admin enables the chat.

@@ -46,6 +46,59 @@ export function renderLoginPage(options: { adminConfigured: boolean }): string {
 </html>`;
 }
 
+export function renderFirstRunSetupPage(options: { tokenRequired: boolean }): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NordRelay First Run</title>
+  <style>
+    body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f5f2;color:#181c19;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+    form{width:min(460px,calc(100vw - 32px));background:white;border:1px solid #dfe3dc;border-radius:8px;padding:24px;box-shadow:0 20px 60px rgba(20,30,24,.08)}
+    h1{font-size:24px;margin:0 0 8px}
+    p{color:#5d665d;margin:0 0 18px;line-height:1.45}
+    label{display:block;font-size:13px;color:#4b544d;margin:14px 0 6px}
+    input{box-sizing:border-box;width:100%;height:40px;border:1px solid #cfd6ce;border-radius:6px;padding:0 10px;font:inherit}
+    button{margin-top:18px;width:100%;height:42px;border:0;border-radius:6px;background:#205c43;color:white;font-weight:650;cursor:pointer}
+    .error{color:#9b1c1c;min-height:22px;margin-top:12px}
+    small{display:block;color:#667267;margin-top:8px;line-height:1.4}
+  </style>
+</head>
+<body>
+  <form id="setup">
+    <h1>NordRelay Setup</h1>
+    <p>Create the first admin account. After this, every dashboard page and API route requires login.</p>
+    <label>Email</label><input id="email" name="email" type="email" autocomplete="username" required>
+    <label>Name</label><input id="displayName" name="displayName" autocomplete="name" required>
+    <label>Password</label><input id="password" name="password" type="password" autocomplete="new-password" minlength="12" required>
+    <label>Setup token</label><input id="setupToken" name="setupToken" autocomplete="one-time-code" ${options.tokenRequired ? "required" : ""}>
+    <small>${options.tokenRequired ? "Use the token printed in the NordRelay console." : "Local setup does not require the token, but the console token also works."}</small>
+    <button>Create admin</button>
+    <div class="error" id="error"></div>
+  </form>
+  <script>
+    document.getElementById('setup').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const payload = {
+        email: document.getElementById('email')?.value || undefined,
+        displayName: document.getElementById('displayName')?.value || undefined,
+        password: document.getElementById('password')?.value || undefined,
+        setupToken: document.getElementById('setupToken')?.value || undefined,
+      };
+      const res = await fetch('/api/setup/admin', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(payload) });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        document.getElementById('error').textContent = data.error || 'Setup failed';
+        return;
+      }
+      location.href = '/';
+    });
+  </script>
+</body>
+</html>`;
+}
+
 export function renderDashboardApp(): string {
   return `<!doctype html>
 <html lang="en">
@@ -128,6 +181,13 @@ export function renderDashboardApp(): string {
         <div class="panel">
           <div class="row"><button id="reloadTasksBtn">Reload tasks</button></div>
           <div id="tasksList" class="list"></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-metrics">
+        <div class="panel">
+          <div class="row"><button id="reloadMetricsBtn">Reload metrics</button></div>
+          <div id="metricsPanel" class="list"></div>
         </div>
       </section>
 

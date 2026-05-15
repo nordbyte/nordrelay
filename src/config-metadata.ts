@@ -128,6 +128,8 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   setting("NORDRELAY_STATE_BACKEND", "State backend", "Workspace", "string", "json or sqlite.", true, ["json", "sqlite"]),
   setting("NORDRELAY_AUDIT_MAX_EVENTS", "Audit max events", "Workspace", "number", "Retained audit events.", true),
   setting("NORDRELAY_SESSION_LOCK_TTL_MS", "Session lock TTL", "Workspace", "number", "Write-lock TTL.", true),
+  setting("NORDRELAY_DASHBOARD_CACHE_TTL_MS", "Dashboard cache TTL", "Workspace", "number", "Stale-while-refresh TTL for expensive dashboard API snapshots.", true),
+  setting("NORDRELAY_UNIFIED_JOB_MAX_ITEMS", "Unified job history", "Workspace", "number", "Maximum persisted unified jobs retained for the WebUI jobs view.", true),
   setting("NORDRELAY_VERSION_CACHE_TTL_MS", "Version cache TTL", "Workspace", "number", "NPM version cache TTL.", true),
   setting("NORDRELAY_CLI_VERSION_CACHE_TTL_MS", "CLI version cache TTL", "Workspace", "number", "Installed agent CLI version cache TTL.", true),
 
@@ -244,6 +246,8 @@ const EXAMPLE_VALUES: Record<string, string> = {
   "NORDRELAY_STATE_BACKEND": "json",
   "NORDRELAY_AUDIT_MAX_EVENTS": "1000",
   "NORDRELAY_SESSION_LOCK_TTL_MS": "1800000",
+  "NORDRELAY_DASHBOARD_CACHE_TTL_MS": "10000",
+  "NORDRELAY_UNIFIED_JOB_MAX_ITEMS": "1000",
   "NORDRELAY_VERSION_CACHE_TTL_MS": "3600000",
   "NORDRELAY_CLI_VERSION_CACHE_TTL_MS": "60000",
   "NORDRELAY_DASHBOARD_HOST": "127.0.0.1",
