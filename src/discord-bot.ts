@@ -14,7 +14,7 @@ import {
 } from "discord.js";
 
 import { ADMIN_GROUP_ID, type Permission } from "./access-control.js";
-import { agentLabel, agentReasoningLabel, agentReasoningOptions, type AgentExternalSnapshot, type AgentId, type AgentPromptInput, type AgentSessionCallbacks, type AgentSessionInfo, type AgentSessionService } from "./agent.js";
+import { agentLabel, agentReasoningLabel, agentReasoningOptions, type AgentExternalSnapshot, type AgentId, type AgentPromptInput, type AgentSessionInfo, type AgentSessionService } from "./agent.js";
 import { getAgentActivityLog, getExternalSnapshotForSession } from "./agent-activity.js";
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { AgentUpdateManager, type AgentUpdateOperation } from "./agent-updates.js";
@@ -28,12 +28,13 @@ import { renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpd
 import { createSharedChannelCommandDispatcher } from "./channel-command-core.js";
 import { ChannelCommandService } from "./channel-command-service.js";
 import { discordHelpCommandList } from "./channel-command-catalog.js";
+import { createChannelPromptEngine } from "./channel-prompt-engine.js";
 import { runChannelPeerPrompt } from "./channel-peer-prompt.js";
 import { deliverChannelAction } from "./channel-runtime.js";
 import type { ChannelContext } from "./channel-adapter.js";
 import { checkAuthStatus, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
 import { checkClaudeCodeAuthStatus, startClaudeCodeLogin, startClaudeCodeLogout } from "./claude-code-auth.js";
-import type { ConnectorConfig, ToolVerbosity } from "./config.js";
+import type { ConnectorConfig } from "./config.js";
 import { discordContextKey, isDiscordContextKey, parseDiscordContextKey, type ChannelContextKey } from "./context-key.js";
 import { DiscordBotChannelRuntime, actionFromDiscordCustomId, discordActionRows, splitDiscordMessage, trimDiscordMessage } from "./discord-channel-runtime.js";
 import { createDiscordArtifactCommandHandler, sendRecentDiscordArtifacts } from "./discord-artifacts.js";
@@ -720,157 +721,41 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
 
     const busyState = getBusyState(request.contextKey);
     busyState.processing = true;
-    const typing = setInterval(() => {
-      void runtime.sendTyping(request.context).catch(() => {});
-    }, TYPING_INTERVAL_MS);
-    void runtime.sendTyping(request.context).catch(() => {});
-
-    let accumulatedText = "";
-    let responseMessageId: string | undefined;
-    let planMessageId: string | undefined;
-    let flushTimer: NodeJS.Timeout | undefined;
-    let lastEditAt = 0;
-    let running = true;
-    let finalized = false;
-    const toolCounts = new Map<string, number>();
-    const toolVerbosity: ToolVerbosity = config.toolVerbosity;
-    const startedAt = Date.now();
-    const turnId = randomUUID().slice(0, 12);
-    const progress: TurnProgress = {
-      status: "running",
+    const engine = createChannelPromptEngine({
+      runtime,
+      context: request.context,
+      contextKey: request.contextKey,
       promptDescription: envelope.description,
-      startedAt,
-      updatedAt: startedAt,
-      toolCounts,
-      textCharacters: 0,
-    };
+      abortAction: `discord_abort:${request.contextKey}`,
+      trimMessage: trimDiscordMessage,
+      splitMessage: splitDiscordMessage,
+      editDebounceMs: EDIT_DEBOUNCE_MS,
+      typingIntervalMs: TYPING_INTERVAL_MS,
+      toolVerbosity: config.toolVerbosity,
+      logPrefix: "Discord",
+      onResponseMessage: (messageId) => responseOwners.set(messageId, request.contextKey),
+      onToolStart: (toolName) => appendActivity(request, {
+        status: "running",
+        type: "tool_started",
+        prompt: envelope.description,
+        detail: toolName,
+        threadId: session.getInfo().threadId,
+        workspace: session.getInfo().workspace,
+        agentId: session.getInfo().agentId,
+      }),
+      onToolEnd: (isError) => appendActivity(request, {
+        status: isError ? "failed" : "completed",
+        type: isError ? "tool_failed" : "tool_completed",
+        prompt: envelope.description,
+        detail: "tool",
+        threadId: session.getInfo().threadId,
+        workspace: session.getInfo().workspace,
+        agentId: session.getInfo().agentId,
+      }),
+    });
+    const progress = engine.progress;
     turnProgress.set(request.contextKey, progress);
-
-    const scheduleFlush = (): void => {
-      if (flushTimer || !running) {
-        return;
-      }
-      const delay = Math.max(0, EDIT_DEBOUNCE_MS - (Date.now() - lastEditAt));
-      flushTimer = setTimeout(() => {
-        flushTimer = undefined;
-        void flushResponse().catch((error) => console.error("Failed to edit Discord response:", error));
-      }, delay);
-    };
-
-    const ensureResponse = async (): Promise<void> => {
-      if (responseMessageId) return;
-      const preview = trimDiscordMessage(accumulatedText || "Working...");
-      const sent = await runtime.sendMessage(request.context, {
-        text: preview,
-        fallbackText: preview,
-        buttons: [[{ label: "Abort", action: `discord_abort:${request.contextKey}` }]],
-      });
-      responseMessageId = sent.messageId;
-      responseOwners.set(responseMessageId, request.contextKey);
-      lastEditAt = Date.now();
-    };
-
-    const flushResponse = async (force = false): Promise<void> => {
-      if (!accumulatedText.trim()) return;
-      await ensureResponse();
-      if (!responseMessageId) return;
-      const now = Date.now();
-      if (!force && now - lastEditAt < EDIT_DEBOUNCE_MS) return;
-      await runtime.editMessage(request.context, responseMessageId, {
-        text: trimDiscordMessage(accumulatedText),
-        fallbackText: trimDiscordMessage(accumulatedText),
-        buttons: [[{ label: "Abort", action: `discord_abort:${request.contextKey}` }]],
-      });
-      lastEditAt = Date.now();
-    };
-
-    const finalize = async (): Promise<void> => {
-      if (finalized) {
-        return;
-      }
-      finalized = true;
-      running = false;
-      clearInterval(typing);
-      if (flushTimer) {
-        clearTimeout(flushTimer);
-        flushTimer = undefined;
-      }
-      const finalText = accumulatedText.trim() || "Done.";
-      const chunks = splitDiscordMessage(finalText);
-      if (responseMessageId) {
-        const [first, ...rest] = chunks;
-        await runtime.editMessage(request.context, responseMessageId, { text: first ?? "Done.", fallbackText: first ?? "Done." });
-        for (const chunk of rest) {
-          await runtime.sendMessage(request.context, { text: chunk, fallbackText: chunk });
-        }
-      } else {
-        for (const chunk of chunks) {
-          await runtime.sendMessage(request.context, { text: chunk, fallbackText: chunk });
-        }
-      }
-    };
-
-    const callbacks: AgentSessionCallbacks = {
-      onTextDelta: (delta) => {
-        accumulatedText += delta;
-        progress.textCharacters = accumulatedText.length;
-        progress.updatedAt = Date.now();
-        void ensureResponse().then(() => scheduleFlush()).catch((error) => console.error("Failed to send Discord response:", error));
-      },
-      onToolStart: (toolName) => {
-        toolCounts.set(toolName, (toolCounts.get(toolName) ?? 0) + 1);
-        progress.currentTool = toolName;
-        progress.lastTool = toolName;
-        progress.updatedAt = Date.now();
-        appendActivity(request, {
-          status: "running",
-          type: "tool_started",
-          prompt: envelope.description,
-          detail: toolName,
-          threadId: session.getInfo().threadId,
-          workspace: session.getInfo().workspace,
-          agentId: session.getInfo().agentId,
-        });
-        if (toolVerbosity === "all") {
-          void runtime.sendMessage(request.context, { text: `Tool started: ${toolName}`, fallbackText: `Tool started: ${toolName}` }).catch(() => {});
-        }
-      },
-      onToolUpdate: () => {},
-      onToolEnd: (_toolCallId, isError) => {
-        progress.currentTool = undefined;
-        progress.updatedAt = Date.now();
-        appendActivity(request, {
-          status: isError ? "failed" : "completed",
-          type: isError ? "tool_failed" : "tool_completed",
-          prompt: envelope.description,
-          detail: "tool",
-          threadId: session.getInfo().threadId,
-          workspace: session.getInfo().workspace,
-          agentId: session.getInfo().agentId,
-        });
-      },
-      onTodoUpdate: (items) => {
-        progress.updatedAt = Date.now();
-        const text = [
-          "Plan:",
-          ...items.map((item) => `${item.completed ? "[x]" : "[ ]"} ${item.text}`),
-        ].join("\n");
-        if (!planMessageId) {
-          void runtime.sendMessage(request.context, { text, fallbackText: text }).then((result) => {
-            planMessageId = result.messageId;
-          }).catch(() => {});
-        } else {
-          void runtime.editMessage(request.context, planMessageId, { text, fallbackText: text }).catch(() => {});
-        }
-      },
-      onTurnComplete: () => {},
-      onAgentEnd: () => {
-        progress.status = "completed";
-        progress.completedAt = Date.now();
-        progress.updatedAt = progress.completedAt;
-        void finalize().catch((error) => console.error("Failed to finalize Discord response:", error));
-      },
-    };
+    engine.start();
 
     try {
       const info = session.getInfo();
@@ -905,15 +790,15 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
         description: envelope.description,
       });
 
-      await session.prompt(envelope.input, callbacks);
+      await session.prompt(envelope.input, engine.callbacks);
       updateSession(request, session);
       progress.status = "completed";
       progress.completedAt = Date.now();
       progress.updatedAt = progress.completedAt;
-      await finalize();
-      await artifactService.persistWorkspaceArtifactsForTurn(session.getInfo().workspace, turnId, new Date(startedAt));
+      await engine.finalize();
+      await artifactService.persistWorkspaceArtifactsForTurn(session.getInfo().workspace, engine.turnId, new Date(engine.startedAt));
       if (config.discordAutoSendArtifacts) {
-        await sendRecentDiscordArtifacts(artifactDeps, request, session, new Date(startedAt), turnId);
+        await sendRecentDiscordArtifacts(artifactDeps, request, session, new Date(engine.startedAt), engine.turnId);
       }
       appendActivity(request, {
         status: "completed",
@@ -922,7 +807,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
         threadId: session.getInfo().threadId,
         workspace: session.getInfo().workspace,
         agentId: session.getInfo().agentId,
-        durationMs: Date.now() - startedAt,
+        durationMs: Date.now() - engine.startedAt,
       });
       audit(request, {
         action: "prompt_completed",
@@ -937,12 +822,8 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       progress.completedAt = Date.now();
       progress.updatedAt = progress.completedAt;
       progress.error = friendlyErrorText(error);
-      const errorText = renderPromptFailure(accumulatedText, error);
-      if (responseMessageId) {
-        await runtime.editMessage(request.context, responseMessageId, { text: trimDiscordMessage(errorText), fallbackText: trimDiscordMessage(errorText) }).catch(() => {});
-      } else {
-        await reply(request, errorText).catch(() => {});
-      }
+      const errorText = renderPromptFailure(engine.accumulatedText(), error);
+      await engine.fail(errorText);
       appendActivity(request, {
         status: "failed",
         type: "prompt_failed",
@@ -951,7 +832,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
         threadId: session.getInfo().threadId,
         workspace: session.getInfo().workspace,
         agentId: session.getInfo().agentId,
-        durationMs: Date.now() - startedAt,
+        durationMs: Date.now() - engine.startedAt,
       });
       audit(request, {
         action: "prompt_failed",
@@ -963,8 +844,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
         detail: friendlyErrorText(error),
       });
     } finally {
-      running = false;
-      clearInterval(typing);
+      engine.stop();
       busyState.processing = false;
       await drainQueue(request).catch((error) => console.error("Failed to drain Discord queue:", error));
     }

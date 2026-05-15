@@ -14,6 +14,7 @@ import {
   channelCommandCoverage,
   createSharedChannelCommandDispatcher,
 } from "../src/channel-command-core.js";
+import { TELEGRAM_COMMANDS } from "../src/telegram-command-menu.js";
 
 describe("adapter conformance matrix", () => {
   it("reports one feature row for every agent and channel capability", () => {
@@ -45,27 +46,32 @@ describe("adapter conformance matrix", () => {
     expect(planned.every((channel) => channel.commands.length === 0)).toBe(true);
   });
 
-  it("keeps the shared dispatcher coverage check aligned with advertised commands", async () => {
-    const dispatcher = createSharedChannelCommandDispatcher<{ called: string[] }>({
-      transport: "slack",
-      bindings: CHANNEL_COMMANDS
-        .filter((command) => command.slack !== false)
-        .map((command) => ({
-          names: [command.name],
-          handler: (request: { called: string[] }, _argument: string, name: string) => {
-            request.called.push(name);
-          },
-        })),
-    });
-    const coverage = channelCommandCoverage({
-      transport: "slack",
-      implemented: dispatcher.commandNames,
-    });
+  it("keeps the Telegram bot command menu backed by the shared command catalog", () => {
+    expect(TELEGRAM_COMMANDS.map((command) => command.command).sort()).toEqual(channelCatalogCommandNames("telegram"));
+  });
 
-    expect(coverage.missing).toEqual([]);
-    const request = { called: [] as string[] };
-    await dispatcher.dispatch(request, "help", "");
-    expect(request.called).toEqual(["help"]);
+  it("keeps the shared dispatcher coverage check aligned with every implemented transport", async () => {
+    for (const transport of ["telegram", "discord", "slack"] as const) {
+      const dispatcher = createSharedChannelCommandDispatcher<{ called: string[] }>({
+        transport,
+        bindings: CHANNEL_COMMANDS
+          .filter((command) => command[transport] !== false)
+          .map((command) => ({
+            names: [command.name],
+            handler: (request: { called: string[] }, _argument: string, name: string) => {
+              request.called.push(name);
+            },
+          })),
+      });
+      const coverage = channelCommandCoverage({
+        transport,
+        implemented: dispatcher.commandNames,
+      });
+
+      expect(coverage.missing, transport).toEqual([]);
+      const request = { called: [] as string[] };
+      await dispatcher.dispatch(request, "help", "");
+      expect(request.called).toEqual(["help"]);
+    }
   });
 });
-

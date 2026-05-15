@@ -25,6 +25,8 @@
 #activeSessions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 @media(min-width:1320px){#activeSessions{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .overview-adapter-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.conformance-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.conformance-grid h3{margin:0 0 8px;font-size:15px}
 .session-detail-section{margin-top:20px}
 .session-detail-section summary{cursor:pointer;font-weight:700;margin-bottom:0;line-height:1.25}
 .session-detail-section[open] summary{margin-bottom:10px}

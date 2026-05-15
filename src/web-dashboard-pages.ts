@@ -229,6 +229,8 @@ export function renderDashboardApp(): string {
         <div class="panel">
           <div class="row"><button id="reloadAdaptersBtn">Reload adapters</button></div>
           <div id="adapterHealth" class="list"></div>
+          <h2 class="task-section-title">Adapter Conformance</h2>
+          <div id="adapterConformance" class="list"></div>
         </div>
       </section>
 

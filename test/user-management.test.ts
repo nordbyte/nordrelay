@@ -1,10 +1,10 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { ADMIN_GROUP_ID, READONLY_GROUP_ID, USER_GROUP_ID } from "../src/access-control.js";
+import { ADMIN_GROUP_ID, ALL_PERMISSIONS, READONLY_GROUP_ID, USER_GROUP_ID } from "../src/access-control.js";
 import { publicUserSnapshot, UserStore } from "../src/user-management.js";
 
 describe("UserStore", () => {
@@ -161,6 +161,51 @@ describe("UserStore", () => {
     expect(store.resolveWebSession(token)).toBeNull();
     expect(store.hasAdminUser()).toBe(true);
     expect(second.permissions).toContain("users.write");
+  });
+
+  it("normalizes legacy admin groups to the current full permission set", () => {
+    const now = new Date().toISOString();
+    writeFileSync(path.join(home, "users.json"), JSON.stringify({
+      version: 1,
+      users: [{
+        id: "legacy-admin",
+        email: "legacy@example.com",
+        displayName: "Legacy Admin",
+        passwordHash: "hash",
+        passwordSalt: "salt",
+        active: true,
+        createdAt: now,
+        updatedAt: now,
+      }],
+      groups: [{
+        id: ADMIN_GROUP_ID,
+        name: "Admin",
+        description: "Old admin group",
+        permissions: ["inspect", "sessions.read"],
+        system: true,
+        agentIds: [],
+        workspaceRoots: [],
+        telegramChatIds: [],
+        discordChannelIds: [],
+        slackChannelIds: [],
+        createdAt: now,
+        updatedAt: now,
+      }],
+      userGroups: [{ userId: "legacy-admin", groupId: ADMIN_GROUP_ID }],
+      telegramIdentities: [],
+      telegramChats: [],
+      discordIdentities: [],
+      discordChannels: [],
+      slackIdentities: [],
+      slackChannels: [],
+      webSessions: [],
+      telegramLinkCodes: [],
+      discordLinkCodes: [],
+      slackLinkCodes: [],
+    }), "utf8");
+
+    const admin = store.getUserByEmail("legacy@example.com");
+    expect(admin?.permissions.sort()).toEqual([...ALL_PERMISSIONS].sort());
   });
 
   it("supports group scopes for agents, workspaces, and Telegram chats", () => {
