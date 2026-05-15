@@ -1,6 +1,6 @@
 {
   "name": "@nordbyte/nordrelay",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Remote control plane for coding agents across messaging channels.",
   "type": "module",
   "author": "Ricardo",
