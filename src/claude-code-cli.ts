@@ -14,7 +14,7 @@ export function resolveClaudeCodeCli(
     return { path: configuredPath, source: "env" };
   }
 
-  const pathMatch = findExecutableOnPath("claude", env.PATH);
+  const pathMatch = findExecutableOnPath("claude", env.PATH, { pathext: env.PATHEXT });
   return pathMatch ? { path: pathMatch, source: "path" } : { source: "bundled" };
 }
 

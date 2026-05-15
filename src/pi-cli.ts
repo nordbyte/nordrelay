@@ -14,7 +14,7 @@ export function resolvePiCli(
     return { path: configuredPath, source: "env" };
   }
 
-  const pathMatch = findExecutableOnPath("pi", env.PATH);
+  const pathMatch = findExecutableOnPath("pi", env.PATH, { pathext: env.PATHEXT });
   return pathMatch ? { path: pathMatch, source: "path" } : { source: "missing" };
 }
 

@@ -43,4 +43,20 @@ describe("codex-cli", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("prefers Windows PATHEXT matches before extensionless shims", () => {
+    const tempDir = mkdtempSync(path.join(tmpdir(), "codex-cli-"));
+    try {
+      const extensionlessNpm = path.join(tempDir, "npm");
+      const cmdNpm = path.join(tempDir, "npm.cmd");
+      writeFileSync(extensionlessNpm, "#!/bin/sh\nexit 0\n");
+      writeFileSync(cmdNpm, "@echo off\r\nexit /b 0\r\n");
+      chmodSync(extensionlessNpm, 0o755);
+      chmodSync(cmdNpm, 0o755);
+
+      expect(findExecutableOnPath("npm", tempDir, { platform: "win32", pathext: ".cmd;.exe" })).toBe(cmdNpm);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });

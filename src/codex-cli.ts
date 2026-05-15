@@ -20,7 +20,7 @@ export function resolveCodexCli(env: NodeJS.ProcessEnv = process.env): CodexCliR
     return { source: "bundled" };
   }
 
-  const pathMatch = findExecutableOnPath("codex", env.PATH);
+  const pathMatch = findExecutableOnPath("codex", env.PATH, { pathext: env.PATHEXT });
   return pathMatch ? { path: pathMatch, source: "path" } : { source: "bundled" };
 }
 
@@ -31,14 +31,16 @@ export function describeCodexCli(resolution: CodexCliResolution): string {
   return "bundled @openai/codex";
 }
 
-export function findExecutableOnPath(command: string, pathValue: string | undefined): string | undefined {
+export function findExecutableOnPath(
+  command: string,
+  pathValue: string | undefined,
+  options: { platform?: NodeJS.Platform; pathext?: string } = {},
+): string | undefined {
   if (!pathValue) {
     return undefined;
   }
 
-  const extensions = process.platform === "win32"
-    ? ["", ...(process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(";")]
-    : [""];
+  const extensions = executableExtensions(options.platform ?? process.platform, options.pathext ?? process.env.PATHEXT);
 
   for (const rawDirectory of pathValue.split(path.delimiter)) {
     const directory = rawDirectory.trim();
@@ -56,6 +58,19 @@ export function findExecutableOnPath(command: string, pathValue: string | undefi
   }
 
   return undefined;
+}
+
+function executableExtensions(platform: NodeJS.Platform, pathextValue: string | undefined): string[] {
+  if (platform !== "win32") {
+    return [""];
+  }
+
+  const pathext = (pathextValue || ".COM;.EXE;.BAT;.CMD")
+    .split(";")
+    .map((extension) => extension.trim())
+    .filter(Boolean)
+    .map((extension) => extension.startsWith(".") ? extension : `.${extension}`);
+  return [...new Set([...pathext, ""])];
 }
 
 function isExecutable(filePath: string): boolean {

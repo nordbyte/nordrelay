@@ -14,7 +14,7 @@ export function resolveHermesCli(
     return { path: configuredPath, source: "env" };
   }
 
-  const pathMatch = findExecutableOnPath("hermes", env.PATH);
+  const pathMatch = findExecutableOnPath("hermes", env.PATH, { pathext: env.PATHEXT });
   return pathMatch ? { path: pathMatch, source: "path" } : { source: "missing" };
 }
 

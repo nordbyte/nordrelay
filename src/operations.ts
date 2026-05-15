@@ -680,7 +680,7 @@ export function resolveNpmSpawnCommand(env: NodeJS.ProcessEnv = process.env): Np
     };
   }
 
-  const pathMatch = findExecutableOnPath("npm", env.PATH);
+  const pathMatch = findExecutableOnPath("npm", env.PATH, { pathext: env.PATHEXT });
   if (pathMatch) {
     return {
       command: pathMatch,

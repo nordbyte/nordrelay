@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -69,6 +69,22 @@ describe("operations", () => {
       command: process.execPath,
       argsPrefix: [npmCli],
       shell: false,
+    });
+  });
+
+  it.runIf(process.platform === "win32")("prefers npm.cmd over the extensionless npm shim on Windows", () => {
+    const dir = createTempDir();
+    const extensionlessNpm = path.join(dir, "npm");
+    const cmdNpm = path.join(dir, "npm.cmd");
+    writeFileSync(extensionlessNpm, "#!/bin/sh\nexit 0\n");
+    writeFileSync(cmdNpm, "@echo off\r\nexit /b 0\r\n");
+    chmodSync(extensionlessNpm, 0o755);
+    chmodSync(cmdNpm, 0o755);
+
+    expect(resolveNpmSpawnCommand({ ...process.env, PATH: dir, PATHEXT: ".cmd" })).toMatchObject({
+      command: cmdNpm,
+      argsPrefix: [],
+      shell: true,
     });
   });
 

@@ -14,7 +14,7 @@ export function resolveOpenClawCli(
     return { path: configuredPath, source: "env" };
   }
 
-  const pathMatch = findExecutableOnPath("openclaw", env.PATH);
+  const pathMatch = findExecutableOnPath("openclaw", env.PATH, { pathext: env.PATHEXT });
   return pathMatch ? { path: pathMatch, source: "path" } : { source: "missing" };
 }
 

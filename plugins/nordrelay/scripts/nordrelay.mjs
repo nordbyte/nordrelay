@@ -1712,7 +1712,7 @@ function findExecutable(command, pathValue = process.env.PATH, pathextValue = pr
   if (command.includes(path.sep) && fs.existsSync(command)) return command;
   const paths = (pathValue || "").split(path.delimiter);
   const extensions = process.platform === "win32"
-    ? ["", ...(pathextValue || ".COM;.EXE;.BAT;.CMD").split(";")]
+    ? windowsExecutableExtensions(pathextValue)
     : [""];
   for (const dir of paths) {
     for (const extension of extensions) {
@@ -1721,6 +1721,15 @@ function findExecutable(command, pathValue = process.env.PATH, pathextValue = pr
     }
   }
   return null;
+}
+
+function windowsExecutableExtensions(pathextValue) {
+  const pathext = (pathextValue || ".COM;.EXE;.BAT;.CMD")
+    .split(";")
+    .map((extension) => extension.trim())
+    .filter(Boolean)
+    .map((extension) => extension.startsWith(".") ? extension : `.${extension}`);
+  return [...new Set([...pathext, ""])];
 }
 
 function isWindowsShellScript(filePath) {
