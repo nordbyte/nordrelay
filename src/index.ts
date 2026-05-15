@@ -7,6 +7,7 @@ import { webhookCallback } from "grammy";
 import { agentLabel, type AgentId } from "./agent.js";
 import { createBot, registerCommands } from "./bot.js";
 import { createDiscordBridge } from "./discord-bot.js";
+import { createSlackBridge } from "./slack-bot.js";
 import { checkAuthStatus } from "./codex-auth.js";
 import { describeCodexCli, resolveCodexCli } from "./codex-cli.js";
 import { checkClaudeCodeAuthStatus } from "./claude-code-auth.js";
@@ -30,6 +31,7 @@ import { UserStore } from "./user-management.js";
 let registry: SessionRegistry | undefined;
 let bot: ReturnType<typeof createBot> | undefined;
 let discordBridge: ReturnType<typeof createDiscordBridge> | undefined;
+let slackBridge: ReturnType<typeof createSlackBridge> | undefined;
 let webhookServer: Server | undefined;
 let peerServer: PeerServerHandle | null | undefined;
 let peerRuntime: RelayRuntime | undefined;
@@ -47,6 +49,8 @@ try {
   }
   discordBridge = createDiscordBridge(config, registry);
   await discordBridge?.start();
+  slackBridge = createSlackBridge(config, registry);
+  await slackBridge?.start();
   if (config.peerEnabled) {
     peerRuntime = new RelayRuntime(config);
     peerServer = await startPeerServer({ config, runtime: peerRuntime });
@@ -100,6 +104,7 @@ try {
   console.log("Session mode: per chat context");
   console.log(`Telegram: ${config.telegramEnabled ? config.telegramTransport : "disabled"}`);
   console.log(`Discord: ${config.discordEnabled ? "enabled" : "disabled"}`);
+  console.log(`Slack: ${config.slackEnabled ? (config.slackSocketMode ? "socket-mode" : `http:${config.slackPort}`) : "disabled"}`);
   console.log(`Peers: ${peerServer ? peerServer.url : "disabled"}`);
   await writeConnectorState({
     status: "ready",
@@ -117,6 +122,7 @@ try {
     openClawGateway: config.openClawGatewayUrl,
     telegramTransport: config.telegramTransport,
     discordEnabled: config.discordEnabled,
+    slackEnabled: config.slackEnabled,
     peerEnabled: config.peerEnabled,
     peerUrl: peerServer?.url,
     peerTlsFingerprint: peerServer?.tlsFingerprint,
@@ -174,6 +180,9 @@ const shutdown = (signal: NodeJS.Signals) => {
   if (bot && runtimeConfig?.telegramTransport !== "webhook") bot.stop();
   void discordBridge?.stop().catch((error) => {
     console.warn("Failed to stop Discord bridge:", error instanceof Error ? error.message : String(error));
+  });
+  void slackBridge?.stop().catch((error) => {
+    console.warn("Failed to stop Slack bridge:", error instanceof Error ? error.message : String(error));
   });
   webhookServer?.close();
   void peerServer?.close().catch((error) => {

@@ -31,6 +31,7 @@ export interface GroupRecord extends GroupDefinition {
   workspaceRoots: string[];
   telegramChatIds: number[];
   discordChannelIds: string[];
+  slackChannelIds: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -86,6 +87,30 @@ export interface DiscordChannelAccessRecord {
   updatedAt: string;
 }
 
+export interface SlackIdentityRecord {
+  id: string;
+  userId: string;
+  slackUserId: string;
+  teamId?: string;
+  username?: string;
+  realName?: string;
+  active: boolean;
+  linkedAt: string;
+  updatedAt: string;
+}
+
+export interface SlackChannelAccessRecord {
+  id: string;
+  teamId?: string;
+  channelId: string;
+  title?: string;
+  type?: string;
+  enabled: boolean;
+  allowedGroupIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface WebSessionRecord {
   id: string;
   userId: string;
@@ -109,6 +134,13 @@ export interface DiscordLinkCodeRecord {
   expiresAt: string;
 }
 
+export interface SlackLinkCodeRecord {
+  code: string;
+  userId: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
 export interface AuthenticatedUser {
   user: UserRecord;
   groups: GroupRecord[];
@@ -120,11 +152,13 @@ export interface UserManagementSnapshot {
     groups: GroupRecord[];
     telegramIdentities: TelegramIdentityRecord[];
     discordIdentities: DiscordIdentityRecord[];
+    slackIdentities: SlackIdentityRecord[];
     webSessions: PublicWebSessionRecord[];
   }>;
   groups: GroupRecord[];
   telegramChats: TelegramChatAccessRecord[];
   discordChannels: DiscordChannelAccessRecord[];
+  slackChannels: SlackChannelAccessRecord[];
   adminConfigured: boolean;
 }
 
@@ -139,9 +173,12 @@ interface PersistedUsers {
   telegramChats: TelegramChatAccessRecord[];
   discordIdentities: DiscordIdentityRecord[];
   discordChannels: DiscordChannelAccessRecord[];
+  slackIdentities: SlackIdentityRecord[];
+  slackChannels: SlackChannelAccessRecord[];
   webSessions: WebSessionRecord[];
   telegramLinkCodes: TelegramLinkCodeRecord[];
   discordLinkCodes: DiscordLinkCodeRecord[];
+  slackLinkCodes: SlackLinkCodeRecord[];
 }
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -170,6 +207,7 @@ export class UserStore {
         groups: this.groupsForUser(payload, user.id),
         telegramIdentities: payload.telegramIdentities.filter((identity) => identity.userId === user.id),
         discordIdentities: payload.discordIdentities.filter((identity) => identity.userId === user.id),
+        slackIdentities: payload.slackIdentities.filter((identity) => identity.userId === user.id),
         webSessions: payload.webSessions
           .filter((session) => session.userId === user.id)
           .map(publicWebSession),
@@ -177,6 +215,7 @@ export class UserStore {
       groups: payload.groups,
       telegramChats: payload.telegramChats,
       discordChannels: payload.discordChannels,
+      slackChannels: payload.slackChannels,
       adminConfigured: payload.users.some((user) => user.active && this.groupIdsForUser(payload, user.id).includes(ADMIN_GROUP_ID)),
     };
   }
@@ -213,6 +252,8 @@ export class UserStore {
     active?: boolean;
     telegramUserId?: number;
     discordUserId?: string;
+    slackUserId?: string;
+    slackTeamId?: string;
   }): AuthenticatedUser {
     return this.mutatePayload((payload) => {
       const email = normalizeEmail(input.email);
@@ -247,6 +288,12 @@ export class UserStore {
           discordUserId: input.discordUserId,
         });
       }
+      if (input.slackUserId !== undefined) {
+        this.upsertSlackIdentityInPayload(payload, user.id, {
+          slackUserId: input.slackUserId,
+          teamId: input.slackTeamId,
+        });
+      }
       return this.authenticatedUser(payload, user);
     });
   }
@@ -257,6 +304,8 @@ export class UserStore {
     password: string;
     telegramUserId?: number;
     discordUserId?: string;
+    slackUserId?: string;
+    slackTeamId?: string;
   }): AuthenticatedUser {
     return this.createUser({
       ...input,
@@ -429,6 +478,25 @@ export class UserStore {
     return user ? this.authenticatedUser(payload, user) : null;
   }
 
+  resolveSlackUser(input: { slackUserId?: string; teamId?: string }): AuthenticatedUser | null {
+    const slackUserId = normalizeSlackId(input.slackUserId);
+    if (!slackUserId) {
+      return null;
+    }
+    const teamId = normalizeSlackId(input.teamId);
+    const payload = this.readPayload();
+    const identity = payload.slackIdentities.find((candidate) =>
+      candidate.slackUserId === slackUserId &&
+      candidate.active &&
+      (!teamId || !candidate.teamId || candidate.teamId === teamId)
+    );
+    if (!identity) {
+      return null;
+    }
+    const user = payload.users.find((candidate) => candidate.id === identity.userId && candidate.active);
+    return user ? this.authenticatedUser(payload, user) : null;
+  }
+
   linkTelegramUser(userId: string, input: {
     telegramUserId: number;
     username?: string;
@@ -474,6 +542,29 @@ export class UserStore {
     });
   }
 
+  linkSlackUser(userId: string, input: {
+    slackUserId: string;
+    teamId?: string;
+    username?: string;
+    realName?: string;
+  }): SlackIdentityRecord {
+    return this.mutatePayload((payload) => {
+      const user = payload.users.find((candidate) => candidate.id === userId);
+      if (!user) {
+        throw new Error("User not found.");
+      }
+      return this.upsertSlackIdentityInPayload(payload, userId, input);
+    });
+  }
+
+  unlinkSlackIdentity(identityId: string): boolean {
+    return this.mutatePayload((payload) => {
+      const before = payload.slackIdentities.length;
+      payload.slackIdentities = payload.slackIdentities.filter((identity) => identity.id !== identityId);
+      return payload.slackIdentities.length !== before;
+    });
+  }
+
   createTelegramLinkCode(userId: string): TelegramLinkCodeRecord {
     return this.mutatePayload((payload) => {
       if (!payload.users.some((user) => user.id === userId && user.active)) {
@@ -506,6 +597,24 @@ export class UserStore {
         expiresAt: new Date(now + LINK_CODE_TTL_MS).toISOString(),
       };
       payload.discordLinkCodes.push(code);
+      return code;
+    });
+  }
+
+  createSlackLinkCode(userId: string): SlackLinkCodeRecord {
+    return this.mutatePayload((payload) => {
+      if (!payload.users.some((user) => user.id === userId && user.active)) {
+        throw new Error("Active user not found.");
+      }
+      const now = Date.now();
+      payload.slackLinkCodes = payload.slackLinkCodes.filter((code) => new Date(code.expiresAt).getTime() > now);
+      const code: SlackLinkCodeRecord = {
+        code: randomLinkCode(),
+        userId,
+        createdAt: new Date(now).toISOString(),
+        expiresAt: new Date(now + LINK_CODE_TTL_MS).toISOString(),
+      };
+      payload.slackLinkCodes.push(code);
       return code;
     });
   }
@@ -551,6 +660,29 @@ export class UserStore {
       }
       this.upsertDiscordIdentityInPayload(payload, user.id, input);
       payload.discordLinkCodes = payload.discordLinkCodes.filter((candidate) => candidate.code !== normalized);
+      return this.authenticatedUser(payload, user);
+    });
+  }
+
+  consumeSlackLinkCode(code: string, input: {
+    slackUserId: string;
+    teamId?: string;
+    username?: string;
+    realName?: string;
+  }): AuthenticatedUser {
+    return this.mutatePayload((payload) => {
+      const normalized = code.trim().toUpperCase();
+      const now = Date.now();
+      const link = payload.slackLinkCodes.find((candidate) => candidate.code === normalized && new Date(candidate.expiresAt).getTime() > now);
+      if (!link) {
+        throw new Error("Invalid or expired link code.");
+      }
+      const user = payload.users.find((candidate) => candidate.id === link.userId && candidate.active);
+      if (!user) {
+        throw new Error("Linked user is not active.");
+      }
+      this.upsertSlackIdentityInPayload(payload, user.id, input);
+      payload.slackLinkCodes = payload.slackLinkCodes.filter((candidate) => candidate.code !== normalized);
       return this.authenticatedUser(payload, user);
     });
   }
@@ -658,6 +790,61 @@ export class UserStore {
     });
   }
 
+  registerSlackChannel(input: {
+    teamId?: string;
+    channelId: string;
+    title?: string;
+    type?: string;
+    enabled?: boolean;
+    allowedGroupIds?: string[];
+  }): SlackChannelAccessRecord {
+    return this.mutatePayload((payload) => {
+      const now = new Date().toISOString();
+      const channelId = normalizeSlackId(input.channelId);
+      if (!channelId) {
+        throw new Error("Slack channel id is required.");
+      }
+      const teamId = normalizeSlackId(input.teamId);
+      const existing = payload.slackChannels.find((channel) => channel.channelId === channelId && channel.teamId === teamId);
+      const allowedGroupIds = normalizeGroupIds(payload, input.allowedGroupIds ?? [], null);
+      if (existing) {
+        existing.title = input.title ?? existing.title;
+        existing.type = input.type ?? existing.type;
+        existing.enabled = input.enabled ?? existing.enabled;
+        existing.allowedGroupIds = allowedGroupIds;
+        existing.updatedAt = now;
+        return existing;
+      }
+      const channel: SlackChannelAccessRecord = {
+        id: randomId(),
+        teamId,
+        channelId,
+        title: input.title,
+        type: input.type,
+        enabled: input.enabled ?? true,
+        allowedGroupIds,
+        createdAt: now,
+        updatedAt: now,
+      };
+      payload.slackChannels.push(channel);
+      return channel;
+    });
+  }
+
+  updateSlackChannel(id: string, patch: { enabled?: boolean; allowedGroupIds?: string[]; title?: string }): SlackChannelAccessRecord {
+    return this.mutatePayload((payload) => {
+      const channel = payload.slackChannels.find((candidate) => candidate.id === id);
+      if (!channel) {
+        throw new Error("Slack channel not found.");
+      }
+      if (patch.enabled !== undefined) channel.enabled = patch.enabled;
+      if (patch.title !== undefined) channel.title = patch.title;
+      if (patch.allowedGroupIds !== undefined) channel.allowedGroupIds = normalizeGroupIds(payload, patch.allowedGroupIds, null);
+      channel.updatedAt = new Date().toISOString();
+      return channel;
+    });
+  }
+
   isTelegramChatAllowed(chatId: number | undefined, chatType: string | undefined, user: AuthenticatedUser): boolean {
     if (chatId === undefined) {
       return false;
@@ -698,6 +885,27 @@ export class UserStore {
     return access.allowedGroupIds.some((groupId) => userGroupIds.has(groupId)) && this.canUseDiscordChannel(user, channelId);
   }
 
+  isSlackChannelAllowed(input: { teamId?: string; channelId?: string; isDirectMessage?: boolean }, user: AuthenticatedUser): boolean {
+    const channelId = normalizeSlackId(input.channelId);
+    if (!channelId) {
+      return false;
+    }
+    if (input.isDirectMessage) {
+      return this.canUseSlackChannel(user, channelId);
+    }
+    const teamId = normalizeSlackId(input.teamId);
+    const payload = this.readPayload();
+    const access = payload.slackChannels.find((channel) => channel.channelId === channelId && channel.teamId === teamId);
+    if (!access?.enabled) {
+      return false;
+    }
+    if (access.allowedGroupIds.length === 0) {
+      return this.canUseSlackChannel(user, channelId);
+    }
+    const userGroupIds = new Set(user.groups.map((group) => group.id));
+    return access.allowedGroupIds.some((groupId) => userGroupIds.has(groupId)) && this.canUseSlackChannel(user, channelId);
+  }
+
   hasPermission(user: AuthenticatedUser | null | undefined, permission: Permission | null | undefined): boolean {
     return Boolean(permission && user?.permissions.includes(permission));
   }
@@ -733,6 +941,14 @@ export class UserStore {
     return user.groups.some((group) => group.discordChannelIds.length === 0 || group.discordChannelIds.includes(normalized));
   }
 
+  canUseSlackChannel(user: AuthenticatedUser | null | undefined, channelId: string | undefined): boolean {
+    const normalized = normalizeSlackId(channelId);
+    if (!user || !normalized) {
+      return true;
+    }
+    return user.groups.some((group) => group.slackChannelIds.length === 0 || group.slackChannelIds.includes(normalized));
+  }
+
   createGroup(input: {
     name: string;
     description?: string;
@@ -741,6 +957,7 @@ export class UserStore {
     workspaceRoots?: string[];
     telegramChatIds?: number[];
     discordChannelIds?: string[];
+    slackChannelIds?: string[];
   }): GroupRecord {
     return this.mutatePayload((payload) => {
       const now = new Date().toISOString();
@@ -761,6 +978,7 @@ export class UserStore {
         workspaceRoots: normalizeStringList(input.workspaceRoots ?? []),
         telegramChatIds: normalizeNumberList(input.telegramChatIds ?? []),
         discordChannelIds: normalizeStringList(input.discordChannelIds ?? []),
+        slackChannelIds: normalizeStringList(input.slackChannelIds ?? []),
         createdAt: now,
         updatedAt: now,
       };
@@ -777,6 +995,7 @@ export class UserStore {
     workspaceRoots?: string[];
     telegramChatIds?: number[];
     discordChannelIds?: string[];
+    slackChannelIds?: string[];
   }): GroupRecord {
     return this.mutatePayload((payload) => {
       const group = payload.groups.find((candidate) => candidate.id === id);
@@ -794,6 +1013,7 @@ export class UserStore {
       if (patch.workspaceRoots !== undefined) group.workspaceRoots = normalizeStringList(patch.workspaceRoots);
       if (patch.telegramChatIds !== undefined) group.telegramChatIds = normalizeNumberList(patch.telegramChatIds);
       if (patch.discordChannelIds !== undefined) group.discordChannelIds = normalizeStringList(patch.discordChannelIds);
+      if (patch.slackChannelIds !== undefined) group.slackChannelIds = normalizeStringList(patch.slackChannelIds);
       group.updatedAt = new Date().toISOString();
       return group;
     });
@@ -887,6 +1107,50 @@ export class UserStore {
       updatedAt: now,
     };
     payload.discordIdentities.push(identity);
+    return identity;
+  }
+
+  private upsertSlackIdentityInPayload(payload: PersistedUsers, userId: string, input: {
+    slackUserId: string;
+    teamId?: string;
+    username?: string;
+    realName?: string;
+  }): SlackIdentityRecord {
+    const slackUserId = normalizeSlackId(input.slackUserId);
+    if (!slackUserId) {
+      throw new Error("Slack user id is required.");
+    }
+    const teamId = normalizeSlackId(input.teamId);
+    const now = new Date().toISOString();
+    for (const identity of payload.slackIdentities) {
+      if (identity.slackUserId === slackUserId && (identity.teamId ?? "") === (teamId ?? "") && identity.userId !== userId) {
+        identity.active = false;
+      }
+    }
+    const existing = payload.slackIdentities.find((identity) =>
+      identity.userId === userId &&
+      identity.slackUserId === slackUserId &&
+      (identity.teamId ?? "") === (teamId ?? "")
+    );
+    if (existing) {
+      existing.username = input.username ?? existing.username;
+      existing.realName = input.realName ?? existing.realName;
+      existing.active = true;
+      existing.updatedAt = now;
+      return existing;
+    }
+    const identity: SlackIdentityRecord = {
+      id: randomId(),
+      userId,
+      slackUserId,
+      teamId,
+      username: input.username,
+      realName: input.realName,
+      active: true,
+      linkedAt: now,
+      updatedAt: now,
+    };
+    payload.slackIdentities.push(identity);
     return identity;
   }
 
@@ -988,6 +1252,7 @@ function normalizePayload(payload: PersistedUsers | undefined): PersistedUsers {
       workspaceRoots: [],
       telegramChatIds: [],
       discordChannelIds: [],
+      slackChannelIds: [],
       createdAt: now,
       updatedAt: now,
     });
@@ -1002,6 +1267,7 @@ function normalizePayload(payload: PersistedUsers | undefined): PersistedUsers {
       workspaceRoots: normalizeStringList(group.workspaceRoots),
       telegramChatIds: normalizeNumberList(group.telegramChatIds),
       discordChannelIds: normalizeStringList(group.discordChannelIds),
+      slackChannelIds: normalizeStringList(group.slackChannelIds),
     });
   }
   const groups = Array.from(groupsById.values());
@@ -1023,9 +1289,15 @@ function normalizePayload(payload: PersistedUsers | undefined): PersistedUsers {
       ...channel,
       allowedGroupIds: channel.allowedGroupIds.filter((groupId) => groupIds.has(groupId)),
     })),
+    slackIdentities: (payload?.slackIdentities ?? []).filter((item) => isSlackIdentityRecord(item) && userIds.has(item.userId)),
+    slackChannels: (payload?.slackChannels ?? []).filter(isSlackChannelAccessRecord).map((channel) => ({
+      ...channel,
+      allowedGroupIds: channel.allowedGroupIds.filter((groupId) => groupIds.has(groupId)),
+    })),
     webSessions: (payload?.webSessions ?? []).filter((item) => isWebSessionRecord(item) && userIds.has(item.userId)),
     telegramLinkCodes: (payload?.telegramLinkCodes ?? []).filter((item) => isTelegramLinkCodeRecord(item) && userIds.has(item.userId)),
     discordLinkCodes: (payload?.discordLinkCodes ?? []).filter((item) => isDiscordLinkCodeRecord(item) && userIds.has(item.userId)),
+    slackLinkCodes: (payload?.slackLinkCodes ?? []).filter((item) => isSlackLinkCodeRecord(item) && userIds.has(item.userId)),
   };
 }
 
@@ -1069,6 +1341,11 @@ function normalizeNumberList(values: number[] | undefined): number[] {
 }
 
 function normalizeDiscordId(value: string | undefined | null): string | undefined {
+  const normalized = String(value ?? "").trim();
+  return normalized || undefined;
+}
+
+function normalizeSlackId(value: string | undefined | null): string | undefined {
   const normalized = String(value ?? "").trim();
   return normalized || undefined;
 }
@@ -1179,6 +1456,18 @@ function isDiscordChannelAccessRecord(value: unknown): value is DiscordChannelAc
     typeof candidate.enabled === "boolean" && Array.isArray(candidate.allowedGroupIds);
 }
 
+function isSlackIdentityRecord(value: unknown): value is SlackIdentityRecord {
+  const candidate = value as SlackIdentityRecord;
+  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.userId === "string" &&
+    typeof candidate.slackUserId === "string" && typeof candidate.active === "boolean";
+}
+
+function isSlackChannelAccessRecord(value: unknown): value is SlackChannelAccessRecord {
+  const candidate = value as SlackChannelAccessRecord;
+  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.channelId === "string" &&
+    typeof candidate.enabled === "boolean" && Array.isArray(candidate.allowedGroupIds);
+}
+
 function isWebSessionRecord(value: unknown): value is WebSessionRecord {
   const candidate = value as WebSessionRecord;
   return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.userId === "string" &&
@@ -1193,6 +1482,12 @@ function isTelegramLinkCodeRecord(value: unknown): value is TelegramLinkCodeReco
 
 function isDiscordLinkCodeRecord(value: unknown): value is DiscordLinkCodeRecord {
   const candidate = value as DiscordLinkCodeRecord;
+  return Boolean(candidate) && typeof candidate.code === "string" && typeof candidate.userId === "string" &&
+    typeof candidate.expiresAt === "string";
+}
+
+function isSlackLinkCodeRecord(value: unknown): value is SlackLinkCodeRecord {
+  const candidate = value as SlackLinkCodeRecord;
   return Boolean(candidate) && typeof candidate.code === "string" && typeof candidate.userId === "string" &&
     typeof candidate.expiresAt === "string";
 }

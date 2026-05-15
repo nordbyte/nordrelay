@@ -43,9 +43,11 @@ Be conservative with defaults. Fresh installs must not expose the bot publicly:
 - Keep WebUI login mandatory for every dashboard and API route.
 - Keep Telegram private-chat access limited to linked active NordRelay users.
 - Keep Telegram group/forum chats disabled until an admin enables the chat.
-- Keep user/group permission checks explicit for new Telegram commands, callbacks, WebUI routes, and background actions.
+- Keep Discord and Slack DM access limited to linked active NordRelay users.
+- Keep Discord and Slack channels disabled until an admin enables the channel.
+- Keep user/group permission checks explicit for new channel commands, callbacks/actions, WebUI routes, and background actions.
 - Do not add examples that use real bot tokens, chat ids, API keys, or private paths.
-- Redact secrets in new logs, diagnostics, and Telegram output.
+- Redact secrets in new logs, diagnostics, and channel output.
 
 ## Coding Style
 

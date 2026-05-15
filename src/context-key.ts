@@ -108,6 +108,31 @@ export function parseDiscordContextKey(key: ChannelContextKey): { guildId?: stri
   };
 }
 
+export function slackContextKey(input: { teamId?: string | null; channelId: string; threadTs?: string | null }): ChannelContextKey {
+  const teamId = input.teamId || "team";
+  const thread = input.threadTs && input.threadTs !== input.channelId ? `:${input.threadTs}` : "";
+  return `slack:${teamId}:${input.channelId}${thread}`;
+}
+
+export function isSlackContextKey(key: ChannelContextKey): boolean {
+  return /^slack:[^:]+:[^:]+(?::[^:]+)?$/.test(key);
+}
+
+export function parseSlackContextKey(key: ChannelContextKey): { teamId?: string; channelId: string; threadTs?: string } | null {
+  if (!isSlackContextKey(key)) {
+    return null;
+  }
+  const [, team, channelId, threadTs] = key.split(":");
+  if (!channelId) {
+    return null;
+  }
+  return {
+    teamId: team === "team" ? undefined : team,
+    channelId,
+    threadTs,
+  };
+}
+
 export function parseChannelContextKey(key: ChannelContextKey): ParsedChannelContextKey | null {
   const rawKey = String(key);
   if (isTelegramContextKey(rawKey as ChannelContextKey)) {
@@ -127,6 +152,16 @@ export function parseChannelContextKey(key: ChannelContextKey): ParsedChannelCon
       chatId: discord.channelId,
       topicId: discord.threadId,
       guildId: discord.guildId,
+    };
+  }
+  const slack = parseSlackContextKey(rawKey);
+  if (slack) {
+    return {
+      channelId: "slack",
+      contextKey: rawKey,
+      chatId: slack.channelId,
+      topicId: slack.threadTs,
+      guildId: slack.teamId,
     };
   }
   if (rawKey.startsWith("web:")) {

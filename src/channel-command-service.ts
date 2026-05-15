@@ -50,7 +50,7 @@ import {
 import { renderSessionInfoHTML, renderSessionInfoPlain } from "./session-format.js";
 import { getAvailableBackends } from "./voice.js";
 
-export type CommandChannelSource = "telegram" | "discord";
+export type CommandChannelSource = "telegram" | "discord" | "slack";
 
 export interface ChannelPreferenceCommandOptions {
   source: CommandChannelSource;
@@ -241,7 +241,11 @@ export class ChannelCommandService {
     }
 
     const mode = this.effectiveMirrorMode(options.source, options.contextKey, options.preferencesStore);
-    const minInterval = options.source === "telegram" ? this.config.telegramMirrorMinUpdateMs : this.config.discordMirrorMinUpdateMs;
+    const minInterval = options.source === "telegram"
+      ? this.config.telegramMirrorMinUpdateMs
+      : options.source === "discord"
+        ? this.config.discordMirrorMinUpdateMs
+        : this.config.slackMirrorMinUpdateMs;
     return {
       plain: [
         `CLI mirroring: ${mode}`,
@@ -402,15 +406,27 @@ export class ChannelCommandService {
   }
 
   private defaultMirrorMode(source: CommandChannelSource): ChannelMirrorMode {
-    return source === "telegram" ? this.config.telegramMirrorMode : this.config.discordMirrorMode;
+    return source === "telegram"
+      ? this.config.telegramMirrorMode
+      : source === "discord"
+        ? this.config.discordMirrorMode
+        : this.config.slackMirrorMode;
   }
 
   private defaultNotifyMode(source: CommandChannelSource): ChannelNotifyMode {
-    return source === "telegram" ? this.config.telegramNotifyMode : this.config.discordNotifyMode;
+    return source === "telegram"
+      ? this.config.telegramNotifyMode
+      : source === "discord"
+        ? this.config.discordNotifyMode
+        : this.config.slackNotifyMode;
   }
 
   private defaultQuietHours(source: CommandChannelSource): QuietHours | null | undefined {
-    return source === "telegram" ? this.config.telegramQuietHours : this.config.discordQuietHours;
+    return source === "telegram"
+      ? this.config.telegramQuietHours
+      : source === "discord"
+        ? this.config.discordQuietHours
+        : this.config.slackQuietHours;
   }
 
   private effectiveMirrorMode(source: CommandChannelSource, contextKey: string, preferencesStore: BotPreferencesStore): ChannelMirrorMode {

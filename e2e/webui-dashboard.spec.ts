@@ -36,7 +36,7 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#activeSessions")).toContainText("Run active smoke test");
     await expect(page.locator("#activeSessions")).toContainText("exec_command");
     await expect(page.locator("#activeSessions")).toContainText("Source CLI");
-    await expect(page.locator("#activeSessions")).toContainText("Mirroring: Telegram full, Discord final");
+    await expect(page.locator("#activeSessions")).toContainText("Mirroring: Telegram full, Discord final, Slack final");
     await expect(page.locator("#agentAdapters")).toContainText("Codex");
     await expect(page.locator("#chatAdapters")).toContainText("Telegram");
     await expect(page.locator("#footerHealth")).toContainText("Health: ready");
@@ -50,6 +50,8 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#settingsForm")).toContainText("Enable Codex");
     await page.locator('[data-setting-tab="Discord"]').click();
     await expect(page.locator('[data-setting-box="DISCORD_BOT_TOKEN"] .setting-info')).toHaveAttribute("title", /Discord Developer Portal/);
+    await page.locator('[data-setting-tab="Slack"]').click();
+    await expect(page.locator('[data-setting-box="SLACK_BOT_TOKEN"] .setting-info')).toHaveAttribute("title", /Slack API Apps/);
     await page.locator('[data-setting-tab="Agents"]').click();
 
     await page.locator('[data-setting="NORDRELAY_PI_ENABLED"]').selectOption("true");
@@ -70,6 +72,7 @@ test.describe("NordRelay WebUI", () => {
     await page.getByRole("button", { name: "Metrics" }).click();
     await expect(page.locator("#metricsPanel")).toContainText("Runtime");
     await expect(page.locator("#metricsPanel")).toContainText("Telegram rate limits");
+    await expect(page.locator("#metricsPanel")).toContainText("Slack rate limits");
   });
 
   test("sends prompts through the typed API client and shows queued feedback", async ({ page }) => {
@@ -85,7 +88,7 @@ test.describe("NordRelay WebUI", () => {
     expect(promptRequest?.body).toMatchObject({ text: "Run a browser smoke test" });
   });
 
-  test("renders Discord access controls and filters registered channels", async ({ page }) => {
+  test("renders Discord and Slack access controls and filters registered channels", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
     await page.getByRole("button", { name: "Users" }).click();
@@ -99,6 +102,16 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#discordChannelsList")).toContainText("Engineering Ops");
     await page.locator("#discordChannelSearch").fill("missing");
     await expect(page.locator("#discordChannelsList")).toContainText("No Discord channels registered.");
+
+    await expect(page.locator("#accessTabs")).toContainText("Slack");
+    await page.locator('[data-access-tab="slack"]').click();
+    await expect(page.locator("#slackChannelsList")).toContainText("Slack Engineering");
+    await expect(page.locator("#createSlackChannelBtn")).toBeVisible();
+
+    await page.locator("#slackChannelSearch").fill("engineering");
+    await expect(page.locator("#slackChannelsList")).toContainText("Slack Engineering");
+    await page.locator("#slackChannelSearch").fill("missing");
+    await expect(page.locator("#slackChannelsList")).toContainText("No Slack channels registered.");
   });
 
   test("starts agent install/update jobs from the version page", async ({ page }) => {
@@ -259,6 +272,7 @@ function metrics() {
     adapters: {
       telegram: { queued: 0, running: 0, completed: 2, failed: 0, retries: 0, rateLimitHits: 0, buckets: [] },
       discord: { queued: 0, running: 0, completed: 1, failed: 0, retries: 0, rateLimitHits: 0, buckets: [] },
+      slack: { queued: 0, running: 0, completed: 1, failed: 0, retries: 0, rateLimitHits: 0, buckets: [] },
     },
   };
 }
@@ -293,7 +307,7 @@ function controls(agentId = "codex") {
 function currentUser() {
   return {
     user: { id: "user-1", email: "admin@example.com", displayName: "Admin", active: true, createdAt: now(), updatedAt: now() },
-    groups: [{ id: "admin", name: "Admin", description: "Full access", permissions: permissions(), system: true, agentIds: [], workspaceRoots: [], telegramChatIds: [], discordChannelIds: [], createdAt: now(), updatedAt: now() }],
+    groups: [{ id: "admin", name: "Admin", description: "Full access", permissions: permissions(), system: true, agentIds: [], workspaceRoots: [], telegramChatIds: [], discordChannelIds: [], slackChannelIds: [], createdAt: now(), updatedAt: now() }],
     permissions: permissions(),
   };
 }
@@ -338,8 +352,9 @@ function activeSessions() {
         queueLength: 1,
         queuePaused: false,
         mirrorChannels: [
-          { source: "telegram", contextKey: "296626516", mode: "full", queueLength: 0, queuePaused: false },
+          { source: "telegram", contextKey: "123456789", mode: "full", queueLength: 0, queuePaused: false },
           { source: "discord", contextKey: "discord:guild:channel", mode: "final", queueLength: 0, queuePaused: false },
+          { source: "slack", contextKey: "slack:T123:C123", mode: "final", queueLength: 0, queuePaused: false },
         ],
       },
     ],
@@ -386,6 +401,7 @@ function settings() {
       { key: "NORDRELAY_CODEX_ENABLED", label: "Enable Codex", description: "Allow Codex sessions.", group: "Agents", kind: "boolean", value: "true", effectiveValue: "true", configured: true, masked: false, restartRequired: true },
       { key: "NORDRELAY_PI_ENABLED", label: "Enable Pi", description: "Allow Pi sessions.", group: "Agents", kind: "boolean", value: "", effectiveValue: "false", configured: false, masked: false, restartRequired: true },
       { key: "DISCORD_BOT_TOKEN", label: "Discord bot token", description: "Discord bot token.", help: "Discord Developer Portal: open your application, go to Bot, then copy or reset the bot token.", group: "Discord", kind: "secret", value: "", effectiveValue: "", configured: false, masked: false, restartRequired: true },
+      { key: "SLACK_BOT_TOKEN", label: "Slack bot token", description: "Slack bot token.", help: "Slack API Apps: open your app, then copy the OAuth bot token from OAuth & Permissions.", group: "Slack", kind: "secret", value: "", effectiveValue: "", configured: false, masked: false, restartRequired: true },
     ],
   };
 }
@@ -479,6 +495,7 @@ function users() {
         groups: auth.groups,
         telegramIdentities: [],
         discordIdentities: [{ id: "discord-identity-1", userId: "user-1", discordUserId: "112233445566778899", username: "admin", createdAt: now(), updatedAt: now() }],
+        slackIdentities: [{ id: "slack-identity-1", userId: "user-1", slackUserId: "U123", teamId: "T123", username: "admin", active: true, createdAt: now(), updatedAt: now() }],
         webSessions: [],
       },
     ],
@@ -491,6 +508,19 @@ function users() {
         channelId: "123456789012345678",
         title: "Engineering Ops",
         type: "guild",
+        enabled: true,
+        allowedGroupIds: ["admin"],
+        createdAt: now(),
+        updatedAt: now(),
+      },
+    ],
+    slackChannels: [
+      {
+        id: "slack-channel-1",
+        teamId: "T123",
+        channelId: "C123",
+        title: "Slack Engineering",
+        type: "channel",
         enabled: true,
         allowedGroupIds: ["admin"],
         createdAt: now(),

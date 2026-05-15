@@ -35,7 +35,7 @@ export interface SupportBundleOptions {
   adapterHealth?: WebAdapterHealthDto[];
   auditEvents?: AuditEvent[];
   agentUpdateJobs?: AgentUpdateJobSnapshot[];
-  source?: "web" | "telegram" | "cli";
+  source?: "web" | "telegram" | "discord" | "slack" | "cli";
 }
 
 export interface SupportBundleResult {

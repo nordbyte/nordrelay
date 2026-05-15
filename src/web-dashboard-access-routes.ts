@@ -57,6 +57,8 @@ export async function handleDashboardAccessRoute(
       active: optionalBooleanField(body, "active") ?? true,
       telegramUserId: optionalNumberField(body, "telegramUserId"),
       discordUserId: optionalStringField(body, "discordUserId"),
+      slackUserId: optionalStringField(body, "slackUserId"),
+      slackTeamId: optionalStringField(body, "slackTeamId"),
     });
     options.auditUserAction(authUser, "user_created", user.user.email);
     sendJson(res, 201, { user: publicUser(user.user), groups: user.groups });
@@ -167,6 +169,36 @@ export async function handleDashboardAccessRoute(
     return true;
   }
 
+  const slackLinkMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/slack$/);
+  if (slackLinkMatch?.[1] && req.method === "POST") {
+    const body = await readJsonBody(req);
+    if (body.createCode === true) {
+      const userId = decodeURIComponent(slackLinkMatch[1]);
+      const linkCode = users.createSlackLinkCode(userId);
+      options.auditUserAction(authUser, "slack_link_created", userId);
+      sendJson(res, 201, { linkCode });
+      return true;
+    }
+    const identity = users.linkSlackUser(decodeURIComponent(slackLinkMatch[1]), {
+      slackUserId: stringField(body, "slackUserId"),
+      teamId: optionalStringField(body, "teamId"),
+      username: optionalStringField(body, "username"),
+      realName: optionalStringField(body, "realName"),
+    });
+    options.auditUserAction(authUser, "slack_linked", identity.slackUserId);
+    sendJson(res, 201, { identity });
+    return true;
+  }
+
+  const slackUnlinkMatch = url.pathname.match(/^\/api\/users\/[^/]+\/slack\/([^/]+)$/);
+  if (slackUnlinkMatch?.[1] && req.method === "DELETE") {
+    const identityId = decodeURIComponent(slackUnlinkMatch[1]);
+    const removed = users.unlinkSlackIdentity(identityId);
+    options.auditUserAction(authUser, "slack_unlinked", identityId);
+    sendJson(res, 200, { removed });
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/groups") {
     sendJson(res, 200, { groups: users.listGroups() });
     return true;
@@ -182,6 +214,7 @@ export async function handleDashboardAccessRoute(
       workspaceRoots: arrayStringField(body, "workspaceRoots"),
       telegramChatIds: arrayNumberField(body, "telegramChatIds"),
       discordChannelIds: arrayStringField(body, "discordChannelIds"),
+      slackChannelIds: arrayStringField(body, "slackChannelIds"),
     });
     options.auditUserAction(authUser, "group_created", group.id);
     sendJson(res, 201, { group });
@@ -199,6 +232,7 @@ export async function handleDashboardAccessRoute(
       workspaceRoots: body.workspaceRoots === undefined ? undefined : arrayStringField(body, "workspaceRoots"),
       telegramChatIds: body.telegramChatIds === undefined ? undefined : arrayNumberField(body, "telegramChatIds"),
       discordChannelIds: body.discordChannelIds === undefined ? undefined : arrayStringField(body, "discordChannelIds"),
+      slackChannelIds: body.slackChannelIds === undefined ? undefined : arrayStringField(body, "slackChannelIds"),
     });
     options.auditUserAction(authUser, "group_updated", group.id);
     sendJson(res, 200, { group });
@@ -266,6 +300,39 @@ export async function handleDashboardAccessRoute(
       allowedGroupIds: body.allowedGroupIds === undefined ? undefined : arrayStringField(body, "allowedGroupIds"),
     });
     options.auditUserAction(authUser, "discord_channel_updated", channel.channelId);
+    sendJson(res, 200, { channel });
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/slack-channels") {
+    sendJson(res, 200, { channels: users.snapshot().slackChannels });
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/slack-channels") {
+    const body = await readJsonBody(req);
+    const channel = users.registerSlackChannel({
+      teamId: optionalStringField(body, "teamId"),
+      channelId: stringField(body, "channelId"),
+      title: optionalStringField(body, "title"),
+      type: optionalStringField(body, "type"),
+      enabled: optionalBooleanField(body, "enabled") ?? true,
+      allowedGroupIds: arrayStringField(body, "allowedGroupIds"),
+    });
+    options.auditUserAction(authUser, "slack_channel_updated", channel.channelId);
+    sendJson(res, 201, { channel });
+    return true;
+  }
+
+  const slackChannelMatch = url.pathname.match(/^\/api\/slack-channels\/([^/]+)$/);
+  if (slackChannelMatch?.[1] && req.method === "PATCH") {
+    const body = await readJsonBody(req);
+    const channel = users.updateSlackChannel(decodeURIComponent(slackChannelMatch[1]), {
+      enabled: optionalBooleanField(body, "enabled"),
+      title: optionalStringField(body, "title"),
+      allowedGroupIds: body.allowedGroupIds === undefined ? undefined : arrayStringField(body, "allowedGroupIds"),
+    });
+    options.auditUserAction(authUser, "slack_channel_updated", channel.channelId);
     sendJson(res, 200, { channel });
     return true;
   }

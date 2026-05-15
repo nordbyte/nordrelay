@@ -10,7 +10,7 @@ export type WebActivityCategory =
   | "tool";
 
 export interface WebActivityActor {
-  channel: "web" | "telegram" | "discord" | "cli" | "system";
+  channel: "web" | "telegram" | "discord" | "slack" | "cli" | "system";
   id?: string;
   label?: string;
   username?: string;
@@ -24,7 +24,7 @@ export function activityCategoryForType(type: string): WebActivityCategory {
   if (/^agent_(install|update)/.test(type)) return "agent-update";
   if (/^(artifact|artifacts)/.test(type)) return "artifact";
   if (/^(auth|login|logout)/.test(type)) return "auth";
-  if (/^(user_|group_|telegram_chat_|telegram_link|discord_channel_|discord_link|peer_|permission_|access_|lock_)/.test(type)) return "security";
+  if (/^(user_|group_|telegram_chat_|telegram_link|discord_channel_|discord_link|slack_channel_|slack_link|peer_|permission_|access_|lock_)/.test(type)) return "security";
   if (/^(tool_|cli_tool)/.test(type)) return "tool";
   return "system";
 }
@@ -41,7 +41,7 @@ export function auditCategoryForAction(action: string): WebActivityCategory {
   if (/^queue_/.test(action)) return "queue";
   if (/^lock_/.test(action)) return "security";
   if (/^auth_/.test(action)) return "auth";
-  if (/^(permission_|user_|group_|telegram_|discord_|peer_)/.test(action)) return "security";
+  if (/^(permission_|user_|group_|telegram_|discord_|slack_|peer_)/.test(action)) return "security";
   if (/^(artifact|file)/.test(action)) return "artifact";
   if (/^(model_|reasoning_|fast_|launch_|session_|handback)/.test(action)) return "session";
   if (/^(tool_)/.test(action)) return "tool";

@@ -50,7 +50,7 @@ describe("web dashboard state stores", () => {
           id: "user-1",
           label: "Ricardo",
           username: "ricardo@example.com",
-          channelUserId: "296626516",
+          channelUserId: "123456789",
         },
       });
       store.append({
@@ -76,7 +76,7 @@ describe("web dashboard state stores", () => {
       });
       expect(store.list({ status: "completed" })[0]?.source).toBe("cli");
       expect(store.list({ actor: "ricardo@example.com" })[0]?.source).toBe("telegram");
-      expect(store.list({ actor: "296626516" })[0]?.source).toBe("telegram");
+      expect(store.list({ actor: "123456789" })[0]?.source).toBe("telegram");
       expect(store.list({ agentId: "codex", threadId: "thread-a", workspace: "/repo/a", type: "tool" })[0]?.source).toBe("cli");
     } finally {
       rmSync(workspace, { recursive: true, force: true });

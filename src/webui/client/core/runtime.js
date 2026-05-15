@@ -31,7 +31,7 @@ function applyPermissions(){
     ['#restartBtn','system.restart'],
     ['#updateBtn','updates.run'],
     ['#clearLogsBtn','logs.clear'],
-    ['#createUserBtn,#createGroupBtn,#createChatBtn,#createDiscordChannelBtn','users.write'],
+    ['#createUserBtn,#createGroupBtn,#createChatBtn,#createDiscordChannelBtn,#createSlackChannelBtn','users.write'],
     ['#createPeerInviteBtn,#addPeerBtn,[data-peer-edit],[data-peer-toggle],[data-peer-revoke]','peers.write'],
     ['#lockSessionBtn,#unlockSessionBtn','sessions.write'],
     ['[data-switch]','sessions.write'],
@@ -39,7 +39,7 @@ function applyPermissions(){
     ['[data-del-art],#deleteSelectedArtifactsBtn','files.write'],
     ['[data-auth-login],[data-auth-logout]','auth.manage'],
     ['[data-update-agent],[data-update-send],[data-update-cancel],[data-update-delete-log]','updates.run'],
-    ['[data-user-edit],[data-user-toggle],[data-user-code],[data-user-link],[data-user-discord-code],[data-user-discord-link],[data-user-password],[data-user-revoke],[data-telegram-unlink],[data-discord-unlink],[data-group-edit],[data-chat-edit],[data-chat-toggle],[data-discord-channel-edit],[data-discord-channel-toggle]','users.write'],
+    ['[data-user-edit],[data-user-toggle],[data-user-code],[data-user-link],[data-user-discord-code],[data-user-discord-link],[data-user-slack-code],[data-user-slack-link],[data-user-password],[data-user-revoke],[data-telegram-unlink],[data-discord-unlink],[data-slack-unlink],[data-group-edit],[data-chat-edit],[data-chat-toggle],[data-discord-channel-edit],[data-discord-channel-toggle],[data-slack-channel-edit],[data-slack-channel-toggle]','users.write'],
   ];
   disableMap.forEach(([selector,permission])=>document.querySelectorAll(selector).forEach(el=>{el.disabled=!can(permission);if(!can(permission))el.title='Permission required: '+permission}));
 }

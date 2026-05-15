@@ -21,7 +21,7 @@ Include:
 - Expected and actual impact.
 - Any suggested mitigation.
 
-Do not include real Telegram or Discord bot tokens, OpenAI API keys, Codex credentials, local rollout files, or private source code in reports.
+Do not include real Telegram, Discord, or Slack bot tokens, OpenAI API keys, Codex credentials, local rollout files, or private source code in reports.
 
 ## Security Defaults
 
@@ -34,7 +34,9 @@ NordRelay is designed to fail closed:
 - Telegram group and forum chats are disabled until an admin enables the chat.
 - Discord DMs require a linked active NordRelay user.
 - Discord guild channels and threads are disabled until an admin enables the channel.
-- Authorization is enforced through user groups, granular permissions, and optional group scopes for agents, workspace roots, Telegram chats, and Discord channels.
+- Slack DMs require a linked active NordRelay user.
+- Slack channels and threads are disabled until an admin enables the channel.
+- Authorization is enforced through user groups, granular permissions, and optional group scopes for agents, workspace roots, Telegram chats, Discord channels, and Slack channels.
 - NordRelay peer federation is disabled by default and uses a dedicated API port separate from the WebUI.
 - Peer pairing requires an explicit one-time invitation code, Ed25519 node identity verification, request HMAC signatures, timestamp and nonce replay protection, and TLS fingerprint pinning.
 - Peer permissions are scoped with `peers.read`, `peers.write`, and `peers.connect`, plus per-peer remote scopes, allowed agent ids, allowed workspace roots, and optional workspace aliases.
@@ -44,8 +46,8 @@ NordRelay is designed to fail closed:
 - The last active admin user cannot be disabled or demoted.
 - WebUI login and chat account-link attempts are rate-limited.
 - Password changes and group membership changes revoke existing WebUI sessions.
-- User, group, Telegram-link, Telegram-chat, Discord-link, Discord-channel, session-revocation, login, and permission-denied events are audited.
+- User, group, Telegram-link, Telegram-chat, Discord-link, Discord-channel, Slack-link, Slack-channel, session-revocation, login, and permission-denied events are audited.
 - Uploaded files are staged inside the selected workspace.
 - Secrets are redacted from logs, channel diagnostics, and diagnostics support bundles where possible.
 
-Treat enabling `danger-full-access`, broad write permissions, Telegram group chat access, Discord guild-channel access, or peer access with prompt/write scopes as equivalent to granting remote shell-adjacent control over the host.
+Treat enabling `danger-full-access`, broad write permissions, Telegram group chat access, Discord guild-channel access, Slack channel access, or peer access with prompt/write scopes as equivalent to granting remote shell-adjacent control over the host.

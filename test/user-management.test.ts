@@ -87,6 +87,24 @@ describe("UserStore", () => {
     expect(() => store.consumeDiscordLinkCode(code.code, { discordUserId: "778899" })).toThrow("Invalid or expired link code.");
   });
 
+  it("links Slack users with expiring link codes", () => {
+    const user = store.createUser({
+      email: "slack@example.com",
+      displayName: "Slack User",
+      password: "password123",
+    });
+    const code = store.createSlackLinkCode(user.user.id);
+    const linked = store.consumeSlackLinkCode(code.code.toLowerCase(), {
+      slackUserId: "U123",
+      teamId: "T123",
+      username: "slackuser",
+    });
+
+    expect(linked.user.email).toBe("slack@example.com");
+    expect(store.resolveSlackUser({ slackUserId: "U123", teamId: "T123" })?.user.email).toBe("slack@example.com");
+    expect(() => store.consumeSlackLinkCode(code.code, { slackUserId: "U456", teamId: "T123" })).toThrow("Invalid or expired link code.");
+  });
+
   it("uses groups and chat access for Telegram group authorization", () => {
     const readonly = store.createUser({
       email: "read@example.com",
@@ -153,6 +171,7 @@ describe("UserStore", () => {
       workspaceRoots: [home],
       telegramChatIds: [-100],
       discordChannelIds: ["123"],
+      slackChannelIds: ["C123"],
     });
     const user = store.createUser({
       email: "scoped@example.com",
@@ -169,6 +188,8 @@ describe("UserStore", () => {
     expect(store.canUseTelegramChat(user, -101)).toBe(false);
     expect(store.canUseDiscordChannel(user, "123")).toBe(true);
     expect(store.canUseDiscordChannel(user, "456")).toBe(false);
+    expect(store.canUseSlackChannel(user, "C123")).toBe(true);
+    expect(store.canUseSlackChannel(user, "C456")).toBe(false);
     expect(() => store.createGroup({ name: "Bad", permissions: ["not.real"] })).toThrow("Unknown permission");
   });
 
@@ -201,5 +222,38 @@ describe("UserStore", () => {
     expect(store.isDiscordChannelAllowed({ guildId: "guild", channelId: "ops" }, operator)).toBe(true);
     expect(store.isDiscordChannelAllowed({ guildId: "guild", channelId: "ops" }, readonly)).toBe(false);
     expect(store.isDiscordChannelAllowed({ channelId: "dm", isDirectMessage: true }, readonly)).toBe(true);
+  });
+
+  it("uses groups and channel access for Slack channel authorization", () => {
+    const readonly = store.createUser({
+      email: "slack-read@example.com",
+      displayName: "Slack Read",
+      password: "password123",
+      groupIds: [READONLY_GROUP_ID],
+      slackUserId: "U100",
+      slackTeamId: "T123",
+    });
+    const operator = store.createUser({
+      email: "slack-operator@example.com",
+      displayName: "Slack Operator",
+      password: "password123",
+      groupIds: [USER_GROUP_ID],
+      slackUserId: "U101",
+      slackTeamId: "T123",
+    });
+
+    store.registerSlackChannel({ teamId: "T123", channelId: "CGENERAL" });
+    expect(store.isSlackChannelAllowed({ teamId: "T123", channelId: "CGENERAL" }, operator)).toBe(true);
+    expect(store.isSlackChannelAllowed({ teamId: "T123", channelId: "CGENERAL" }, readonly)).toBe(true);
+
+    store.registerSlackChannel({
+      teamId: "T123",
+      channelId: "COPS",
+      allowedGroupIds: [USER_GROUP_ID],
+    });
+
+    expect(store.isSlackChannelAllowed({ teamId: "T123", channelId: "COPS" }, operator)).toBe(true);
+    expect(store.isSlackChannelAllowed({ teamId: "T123", channelId: "COPS" }, readonly)).toBe(false);
+    expect(store.isSlackChannelAllowed({ channelId: "D123", isDirectMessage: true }, readonly)).toBe(true);
   });
 });

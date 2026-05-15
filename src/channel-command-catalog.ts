@@ -10,8 +10,10 @@ export type ChannelCommandDefinition = {
   description: string;
   telegramDescription?: string;
   discordDescription?: string;
+  slackDescription?: string;
   telegram?: boolean;
   discord?: boolean;
+  slack?: boolean;
   discordOptions?: ChannelCommandOption[];
 };
 
@@ -104,6 +106,13 @@ export function discordCommandCatalog(): Array<Required<Pick<ChannelCommandDefin
 export function discordHelpCommandList(): string {
   return discordCommandCatalog()
     .filter((entry) => !["start", "help", "prompt"].includes(entry.name))
+    .map((entry) => `/${entry.name}`)
+    .join(", ");
+}
+
+export function slackHelpCommandList(): string {
+  return CHANNEL_COMMANDS
+    .filter((entry) => entry.slack !== false && !["start", "help", "prompt"].includes(entry.name))
     .map((entry) => `/${entry.name}`)
     .join(", ");
 }

@@ -12,6 +12,9 @@ export interface SettingDefinition {
 export const SECRET_KEYS = new Set([
   "TELEGRAM_BOT_TOKEN",
   "DISCORD_BOT_TOKEN",
+  "SLACK_BOT_TOKEN",
+  "SLACK_APP_TOKEN",
+  "SLACK_SIGNING_SECRET",
   "CODEX_API_KEY",
   "HERMES_API_KEY",
   "OPENCLAW_GATEWAY_TOKEN",
@@ -35,6 +38,16 @@ const DISCORD_SETTING_HELP: Record<string, string> = {
   DISCORD_NOTIFY_MODE: "Overrides the channel-neutral completion notification default for Discord only. Leave blank to use NORDRELAY_NOTIFY_MODE.",
   DISCORD_QUIET_HOURS: "Use a local-time range like 22-7, off, or blank to inherit the channel-neutral quiet-hours setting.",
   DISCORD_AUTO_SEND_ARTIFACTS: "Overrides automatic artifact upload behavior for Discord only. Leave blank to use NORDRELAY_AUTO_SEND_ARTIFACTS.",
+};
+
+const SLACK_SETTING_HELP: Record<string, string> = {
+  SLACK_ENABLED: "Create a Slack app, install it into the workspace, then set bot/app tokens before enabling Slack.",
+  SLACK_BOT_TOKEN: "Slack app OAuth & Permissions: copy the bot token that starts with xoxb-.",
+  SLACK_APP_TOKEN: "Slack app Basic Information: create an app-level token with connections:write. Required for Socket Mode.",
+  SLACK_SIGNING_SECRET: "Slack app Basic Information: copy Signing Secret. Required only when Socket Mode is disabled.",
+  SLACK_ALLOWED_TEAM_IDS: "Optional workspace allow-list. Copy Team IDs from Slack event payloads or app diagnostics.",
+  SLACK_ALLOWED_CHANNEL_IDS: "Optional channel allow-list before NordRelay user/group checks. Copy channel IDs from Slack channel details.",
+  SLACK_COMMAND: "Slash command configured in the Slack app. Defaults to /nordrelay.",
 };
 
 export const SETTING_DEFINITIONS: SettingDefinition[] = [
@@ -61,6 +74,22 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   discordSetting("DISCORD_NOTIFY_MODE", "Discord notify override", "string", "Optional Discord override for completion notifications.", false, ["off", "minimal", "all"]),
   discordSetting("DISCORD_QUIET_HOURS", "Discord quiet hours override", "string", "Optional Discord quiet hours override. Use HH-HH, off, or leave blank for default.", false),
   discordSetting("DISCORD_AUTO_SEND_ARTIFACTS", "Discord auto-send artifacts override", "boolean", "Optional Discord override for automatic artifact summaries/uploads.", false),
+
+  slackSetting("SLACK_ENABLED", "Enable Slack", "boolean", "Start the Slack bot adapter.", true),
+  slackSetting("SLACK_BOT_TOKEN", "Slack bot token", "secret", "Slack bot token.", true),
+  slackSetting("SLACK_APP_TOKEN", "Slack app token", "secret", "Slack app-level token for Socket Mode.", true),
+  slackSetting("SLACK_SIGNING_SECRET", "Slack signing secret", "secret", "Slack signing secret for HTTP Events mode.", true),
+  slackSetting("SLACK_SOCKET_MODE", "Slack Socket Mode", "boolean", "Use Slack Socket Mode instead of an HTTP events receiver.", true),
+  slackSetting("SLACK_PORT", "Slack HTTP port", "number", "HTTP port used when Slack Socket Mode is disabled.", true),
+  slackSetting("SLACK_ALLOWED_TEAM_IDS", "Allowed Slack teams", "list", "Optional comma-separated Slack team/workspace allow-list.", true),
+  slackSetting("SLACK_ALLOWED_CHANNEL_IDS", "Allowed Slack channels", "list", "Optional comma-separated Slack channel allow-list before user/group checks.", true),
+  slackSetting("SLACK_MESSAGE_CONTENT_ENABLED", "Slack message content", "boolean", "Read regular Slack text messages as prompts.", true),
+  slackSetting("SLACK_COMMAND", "Slack Slash command", "string", "Slash command configured in Slack.", true),
+  slackSetting("SLACK_CLI_MIRROR_MODE", "Slack mirror override", "string", "Optional Slack override for CLI mirror mode. Uses the NordRelay default when unset.", false, ["off", "status", "final", "full"]),
+  slackSetting("SLACK_CLI_MIRROR_MIN_UPDATE_MS", "Slack mirror update override", "number", "Optional Slack override for mirrored edit interval.", true),
+  slackSetting("SLACK_NOTIFY_MODE", "Slack notify override", "string", "Optional Slack override for completion notifications.", false, ["off", "minimal", "all"]),
+  slackSetting("SLACK_QUIET_HOURS", "Slack quiet hours override", "string", "Optional Slack quiet hours override. Use HH-HH, off, or leave blank for default.", false),
+  slackSetting("SLACK_AUTO_SEND_ARTIFACTS", "Slack auto-send artifacts override", "boolean", "Optional Slack override for automatic artifact summaries/uploads.", false),
 
   setting("NORDRELAY_CODEX_ENABLED", "Enable Codex", "Agents", "boolean", "Allow Codex sessions.", true),
   setting("NORDRELAY_PI_ENABLED", "Enable Pi", "Agents", "boolean", "Allow Pi sessions.", true),
@@ -192,6 +221,21 @@ const EXAMPLE_VALUES: Record<string, string> = {
   "DISCORD_NOTIFY_MODE": "",
   "DISCORD_QUIET_HOURS": "",
   "DISCORD_AUTO_SEND_ARTIFACTS": "",
+  "SLACK_ENABLED": "false",
+  "SLACK_BOT_TOKEN": "",
+  "SLACK_APP_TOKEN": "",
+  "SLACK_SIGNING_SECRET": "",
+  "SLACK_SOCKET_MODE": "true",
+  "SLACK_PORT": "3000",
+  "SLACK_ALLOWED_TEAM_IDS": "",
+  "SLACK_ALLOWED_CHANNEL_IDS": "",
+  "SLACK_MESSAGE_CONTENT_ENABLED": "true",
+  "SLACK_COMMAND": "/nordrelay",
+  "SLACK_CLI_MIRROR_MODE": "",
+  "SLACK_CLI_MIRROR_MIN_UPDATE_MS": "",
+  "SLACK_NOTIFY_MODE": "",
+  "SLACK_QUIET_HOURS": "",
+  "SLACK_AUTO_SEND_ARTIFACTS": "",
   "NORDRELAY_CODEX_ENABLED": "true",
   "NORDRELAY_PI_ENABLED": "false",
   "NORDRELAY_HERMES_ENABLED": "false",
@@ -303,6 +347,7 @@ const EXAMPLE_VALUES: Record<string, string> = {
 const GROUP_INTROS: Record<string, string> = {
   Telegram: "Telegram bot and transport settings.",
   Discord: "Discord bot settings. Discord is opt-in and uses the same NordRelay users, groups, and permissions as Telegram.",
+  Slack: "Slack bot settings. Slack is opt-in and uses the same NordRelay users, groups, and permissions as Telegram and Discord.",
   Agents: "Agent access. Codex is enabled by default; Pi, Hermes, OpenClaw, and Claude Code are opt-in.",
   Codex: "Codex defaults for newly created or reattached sessions.",
   Pi: "Pi coding agent defaults.",
@@ -364,4 +409,15 @@ function discordSetting(
   options?: string[],
 ): SettingDefinition {
   return setting(key, label, "Discord", kind, description, restartRequired, options, DISCORD_SETTING_HELP[key]);
+}
+
+function slackSetting(
+  key: string,
+  label: string,
+  kind: SettingDefinition["kind"],
+  description: string,
+  restartRequired: boolean,
+  options?: string[],
+): SettingDefinition {
+  return setting(key, label, "Slack", kind, description, restartRequired, options, SLACK_SETTING_HELP[key]);
 }

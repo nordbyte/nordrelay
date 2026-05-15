@@ -212,7 +212,7 @@ export function renderDashboardApp(): string {
 
       <section class="page" id="page-activity">
         <div class="panel">
-          <div class="row"><select id="activitySource"><option value="all">All sources</option><option value="web">Web</option><option value="telegram">Telegram</option><option value="discord">Discord</option><option value="cli">CLI</option></select><select id="activityCategory"><option value="all">All categories</option><option value="prompt">Prompt</option><option value="session">Session</option><option value="queue">Queue</option><option value="agent-update">Agent update</option><option value="artifact">Artifact</option><option value="system">System</option><option value="auth">Auth</option><option value="security">Security</option><option value="tool">Tool</option></select><select id="activityStatus"><option value="all">All statuses</option><option value="queued">Queued</option><option value="running">Running</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="aborted">Aborted</option><option value="info">Info</option></select><input id="activityActor" placeholder="Actor"><input id="activityAgent" placeholder="Agent"><input id="activityThread" placeholder="Thread ID"><input id="activityWorkspace" placeholder="Workspace"><input id="activityType" placeholder="Type"><input id="activitySince" type="datetime-local"><input id="activityLimit" type="number" value="100" min="1" max="500"><button id="loadActivityBtn">Load activity</button><button id="exportActivityBtn" class="secondary">Export</button></div>
+          <div class="row"><select id="activitySource"><option value="all">All sources</option><option value="web">Web</option><option value="telegram">Telegram</option><option value="discord">Discord</option><option value="slack">Slack</option><option value="cli">CLI</option></select><select id="activityCategory"><option value="all">All categories</option><option value="prompt">Prompt</option><option value="session">Session</option><option value="queue">Queue</option><option value="agent-update">Agent update</option><option value="artifact">Artifact</option><option value="system">System</option><option value="auth">Auth</option><option value="security">Security</option><option value="tool">Tool</option></select><select id="activityStatus"><option value="all">All statuses</option><option value="queued">Queued</option><option value="running">Running</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="aborted">Aborted</option><option value="info">Info</option></select><input id="activityActor" placeholder="Actor"><input id="activityAgent" placeholder="Agent"><input id="activityThread" placeholder="Thread ID"><input id="activityWorkspace" placeholder="Workspace"><input id="activityType" placeholder="Type"><input id="activitySince" type="datetime-local"><input id="activityLimit" type="number" value="100" min="1" max="500"><button id="loadActivityBtn">Load activity</button><button id="exportActivityBtn" class="secondary">Export</button></div>
           <div id="activityList" class="list"></div>
         </div>
       </section>
@@ -245,12 +245,13 @@ export function renderDashboardApp(): string {
 
       <section class="page" id="page-access">
         <div class="panel">
-          <div class="row"><button id="loadAccessBtn">Reload users</button><button id="createUserBtn">Create user</button><button id="createGroupBtn" class="secondary">Create group</button><button id="createChatBtn" class="secondary">Add Telegram chat</button><button id="createDiscordChannelBtn" class="secondary">Add Discord channel</button><button id="lockSessionBtn" class="secondary">Lock web session</button><button id="unlockSessionBtn" class="secondary">Unlock web session</button></div>
+          <div class="row"><button id="loadAccessBtn">Reload users</button><button id="createUserBtn">Create user</button><button id="createGroupBtn" class="secondary">Create group</button><button id="createChatBtn" class="secondary">Add Telegram chat</button><button id="createDiscordChannelBtn" class="secondary">Add Discord channel</button><button id="createSlackChannelBtn" class="secondary">Add Slack channel</button><button id="lockSessionBtn" class="secondary">Lock web session</button><button id="unlockSessionBtn" class="secondary">Unlock web session</button></div>
           <div id="accessTabs" class="tabs access-tabs">
             <button type="button" data-access-tab="users" class="active">Users</button>
             <button type="button" data-access-tab="groups">Groups</button>
             <button type="button" data-access-tab="telegram">Telegram</button>
             <button type="button" data-access-tab="discord">Discord</button>
+            <button type="button" data-access-tab="slack">Slack</button>
             <button type="button" data-access-tab="locks">Locks</button>
             <button type="button" data-access-tab="audit">Audit</button>
           </div>
@@ -272,13 +273,20 @@ export function renderDashboardApp(): string {
             </div>
             <div id="discordChannelsList" class="list"></div>
           </div>
+          <div class="access-tab" data-access-tab-panel="slack">
+            <div class="access-tab-heading">
+              <h2>Slack channels</h2>
+              <input id="slackChannelSearch" placeholder="Search Slack channels">
+            </div>
+            <div id="slackChannelsList" class="list"></div>
+          </div>
           <div class="access-tab" data-access-tab-panel="locks">
             <h2>Locks</h2>
             <div id="locksList" class="list"></div>
           </div>
           <div class="access-tab" data-access-tab-panel="audit">
             <h2>Audit</h2>
-            <div class="row"><select id="auditChannel"><option value="all">All channels</option><option value="web">Web</option><option value="telegram">Telegram</option><option value="discord">Discord</option></select><select id="auditCategory"><option value="all">All categories</option><option value="prompt">Prompt</option><option value="session">Session</option><option value="queue">Queue</option><option value="agent-update">Agent update</option><option value="artifact">Artifact</option><option value="system">System</option><option value="auth">Auth</option><option value="security">Security</option><option value="tool">Tool</option></select><select id="auditStatus"><option value="all">All statuses</option><option value="ok">OK</option><option value="failed">Failed</option><option value="denied">Denied</option></select><input id="auditActor" placeholder="Actor"><input id="auditAgent" placeholder="Agent"><input id="auditThread" placeholder="Thread ID"><input id="auditWorkspace" placeholder="Workspace"><input id="auditSince" type="datetime-local"><input id="auditLimit" type="number" value="50" min="1" max="500"><button id="loadAuditBtn">Load audit</button><button id="exportAuditBtn" class="secondary">Export</button></div>
+            <div class="row"><select id="auditChannel"><option value="all">All channels</option><option value="web">Web</option><option value="telegram">Telegram</option><option value="discord">Discord</option><option value="slack">Slack</option></select><select id="auditCategory"><option value="all">All categories</option><option value="prompt">Prompt</option><option value="session">Session</option><option value="queue">Queue</option><option value="agent-update">Agent update</option><option value="artifact">Artifact</option><option value="system">System</option><option value="auth">Auth</option><option value="security">Security</option><option value="tool">Tool</option></select><select id="auditStatus"><option value="all">All statuses</option><option value="ok">OK</option><option value="failed">Failed</option><option value="denied">Denied</option></select><input id="auditActor" placeholder="Actor"><input id="auditAgent" placeholder="Agent"><input id="auditThread" placeholder="Thread ID"><input id="auditWorkspace" placeholder="Workspace"><input id="auditSince" type="datetime-local"><input id="auditLimit" type="number" value="50" min="1" max="500"><button id="loadAuditBtn">Load audit</button><button id="exportAuditBtn" class="secondary">Export</button></div>
             <div id="auditList" class="list"></div>
           </div>
         </div>

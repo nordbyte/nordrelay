@@ -163,7 +163,9 @@ export function promptActivityToUnifiedJob(event: WebActivityEvent): UnifiedJobD
       ? "Telegram"
       : event.source === "discord"
         ? "Discord"
-        : "CLI";
+        : event.source === "slack"
+          ? "Slack"
+          : "CLI";
   const promptKey = event.threadId ?? event.contextKey ?? event.id;
   return {
     id: `prompt:${event.source}:${promptKey}:${event.id}`,

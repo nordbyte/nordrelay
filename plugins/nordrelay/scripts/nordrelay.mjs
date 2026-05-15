@@ -76,10 +76,16 @@ function parseArgs(argv) {
     else if (arg === "--enable-discord") options.enableDiscord = true;
     else if (arg === "--discord-token") options.discordBotToken = requireValue(copy, ++i, arg);
     else if (arg === "--discord-client-id") options.discordClientId = requireValue(copy, ++i, arg);
+    else if (arg === "--enable-slack") options.enableSlack = true;
+    else if (arg === "--slack-bot-token") options.slackBotToken = requireValue(copy, ++i, arg);
+    else if (arg === "--slack-app-token") options.slackAppToken = requireValue(copy, ++i, arg);
+    else if (arg === "--slack-signing-secret") options.slackSigningSecret = requireValue(copy, ++i, arg);
     else if (arg === "--admin-email") options.adminEmail = requireValue(copy, ++i, arg);
     else if (arg === "--admin-name") options.adminName = requireValue(copy, ++i, arg);
     else if (arg === "--admin-password") options.adminPassword = requireValue(copy, ++i, arg);
     else if (arg === "--telegram-user-id") options.telegramUserId = requireValue(copy, ++i, arg);
+    else if (arg === "--slack-user-id") options.slackUserId = requireValue(copy, ++i, arg);
+    else if (arg === "--slack-team-id") options.slackTeamId = requireValue(copy, ++i, arg);
     else if (arg === "--state-backend") options.stateBackend = requireValue(copy, ++i, arg);
     else if (arg === "--enable-pi") options.enablePi = true;
     else if (arg === "--enable-hermes") options.enableHermes = true;
@@ -684,10 +690,22 @@ async function commandInit(options) {
   const discordClientId = enableDiscord === "true"
     ? options.discordClientId || process.env.DISCORD_CLIENT_ID || await ask(null, "Discord client ID", "")
     : "";
+  const enableSlack = options.enableSlack ? "true" : await askChoice(null, "Enable Slack", "false");
+  const slackBotToken = enableSlack === "true"
+    ? options.slackBotToken || process.env.SLACK_BOT_TOKEN || await ask(null, "Slack bot token", "")
+    : "";
+  const slackAppToken = enableSlack === "true"
+    ? options.slackAppToken || process.env.SLACK_APP_TOKEN || await ask(null, "Slack app-level token for Socket Mode", "")
+    : "";
+  const slackSigningSecret = enableSlack === "true"
+    ? options.slackSigningSecret || process.env.SLACK_SIGNING_SECRET || await ask(null, "Slack signing secret (optional for Socket Mode)", "")
+    : "";
   const adminEmail = options.adminEmail || await ask(null, "Admin email", "");
   const adminName = options.adminName || await ask(null, "Admin name", "Admin");
   const adminPassword = options.adminPassword || await askSecret(null, "Admin password", "");
   const telegramUserId = options.telegramUserId || await ask(null, "Optional Telegram user id to link", "");
+  const slackUserId = options.slackUserId || await ask(null, "Optional Slack user id to link", "");
+  const slackTeamId = slackUserId ? (options.slackTeamId || await ask(null, "Optional Slack team id for linked user", "")) : "";
   const enableCodex = options.disableCodex ? "false" : await askChoice(null, "Enable Codex", "true");
   const enablePi = options.enablePi ? "true" : await askChoice(null, "Enable Pi", "false");
   const enableHermes = options.enableHermes ? "true" : await askChoice(null, "Enable Hermes", "false");
@@ -697,7 +715,9 @@ async function commandInit(options) {
 
   if (enableTelegram === "true" && !telegramBotToken) throw new Error("Telegram bot token is required when Telegram is enabled.");
   if (enableDiscord === "true" && !discordBotToken) throw new Error("Discord bot token is required when Discord is enabled.");
-  if (enableTelegram !== "true" && enableDiscord !== "true") throw new Error("At least one chat adapter must be enabled.");
+  if (enableSlack === "true" && !slackBotToken) throw new Error("Slack bot token is required when Slack is enabled.");
+  if (enableSlack === "true" && !slackAppToken) throw new Error("Slack app-level token is required for default Socket Mode.");
+  if (enableTelegram !== "true" && enableDiscord !== "true" && enableSlack !== "true") throw new Error("At least one chat adapter must be enabled.");
   if (!adminEmail) throw new Error("Admin email is required.");
   if (!adminPassword) throw new Error("Admin password is required.");
   if (enableCodex !== "true" && enablePi !== "true" && enableHermes !== "true" && enableOpenClaw !== "true" && enableClaudeCode !== "true") throw new Error("At least one agent must be enabled.");
@@ -722,6 +742,13 @@ async function commandInit(options) {
     "DISCORD_COMMAND_MODE=both",
     "DISCORD_MESSAGE_CONTENT_ENABLED=true",
     "DISCORD_AUTO_REGISTER_COMMANDS=true",
+    `SLACK_ENABLED=${enableSlack}`,
+    `SLACK_BOT_TOKEN=${slackBotToken}`,
+    `SLACK_APP_TOKEN=${slackAppToken}`,
+    `SLACK_SIGNING_SECRET=${slackSigningSecret}`,
+    "SLACK_SOCKET_MODE=true",
+    "SLACK_MESSAGE_CONTENT_ENABLED=true",
+    "SLACK_AUTO_SEND_ARTIFACTS=false",
     `NORDRELAY_CODEX_ENABLED=${enableCodex}`,
     `NORDRELAY_PI_ENABLED=${enablePi}`,
     `NORDRELAY_HERMES_ENABLED=${enableHermes}`,
@@ -754,6 +781,8 @@ async function commandInit(options) {
     displayName: adminName || adminEmail,
     password: adminPassword,
     telegramUserId: telegramUserId ? Number(telegramUserId) : undefined,
+    slackUserId: slackUserId || undefined,
+    slackTeamId: slackTeamId || undefined,
   });
   console.log(`Wrote ${envPath}`);
   console.log(`Created admin user ${adminEmail}.`);
@@ -917,6 +946,8 @@ function parseUserFlags(argv) {
     else if (arg === "--group" || arg === "--groups") flags.groups = requireValue(copy, ++i, arg);
     else if (arg === "--telegram-user-id") flags.telegramUserId = Number.parseInt(requireValue(copy, ++i, arg), 10);
     else if (arg === "--discord-user-id") flags.discordUserId = requireValue(copy, ++i, arg);
+    else if (arg === "--slack-user-id") flags.slackUserId = requireValue(copy, ++i, arg);
+    else if (arg === "--slack-team-id") flags.slackTeamId = requireValue(copy, ++i, arg);
     else if (arg === "--user-id") flags.userId = requireValue(copy, ++i, arg);
   }
   return flags;
@@ -948,8 +979,8 @@ async function commandUser(options) {
       ? ["admin"]
       : (flags.groups ? flags.groups.split(",").map((item) => item.trim()).filter(Boolean) : ["user"]);
     const created = flags.subcommand === "create-admin"
-      ? store.createAdmin({ email, displayName: name, password, telegramUserId: flags.telegramUserId, discordUserId: flags.discordUserId })
-      : store.createUser({ email, displayName: name, password, groupIds, telegramUserId: flags.telegramUserId, discordUserId: flags.discordUserId });
+      ? store.createAdmin({ email, displayName: name, password, telegramUserId: flags.telegramUserId, discordUserId: flags.discordUserId, slackUserId: flags.slackUserId, slackTeamId: flags.slackTeamId })
+      : store.createUser({ email, displayName: name, password, groupIds, telegramUserId: flags.telegramUserId, discordUserId: flags.discordUserId, slackUserId: flags.slackUserId, slackTeamId: flags.slackTeamId });
     console.log(`Created user ${created.user.email} (${created.groups.map((group) => group.name).join(", ")}).`);
     return;
   }
@@ -984,6 +1015,17 @@ async function commandUser(options) {
     return;
   }
 
+  if (flags.subcommand === "link-slack") {
+    const email = flags.email || await ask(null, "Email", "");
+    const slackUserId = flags.slackUserId || await ask(null, "Slack user id", "");
+    const teamId = flags.slackTeamId || await ask(null, "Slack team id (optional)", "");
+    const user = store.getUserByEmail(email);
+    if (!user) throw new Error(`User not found: ${email}`);
+    store.linkSlackUser(user.user.id, { slackUserId, teamId: teamId || undefined });
+    console.log(`Linked Slack user ${slackUserId} to ${user.user.email}.`);
+    return;
+  }
+
   if (flags.subcommand === "link-code" || flags.subcommand === "telegram-link-code") {
     const email = flags.email || await ask(null, "Email", "");
     const user = store.getUserByEmail(email);
@@ -1004,7 +1046,17 @@ async function commandUser(options) {
     return;
   }
 
-  throw new Error("Usage: nordrelay user [list|create-admin|create|reset-password|link-telegram|link-discord|link-code|telegram-link-code|discord-link-code]");
+  if (flags.subcommand === "slack-link-code") {
+    const email = flags.email || await ask(null, "Email", "");
+    const user = store.getUserByEmail(email);
+    if (!user) throw new Error(`User not found: ${email}`);
+    const code = store.createSlackLinkCode(user.user.id);
+    console.log(`Slack link code for ${user.user.email}: ${code.code}`);
+    console.log(`Expires: ${code.expiresAt}`);
+    return;
+  }
+
+  throw new Error("Usage: nordrelay user [list|create-admin|create|reset-password|link-telegram|link-discord|link-slack|link-code|telegram-link-code|discord-link-code|slack-link-code]");
 }
 
 async function commandDoctor(options) {
@@ -1016,24 +1068,39 @@ async function commandDoctor(options) {
   checks.push(check("Node.js >= 22", Number.parseInt(process.versions.node.split(".")[0], 10) >= 22, process.version));
   const telegramRequested = process.env.TELEGRAM_ENABLED !== "false";
   const discordRequested = process.env.DISCORD_ENABLED === "true";
+  const slackRequested = process.env.SLACK_ENABLED === "true";
+  const slackSocketMode = process.env.SLACK_SOCKET_MODE !== "false";
   const telegramUsable = telegramRequested && Boolean(process.env.TELEGRAM_BOT_TOKEN);
   const discordUsable = discordRequested && Boolean(process.env.DISCORD_BOT_TOKEN);
+  const slackUsable = slackRequested && Boolean(process.env.SLACK_BOT_TOKEN) && (slackSocketMode ? Boolean(process.env.SLACK_APP_TOKEN) : Boolean(process.env.SLACK_SIGNING_SECRET));
   checks.push(check(
     "Telegram bot token",
     !telegramRequested || telegramUsable,
     telegramRequested ? (telegramUsable ? "configured" : "missing; Telegram adapter will be disabled") : "disabled",
-    telegramRequested && !discordUsable ? "fail" : "warn",
+    telegramRequested && !discordUsable && !slackUsable ? "fail" : "warn",
   ));
   checks.push(check(
     "Discord bot token",
     !discordRequested || discordUsable,
     discordRequested ? (discordUsable ? "configured" : "missing; Discord adapter will be disabled") : "disabled",
-    discordRequested && !telegramUsable ? "fail" : "warn",
+    discordRequested && !telegramUsable && !slackUsable ? "fail" : "warn",
+  ));
+  checks.push(check(
+    "Slack bot token",
+    !slackRequested || Boolean(process.env.SLACK_BOT_TOKEN),
+    slackRequested ? (process.env.SLACK_BOT_TOKEN ? "configured" : "missing; Slack adapter will be disabled") : "disabled",
+    slackRequested && !telegramUsable && !discordUsable ? "fail" : "warn",
+  ));
+  checks.push(check(
+    slackSocketMode ? "Slack app token" : "Slack signing secret",
+    !slackRequested || slackUsable,
+    slackRequested ? (slackUsable ? "configured" : `missing; ${slackSocketMode ? "Socket Mode requires SLACK_APP_TOKEN" : "HTTP mode requires SLACK_SIGNING_SECRET"}`) : "disabled",
+    slackRequested && !telegramUsable && !discordUsable ? "fail" : "warn",
   ));
   checks.push(check(
     "Usable chat adapter",
-    telegramUsable || discordUsable,
-    telegramUsable && discordUsable ? "Telegram and Discord" : telegramUsable ? "Telegram" : discordUsable ? "Discord" : "none",
+    telegramUsable || discordUsable || slackUsable,
+    [telegramUsable ? "Telegram" : "", discordUsable ? "Discord" : "", slackUsable ? "Slack" : ""].filter(Boolean).join(" and ") || "none",
     "fail",
   ));
   checks.push(check("Discord client ID", !discordUsable || Boolean(process.env.DISCORD_CLIENT_ID), discordUsable ? (process.env.DISCORD_CLIENT_ID ? "configured" : "missing; slash command auto-registration disabled") : "disabled", "warn"));
@@ -1042,6 +1109,7 @@ async function commandDoctor(options) {
   checks.push(check("WebUI login", true, "required for every dashboard request"));
   checks.push(check("Telegram access", true, "requires linked active users and enabled group chats"));
   checks.push(check("Discord access", true, "requires linked active users and enabled channels"));
+  checks.push(check("Slack access", true, "requires linked active users and enabled channels"));
   const peerEnabled = process.env.NORDRELAY_PEER_ENABLED === "true";
   const peerTlsEnabled = process.env.NORDRELAY_PEER_TLS_ENABLED !== "false";
   const peerHost = process.env.NORDRELAY_PEER_HOST || "127.0.0.1";

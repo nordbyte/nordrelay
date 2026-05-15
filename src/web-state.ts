@@ -10,7 +10,7 @@ import {
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "./state-backend.js";
 
 export type WebChatRole = "user" | "agent" | "system" | "tool";
-export type WebActivitySource = "web" | "telegram" | "discord" | "cli";
+export type WebActivitySource = "web" | "telegram" | "discord" | "slack" | "cli";
 export type WebActivityStatus = "queued" | "running" | "completed" | "failed" | "aborted" | "info";
 
 export interface WebChatMessage {
@@ -196,7 +196,7 @@ function isWebChatMessage(value: unknown): value is WebChatMessage {
     typeof candidate.text === "string" &&
     typeof candidate.timestamp === "string" &&
     ["user", "agent", "system", "tool"].includes(candidate.role) &&
-    ["web", "telegram", "discord", "cli"].includes(candidate.source);
+    ["web", "telegram", "discord", "slack", "cli"].includes(candidate.source);
 }
 
 function isWebActivityEvent(value: unknown): value is WebActivityEvent {
@@ -207,7 +207,7 @@ function isWebActivityEvent(value: unknown): value is WebActivityEvent {
   return typeof candidate.id === "string" &&
     typeof candidate.timestamp === "string" &&
     typeof candidate.type === "string" &&
-    ["web", "telegram", "discord", "cli"].includes(candidate.source) &&
+    ["web", "telegram", "discord", "slack", "cli"].includes(candidate.source) &&
     ["queued", "running", "completed", "failed", "aborted", "info"].includes(candidate.status);
 }
 

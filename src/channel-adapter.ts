@@ -98,6 +98,18 @@ const DISCORD_CAPABILITIES: ChannelCapability[] = [
   "topics",
 ];
 
+const SLACK_CAPABILITIES: ChannelCapability[] = [
+  "text",
+  "streaming-edits",
+  "typing",
+  "inline-buttons",
+  "files",
+  "photos",
+  "voice",
+  "topics",
+  "webhooks",
+];
+
 const PLANNED_CHANNELS: ChannelDescriptor[] = [
   {
     id: "whatsapp",
@@ -105,12 +117,6 @@ const PLANNED_CHANNELS: ChannelDescriptor[] = [
     capabilities: ["text", "typing", "files", "photos", "voice", "webhooks"],
     status: "planned",
     notes: "Requires a WhatsApp Business provider integration.",
-  },
-  {
-    id: "slack",
-    label: "Slack",
-    capabilities: ["text", "streaming-edits", "typing", "inline-buttons", "files"],
-    status: "planned",
   },
   {
     id: "matrix",
@@ -166,10 +172,34 @@ export class DiscordChannelAdapter implements ChannelAdapter {
   }
 }
 
+export class SlackChannelAdapter implements ChannelAdapter {
+  readonly id = "slack";
+  readonly label = "Slack";
+  readonly capabilities = new Set<ChannelCapability>(SLACK_CAPABILITIES);
+
+  describe(): ChannelDescriptor {
+    const requested = process.env.SLACK_ENABLED === "true";
+    const enabled = requested && Boolean(process.env.SLACK_BOT_TOKEN) && Boolean(process.env.SLACK_APP_TOKEN);
+    return {
+      id: this.id,
+      label: this.label,
+      capabilities: [...this.capabilities],
+      status: "available",
+      enabled,
+      notes: enabled
+        ? "Slack bot runtime is enabled."
+        : requested
+          ? "Slack bot runtime is disabled because SLACK_BOT_TOKEN or SLACK_APP_TOKEN is missing."
+          : "Enable with SLACK_ENABLED=true, SLACK_BOT_TOKEN, and SLACK_APP_TOKEN.",
+    };
+  }
+}
+
 export function listChannelDescriptors(): ChannelDescriptor[] {
   return [
     new TelegramChannelAdapter().describe(),
     new DiscordChannelAdapter().describe(),
+    new SlackChannelAdapter().describe(),
     ...PLANNED_CHANNELS,
   ];
 }

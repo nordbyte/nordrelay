@@ -10,6 +10,8 @@ import {
   parseChannelContextKey,
   parseContextKey,
   parseDiscordContextKey,
+  parseSlackContextKey,
+  slackContextKey,
 } from "../src/context-key.js";
 
 describe("context-key", () => {
@@ -89,6 +91,18 @@ describe("context-key", () => {
     expect(isTelegramContextKey(key)).toBe(false);
   });
 
+  it("parses Slack team, channel, and thread context keys", () => {
+    const key = slackContextKey({ teamId: "T123", channelId: "C123", threadTs: "1715790000.000100" });
+
+    expect(key).toBe("slack:T123:C123:1715790000.000100");
+    expect(parseSlackContextKey(key)).toEqual({
+      teamId: "T123",
+      channelId: "C123",
+      threadTs: "1715790000.000100",
+    });
+    expect(isTelegramContextKey(key)).toBe(false);
+  });
+
   it("parses channel context keys through the generic parser", () => {
     expect(parseChannelContextKey("-1003929308812:2")).toMatchObject({
       channelId: "telegram",
@@ -100,6 +114,12 @@ describe("context-key", () => {
       guildId: "guild-1",
       chatId: "channel-1",
       topicId: "thread-1",
+    });
+    expect(parseChannelContextKey("slack:T123:C123:1715790000.000100")).toMatchObject({
+      channelId: "slack",
+      guildId: "T123",
+      chatId: "C123",
+      topicId: "1715790000.000100",
     });
     expect(parseChannelContextKey("web:dashboard")).toMatchObject({
       channelId: "web",

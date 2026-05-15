@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { InMemoryChannelRuntime, ChannelCommandRouter, deliverChannelAction, parseChannelCommand } from "../src/channel-runtime.js";
 import { actionFromDiscordCustomId, discordActionId, discordMessageText, splitDiscordMessage } from "../src/discord-channel-runtime.js";
+import { actionFromSlackActionId, slackActionId, slackMessageText, splitSlackMessage } from "../src/slack-channel-runtime.js";
 
 describe("channel runtime abstraction", () => {
   it("parses channel commands independently from Telegram", () => {
@@ -85,5 +86,18 @@ describe("channel runtime abstraction", () => {
     expect(actionFromDiscordCustomId(actionId)).toBe("discord_queue_cancel:ctx:abc");
     expect(actionId.length).toBeLessThanOrEqual(100);
     expect(splitDiscordMessage("x".repeat(4000)).length).toBeGreaterThan(1);
+  });
+
+  it("maps Slack message formatting and component actions safely", () => {
+    expect(slackMessageText({
+      text: "<b>Working</b> &amp; done",
+      fallbackText: "Working & done",
+      parseMode: "html",
+    })).toBe("Working & done");
+
+    const actionId = slackActionId("slack_queue_cancel:ctx:abc");
+    expect(actionFromSlackActionId(actionId)).toBe("slack_queue_cancel:ctx:abc");
+    expect(actionId.length).toBeLessThanOrEqual(255);
+    expect(splitSlackMessage("x".repeat(9000)).length).toBeGreaterThan(1);
   });
 });

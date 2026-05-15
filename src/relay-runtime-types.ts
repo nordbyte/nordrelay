@@ -46,7 +46,7 @@ export interface RelaySnapshot {
   workspaces: string[];
 }
 
-export type ActiveSessionSource = "web" | "telegram" | "discord" | "cli";
+export type ActiveSessionSource = "web" | "telegram" | "discord" | "slack" | "cli";
 
 export interface ActiveSessionMirrorDto {
   source: Exclude<ActiveSessionSource, "cli">;

@@ -27,6 +27,12 @@ export interface ConnectorRuntimeState {
   hermesCli?: string;
   openClawCli?: string;
   claudeCodeCli?: string;
+  telegramTransport?: string;
+  discordEnabled?: boolean;
+  slackEnabled?: boolean;
+  peerEnabled?: boolean;
+  peerUrl?: string;
+  peerTlsFingerprint?: string;
   error?: string;
   logFile?: string;
   updatedAt?: string;

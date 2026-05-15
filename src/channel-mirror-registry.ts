@@ -74,10 +74,14 @@ export class ChannelMirrorRegistry {
 
   effectiveMirrorMode(
     contextKey: ChannelContextKey,
-    source: "telegram" | "discord",
+    source: "telegram" | "discord" | "slack",
     preferences: BotPreferencesStore,
   ): Exclude<ChannelMirrorMode, "off"> | "off" {
-    const configured = source === "telegram" ? this.config.telegramMirrorMode : this.config.discordMirrorMode;
+    const configured = source === "telegram"
+      ? this.config.telegramMirrorMode
+      : source === "discord"
+        ? this.config.discordMirrorMode
+        : this.config.slackMirrorMode;
     return preferences.get(contextKey).mirrorMode ?? configured;
   }
 
@@ -98,12 +102,15 @@ export function activeSessionSourceForContextKey(contextKey: ChannelContextKey):
   if (channelId === "discord") {
     return "discord";
   }
+  if (channelId === "slack") {
+    return "slack";
+  }
   if (channelId === "web") {
     return "web";
   }
   return "cli";
 }
 
-export function isMirrorChannelSource(source: ActiveSessionSource): source is "telegram" | "discord" {
-  return source === "telegram" || source === "discord";
+export function isMirrorChannelSource(source: ActiveSessionSource): source is "telegram" | "discord" | "slack" {
+  return source === "telegram" || source === "discord" || source === "slack";
 }

@@ -74,6 +74,21 @@ export interface ConnectorConfig {
   discordNotifyMode: ChannelNotifyMode;
   discordQuietHours: QuietHours | null;
   discordAutoSendArtifacts: boolean;
+  slackEnabled: boolean;
+  slackBotToken?: string;
+  slackAppToken?: string;
+  slackSigningSecret?: string;
+  slackSocketMode: boolean;
+  slackPort: number;
+  slackAllowedTeamIds: string[];
+  slackAllowedChannelIds: string[];
+  slackMessageContentEnabled: boolean;
+  slackCommand: string;
+  slackMirrorMode: ChannelMirrorMode;
+  slackMirrorMinUpdateMs: number;
+  slackNotifyMode: ChannelNotifyMode;
+  slackQuietHours: QuietHours | null;
+  slackAutoSendArtifacts: boolean;
   workspace: string;
   workspaceAllowedRoots: string[];
   workspaceWarnRoots: string[];
@@ -188,6 +203,20 @@ export function loadConfig(): ConnectorConfig {
   const discordMirrorMinUpdateMs = parseNonNegativeIntegerEnv(optionalString(process.env.DISCORD_CLI_MIRROR_MIN_UPDATE_MS), mirrorMinUpdateMs, "DISCORD_CLI_MIRROR_MIN_UPDATE_MS");
   const discordNotifyMode = parseNotifyMode(optionalString(process.env.DISCORD_NOTIFY_MODE), notifyMode);
   const discordQuietHours = parseQuietHoursOverride(process.env.DISCORD_QUIET_HOURS, quietHours);
+  const requestedSlackEnabled = parseBooleanEnv(optionalString(process.env.SLACK_ENABLED), false);
+  const slackBotToken = optionalString(process.env.SLACK_BOT_TOKEN);
+  const slackAppToken = optionalString(process.env.SLACK_APP_TOKEN);
+  const slackSigningSecret = optionalString(process.env.SLACK_SIGNING_SECRET);
+  const slackSocketMode = parseBooleanEnv(optionalString(process.env.SLACK_SOCKET_MODE), true);
+  const slackPort = parsePositiveIntegerEnv(optionalString(process.env.SLACK_PORT), 3000, "SLACK_PORT");
+  const slackAllowedTeamIds = parseOptionalStringList(optionalString(process.env.SLACK_ALLOWED_TEAM_IDS));
+  const slackAllowedChannelIds = parseOptionalStringList(optionalString(process.env.SLACK_ALLOWED_CHANNEL_IDS));
+  const slackMessageContentEnabled = parseBooleanEnv(optionalString(process.env.SLACK_MESSAGE_CONTENT_ENABLED), true);
+  const slackCommand = parseSlackCommand(optionalString(process.env.SLACK_COMMAND));
+  const slackMirrorMode = parseMirrorMode(optionalString(process.env.SLACK_CLI_MIRROR_MODE), mirrorMode);
+  const slackMirrorMinUpdateMs = parseNonNegativeIntegerEnv(optionalString(process.env.SLACK_CLI_MIRROR_MIN_UPDATE_MS), mirrorMinUpdateMs, "SLACK_CLI_MIRROR_MIN_UPDATE_MS");
+  const slackNotifyMode = parseNotifyMode(optionalString(process.env.SLACK_NOTIFY_MODE), notifyMode);
+  const slackQuietHours = parseQuietHoursOverride(process.env.SLACK_QUIET_HOURS, quietHours);
   const workspace = resolveWorkspace();
   const workspaceAllowedRoots = parsePathList(optionalString(process.env.WORKSPACE_ALLOWED_ROOTS));
   const workspaceWarnRoots = parsePathList(optionalString(process.env.WORKSPACE_WARN_ROOTS));
@@ -200,6 +229,7 @@ export function loadConfig(): ConnectorConfig {
   const artifactIgnoreGlobs = parseOptionalStringList(optionalString(process.env.ARTIFACT_IGNORE_GLOBS));
   const telegramAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.TELEGRAM_AUTO_SEND_ARTIFACTS), autoSendArtifacts);
   const discordAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.DISCORD_AUTO_SEND_ARTIFACTS), autoSendArtifacts);
+  const slackAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.SLACK_AUTO_SEND_ARTIFACTS), autoSendArtifacts);
   const codexEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_CODEX_ENABLED), true);
   const codexApiKey = optionalString(process.env.CODEX_API_KEY);
   const codexModel = optionalString(process.env.CODEX_MODEL);
@@ -309,7 +339,20 @@ export function loadConfig(): ConnectorConfig {
     discordEnabled = false;
     adapterWarnings.push("Discord disabled: DISCORD_ENABLED=true requires DISCORD_BOT_TOKEN.");
   }
-  if (!telegramEnabled && !discordEnabled) {
+  let slackEnabled = requestedSlackEnabled;
+  if (slackEnabled && !slackBotToken) {
+    slackEnabled = false;
+    adapterWarnings.push("Slack disabled: SLACK_ENABLED=true requires SLACK_BOT_TOKEN.");
+  }
+  if (slackEnabled && slackSocketMode && !slackAppToken) {
+    slackEnabled = false;
+    adapterWarnings.push("Slack disabled: SLACK_SOCKET_MODE=true requires SLACK_APP_TOKEN.");
+  }
+  if (slackEnabled && !slackSocketMode && !slackSigningSecret) {
+    slackEnabled = false;
+    adapterWarnings.push("Slack disabled: SLACK_SOCKET_MODE=false requires SLACK_SIGNING_SECRET.");
+  }
+  if (!telegramEnabled && !discordEnabled && !slackEnabled) {
     const detail = adapterWarnings.length > 0 ? ` ${adapterWarnings.join(" ")}` : "";
     throw new Error(`At least one usable chat adapter must be enabled.${detail}`);
   }
@@ -350,6 +393,21 @@ export function loadConfig(): ConnectorConfig {
     discordNotifyMode,
     discordQuietHours,
     discordAutoSendArtifacts,
+    slackEnabled,
+    slackBotToken,
+    slackAppToken,
+    slackSigningSecret,
+    slackSocketMode,
+    slackPort,
+    slackAllowedTeamIds,
+    slackAllowedChannelIds,
+    slackMessageContentEnabled,
+    slackCommand,
+    slackMirrorMode,
+    slackMirrorMinUpdateMs,
+    slackNotifyMode,
+    slackQuietHours,
+    slackAutoSendArtifacts,
     workspace,
     workspaceAllowedRoots,
     workspaceWarnRoots,
@@ -664,6 +722,11 @@ function parseDiscordCommandMode(raw: string | undefined): "slash" | "message" |
   }
   console.warn(`Invalid DISCORD_COMMAND_MODE value: "${raw}". Expected slash, message, or both. Falling back to both.`);
   return "both";
+}
+
+function parseSlackCommand(raw: string | undefined): string {
+  const normalized = raw?.trim() || "/nordrelay";
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
 }
 
 function parseWebhookPath(raw: string | undefined): string {

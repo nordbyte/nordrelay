@@ -102,6 +102,7 @@ function activeSourceLabel(source){
   if(source==='cli')return'CLI';
   if(source==='telegram')return'Telegram';
   if(source==='discord')return'Discord';
+  if(source==='slack')return'Slack';
   if(source==='web')return'WebUI';
   return source||'-';
 }

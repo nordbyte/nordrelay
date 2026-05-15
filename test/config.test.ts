@@ -47,6 +47,21 @@ describe("loadConfig", () => {
     delete process.env.DISCORD_NOTIFY_MODE;
     delete process.env.DISCORD_QUIET_HOURS;
     delete process.env.DISCORD_AUTO_SEND_ARTIFACTS;
+    delete process.env.SLACK_ENABLED;
+    delete process.env.SLACK_BOT_TOKEN;
+    delete process.env.SLACK_APP_TOKEN;
+    delete process.env.SLACK_SIGNING_SECRET;
+    delete process.env.SLACK_SOCKET_MODE;
+    delete process.env.SLACK_PORT;
+    delete process.env.SLACK_ALLOWED_TEAM_IDS;
+    delete process.env.SLACK_ALLOWED_CHANNEL_IDS;
+    delete process.env.SLACK_MESSAGE_CONTENT_ENABLED;
+    delete process.env.SLACK_COMMAND;
+    delete process.env.SLACK_CLI_MIRROR_MODE;
+    delete process.env.SLACK_CLI_MIRROR_MIN_UPDATE_MS;
+    delete process.env.SLACK_NOTIFY_MODE;
+    delete process.env.SLACK_QUIET_HOURS;
+    delete process.env.SLACK_AUTO_SEND_ARTIFACTS;
     delete process.env.CODEX_API_KEY;
     delete process.env.CODEX_MODEL;
     delete process.env.CODEX_SYNC_INTERVAL_MS;
@@ -165,6 +180,21 @@ describe("loadConfig", () => {
       discordNotifyMode: "minimal",
       discordQuietHours: null,
       discordAutoSendArtifacts: false,
+      slackEnabled: false,
+      slackBotToken: undefined,
+      slackAppToken: undefined,
+      slackSigningSecret: undefined,
+      slackSocketMode: true,
+      slackPort: 3000,
+      slackAllowedTeamIds: [],
+      slackAllowedChannelIds: [],
+      slackMessageContentEnabled: true,
+      slackCommand: "/nordrelay",
+      slackMirrorMode: "status",
+      slackMirrorMinUpdateMs: 4_000,
+      slackNotifyMode: "minimal",
+      slackQuietHours: null,
+      slackAutoSendArtifacts: false,
       workspace: process.cwd(),
       workspaceAllowedRoots: [],
       workspaceWarnRoots: [],
@@ -349,6 +379,21 @@ describe("loadConfig", () => {
     expect(config.discordNotifyMode).toBe("minimal");
     expect(config.discordQuietHours).toBeNull();
     expect(config.discordAutoSendArtifacts).toBe(false);
+    expect(config.slackEnabled).toBe(false);
+    expect(config.slackBotToken).toBeUndefined();
+    expect(config.slackAppToken).toBeUndefined();
+    expect(config.slackSigningSecret).toBeUndefined();
+    expect(config.slackSocketMode).toBe(true);
+    expect(config.slackPort).toBe(3000);
+    expect(config.slackAllowedTeamIds).toEqual([]);
+    expect(config.slackAllowedChannelIds).toEqual([]);
+    expect(config.slackMessageContentEnabled).toBe(true);
+    expect(config.slackCommand).toBe("/nordrelay");
+    expect(config.slackMirrorMode).toBe("status");
+    expect(config.slackMirrorMinUpdateMs).toBe(4_000);
+    expect(config.slackNotifyMode).toBe("minimal");
+    expect(config.slackQuietHours).toBeNull();
+    expect(config.slackAutoSendArtifacts).toBe(false);
     expect(config.maxFileSize).toBe(20 * 1024 * 1024);
     expect(config.artifactRetentionDays).toBe(7);
     expect(config.artifactMaxTurnDirs).toBe(30);
@@ -473,6 +518,66 @@ describe("loadConfig", () => {
     expect(config.discordMessageContentEnabled).toBe(false);
     expect(config.discordCommandMode).toBe("slash");
     expect(config.discordAutoRegisterCommands).toBe(false);
+  });
+
+  it("parses Slack adapter settings", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.SLACK_ENABLED = "true";
+    process.env.SLACK_BOT_TOKEN = "xoxb-token";
+    process.env.SLACK_APP_TOKEN = "xapp-token";
+    process.env.SLACK_SIGNING_SECRET = "signing-secret";
+    process.env.SLACK_PORT = "3010";
+    process.env.SLACK_ALLOWED_TEAM_IDS = "T1,T2";
+    process.env.SLACK_ALLOWED_CHANNEL_IDS = "C1,C2";
+    process.env.SLACK_MESSAGE_CONTENT_ENABLED = "false";
+    process.env.SLACK_COMMAND = "nord";
+    process.env.SLACK_CLI_MIRROR_MODE = "full";
+    process.env.SLACK_CLI_MIRROR_MIN_UPDATE_MS = "2500";
+    process.env.SLACK_NOTIFY_MODE = "all";
+    process.env.SLACK_QUIET_HOURS = "22-7";
+    process.env.SLACK_AUTO_SEND_ARTIFACTS = "true";
+
+    const config = loadConfig();
+
+    expect(config.slackEnabled).toBe(true);
+    expect(config.slackBotToken).toBe("xoxb-token");
+    expect(config.slackAppToken).toBe("xapp-token");
+    expect(config.slackSigningSecret).toBe("signing-secret");
+    expect(config.slackSocketMode).toBe(true);
+    expect(config.slackPort).toBe(3010);
+    expect(config.slackAllowedTeamIds).toEqual(["T1", "T2"]);
+    expect(config.slackAllowedChannelIds).toEqual(["C1", "C2"]);
+    expect(config.slackMessageContentEnabled).toBe(false);
+    expect(config.slackCommand).toBe("/nord");
+    expect(config.slackMirrorMode).toBe("full");
+    expect(config.slackMirrorMinUpdateMs).toBe(2_500);
+    expect(config.slackNotifyMode).toBe("all");
+    expect(config.slackQuietHours).toEqual({ startHour: 22, endHour: 7 });
+    expect(config.slackAutoSendArtifacts).toBe(true);
+  });
+
+  it("allows Slack-only chat configuration when Telegram is disabled", () => {
+    process.env.TELEGRAM_ENABLED = "false";
+    process.env.SLACK_ENABLED = "true";
+    process.env.SLACK_BOT_TOKEN = "xoxb-token";
+    process.env.SLACK_APP_TOKEN = "xapp-token";
+
+    const config = loadConfig();
+
+    expect(config.telegramEnabled).toBe(false);
+    expect(config.slackEnabled).toBe(true);
+  });
+
+  it("disables requested Slack without required tokens when Telegram is usable", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.SLACK_ENABLED = "true";
+    process.env.SLACK_BOT_TOKEN = "xoxb-token";
+
+    const config = loadConfig();
+
+    expect(config.telegramEnabled).toBe(true);
+    expect(config.slackEnabled).toBe(false);
+    expect(config.adapterWarnings).toContain("Slack disabled: SLACK_SOCKET_MODE=true requires SLACK_APP_TOKEN.");
   });
 
   it("allows Discord-only chat configuration when Telegram is disabled", () => {

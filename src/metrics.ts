@@ -2,6 +2,7 @@ import { monitorEventLoopDelay } from "node:perf_hooks";
 
 import { getDiscordRateLimitMetrics } from "./discord-rate-limit.js";
 import type { UnifiedJobDto } from "./relay-runtime-types.js";
+import { getSlackRateLimitMetrics } from "./slack-rate-limit.js";
 import { getTelegramRateLimitMetrics } from "./telegram-rate-limit.js";
 import type { WebActivityEvent } from "./web-state.js";
 
@@ -59,6 +60,7 @@ export interface RuntimeMetricsDto {
   adapters: {
     telegram: ReturnType<typeof getTelegramRateLimitMetrics>;
     discord: ReturnType<typeof getDiscordRateLimitMetrics>;
+    slack: ReturnType<typeof getSlackRateLimitMetrics>;
   };
 }
 
@@ -99,6 +101,7 @@ export function buildRuntimeMetrics(input: {
     adapters: {
       telegram: getTelegramRateLimitMetrics(),
       discord: getDiscordRateLimitMetrics(),
+      slack: getSlackRateLimitMetrics(),
     },
   };
 }

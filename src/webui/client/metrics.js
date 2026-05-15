@@ -63,12 +63,12 @@ function rateRows(name,rate){
 }
 function renderMetrics(d){
   const adapters=d.adapters||{};
+  const adapterCards=Object.entries(adapters).map(([name,rate])=>card(name.charAt(0).toUpperCase()+name.slice(1)+' rate limits',rateRows('',rate).map(([k,v])=>[String(k).trim(),v]))).join('');
   document.getElementById('metricsPanel').innerHTML='<div class="metrics-grid">'+
     card('Runtime',metricStatusRows(d))+
     card('Process',metricProcessRows(d))+
     card('Jobs',metricJobRows(d))+
-    card('Telegram rate limits',rateRows('',adapters.telegram).map(([k,v])=>[String(k).trim(),v]))+
-    card('Discord rate limits',rateRows('',adapters.discord).map(([k,v])=>[String(k).trim(),v]))+
+    adapterCards+
     '</div>';
 }
 document.getElementById('reloadMetricsBtn').onclick=()=>safe(loadMetrics);
