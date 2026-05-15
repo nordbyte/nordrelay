@@ -134,6 +134,10 @@ test.describe("NordRelay WebUI", () => {
     await page.getByRole("button", { name: "Peers" }).click();
     await expect(page.locator("#peerStatus")).toContainText("Local peer identity");
     await expect(page.locator("#peersList")).toContainText("Ubuntu Workstation");
+    await expect(page.locator("#peerInvites")).toContainText("MacBook invite");
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.locator('[data-peer-invite-delete="invite-1"]').click();
+    expect(mock.requests.find((request) => request.path === "/api/peers/invitations/invite-1" && request.method === "DELETE")).toBeTruthy();
     await page.getByRole("button", { name: "Load global sessions" }).click();
     await expect(page.locator("#globalPeerSessionsList")).toContainText("peer-thread-1");
   });
@@ -303,6 +307,7 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   if (url.pathname === "/api/update") return { method: "npm", logPath: "/tmp/update.log", sourceRoot: "/tmp/nordrelay", summary: "mock update" };
   if (url.pathname === "/api/peers") return peers();
   if (url.pathname === "/api/peers/global-sessions") return globalPeerSessions();
+  if (url.pathname.match(/^\/api\/peers\/invitations\/[^/]+$/) && method === "DELETE") return { removed: true };
   if (url.pathname.match(/^\/api\/peers\/[^/]+\/health$/)) return { data: { version: "0.7.0" } };
   if (url.pathname === "/api/runtime/restart" || url.pathname === "/api/abort" || url.pathname === "/api/stop") return { ok: true };
   if (url.pathname === "/api/sync") return { changed: false, changedFields: [] };
@@ -756,7 +761,7 @@ function peers() {
       {
         id: "invite-1",
         name: "MacBook invite",
-        expiresAt: "2026-05-14T10:10:00.000Z",
+        expiresAt: "2099-05-14T10:10:00.000Z",
         scopes: ["inspect", "sessions.read"],
         allowedAgents: ["codex"],
         usedAt: null,

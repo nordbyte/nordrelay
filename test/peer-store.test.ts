@@ -50,6 +50,18 @@ describe("PeerStore", () => {
     expect(() => store.consumeInvitation(created.code, "node-2")).toThrow(/expired/);
   });
 
+  it("deletes invitations by id", () => {
+    const store = newStore();
+    const created = store.createInvitation({ name: "Temporary laptop" });
+
+    expect(store.snapshot(localIdentity(), { enabled: true, listenUrl: "https://local", requireTls: true }).invitations).toHaveLength(1);
+    const removed = store.deleteInvitation(created.invitation.id);
+
+    expect(removed).toMatchObject({ id: created.invitation.id, name: "Temporary laptop" });
+    expect(store.deleteInvitation(created.invitation.id)).toBeNull();
+    expect(store.snapshot(localIdentity(), { enabled: true, listenUrl: "https://local", requireTls: true }).invitations).toHaveLength(0);
+  });
+
   it("returns public peer snapshots without shared secrets", () => {
     const store = newStore();
     const peer = store.upsertPeer({
@@ -97,4 +109,8 @@ function newStore(): PeerStore {
   const dir = mkdtempSync(path.join(os.tmpdir(), "nordrelay-peers-"));
   tmpDirs.push(dir);
   return new PeerStore(dir);
+}
+
+function localIdentity() {
+  return { nodeId: "local", name: "Local", publicKey: "public", fingerprint: "fp", createdAt: new Date().toISOString() };
 }

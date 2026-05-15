@@ -74,6 +74,16 @@ export async function handleDashboardPeerRoute(
     return true;
   }
 
+  const invitationMatch = url.pathname.match(/^\/api\/peers\/invitations\/([^/]+)$/);
+  if (invitationMatch?.[1] && req.method === "DELETE") {
+    const invitation = store.deleteInvitation(decodeURIComponent(invitationMatch[1]));
+    sendJson(res, 200, { removed: Boolean(invitation), invitation });
+    if (invitation) {
+      options.auditPeerAction?.("peer_invite_deleted", `${invitation.name} (${invitation.id})`);
+    }
+    return true;
+  }
+
   if (req.method === "POST" && (url.pathname === "/api/peers" || url.pathname === "/api/peers/pair")) {
     const body = await readJsonBody(req);
     const result = await pairPeer({

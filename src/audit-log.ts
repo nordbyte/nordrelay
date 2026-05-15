@@ -40,6 +40,7 @@ export type AuditAction =
   | "slack_unlinked"
   | "slack_channel_updated"
   | "peer_invite_created"
+  | "peer_invite_deleted"
   | "peer_paired"
   | "peer_updated"
   | "peer_revoked";

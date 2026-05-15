@@ -33,7 +33,7 @@ function applyPermissions(){
     ['#updateBtn','updates.run'],
     ['#clearLogsBtn','logs.clear'],
     ['#createUserBtn,#createGroupBtn,#createChatBtn,#createDiscordChannelBtn,#createSlackChannelBtn','users.write'],
-    ['#createPeerInviteBtn,#addPeerBtn,[data-peer-edit],[data-peer-toggle],[data-peer-revoke]','peers.write'],
+    ['#createPeerInviteBtn,#addPeerBtn,[data-peer-edit],[data-peer-toggle],[data-peer-revoke],[data-peer-invite-delete]','peers.write'],
     ['#lockSessionBtn,#unlockSessionBtn','sessions.write'],
     ['[data-switch]','sessions.write'],
     ['[data-queue],[data-q]','queue.write'],

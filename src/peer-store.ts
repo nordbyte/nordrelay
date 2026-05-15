@@ -231,6 +231,19 @@ export class PeerStore {
     return removed;
   }
 
+  deleteInvitation(id: string): PublicPeerInvitationRecord | null {
+    let removed: PeerInvitationRecord | null = null;
+    this.mutatePayload((payload) => {
+      const index = payload.invitations.findIndex((invitation) => invitation.id === id);
+      if (index < 0) {
+        return;
+      }
+      const [invitation] = payload.invitations.splice(index, 1);
+      removed = invitation;
+    });
+    return removed ? publicInvitation(removed) : null;
+  }
+
   private patchPeer(id: string, patch: Partial<PeerRecord>): void {
     this.mutatePayload((payload) => {
       const peer = payload.peers.find((candidate) => candidate.id === id || candidate.nodeId === id);

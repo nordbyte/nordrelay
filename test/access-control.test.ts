@@ -63,6 +63,7 @@ describe("access-control", () => {
     expect(permissionForWebRequest("POST", "/api/peers")).toBe("peers.write");
     expect(permissionForWebRequest("POST", "/api/peers/invite")).toBe("peers.write");
     expect(permissionForWebRequest("POST", "/api/peers/pair")).toBe("peers.write");
+    expect(permissionForWebRequest("DELETE", "/api/peers/invitations/invite-1")).toBe("peers.write");
     expect(permissionForWebRequest("GET", "/api/peers/global-sessions")).toBe("sessions.read");
     expect(permissionForWebRequest("GET", "/api/peers/abc/health")).toBe("peers.connect");
     expect(permissionForWebRequest("POST", "/api/peers/abc/proxy")).toBe("peers.connect");
