@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -92,6 +92,15 @@ export interface CodexRolloutSnapshot {
   latestUserMessage: string | null;
   latestToolName: string | null;
 }
+
+const ROLLOUT_CACHE_MAX_EVENTS = 200;
+
+type CachedRolloutSnapshot = {
+  byteOffset: number;
+  parsed: CodexRolloutSnapshot;
+};
+
+const rolloutSnapshotCache = new Map<string, CachedRolloutSnapshot>();
 
 export const FALLBACK_MODELS: CodexModelRecord[] = [
   { slug: "gpt-5.5", displayName: "GPT-5.5" },
@@ -214,34 +223,7 @@ export function getThreadActivity(
   id: string,
   options: { staleAfterMs?: number; nowMs?: number } = {},
 ): CodexThreadActivity | null {
-  const rolloutPath = getThreadRolloutPath(id);
-  if (!rolloutPath || !existsSync(rolloutPath)) {
-    return null;
-  }
-
-  try {
-    const parsed = parseActivityFromRollout(id, rolloutPath, readFileSync(rolloutPath, "utf8"));
-    const fileModifiedAtMs = statSync(rolloutPath).mtimeMs;
-    const updatedAtMs = Math.max(parsed.updatedAt?.getTime() ?? 0, fileModifiedAtMs);
-    const updatedAt = updatedAtMs > 0 ? new Date(updatedAtMs) : parsed.updatedAt;
-    const staleAfterMs = options.staleAfterMs ?? 5 * 60 * 1000;
-    const nowMs = options.nowMs ?? Date.now();
-    const stale = Boolean(
-      parsed.active &&
-        updatedAt &&
-        staleAfterMs > 0 &&
-        nowMs - updatedAt.getTime() > staleAfterMs,
-    );
-
-    return {
-      ...parsed,
-      updatedAt,
-      stale,
-      active: parsed.active && !stale,
-    };
-  } catch {
-    return null;
-  }
+  return getThreadRolloutSnapshot(id, { ...options, maxEvents: 0 })?.activity ?? null;
 }
 
 export function getThreadRolloutSnapshot(
@@ -254,8 +236,9 @@ export function getThreadRolloutSnapshot(
   }
 
   try {
-    const parsed = parseRolloutSnapshot(id, rolloutPath, readFileSync(rolloutPath, "utf8"));
-    return finalizeRolloutSnapshot(parsed, statSync(rolloutPath).mtimeMs, options);
+    const fileModifiedAtMs = statSync(rolloutPath).mtimeMs;
+    const parsed = readCachedRolloutSnapshot(id, rolloutPath);
+    return finalizeRolloutSnapshot(parsed, fileModifiedAtMs, options);
   } catch {
     return null;
   }
@@ -329,14 +312,7 @@ export function getThreadRolloutPath(id: string): string | null {
 }
 
 function parseUsageFromRollout(contents: string): CodexSessionUsage | null {
-  let contextWindow: number | null = null;
-  let contextUsedPercent: number | null = null;
-  let lastTokenUsage: CodexTokenUsageRecord | null = null;
-  let totalTokenUsage: CodexTokenUsageRecord | null = null;
-  let rateLimits: CodexRateLimitUsage | null = null;
-  let updatedAt: Date | null = null;
-
-  for (const line of contents.split(/\r?\n/)) {
+  for (const line of iterateLinesReverse(contents)) {
     if (!line.includes('"token_count"')) {
       continue;
     }
@@ -353,6 +329,7 @@ function parseUsageFromRollout(contents: string): CodexSessionUsage | null {
       continue;
     }
 
+    let updatedAt: Date | null = null;
     const timestamp = readString(readObject(event)?.timestamp);
     if (timestamp) {
       const parsedTimestamp = new Date(timestamp);
@@ -362,60 +339,129 @@ function parseUsageFromRollout(contents: string): CodexSessionUsage | null {
     }
 
     const info = readObject(payload.info);
-    const parsedTotal = parseTokenUsage(readObject(info?.total_token_usage));
-    const parsedLast = parseTokenUsage(readObject(info?.last_token_usage));
+    const totalTokenUsage = parseTokenUsage(readObject(info?.total_token_usage));
+    const lastTokenUsage = parseTokenUsage(readObject(info?.last_token_usage));
     const parsedContextWindow = readNumber(info?.model_context_window);
-    if (parsedTotal) {
-      totalTokenUsage = parsedTotal;
-    }
-    if (parsedLast) {
-      lastTokenUsage = parsedLast;
-    }
-    if (parsedContextWindow !== null && parsedContextWindow > 0) {
-      contextWindow = parsedContextWindow;
-    }
-    if (lastTokenUsage && contextWindow) {
-      contextUsedPercent = Math.min(100, (lastTokenUsage.totalTokens / contextWindow) * 100);
+    const contextWindow = parsedContextWindow !== null && parsedContextWindow > 0
+      ? parsedContextWindow
+      : null;
+    const contextUsedPercent = lastTokenUsage && contextWindow
+      ? Math.min(100, (lastTokenUsage.totalTokens / contextWindow) * 100)
+      : null;
+    const rateLimits = parseRateLimits(readObject(payload.rate_limits));
+    if (!lastTokenUsage && !totalTokenUsage && !rateLimits) {
+      continue;
     }
 
-    const parsedRateLimits = parseRateLimits(readObject(payload.rate_limits));
-    if (parsedRateLimits) {
-      rateLimits = parsedRateLimits;
-    }
+    return {
+      contextWindow,
+      contextUsedPercent,
+      lastTokenUsage,
+      totalTokenUsage,
+      rateLimits,
+      updatedAt,
+    };
   }
 
-  if (!lastTokenUsage && !totalTokenUsage && !rateLimits) {
-    return null;
+  return null;
+}
+
+function readCachedRolloutSnapshot(threadId: string, rolloutPath: string): CodexRolloutSnapshot {
+  const size = statSync(rolloutPath).size;
+  const cached = rolloutSnapshotCache.get(rolloutPath);
+  if (cached && size >= cached.byteOffset) {
+    const suffix = size > cached.byteOffset
+      ? readFileRangeUtf8(rolloutPath, cached.byteOffset, size - cached.byteOffset)
+      : "";
+    if (!suffix.trim()) {
+      return cached.parsed;
+    }
+
+    const parsed = parseRolloutSnapshot(threadId, rolloutPath, suffix, {
+      base: cached.parsed,
+      maxEvents: ROLLOUT_CACHE_MAX_EVENTS,
+    });
+    rolloutSnapshotCache.set(rolloutPath, { byteOffset: size, parsed });
+    return parsed;
   }
 
-  return {
-    contextWindow,
-    contextUsedPercent,
-    lastTokenUsage,
-    totalTokenUsage,
-    rateLimits,
-    updatedAt,
-  };
+  const contents = readFileSync(rolloutPath, "utf8");
+  const parsed = parseRolloutSnapshot(threadId, rolloutPath, contents, {
+    maxEvents: ROLLOUT_CACHE_MAX_EVENTS,
+  });
+  rolloutSnapshotCache.set(rolloutPath, {
+    byteOffset: Buffer.byteLength(contents),
+    parsed,
+  });
+  return parsed;
 }
 
-function parseActivityFromRollout(threadId: string, rolloutPath: string, contents: string): CodexThreadActivity {
-  return parseRolloutSnapshot(threadId, rolloutPath, contents).activity;
+function readFileRangeUtf8(filePath: string, position: number, length: number): string {
+  if (length <= 0) {
+    return "";
+  }
+  const fd = openSync(filePath, "r");
+  try {
+    const buffer = Buffer.allocUnsafe(length);
+    const bytesRead = readSync(fd, buffer, 0, length, position);
+    return buffer.subarray(0, bytesRead).toString("utf8");
+  } finally {
+    closeSync(fd);
+  }
 }
 
-function parseRolloutSnapshot(threadId: string, rolloutPath: string, contents: string): CodexRolloutSnapshot {
-  let activeTurnId: string | null = null;
-  let startedAt: Date | null = null;
-  let updatedAt: Date | null = null;
-  let latestAgentMessage: string | null = null;
-  let latestUserMessage: string | null = null;
-  let latestToolName: string | null = null;
-  const events: CodexActivityEvent[] = [];
+function* iterateLinesReverse(contents: string): Generator<string> {
+  let end = contents.length;
+  while (end > 0) {
+    let start = contents.lastIndexOf("\n", end - 1);
+    const lineStart = start === -1 ? 0 : start + 1;
+    let line = contents.slice(lineStart, end);
+    if (line.endsWith("\r")) {
+      line = line.slice(0, -1);
+    }
+    if (line.trim()) {
+      yield line;
+    }
+    if (start === -1) {
+      break;
+    }
+    end = start;
+  }
+}
+
+function parseRolloutSnapshot(
+  threadId: string,
+  rolloutPath: string,
+  contents: string,
+  options: { afterLine?: number; maxEvents?: number; base?: CodexRolloutSnapshot } = {},
+): CodexRolloutSnapshot {
+  let activeTurnId: string | null = options.base?.activity.active ? options.base.activity.turnId : null;
+  let startedAt: Date | null = options.base?.activity.active ? options.base.activity.startedAt : null;
+  let updatedAt: Date | null = options.base?.activity.updatedAt ?? null;
+  let latestAgentMessage: string | null = options.base?.latestAgentMessage ?? null;
+  let latestUserMessage: string | null = options.base?.latestUserMessage ?? null;
+  let latestToolName: string | null = options.base?.latestToolName ?? null;
+  const events: CodexActivityEvent[] = [...(options.base?.events ?? [])];
   const lines = contents.split(/\r?\n/);
+  const lineNumberOffset = options.base?.lineCount ?? 0;
+  let lineCount = lineNumberOffset;
+  const afterLine = options.afterLine ?? 0;
+  const maxEvents = options.maxEvents ?? Number.POSITIVE_INFINITY;
+  const pushEvent = (event: CodexActivityEvent): void => {
+    if (maxEvents <= 0 || event.lineNumber <= afterLine) {
+      return;
+    }
+    events.push(event);
+    if (Number.isFinite(maxEvents) && events.length > maxEvents) {
+      events.splice(0, events.length - maxEvents);
+    }
+  };
 
   for (const [index, line] of lines.entries()) {
     if (!line.trim()) {
       continue;
     }
+    lineCount += 1;
     if (
       !line.includes('"task_') &&
       !line.includes('"turn_') &&
@@ -437,7 +483,7 @@ function parseRolloutSnapshot(threadId: string, rolloutPath: string, contents: s
     const eventObject = readObject(event);
     const payload = readObject(eventObject?.payload);
     const eventTimestamp = parseTimestamp(readString(eventObject?.timestamp));
-    const lineNumber = index + 1;
+    const lineNumber = lineNumberOffset + index + 1;
     if (activeTurnId && eventTimestamp) {
       updatedAt = eventTimestamp;
     }
@@ -451,7 +497,7 @@ function parseRolloutSnapshot(threadId: string, rolloutPath: string, contents: s
       activeTurnId = readString(payload?.turn_id);
       startedAt = parseUnixSeconds(readNumber(payload?.started_at)) ?? eventTimestamp;
       updatedAt = eventTimestamp ?? startedAt;
-      events.push({
+      pushEvent({
         lineNumber,
         kind: "task",
         timestamp: eventTimestamp,
@@ -467,7 +513,7 @@ function parseRolloutSnapshot(threadId: string, rolloutPath: string, contents: s
 
     if (isTaskTerminalEvent(type)) {
       const turnId = readString(payload?.turn_id);
-      events.push({
+      pushEvent({
         lineNumber,
         kind: "task",
         timestamp: eventTimestamp,
@@ -488,7 +534,7 @@ function parseRolloutSnapshot(threadId: string, rolloutPath: string, contents: s
 
     if (type === "user_message") {
       latestUserMessage = readString(payload?.message);
-      events.push({
+      pushEvent({
         lineNumber,
         kind: "user",
         timestamp: eventTimestamp,
@@ -504,7 +550,7 @@ function parseRolloutSnapshot(threadId: string, rolloutPath: string, contents: s
 
     if (type === "agent_message") {
       latestAgentMessage = readString(payload?.message);
-      events.push({
+      pushEvent({
         lineNumber,
         kind: "agent",
         timestamp: eventTimestamp,
@@ -520,7 +566,7 @@ function parseRolloutSnapshot(threadId: string, rolloutPath: string, contents: s
 
     if (type === "function_call") {
       latestToolName = readString(payload?.name);
-      events.push({
+      pushEvent({
         lineNumber,
         kind: "tool",
         timestamp: eventTimestamp,
@@ -535,7 +581,7 @@ function parseRolloutSnapshot(threadId: string, rolloutPath: string, contents: s
     }
 
     if (type === "function_call_output") {
-      events.push({
+      pushEvent({
         lineNumber,
         kind: "tool",
         timestamp: eventTimestamp,
@@ -552,7 +598,7 @@ function parseRolloutSnapshot(threadId: string, rolloutPath: string, contents: s
   return {
     threadId,
     rolloutPath,
-    lineCount: lines.filter((line) => line.trim()).length,
+    lineCount,
     activity: {
       threadId,
       rolloutPath,

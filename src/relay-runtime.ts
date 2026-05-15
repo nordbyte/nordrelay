@@ -1716,7 +1716,12 @@ export class RelayRuntime {
     }
 
     const active: ActiveSessionDto[] = [];
+    const nowMs = Date.now();
+    const staleAfterMs = this.config.codexExternalBusyStaleMs;
     for (const thread of listCodexThreads(ACTIVE_CODEX_DISCOVERY_LIMIT)) {
+      if (staleAfterMs > 0 && nowMs - thread.updatedAt.getTime() > staleAfterMs) {
+        continue;
+      }
       const meta: ContextMetadata = {
         contextKey: `cli:codex:${thread.id}`,
         agentId: "codex",
@@ -1748,6 +1753,14 @@ export class RelayRuntime {
     }
     const capabilities = this.capabilitiesForAgent(agentId);
     if (!capabilities.externalActivity) {
+      return null;
+    }
+    if (
+      agentId === "codex" &&
+      meta.updatedAt &&
+      this.config.codexExternalBusyStaleMs > 0 &&
+      Date.now() - meta.updatedAt > this.config.codexExternalBusyStaleMs
+    ) {
       return null;
     }
 

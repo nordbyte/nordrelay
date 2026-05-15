@@ -74,7 +74,11 @@ async function loadCodexState(options: LoadOptions = {}) {
     }),
     statSync: vi.fn((targetPath: string) => ({
       mtimeMs: stats[targetPath] ?? 0,
+      size: fileContents[targetPath]?.length ?? 0,
     })),
+    openSync: vi.fn(() => 1),
+    readSync: vi.fn(() => 0),
+    closeSync: vi.fn(),
     readFileSync: vi.fn((targetPath: string) => {
       if (Object.hasOwn(fileContents, targetPath)) {
         return fileContents[targetPath];
@@ -333,6 +337,30 @@ describe("codex-state", () => {
       ],
       fileContents: {
         [rolloutPath]: [
+          JSON.stringify({
+            timestamp: "2026-05-11T17:23:20.349Z",
+            type: "event_msg",
+            payload: {
+              type: "token_count",
+              info: {
+                total_token_usage: {
+                  input_tokens: 10,
+                  cached_input_tokens: 5,
+                  output_tokens: 2,
+                  reasoning_output_tokens: 1,
+                  total_tokens: 12,
+                },
+                last_token_usage: {
+                  input_tokens: 10,
+                  cached_input_tokens: 5,
+                  output_tokens: 2,
+                  reasoning_output_tokens: 1,
+                  total_tokens: 12,
+                },
+                model_context_window: 1000,
+              },
+            },
+          }),
           JSON.stringify({
             timestamp: "2026-05-11T17:24:20.349Z",
             type: "event_msg",
@@ -626,6 +654,67 @@ describe("codex-state", () => {
     });
     expect(snapshot?.events.map((event) => [event.kind, event.type, event.text ?? event.toolName ?? event.status])).toEqual([
       ["tool", "function_call", "exec_command"],
+      ["agent", "agent_message", "done"],
+      ["task", "task_complete", "done"],
+    ]);
+  });
+
+  it("getThreadRolloutSnapshot limits retained timeline events while keeping latest rollout state", async () => {
+    const rolloutPath = "/Users/tester/.codex/sessions/2026/05/12/rollout-thread-1.jsonl";
+    const state = await loadCodexState({
+      files: ["state_main.sqlite"],
+      threads: [
+        {
+          id: "thread-1",
+          title: "One",
+          cwd: "/workspace",
+          rollout_path: rolloutPath,
+          model: "gpt-5.5",
+          created_at: 1,
+          updated_at: 2,
+          first_user_message: "hello",
+        },
+      ],
+      fileContents: {
+        [rolloutPath]: [
+          JSON.stringify({
+            timestamp: "2026-05-12T04:00:00.000Z",
+            type: "event_msg",
+            payload: { type: "task_started", turn_id: "turn-1", started_at: 1_778_558_400 },
+          }),
+          JSON.stringify({
+            timestamp: "2026-05-12T04:00:01.000Z",
+            type: "event_msg",
+            payload: { type: "user_message", message: "build it" },
+          }),
+          JSON.stringify({
+            timestamp: "2026-05-12T04:00:02.000Z",
+            type: "response_item",
+            payload: { type: "function_call", name: "exec_command", call_id: "call-1" },
+          }),
+          JSON.stringify({
+            timestamp: "2026-05-12T04:00:03.000Z",
+            type: "event_msg",
+            payload: { type: "agent_message", message: "done", phase: "final_answer" },
+          }),
+          JSON.stringify({
+            timestamp: "2026-05-12T04:00:04.000Z",
+            type: "event_msg",
+            payload: { type: "task_complete", turn_id: "turn-1", last_agent_message: "done" },
+          }),
+        ].join("\n"),
+      },
+    });
+
+    const snapshot = state.getThreadRolloutSnapshot("thread-1", { maxEvents: 2 });
+
+    expect(snapshot).toMatchObject({
+      lineCount: 5,
+      latestAgentMessage: "done",
+      latestUserMessage: "build it",
+      latestToolName: "exec_command",
+    });
+    expect(snapshot?.events.map((event) => [event.kind, event.type, event.text ?? event.status])).toEqual([
       ["agent", "agent_message", "done"],
       ["task", "task_complete", "done"],
     ]);
