@@ -45,6 +45,11 @@ test.describe("NordRelay WebUI", () => {
     await page.getByRole("button", { name: "Chat" }).click();
     await expect(page.locator("#messages")).toContainText("Existing web message");
     await expect(page.locator("#messages")).toHaveCSS("overflow-y", "auto");
+    await expect(page.locator("#toolPanel")).toBeHidden();
+    await expect(page.getByRole("button", { name: "Show Tools" })).toHaveAttribute("aria-expanded", "false");
+    await page.getByRole("button", { name: "Show Tools" }).click();
+    await expect(page.locator("#toolPanel")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Hide Tools" })).toHaveAttribute("aria-expanded", "true");
 
     await page.getByRole("button", { name: "Settings" }).click();
     await expect(page.locator("#settingsTabs")).toContainText("Agents");

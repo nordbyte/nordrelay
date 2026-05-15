@@ -146,7 +146,7 @@ export function renderDashboardApp(): string {
       </section>
 
       <section class="page" id="page-chat">
-        <div class="chat-layout">
+        <div class="chat-layout tools-hidden" id="chatLayout">
           <div class="panel chat-panel">
             <div class="chat-toolbar">
               <button id="newSessionBtn">New session</button>
@@ -166,6 +166,7 @@ export function renderDashboardApp(): string {
               <button id="clearChatBtn" class="secondary">Clear history</button>
               <button id="abortBtn">Abort</button>
               <button id="handbackBtn">Handback</button>
+              <button id="toggleToolsBtn" class="secondary" type="button" aria-controls="toolPanel" aria-expanded="false">Show Tools</button>
             </div>
             <div class="control-grid" id="sessionControls"></div>
             <div id="messages" class="messages"></div>
@@ -183,7 +184,7 @@ export function renderDashboardApp(): string {
               <button>Send</button>
             </form>
           </div>
-          <div class="panel side-panel"><h2>Tools / Plan</h2><div id="toolStream" class="tool-stream"></div></div>
+          <div class="panel side-panel" id="toolPanel" hidden><h2>Tools / Plan</h2><div id="toolStream" class="tool-stream"></div></div>
         </div>
       </section>
 
