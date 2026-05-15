@@ -22,6 +22,17 @@ describe("nordrelay CLI script", () => {
     expect(source).toContain("@nordbyte/nordrelay@latest");
   });
 
+  it("supports source builds before launches and restart", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain('arg === "--build"');
+    expect(source).toContain("async function buildRuntime()");
+    expect(source).toContain("warnIfRuntimeBuildIsStale()");
+    expect(source).toContain("runtimeForwardFlags(options.rawFlags)");
+    expect(source).toContain("nordrelay restart --build");
+    expect(source).toContain('console.log("  --build');
+  });
+
   it("handles --help before the foreground default", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
 

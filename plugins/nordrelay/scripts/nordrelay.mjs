@@ -57,6 +57,7 @@ function parseArgs(argv) {
     port: undefined,
     restartAfterUpdate: true,
     updateMethod: undefined,
+    buildBeforeStart: false,
   };
 
   for (let i = 0; i < copy.length; i += 1) {
@@ -67,6 +68,7 @@ function parseArgs(argv) {
     else if (arg === "--host") options.host = requireValue(copy, ++i, arg);
     else if (arg === "--port") options.port = Number.parseInt(requireValue(copy, ++i, arg), 10);
     else if (arg === "--method") options.updateMethod = requireValue(copy, ++i, arg);
+    else if (arg === "--build") options.buildBeforeStart = true;
     else if (arg === "--no-restart") options.restartAfterUpdate = false;
     else if (arg === "--restart") options.restartAfterUpdate = true;
     else if (arg === "--token") options.telegramBotToken = requireValue(copy, ++i, arg);
@@ -230,6 +232,7 @@ function formatDashboardUrl(endpoint) {
 async function commandStart(options, settings = {}) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
+  await prepareRuntimeForLaunch(options);
   const dashboard = resolveDashboardEndpoint(options);
 
   const currentPid = await readPid(options.pidFile);
@@ -247,7 +250,7 @@ async function commandStart(options, settings = {}) {
   });
 
   const logFd = fs.openSync(options.logFile, "a");
-  const child = spawn(process.execPath, [SCRIPT_PATH, "foreground", ...options.rawFlags], {
+  const child = spawn(process.execPath, [SCRIPT_PATH, "foreground", ...runtimeForwardFlags(options.rawFlags)], {
     cwd: RUNTIME_ROOT,
     detached: true,
     env: process.env,
@@ -1000,6 +1003,7 @@ async function checkOpenClawGateway() {
 async function commandWeb(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
+  await prepareRuntimeForLaunch(options);
   await ensureConnectorStartedForWeb(options);
   await startWebDashboard(options, { detached: false });
 }
@@ -1099,6 +1103,7 @@ async function startWebDashboard(options, settings = {}) {
 async function commandForeground(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
+  await prepareRuntimeForLaunch(options);
   process.chdir(RUNTIME_ROOT);
 
   await writeJsonAtomic(options.stateFile, {
@@ -1182,6 +1187,157 @@ async function resolveRuntimeEntry() {
   }
 
   return null;
+}
+
+async function prepareRuntimeForLaunch(options) {
+  if (options.buildBeforeStart) {
+    await buildRuntime();
+    options.buildBeforeStart = false;
+    return;
+  }
+  warnIfRuntimeBuildIsStale();
+}
+
+function runtimeForwardFlags(flags) {
+  return flags.filter((flag) => flag !== "--build");
+}
+
+async function buildRuntime() {
+  if (!isSourceRuntime()) {
+    throw new Error(`Runtime build is only available from a source checkout. Current runtime: ${RUNTIME_ROOT}`);
+  }
+  const npm = resolveNpmSpawnCommand();
+  if (!npm) {
+    throw new Error("npm was not found. Install Node.js/npm or add npm to PATH.");
+  }
+  console.log("Building NordRelay runtime...");
+  await runInteractiveStep("Build runtime", npm.command, [...npm.argsPrefix, "run", "build"], {
+    cwd: RUNTIME_ROOT,
+    shell: npm.shell,
+  });
+}
+
+function warnIfRuntimeBuildIsStale() {
+  const status = runtimeBuildStatus();
+  if (!status || !status.stale) {
+    return;
+  }
+  const source = status.sourcePath ? path.relative(RUNTIME_ROOT, status.sourcePath) : "source files";
+  const target = status.targetPath ? path.relative(RUNTIME_ROOT, status.targetPath) : "dist";
+  const reason = status.missing
+    ? `missing ${target}`
+    : `${source} is newer than ${target}`;
+  console.warn(`Warning: NordRelay runtime build may be stale (${reason}). Run \`nordrelay restart --build\` or \`npm run build\`.`);
+}
+
+function runtimeBuildStatus() {
+  if (!isSourceRuntime()) {
+    return null;
+  }
+  const source = newestMtime([
+    path.join(RUNTIME_ROOT, "src"),
+    path.join(RUNTIME_ROOT, "plugins", "nordrelay", "scripts"),
+    path.join(RUNTIME_ROOT, "scripts"),
+    path.join(RUNTIME_ROOT, "package.json"),
+    path.join(RUNTIME_ROOT, "tsconfig.json"),
+    path.join(RUNTIME_ROOT, "tsconfig.webui.json"),
+  ]);
+  const distTargets = [
+    path.join(RUNTIME_ROOT, "dist", "index.js"),
+    path.join(RUNTIME_ROOT, "dist", "web-dashboard.js"),
+    path.join(RUNTIME_ROOT, "dist", "webui-assets", "dashboard.js"),
+    path.join(RUNTIME_ROOT, "dist", "webui-assets", "dashboard.css"),
+  ];
+  const missingTarget = distTargets.find((target) => !fs.existsSync(target));
+  if (missingTarget) {
+    return {
+      stale: true,
+      missing: true,
+      sourcePath: source.path,
+      sourceMtimeMs: source.mtimeMs,
+      targetPath: missingTarget,
+      targetMtimeMs: 0,
+    };
+  }
+  const target = oldestMtime(distTargets);
+  return {
+    stale: source.mtimeMs > target.mtimeMs,
+    missing: false,
+    sourcePath: source.path,
+    sourceMtimeMs: source.mtimeMs,
+    targetPath: target.path,
+    targetMtimeMs: target.mtimeMs,
+  };
+}
+
+function isSourceRuntime() {
+  return fs.existsSync(path.join(RUNTIME_ROOT, "src", "index.ts")) &&
+    fs.existsSync(path.join(RUNTIME_ROOT, "scripts", "build-web-assets.mjs"));
+}
+
+function newestMtime(paths) {
+  let newest = { path: null, mtimeMs: 0 };
+  for (const itemPath of paths) {
+    const candidate = newestMtimeForPath(itemPath);
+    if (candidate.mtimeMs > newest.mtimeMs) {
+      newest = candidate;
+    }
+  }
+  return newest;
+}
+
+function newestMtimeForPath(itemPath) {
+  if (!fs.existsSync(itemPath)) {
+    return { path: itemPath, mtimeMs: 0 };
+  }
+  const stat = fs.statSync(itemPath);
+  if (!stat.isDirectory()) {
+    return { path: itemPath, mtimeMs: stat.mtimeMs };
+  }
+  let newest = { path: itemPath, mtimeMs: stat.mtimeMs };
+  for (const entry of fs.readdirSync(itemPath, { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name === "dist" || entry.name === ".git") {
+      continue;
+    }
+    const candidate = newestMtimeForPath(path.join(itemPath, entry.name));
+    if (candidate.mtimeMs > newest.mtimeMs) {
+      newest = candidate;
+    }
+  }
+  return newest;
+}
+
+function oldestMtime(paths) {
+  let oldest = { path: null, mtimeMs: Number.POSITIVE_INFINITY };
+  for (const itemPath of paths) {
+    const mtimeMs = fs.statSync(itemPath).mtimeMs;
+    if (mtimeMs < oldest.mtimeMs) {
+      oldest = { path: itemPath, mtimeMs };
+    }
+  }
+  return oldest;
+}
+
+async function runInteractiveStep(label, command, args, settings = {}) {
+  console.log(`${label}: ${formatCommand(command, args)}`);
+  const useShell = Boolean(settings.shell);
+  const child = spawn(useShell ? formatShellCommand(command, args) : command, useShell ? [] : args, {
+    cwd: settings.cwd || RUNTIME_ROOT,
+    env: process.env,
+    shell: useShell,
+    stdio: "inherit",
+    windowsHide: false,
+  });
+  const exit = await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code, signal) => resolve({ code, signal }));
+  });
+  if (exit.signal) {
+    throw new Error(`${label} stopped with signal ${exit.signal}`);
+  }
+  if (exit.code !== 0) {
+    throw new Error(`${label} failed with exit code ${exit.code ?? "unknown"}`);
+  }
 }
 
 async function resolveWebRuntimeEntry() {
@@ -1394,6 +1550,7 @@ function printHelp() {
   console.log("  --home <path>        Runtime home directory");
   console.log("  --host <host>        WebUI bind host");
   console.log("  --port <port>        WebUI port");
+  console.log("  --build              Build source runtime before start/web/restart");
   console.log("  --force              Overwrite existing config during init");
   console.log("  --help, -h           Show this help");
   console.log("  --version, -v        Show the installed version");
@@ -1416,6 +1573,7 @@ async function main() {
   if (options.command === "restart") {
     await mkdirp(options.home);
     loadEnvFiles(options.home);
+    await prepareRuntimeForLaunch(options);
     const webWasRunning = await isWebDashboardRunning(options);
     await commandStop(options);
     await commandStart(options);
