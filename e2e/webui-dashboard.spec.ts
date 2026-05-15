@@ -121,6 +121,8 @@ test.describe("NordRelay WebUI", () => {
     await page.getByRole("button", { name: "Chat" }).click();
 
     await expect(page.locator("#messages .chat-inline-code")).toContainText("npm test");
+    await expect(page.locator("#messages .chat-inline-code").first()).toHaveClass(/copy-id/);
+    await expect(page.locator("#messages .chat-inline-code").first()).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await expect(page.locator("#messages .chat-code-block code")).toContainText("const value = 1;");
     await expect(page.locator("#messages strong")).toContainText("bold");
     await expect(page.locator("#messages em")).toContainText("italic");
@@ -132,6 +134,54 @@ test.describe("NordRelay WebUI", () => {
     await expect.poll(() => page.evaluate(() => (window as unknown as { __copiedText?: string }).__copiedText)).toBe("npm test");
     await page.locator("#messages .chat-code-block").first().click();
     await expect.poll(() => page.evaluate(() => (window as unknown as { __copiedText?: string }).__copiedText)).toContain("const value = 1;");
+  });
+
+  test("preserves chat scroll position when live history updates arrive", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
+    await page.goto(mock.baseUrl);
+    await page.getByRole("button", { name: "Chat" }).click();
+
+    const messages = Array.from({ length: 80 }, (_, index) => ({
+      id: `scroll-${index}`,
+      role: index % 2 ? "agent" : "user",
+      source: "cli",
+      timestamp: now(),
+      text: `History message ${index}\n${"A long chat line. ".repeat(8)}`,
+    }));
+    await page.evaluate((items) => {
+      (window as unknown as { renderChatMessages: (messages: unknown[]) => void }).renderChatMessages(items);
+    }, messages);
+    await expect.poll(async () => page.locator("#messages .message").count()).toBe(messages.length);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        }),
+    );
+
+    await page.evaluate(() => {
+      const box = document.getElementById("messages");
+      if (box) box.scrollTop = 0;
+    });
+    await expect.poll(async () => page.evaluate(() => document.getElementById("messages")?.scrollTop ?? -1)).toBe(0);
+
+    await page.evaluate(
+      (items) => {
+        (window as unknown as { renderChatMessages: (messages: unknown[]) => void }).renderChatMessages(items);
+      },
+      [
+        ...messages,
+        {
+          id: "scroll-new",
+          role: "agent",
+          source: "cli",
+          timestamp: now(),
+          text: "Live update while the reader is reviewing older chat content.",
+        },
+      ],
+    );
+    await expect.poll(async () => page.locator("#messages .message").count()).toBe(messages.length + 1);
+    await expect.poll(async () => page.evaluate(() => document.getElementById("messages")?.scrollTop ?? -1)).toBe(0);
   });
 
   test("renders Discord and Slack access controls and filters registered channels", async ({ page }) => {

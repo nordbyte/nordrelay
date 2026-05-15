@@ -46,8 +46,8 @@ nav button{display:flex;align-items:center;justify-content:flex-start;width:100%
 .message.agent{background:color-mix(in srgb,var(--surface-soft) 80%,var(--border))}
 .message.system{background:var(--warn)}
 .message-body{white-space:pre-wrap}
-.message .chat-inline-code{appearance:none;-webkit-appearance:none;display:inline;min-height:0;height:auto;margin:0 1px;padding:1px 5px;border:1px solid var(--border-soft);border-radius:5px;background:var(--pre);color:var(--pre-text);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;line-height:1.25;white-space:break-spaces;vertical-align:baseline;cursor:pointer}
-.message .chat-inline-code:hover,.message .chat-inline-code:focus{background:var(--accent);color:#fff;border-color:var(--accent);text-decoration:none;outline:none}
+.message .chat-inline-code{appearance:none;-webkit-appearance:none;display:inline;min-height:0;height:auto;margin:0;padding:0;border:0;background:transparent;color:var(--link);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.25;white-space:normal;vertical-align:baseline;cursor:pointer}
+.message .chat-inline-code:hover,.message .chat-inline-code:focus{background:transparent;color:var(--link);text-decoration:underline;outline:none}
 .message .chat-code-block{position:relative;margin:8px 0;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--pre);color:var(--pre-text);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.45;white-space:pre;overflow:auto;cursor:pointer}
 .message .chat-code-block:hover,.message .chat-code-block:focus{border-color:var(--accent);outline:none}
 .message .chat-code-block::after{content:"copy";position:absolute;top:6px;right:8px;padding:1px 5px;border-radius:4px;background:color-mix(in srgb,var(--surface) 12%,transparent);color:var(--pre-text);font-family:Inter,"Segoe UI",system-ui,sans-serif;font-size:11px;text-transform:uppercase}
