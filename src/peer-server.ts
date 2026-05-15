@@ -13,6 +13,7 @@ import {
   verifyPeerPayload,
 } from "./peer-identity.js";
 import { header, PeerNonceCache, verifyPeerRequest } from "./peer-auth.js";
+import { checkPeerIdentityEndpoint } from "./peer-client.js";
 import { peerRuntimeContextKey } from "./peer-context.js";
 import { PeerStore } from "./peer-store.js";
 import { PeerRuntimeService, peerError } from "./peer-runtime-service.js";
@@ -108,7 +109,7 @@ export async function startPeerServer(options: {
       if (req.method === "POST" && url.pathname === "/peer/pair") {
         const bodyText = await readBody(req, 128 * 1024);
         const body = parseJson<PeerPairRequest>(bodyText);
-        const response = handlePair(body);
+        const response = await handlePair(body);
         sendJson(res, 201, response);
         return;
       }
@@ -151,7 +152,7 @@ export async function startPeerServer(options: {
     }
   }
 
-  function handlePair(body: PeerPairRequest): PeerPairResponse {
+  async function handlePair(body: PeerPairRequest): Promise<PeerPairResponse> {
     if (!body?.identity?.nodeId || !body.identity.publicKey || !body.code || !body.signature || !body.timestamp) {
       throw new Error("Invalid peer pairing request.");
     }
@@ -168,17 +169,20 @@ export async function startPeerServer(options: {
     if (!verifyPeerPayload(body.identity.publicKey, signaturePayload, body.signature)) {
       throw new Error("Invalid peer pairing signature.");
     }
+    const publicUrl = body.publicUrl?.trim() || undefined;
+    const publicUrlTlsFingerprint = publicUrl ? await verifyPairingPublicUrl(publicUrl, body.identity) : undefined;
     const invitation = store.consumeInvitation(body.code, body.identity.nodeId);
     const secret = createSharedSecret();
     const peer = store.upsertPeer({
       name: body.name?.trim() || body.identity.name || invitation.name,
-      url: body.publicUrl,
+      url: publicUrl,
       nodeId: body.identity.nodeId,
       publicKey: body.identity.publicKey,
       fingerprint: body.identity.fingerprint,
+      tlsFingerprint: publicUrl ? publicUrlTlsFingerprint ?? null : undefined,
       secret,
       enabled: true,
-      direction: body.publicUrl ? "bidirectional" : "inbound",
+      direction: publicUrl ? "bidirectional" : "inbound",
       scopes: invitation.scopes,
       allowedAgents: invitation.allowedAgents,
       allowedWorkspaceRoots: invitation.allowedWorkspaceRoots,
@@ -194,6 +198,21 @@ export async function startPeerServer(options: {
       allowedWorkspaceRoots: peer.allowedWorkspaceRoots,
       workspaceAliases: peer.workspaceAliases,
     };
+  }
+
+  async function verifyPairingPublicUrl(publicUrl: string, expectedIdentity: PeerPairRequest["identity"]): Promise<string | undefined> {
+    const probe = await checkPeerIdentityEndpoint(publicUrl, { timeoutMs: 4_000 });
+    if (!probe.ok || !probe.identity) {
+      throw new Error(`Peer public URL is not reachable or does not expose a valid NordRelay identity: ${probe.detail}`);
+    }
+    if (
+      probe.identity.nodeId !== expectedIdentity.nodeId ||
+      probe.identity.publicKey !== expectedIdentity.publicKey ||
+      probe.identity.fingerprint !== expectedIdentity.fingerprint
+    ) {
+      throw new Error("Peer public URL identity does not match the pairing identity.");
+    }
+    return probe.tlsFingerprint;
   }
 
   function authenticate(req: IncomingMessage, method: string, pathname: string, body: string) {

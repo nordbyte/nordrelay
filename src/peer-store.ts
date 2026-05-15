@@ -38,7 +38,7 @@ export interface PeerUpsertInput {
   nodeId: string;
   publicKey: string;
   fingerprint: string;
-  tlsFingerprint?: string;
+  tlsFingerprint?: string | null;
   secret: string;
   enabled?: boolean;
   direction?: PeerRecord["direction"];
@@ -144,7 +144,9 @@ export class PeerStore {
         existing.url = input.url ?? existing.url;
         existing.publicKey = input.publicKey;
         existing.fingerprint = input.fingerprint;
-        existing.tlsFingerprint = input.tlsFingerprint ?? existing.tlsFingerprint;
+        if (input.tlsFingerprint !== undefined) {
+          existing.tlsFingerprint = input.tlsFingerprint || undefined;
+        }
         existing.secret = input.secret;
         existing.enabled = input.enabled ?? existing.enabled;
         existing.direction = mergeDirection(existing.direction, input.direction ?? existing.direction);
@@ -164,7 +166,7 @@ export class PeerStore {
         nodeId: input.nodeId,
         publicKey: input.publicKey,
         fingerprint: input.fingerprint,
-        tlsFingerprint: input.tlsFingerprint,
+        tlsFingerprint: input.tlsFingerprint || undefined,
         secret: input.secret,
         enabled: input.enabled ?? true,
         direction: input.direction ?? "outbound",

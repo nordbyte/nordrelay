@@ -378,6 +378,15 @@ nordrelay peer invite --name workstation --scopes inspect,sessions.read,sessions
 nordrelay peer add https://workstation.example:31979 --code one-time-code
 ```
 
+If the controlling host should also be reachable by the remote peer, enable its peer server and set
+`NORDRELAY_PEER_PUBLIC_URL` before running `peer add`, or pass it explicitly:
+
+```bash
+nordrelay peer add https://workstation.example:31979 --code one-time-code --public-url https://controller.example:31979
+```
+
+NordRelay validates the advertised public URL against the peer identity endpoint during pairing and stores the current TLS certificate fingerprint for later reachability probes.
+
 7. Confirm the connection:
 
 ```bash

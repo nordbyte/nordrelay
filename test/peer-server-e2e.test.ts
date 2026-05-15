@@ -65,6 +65,51 @@ describe("peer server pairing", () => {
     const identity = loadOrCreatePeerIdentity(home, "same-node");
     await expect(pairPeer({ url: handle!.url, code: invite.code }, identity, store)).rejects.toThrow(/itself/);
   });
+
+  it("stores the current public URL TLS fingerprint for bidirectional pairing", async () => {
+    const serverHome = tmpHome();
+    const clientHome = tmpHome();
+    const serverStore = new PeerStore(serverHome);
+    const invite = serverStore.createInvitation({ scopes: ["inspect"] });
+    const serverHandle = await startPeerServer({
+      config: peerConfig(serverHome, { tls: true, name: "server" }),
+      runtime: fakeRuntime(),
+      home: serverHome,
+    });
+    const clientHandle = await startPeerServer({
+      config: peerConfig(clientHome, { tls: true, name: "client" }),
+      runtime: fakeRuntime(),
+      home: clientHome,
+    });
+    handles.push(serverHandle!, clientHandle!);
+
+    const clientIdentity = loadOrCreatePeerIdentity(clientHome, "client");
+    serverStore.upsertPeer({
+      name: "client",
+      url: clientHandle!.url,
+      nodeId: clientIdentity.public.nodeId,
+      publicKey: clientIdentity.public.publicKey,
+      fingerprint: clientIdentity.public.fingerprint,
+      tlsFingerprint: "00:00:00",
+      secret: "old-secret",
+      direction: "inbound",
+      scopes: ["inspect"],
+    });
+
+    const clientStore = new PeerStore(clientHome);
+    const paired = await pairPeer({
+      url: serverHandle!.url,
+      code: invite.code,
+      publicUrl: clientHandle!.url,
+    }, clientIdentity, clientStore);
+
+    const storedOnServer = serverStore.get(clientIdentity.public.nodeId);
+    expect(storedOnServer?.tlsFingerprint).toBe(clientHandle!.tlsFingerprint);
+    expect(storedOnServer?.direction).toBe("bidirectional");
+
+    const reverseProbe = await new RemoteRelayClient(clientStore).rpc(paired.peer.id, "peer.probe");
+    expect(reverseProbe).toMatchObject({ ok: true, status: "reachable" });
+  });
 });
 
 function tmpHome(): string {
@@ -73,14 +118,14 @@ function tmpHome(): string {
   return dir;
 }
 
-function peerConfig(workspace: string): ConnectorConfig {
+function peerConfig(workspace: string, options: { tls?: boolean; name?: string } = {}): ConnectorConfig {
   return {
     peerEnabled: true,
-    peerName: "server",
+    peerName: options.name ?? "server",
     peerHost: "127.0.0.1",
     peerPort: 0,
-    peerTlsEnabled: false,
-    peerRequireTls: false,
+    peerTlsEnabled: options.tls ?? false,
+    peerRequireTls: options.tls ?? false,
     workspace,
     stateBackend: "json",
     codexEnabled: true,

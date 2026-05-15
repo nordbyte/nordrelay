@@ -915,16 +915,19 @@ async function commandPeer(options) {
   if (flags.subcommand === "add") {
     const url = flags.url || await ask(null, "Peer URL", "");
     const code = flags.code || await ask(null, "Pairing code", "");
+    const configuredPublicUrl = process.env.NORDRELAY_PEER_ENABLED === "true" ? process.env.NORDRELAY_PEER_PUBLIC_URL : undefined;
+    const publicUrl = flags.publicUrl || configuredPublicUrl;
     const result = await clientMod.pairPeer({
       url,
       code,
       name: flags.name,
-      publicUrl: flags.publicUrl,
+      publicUrl,
     }, identity, store);
     console.log(`Added peer ${result.peer.name} (${result.peer.id}).`);
     console.log(`Node: ${result.peer.nodeId}`);
     console.log(`Fingerprint: ${result.peer.fingerprint}`);
     if (result.tlsFingerprint) console.log(`TLS fingerprint: ${result.tlsFingerprint}`);
+    if (publicUrl) console.log(`Shared public URL: ${publicUrl}`);
     return;
   }
 

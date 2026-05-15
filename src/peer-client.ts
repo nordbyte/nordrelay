@@ -14,6 +14,7 @@ import {
   PEER_PROTOCOL_VERSION,
   type PeerEventEnvelope,
   type PeerEndpointProbeResult,
+  type PeerNodeIdentity,
   type PeerPairRequest,
   type PeerPairResponse,
   type PeerRecord,
@@ -66,6 +67,46 @@ export async function checkPeerEndpoint(url: string, options: { expectedTlsFinge
   }
 }
 
+export interface PeerIdentityProbeResult extends PeerEndpointProbeResult {
+  identity?: PeerNodeIdentity;
+}
+
+export async function checkPeerIdentityEndpoint(url: string, options: { expectedTlsFingerprint?: string; timeoutMs?: number } = {}): Promise<PeerIdentityProbeResult> {
+  const target = joinPeerUrl(url, "/peer/identity");
+  const startedAt = Date.now();
+  try {
+    const result = await requestJson<{ protocolVersion?: unknown; identity?: unknown }>({
+      url: target,
+      method: "GET",
+      expectedTlsFingerprint: options.expectedTlsFingerprint,
+      allowSelfSigned: true,
+      timeoutMs: options.timeoutMs ?? 4_000,
+    });
+    const identity = parsePeerIdentity(result.data?.identity);
+    const protocolVersion = result.data?.protocolVersion;
+    return {
+      ok: Boolean(identity) && protocolVersion === PEER_PROTOCOL_VERSION,
+      status: "reachable",
+      url: target,
+      latencyMs: Date.now() - startedAt,
+      statusCode: result.statusCode,
+      tlsFingerprint: result.tlsFingerprint,
+      identity,
+      detail: identity && protocolVersion === PEER_PROTOCOL_VERSION
+        ? "Peer identity endpoint is reachable."
+        : "Endpoint responded, but did not return the expected peer identity payload.",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "unreachable",
+      url: target,
+      latencyMs: Date.now() - startedAt,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 export async function pairPeer(options: PairPeerOptions, identity: LoadedPeerIdentity, store = new PeerStore()): Promise<PairPeerResult> {
   const timestamp = new Date().toISOString();
   const payload = createPairingSignaturePayload(identity.public.nodeId, timestamp, options.code);
@@ -96,7 +137,7 @@ export async function pairPeer(options: PairPeerOptions, identity: LoadedPeerIde
     nodeId: result.data.identity.nodeId,
     publicKey: result.data.identity.publicKey,
     fingerprint: result.data.identity.fingerprint,
-    tlsFingerprint: result.tlsFingerprint,
+    tlsFingerprint: result.tlsFingerprint ?? null,
     secret: result.data.secret,
     enabled: true,
     direction: "outbound",
@@ -330,4 +371,27 @@ function normalizePeerUrl(value: string): string {
 
 function normalizeFingerprint(value: string | undefined): string | undefined {
   return value?.trim().toLowerCase();
+}
+
+function parsePeerIdentity(value: unknown): PeerNodeIdentity | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.nodeId !== "string" ||
+    typeof record.name !== "string" ||
+    typeof record.publicKey !== "string" ||
+    typeof record.fingerprint !== "string" ||
+    typeof record.createdAt !== "string"
+  ) {
+    return undefined;
+  }
+  return {
+    nodeId: record.nodeId,
+    name: record.name,
+    publicKey: record.publicKey,
+    fingerprint: record.fingerprint,
+    createdAt: record.createdAt,
+  };
 }
