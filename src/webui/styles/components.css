@@ -78,3 +78,8 @@
 .update-log{max-height:280px;min-height:90px;margin-top:10px}
 .update-job-header{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
 .update-input{display:grid;grid-template-columns:1fr auto auto;gap:8px;margin-top:8px}
+.peer-invite-details{display:grid;gap:6px;margin:10px 0;padding:10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface)}
+.peer-invite-details small{margin-top:0;font-weight:700}
+.peer-invite-copy,.peer-invite-command{display:block;width:100%;text-align:left;overflow-wrap:anywhere;white-space:pre-wrap}
+.peer-invite-command{padding:8px;border:1px solid var(--border-soft);border-radius:6px;background:var(--pre);color:var(--pre-text)}
+.peer-invite-command:hover{background:var(--pre);color:var(--pre-text)}

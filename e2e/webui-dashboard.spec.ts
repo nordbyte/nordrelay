@@ -142,6 +142,61 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#globalPeerSessionsList")).toContainText("peer-thread-1");
   });
 
+  test("keeps newly created peer invite pairing details visible and copyable", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
+    const createdInvitation = {
+      id: "invite-created",
+      name: "NordRelay peer",
+      expiresAt: "2099-05-14T10:20:00.000Z",
+      scopes: ["inspect", "sessions.read"],
+      allowedAgents: ["codex"],
+      usedAt: null,
+    };
+    const pairingCode = "pair-code-123";
+    const command = "nordrelay peer add https://127.0.0.1:31979 --code pair-code-123";
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text: string) => {
+            (window as unknown as { __copiedText?: string }).__copiedText = text;
+          },
+        },
+      });
+    });
+    await page.route("**/api/peers", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(peers([createdInvitation])),
+      });
+    });
+    await page.route("**/api/peers/invite", async (route) => {
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ invitation: createdInvitation, code: pairingCode, command }),
+      });
+    });
+
+    await page.goto(mock.baseUrl);
+    await page.getByRole("button", { name: "Peers" }).click();
+    await page.getByRole("button", { name: "Create invite" }).click();
+    await page.locator("#adminDialogSubmit").click();
+
+    await expect(page.locator("#peerInvites")).toContainText(pairingCode);
+    await expect(page.locator("#peerInvites")).toContainText(command);
+
+    await page.locator('[data-peer-invite-copy="pair-code-123"]').click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __copiedText?: string }).__copiedText)).toBe(pairingCode);
+    await page.locator('[data-peer-invite-copy^="nordrelay peer add"]').click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __copiedText?: string }).__copiedText)).toBe(command);
+  });
+
   test("starts agent install/update jobs from the version page", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
@@ -731,7 +786,7 @@ function users() {
   };
 }
 
-function peers() {
+function peers(extraInvitations: unknown[] = []) {
   return {
     enabled: true,
     listenUrl: "https://127.0.0.1:31979",
@@ -766,6 +821,7 @@ function peers() {
         allowedAgents: ["codex"],
         usedAt: null,
       },
+      ...extraInvitations,
     ],
   };
 }
