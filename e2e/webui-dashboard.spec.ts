@@ -110,6 +110,31 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#messages")).toContainText("Minimum update interval: 4000 ms");
   });
 
+  test("keeps sticky CLI status visible after transient toasts expire", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
+    await page.goto(mock.baseUrl);
+
+    await page.evaluate(() => {
+      const api = window as unknown as { toast: (message: string, options?: { sticky?: boolean; duration?: number }) => void };
+      api.toast("Codex CLI running · 7m 41s · tool write_stdin · 0 queued", { sticky: true });
+      api.toast("Temporary notice", { duration: 50 });
+    });
+
+    await expect(page.locator("#toast")).toBeVisible();
+    await expect(page.locator("#toast")).toContainText("Temporary notice");
+    await page.waitForTimeout(100);
+    await expect(page.locator("#toast")).toBeVisible();
+    await expect(page.locator("#toast")).toContainText("Codex CLI running");
+
+    await page.evaluate(() => {
+      const api = window as unknown as { clearStickyToast: () => void; toast: (message: string, options?: { duration?: number }) => void };
+      api.clearStickyToast();
+      api.toast("Codex CLI task finished.", { duration: 50 });
+    });
+    await page.waitForTimeout(100);
+    await expect(page.locator("#toast")).toBeHidden();
+  });
+
   test("formats chat markdown and copies code snippets", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.addInitScript(() => {

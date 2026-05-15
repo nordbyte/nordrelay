@@ -48,7 +48,7 @@ function connectEvents(){
   events.addEventListener('todo_update', e=>{const d=JSON.parse(e.data);tool('tool','Plan:\n'+d.items.map(i=>(i.completed?'[x] ':'[ ] ')+i.text).join('\n'))});
   events.addEventListener('turn_error', e=>{const d=JSON.parse(e.data);appendMessage('system','Error: '+d.error);currentAgentMessage=null});
   events.addEventListener('turn_complete', ()=>{currentAgentMessage=null;notify('NordRelay turn finished','The active task completed.');loadBootstrap();if(state.currentPage==='tasks')loadTasks()});
-  events.addEventListener('status', e=>{const d=JSON.parse(e.data);const msg=d.message||'';if(isCliRunningStatus(msg)){state.cliStatusActive=true;toast(msg,{sticky:true});return}if(isCliDoneStatus(msg))state.cliStatusActive=false;toast(msg)});
+  events.addEventListener('status', e=>{const d=JSON.parse(e.data);const msg=d.message||'';if(isCliRunningStatus(msg)){state.cliStatusActive=true;toast(msg,{sticky:true});return}if(isCliDoneStatus(msg)){state.cliStatusActive=false;clearStickyToast()}toast(msg)});
   events.onerror=()=>{setConnection('Reconnecting','error');if(!state.reconnectTimer)state.reconnectTimer=setTimeout(()=>{state.reconnectTimer=null;connectEvents()},5000)};
 }
 function setConnection(text,kind){const el=document.getElementById('connectionStatus');el.textContent=text;el.className='badge connection-'+kind}
