@@ -35,6 +35,10 @@ NordRelay is designed to fail closed:
 - Discord DMs require a linked active NordRelay user.
 - Discord guild channels and threads are disabled until an admin enables the channel.
 - Authorization is enforced through user groups, granular permissions, and optional group scopes for agents, workspace roots, Telegram chats, and Discord channels.
+- NordRelay peer federation is disabled by default and uses a dedicated API port separate from the WebUI.
+- Peer pairing requires an explicit one-time invitation code, Ed25519 node identity verification, request HMAC signatures, timestamp and nonce replay protection, and TLS fingerprint pinning.
+- Peer permissions are scoped with `peers.read`, `peers.write`, and `peers.connect`, plus per-peer remote scopes, allowed agent ids, and allowed workspace roots.
+- Plaintext peer serving is refused on non-loopback hosts when TLS is required.
 - Unknown commands, callback actions, and API routes are denied by default.
 - The last active admin user cannot be disabled or demoted.
 - WebUI login and chat account-link attempts are rate-limited.
@@ -43,4 +47,4 @@ NordRelay is designed to fail closed:
 - Uploaded files are staged inside the selected workspace.
 - Secrets are redacted from logs, channel diagnostics, and diagnostics support bundles where possible.
 
-Treat enabling `danger-full-access`, broad write permissions, Telegram group chat access, or Discord guild-channel access as equivalent to granting remote shell-adjacent control over the host.
+Treat enabling `danger-full-access`, broad write permissions, Telegram group chat access, Discord guild-channel access, or peer access with prompt/write scopes as equivalent to granting remote shell-adjacent control over the host.

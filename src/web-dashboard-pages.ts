@@ -126,6 +126,7 @@ export function renderDashboardApp(): string {
         </div>
         <div class="header-actions">
           <span id="connectionStatus" class="badge">Connecting</span>
+          <select id="peerSelect" title="NordRelay target"></select>
           <select id="agentSelect"></select>
           <button id="themeBtn" class="secondary" title="Toggle dark theme">Dark</button>
           <button id="refreshBtn">Refresh</button>
@@ -228,6 +229,17 @@ export function renderDashboardApp(): string {
         <div class="panel">
           <div class="row"><button id="reloadAdaptersBtn">Reload adapters</button></div>
           <div id="adapterHealth" class="list"></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-peers">
+        <div class="panel">
+          <div class="row"><button id="loadPeersBtn">Reload peers</button><button id="createPeerInviteBtn">Create invite</button><button id="addPeerBtn" class="secondary">Add peer</button></div>
+          <div id="peerStatus" class="list"></div>
+          <h2>Configured peers</h2>
+          <div id="peersList" class="list"></div>
+          <h2>Open invitations</h2>
+          <div id="peerInvites" class="list"></div>
         </div>
       </section>
 

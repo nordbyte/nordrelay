@@ -14,6 +14,8 @@ import { WEB_API_ROUTE_DEFINITIONS } from "../src/web-api-contract.js";
 describe("access-control", () => {
   it("maps commands to granular permissions", () => {
     expect(permissionForCommand("start")).toBe("inspect");
+    expect(permissionForCommand("peers")).toBe("peers.read");
+    expect(permissionForCommand("target")).toBe("peers.connect");
     expect(permissionForCommand("tasks")).toBe("inspect");
     expect(permissionForCommand("activity")).toBe("sessions.read");
     expect(permissionForCommand("sessions")).toBe("sessions.read");
@@ -56,6 +58,12 @@ describe("access-control", () => {
     expect(permissionForWebRequest("POST", "/api/queue")).toBe("queue.write");
     expect(permissionForWebRequest("GET", "/api/jobs")).toBe("inspect");
     expect(permissionForWebRequest("GET", "/api/metrics")).toBe("inspect");
+    expect(permissionForWebRequest("GET", "/api/peers")).toBe("peers.read");
+    expect(permissionForWebRequest("POST", "/api/peers")).toBe("peers.write");
+    expect(permissionForWebRequest("POST", "/api/peers/invite")).toBe("peers.write");
+    expect(permissionForWebRequest("POST", "/api/peers/pair")).toBe("peers.write");
+    expect(permissionForWebRequest("POST", "/api/peers/abc/proxy")).toBe("peers.connect");
+    expect(permissionForWebRequest("GET", "/api/peers/abc/events")).toBe("peers.connect");
     expect(permissionForWebRequest("POST", "/api/jobs/queue%3Aabc/action")).toBe("inspect");
     expect(permissionForWebRequest("GET", "/api/jobs/agent-update%3Aabc/log")).toBe("inspect");
     expect(permissionForWebRequest("GET", "/api/diagnostics")).toBe("diagnostics.read");

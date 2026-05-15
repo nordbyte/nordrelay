@@ -34,7 +34,11 @@ export type AuditAction =
   | "discord_link_created"
   | "discord_linked"
   | "discord_unlinked"
-  | "discord_channel_updated";
+  | "discord_channel_updated"
+  | "peer_invite_created"
+  | "peer_paired"
+  | "peer_updated"
+  | "peer_revoked";
 
 export interface AuditEvent {
   id: string;

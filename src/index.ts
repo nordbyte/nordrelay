@@ -21,6 +21,8 @@ import { describeOpenClawCli, resolveOpenClawCli } from "./openclaw-cli.js";
 import { installConsoleLogger } from "./logger.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
 import { describePiCli, resolvePiCli } from "./pi-cli.js";
+import { startPeerServer, type PeerServerHandle } from "./peer-server.js";
+import { RelayRuntime } from "./relay-runtime.js";
 import { configureRedaction } from "./redaction.js";
 import { SessionRegistry } from "./session-registry.js";
 import { UserStore } from "./user-management.js";
@@ -29,6 +31,8 @@ let registry: SessionRegistry | undefined;
 let bot: ReturnType<typeof createBot> | undefined;
 let discordBridge: ReturnType<typeof createDiscordBridge> | undefined;
 let webhookServer: Server | undefined;
+let peerServer: PeerServerHandle | null | undefined;
+let peerRuntime: RelayRuntime | undefined;
 let runtimeConfig: ConnectorConfig | undefined;
 
 try {
@@ -43,6 +47,10 @@ try {
   }
   discordBridge = createDiscordBridge(config, registry);
   await discordBridge?.start();
+  if (config.peerEnabled) {
+    peerRuntime = new RelayRuntime(config);
+    peerServer = await startPeerServer({ config, runtime: peerRuntime });
+  }
 
   console.log("NordRelay running");
   const userStore = new UserStore();
@@ -92,6 +100,7 @@ try {
   console.log("Session mode: per chat context");
   console.log(`Telegram: ${config.telegramEnabled ? config.telegramTransport : "disabled"}`);
   console.log(`Discord: ${config.discordEnabled ? "enabled" : "disabled"}`);
+  console.log(`Peers: ${peerServer ? peerServer.url : "disabled"}`);
   await writeConnectorState({
     status: "ready",
     pid: Number(process.env.NORDRELAY_WRAPPER_PID) || process.pid,
@@ -108,6 +117,9 @@ try {
     openClawGateway: config.openClawGatewayUrl,
     telegramTransport: config.telegramTransport,
     discordEnabled: config.discordEnabled,
+    peerEnabled: config.peerEnabled,
+    peerUrl: peerServer?.url,
+    peerTlsFingerprint: peerServer?.tlsFingerprint,
     adapterWarnings: config.adapterWarnings ?? [],
   });
 } catch (error) {
@@ -164,9 +176,13 @@ const shutdown = (signal: NodeJS.Signals) => {
     console.warn("Failed to stop Discord bridge:", error instanceof Error ? error.message : String(error));
   });
   webhookServer?.close();
+  void peerServer?.close().catch((error) => {
+    console.warn("Failed to stop peer server:", error instanceof Error ? error.message : String(error));
+  });
 
   setTimeout(() => {
     registry?.disposeAll();
+    peerRuntime?.dispose();
     void writeConnectorState({
       status: "stopped",
       pid: Number(process.env.NORDRELAY_WRAPPER_PID) || process.pid,

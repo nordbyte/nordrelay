@@ -19,6 +19,7 @@ export interface ContextPreferences {
   voiceBackend?: VoiceBackendPreference;
   voiceLanguage?: string | null;
   voiceTranscribeOnly?: boolean;
+  targetPeerId?: string | null;
 }
 
 interface PersistedPreferences {
@@ -159,6 +160,7 @@ function normalizePreferences(value: unknown): ContextPreferences | null {
     voiceBackend: isVoiceBackendPreference(candidate.voiceBackend) ? candidate.voiceBackend : undefined,
     voiceLanguage: typeof candidate.voiceLanguage === "string" ? candidate.voiceLanguage : candidate.voiceLanguage === null ? null : undefined,
     voiceTranscribeOnly: typeof candidate.voiceTranscribeOnly === "boolean" ? candidate.voiceTranscribeOnly : undefined,
+    targetPeerId: typeof candidate.targetPeerId === "string" ? candidate.targetPeerId : candidate.targetPeerId === null ? null : undefined,
   });
 }
 

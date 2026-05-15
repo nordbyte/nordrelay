@@ -13,6 +13,7 @@ import {
 } from "./bot-rendering.js";
 import type { ChannelActionResponse } from "./channel-actions.js";
 import type { ChannelCommandService } from "./channel-command-service.js";
+import type { BotPreferencesStore } from "./bot-preferences.js";
 import type { ConnectorConfig } from "./config.js";
 import type { TelegramContextKey } from "./context-key.js";
 import { escapeHTML } from "./format.js";
@@ -36,6 +37,7 @@ export interface TelegramGeneralCommandOptions {
   isTopicContext: (contextKey: TelegramContextKey) => boolean;
   replyChannelAction: (ctx: Context, rendered: ChannelActionResponse) => Promise<void>;
   commandService: ChannelCommandService;
+  preferencesStore: BotPreferencesStore;
 }
 
 export function registerTelegramGeneralCommands(options: TelegramGeneralCommandOptions): void {
@@ -81,6 +83,21 @@ export function registerTelegramGeneralCommands(options: TelegramGeneralCommandO
 
   options.bot.command("agents", async (ctx) => {
     await options.replyChannelAction(ctx, options.commandService.renderAgents());
+  });
+
+  options.bot.command("peers", async (ctx) => {
+    await options.replyChannelAction(ctx, options.commandService.renderPeers());
+  });
+
+  options.bot.command("target", async (ctx) => {
+    const contextSession = await options.getContextSession(ctx, { deferThreadStart: true });
+    if (!contextSession) return;
+    await options.replyChannelAction(ctx, options.commandService.renderTargetPreference({
+      source: "telegram",
+      contextKey: contextSession.contextKey,
+      argument: ctx.match?.toString() ?? "",
+      preferencesStore: options.preferencesStore,
+    }));
   });
 
   options.bot.command("restart", async (ctx) => {

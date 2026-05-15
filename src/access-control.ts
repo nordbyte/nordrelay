@@ -20,7 +20,10 @@ export type Permission =
   | "system.restart"
   | "users.read"
   | "users.write"
-  | "audit.read";
+  | "audit.read"
+  | "peers.read"
+  | "peers.write"
+  | "peers.connect";
 
 export const ALL_PERMISSIONS: Permission[] = [
   "inspect",
@@ -43,6 +46,9 @@ export const ALL_PERMISSIONS: Permission[] = [
   "users.read",
   "users.write",
   "audit.read",
+  "peers.read",
+  "peers.write",
+  "peers.connect",
 ];
 
 export const ADMIN_GROUP_ID = "admin";
@@ -105,6 +111,8 @@ const COMMAND_PERMISSIONS = new Map<string, Permission>([
   ["health", "inspect"],
   ["version", "inspect"],
   ["channels", "inspect"],
+  ["peers", "peers.read"],
+  ["target", "peers.connect"],
   ["agents", "inspect"],
   ["tasks", "inspect"],
   ["progress", "inspect"],

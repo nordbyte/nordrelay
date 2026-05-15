@@ -30,6 +30,7 @@ import {
 import { renderDashboardApp, renderFirstRunSetupPage, renderLoginPage } from "./web-dashboard-pages.js";
 import { handleDashboardRuntimeRoute } from "./web-dashboard-runtime-routes.js";
 import { handleDashboardSessionRoute } from "./web-dashboard-session-routes.js";
+import { handleDashboardPeerRoute } from "./web-dashboard-peer-routes.js";
 
 interface DashboardOptions {
   host: string;
@@ -219,6 +220,15 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     runtime,
     authUser,
     auditUserAction,
+  })) {
+    return;
+  }
+
+  if (await handleDashboardPeerRoute(req, res, url, {
+    config,
+    home: options.home,
+    activityActor: webActivityActor(authUser),
+    auditPeerAction: (action, description) => auditUserAction(authUser, action, description),
   })) {
     return;
   }

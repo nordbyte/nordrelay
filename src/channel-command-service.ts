@@ -32,6 +32,7 @@ import {
   readConnectorState,
   readFormattedLogTail,
 } from "./operations.js";
+import { PeerStore } from "./peer-store.js";
 import {
   formatCliPathHTML,
   formatCliPathPlain,
@@ -72,6 +73,58 @@ export class ChannelCommandService {
 
   renderAgents(agentIds: AgentId[] = enabledAgents(this.config)): ChannelActionResponse {
     return renderAgentsAction(listAgentAdapterDescriptors(), agentIds);
+  }
+
+  renderPeers(): ChannelActionResponse {
+    const peers = new PeerStore().listPublic();
+    if (peers.length === 0) {
+      return {
+        plain: "No NordRelay peers configured.",
+        html: "No NordRelay peers configured.",
+      };
+    }
+    const plain = peers.map((peer) => [
+      `${peer.name} (${peer.id}) ${peer.enabled ? "enabled" : "disabled"}`,
+      `URL: ${peer.url ?? "-"}`,
+      `Node: ${peer.nodeId}`,
+      `Scopes: ${peer.scopes.join(", ") || "-"}`,
+      peer.lastSeenAt ? `Last seen: ${peer.lastSeenAt}` : "",
+      peer.lastError ? `Last error: ${peer.lastError}` : "",
+    ].filter(Boolean).join("\n")).join("\n\n");
+    const html = peers.map((peer) => [
+      `<b>${escapeHTML(peer.name)} (${escapeHTML(peer.id)})</b> <code>${peer.enabled ? "enabled" : "disabled"}</code>`,
+      `<b>URL:</b> <code>${escapeHTML(peer.url ?? "-")}</code>`,
+      `<b>Node:</b> <code>${escapeHTML(peer.nodeId)}</code>`,
+      `<b>Scopes:</b> <code>${escapeHTML(peer.scopes.join(", ") || "-")}</code>`,
+      peer.lastSeenAt ? `<b>Last seen:</b> <code>${escapeHTML(peer.lastSeenAt)}</code>` : "",
+      peer.lastError ? `<b>Last error:</b> <code>${escapeHTML(peer.lastError)}</code>` : "",
+    ].filter(Boolean).join("\n")).join("\n\n");
+    return { plain, html };
+  }
+
+  renderTargetPreference(options: ChannelPreferenceCommandOptions): ChannelActionResponse {
+    const argument = options.argument.trim();
+    const peers = new PeerStore().listPublic().filter((peer) => peer.enabled && peer.url);
+    if (argument) {
+      const normalized = argument.toLowerCase();
+      if (normalized === "local") {
+        options.preferencesStore.update(options.contextKey, { targetPeerId: null });
+      } else {
+        const peer = peers.find((candidate) => candidate.id === argument || candidate.name.toLowerCase() === normalized || candidate.nodeId === argument);
+        if (!peer) {
+          return usageResponse("Unknown peer target. Use /target local or /target <peer-id>.");
+        }
+        options.preferencesStore.update(options.contextKey, { targetPeerId: peer.id });
+      }
+    }
+    const current = options.preferencesStore.get(options.contextKey).targetPeerId;
+    const currentPeer = current ? peers.find((peer) => peer.id === current) : null;
+    const target = currentPeer ? `${currentPeer.name} (${currentPeer.id})` : "local";
+    const available = peers.map((peer) => `${peer.id} ${peer.name}`).join("\n") || "No enabled outbound peers.";
+    return {
+      plain: [`Target: ${target}`, "", "Available peers:", available].join("\n"),
+      html: [`<b>Target:</b> <code>${escapeHTML(target)}</code>`, "", "<b>Available peers:</b>", `<code>${escapeHTML(available)}</code>`].join("\n"),
+    };
   }
 
   async renderLogs(argument: string): Promise<ChannelActionResponse> {

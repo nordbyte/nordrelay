@@ -1,4 +1,5 @@
-const state = { snapshot:null, controls:null, newSessionControls:null, enabledAgents:[], auth:null, permissions:[], settings:[], currentPage:'overview', settingsGroup:null, accessTab:'users', logsPlain:'', logTimer:null, toastTimer:null, cliStatusActive:false, selectedArtifactTurns:new Set(), mediaRecorder:null, recordedChunks:[], events:null, reconnectTimer:null, notifications:false, toolTooltipTimer:null, toolTooltipTarget:null, agentUpdateJobs:[], sessionsRequestId:0, activeSessions:null };
+const state = { snapshot:null, controls:null, newSessionControls:null, enabledAgents:[], auth:null, permissions:[], settings:[], currentPage:'overview', settingsGroup:null, accessTab:'users', logsPlain:'', logTimer:null, toastTimer:null, cliStatusActive:false, selectedArtifactTurns:new Set(), mediaRecorder:null, recordedChunks:[], events:null, reconnectTimer:null, notifications:false, toolTooltipTimer:null, toolTooltipTarget:null, agentUpdateJobs:[], sessionsRequestId:0, activeSessions:null, peers:null, selectedPeer:localStorage.getItem('nordrelayPeerTarget')||'local' };
+globalThis.NORDRELAY_WEBUI_RUNTIME_STATE=state;
 function toast(msg,options={}){const el=document.getElementById('toast');el.textContent=msg;el.style.display='block';if(state.toastTimer)clearTimeout(state.toastTimer);state.toastTimer=null;if(!options.sticky){state.toastTimer=setTimeout(()=>{el.style.display='none';state.toastTimer=null},options.duration||3500)}}
 function esc(s){return String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
 function attr(s){return esc(s).replace(/"/g,'&quot;')}
@@ -31,6 +32,7 @@ function applyPermissions(){
     ['#updateBtn','updates.run'],
     ['#clearLogsBtn','logs.clear'],
     ['#createUserBtn,#createGroupBtn,#createChatBtn,#createDiscordChannelBtn','users.write'],
+    ['#createPeerInviteBtn,#addPeerBtn,[data-peer-edit],[data-peer-toggle],[data-peer-revoke]','peers.write'],
     ['#lockSessionBtn,#unlockSessionBtn','sessions.write'],
     ['[data-switch]','sessions.write'],
     ['[data-queue],[data-q]','queue.write'],
@@ -48,7 +50,7 @@ function isCliDoneStatus(msg){return / CLI task\\b/.test(String(msg||''))}
 function applyTheme(theme){document.documentElement.dataset.theme=theme;localStorage.setItem('nordrelayTheme',theme);document.getElementById('themeBtn').textContent=theme==='dark'?'Light':'Dark'}
 function toggleTheme(){applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark')}
 function page(name){state.currentPage=name;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+name));document.getElementById('pageTitle').textContent=name[0].toUpperCase()+name.slice(1);document.getElementById('sidebar').classList.remove('open'); void reloadCurrentPage().catch(err=>toast(err.message||String(err)));}
-async function reloadCurrentPage(options={}){const name=state.currentPage;if(name==='overview') await loadActiveSessions(); if(name==='chat'){await loadChatHistory();scrollChatToBottom()} if(name==='sessions') await loadSessions(true,options.agentId); if(name==='settings') await loadSettings(); if(name==='logs') await loadLogs(); if(name==='diagnostics') await loadDiagnostics(); if(name==='artifacts') await loadArtifacts(); if(name==='activity') await loadActivity(); if(name==='tasks') await loadTasks(); if(name==='metrics') await loadMetrics(); if(name==='adapters') await loadAdapterHealth(); if(name==='access') await loadAccess(); if(name==='version') await loadVersion();}
+async function reloadCurrentPage(options={}){const name=state.currentPage;if(name==='overview') await loadActiveSessions(); if(name==='chat'){await loadChatHistory();scrollChatToBottom()} if(name==='sessions') await loadSessions(true,options.agentId); if(name==='settings') await loadSettings(); if(name==='logs') await loadLogs(); if(name==='diagnostics') await loadDiagnostics(); if(name==='artifacts') await loadArtifacts(); if(name==='activity') await loadActivity(); if(name==='tasks') await loadTasks(); if(name==='metrics') await loadMetrics(); if(name==='adapters') await loadAdapterHealth(); if(name==='peers') await loadPeers(); if(name==='access') await loadAccess(); if(name==='version') await loadVersion();}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>page(b.dataset.page));
 document.getElementById('menuBtn').onclick=()=>document.getElementById('sidebar').classList.toggle('open');
 document.getElementById('refreshBtn').onclick=()=>loadBootstrap();

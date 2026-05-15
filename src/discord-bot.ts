@@ -41,7 +41,9 @@ import { friendlyErrorText } from "./error-messages.js";
 import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./hermes-auth.js";
 import { spawnConnectorRestart, spawnSelfUpdate } from "./operations.js";
 import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
+import { RemoteRelayClient } from "./peer-client.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
+import { peerPromptProxyPayload } from "./remote-prompt.js";
 import { PromptStore, toPromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
 import { RelayArtifactService } from "./relay-artifact-service.js";
 import { configureRedaction, redactText } from "./redaction.js";
@@ -642,10 +644,92 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     return true;
   };
 
+  const remoteClient = new RemoteRelayClient();
+
+  const handleRemotePrompt = async (request: DiscordRequest, envelope: ReturnType<typeof toPromptEnvelope>): Promise<boolean> => {
+    const targetPeerId = preferencesStore.get(request.contextKey).targetPeerId;
+    if (!targetPeerId) {
+      return false;
+    }
+    let accumulated = "";
+    let responseMessageId: string | undefined;
+    let lastEditAt = 0;
+    const typing = setInterval(() => {
+      void runtime.sendTyping(request.context).catch(() => {});
+    }, TYPING_INTERVAL_MS);
+    typing.unref?.();
+    void runtime.sendTyping(request.context).catch(() => {});
+
+    const flush = async (force = false): Promise<void> => {
+      if (!accumulated.trim()) return;
+      const now = Date.now();
+      if (!force && now - lastEditAt < EDIT_DEBOUNCE_MS) return;
+      const text = trimDiscordMessage(accumulated);
+      if (!responseMessageId) {
+        const sent = await runtime.sendMessage(request.context, { text, fallbackText: text });
+        responseMessageId = sent.messageId;
+      } else {
+        await runtime.editMessage(request.context, responseMessageId, { text, fallbackText: text });
+      }
+      lastEditAt = now;
+    };
+
+    const done = new Promise<void>((resolve) => {
+      const timeout = setTimeout(resolve, 30 * 60 * 1000);
+      timeout.unref?.();
+      const subscription = remoteClient.subscribe(targetPeerId, (event) => {
+        if (event.type === "turn_start") {
+          void reply(request, `Remote peer working on:\n${event.prompt}`).catch(() => {});
+        } else if (event.type === "text_delta") {
+          accumulated += event.delta;
+          void flush(false).catch(() => {});
+        } else if (event.type === "tool_start") {
+          void reply(request, `Remote tool: ${event.toolName}`).catch(() => {});
+        } else if (event.type === "turn_complete") {
+          clearTimeout(timeout);
+          subscription.close();
+          resolve();
+        } else if (event.type === "turn_error") {
+          accumulated += `\n\nError: ${event.error}`;
+          clearTimeout(timeout);
+          subscription.close();
+          resolve();
+        }
+      }, (error) => {
+        accumulated += `\n\nRemote event stream failed: ${error.message}`;
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+
+    try {
+      const result = await remoteClient.webProxy(targetPeerId, await peerPromptProxyPayload(envelope), actorFor(request));
+      if (result && typeof result === "object" && "queued" in result && (result as { queued?: boolean }).queued) {
+        await reply(request, `Remote prompt queued${(result as { queueId?: unknown }).queueId ? `: ${(result as { queueId?: unknown }).queueId}` : ""}.`);
+        return true;
+      }
+      await done;
+      await flush(true);
+      if (!accumulated.trim()) {
+        await reply(request, "Remote turn completed.");
+      }
+      return true;
+    } catch (error) {
+      await reply(request, `Remote peer failed: ${friendlyErrorText(error)}`);
+      return true;
+    } finally {
+      clearInterval(typing);
+    }
+  };
+
   const handlePrompt = async (request: DiscordRequest, input: AgentPromptInput, artifactOutDir?: string, options: { fromQueue?: boolean } = {}): Promise<void> => {
     const session = await getSession(request);
     const envelope = toPromptEnvelope(input, artifactOutDir);
     envelope.activityActor = actorFor(request);
+
+    if (!options.fromQueue && await handleRemotePrompt(request, envelope)) {
+      return;
+    }
 
     if (!options.fromQueue && await denyIfLocked(request)) {
       return;
@@ -1024,6 +1108,17 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
         return;
       case "channels":
         await deliverChannelAction(runtime, request.context, commandService.renderChannels());
+        return;
+      case "peers":
+        await deliverChannelAction(runtime, request.context, commandService.renderPeers());
+        return;
+      case "target":
+        await deliverChannelAction(runtime, request.context, commandService.renderTargetPreference({
+          source: "discord",
+          contextKey: request.contextKey,
+          argument,
+          preferencesStore,
+        }));
         return;
       case "agents":
         await deliverChannelAction(runtime, request.context, commandService.renderAgents());

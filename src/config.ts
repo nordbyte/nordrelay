@@ -142,6 +142,13 @@ export interface ConnectorConfig {
   sessionLockTtlMs: number;
   dashboardCacheTtlMs: number;
   unifiedJobMaxItems: number;
+  peerEnabled: boolean;
+  peerName?: string;
+  peerHost: string;
+  peerPort: number;
+  peerPublicUrl?: string;
+  peerTlsEnabled: boolean;
+  peerRequireTls: boolean;
 }
 
 export function loadConfig(): ConnectorConfig {
@@ -280,6 +287,13 @@ export function loadConfig(): ConnectorConfig {
   const sessionLockTtlMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_SESSION_LOCK_TTL_MS), 30 * 60 * 1000, "NORDRELAY_SESSION_LOCK_TTL_MS");
   const dashboardCacheTtlMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_DASHBOARD_CACHE_TTL_MS), 10_000, "NORDRELAY_DASHBOARD_CACHE_TTL_MS");
   const unifiedJobMaxItems = parsePositiveIntegerEnv(optionalString(process.env.NORDRELAY_UNIFIED_JOB_MAX_ITEMS), 1000, "NORDRELAY_UNIFIED_JOB_MAX_ITEMS");
+  const peerEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_PEER_ENABLED), false);
+  const peerName = optionalString(process.env.NORDRELAY_PEER_NAME);
+  const peerHost = optionalString(process.env.NORDRELAY_PEER_HOST) ?? "127.0.0.1";
+  const peerPort = parsePositiveIntegerEnv(optionalString(process.env.NORDRELAY_PEER_PORT), 31979, "NORDRELAY_PEER_PORT");
+  const peerPublicUrl = optionalString(process.env.NORDRELAY_PEER_PUBLIC_URL);
+  const peerTlsEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_PEER_TLS_ENABLED), true);
+  const peerRequireTls = parseBooleanEnv(optionalString(process.env.NORDRELAY_PEER_REQUIRE_TLS), true);
 
   let telegramEnabled = requestedTelegramEnabled;
   if (telegramEnabled && telegramTransport === "webhook" && !telegramWebhookUrl) {
@@ -404,6 +418,13 @@ export function loadConfig(): ConnectorConfig {
     sessionLockTtlMs,
     dashboardCacheTtlMs,
     unifiedJobMaxItems,
+    peerEnabled,
+    peerName,
+    peerHost,
+    peerPort,
+    peerPublicUrl,
+    peerTlsEnabled,
+    peerRequireTls,
   };
 }
 

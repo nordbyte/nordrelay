@@ -18,9 +18,11 @@ function createPaginator(containerId, onChange, pageSize=50){
 const sessionsPager=createPaginator('sessionsPager',()=>loadSessions(false),50);
 
 async function loadBootstrap(){
-  const data = await api('/api/bootstrap');
-  state.auth = data.auth || null;
-  state.permissions = data.auth?.permissions || [];
+  const local = await api('/api/bootstrap',{local:true});
+  state.auth = local.auth || null;
+  state.permissions = local.auth?.permissions || [];
+  await loadPeerSelector();
+  const data = state.selectedPeer && state.selectedPeer !== 'local' ? await api('/api/bootstrap') : local;
   state.snapshot = data.status.snapshot;
   state.controls = data.controls;
   state.enabledAgents = data.enabledAgents || [];
@@ -32,12 +34,34 @@ async function loadBootstrap(){
   renderAdapters(data.channels, data.agentAdapters);
   document.getElementById('footerVersion').textContent='NordRelay '+(data.status.health?.version || '');
   document.getElementById('footerHealth').textContent='Health: '+(data.status.health?.state?.status || 'unknown');
-  document.getElementById('footerUser').textContent='User: '+(data.auth?.user?.email || '-');
+  document.getElementById('footerUser').textContent='User: '+(local.auth?.user?.email || '-')+(state.selectedPeer&&state.selectedPeer!=='local'?' / target peer':'');
   const agentSelect=document.getElementById('agentSelect');
   agentSelect.innerHTML=data.enabledAgents.map(a=>'<option value="'+a+'">'+a+'</option>').join('');
   agentSelect.value=state.snapshot.session.agentId;
   agentSelect.onchange=()=>safe(async()=>{const selected=agentSelect.value;const r=await api('/api/agent',{method:'POST',body:JSON.stringify({agentId:selected})});if(state.snapshot&&r.session){state.snapshot.session=r.session;renderSnapshot(state.snapshot)}toast('Agent switched');await loadBootstrap();await reloadCurrentPage({agentId:selected})});
   applyPermissions();
+}
+async function loadPeerSelector(){
+  const peerSelect=document.getElementById('peerSelect');
+  if(!peerSelect)return;
+  if(!can('peers.read')){
+    peerSelect.innerHTML='<option value="local">Local</option>';
+    peerSelect.value='local';
+    state.selectedPeer='local';
+    return;
+  }
+  try{
+    const peers=await api('/api/peers',{local:true});
+    state.peers=peers;
+    const available=(peers.peers||[]).filter(p=>p.enabled&&p.url);
+    peerSelect.innerHTML='<option value="local">Local node</option>'+available.map(p=>'<option value="'+attr(p.id)+'">'+esc(p.name)+'</option>').join('');
+    if(state.selectedPeer!=='local'&&!available.some(p=>p.id===state.selectedPeer))state.selectedPeer='local';
+    peerSelect.value=state.selectedPeer;
+    peerSelect.onchange=()=>safe(async()=>{state.selectedPeer=peerSelect.value||'local';localStorage.setItem('nordrelayPeerTarget',state.selectedPeer);connectEvents();toast(state.selectedPeer==='local'?'Target: local':'Target: '+peerSelect.options[peerSelect.selectedIndex].text);await loadBootstrap();await reloadCurrentPage()});
+  }catch{
+    peerSelect.innerHTML='<option value="local">Local node</option>';
+    peerSelect.value='local';
+  }
 }
 function renderSnapshot(s){
   document.getElementById('sessionLine').textContent=(s.session.agentLabel||'Agent')+' / '+(s.session.model||'default')+' / '+(s.session.threadId||'not started');

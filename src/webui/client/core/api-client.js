@@ -11,13 +11,32 @@ const API_ROUTE_RULES = /** @type {{ NORDRELAY_WEB_API_CLIENT_ROUTE_RULES?: ApiR
 /**
  * @template {WebApiPath} P
  * @param {P} path
- * @param {import("../../../web-api-types.js").WebApiClientOptions<P>} [options]
+ * @param {import("../../../web-api-types.js").WebApiClientOptions<P> & { local?: boolean }} [options]
  * @returns {Promise<import("../../../web-api-types.js").WebApiClientResponse<P>>}
  */
 async function api(path, options = {}) {
   const method = normalizeMethod(options.method, options.body);
   const url = apiUrl(path, options.query);
   assertApiRoute(url.pathname, method);
+  if (!options.local && shouldProxyApi(url.pathname)) {
+    const peerId = selectedPeerTarget();
+    const proxyBody = JSON.stringify({
+      method,
+      path: url.pathname,
+      query: queryObject(url),
+      body: bodyObject(options.body),
+    });
+    const res = await fetch('/api/peers/'+encodeURIComponent(peerId)+'/proxy', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: proxyBody,
+    });
+    if (res.status === 401) { location.reload(); return /** @type {never} */ (undefined); }
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : {};
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
+  }
   const body = normalizeBody(options.body);
   const headers = {
     ...(body !== undefined && shouldSendJsonHeader(options.body) ? { 'content-type': 'application/json' } : {}),
@@ -29,6 +48,56 @@ async function api(path, options = {}) {
   const data = text ? JSON.parse(text) : {};
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
+}
+
+/**
+ * @param {string} path
+ */
+function shouldProxyApi(path) {
+  const peerId = selectedPeerTarget();
+  if (!peerId || peerId === 'local') return false;
+  if (!path.startsWith('/api/')) return false;
+  return !(
+    path === '/api/auth/me' ||
+    path === '/api/dashboard/logout' ||
+    path === '/api/peers' ||
+    path === '/api/peers/invite' ||
+    path === '/api/peers/pair' ||
+    /^\/api\/peers\/[^/]+(?:\/events|\/proxy)?$/.test(path)
+  );
+}
+
+function selectedPeerTarget() {
+  const runtimeState = /** @type {{ NORDRELAY_WEBUI_RUNTIME_STATE?: { selectedPeer?: string } }} */ (globalThis).NORDRELAY_WEBUI_RUNTIME_STATE;
+  return runtimeState?.selectedPeer || 'local';
+}
+
+/**
+ * @param {URL} url
+ * @returns {Record<string, string | string[]>}
+ */
+function queryObject(url) {
+  /** @type {Record<string, string | string[]>} */
+  const result = {};
+  for (const [key, value] of url.searchParams.entries()) {
+    if (result[key] === undefined) result[key] = value;
+    else if (Array.isArray(result[key])) result[key].push(value);
+    else result[key] = [result[key], value];
+  }
+  return result;
+}
+
+/**
+ * @param {unknown} body
+ * @returns {Record<string, unknown>}
+ */
+function bodyObject(body) {
+  if (body === undefined || body === null) return {};
+  if (typeof body === 'string') {
+    try { return body ? JSON.parse(body) : {}; } catch { return { value: body }; }
+  }
+  if (isNativeBody(body)) return {};
+  return /** @type {Record<string, unknown>} */ (body);
 }
 
 /**

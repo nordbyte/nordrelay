@@ -6,7 +6,10 @@ async function loadChatHistory(){const data=await api('/api/chat/history');rende
 let currentAgentMessage=null;
 function connectEvents(){
   if(state.events) state.events.close();
-  const events = new EventSource('/api/events');
+  const eventsUrl = state.selectedPeer && state.selectedPeer !== 'local'
+    ? '/api/peers/'+encodeURIComponent(state.selectedPeer)+'/events'
+    : '/api/events';
+  const events = new EventSource(eventsUrl);
   state.events=events;
   setConnection('Connecting','warn');
   events.onopen=()=>{if(state.reconnectTimer){clearTimeout(state.reconnectTimer);state.reconnectTimer=null}setConnection('Live','ok')};

@@ -417,6 +417,8 @@ async function commandStatus(options) {
   console.log(`OpenClaw CLI: ${state.openClawCli || "-"}`);
   console.log(`Claude Code CLI: ${state.claudeCodeCli || "-"}`);
   console.log(`OpenClaw Gateway: ${state.openClawGateway || process.env.OPENCLAW_GATEWAY_URL || "-"}`);
+  console.log(`Peers: ${state.peerEnabled ? state.peerUrl || "enabled" : "disabled"}`);
+  if (state.peerTlsFingerprint) console.log(`Peer TLS fingerprint: ${state.peerTlsFingerprint}`);
   console.log(`WebUI: ${formatDashboardUrl(dashboard)} (${webStatus})`);
   console.log(`Log: ${options.logFile}`);
   console.log(`WebUI log: ${options.webLogFile}`);
@@ -734,6 +736,11 @@ async function commandInit(options) {
     "OPENCLAW_DEFAULT_PROFILE=default",
     "CLAUDE_CODE_DEFAULT_PROFILE=default",
     "CLAUDE_CODE_MAX_TURNS=100",
+    "NORDRELAY_PEER_ENABLED=false",
+    "NORDRELAY_PEER_HOST=127.0.0.1",
+    "NORDRELAY_PEER_PORT=31979",
+    "NORDRELAY_PEER_TLS_ENABLED=true",
+    "NORDRELAY_PEER_REQUIRE_TLS=true",
     `NORDRELAY_STATE_BACKEND=${stateBackend === "sqlite" ? "sqlite" : "json"}`,
     "TELEGRAM_TRANSPORT=polling",
     "TELEGRAM_AUTO_SEND_ARTIFACTS=false",
@@ -760,6 +767,131 @@ async function createUserStore(home) {
   }
   const mod = await import(pathToFileURL(modulePath).href);
   return new mod.UserStore(home);
+}
+
+async function peerModules() {
+  const required = [
+    "peer-store.js",
+    "peer-identity.js",
+    "peer-client.js",
+  ];
+  for (const file of required) {
+    const modulePath = path.join(RUNTIME_ROOT, "dist", file);
+    if (!fs.existsSync(modulePath)) {
+      throw new Error(`Missing peer runtime. Run \`npm run build\` in ${RUNTIME_ROOT}.`);
+    }
+  }
+  const [store, identity, client] = await Promise.all(required.map((file) => import(pathToFileURL(path.join(RUNTIME_ROOT, "dist", file)).href)));
+  return { store, identity, client };
+}
+
+function parsePeerFlags(argv) {
+  const copy = [...argv];
+  const subcommand = copy[0] && !copy[0].startsWith("-") ? copy.shift() : "list";
+  const flags = { subcommand, url: undefined };
+  if (["add", "test", "revoke"].includes(subcommand) && copy[0] && !copy[0].startsWith("-")) {
+    flags.url = copy.shift();
+    flags.id = flags.url;
+  }
+  for (let i = 0; i < copy.length; i += 1) {
+    const arg = copy[i];
+    if (arg === "--name") flags.name = requireValue(copy, ++i, arg);
+    else if (arg === "--code") flags.code = requireValue(copy, ++i, arg);
+    else if (arg === "--public-url") flags.publicUrl = requireValue(copy, ++i, arg);
+    else if (arg === "--expires" || arg === "--expires-minutes") flags.expiresMinutes = Number.parseInt(requireValue(copy, ++i, arg), 10);
+    else if (arg === "--scopes") flags.scopes = requireValue(copy, ++i, arg);
+    else if (arg === "--agents") flags.agents = requireValue(copy, ++i, arg);
+    else if (arg === "--workspaces") flags.workspaces = requireValue(copy, ++i, arg);
+  }
+  return flags;
+}
+
+function csv(value) {
+  return value ? value.split(",").map((item) => item.trim()).filter(Boolean) : undefined;
+}
+
+async function commandPeer(options) {
+  await mkdirp(options.home);
+  loadEnvFiles(options.home);
+  const flags = parsePeerFlags(options.rawFlags);
+  const { store: storeMod, identity: identityMod, client: clientMod } = await peerModules();
+  const store = new storeMod.PeerStore(options.home);
+  const identity = identityMod.loadOrCreatePeerIdentity(options.home, process.env.NORDRELAY_PEER_NAME);
+
+  if (flags.subcommand === "identity") {
+    console.log(`Node ID: ${identity.public.nodeId}`);
+    console.log(`Name: ${identity.public.name}`);
+    console.log(`Fingerprint: ${identity.public.fingerprint}`);
+    console.log(`Created: ${identity.public.createdAt}`);
+    return;
+  }
+
+  if (flags.subcommand === "list") {
+    const peers = store.listPublic();
+    if (peers.length === 0) {
+      console.log("No peers configured.");
+      console.log("Create an invite with `nordrelay peer invite` or add a peer with `nordrelay peer add <url> --code <code>`.");
+      return;
+    }
+    for (const peer of peers) {
+      console.log(`${peer.id} ${peer.enabled ? "enabled" : "disabled"} ${peer.name}`);
+      console.log(`  URL: ${peer.url || "-"}`);
+      console.log(`  Node: ${peer.nodeId} ${peer.fingerprint}`);
+      console.log(`  Direction: ${peer.direction}`);
+      console.log(`  Scopes: ${peer.scopes.join(",") || "-"}`);
+      console.log(`  Agents: ${peer.allowedAgents.join(",") || "all"}`);
+      if (peer.lastSeenAt) console.log(`  Last seen: ${peer.lastSeenAt}`);
+      if (peer.lastError) console.log(`  Last error: ${peer.lastError}`);
+    }
+    return;
+  }
+
+  if (flags.subcommand === "invite") {
+    const url = process.env.NORDRELAY_PEER_PUBLIC_URL || `${process.env.NORDRELAY_PEER_TLS_ENABLED === "false" ? "http" : "https"}://${process.env.NORDRELAY_PEER_HOST || "127.0.0.1"}:${process.env.NORDRELAY_PEER_PORT || "31979"}`;
+    const created = store.createInvitation({
+      name: flags.name,
+      expiresInMs: Number.isFinite(flags.expiresMinutes) ? flags.expiresMinutes * 60 * 1000 : undefined,
+      scopes: csv(flags.scopes),
+      allowedAgents: csv(flags.agents),
+      allowedWorkspaceRoots: csv(flags.workspaces),
+    });
+    console.log(`Pairing code: ${created.code}`);
+    console.log(`Expires: ${created.invitation.expiresAt}`);
+    console.log(`Fingerprint: ${identity.public.fingerprint}`);
+    console.log(`Command: nordrelay peer add ${url} --code ${created.code}`);
+    return;
+  }
+
+  if (flags.subcommand === "add") {
+    const url = flags.url || await ask(null, "Peer URL", "");
+    const code = flags.code || await ask(null, "Pairing code", "");
+    const result = await clientMod.pairPeer({
+      url,
+      code,
+      name: flags.name,
+      publicUrl: flags.publicUrl,
+    }, identity, store);
+    console.log(`Added peer ${result.peer.name} (${result.peer.id}).`);
+    console.log(`Node: ${result.peer.nodeId}`);
+    console.log(`Fingerprint: ${result.peer.fingerprint}`);
+    if (result.tlsFingerprint) console.log(`TLS fingerprint: ${result.tlsFingerprint}`);
+    return;
+  }
+
+  if (flags.subcommand === "test") {
+    const id = flags.id || await ask(null, "Peer id", "");
+    const response = await new clientMod.RemoteRelayClient(store).rpc(id, "peer.ping");
+    console.log(`Peer ${id} ok: ${JSON.stringify(response)}`);
+    return;
+  }
+
+  if (flags.subcommand === "revoke") {
+    const id = flags.id || await ask(null, "Peer id", "");
+    console.log(store.revokePeer(id) ? `Revoked peer ${id}.` : `Peer not found: ${id}`);
+    return;
+  }
+
+  throw new Error("Usage: nordrelay peer [identity|list|invite|add|test|revoke]");
 }
 
 function parseUserFlags(argv) {
@@ -899,6 +1031,11 @@ async function commandDoctor(options) {
   checks.push(check("WebUI login", true, "required for every dashboard request"));
   checks.push(check("Telegram access", true, "requires linked active users and enabled group chats"));
   checks.push(check("Discord access", true, "requires linked active users and enabled channels"));
+  const peerEnabled = process.env.NORDRELAY_PEER_ENABLED === "true";
+  const peerTlsEnabled = process.env.NORDRELAY_PEER_TLS_ENABLED !== "false";
+  const peerHost = process.env.NORDRELAY_PEER_HOST || "127.0.0.1";
+  checks.push(check("Peer server", peerEnabled, peerEnabled ? `${peerHost}:${process.env.NORDRELAY_PEER_PORT || "31979"}` : "disabled", "warn"));
+  checks.push(check("Peer TLS", !peerEnabled || peerTlsEnabled || isLoopbackName(peerHost), peerTlsEnabled ? "enabled" : "plaintext loopback only", peerEnabled ? "fail" : "warn"));
   checks.push(check("Codex enabled flag", process.env.NORDRELAY_CODEX_ENABLED !== "false", `NORDRELAY_CODEX_ENABLED=${process.env.NORDRELAY_CODEX_ENABLED ?? "true"}`));
   checks.push(check("Pi enabled flag", process.env.NORDRELAY_PI_ENABLED === "true" || process.env.NORDRELAY_PI_ENABLED === undefined, `NORDRELAY_PI_ENABLED=${process.env.NORDRELAY_PI_ENABLED ?? "false"}`, process.env.NORDRELAY_PI_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("Hermes enabled flag", process.env.NORDRELAY_HERMES_ENABLED === "true", `NORDRELAY_HERMES_ENABLED=${process.env.NORDRELAY_HERMES_ENABLED ?? "false"}`, process.env.NORDRELAY_HERMES_ENABLED === "true" ? "pass" : "warn"));
@@ -1485,6 +1622,10 @@ function isWindowsShellScript(filePath) {
   return process.platform === "win32" && /\.(?:cmd|bat)$/i.test(filePath);
 }
 
+function isLoopbackName(host) {
+  return host === "127.0.0.1" || host === "::1" || host === "localhost";
+}
+
 function validateStateBackend() {
   const backend = process.env.NORDRELAY_STATE_BACKEND || "json";
   if (backend === "json") return { ok: true, detail: "NORDRELAY_STATE_BACKEND=json" };
@@ -1536,6 +1677,7 @@ function printHelp() {
   console.log("Commands:");
   console.log("  init                 Create local config and first admin user");
   console.log("  user                 Manage users, groups, and channel links");
+  console.log("  peer                 Manage secure NordRelay peer federation");
   console.log("  doctor               Validate the local setup");
   console.log("  web, dashboard       Start the WebUI and connector");
   console.log("  start                Start the connector");
@@ -1567,6 +1709,7 @@ async function main() {
   if (options.command === "status") return commandStatus(options);
   if (options.command === "init") return commandInit(options);
   if (options.command === "user") return commandUser(options);
+  if (options.command === "peer") return commandPeer(options);
   if (options.command === "doctor") return commandDoctor(options);
   if (options.command === "update") return commandUpdate(options);
   if (options.command === "web" || options.command === "dashboard") return commandWeb(options);
@@ -1589,7 +1732,7 @@ async function main() {
   }
 
   console.error(`Unknown command: ${options.command}`);
-  console.error("Usage: nordrelay [init|user|doctor|web|start|stop|restart|status|update|foreground|version]");
+  console.error("Usage: nordrelay [init|user|peer|doctor|web|start|stop|restart|status|update|foreground|version]");
   console.error("Run `nordrelay --help` for details.");
   process.exitCode = 2;
 }

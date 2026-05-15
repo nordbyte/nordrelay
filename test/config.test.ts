@@ -242,6 +242,13 @@ describe("loadConfig", () => {
       claudeCodeDefaultEffort: undefined,
       claudeCodeDefaultLaunchProfileId: "default",
       claudeCodeMaxTurns: 100,
+      peerEnabled: false,
+      peerName: undefined,
+      peerHost: "127.0.0.1",
+      peerPort: 31979,
+      peerPublicUrl: undefined,
+      peerTlsEnabled: true,
+      peerRequireTls: true,
       defaultAgent: "codex",
       toolVerbosity: "all",
       logFormat: "text",
@@ -299,6 +306,13 @@ describe("loadConfig", () => {
     expect(config.claudeCodeDefaultEffort).toBeUndefined();
     expect(config.claudeCodeDefaultLaunchProfileId).toBe("default");
     expect(config.claudeCodeMaxTurns).toBe(100);
+    expect(config.peerEnabled).toBe(false);
+    expect(config.peerName).toBeUndefined();
+    expect(config.peerHost).toBe("127.0.0.1");
+    expect(config.peerPort).toBe(31979);
+    expect(config.peerPublicUrl).toBeUndefined();
+    expect(config.peerTlsEnabled).toBe(true);
+    expect(config.peerRequireTls).toBe(true);
     expect(config.codexModel).toBeUndefined();
     expect(config.codexSyncIntervalMs).toBe(10_000);
     expect(config.codexExternalBusyCheckMs).toBe(5_000);
@@ -406,6 +420,27 @@ describe("loadConfig", () => {
     expect(config.telegramWebhookPath).toBe("/telegram");
     expect(config.telegramWebhookSecret).toBe("secret");
     expect(config.stateBackend).toBe("sqlite");
+  });
+
+  it("parses peer federation settings", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.NORDRELAY_PEER_ENABLED = "true";
+    process.env.NORDRELAY_PEER_NAME = "Workstation";
+    process.env.NORDRELAY_PEER_HOST = "0.0.0.0";
+    process.env.NORDRELAY_PEER_PORT = "31980";
+    process.env.NORDRELAY_PEER_PUBLIC_URL = "https://workstation.example:31980";
+    process.env.NORDRELAY_PEER_TLS_ENABLED = "false";
+    process.env.NORDRELAY_PEER_REQUIRE_TLS = "false";
+
+    const config = loadConfig();
+
+    expect(config.peerEnabled).toBe(true);
+    expect(config.peerName).toBe("Workstation");
+    expect(config.peerHost).toBe("0.0.0.0");
+    expect(config.peerPort).toBe(31980);
+    expect(config.peerPublicUrl).toBe("https://workstation.example:31980");
+    expect(config.peerTlsEnabled).toBe(false);
+    expect(config.peerRequireTls).toBe(false);
   });
 
   it("disables Telegram when webhook transport has no URL and no other chat adapter is usable", () => {

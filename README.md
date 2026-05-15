@@ -1,6 +1,6 @@
 # NordRelay
 
-NordRelay is a remote control plane for coding agents across messaging channels. The current implementation connects Codex, Pi, Hermes, OpenClaw, and Claude Code coding-agent sessions to Telegram and Discord, keeps independent sessions per chat, thread, forum topic, or DM, streams replies and tool activity back to the active channel, supports files, photos, voice input, model controls, session browsing, retry/abort, and CLI handback.
+NordRelay is a remote control plane for coding agents across messaging channels and paired NordRelay instances. The current implementation connects Codex, Pi, Hermes, OpenClaw, and Claude Code coding-agent sessions to Telegram, Discord, the WebUI, and trusted peer nodes, keeps independent sessions per chat, thread, forum topic, DM, or remote target, streams replies and tool activity back to the active channel, supports files, photos, voice input, model controls, session browsing, retry/abort, CLI handback, and scoped multi-host control.
 
 The repo is both a local Codex marketplace and a standalone Node app. The plugin lives in `plugins/nordrelay/`; the full bot runtime lives in `src/` and uses `@openai/codex-sdk` for Codex, Pi RPC mode for Pi, the Hermes API Server for Hermes, the OpenClaw Gateway WebSocket RPC surface for OpenClaw, and the Claude Agent SDK for Claude Code.
 
@@ -49,6 +49,17 @@ Adapter architecture:
 - Codex, Pi, Hermes, OpenClaw, and Claude Code are implemented as agent adapters.
 - `/agents` shows available/planned agent adapters and whether Codex, Pi, Hermes, OpenClaw, and Claude Code are enabled.
 - Shared command-action renderers and a channel runtime contract keep inbound commands, outbound messages, typing, files, inline actions, and streaming-ready delivery separate from channel-specific API calls.
+
+Peer federation:
+
+- Optional NordRelay-to-NordRelay pairing lets one instance operate agents on trusted Ubuntu, macOS, Windows, LAN, or remote hosts.
+- Peer serving is disabled by default and uses a dedicated API port separate from the dashboard.
+- Pairing requires an explicit one-time invitation code, Ed25519 node identity verification, a per-peer shared secret, request HMAC signatures, timestamp/nonce replay protection, and TLS fingerprint pinning.
+- Peer scopes restrict which remote WebUI/API actions are allowed, including read, prompt, queue, file, diagnostic, log, and session permissions.
+- Peer records can also restrict allowed agent ids and workspace roots.
+- The WebUI has a Peers page plus a local/remote target selector; dashboard pages and SSE streaming proxy through the selected peer when allowed.
+- Telegram and Discord expose `/peers` and `/target` so a linked user can choose whether prompts run locally or on a paired NordRelay instance.
+- Remote prompts stream text, tool status, turn completion, and errors back to the originating Telegram or Discord context.
 
 Codex runtime:
 
@@ -200,6 +211,7 @@ Operations:
 - Plugin command/skill starts, stops, restarts, and inspects the connector process.
 - Manual process commands support `start`, `stop`, `restart`, `status`, `update`, and `foreground`.
 - Telegram admin commands support `/logs`, `/diagnostics`, `/support`, `/restart`, and `/update` for NordRelay and agent CLIs.
+- `nordrelay peer identity`, `list`, `invite`, `add`, `test`, and `revoke` manage secure peer federation from the CLI.
 - `nordrelay update`, `/update`, and the WebUI update button detect the install type: npm installs update with `npm install -g @nordbyte/nordrelay@latest`; source checkouts pull `origin/main`, install dependencies, run check, tests, and build, then restart if the connector is running.
 - `/update agents`, `/update <agent>`, `/update install <agent>`, `/update jobs`, `/update log <id>`, `/update cancel <id>`, and `/update input <id> <text>` manage Codex, Pi, Hermes, OpenClaw, and Claude Code updater or installer jobs from Telegram.
 - `/logs` renders redacted connector, NordRelay update, and agent update logs with local-time timestamps, levels, file path, last-modified time, and highlighted warnings/errors.
@@ -217,7 +229,7 @@ Operations:
 - On first WebUI startup without an admin account, NordRelay shows a setup wizard for creating the first admin; remote setup requires the one-time token printed in the server console.
 - The WebUI has responsive header/sidebar/footer navigation, live chat streaming, session controls, queue/artifact/log/diagnostic views, and settings management.
 - The WebUI supports light and dark themes, tabbed settings groups, paginated session browsing, and chat uploads for images, documents, and audio transcription.
-- The WebUI exposes REST and SSE endpoints for chat streaming, sessions, settings, queue, artifacts, logs, health, diagnostics, and redacted diagnostics bundle export.
+- The WebUI exposes REST and SSE endpoints for chat streaming, sessions, settings, queue, artifacts, logs, health, diagnostics, peers, and redacted diagnostics bundle export.
 - The dashboard can bind to `127.0.0.1` or `0.0.0.0`; user login and session cookies are mandatory in both modes.
 - Telegram can run with long polling or an HTTP webhook via `TELEGRAM_TRANSPORT=webhook`.
 - Version freshness checks are cached with `NORDRELAY_VERSION_CACHE_TTL_MS`, and installed agent CLI version checks are cached with `NORDRELAY_CLI_VERSION_CACHE_TTL_MS`, to keep `/version` and adapter health responsive.
@@ -318,6 +330,33 @@ User and chat access management:
 - Telegram group chats are disabled until an admin enables them from the WebUI or runs `/register_chat` inside the group.
 - Discord guild channels are disabled until an admin enables them from the WebUI or runs `/register_channel` inside the channel.
 
+Peer setup:
+
+1. On each host that should accept peer connections, set `NORDRELAY_PEER_ENABLED=true` in `~/.nordrelay/nordrelay.env`.
+2. Keep `NORDRELAY_PEER_TLS_ENABLED=true` and `NORDRELAY_PEER_REQUIRE_TLS=true` for LAN or internet use.
+3. Use `NORDRELAY_PEER_HOST=127.0.0.1` for local-only testing, a LAN/interface IP for trusted local networks, or keep the peer API behind a TLS reverse proxy/VPN for internet access.
+4. Set `NORDRELAY_PEER_PUBLIC_URL=https://host.example:31979` when other hosts cannot reach the bind address directly.
+5. Restart NordRelay on the accepting host and create an invitation:
+
+```bash
+nordrelay peer invite --name workstation --scopes inspect,sessions.read,sessions.write,prompt.send,prompt.abort,queue.read,queue.write,files.read,files.write,diagnostics.read,logs.read
+```
+
+6. On the controlling host, run the printed command:
+
+```bash
+nordrelay peer add https://workstation.example:31979 --code one-time-code
+```
+
+7. Confirm the connection:
+
+```bash
+nordrelay peer list
+nordrelay peer test <peer-id>
+```
+
+Use the WebUI Peers page for the same invite, pair, enable/disable, test, and revoke workflow. Use `/peers` from Telegram or Discord to inspect paired nodes and `/target <peer-id>` or `/target local` to choose where subsequent prompts run.
+
 Codex authentication:
 
 - Preferred local setup: run `codex login` on the host before starting the connector.
@@ -403,6 +442,9 @@ nordrelay restart
 nordrelay stop
 nordrelay foreground
 nordrelay web
+nordrelay peer list
+nordrelay peer invite
+nordrelay peer add https://peer.example:31979 --code one-time-code
 ```
 
 Source checkout process commands:
@@ -417,6 +459,7 @@ node plugins/nordrelay/scripts/nordrelay.mjs foreground
 node plugins/nordrelay/scripts/nordrelay.mjs user list
 node plugins/nordrelay/scripts/nordrelay.mjs doctor
 node plugins/nordrelay/scripts/nordrelay.mjs web
+node plugins/nordrelay/scripts/nordrelay.mjs peer list
 ```
 
 NPM shortcuts:
@@ -472,6 +515,7 @@ The dashboard is a second NordRelay client next to Telegram. It can:
 - Inspect a per-agent capability matrix showing model, reasoning, launch, fast mode, attachments, activity, usage, auth, login/logout, and handback support.
 - Check NordRelay and agent CLI versions, then start Codex, Pi, Hermes, OpenClaw, or Claude Code updates from outdated rows or installs from not-installed rows with live output, cancel, delete-log, and stdin response controls.
 - Build dashboard CSS and client JavaScript from modular source assets through esbuild, then serve them as authenticated static assets instead of inline HTML.
+- Pair, test, enable/disable, and revoke NordRelay peers, then switch the dashboard target between the local instance and paired remote instances.
 
 Dashboard API endpoints are served under `/api/*`. Streaming uses `GET /api/events`.
 
@@ -504,6 +548,8 @@ Run NordRelay behind your reverse proxy so the public URL forwards to `http://12
 - `/channels` shows available and planned messaging adapters.
 - `/agents` shows available and planned coding-agent adapters.
 - `/agent` selects the active agent for this Telegram context.
+- `/peers` shows configured NordRelay peer instances.
+- `/target local|<peer-id>` selects whether prompts for this chat run locally or on a paired peer.
 - `/link <code>` links the Telegram account to a NordRelay user.
 - `/whoami` shows the linked NordRelay user, groups, and permissions.
 - `/register_chat` enables the current Telegram group or forum chat for NordRelay when the linked user has user-management permission.
@@ -575,6 +621,7 @@ Discord supports slash commands and `/command` text messages for the shared comm
 - `/prompt <text>` is available for slash-command-only deployments where regular message content is disabled.
 - `/link <code>` consumes Discord link codes created in the WebUI or with `nordrelay user discord-link-code`.
 - `/queue`, `/sessions`, `/agent`, `/model`, `/reasoning`, `/launch`, `/artifacts`, `/update`, and `/stop` use Discord buttons where component limits allow.
+- `/peers` and `/target local|<peer-id>` use the same paired-instance target selection as Telegram.
 - `/artifacts latest`, `/artifacts zip latest`, `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, and `/artifacts delete <turn-id>` are available in Discord.
 - Unsafe launch profiles require explicit confirmation with `/launch <profile-id> confirm`.
 - Discord does not support Telegram reactions or Telegram webhook transport; typing, message edits, attachments, files, DMs, guild channels, and threads are supported.
@@ -795,8 +842,19 @@ User management:
 - Users, groups, Telegram identities, Telegram group-chat access, Discord identities, Discord channel access, and web sessions are stored in `~/.nordrelay/users.json`.
 - Manage users in the WebUI Users page or with `nordrelay user list`, `create-admin`, `create`, `reset-password`, `link-telegram`, `link-discord`, `link-code`, and `discord-link-code`.
 - Built-in groups are `admin`, `user`, and `readonly`.
-- Group permissions include `inspect`, `sessions.read`, `sessions.write`, `prompt.send`, `prompt.abort`, `files.read`, `files.write`, `settings.read`, `settings.write`, `auth.manage`, `diagnostics.read`, `logs.read`, `logs.clear`, `queue.read`, `queue.write`, `updates.run`, `system.restart`, `users.read`, `users.write`, and `audit.read`.
+- Group permissions include `inspect`, `sessions.read`, `sessions.write`, `prompt.send`, `prompt.abort`, `files.read`, `files.write`, `settings.read`, `settings.write`, `auth.manage`, `diagnostics.read`, `logs.read`, `logs.clear`, `queue.read`, `queue.write`, `updates.run`, `system.restart`, `users.read`, `users.write`, `audit.read`, `peers.read`, `peers.write`, and `peers.connect`.
 - Custom groups can also restrict access to specific agent ids, workspace roots, Telegram chat ids, and Discord channel ids.
+
+Peers:
+
+- `NORDRELAY_PEER_ENABLED`: starts the dedicated peer API. Defaults to `false`.
+- `NORDRELAY_PEER_NAME`: optional human-readable node name shown to paired instances.
+- `NORDRELAY_PEER_HOST`: peer API bind host. Defaults to `127.0.0.1`.
+- `NORDRELAY_PEER_PORT`: peer API port. Defaults to `31979`.
+- `NORDRELAY_PEER_PUBLIC_URL`: optional URL other instances should use to reach this node.
+- `NORDRELAY_PEER_TLS_ENABLED`: serves the peer API over HTTPS with an automatically generated local certificate. Defaults to `true`.
+- `NORDRELAY_PEER_REQUIRE_TLS`: refuses plaintext peer serving on non-loopback hosts. Defaults to `true`.
+- Peer identity, TLS certificate, peers, and invitations are stored under `~/.nordrelay/identity.json`, `~/.nordrelay/tls/`, and `~/.nordrelay/peers.json`.
 
 Agent selection:
 
@@ -956,12 +1014,14 @@ Unsafe profiles are intentionally gated. Telegram asks for confirmation before a
 - Link Telegram accounts only to active NordRelay users that should control agents remotely.
 - Enable Telegram group/forum chats only when the whole chat context is trusted for the permissions granted to linked users.
 - Review group permissions before granting `prompt.send`, `prompt.abort`, `files.write`, `settings.write`, `updates.run`, `system.restart`, or `users.write`.
+- Review peer scopes before granting `peers.write`, `peers.connect`, broad `prompt.send`, or unrestricted workspace roots to a paired instance.
 - Treat `danger-full-access` as equivalent to shell access on the host.
 - Treat uploaded files as untrusted input. They are staged inside the active workspace so the selected sandbox policy still matters.
 - Keep `CODEX_API_KEY`, `HERMES_API_KEY`, `OPENCLAW_GATEWAY_TOKEN`, `OPENCLAW_GATEWAY_PASSWORD`, and `OPENAI_API_KEY` in `~/.nordrelay/nordrelay.env` or host secret management.
 - In group chats, remember that any linked user with prompt permissions can prompt the selected agent in that chat context.
 - Use `TOOL_VERBOSITY=summary` or `errors-only` when command output may include sensitive data.
 - Review and unsafe launch profiles add a Telegram approve/deny gate before each turn starts.
+- Keep the peer API disabled unless needed. For internet use, expose it only through a firewall, VPN, or hardened reverse proxy; keep TLS enabled and revoke unused peers with `nordrelay peer revoke <peer-id>`.
 
 ## Troubleshooting
 
