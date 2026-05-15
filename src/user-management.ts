@@ -1,189 +1,80 @@
-import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { closeSync, mkdirSync, openSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import {
   ADMIN_GROUP_ID,
-  BUILTIN_GROUPS,
-  READONLY_GROUP_ID,
   USER_GROUP_ID,
-  type GroupDefinition,
   type Permission,
-  isPermission,
 } from "./access-control.js";
 import { readJsonFileWithBackup, writeJsonFileAtomic } from "./persistence.js";
+import {
+  allPermissionsSafe as ALL_PERMISSIONS_SAFE,
+  assertActiveAdminExists,
+  isPathInside,
+  normalizeDiscordId,
+  normalizeEmail,
+  normalizeGroupIds,
+  normalizeNumberList,
+  normalizePayload,
+  normalizePermissions,
+  normalizeSlackId,
+  normalizeStringList,
+  normalizeWorkspacePath,
+  slugify,
+} from "./user-management-normalize.js";
+import {
+  constantTimeStringEqual,
+  hashPassword,
+  hashToken,
+  randomId,
+  randomLinkCode,
+  randomSessionToken,
+  sleepSync,
+  verifyPasswordHash,
+} from "./user-management-crypto.js";
+import type {
+  AuthenticatedUser,
+  DiscordChannelAccessRecord,
+  DiscordIdentityRecord,
+  DiscordLinkCodeRecord,
+  GroupRecord,
+  PersistedUsers,
+  PublicWebSessionRecord,
+  SlackChannelAccessRecord,
+  SlackIdentityRecord,
+  SlackLinkCodeRecord,
+  TelegramChatAccessRecord,
+  TelegramIdentityRecord,
+  TelegramLinkCodeRecord,
+  UserGroupRecord,
+  UserManagementSnapshot,
+  UserRecord,
+  WebSessionRecord,
+} from "./user-management-types.js";
 
-export interface UserRecord {
-  id: string;
-  email: string;
-  displayName: string;
-  passwordHash: string;
-  passwordSalt: string;
-  active: boolean;
-  createdAt: string;
-  updatedAt: string;
-  lastLoginAt?: string;
-}
-
-export interface GroupRecord extends GroupDefinition {
-  agentIds: string[];
-  workspaceRoots: string[];
-  telegramChatIds: number[];
-  discordChannelIds: string[];
-  slackChannelIds: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface UserGroupRecord {
-  userId: string;
-  groupId: string;
-}
-
-export interface TelegramIdentityRecord {
-  id: string;
-  userId: string;
-  telegramUserId: number;
-  username?: string;
-  firstName?: string;
-  lastName?: string;
-  active: boolean;
-  linkedAt: string;
-  updatedAt: string;
-}
-
-export interface TelegramChatAccessRecord {
-  id: string;
-  chatId: number;
-  title?: string;
-  type?: string;
-  enabled: boolean;
-  allowedGroupIds: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface DiscordIdentityRecord {
-  id: string;
-  userId: string;
-  discordUserId: string;
-  username?: string;
-  globalName?: string;
-  active: boolean;
-  linkedAt: string;
-  updatedAt: string;
-}
-
-export interface DiscordChannelAccessRecord {
-  id: string;
-  guildId?: string;
-  channelId: string;
-  title?: string;
-  type?: string;
-  enabled: boolean;
-  allowedGroupIds: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface SlackIdentityRecord {
-  id: string;
-  userId: string;
-  slackUserId: string;
-  teamId?: string;
-  username?: string;
-  realName?: string;
-  active: boolean;
-  linkedAt: string;
-  updatedAt: string;
-}
-
-export interface SlackChannelAccessRecord {
-  id: string;
-  teamId?: string;
-  channelId: string;
-  title?: string;
-  type?: string;
-  enabled: boolean;
-  allowedGroupIds: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface WebSessionRecord {
-  id: string;
-  userId: string;
-  tokenHash: string;
-  createdAt: string;
-  expiresAt: string;
-  lastSeenAt: string;
-}
-
-export interface TelegramLinkCodeRecord {
-  code: string;
-  userId: string;
-  createdAt: string;
-  expiresAt: string;
-}
-
-export interface DiscordLinkCodeRecord {
-  code: string;
-  userId: string;
-  createdAt: string;
-  expiresAt: string;
-}
-
-export interface SlackLinkCodeRecord {
-  code: string;
-  userId: string;
-  createdAt: string;
-  expiresAt: string;
-}
-
-export interface AuthenticatedUser {
-  user: UserRecord;
-  groups: GroupRecord[];
-  permissions: Permission[];
-}
-
-export interface UserManagementSnapshot {
-  users: Array<UserRecord & {
-    groups: GroupRecord[];
-    telegramIdentities: TelegramIdentityRecord[];
-    discordIdentities: DiscordIdentityRecord[];
-    slackIdentities: SlackIdentityRecord[];
-    webSessions: PublicWebSessionRecord[];
-  }>;
-  groups: GroupRecord[];
-  telegramChats: TelegramChatAccessRecord[];
-  discordChannels: DiscordChannelAccessRecord[];
-  slackChannels: SlackChannelAccessRecord[];
-  adminConfigured: boolean;
-}
-
-export type PublicWebSessionRecord = Omit<WebSessionRecord, "tokenHash">;
-
-interface PersistedUsers {
-  version: 1;
-  users: UserRecord[];
-  groups: GroupRecord[];
-  userGroups: UserGroupRecord[];
-  telegramIdentities: TelegramIdentityRecord[];
-  telegramChats: TelegramChatAccessRecord[];
-  discordIdentities: DiscordIdentityRecord[];
-  discordChannels: DiscordChannelAccessRecord[];
-  slackIdentities: SlackIdentityRecord[];
-  slackChannels: SlackChannelAccessRecord[];
-  webSessions: WebSessionRecord[];
-  telegramLinkCodes: TelegramLinkCodeRecord[];
-  discordLinkCodes: DiscordLinkCodeRecord[];
-  slackLinkCodes: SlackLinkCodeRecord[];
-}
+export type {
+  AuthenticatedUser,
+  DiscordChannelAccessRecord,
+  DiscordIdentityRecord,
+  DiscordLinkCodeRecord,
+  GroupRecord,
+  PersistedUsers,
+  PublicWebSessionRecord,
+  SlackChannelAccessRecord,
+  SlackIdentityRecord,
+  SlackLinkCodeRecord,
+  TelegramChatAccessRecord,
+  TelegramIdentityRecord,
+  TelegramLinkCodeRecord,
+  UserGroupRecord,
+  UserManagementSnapshot,
+  UserRecord,
+  WebSessionRecord,
+} from "./user-management-types.js";
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const LINK_CODE_TTL_MS = 15 * 60 * 1000;
-const PASSWORD_KEYLEN = 64;
 const WRITE_LOCK_TIMEOUT_MS = 5_000;
 const STALE_LOCK_MS = 30_000;
 
@@ -388,7 +279,7 @@ export class UserStore {
       if (!user) {
         throw new Error("Active user not found.");
       }
-      const token = randomBytes(32).toString("hex");
+      const token = randomSessionToken();
       const now = new Date();
       const session: WebSessionRecord = {
         id: randomId(),
@@ -1239,255 +1130,4 @@ export function publicUserSnapshot(snapshot: UserManagementSnapshot) {
       return rest;
     }),
   };
-}
-
-function normalizePayload(payload: PersistedUsers | undefined): PersistedUsers {
-  const now = new Date().toISOString();
-  const groupsById = new Map<string, GroupRecord>();
-  for (const group of BUILTIN_GROUPS) {
-    groupsById.set(group.id, {
-      ...group,
-      permissions: group.id === ADMIN_GROUP_ID ? ALL_PERMISSIONS_SAFE() : group.permissions,
-      agentIds: [],
-      workspaceRoots: [],
-      telegramChatIds: [],
-      discordChannelIds: [],
-      slackChannelIds: [],
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-  for (const group of payload?.groups ?? []) {
-    if (!isGroupRecord(group)) continue;
-    groupsById.set(group.id, {
-      ...group,
-      permissions: group.id === ADMIN_GROUP_ID ? ALL_PERMISSIONS_SAFE() : normalizePermissions(group.permissions),
-      system: BUILTIN_GROUPS.some((builtin) => builtin.id === group.id) || group.system,
-      agentIds: normalizeStringList(group.agentIds),
-      workspaceRoots: normalizeStringList(group.workspaceRoots),
-      telegramChatIds: normalizeNumberList(group.telegramChatIds),
-      discordChannelIds: normalizeStringList(group.discordChannelIds),
-      slackChannelIds: normalizeStringList(group.slackChannelIds),
-    });
-  }
-  const groups = Array.from(groupsById.values());
-  const groupIds = new Set(groups.map((group) => group.id));
-  const users = (payload?.users ?? []).filter(isUserRecord);
-  const userIds = new Set(users.map((user) => user.id));
-  return {
-    version: 1,
-    users,
-    groups,
-    userGroups: (payload?.userGroups ?? []).filter((item) => isUserGroupRecord(item) && userIds.has(item.userId) && groupIds.has(item.groupId)),
-    telegramIdentities: (payload?.telegramIdentities ?? []).filter((item) => isTelegramIdentityRecord(item) && userIds.has(item.userId)),
-    telegramChats: (payload?.telegramChats ?? []).filter(isTelegramChatAccessRecord).map((chat) => ({
-      ...chat,
-      allowedGroupIds: chat.allowedGroupIds.filter((groupId) => groupIds.has(groupId)),
-    })),
-    discordIdentities: (payload?.discordIdentities ?? []).filter((item) => isDiscordIdentityRecord(item) && userIds.has(item.userId)),
-    discordChannels: (payload?.discordChannels ?? []).filter(isDiscordChannelAccessRecord).map((channel) => ({
-      ...channel,
-      allowedGroupIds: channel.allowedGroupIds.filter((groupId) => groupIds.has(groupId)),
-    })),
-    slackIdentities: (payload?.slackIdentities ?? []).filter((item) => isSlackIdentityRecord(item) && userIds.has(item.userId)),
-    slackChannels: (payload?.slackChannels ?? []).filter(isSlackChannelAccessRecord).map((channel) => ({
-      ...channel,
-      allowedGroupIds: channel.allowedGroupIds.filter((groupId) => groupIds.has(groupId)),
-    })),
-    webSessions: (payload?.webSessions ?? []).filter((item) => isWebSessionRecord(item) && userIds.has(item.userId)),
-    telegramLinkCodes: (payload?.telegramLinkCodes ?? []).filter((item) => isTelegramLinkCodeRecord(item) && userIds.has(item.userId)),
-    discordLinkCodes: (payload?.discordLinkCodes ?? []).filter((item) => isDiscordLinkCodeRecord(item) && userIds.has(item.userId)),
-    slackLinkCodes: (payload?.slackLinkCodes ?? []).filter((item) => isSlackLinkCodeRecord(item) && userIds.has(item.userId)),
-  };
-}
-
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-
-function normalizeGroupIds(payload: PersistedUsers, values: string[], emptyFallback: string | null = READONLY_GROUP_ID): string[] {
-  const available = new Set(payload.groups.map((group) => group.id));
-  const groupIds = Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
-  for (const groupId of groupIds) {
-    if (!available.has(groupId)) {
-      throw new Error(`Unknown group: ${groupId}`);
-    }
-  }
-  return groupIds.length > 0 ? groupIds : (emptyFallback ? [emptyFallback] : []);
-}
-
-function normalizePermissions(values: string[] | undefined, strict = false): Permission[] {
-  const permissions: Permission[] = [];
-  for (const value of values ?? []) {
-    if (isPermission(value)) {
-      if (!permissions.includes(value)) {
-        permissions.push(value);
-      }
-      continue;
-    }
-    if (strict && value.trim()) {
-      throw new Error(`Unknown permission: ${value}`);
-    }
-  }
-  return permissions;
-}
-
-function normalizeStringList(values: string[] | undefined): string[] {
-  return Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
-}
-
-function normalizeNumberList(values: number[] | undefined): number[] {
-  return Array.from(new Set((values ?? []).filter((value) => Number.isInteger(value))));
-}
-
-function normalizeDiscordId(value: string | undefined | null): string | undefined {
-  const normalized = String(value ?? "").trim();
-  return normalized || undefined;
-}
-
-function normalizeSlackId(value: string | undefined | null): string | undefined {
-  const normalized = String(value ?? "").trim();
-  return normalized || undefined;
-}
-
-function assertActiveAdminExists(payload: PersistedUsers): void {
-  const hasAdmin = payload.users.some((user) => user.active && payload.userGroups.some((item) => item.userId === user.id && item.groupId === ADMIN_GROUP_ID));
-  if (!hasAdmin) {
-    throw new Error("Cannot remove or disable the last active admin user.");
-  }
-}
-
-function normalizeWorkspacePath(value: string): string {
-  return path.resolve(value);
-}
-
-function isPathInside(candidate: string, root: string): boolean {
-  const relative = path.relative(root, candidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
-function sleepSync(ms: number): void {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    // The lock is only held around tiny JSON mutations; a short spin keeps the implementation dependency-free.
-  }
-}
-
-function hashPassword(password: string): { salt: string; hash: string } {
-  if (password.length < 8) {
-    throw new Error("Password must be at least 8 characters.");
-  }
-  const salt = randomBytes(16).toString("hex");
-  const hash = scryptSync(password, salt, PASSWORD_KEYLEN).toString("hex");
-  return { salt, hash };
-}
-
-function verifyPasswordHash(password: string, salt: string, expectedHash: string): boolean {
-  const actual = scryptSync(password, salt, PASSWORD_KEYLEN);
-  const expected = Buffer.from(expectedHash, "hex");
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
-
-function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
-
-function constantTimeStringEqual(left: string, right: string): boolean {
-  const leftBuffer = Buffer.from(left);
-  const rightBuffer = Buffer.from(right);
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
-}
-
-function randomId(): string {
-  return randomUUID().replace(/-/g, "").slice(0, 12);
-}
-
-function randomLinkCode(): string {
-  return `NR-${randomBytes(4).toString("hex").toUpperCase()}`;
-}
-
-function slugify(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-}
-
-function ALL_PERMISSIONS_SAFE(): Permission[] {
-  return [...BUILTIN_GROUPS.find((group) => group.id === ADMIN_GROUP_ID)!.permissions];
-}
-
-function isUserRecord(value: unknown): value is UserRecord {
-  const candidate = value as UserRecord;
-  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.email === "string" &&
-    typeof candidate.displayName === "string" && typeof candidate.passwordHash === "string" &&
-    typeof candidate.passwordSalt === "string" && typeof candidate.active === "boolean";
-}
-
-function isGroupRecord(value: unknown): value is GroupRecord {
-  const candidate = value as GroupRecord;
-  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.name === "string" &&
-    Array.isArray(candidate.permissions);
-}
-
-function isUserGroupRecord(value: unknown): value is UserGroupRecord {
-  const candidate = value as UserGroupRecord;
-  return Boolean(candidate) && typeof candidate.userId === "string" && typeof candidate.groupId === "string";
-}
-
-function isTelegramIdentityRecord(value: unknown): value is TelegramIdentityRecord {
-  const candidate = value as TelegramIdentityRecord;
-  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.userId === "string" &&
-    Number.isInteger(candidate.telegramUserId) && typeof candidate.active === "boolean";
-}
-
-function isTelegramChatAccessRecord(value: unknown): value is TelegramChatAccessRecord {
-  const candidate = value as TelegramChatAccessRecord;
-  return Boolean(candidate) && typeof candidate.id === "string" && Number.isInteger(candidate.chatId) &&
-    typeof candidate.enabled === "boolean" && Array.isArray(candidate.allowedGroupIds);
-}
-
-function isDiscordIdentityRecord(value: unknown): value is DiscordIdentityRecord {
-  const candidate = value as DiscordIdentityRecord;
-  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.userId === "string" &&
-    typeof candidate.discordUserId === "string" && typeof candidate.active === "boolean";
-}
-
-function isDiscordChannelAccessRecord(value: unknown): value is DiscordChannelAccessRecord {
-  const candidate = value as DiscordChannelAccessRecord;
-  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.channelId === "string" &&
-    typeof candidate.enabled === "boolean" && Array.isArray(candidate.allowedGroupIds);
-}
-
-function isSlackIdentityRecord(value: unknown): value is SlackIdentityRecord {
-  const candidate = value as SlackIdentityRecord;
-  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.userId === "string" &&
-    typeof candidate.slackUserId === "string" && typeof candidate.active === "boolean";
-}
-
-function isSlackChannelAccessRecord(value: unknown): value is SlackChannelAccessRecord {
-  const candidate = value as SlackChannelAccessRecord;
-  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.channelId === "string" &&
-    typeof candidate.enabled === "boolean" && Array.isArray(candidate.allowedGroupIds);
-}
-
-function isWebSessionRecord(value: unknown): value is WebSessionRecord {
-  const candidate = value as WebSessionRecord;
-  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.userId === "string" &&
-    typeof candidate.tokenHash === "string" && typeof candidate.expiresAt === "string";
-}
-
-function isTelegramLinkCodeRecord(value: unknown): value is TelegramLinkCodeRecord {
-  const candidate = value as TelegramLinkCodeRecord;
-  return Boolean(candidate) && typeof candidate.code === "string" && typeof candidate.userId === "string" &&
-    typeof candidate.expiresAt === "string";
-}
-
-function isDiscordLinkCodeRecord(value: unknown): value is DiscordLinkCodeRecord {
-  const candidate = value as DiscordLinkCodeRecord;
-  return Boolean(candidate) && typeof candidate.code === "string" && typeof candidate.userId === "string" &&
-    typeof candidate.expiresAt === "string";
-}
-
-function isSlackLinkCodeRecord(value: unknown): value is SlackLinkCodeRecord {
-  const candidate = value as SlackLinkCodeRecord;
-  return Boolean(candidate) && typeof candidate.code === "string" && typeof candidate.userId === "string" &&
-    typeof candidate.expiresAt === "string";
 }

@@ -9,6 +9,7 @@ import type {
 } from "./agent.js";
 import type { AgentUpdateJobSnapshot } from "./agent-updates.js";
 import type { ConnectorHealth, VersionChecks } from "./operations.js";
+import type { SlackDiagnostics } from "./slack-diagnostics.js";
 import type {
   WebActivityActor,
   WebActivityEvent,
@@ -168,6 +169,7 @@ export interface WebDiagnosticsDto {
     queuePaused: boolean;
     externalMirror: ExternalMirrorState | null;
     agentDiagnostics: AgentDiagnostics;
+    slackDiagnostics?: SlackDiagnostics;
   };
 }
 

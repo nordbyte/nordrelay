@@ -67,6 +67,8 @@ import {
 import { renderSessionInfoPlain, renderSessionUsageRows } from "./session-format.js";
 import { SessionLockStore, type SessionLock } from "./session-locks.js";
 import { SessionRegistry, type ContextMetadata } from "./session-registry.js";
+import { collectSlackDiagnostics } from "./slack-diagnostics.js";
+import { getSlackRateLimitMetrics } from "./slack-rate-limit.js";
 import { createSupportBundle, type SupportBundleResult } from "./support-bundle.js";
 import { transcribeAudio, type TranscriptionBackend } from "./voice.js";
 import {
@@ -441,6 +443,11 @@ export class RelayRuntime {
           queuePaused: this.queueService.isPaused(),
           externalMirror: this.externalActivityMonitor.snapshot(),
           agentDiagnostics: getAgentDiagnostics(session, this.config),
+          slackDiagnostics: await collectSlackDiagnostics({
+            config: this.config,
+            timeoutMs: 2_500,
+            rateLimit: getSlackRateLimitMetrics(),
+          }),
         },
       };
     });

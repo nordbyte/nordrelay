@@ -16,6 +16,7 @@ import { BotPreferencesStore } from "./bot-preferences.js";
 import { capabilitiesOf, filterActivityEvents, parseActivityOptions, renderExternalMirrorEvent, renderExternalMirrorStatus, renderPromptFailure, trimLine, type TurnProgress } from "./bot-rendering.js";
 import { parseAgentUpdateId, renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction } from "./channel-actions.js";
 import type { ChannelContext } from "./channel-adapter.js";
+import { createSharedChannelCommandDispatcher } from "./channel-command-core.js";
 import { slackHelpCommandList } from "./channel-command-catalog.js";
 import { ChannelCommandService } from "./channel-command-service.js";
 import { runChannelPeerPrompt } from "./channel-peer-prompt.js";
@@ -39,6 +40,7 @@ import { SessionRegistry } from "./session-registry.js";
 import { createSlackArtifactCommandHandler, sendRecentSlackArtifacts } from "./slack-artifacts.js";
 import { SlackBotChannelRuntime, actionFromSlackActionId, splitSlackMessage, trimSlackMessage } from "./slack-channel-runtime.js";
 import { isUnauthenticatedSlackCommandAllowed, parseSlackMessageCommand, parseSlackSlashCommand, permissionForSlackAction, requiredPermissionForSlackCommand } from "./slack-command-surface.js";
+import { collectSlackDiagnostics } from "./slack-diagnostics.js";
 import { getSlackRateLimitMetrics } from "./slack-rate-limit.js";
 import { transcribeAudio, type TranscriptionBackend } from "./voice.js";
 import { UserStore, type AuthenticatedUser } from "./user-management.js";
@@ -783,121 +785,68 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     if (state) state.artifactsDeliveredForTurnId = turnId;
   };
 
+  const commandDispatcher = createSharedChannelCommandDispatcher<SlackRequest>({
+    transport: "slack",
+    bindings: [
+      { names: ["start", "help"], handler: (request) => commandHelp(request) },
+      { names: ["channels"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderChannels()).then(() => {}) },
+      { names: ["peers"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderPeers()).then(() => {}) },
+      { names: ["target"], handler: (request, argument) => deliverChannelAction(runtime, request.context, commandService.renderTargetPreference({ source: "slack", contextKey: request.contextKey, argument, preferencesStore })).then(() => {}) },
+      { names: ["agents"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderAgents()).then(() => {}) },
+      { names: ["agent"], handler: (request, argument) => commandAgent(request, argument) },
+      { names: ["auth"], handler: (request) => commandAuth(request) },
+      { names: ["login"], handler: (request) => commandLogin(request) },
+      { names: ["logout"], handler: (request) => commandLogout(request) },
+      { names: ["session"], handler: (request) => commandSession(request) },
+      { names: ["sessions"], handler: (request, argument) => commandSessions(request, argument) },
+      { names: ["new"], handler: (request, argument) => commandNew(request, argument) },
+      { names: ["switch", "attach"], handler: (request, argument) => commandSwitch(request, argument) },
+      { names: ["model"], handler: (request, argument) => commandModel(request, argument) },
+      { names: ["reasoning", "effort"], handler: (request, argument) => commandReasoning(request, argument) },
+      { names: ["fast"], handler: (request, argument) => commandFast(request, argument) },
+      { names: ["launch", "launch_profiles", "launch-profiles"], handler: (request, argument) => commandLaunch(request, argument) },
+      { names: ["queue"], handler: (request, argument) => commandQueue(request, argument) },
+      { names: ["clearqueue"], handler: (request) => { promptStore.clear(request.contextKey); return reply(request, "Queue cleared."); } },
+      { names: ["cancel"], handler: (request, argument) => commandQueue(request, `cancel ${argument}`) },
+      { names: ["abort", "stop"], handler: (request) => commandAbort(request) },
+      { names: ["retry"], handler: (request) => commandRetry(request) },
+      { names: ["sync"], handler: (request) => commandSync(request) },
+      { names: ["tasks", "progress"], handler: (request) => commandProgress(request) },
+      { names: ["activity"], handler: (request, argument) => commandActivity(request, argument) },
+      { names: ["audit"], handler: (request, argument) => commandAudit(request, argument) },
+      { names: ["artifacts"], handler: (request, argument) => commandArtifacts(request, argument) },
+      { names: ["logs"], handler: async (request, argument) => deliverChannelAction(runtime, request.context, await commandService.renderLogs(argument)).then(() => {}) },
+      { names: ["version", "health", "status"], handler: async (request) => deliverChannelAction(runtime, request.context, await commandService.renderVersion()).then(() => {}) },
+      { names: ["diagnostics", "support"], handler: (request) => commandDiagnostics(request) },
+      { names: ["restart"], handler: (request) => commandRestart(request) },
+      { names: ["update"], handler: (request, argument) => commandUpdate(request, argument) },
+      { names: ["lock"], handler: (request) => commandLock(request) },
+      { names: ["unlock"], handler: (request) => { lockStore.clear(request.contextKey); return reply(request, "Session unlocked."); } },
+      { names: ["locks"], handler: (request) => reply(request, lockStore.list().map((lock) => `${lock.contextKey}: ${lock.ownerLabel || lock.ownerUserId}`).join("\n") || "No active locks.") },
+      { names: ["mirror"], handler: (request, argument) => commandMirror(request, argument) },
+      { names: ["notify"], handler: (request, argument) => commandNotify(request, argument) },
+      { names: ["voice"], handler: (request, argument) => commandVoice(request, argument) },
+      { names: ["workspaces"], handler: (request) => commandWorkspaces(request) },
+      { names: ["pin"], handler: (request, argument) => commandPin(request, argument) },
+      { names: ["unpin"], handler: (request, argument) => commandUnpin(request, argument) },
+      { names: ["pinned"], handler: (request) => commandPinned(request) },
+      { names: ["handback"], handler: (request) => commandHandback(request) },
+      { names: ["register_channel", "register_chat"], handler: (request) => commandRegisterChannel(request) },
+      { names: ["link"], handler: (request, argument) => commandLink(request, argument) },
+      { names: ["whoami"], handler: (request) => reply(request, request.authUser ? `${request.authUser.user.displayName} <${request.authUser.user.email}>\nGroups: ${request.authUser.groups.map((group) => group.name).join(", ")}` : "Not linked.") },
+      { names: ["prompt"], handler: (request, argument) => handlePrompt(request, argument) },
+    ],
+  });
+
   const handleCommand = async (request: SlackRequest, command: string, argument: string): Promise<void> => {
     const normalized = command.toLowerCase();
     const permission = requiredPermissionForSlackCommand(normalized, argument);
     if (!await authenticate(request, permission, normalized)) return;
     audit(request, { action: "command", status: "ok", description: `/${normalized} ${argument}`.trim() });
 
-    switch (normalized) {
-      case "start":
-      case "help":
-        return commandHelp(request);
-      case "channels":
-        return deliverChannelAction(runtime, request.context, commandService.renderChannels()).then(() => {});
-      case "peers":
-        return deliverChannelAction(runtime, request.context, commandService.renderPeers()).then(() => {});
-      case "target":
-        return deliverChannelAction(runtime, request.context, commandService.renderTargetPreference({ source: "slack", contextKey: request.contextKey, argument, preferencesStore })).then(() => {});
-      case "agents":
-        return deliverChannelAction(runtime, request.context, commandService.renderAgents()).then(() => {});
-      case "agent":
-        return commandAgent(request, argument);
-      case "auth":
-        return commandAuth(request);
-      case "login":
-        return commandLogin(request);
-      case "logout":
-        return commandLogout(request);
-      case "session":
-        return commandSession(request);
-      case "sessions":
-        return commandSessions(request, argument);
-      case "new":
-        return commandNew(request, argument);
-      case "switch":
-      case "attach":
-        return commandSwitch(request, argument);
-      case "model":
-        return commandModel(request, argument);
-      case "reasoning":
-      case "effort":
-        return commandReasoning(request, argument);
-      case "fast":
-        return commandFast(request, argument);
-      case "launch":
-      case "launch_profiles":
-      case "launch-profiles":
-        return commandLaunch(request, argument);
-      case "queue":
-        return commandQueue(request, argument);
-      case "clearqueue":
-        promptStore.clear(request.contextKey);
-        return reply(request, "Queue cleared.");
-      case "cancel":
-        return commandQueue(request, `cancel ${argument}`);
-      case "abort":
-      case "stop":
-        return commandAbort(request);
-      case "retry":
-        return commandRetry(request);
-      case "sync":
-        return commandSync(request);
-      case "tasks":
-      case "progress":
-        return commandProgress(request);
-      case "activity":
-        return commandActivity(request, argument);
-      case "audit":
-        return commandAudit(request, argument);
-      case "artifacts":
-        return commandArtifacts(request, argument);
-      case "logs":
-        return deliverChannelAction(runtime, request.context, await commandService.renderLogs(argument)).then(() => {});
-      case "version":
-      case "health":
-      case "status":
-        return deliverChannelAction(runtime, request.context, await commandService.renderVersion()).then(() => {});
-      case "diagnostics":
-      case "support":
-        return commandDiagnostics(request);
-      case "restart":
-        return commandRestart(request);
-      case "update":
-        return commandUpdate(request, argument);
-      case "lock":
-        return commandLock(request);
-      case "unlock":
-        lockStore.clear(request.contextKey);
-        return reply(request, "Session unlocked.");
-      case "locks":
-        return reply(request, lockStore.list().map((lock) => `${lock.contextKey}: ${lock.ownerLabel || lock.ownerUserId}`).join("\n") || "No active locks.");
-      case "mirror":
-        return commandMirror(request, argument);
-      case "notify":
-        return commandNotify(request, argument);
-      case "voice":
-        return commandVoice(request, argument);
-      case "workspaces":
-        return commandWorkspaces(request);
-      case "pin":
-        return commandPin(request, argument);
-      case "unpin":
-        return commandUnpin(request, argument);
-      case "pinned":
-        return commandPinned(request);
-      case "handback":
-        return commandHandback(request);
-      case "register_channel":
-        return commandRegisterChannel(request);
-      case "link":
-        return commandLink(request, argument);
-      case "whoami":
-        return reply(request, request.authUser ? `${request.authUser.user.displayName} <${request.authUser.user.email}>\nGroups: ${request.authUser.groups.map((group) => group.name).join(", ")}` : "Not linked.");
-      case "prompt":
-        return handlePrompt(request, argument);
-      default:
-        return reply(request, `Unknown command: /${normalized}`);
+    const result = await commandDispatcher.dispatch(request, normalized, argument);
+    if (!result.matched) {
+      await reply(request, `Unknown command: /${normalized}`);
     }
   };
 
@@ -1235,6 +1184,12 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     const session = await getSession(request, { deferThreadStart: true });
     const external = getExternalSnapshotForSession(session, config, { maxEvents: 3 });
     const rateLimit = getSlackRateLimitMetrics();
+    const slackDiagnostics = await collectSlackDiagnostics({
+      config,
+      userStore,
+      timeoutMs: 2_500,
+      rateLimit,
+    });
     await reply(request, [
       "Diagnostics:",
       `Context: ${request.contextKey}`,
@@ -1245,6 +1200,10 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
       `Queue: ${promptStore.list(request.contextKey).length}${promptStore.isPaused(request.contextKey) ? " paused" : ""}`,
       `External: ${external?.activity.active ? "active" : "idle"}`,
       `Slack rate limit: queued ${rateLimit.queued}, running ${rateLimit.running}, retries ${rateLimit.retries}`,
+      "",
+      "Slack readiness:",
+      ...slackDiagnostics.checks.map((check) => `${check.status.toUpperCase()} ${check.label}: ${check.detail}`),
+      ...slackDiagnostics.channelChecks.map((channel) => `${channel.status.toUpperCase()} channel ${channel.channelId}: ${channel.detail}`),
     ].join("\n"));
   };
 
@@ -1598,6 +1557,19 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     async start() {
       await (app as unknown as { start(port?: number): Promise<void> }).start(config.slackSocketMode ? undefined : config.slackPort);
       console.log(`Slack bot ready (${config.slackSocketMode ? "socket mode" : `port ${config.slackPort}`}).`);
+      void collectSlackDiagnostics({
+        config,
+        userStore,
+        timeoutMs: 3_500,
+        rateLimit: getSlackRateLimitMetrics(),
+      }).then((diagnostics) => {
+        for (const check of diagnostics.checks.filter((item) => item.status === "warn" || item.status === "error")) {
+          console.warn(`Slack ${check.status}: ${check.label}: ${check.detail}`);
+        }
+        for (const channel of diagnostics.channelChecks.filter((item) => item.status === "warn" || item.status === "error")) {
+          console.warn(`Slack ${channel.status}: channel ${channel.channelId}: ${channel.detail}`);
+        }
+      }).catch((error) => console.warn("Slack diagnostics failed:", friendlyErrorText(error)));
       externalMonitor = setInterval(() => {
         void monitorExternalContexts().catch((error) => console.error("Failed to monitor Slack external activity:", error));
       }, config.codexExternalBusyCheckMs);

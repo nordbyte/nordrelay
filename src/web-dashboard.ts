@@ -5,6 +5,7 @@ import path from "node:path";
 import { URL } from "node:url";
 
 import { enabledAgents } from "./agent-factory.js";
+import { buildAdapterConformanceMatrix } from "./adapter-conformance.js";
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { isAgentId } from "./agent.js";
 import { AuditLogStore, type AuditEvent } from "./audit-log.js";
@@ -201,6 +202,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
       auth: currentUserDto(authUser),
       channels: listChannelDescriptors(),
       agentAdapters: listAgentAdapterDescriptors().filter((adapter) => users.canUseAgent(authUser, adapter.id)),
+      adapterConformance: scopedAdapterConformance(authUser),
       enabledAgents: enabledAgents(config).filter((agentId) => users.canUseAgent(authUser, agentId)),
       controls: scopedControlOptions(authUser, await runtime.controlOptions()),
       status: await runtime.bootstrapStatus(),
@@ -212,6 +214,11 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     const agentId = parseAgentId(url.searchParams.get("agent") ?? undefined);
     assertScopedAgent(authUser, agentId);
     sendJson(res, 200, scopedControlOptions(authUser, await runtime.controlOptions(agentId)));
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/adapters/conformance") {
+    sendJson(res, 200, scopedAdapterConformance(authUser));
     return;
   }
 
@@ -532,6 +539,14 @@ function scopedControlOptions(authUser: AuthenticatedUser, options: DashboardCon
   return {
     ...options,
     workspaces: options.workspaces.filter((workspace) => users.canUseWorkspace(authUser, workspace)),
+  };
+}
+
+function scopedAdapterConformance(authUser: AuthenticatedUser) {
+  const matrix = buildAdapterConformanceMatrix();
+  return {
+    ...matrix,
+    agents: matrix.agents.filter((adapter) => users.canUseAgent(authUser, adapter.id)),
   };
 }
 

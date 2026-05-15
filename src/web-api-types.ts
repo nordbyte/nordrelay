@@ -1,6 +1,7 @@
 import type { Permission } from "./access-control.js";
 import type { AgentId, AgentSessionInfo } from "./agent.js";
 import type { AgentAdapterDescriptor } from "./agent-adapter.js";
+import type { AdapterConformanceMatrix } from "./adapter-conformance.js";
 import type { AgentUpdateJobSnapshot } from "./agent-updates.js";
 import type { AuditEvent } from "./audit-log.js";
 import type { ChannelDescriptor } from "./channel-adapter.js";
@@ -55,6 +56,7 @@ export interface WebBootstrapResponse {
   auth: WebCurrentUserDto;
   channels: ChannelDescriptor[];
   agentAdapters: AgentAdapterDescriptor[];
+  adapterConformance: AdapterConformanceMatrix;
   enabledAgents: AgentId[];
   controls: DashboardControlOptions;
   status: WebBootstrapStatus;
@@ -160,6 +162,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends `/api/agent-update/${string}/log` ? WebAgentUpdateLogResponse :
   P extends `/api/agent-update/${string}/input` | `/api/agent-update/${string}/cancel` ? { job: AgentUpdateJobSnapshot } :
   P extends "/api/adapters/health" ? { adapters: WebAdapterHealthDto[] } :
+  P extends "/api/adapters/conformance" ? AdapterConformanceMatrix :
   P extends "/api/permissions" | "/api/users" ? WebUserManagementResponse :
   P extends "/api/groups" ? { groups: GroupRecord[] } :
   P extends "/api/telegram-chats" ? { chats: TelegramChatAccessRecord[] } :

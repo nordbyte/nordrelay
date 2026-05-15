@@ -25,6 +25,7 @@ import { AuditLogStore, type AuditEvent } from "./audit-log.js";
 import { BotPreferencesStore } from "./bot-preferences.js";
 import { capabilitiesOf, filterActivityEvents, formatLocalDateTime, parseActivityOptions, renderExternalMirrorEvent, renderExternalMirrorStatus, renderPromptFailure, trimLine, type TurnProgress } from "./bot-rendering.js";
 import { renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction } from "./channel-actions.js";
+import { createSharedChannelCommandDispatcher } from "./channel-command-core.js";
 import { ChannelCommandService } from "./channel-command-service.js";
 import { discordHelpCommandList } from "./channel-command-catalog.js";
 import { runChannelPeerPrompt } from "./channel-peer-prompt.js";
@@ -1047,6 +1048,59 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     if (state) state.artifactsDeliveredForTurnId = turnId;
   };
 
+  const commandDispatcher = createSharedChannelCommandDispatcher<DiscordRequest>({
+    transport: "discord",
+    bindings: [
+      { names: ["start", "help"], handler: (request) => commandHelp(request) },
+      { names: ["channels"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderChannels()).then(() => {}) },
+      { names: ["peers"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderPeers()).then(() => {}) },
+      { names: ["target"], handler: (request, argument) => deliverChannelAction(runtime, request.context, commandService.renderTargetPreference({ source: "discord", contextKey: request.contextKey, argument, preferencesStore })).then(() => {}) },
+      { names: ["agents"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderAgents()).then(() => {}) },
+      { names: ["agent"], handler: (request, argument) => commandAgent(request, argument) },
+      { names: ["auth"], handler: (request) => commandAuth(request) },
+      { names: ["login"], handler: (request) => commandLogin(request) },
+      { names: ["logout"], handler: (request) => commandLogout(request) },
+      { names: ["session"], handler: (request) => commandSession(request) },
+      { names: ["sessions"], handler: (request, argument) => commandSessions(request, argument) },
+      { names: ["new"], handler: (request, argument) => commandNew(request, argument) },
+      { names: ["switch", "attach"], handler: (request, argument) => commandSwitch(request, argument) },
+      { names: ["model"], handler: (request, argument) => commandModel(request, argument) },
+      { names: ["reasoning", "effort"], handler: (request, argument) => commandReasoning(request, argument) },
+      { names: ["fast"], handler: (request, argument) => commandFast(request, argument) },
+      { names: ["launch", "launch_profiles", "launch-profiles"], handler: (request, argument) => commandLaunch(request, argument) },
+      { names: ["queue"], handler: (request, argument) => commandQueue(request, argument) },
+      { names: ["clearqueue"], handler: (request) => { promptStore.clear(request.contextKey); return reply(request, "Queue cleared."); } },
+      { names: ["cancel"], handler: (request, argument) => commandQueue(request, `cancel ${argument}`) },
+      { names: ["abort", "stop"], handler: (request) => commandAbort(request) },
+      { names: ["retry"], handler: (request) => commandRetry(request) },
+      { names: ["sync"], handler: (request) => commandSync(request) },
+      { names: ["tasks", "progress"], handler: (request) => commandProgress(request) },
+      { names: ["activity"], handler: (request, argument) => commandActivity(request, argument) },
+      { names: ["audit"], handler: (request, argument) => commandAudit(request, argument) },
+      { names: ["artifacts"], handler: (request, argument) => commandArtifacts(request, argument) },
+      { names: ["logs"], handler: (request, argument) => commandLogs(request, argument) },
+      { names: ["version", "health", "status"], handler: (request) => commandVersion(request) },
+      { names: ["diagnostics", "support"], handler: (request) => commandDiagnostics(request) },
+      { names: ["restart"], handler: (request) => commandRestart(request) },
+      { names: ["update"], handler: (request, argument) => commandUpdate(request, argument) },
+      { names: ["lock"], handler: (request) => commandLock(request) },
+      { names: ["unlock"], handler: (request) => { lockStore.clear(request.contextKey); return reply(request, "Session unlocked."); } },
+      { names: ["locks"], handler: (request) => reply(request, lockStore.list().map((lock) => `${lock.contextKey}: ${lock.ownerLabel || lock.ownerUserId}`).join("\n") || "No active locks.") },
+      { names: ["mirror"], handler: (request, argument) => commandMirror(request, argument) },
+      { names: ["notify"], handler: (request, argument) => commandNotify(request, argument) },
+      { names: ["voice"], handler: (request, argument) => commandVoice(request, argument) },
+      { names: ["workspaces"], handler: (request) => commandWorkspaces(request) },
+      { names: ["pin"], handler: (request, argument) => commandPin(request, argument) },
+      { names: ["unpin"], handler: (request, argument) => commandUnpin(request, argument) },
+      { names: ["pinned"], handler: (request) => commandPinned(request) },
+      { names: ["handback"], handler: (request) => commandHandback(request) },
+      { names: ["register_channel"], handler: (request) => commandRegisterChannel(request) },
+      { names: ["link"], handler: (request, argument) => commandLink(request, argument) },
+      { names: ["whoami"], handler: (request) => reply(request, request.authUser ? `${request.authUser.user.displayName} <${request.authUser.user.email}>\nGroups: ${request.authUser.groups.map((group) => group.name).join(", ")}` : "Not linked.") },
+      { names: ["prompt"], handler: (request, argument) => handlePrompt(request, argument) },
+    ],
+  });
+
   const handleCommand = async (request: DiscordRequest, command: string, argument: string): Promise<void> => {
     const normalized = command.toLowerCase();
     const permission = requiredPermissionForDiscordCommand(normalized, argument);
@@ -1056,169 +1110,9 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
 
     audit(request, { action: "command", status: "ok", description: `/${normalized} ${argument}`.trim() });
 
-    switch (normalized) {
-      case "start":
-      case "help":
-        await commandHelp(request);
-        return;
-      case "channels":
-        await deliverChannelAction(runtime, request.context, commandService.renderChannels());
-        return;
-      case "peers":
-        await deliverChannelAction(runtime, request.context, commandService.renderPeers());
-        return;
-      case "target":
-        await deliverChannelAction(runtime, request.context, commandService.renderTargetPreference({
-          source: "discord",
-          contextKey: request.contextKey,
-          argument,
-          preferencesStore,
-        }));
-        return;
-      case "agents":
-        await deliverChannelAction(runtime, request.context, commandService.renderAgents());
-        return;
-      case "agent":
-        await commandAgent(request, argument);
-        return;
-      case "auth":
-        await commandAuth(request);
-        return;
-      case "login":
-        await commandLogin(request);
-        return;
-      case "logout":
-        await commandLogout(request);
-        return;
-      case "session":
-        await commandSession(request);
-        return;
-      case "sessions":
-        await commandSessions(request, argument);
-        return;
-      case "new":
-        await commandNew(request, argument);
-        return;
-      case "switch":
-      case "attach":
-        await commandSwitch(request, argument);
-        return;
-      case "model":
-        await commandModel(request, argument);
-        return;
-      case "reasoning":
-      case "effort":
-        await commandReasoning(request, argument);
-        return;
-      case "fast":
-        await commandFast(request, argument);
-        return;
-      case "launch":
-      case "launch_profiles":
-      case "launch-profiles":
-        await commandLaunch(request, argument);
-        return;
-      case "queue":
-        await commandQueue(request, argument);
-        return;
-      case "clearqueue":
-        promptStore.clear(request.contextKey);
-        await reply(request, "Queue cleared.");
-        return;
-      case "cancel":
-        await commandQueue(request, `cancel ${argument}`);
-        return;
-      case "abort":
-      case "stop":
-        await commandAbort(request);
-        return;
-      case "retry":
-        await commandRetry(request);
-        return;
-      case "sync":
-        await commandSync(request);
-        return;
-      case "tasks":
-      case "progress":
-        await commandProgress(request);
-        return;
-      case "activity":
-        await commandActivity(request, argument);
-        return;
-      case "audit":
-        await commandAudit(request, argument);
-        return;
-      case "artifacts":
-        await commandArtifacts(request, argument);
-        return;
-      case "logs":
-        await commandLogs(request, argument);
-        return;
-      case "version":
-      case "health":
-      case "status":
-        await commandVersion(request);
-        return;
-      case "diagnostics":
-        await commandDiagnostics(request);
-        return;
-      case "support":
-        await commandDiagnostics(request);
-        return;
-      case "restart":
-        await commandRestart(request);
-        return;
-      case "update":
-        await commandUpdate(request, argument);
-        return;
-      case "lock":
-        await commandLock(request);
-        return;
-      case "unlock":
-        lockStore.clear(request.contextKey);
-        await reply(request, "Session unlocked.");
-        return;
-      case "locks":
-        await reply(request, lockStore.list().map((lock) => `${lock.contextKey}: ${lock.ownerLabel || lock.ownerUserId}`).join("\n") || "No active locks.");
-        return;
-      case "mirror":
-        await commandMirror(request, argument);
-        return;
-      case "notify":
-        await commandNotify(request, argument);
-        return;
-      case "voice":
-        await commandVoice(request, argument);
-        return;
-      case "workspaces":
-        await commandWorkspaces(request);
-        return;
-      case "pin":
-        await commandPin(request, argument);
-        return;
-      case "unpin":
-        await commandUnpin(request, argument);
-        return;
-      case "pinned":
-        await commandPinned(request);
-        return;
-      case "handback":
-        await commandHandback(request);
-        return;
-      case "register_channel":
-        await commandRegisterChannel(request);
-        return;
-      case "link":
-        await commandLink(request, argument);
-        return;
-      case "whoami":
-        await reply(request, request.authUser ? `${request.authUser.user.displayName} <${request.authUser.user.email}>\nGroups: ${request.authUser.groups.map((group) => group.name).join(", ")}` : "Not linked.");
-        return;
-      case "prompt":
-        await handlePrompt(request, argument);
-        return;
-      default:
-        await reply(request, `Unknown command: /${normalized}`);
+    const result = await commandDispatcher.dispatch(request, normalized, argument);
+    if (!result.matched) {
+      await reply(request, `Unknown command: /${normalized}`);
     }
   };
 

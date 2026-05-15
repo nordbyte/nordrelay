@@ -46,9 +46,11 @@ Adapter architecture:
 - Telegram supports text, typing, streaming edits, inline buttons, files, photos, voice, forum topics, and polling/webhook transport.
 - Discord supports text, typing, streaming edits, buttons, files, photos, voice/audio transcription, guild channels, threads, DMs, message commands, and slash commands.
 - Slack supports text, typing/status, streaming edits, Block Kit buttons, files, images, audio transcription, channels, DMs, threads, Socket Mode, and HTTP Events mode.
+- Slack startup and `/diagnostics` include readiness checks for token/transport configuration, registered channels, Slack API auth probes, channel visibility probes, file-upload readiness notes, and rate-limit counters.
 - `/channels` shows available and planned messaging adapters for Telegram, Discord, Slack, WhatsApp, and Matrix.
 - Codex, Pi, Hermes, OpenClaw, and Claude Code are implemented as agent adapters.
 - `/agents` shows available/planned agent adapters and whether Codex, Pi, Hermes, OpenClaw, and Claude Code are enabled.
+- Agent and chat adapters expose a shared conformance matrix so command coverage and feature support can be tested and surfaced consistently.
 - Shared command-action renderers and a channel runtime contract keep inbound commands, outbound messages, typing, files, inline actions, and streaming-ready delivery separate from channel-specific API calls.
 
 Peer federation:
@@ -241,7 +243,7 @@ Operations:
 - On first WebUI startup without an admin account, NordRelay shows a setup wizard for creating the first admin; remote setup requires the one-time token printed in the server console.
 - The WebUI has responsive header/sidebar/footer navigation, live chat streaming, session controls, queue/artifact/log/diagnostic views, and settings management.
 - The WebUI supports light and dark themes, tabbed settings groups, paginated session browsing, and chat uploads for images, documents, and audio transcription.
-- The WebUI exposes REST and SSE endpoints for chat streaming, sessions, settings, queue, artifacts, logs, health, diagnostics, peers, and redacted diagnostics bundle export.
+- The WebUI exposes REST and SSE endpoints for chat streaming, sessions, settings, queue, artifacts, logs, health, diagnostics, peers, adapter conformance, and redacted diagnostics bundle export.
 - The dashboard can bind to `127.0.0.1` or `0.0.0.0`; user login and session cookies are mandatory in both modes.
 - Telegram can run with long polling or an HTTP webhook via `TELEGRAM_TRANSPORT=webhook`.
 - Version freshness checks are cached with `NORDRELAY_VERSION_CACHE_TTL_MS`, and installed agent CLI version checks are cached with `NORDRELAY_CLI_VERSION_CACHE_TTL_MS`, to keep `/version` and adapter health responsive.
@@ -1234,7 +1236,10 @@ npm run build
 - `src/index.ts`: runtime entrypoint, config load, auth check, state-file writes, polling lifecycle, shutdown.
 - `src/bot.ts`: Telegram prompt/session runtime, streaming, file/photo/voice handling, artifacts, and error handling.
 - `src/telegram-general-commands.ts`, `src/telegram-agent-commands.ts`, `src/telegram-preference-commands.ts`, `src/telegram-access-commands.ts`, `src/telegram-diagnostics-command.ts`, `src/telegram-update-commands.ts`, `src/telegram-support-command.ts`, and `src/telegram-command-menu.ts`: focused Telegram command groups for start/help/adapters, agent/auth controls, per-chat preferences, access linking, diagnostics/log/version commands, update jobs, diagnostics bundle export, and command menu registration.
-- `src/channel-adapter.ts`, `src/channel-runtime.ts`, and `src/channel-actions.ts`: channel descriptors, generic command routing, outbound delivery contracts, and channel-neutral command responses.
+- `src/channel-adapter.ts`, `src/channel-runtime.ts`, `src/channel-command-core.ts`, `src/channel-actions.ts`, and `src/adapter-conformance.ts`: channel descriptors, shared command dispatch/coverage, outbound delivery contracts, channel-neutral responses, and generated feature/command conformance matrices.
+- `src/discord-bot.ts` and `src/slack-bot.ts`: Discord and Slack bridge runtimes built on the shared channel command core, channel runtimes, rate limiters, access checks, streaming replies, attachments, mirrors, and queue controls.
+- `src/slack-diagnostics.ts`: Slack readiness probes for token/transport config, auth, registered channel visibility, file-upload readiness, and rate-limit reporting.
+- `src/user-management.ts`, `src/user-management-types.ts`, `src/user-management-normalize.ts`, and `src/user-management-crypto.ts`: user/group/session/channel-access store with separated DTOs, payload normalization, password/token helpers, and public snapshots.
 - `src/config-metadata.ts`: shared setting metadata used by the WebUI settings page and generated `.env.example`.
 - `src/support-bundle.ts` and `src/zip-writer.ts`: redacted diagnostics bundle creation with a dependency-free ZIP writer.
 - `src/relay-queue-service.ts`, `src/relay-artifact-service.ts`, and `src/relay-external-activity-monitor.ts`: Web runtime queue operations, artifact preview/export/persistence, and external CLI activity mirroring.

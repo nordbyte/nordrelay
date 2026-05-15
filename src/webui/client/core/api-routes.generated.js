@@ -26,6 +26,7 @@ const WEB_API_CLIENT_ROUTE_RULES = [
   { re: /^\/api\/agent-update\/[^\/]+\/input$/, methods: ['POST'] },
   { re: /^\/api\/agent-update\/[^\/]+\/cancel$/, methods: ['POST'] },
   { path: "/api/adapters/health", methods: ['GET'] },
+  { path: "/api/adapters/conformance", methods: ['GET'] },
   { path: "/api/peers", methods: ['GET', 'POST'] },
   { path: "/api/peers/invite", methods: ['POST'] },
   { path: "/api/peers/pair", methods: ['POST'] },

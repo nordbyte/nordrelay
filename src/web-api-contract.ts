@@ -43,6 +43,7 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   dynamic("/api/agent-update/:id/input", "^/api/agent-update/[^/]+/input$", ["POST"], "updates.run", `/api/agent-update/${stringToken}/input`),
   dynamic("/api/agent-update/:id/cancel", "^/api/agent-update/[^/]+/cancel$", ["POST"], "updates.run", `/api/agent-update/${stringToken}/cancel`),
   exact("/api/adapters/health", ["GET"], "inspect"),
+  exact("/api/adapters/conformance", ["GET"], "inspect"),
   exact("/api/peers", ["GET", "POST"], readWrite("peers.read", "peers.write")),
   exact("/api/peers/invite", ["POST"], "peers.write"),
   exact("/api/peers/pair", ["POST"], "peers.write"),
