@@ -35,6 +35,8 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.getByRole("heading", { name: "Active Sessions" })).toBeVisible();
     await expect(page.locator("#activeSessions")).toContainText("Run active smoke test");
     await expect(page.locator("#activeSessions")).toContainText("exec_command");
+    await expect(page.locator("#activeSessions")).toContainText("Source CLI");
+    await expect(page.locator("#activeSessions")).toContainText("Mirroring: Telegram full, Discord final");
     await expect(page.locator("#agentAdapters")).toContainText("Codex");
     await expect(page.locator("#chatAdapters")).toContainText("Telegram");
     await expect(page.locator("#footerHealth")).toContainText("Health: ready");
@@ -294,9 +296,10 @@ function activeSessions() {
     sessions: [
       {
         id: "web:dashboard:codex-thread-1",
-        contextKey: "web:dashboard",
-        source: "web",
-        status: "running",
+        contextKey: "cli:codex:codex-thread-1",
+        sourceContextKey: "cli:codex:codex-thread-1",
+        source: "cli",
+        status: "external",
         agentId: "codex",
         agentLabel: "Codex",
         threadId: "codex-thread-1",
@@ -308,6 +311,10 @@ function activeSessions() {
         durationMs: 12000,
         queueLength: 1,
         queuePaused: false,
+        mirrorChannels: [
+          { source: "telegram", contextKey: "296626516", mode: "full", queueLength: 0, queuePaused: false },
+          { source: "discord", contextKey: "discord:guild:channel", mode: "final", queueLength: 0, queuePaused: false },
+        ],
       },
     ],
   };

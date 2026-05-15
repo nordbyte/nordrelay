@@ -29,6 +29,7 @@ import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { AgentUpdateManager, type AgentUpdateJobSnapshot, type AgentUpdateOperation } from "./agent-updates.js";
 import { createAgentSessionService, enabledAgents } from "./agent-factory.js";
 import { AuditLogStore, type AuditEvent, type AuditListOptions } from "./audit-log.js";
+import { BotPreferencesStore, type ChannelMirrorMode } from "./bot-preferences.js";
 import { ChannelTurnService } from "./channel-turn-service.js";
 import { checkAuthStatus, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
 import { checkClaudeCodeAuthStatus, startClaudeCodeLogin, startClaudeCodeLogout } from "./claude-code-auth.js";
@@ -64,6 +65,7 @@ import {
 import { channelIdForContextKey } from "./context-key.js";
 import type {
   ActiveSessionDto,
+  ActiveSessionMirrorDto,
   ActiveSessionsDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
@@ -111,6 +113,7 @@ export type {
 
 const WEB_CONTEXT_KEY = "web:dashboard";
 const ACTIVE_CODEX_DISCOVERY_LIMIT = 200;
+const ACTIVE_ACTIVITY_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_WEB_SESSION_PAGE_SIZE = 50;
 const MAX_CHAT_HISTORY = 250;
 
@@ -652,6 +655,8 @@ export class RelayRuntime {
 
   async activeSessions(): Promise<ActiveSessionsDto> {
     const sessions = new Map<string, ActiveSessionDto>();
+    const knownContexts = this.listKnownContextMetadata();
+    const preferences = new BotPreferencesStore(this.config.workspace, this.config.stateBackend);
     const addActiveSession = (session: ActiveSessionDto): void => {
       const key = this.activeSessionKey(session);
       const existing = sessions.get(key);
@@ -662,6 +667,7 @@ export class RelayRuntime {
       addActiveSession({
         ...this.currentProgress,
         contextKey: WEB_CONTEXT_KEY,
+        sourceContextKey: WEB_CONTEXT_KEY,
         source: "web",
         status: "running",
         queueLength: this.queueService.length(),
@@ -669,15 +675,19 @@ export class RelayRuntime {
       });
     }
 
-    for (const active of this.discoverActiveCodexSessions()) {
+    for (const active of this.discoverRunningConnectorSessions()) {
       addActiveSession(active);
     }
 
-    for (const meta of this.listKnownContextMetadata()) {
+    for (const active of this.discoverActiveCodexSessions(knownContexts, preferences)) {
+      addActiveSession(active);
+    }
+
+    for (const meta of knownContexts) {
       if (meta.contextKey === WEB_CONTEXT_KEY && this.currentProgress?.status === "running") {
         continue;
       }
-      const active = this.externalActiveSession(meta);
+      const active = this.externalActiveSession(meta, knownContexts, preferences);
       if (active) {
         addActiveSession(active);
       }
@@ -1643,7 +1653,55 @@ export class RelayRuntime {
     return [...contexts.values()];
   }
 
-  private discoverActiveCodexSessions(): ActiveSessionDto[] {
+  private discoverRunningConnectorSessions(): ActiveSessionDto[] {
+    const active: ActiveSessionDto[] = [];
+    const terminal = new Set<string>();
+    const now = Date.now();
+    for (const event of this.activityStore.list({ limit: 500 })) {
+      if (!event.threadId || !event.agentId || !event.contextKey) {
+        continue;
+      }
+      const key = `${event.source}:${event.contextKey}:${event.agentId}:${event.threadId}`;
+      if (isPromptTerminalActivity(event)) {
+        terminal.add(key);
+        continue;
+      }
+      if (event.type !== "prompt_started" || event.status !== "running" || event.source === "cli") {
+        continue;
+      }
+      if (terminal.has(key)) {
+        continue;
+      }
+      const startedMs = Date.parse(event.timestamp);
+      if (!Number.isFinite(startedMs) || now - startedMs > ACTIVE_ACTIVITY_TTL_MS) {
+        continue;
+      }
+      active.push({
+        id: `${event.contextKey}:${event.id}`,
+        contextKey: event.contextKey,
+        sourceContextKey: event.contextKey,
+        source: event.source,
+        status: "running",
+        agentId: event.agentId,
+        agentLabel: event.agentId ? agentLabel(event.agentId) : undefined,
+        threadId: event.threadId,
+        workspace: event.workspace,
+        prompt: event.prompt,
+        startedAt: event.timestamp,
+        updatedAt: event.timestamp,
+        durationMs: Math.max(0, now - startedMs),
+        queueLength: this.promptStore.list(event.contextKey).length,
+        queuePaused: this.promptStore.isPaused(event.contextKey),
+        detail: event.actor?.label ? `Started by ${event.actor.label}` : undefined,
+      });
+    }
+    return active;
+  }
+
+  private discoverActiveCodexSessions(
+    knownContexts: ContextMetadata[],
+    preferences: BotPreferencesStore,
+  ): ActiveSessionDto[] {
     if (!this.config.codexEnabled || !enabledAgents(this.config).includes("codex")) {
       return [];
     }
@@ -1664,7 +1722,7 @@ export class RelayRuntime {
         reasoningEffort: thread.reasoningEffort ?? undefined,
         updatedAt: thread.updatedAt.getTime(),
       };
-      const session = this.externalActiveSession(meta);
+      const session = this.externalActiveSession(meta, knownContexts, preferences);
       if (session) {
         active.push(session);
       }
@@ -1672,7 +1730,11 @@ export class RelayRuntime {
     return active;
   }
 
-  private externalActiveSession(meta: ContextMetadata): ActiveSessionDto | null {
+  private externalActiveSession(
+    meta: ContextMetadata,
+    knownContexts: ContextMetadata[],
+    preferences: BotPreferencesStore,
+  ): ActiveSessionDto | null {
     if (!meta.threadId) {
       return null;
     }
@@ -1695,10 +1757,17 @@ export class RelayRuntime {
     const startedAt = snapshot.activity.startedAt?.toISOString() ?? new Date().toISOString();
     const updatedAt = snapshot.activity.updatedAt?.toISOString() ?? new Date().toISOString();
     const startedMs = Date.parse(startedAt);
+    const sourceContextKey = `cli:${snapshot.agentId}:${snapshot.threadId}`;
+    const mirrorChannels = this.activeMirrorChannels(snapshot.agentId, snapshot.threadId, knownContexts, preferences);
+    const queueLength = mirrorChannels.reduce((sum, mirror) => sum + mirror.queueLength, this.promptStore.list(sourceContextKey).length);
+    const mirrorDetail = mirrorChannels.length > 0
+      ? `Mirroring: ${mirrorChannels.map((mirror) => `${mirror.source} ${mirror.mode}`).join(", ")}`
+      : "Mirroring: none";
     return {
-      id: `${meta.contextKey}:${snapshot.activity.turnId ?? snapshot.threadId}`,
-      contextKey: meta.contextKey,
-      source: activeSessionSourceForContext(meta.contextKey),
+      id: `${sourceContextKey}:${snapshot.activity.turnId ?? snapshot.threadId}`,
+      contextKey: sourceContextKey,
+      sourceContextKey,
+      source: "cli",
       status: "external",
       agentId: snapshot.agentId,
       agentLabel: snapshot.agentLabel,
@@ -1710,10 +1779,53 @@ export class RelayRuntime {
       startedAt,
       updatedAt,
       durationMs: Number.isFinite(startedMs) ? Math.max(0, Date.now() - startedMs) : 0,
-      queueLength: this.promptStore.list(meta.contextKey).length,
-      queuePaused: this.promptStore.isPaused(meta.contextKey),
-      detail: `${snapshot.sourceLabel}: ${snapshot.sourcePath}`,
+      queueLength,
+      queuePaused: mirrorChannels.some((mirror) => mirror.queuePaused) || this.promptStore.isPaused(sourceContextKey),
+      mirrorChannels,
+      detail: `${mirrorDetail} | ${snapshot.sourceLabel}: ${snapshot.sourcePath}`,
     };
+  }
+
+  private activeMirrorChannels(
+    agentId: AgentId,
+    threadId: string,
+    knownContexts: ContextMetadata[],
+    preferences: BotPreferencesStore,
+  ): ActiveSessionMirrorDto[] {
+    const mirrors: ActiveSessionMirrorDto[] = [];
+    const seen = new Set<string>();
+    for (const meta of knownContexts) {
+      const metaAgentId = meta.agentId ?? this.config.defaultAgent ?? "codex";
+      if (meta.threadId !== threadId || metaAgentId !== agentId) {
+        continue;
+      }
+      const source = activeSessionSourceForContext(meta.contextKey);
+      if (source !== "telegram" && source !== "discord") {
+        continue;
+      }
+      const mode = this.effectiveMirrorMode(meta.contextKey, source, preferences);
+      if (mode === "off" || seen.has(meta.contextKey)) {
+        continue;
+      }
+      seen.add(meta.contextKey);
+      mirrors.push({
+        source,
+        contextKey: meta.contextKey,
+        mode,
+        queueLength: this.promptStore.list(meta.contextKey).length,
+        queuePaused: this.promptStore.isPaused(meta.contextKey),
+      });
+    }
+    return mirrors;
+  }
+
+  private effectiveMirrorMode(
+    contextKey: string,
+    source: "telegram" | "discord",
+    preferences: BotPreferencesStore,
+  ): Exclude<ChannelMirrorMode, "off"> | "off" {
+    const configured = source === "telegram" ? this.config.telegramMirrorMode : this.config.discordMirrorMode;
+    return preferences.get(contextKey).mirrorMode ?? configured;
   }
 
   private sessionStubForMetadata(
@@ -2100,6 +2212,15 @@ function activeSessionPriority(session: ActiveSessionDto): number {
     return 3;
   }
   return session.contextKey.startsWith("cli:") ? 1 : 2;
+}
+
+function isPromptTerminalActivity(event: WebActivityEvent): boolean {
+  return event.status === "completed" ||
+    event.status === "failed" ||
+    event.status === "aborted" ||
+    event.type === "prompt_completed" ||
+    event.type === "prompt_failed" ||
+    event.type === "prompt_aborted";
 }
 
 function taskToUnifiedJob(

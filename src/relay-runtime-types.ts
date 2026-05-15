@@ -47,9 +47,18 @@ export interface RelaySnapshot {
 
 export type ActiveSessionSource = "web" | "telegram" | "discord" | "cli";
 
+export interface ActiveSessionMirrorDto {
+  source: Exclude<ActiveSessionSource, "cli">;
+  contextKey: string;
+  mode: "status" | "final" | "full";
+  queueLength: number;
+  queuePaused: boolean;
+}
+
 export interface ActiveSessionDto {
   id: string;
   contextKey: string;
+  sourceContextKey?: string;
   source: ActiveSessionSource;
   status: "running" | "external";
   agentId?: AgentId;
@@ -64,6 +73,7 @@ export interface ActiveSessionDto {
   durationMs: number;
   queueLength: number;
   queuePaused: boolean;
+  mirrorChannels?: ActiveSessionMirrorDto[];
   detail?: string;
 }
 
