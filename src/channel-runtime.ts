@@ -12,6 +12,15 @@ import type { ChannelActionResponse } from "./channel-actions.js";
 
 export type ChannelCommandHandler = (message: ChannelInboundMessage) => Promise<ChannelActionResponse | void> | ChannelActionResponse | void;
 
+export interface ParsedChannelCommand {
+  command: string;
+  argument: string;
+}
+
+export interface ChannelCommandParseOptions {
+  allowBotMention?: boolean;
+}
+
 export interface ChannelCommandDispatchResult {
   matched: boolean;
   command?: string;
@@ -22,11 +31,18 @@ export class ChannelCommandRouter {
   private readonly handlers = new Map<string, ChannelCommandHandler>();
 
   command(name: string, handler: ChannelCommandHandler): this {
-    const normalized = normalizeCommandName(name);
+    const normalized = normalizeChannelCommandName(name);
     if (!normalized) {
       throw new Error("Channel command name is required.");
     }
     this.handlers.set(normalized, handler);
+    return this;
+  }
+
+  commands(names: string[], handler: ChannelCommandHandler): this {
+    for (const name of names) {
+      this.command(name, handler);
+    }
     return this;
   }
 
@@ -66,13 +82,17 @@ export async function deliverChannelAction(
   });
 }
 
-export function parseChannelCommand(text: string): { command: string; argument: string } | null {
-  const match = text.trimStart().match(/^\/([a-zA-Z0-9_-]+)(?:@\w+)?(?:\s+([\s\S]*))?$/);
+export function parseChannelCommand(
+  text: string,
+  options: ChannelCommandParseOptions = {},
+): ParsedChannelCommand | null {
+  const mention = options.allowBotMention === false ? "" : "(?:@\\w+)?";
+  const match = text.trimStart().match(new RegExp(`^/([a-zA-Z0-9_-]+)${mention}(?:\\s+([\\s\\S]*))?$`));
   if (!match?.[1]) {
     return null;
   }
   return {
-    command: normalizeCommandName(match[1]),
+    command: normalizeChannelCommandName(match[1]),
     argument: match[2]?.trim() ?? "",
   };
 }
@@ -120,6 +140,6 @@ export class InMemoryChannelRuntime implements ChannelRuntime {
   }
 }
 
-function normalizeCommandName(name: string): string {
+export function normalizeChannelCommandName(name: string): string {
   return name.trim().replace(/^\//, "").toLowerCase();
 }

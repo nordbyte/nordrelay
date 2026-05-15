@@ -7,6 +7,7 @@ describe("channel runtime abstraction", () => {
   it("parses channel commands independently from Telegram", () => {
     expect(parseChannelCommand("/logs update 20")).toEqual({ command: "logs", argument: "update 20" });
     expect(parseChannelCommand("/agent@NordRelayBot pi")).toEqual({ command: "agent", argument: "pi" });
+    expect(parseChannelCommand("/agent@NordRelayBot pi", { allowBotMention: false })).toBeNull();
     expect(parseChannelCommand("plain text")).toBeNull();
   });
 
@@ -27,6 +28,26 @@ describe("channel runtime abstraction", () => {
       matched: true,
       command: "channels",
       response: { plain: "Channels" },
+    });
+  });
+
+  it("dispatches command aliases through one generic handler", async () => {
+    const router = new ChannelCommandRouter()
+      .commands(["abort", "stop"], (message) => ({
+        plain: `Abort ${message.text}`,
+        html: `<b>Abort ${message.text}</b>`,
+      }));
+
+    const result = await router.dispatch({
+      id: "msg-2",
+      context: { channelId: "telegram", chatId: "room-1", userId: "user-1" },
+      text: "/stop now",
+    });
+
+    expect(result).toMatchObject({
+      matched: true,
+      command: "stop",
+      response: { plain: "Abort now" },
     });
   });
 

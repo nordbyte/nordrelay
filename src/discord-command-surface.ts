@@ -2,10 +2,10 @@ import type { APIApplicationCommandOption, ChatInputCommandInteraction } from "d
 
 import { permissionForCommand, type Permission } from "./access-control.js";
 import { discordCommandCatalog } from "./channel-command-catalog.js";
+import { normalizeChannelCommandName, parseChannelCommand, type ParsedChannelCommand } from "./channel-runtime.js";
 
-export function parseDiscordMessageCommand(text: string): { command: string; argument: string } | null {
-  const match = text.match(/^\/([a-zA-Z0-9_-]+)(?:\s+([\s\S]*))?$/);
-  return match?.[1] ? { command: match[1].toLowerCase(), argument: match[2]?.trim() ?? "" } : null;
+export function parseDiscordMessageCommand(text: string): ParsedChannelCommand | null {
+  return parseChannelCommand(text, { allowBotMention: false });
 }
 
 export function argumentFromDiscordInteraction(interaction: ChatInputCommandInteraction): string {
@@ -22,13 +22,14 @@ export function argumentFromDiscordInteraction(interaction: ChatInputCommandInte
 }
 
 export function requiredPermissionForDiscordCommand(command: string, argument: string): Permission | null {
-  if (command === "prompt") return "prompt.send";
-  if (command === "queue") return argument.trim() ? "queue.write" : "queue.read";
-  return permissionForCommand(command);
+  const normalized = normalizeChannelCommandName(command);
+  if (normalized === "prompt") return "prompt.send";
+  if (normalized === "queue") return argument.trim() ? "queue.write" : "queue.read";
+  return permissionForCommand(normalized);
 }
 
 export function isUnauthenticatedDiscordCommandAllowed(command: string): boolean {
-  return command === "link";
+  return normalizeChannelCommandName(command) === "link";
 }
 
 export function permissionForDiscordAction(action: string): Permission | null {

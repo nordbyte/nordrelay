@@ -10,7 +10,7 @@ import {
   permissionForDiscordAction,
   requiredPermissionForDiscordCommand,
 } from "../src/discord-bot.js";
-import { discordCommands } from "../src/discord-command-surface.js";
+import { discordCommands, parseDiscordMessageCommand } from "../src/discord-command-surface.js";
 import { discordContextKey } from "../src/context-key.js";
 import { USER_GROUP_ID } from "../src/access-control.js";
 import { UserStore } from "../src/user-management.js";
@@ -72,6 +72,11 @@ describe("Discord security boundaries", () => {
     for (const command of ["start", "help", "prompt", "session", "queue", "register_channel"]) {
       expect(isUnauthenticatedDiscordCommandAllowed(command)).toBe(false);
     }
+  });
+
+  it("uses the shared channel parser without accepting Telegram bot mentions", () => {
+    expect(parseDiscordMessageCommand("/queue cancel abc")).toEqual({ command: "queue", argument: "cancel abc" });
+    expect(parseDiscordMessageCommand("/queue@NordRelayBot cancel abc")).toBeNull();
   });
 
   it("maps Discord commands and button actions to write permissions", () => {
