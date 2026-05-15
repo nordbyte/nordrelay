@@ -21,6 +21,7 @@ export interface WebChatMessage {
   timestamp: string;
   source: WebActivitySource;
   turnId?: string;
+  key?: string;
 }
 
 export interface WebActivityEvent {
@@ -92,6 +93,37 @@ export class WebChatStore {
     payload.messagesByThread[threadId] = messages;
     this.store.write(payload);
     return { message, inserted: true };
+  }
+
+  upsertByKey(input: Omit<WebChatMessage, "id" | "timestamp"> & { timestamp?: string; key: string }): { message: WebChatMessage; inserted: boolean; updated: boolean } {
+    const payload = this.readPayload();
+    const threadId = input.threadId || "pending";
+    const messages = payload.messagesByThread[threadId] ?? [];
+    const now = new Date().toISOString();
+    const existing = messages.find((message) => message.key === input.key);
+    if (existing) {
+      existing.role = input.role;
+      existing.text = input.text;
+      existing.source = input.source;
+      existing.turnId = input.turnId;
+      existing.timestamp = input.timestamp ?? now;
+      existing.key = input.key;
+      this.store.write(payload);
+      return { message: existing, inserted: false, updated: true };
+    }
+    const message: WebChatMessage = {
+      id: randomId(),
+      timestamp: input.timestamp ?? now,
+      ...input,
+      threadId,
+    };
+    messages.push(message);
+    if (messages.length > this.maxMessages) {
+      messages.splice(0, messages.length - this.maxMessages);
+    }
+    payload.messagesByThread[threadId] = messages;
+    this.store.write(payload);
+    return { message, inserted: true, updated: false };
   }
 
   list(threadId: string | null | undefined, limit = 200): WebChatMessage[] {
@@ -203,6 +235,7 @@ function isWebChatMessage(value: unknown): value is WebChatMessage {
     typeof candidate.threadId === "string" &&
     typeof candidate.text === "string" &&
     typeof candidate.timestamp === "string" &&
+    (candidate.key === undefined || typeof candidate.key === "string") &&
     ["user", "agent", "system", "tool"].includes(candidate.role) &&
     ["web", "telegram", "discord", "slack", "cli"].includes(candidate.source);
 }
@@ -270,6 +303,9 @@ function findDuplicateWebChatMessage(
 
 function webChatDedupKey(message: Omit<WebChatMessage, "id" | "timestamp"> & { timestamp?: string }): string | null {
   const threadId = message.threadId || "pending";
+  if (message.key) {
+    return [threadId, message.key].join("\0");
+  }
   if (message.turnId) {
     return [threadId, message.role, message.source, message.turnId, message.text].join("\0");
   }

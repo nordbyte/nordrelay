@@ -182,6 +182,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/sync" ? { changed?: boolean; changedFields?: string[] } :
   P extends "/api/queue" ? { queue: QueueItemDto[]; paused: boolean } :
   P extends "/api/chat/history" ? { messages: WebChatMessage[]; removed?: number } :
+  P extends "/api/chat/mirror" ? { mode: string; minInterval: number; response: { plain: string; html: string } } :
   P extends "/api/activity" ? { events: WebActivityEvent[] } :
   P extends "/api/artifacts" ? { reports: ArtifactReportDto[]; removed?: boolean } :
   P extends "/api/artifacts/bulk" ? { removed: string[] } :

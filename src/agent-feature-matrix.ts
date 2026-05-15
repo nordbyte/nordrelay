@@ -19,7 +19,7 @@ export const AGENT_FEATURES: AgentFeatureDefinition[] = [
   { key: "workspaces", label: "Workspaces", description: "List and switch allowed workspaces." },
   { key: "attachments", label: "Files/images", description: "Send files, photos, staged attachments, and voice transcripts." },
   { key: "externalActivity", label: "External busy", description: "Detect active CLI turns started outside NordRelay." },
-  { key: "cliMirror", label: "CLI mirror", description: "Mirror CLI-started turns back to Telegram/WebUI." },
+  { key: "cliMirror", label: "CLI mirror", description: "Mirror CLI-started turns back to chat adapters and the WebUI." },
   { key: "activityLog", label: "Activity", description: "Read activity timelines for sessions and turns." },
   { key: "usageStats", label: "Usage stats", description: "Show token/context usage reported by the agent." },
   { key: "subscriptionLimits", label: "Limits", description: "Show subscription/quota limits when the agent exposes them." },

@@ -256,6 +256,19 @@ export async function handleDashboardSessionRoute(
     return true;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/chat/mirror") {
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, await runtime.webMirrorPreference(""));
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/chat/mirror") {
+    const body = await readJsonBody(req);
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, await runtime.webMirrorPreference(optionalStringField(body, "argument") ?? optionalStringField(body, "mode") ?? "", options.activityActor));
+    return true;
+  }
+
   if (req.method === "DELETE" && url.pathname === "/api/chat/history") {
     await options.assertCurrentSessionScope(authUser);
     sendJson(res, 200, await runtime.clearChatHistory(options.activityActor));

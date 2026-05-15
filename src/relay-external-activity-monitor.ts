@@ -4,6 +4,12 @@ import {
   type AgentSessionService,
 } from "./agent.js";
 import { getExternalSnapshotForSession } from "./agent-activity.js";
+import type { ChannelMirrorMode } from "./bot-preferences.js";
+import {
+  renderExternalMirrorEvent,
+  renderExternalMirrorStatus,
+  trimLine,
+} from "./bot-rendering.js";
 import type { ConnectorConfig } from "./config.js";
 import { friendlyErrorText } from "./error-messages.js";
 import type {
@@ -28,6 +34,8 @@ export interface RelayExternalActivityMonitorOptions {
   getSession: () => Promise<AgentSessionService>;
   publicInfo: (session: AgentSessionService) => AgentSessionInfo;
   queueLength: () => number;
+  mirrorMode: () => ChannelMirrorMode;
+  mirrorMinUpdateMs: () => number;
   chatStore: WebChatStore;
   chatHistory: () => Promise<WebChatMessage[]>;
   persistWorkspaceArtifactsForTurn: (workspace: string, turnId: string, startedAt: Date) => Promise<void>;
@@ -45,6 +53,10 @@ export class RelayExternalActivityMonitor {
 
   snapshot(): ExternalMirrorState | null {
     return this.mirror ? { ...this.mirror } : null;
+  }
+
+  reset(): void {
+    this.mirror = null;
   }
 
   task(): WebTaskDto | null {
@@ -114,7 +126,7 @@ export class RelayExternalActivityMonitor {
         startedAt: snapshot.activity.startedAt?.toISOString() ?? null,
       };
       if (snapshot.activity.active) {
-        this.startExternalTurn(snapshot, info);
+        await this.startExternalTurn(snapshot, info);
       }
       return;
     }
@@ -125,37 +137,52 @@ export class RelayExternalActivityMonitor {
         mirror.turnId = snapshot.activity.turnId;
         mirror.startedAt = snapshot.activity.startedAt?.toISOString() ?? null;
         mirror.latestAgentLine = undefined;
-        this.startExternalTurn(snapshot, info);
+        mirror.latestStatusAt = undefined;
+        mirror.latestMirroredEventLine = undefined;
+        await this.startExternalTurn(snapshot, info);
       }
-      this.broadcastExternalEvents(snapshot, snapshot.events.filter((event) => event.lineNumber > mirror.lastLine), info);
+      const mirrorMode = this.options.mirrorMode();
+      const newEvents = snapshot.events.filter((event) => event.lineNumber > mirror.lastLine);
+      this.broadcastExternalEvents(snapshot, newEvents, info, mirrorMode === "full");
+      if (mirrorMode === "full") {
+        await this.appendExternalEventMessages(snapshot, newEvents, mirror);
+      }
       mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);
       mirror.latestStatus = externalStatusLine(snapshot, this.options.queueLength());
-      this.options.broadcastStatus(mirror.latestStatus, "info");
+      if (mirrorMode === "status" || mirrorMode === "full") {
+        await this.updateExternalStatusMessage(snapshot, mirror);
+      }
+      if (mirrorMode !== "off") {
+        this.options.broadcastStatus(mirror.latestStatus, "info");
+      }
       return;
     }
 
     const terminalEvent = [...snapshot.events].reverse().find((event) => event.kind === "task" && event.status && event.status !== "started");
     if (terminalEvent && terminalEvent.lineNumber > mirror.lastLine) {
+      const mirrorMode = this.options.mirrorMode();
       const finalAgent = snapshot.events.filter((event) => event.kind === "agent" && event.text).at(-1);
       const finalText = finalAgent?.text ?? snapshot.latestAgentMessage;
       const finalLine = finalAgent?.lineNumber ?? snapshot.lineCount;
-      if (finalText && finalLine !== mirror.latestAgentLine) {
-        this.options.chatStore.append({
+      if ((mirrorMode === "final" || mirrorMode === "full") && finalText && finalLine !== mirror.latestAgentLine) {
+        this.options.chatStore.appendWithResult({
           threadId: snapshot.threadId,
           role: "agent",
           text: finalText,
           source: "cli",
           turnId: terminalEvent.turnId ?? undefined,
+          key: externalMessageKey("final", snapshot, terminalEvent.lineNumber),
         });
-        this.options.broadcast({ type: "text_delta", id: terminalEvent.turnId ?? "cli", delta: finalText });
         mirror.latestAgentLine = finalLine;
       }
       const externalStartedAt = mirror.startedAt ? new Date(mirror.startedAt) : snapshot.activity.startedAt;
-      this.options.broadcast({
-        type: "turn_complete",
-        id: terminalEvent.turnId ?? "cli",
-        at: terminalEvent.timestamp?.toISOString() ?? new Date().toISOString(),
-      });
+      if (mirrorMode !== "off") {
+        this.options.broadcast({
+          type: "turn_complete",
+          id: terminalEvent.turnId ?? "cli",
+          at: terminalEvent.timestamp?.toISOString() ?? new Date().toISOString(),
+        });
+      }
       this.options.appendActivity({
         source: "cli",
         status: terminalEvent.status === "aborted" ? "aborted" : terminalEvent.status === "failed" ? "failed" : "completed",
@@ -172,34 +199,38 @@ export class RelayExternalActivityMonitor {
         await this.options.persistWorkspaceArtifactsForTurn(info.workspace, terminalEvent.turnId, externalStartedAt);
       }
       mirror.latestStatus = `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`;
-      this.options.broadcastStatus(
-        `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`,
-        terminalEvent.status === "failed" ? "error" : terminalEvent.status === "aborted" ? "warn" : "info",
-      );
-      this.options.broadcast({ type: "chat_history", messages: await this.options.chatHistory() });
+      if (mirrorMode === "status" || mirrorMode === "full") {
+        await this.updateExternalStatusMessage(snapshot, mirror, mirror.latestStatus);
+      }
+      if (mirrorMode !== "off") {
+        this.options.broadcastStatus(
+          `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`,
+          terminalEvent.status === "failed" ? "error" : terminalEvent.status === "aborted" ? "warn" : "info",
+        );
+        await this.broadcastChatHistory();
+      }
       await this.options.drainQueue();
     }
     mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);
   }
 
-  private startExternalTurn(snapshot: AgentExternalSnapshot, info: AgentSessionInfo): void {
+  private async startExternalTurn(snapshot: AgentExternalSnapshot, info: AgentSessionInfo): Promise<void> {
     const prompt = snapshot.latestUserMessage ?? `${snapshot.agentLabel} CLI task`;
-    const stored = this.options.chatStore.appendWithResult({
-      threadId: snapshot.threadId,
-      role: "user",
-      text: prompt,
-      source: "cli",
-      turnId: snapshot.activity.turnId ?? undefined,
-      timestamp: snapshot.activity.startedAt?.toISOString(),
-    });
-    if (stored.inserted) {
-      this.options.broadcast({
-        type: "turn_start",
-        id: snapshot.activity.turnId ?? "cli",
-        prompt,
-        at: snapshot.activity.startedAt?.toISOString() ?? new Date().toISOString(),
+    const mode = this.options.mirrorMode();
+    if (mode === "final" || mode === "full") {
+      this.options.chatStore.appendWithResult({
+        threadId: snapshot.threadId,
+        role: "system",
+        text: `Working on ${trimLine(prompt, 500)}`,
         source: "cli",
+        turnId: snapshot.activity.turnId ?? undefined,
+        timestamp: snapshot.activity.startedAt?.toISOString(),
+        key: externalMessageKey("working", snapshot),
       });
+      await this.broadcastChatHistory();
+    }
+    if ((mode === "status" || mode === "full") && this.mirror) {
+      await this.updateExternalStatusMessage(snapshot, this.mirror);
     }
     this.options.appendActivity({
       source: "cli",
@@ -214,15 +245,17 @@ export class RelayExternalActivityMonitor {
     });
   }
 
-  private broadcastExternalEvents(snapshot: AgentExternalSnapshot, events: AgentExternalSnapshot["events"], info: AgentSessionInfo): void {
+  private broadcastExternalEvents(snapshot: AgentExternalSnapshot, events: AgentExternalSnapshot["events"], info: AgentSessionInfo, broadcastTools: boolean): void {
     for (const event of events) {
       if (event.kind === "tool" && event.status === "started") {
-        this.options.broadcast({
-          type: "tool_start",
-          id: snapshot.activity.turnId ?? "cli",
-          toolCallId: `cli-${event.lineNumber}`,
-          toolName: event.toolName ?? "tool",
-        });
+        if (broadcastTools) {
+          this.options.broadcast({
+            type: "tool_start",
+            id: snapshot.activity.turnId ?? "cli",
+            toolCallId: `cli-${event.lineNumber}`,
+            toolName: event.toolName ?? "tool",
+          });
+        }
         this.options.appendActivity({
           source: "cli",
           status: "running",
@@ -235,12 +268,14 @@ export class RelayExternalActivityMonitor {
         });
       }
       if (event.kind === "tool" && event.status === "finished") {
-        this.options.broadcast({
-          type: "tool_end",
-          id: snapshot.activity.turnId ?? "cli",
-          toolCallId: `cli-${event.lineNumber}`,
-          isError: false,
-        });
+        if (broadcastTools) {
+          this.options.broadcast({
+            type: "tool_end",
+            id: snapshot.activity.turnId ?? "cli",
+            toolCallId: `cli-${event.lineNumber}`,
+            isError: false,
+          });
+        }
         this.options.appendActivity({
           source: "cli",
           status: "completed",
@@ -253,12 +288,14 @@ export class RelayExternalActivityMonitor {
         });
       }
       if (event.kind === "tool" && event.status === "failed") {
-        this.options.broadcast({
-          type: "tool_end",
-          id: snapshot.activity.turnId ?? "cli",
-          toolCallId: `cli-${event.lineNumber}`,
-          isError: true,
-        });
+        if (broadcastTools) {
+          this.options.broadcast({
+            type: "tool_end",
+            id: snapshot.activity.turnId ?? "cli",
+            toolCallId: `cli-${event.lineNumber}`,
+            isError: true,
+          });
+        }
         this.options.appendActivity({
           source: "cli",
           status: "failed",
@@ -272,6 +309,66 @@ export class RelayExternalActivityMonitor {
       }
     }
   }
+
+  private async appendExternalEventMessages(snapshot: AgentExternalSnapshot, events: AgentExternalSnapshot["events"], mirror: ExternalMirrorState): Promise<void> {
+    let changed = false;
+    for (const event of events) {
+      if (event.lineNumber <= (mirror.latestMirroredEventLine ?? mirror.lastLine)) {
+        continue;
+      }
+      const rendered = renderExternalMirrorEvent(event);
+      if (!rendered) {
+        continue;
+      }
+      const stored = this.options.chatStore.appendWithResult({
+        threadId: snapshot.threadId,
+        role: event.kind === "tool" ? "tool" : "system",
+        text: rendered.plain,
+        source: "cli",
+        turnId: event.turnId ?? snapshot.activity.turnId ?? undefined,
+        timestamp: event.timestamp?.toISOString(),
+        key: externalMessageKey("event", snapshot, event.lineNumber),
+      });
+      changed = changed || stored.inserted;
+      mirror.latestMirroredEventLine = event.lineNumber;
+    }
+    if (changed) {
+      await this.broadcastChatHistory();
+    }
+  }
+
+  private async updateExternalStatusMessage(snapshot: AgentExternalSnapshot, mirror: ExternalMirrorState, text?: string): Promise<void> {
+    const now = Date.now();
+    const minInterval = this.options.mirrorMinUpdateMs();
+    if (!text && mirror.latestStatusAt && now - mirror.latestStatusAt < minInterval) {
+      return;
+    }
+    this.options.chatStore.upsertByKey({
+      threadId: snapshot.threadId,
+      role: "system",
+      text: text ?? renderExternalMirrorStatus(snapshot, this.options.queueLength()).plain,
+      source: "cli",
+      turnId: snapshot.activity.turnId ?? undefined,
+      key: externalMessageKey("status", snapshot),
+    });
+    mirror.latestStatusAt = now;
+    await this.broadcastChatHistory();
+  }
+
+  private async broadcastChatHistory(): Promise<void> {
+    this.options.broadcast({ type: "chat_history", messages: await this.options.chatHistory() });
+  }
+}
+
+function externalMessageKey(kind: string, snapshot: AgentExternalSnapshot, lineNumber?: number): string {
+  return [
+    "external",
+    kind,
+    snapshot.agentId,
+    snapshot.threadId,
+    snapshot.activity.turnId ?? "turn",
+    lineNumber ?? "",
+  ].join(":");
 }
 
 function externalStatusLine(snapshot: AgentExternalSnapshot, queueLength: number): string {

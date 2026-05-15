@@ -29,6 +29,7 @@ import { AgentUpdateManager, type AgentUpdateJobSnapshot, type AgentUpdateOperat
 import { createAgentSessionService, enabledAgents } from "./agent-factory.js";
 import { AuditLogStore, type AuditEvent, type AuditListOptions } from "./audit-log.js";
 import { BotPreferencesStore } from "./bot-preferences.js";
+import { ChannelCommandService } from "./channel-command-service.js";
 import { ChannelTurnService } from "./channel-turn-service.js";
 import { activeSessionSourceForContextKey, ChannelMirrorRegistry } from "./channel-mirror-registry.js";
 import { checkAuthStatus, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
@@ -64,6 +65,7 @@ import {
   uploadFileDtos,
   versionCheckForAgent,
 } from "./relay-runtime-helpers.js";
+import { capabilitiesOf } from "./bot-rendering.js";
 import { renderSessionInfoPlain, renderSessionUsageRows } from "./session-format.js";
 import { SessionLockStore, type SessionLock } from "./session-locks.js";
 import { SessionRegistry, type ContextMetadata } from "./session-registry.js";
@@ -147,6 +149,7 @@ export class RelayRuntime {
   private readonly chatStore: WebChatStore;
   private readonly activityStore: WebActivityStore;
   private readonly auditStore: AuditLogStore;
+  private readonly preferencesStore: BotPreferencesStore;
   private readonly lockStore: SessionLockStore;
   private readonly agentUpdates: AgentUpdateManager;
   private readonly queueService: RelayQueueService;
@@ -178,6 +181,7 @@ export class RelayRuntime {
     this.chatStore = new WebChatStore(config.workspace, config.stateBackend, MAX_CHAT_HISTORY);
     this.activityStore = new WebActivityStore(config.workspace, config.stateBackend, config.auditMaxEvents);
     this.auditStore = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
+    this.preferencesStore = new BotPreferencesStore(config.workspace, config.stateBackend);
     this.lockStore = new SessionLockStore(config.workspace, config.stateBackend);
     this.queueService = new RelayQueueService(this.promptStore, this.contextKey);
     this.jobStore = new UnifiedJobStore(config.workspace, config.stateBackend, config.unifiedJobMaxItems);
@@ -194,6 +198,8 @@ export class RelayRuntime {
       getSession: () => this.getSession(true),
       publicInfo: (session) => this.publicInfo(session),
       queueLength: () => this.queueService.length(),
+      mirrorMode: () => this.preferencesStore.get(this.contextKey).mirrorMode ?? this.config.webMirrorMode,
+      mirrorMinUpdateMs: () => this.config.webMirrorMinUpdateMs,
       chatStore: this.chatStore,
       chatHistory: () => this.chatHistory(),
       persistWorkspaceArtifactsForTurn: (workspace, turnId, startedAt) =>
@@ -1018,6 +1024,55 @@ export class RelayRuntime {
   async chatHistory(limit = 200): Promise<WebChatMessage[]> {
     const session = await this.getSession(true);
     return this.chatStore.list(this.publicInfo(session).threadId, limit);
+  }
+
+  async webMirrorPreference(argument = "", actor?: WebActivityActor): Promise<{
+    mode: string;
+    minInterval: number;
+    response: { plain: string; html: string };
+  }> {
+    const session = await this.getSession(true);
+    this.registry.updateMetadata(this.contextKey, session);
+    const info = this.publicInfo(session);
+    const response = new ChannelCommandService(this.config).renderMirrorPreference({
+      source: "web",
+      contextKey: this.contextKey,
+      argument,
+      preferencesStore: this.preferencesStore,
+      cliMirrorSupported: capabilitiesOf(info).cliMirror,
+      agentLabel: info.agentLabel,
+    });
+    const mode = this.preferencesStore.get(this.contextKey).mirrorMode ?? this.config.webMirrorMode;
+    const changed = argument.trim() && response.plain.startsWith("CLI mirroring:");
+    if (changed) {
+      this.appendActivity({
+        source: "web",
+        status: "info",
+        type: "mirror_mode_changed",
+        threadId: info.threadId,
+        workspace: info.workspace,
+        agentId: info.agentId,
+        actor,
+        detail: mode,
+      });
+      this.appendAudit({
+        action: "command",
+        status: "ok",
+        contextKey: this.contextKey,
+        agentId: info.agentId,
+        threadId: info.threadId,
+        workspace: info.workspace,
+        actor,
+        description: `mirror ${mode}`,
+      });
+      this.externalActivityMonitor.reset();
+      void this.externalActivityMonitor.monitorSafe();
+    }
+    return {
+      mode,
+      minInterval: this.config.webMirrorMinUpdateMs,
+      response,
+    };
   }
 
   async sessionDetail(threadId: string): Promise<Record<string, unknown>> {

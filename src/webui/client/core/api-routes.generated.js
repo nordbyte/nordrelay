@@ -85,6 +85,7 @@ const WEB_API_CLIENT_ROUTE_RULES = [
   { path: "/api/sync", methods: ['POST'] },
   { path: "/api/queue", methods: ['GET', 'POST'] },
   { path: "/api/chat/history", methods: ['GET', 'DELETE'] },
+  { path: "/api/chat/mirror", methods: ['GET', 'POST'] },
   { path: "/api/activity", methods: ['GET'] },
   { path: "/api/artifacts", methods: ['GET', 'DELETE'] },
   { path: "/api/artifacts/bulk", methods: ['POST'] },

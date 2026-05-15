@@ -281,6 +281,14 @@ export class PeerRuntimeService {
       await this.assertCurrentSessionScope(peer, runtime);
       return { messages: await runtime.chatHistory(numberValue(query.limit, 200)) };
     }
+    if (method === "GET" && path === "/api/chat/mirror") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.webMirrorPreference("");
+    }
+    if (method === "POST" && path === "/api/chat/mirror") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.webMirrorPreference(stringValue(body.argument) || stringValue(body.mode) || "", remoteActor);
+    }
     if (method === "DELETE" && path === "/api/chat/history") {
       await this.assertCurrentSessionScope(peer, runtime);
       return runtime.clearChatHistory(remoteActor);

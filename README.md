@@ -28,8 +28,8 @@ Session control:
 - `/abort`, `/stop`, and the inline Abort button cancel the active agent turn.
 - Busy prompts are queued per chat context instead of being dropped.
 - If the attached thread is currently active in the local agent CLI, chat prompts are queued until that CLI task finishes.
-- Active Codex, Pi, Hermes, OpenClaw, and Claude Code CLI/API turns are mirrored into Telegram, Discord, and Slack with configurable `off`, `status`, `final`, or `full` modes.
-- `/mirror` controls CLI mirroring per chat context.
+- Active Codex, Pi, Hermes, OpenClaw, and Claude Code CLI/API turns are mirrored into Telegram, Discord, Slack, and the WebUI with configurable `off`, `status`, `final`, or `full` modes.
+- `/mirror` controls CLI mirroring per chat context; the WebUI chat also supports `/mirror [off|status|final|full]` and a Mirror mode picker.
 - Queues survive connector restarts and are resumed automatically when the external CLI turn becomes idle.
 - `/notify` controls completion/status notifications and quiet hours per chat context.
 - `/workspaces` lists allowed workspaces and shows workspace guardrail warnings.
@@ -231,7 +231,7 @@ Operations:
 - `/logs` renders redacted connector, NordRelay update, and agent update logs with local-time timestamps, levels, file path, last-modified time, and highlighted warnings/errors.
 - Logs can be emitted as timestamped plain text or JSON records with `CONNECTOR_LOG_FORMAT`.
 - Telegram sends/edits/documents are routed through a rate-limit queue that honors Telegram retry-after responses.
-- Mirror, notification, quiet-hour, and automatic artifact-delivery defaults are configured through channel-neutral `NORDRELAY_*` settings, with Telegram, Discord, and Slack override keys when a channel should differ.
+- Mirror, notification, quiet-hour, and automatic artifact-delivery defaults are configured through channel-neutral `NORDRELAY_*` settings, with WebUI, Telegram, Discord, and Slack override keys when a channel should differ.
 - The WebUI Tasks page includes a unified Jobs view for active WebUI turns, external CLI turns, queued prompts, agent update/install jobs, self-updates, and diagnostics bundle exports, with log, cancel, and retry actions where supported.
 - Unified Jobs are persisted across restarts and retain recent prompt, queue, update, connector-update, and support-bundle history for WebUI inspection.
 - The WebUI Metrics page reports queue state, active/completed/failed turns, job counts, average prompt duration, and Telegram/Discord/Slack rate-limit counters.
@@ -541,6 +541,7 @@ The dashboard is a second NordRelay client next to Telegram. It can:
 - Start a new session from a modal with agent, workspace, model, reasoning/thinking, fast mode, and launch-profile choices.
 - Switch or attach existing sessions, and copy thread IDs from the session list.
 - Send prompts and receive streamed text/tool/plan updates through Server-Sent Events.
+- Mirror native CLI-started turns into the WebUI chat with `off`, `status`, `final`, and `full` modes from the toolbar or `/mirror [mode]`.
 - Upload images, documents, and audio files from the chat composer. Images are passed as image inputs, documents are staged for the agent, and audio is transcribed through the configured voice backend.
 - Keep a persistent per-thread WebUI chat history across page reloads.
 - Control the active session model, reasoning/thinking, fast mode, and launch profile directly from the chat view.
@@ -628,7 +629,7 @@ Run NordRelay behind your reverse proxy so the public URL forwards to `http://12
 - `/model` opens the model picker.
 - `/reasoning` opens the selected agent's reasoning or thinking picker.
 - `/effort` is a backward-compatible alias for `/reasoning`.
-- `/mirror [off|status|final|full]` controls local CLI mirroring for this Telegram context.
+- `/mirror [off|status|final|full]` controls local CLI mirroring for this chat context.
 - `/notify [off|minimal|all]` controls Telegram notifications.
 - `/notify quiet HH-HH` sets quiet hours; `/notify quiet off` disables them.
 - `/auth` reports Codex authentication status, Pi provider environment health, Hermes API Server reachability, OpenClaw Gateway reachability, or Claude Code CLI auth for the selected agent.
@@ -870,6 +871,7 @@ Telegram:
 - `TELEGRAM_WEBHOOK_SECRET`: optional Telegram webhook secret token.
 - `NORDRELAY_CLI_MIRROR_MODE`: default CLI mirror mode for chat adapters: `off`, `status`, `final`, or `full`. Defaults to `status`.
 - `NORDRELAY_CLI_MIRROR_MIN_UPDATE_MS`: default minimum interval for mirrored CLI status edits. Defaults to `4000`.
+- `NORDRELAY_WEB_CLI_MIRROR_MODE`, `NORDRELAY_WEB_CLI_MIRROR_MIN_UPDATE_MS`: optional WebUI-specific CLI mirror override and status update interval.
 - `NORDRELAY_NOTIFY_MODE`: default notification mode for chat adapters: `off`, `minimal`, or `all`. Defaults to `minimal`.
 - `NORDRELAY_QUIET_HOURS`: optional default quiet-hour range in `HH-HH` format, for example `22-7`; use `off` in a channel override to disable inherited quiet hours.
 - `NORDRELAY_AUTO_SEND_ARTIFACTS`: default automatic artifact summaries/uploads for chat adapters. Defaults to `false`.

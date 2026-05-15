@@ -102,6 +102,7 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   exact("/api/sync", ["POST"], "sessions.write"),
   exact("/api/queue", ["GET", "POST"], readWrite("queue.read", "queue.write")),
   exact("/api/chat/history", ["GET", "DELETE"], readWrite("sessions.read", "sessions.write")),
+  exact("/api/chat/mirror", ["GET", "POST"], readWrite("sessions.read", "settings.write")),
   exact("/api/activity", ["GET"], "sessions.read"),
   exact("/api/artifacts", ["GET", "DELETE"], readWrite("files.read", "files.write")),
   exact("/api/artifacts/bulk", ["POST"], "files.write"),

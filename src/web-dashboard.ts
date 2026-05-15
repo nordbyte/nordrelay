@@ -839,6 +839,8 @@ function activeSettingsValues(current: typeof config): Record<string, string | u
     TELEGRAM_EDIT_MIN_INTERVAL_MS: String(current.telegramEditMinIntervalMs),
     NORDRELAY_CLI_MIRROR_MODE: current.mirrorMode,
     NORDRELAY_CLI_MIRROR_MIN_UPDATE_MS: String(current.mirrorMinUpdateMs),
+    NORDRELAY_WEB_CLI_MIRROR_MODE: current.webMirrorMode === current.mirrorMode ? "" : current.webMirrorMode,
+    NORDRELAY_WEB_CLI_MIRROR_MIN_UPDATE_MS: current.webMirrorMinUpdateMs === current.mirrorMinUpdateMs ? "" : String(current.webMirrorMinUpdateMs),
     NORDRELAY_NOTIFY_MODE: current.notifyMode,
     NORDRELAY_QUIET_HOURS: quietValue(current.quietHours),
     NORDRELAY_AUTO_SEND_ARTIFACTS: boolValue(current.autoSendArtifacts),

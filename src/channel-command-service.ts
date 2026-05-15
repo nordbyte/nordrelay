@@ -50,7 +50,7 @@ import {
 import { renderSessionInfoHTML, renderSessionInfoPlain } from "./session-format.js";
 import { getAvailableBackends } from "./voice.js";
 
-export type CommandChannelSource = "telegram" | "discord" | "slack";
+export type CommandChannelSource = "telegram" | "discord" | "slack" | "web";
 
 export interface ChannelPreferenceCommandOptions {
   source: CommandChannelSource;
@@ -241,11 +241,7 @@ export class ChannelCommandService {
     }
 
     const mode = this.effectiveMirrorMode(options.source, options.contextKey, options.preferencesStore);
-    const minInterval = options.source === "telegram"
-      ? this.config.telegramMirrorMinUpdateMs
-      : options.source === "discord"
-        ? this.config.discordMirrorMinUpdateMs
-        : this.config.slackMirrorMinUpdateMs;
+    const minInterval = this.mirrorMinUpdateMs(options.source);
     return {
       plain: [
         `CLI mirroring: ${mode}`,
@@ -406,27 +402,55 @@ export class ChannelCommandService {
   }
 
   private defaultMirrorMode(source: CommandChannelSource): ChannelMirrorMode {
-    return source === "telegram"
-      ? this.config.telegramMirrorMode
-      : source === "discord"
-        ? this.config.discordMirrorMode
-        : this.config.slackMirrorMode;
+    if (source === "telegram") {
+      return this.config.telegramMirrorMode;
+    }
+    if (source === "discord") {
+      return this.config.discordMirrorMode;
+    }
+    if (source === "slack") {
+      return this.config.slackMirrorMode;
+    }
+    return this.config.webMirrorMode;
+  }
+
+  private mirrorMinUpdateMs(source: CommandChannelSource): number {
+    if (source === "telegram") {
+      return this.config.telegramMirrorMinUpdateMs;
+    }
+    if (source === "discord") {
+      return this.config.discordMirrorMinUpdateMs;
+    }
+    if (source === "slack") {
+      return this.config.slackMirrorMinUpdateMs;
+    }
+    return this.config.webMirrorMinUpdateMs;
   }
 
   private defaultNotifyMode(source: CommandChannelSource): ChannelNotifyMode {
-    return source === "telegram"
-      ? this.config.telegramNotifyMode
-      : source === "discord"
-        ? this.config.discordNotifyMode
-        : this.config.slackNotifyMode;
+    if (source === "telegram") {
+      return this.config.telegramNotifyMode;
+    }
+    if (source === "discord") {
+      return this.config.discordNotifyMode;
+    }
+    if (source === "slack") {
+      return this.config.slackNotifyMode;
+    }
+    return this.config.notifyMode;
   }
 
   private defaultQuietHours(source: CommandChannelSource): QuietHours | null | undefined {
-    return source === "telegram"
-      ? this.config.telegramQuietHours
-      : source === "discord"
-        ? this.config.discordQuietHours
-        : this.config.slackQuietHours;
+    if (source === "telegram") {
+      return this.config.telegramQuietHours;
+    }
+    if (source === "discord") {
+      return this.config.discordQuietHours;
+    }
+    if (source === "slack") {
+      return this.config.slackQuietHours;
+    }
+    return this.config.quietHours;
   }
 
   private effectiveMirrorMode(source: CommandChannelSource, contextKey: string, preferencesStore: BotPreferencesStore): ChannelMirrorMode {

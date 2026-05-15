@@ -89,6 +89,22 @@ test.describe("NordRelay WebUI", () => {
     expect(promptRequest?.body).toMatchObject({ text: "Run a browser smoke test" });
   });
 
+  test("controls WebUI CLI mirroring from the chat toolbar and slash command", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
+    await page.goto(mock.baseUrl);
+    await page.getByRole("button", { name: "Chat" }).click();
+
+    await expect(page.locator("#mirrorModeSelect")).toHaveValue("status");
+    await page.locator("#mirrorModeSelect").selectOption("full");
+    await expect.poll(() => mock.requests.filter((request) => request.path === "/api/chat/mirror" && request.method === "POST").length).toBe(1);
+    expect(mock.requests.find((request) => request.path === "/api/chat/mirror" && request.method === "POST")?.body).toMatchObject({ argument: "full" });
+
+    await page.locator("#promptInput").fill("/mirror");
+    await page.locator("#promptForm button").last().click();
+    await expect(page.locator("#messages")).toContainText("CLI mirroring: status");
+    await expect(page.locator("#messages")).toContainText("Minimum update interval: 4000 ms");
+  });
+
   test("renders Discord and Slack access controls and filters registered channels", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
@@ -362,6 +378,7 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   const session = sessionInfo((body as { agentId?: string } | null)?.agentId || "codex");
   if (url.pathname === "/api/bootstrap") return bootstrap(session);
   if (url.pathname === "/api/chat/history") return method === "DELETE" ? { messages: [], removed: 1 } : { messages: chatMessages() };
+  if (url.pathname === "/api/chat/mirror") return mirrorPreference(body);
   if (url.pathname === "/api/queue") return { queue: [], paused: false };
   if (url.pathname === "/api/prompt") return { queued: true, queueId: "queue-web-1", files: [] };
   if (url.pathname === "/api/settings") return method === "PATCH" ? settingsPatchResponse(body) : settings();
@@ -517,6 +534,18 @@ function chatMessages() {
     { id: "m1", threadId: "codex-thread-1", role: "user", text: "Existing web message", timestamp: now(), source: "web" },
     { id: "m2", threadId: "codex-thread-1", role: "agent", text: "Existing agent response", timestamp: now(), source: "web" },
   ];
+}
+
+function mirrorPreference(body: unknown) {
+  const mode = (body as { argument?: string } | null)?.argument || "status";
+  return {
+    mode,
+    minInterval: 4000,
+    response: {
+      plain: [`CLI mirroring: ${mode}`, "Minimum update interval: 4000 ms", "Modes: off, status, final, full"].join("\n"),
+      html: "",
+    },
+  };
 }
 
 function sessions() {

@@ -29,6 +29,7 @@ describe("ChannelMirrorRegistry", () => {
       telegramMirrorMode: "status",
       discordMirrorMode: "full",
       slackMirrorMode: "final",
+      webMirrorMode: "status",
     } as ConnectorConfig, promptStore);
     preferences.update("123", { mirrorMode: "final" });
     promptStore.enqueue("123", toPromptEnvelope("telegram queued"));
@@ -49,10 +50,11 @@ describe("ChannelMirrorRegistry", () => {
       { source: "telegram", contextKey: "123", mode: "final", queueLength: 1, queuePaused: false },
       { source: "discord", contextKey: "discord:guild:channel", mode: "full", queueLength: 1, queuePaused: true },
       { source: "slack", contextKey: "slack:T123:C123", mode: "final", queueLength: 1, queuePaused: false },
+      { source: "web", contextKey: "web:dashboard", mode: "status", queueLength: 0, queuePaused: false },
     ]);
     expect(registry.queueLengthForExternalSource("cli:codex:thread-a", mirrors)).toBe(3);
     expect(registry.queuePausedForExternalSource("cli:codex:thread-a", mirrors)).toBe(true);
-    expect(registry.snapshot()).toHaveLength(3);
+    expect(registry.snapshot()).toHaveLength(4);
   });
 
   it("skips mirror channels when preferences disable mirroring", () => {
@@ -62,6 +64,7 @@ describe("ChannelMirrorRegistry", () => {
       defaultAgent: "codex",
       telegramMirrorMode: "status",
       discordMirrorMode: "full",
+      webMirrorMode: "status",
     } as ConnectorConfig, promptStore);
     preferences.update("123", { mirrorMode: "off" });
 

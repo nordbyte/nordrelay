@@ -64,6 +64,34 @@ describe("web dashboard state stores", () => {
     }
   });
 
+  it("upserts keyed chat messages for live status rows", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-web-chat-upsert-"));
+    try {
+      const store = new WebChatStore(workspace, "json", 10);
+      const first = store.upsertByKey({
+        threadId: "thread-a",
+        role: "system",
+        text: "running 1s",
+        source: "cli",
+        key: "status:turn-1",
+      });
+      const second = store.upsertByKey({
+        threadId: "thread-a",
+        role: "system",
+        text: "running 2s",
+        source: "cli",
+        key: "status:turn-1",
+      });
+
+      expect(first.inserted).toBe(true);
+      expect(second.updated).toBe(true);
+      expect(second.message.id).toBe(first.message.id);
+      expect(store.list("thread-a")).toMatchObject([{ text: "running 2s", key: "status:turn-1" }]);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("filters activity timeline events", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-web-activity-"));
     try {

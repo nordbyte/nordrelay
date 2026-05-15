@@ -46,6 +46,8 @@ export interface ConnectorConfig {
   telegramEditMinIntervalMs: number;
   mirrorMode: ChannelMirrorMode;
   mirrorMinUpdateMs: number;
+  webMirrorMode: ChannelMirrorMode;
+  webMirrorMinUpdateMs: number;
   notifyMode: ChannelNotifyMode;
   quietHours: QuietHours | null;
   autoSendArtifacts: boolean;
@@ -176,6 +178,8 @@ export function loadConfig(): ConnectorConfig {
   const telegramEditMinIntervalMs = parseNonNegativeIntegerEnv(optionalString(process.env.TELEGRAM_EDIT_MIN_INTERVAL_MS), 1_200, "TELEGRAM_EDIT_MIN_INTERVAL_MS");
   const mirrorMode = parseMirrorMode(optionalString(process.env.NORDRELAY_CLI_MIRROR_MODE), "status");
   const mirrorMinUpdateMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_CLI_MIRROR_MIN_UPDATE_MS), 4_000, "NORDRELAY_CLI_MIRROR_MIN_UPDATE_MS");
+  const webMirrorMode = parseMirrorMode(optionalString(process.env.NORDRELAY_WEB_CLI_MIRROR_MODE), mirrorMode);
+  const webMirrorMinUpdateMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_WEB_CLI_MIRROR_MIN_UPDATE_MS), mirrorMinUpdateMs, "NORDRELAY_WEB_CLI_MIRROR_MIN_UPDATE_MS");
   const notifyMode = parseNotifyMode(optionalString(process.env.NORDRELAY_NOTIFY_MODE), "minimal");
   const quietHours = parseQuietHoursOverride(process.env.NORDRELAY_QUIET_HOURS, null);
   const autoSendArtifacts = parseBooleanEnv(optionalString(process.env.NORDRELAY_AUTO_SEND_ARTIFACTS), false);
@@ -365,6 +369,8 @@ export function loadConfig(): ConnectorConfig {
     telegramEditMinIntervalMs,
     mirrorMode,
     mirrorMinUpdateMs,
+    webMirrorMode,
+    webMirrorMinUpdateMs,
     notifyMode,
     quietHours,
     autoSendArtifacts,

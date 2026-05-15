@@ -154,6 +154,15 @@ export function renderDashboardApp(): string {
               <button id="editLastBtn" class="secondary">Edit last</button>
               <button id="syncBtn" class="secondary">Sync</button>
               <button id="notifyBtn" class="secondary">Notify</button>
+              <label class="mirror-control" title="Mirror local CLI activity into this WebUI chat">
+                Mirror
+                <select id="mirrorModeSelect">
+                  <option value="off">Off</option>
+                  <option value="status">Status</option>
+                  <option value="final">Final</option>
+                  <option value="full">Full</option>
+                </select>
+              </label>
               <button id="clearChatBtn" class="secondary">Clear history</button>
               <button id="abortBtn">Abort</button>
               <button id="handbackBtn">Handback</button>
