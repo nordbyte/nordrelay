@@ -168,8 +168,8 @@ Discord input and output:
 - `DISCORD_MESSAGE_CONTENT_ENABLED=true` lets regular Discord messages become prompts. The matching privileged intent must also be enabled in the Discord Developer Portal.
 - Discord DMs, guild channels, and threads get independent NordRelay contexts.
 - Discord attachments are staged like Telegram uploads; images are passed as image inputs and audio files are transcribed before prompting.
-- Discord buttons cover session picks, model/reasoning picks, queue actions, and abort where Discord component limits allow.
-- Discord slash commands mirror the Telegram command surface where Discord supports it: `/agent`, `/session`, `/sessions`, `/new`, `/switch`, `/model`, `/reasoning`, `/fast`, `/queue`, `/stop`, `/retry`, `/sync`, `/activity`, `/artifacts`, `/logs`, `/version`, `/diagnostics`, `/update`, `/lock`, `/unlock`, `/mirror`, `/notify`, `/voice`, `/link`, `/whoami`, and `/register_channel`.
+- Discord buttons cover session picks, model/reasoning/launch picks, queue actions, artifact actions, update jobs, and abort where Discord component limits allow.
+- Discord slash commands mirror the Telegram command surface where Discord supports it: `/agent`, `/auth`, `/login`, `/logout`, `/session`, `/sessions`, `/new`, `/switch`, `/attach`, `/handback`, `/workspaces`, `/pin`, `/unpin`, `/pinned`, `/model`, `/reasoning`, `/fast`, `/launch`, `/launch_profiles`, `/queue`, `/stop`, `/retry`, `/sync`, `/progress`, `/activity`, `/audit`, `/artifacts`, `/logs`, `/version`, `/diagnostics`, `/restart`, `/update`, `/lock`, `/unlock`, `/mirror`, `/notify`, `/voice`, `/link`, `/whoami`, and `/register_channel`.
 
 Authentication and safety:
 
@@ -574,7 +574,9 @@ Discord supports slash commands and `/command` text messages for the shared comm
 - `/register_channel` replaces `/register_chat` for guild channels and threads.
 - `/prompt <text>` is available for slash-command-only deployments where regular message content is disabled.
 - `/link <code>` consumes Discord link codes created in the WebUI or with `nordrelay user discord-link-code`.
-- `/queue`, `/sessions`, `/agent`, `/model`, `/reasoning`, `/launch`, and `/stop` use Discord buttons where component limits allow.
+- `/queue`, `/sessions`, `/agent`, `/model`, `/reasoning`, `/launch`, `/artifacts`, `/update`, and `/stop` use Discord buttons where component limits allow.
+- `/artifacts latest`, `/artifacts zip latest`, `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, and `/artifacts delete <turn-id>` are available in Discord.
+- Unsafe launch profiles require explicit confirmation with `/launch <profile-id> confirm`.
 - Discord does not support Telegram reactions or Telegram webhook transport; typing, message edits, attachments, files, DMs, guild channels, and threads are supported.
 
 ## Command Examples

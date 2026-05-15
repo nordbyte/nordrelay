@@ -1,6 +1,7 @@
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
-import type { AgentId } from "./agent.js";
+import type { AgentActivityEvent, AgentHandbackResult, AgentId, AgentSessionInfo } from "./agent.js";
 import { enabledAgents } from "./agent-factory.js";
+import type { AuditEvent } from "./audit-log.js";
 import {
   logTailRequests,
   parseLogsCommand,
@@ -21,9 +22,17 @@ import {
 import {
   formatCliPathHTML,
   formatCliPathPlain,
+  renderActivityTimeline,
+  renderAuditEvents,
+  renderProgressHTML,
+  renderProgressPlain,
   renderVersionCheckHTML,
   renderVersionCheckPlain,
+  type ActivityOptions,
+  type BusyState,
+  type TurnProgress,
 } from "./bot-rendering.js";
+import { renderSessionInfoHTML, renderSessionInfoPlain } from "./session-format.js";
 
 export class ChannelCommandService {
   constructor(private readonly config: ConnectorConfig) {}
@@ -79,6 +88,97 @@ export class ChannelCommandService {
     ].join("\n");
     return { plain, html };
   }
+
+  renderAuthStatus(status: { label: string; authenticated: boolean; method?: string; detail: string }): ChannelActionResponse {
+    const icon = status.authenticated ? "✅" : "❌";
+    return {
+      plain: [
+        `${icon} ${status.label} auth: ${status.authenticated ? "authenticated" : "not authenticated"}`,
+        `Method: ${status.method ?? "-"}`,
+        `Detail: ${status.detail}`,
+      ].join("\n"),
+      html: [
+        `<b>${icon} ${escapeHTML(status.label)} auth:</b> <code>${status.authenticated ? "authenticated" : "not authenticated"}</code>`,
+        `<b>Method:</b> <code>${escapeHTML(status.method ?? "-")}</code>`,
+        `<b>Detail:</b> <code>${escapeHTML(status.detail)}</code>`,
+      ].join("\n"),
+    };
+  }
+
+  renderAuthActionResult(action: "login" | "logout", result: { success: boolean; message: string }): ChannelActionResponse {
+    const label = action === "login" ? "Login" : "Logout";
+    const icon = result.success ? "✅" : "❌";
+    return {
+      plain: [`${icon} ${label} ${result.success ? "started" : "failed"}.`, "", result.message].join("\n"),
+      html: [`<b>${icon} ${escapeHTML(label)} ${result.success ? "started" : "failed"}.</b>`, "", `<code>${escapeHTML(result.message)}</code>`].join("\n"),
+    };
+  }
+
+  renderHostAuthInstruction(label: string, command: string, action: "login" | "logout"): ChannelActionResponse {
+    const text = `${label} ${action} is not managed remotely. Run this on the host: ${command}`;
+    return {
+      plain: text,
+      html: `<b>${escapeHTML(label)} ${escapeHTML(action)} is not managed remotely.</b>\nRun this on the host:\n<code>${escapeHTML(command)}</code>`,
+    };
+  }
+
+  renderProgress(progress: TurnProgress | undefined, queueLength: number, busyState: BusyState, info: AgentSessionInfo): ChannelActionResponse {
+    return {
+      plain: renderProgressPlain(progress, queueLength, busyState, info),
+      html: renderProgressHTML(progress, queueLength, busyState, info),
+    };
+  }
+
+  renderActivity(threadId: string, events: AgentActivityEvent[], options: ActivityOptions): ChannelActionResponse {
+    return renderActivityTimeline(threadId, events, options);
+  }
+
+  renderAudit(events: AuditEvent[]): ChannelActionResponse {
+    return renderAuditEvents(events);
+  }
+
+  renderWorkspaces(info: AgentSessionInfo, workspaces: string[]): ChannelActionResponse {
+    const unique = [...new Set(workspaces)].filter(Boolean);
+    const rows = unique.length > 0
+      ? unique.map((workspace, index) => `${index + 1}. ${workspace}${workspace === info.workspace ? " (current)" : ""}`)
+      : [`No workspaces found in ${info.agentLabel} state.`];
+    return {
+      plain: [`${info.agentLabel} workspaces:`, ...rows].join("\n"),
+      html: [
+        `<b>${escapeHTML(info.agentLabel)} workspaces:</b>`,
+        ...rows.map((line) => `<code>${escapeHTML(line)}</code>`),
+      ].join("\n"),
+    };
+  }
+
+  renderHandback(result: AgentHandbackResult): ChannelActionResponse {
+    const command = result.command ?? (result.threadId
+      ? `cd ${shellEscape(result.workspace)} && codex resume ${shellEscape(result.threadId)}`
+      : "");
+    if (!result.threadId || !command) {
+      const text = "This thread has not started yet, so there is no resumable thread ID. Send a message to create one, or start a new session.";
+      return { plain: text, html: escapeHTML(text) };
+    }
+    const label = result.label ?? "Agent CLI";
+    return {
+      plain: [
+        `Thread handed back to ${label}.`,
+        "",
+        "Run this in your terminal:",
+        command,
+        "",
+        "Send any message here to start a new NordRelay thread.",
+      ].join("\n"),
+      html: [
+        `<b>Thread handed back to ${escapeHTML(label)}.</b>`,
+        "",
+        "Run this in your terminal:",
+        `<pre>${escapeHTML(command)}</pre>`,
+        "",
+        "Send any message here to start a new NordRelay thread.",
+      ].join("\n"),
+    };
+  }
 }
 
 export function cliPathOptions(config: ConnectorConfig): {
@@ -93,4 +193,8 @@ export function cliPathOptions(config: ConnectorConfig): {
     openClawCliPath: config.openClawCliPath,
     claudeCodeCliPath: config.claudeCodeCliPath,
   };
+}
+
+function shellEscape(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }

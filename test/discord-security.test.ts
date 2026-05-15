@@ -10,6 +10,7 @@ import {
   permissionForDiscordAction,
   requiredPermissionForDiscordCommand,
 } from "../src/discord-bot.js";
+import { discordCommands } from "../src/discord-command-surface.js";
 import { discordContextKey } from "../src/context-key.js";
 import { USER_GROUP_ID } from "../src/access-control.js";
 import { UserStore } from "../src/user-management.js";
@@ -79,6 +80,30 @@ describe("Discord security boundaries", () => {
     expect(requiredPermissionForDiscordCommand("queue", "cancel abc")).toBe("queue.write");
     expect(permissionForDiscordAction("discord_queue_cancel:ctx:abc")).toBe("queue.write");
     expect(permissionForDiscordAction("discord_abort:ctx")).toBe("prompt.abort");
+    expect(permissionForDiscordAction("discord_artifact_send:ctx:turn")).toBe("files.read");
+    expect(permissionForDiscordAction("discord_artifact_delete:ctx:turn")).toBe("files.write");
+    expect(permissionForDiscordAction("agent-update:cancel:job")).toBe("updates.run");
     expect(permissionForDiscordAction("discord_unknown:ctx")).toBeNull();
+  });
+
+  it("registers the shared Discord command surface for Telegram-parity commands", () => {
+    const names = new Set(discordCommands().map((command) => String(command.name)));
+
+    for (const command of [
+      "auth",
+      "login",
+      "logout",
+      "restart",
+      "audit",
+      "workspaces",
+      "pin",
+      "unpin",
+      "pinned",
+      "handback",
+      "progress",
+      "launch_profiles",
+    ]) {
+      expect(names.has(command)).toBe(true);
+    }
   });
 });

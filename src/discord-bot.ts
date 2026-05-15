@@ -1,13 +1,11 @@
 import { randomUUID } from "node:crypto";
 import {
-  ChannelType,
   Client,
   Events,
   GatewayIntentBits,
   Partials,
   REST,
   Routes,
-  type APIApplicationCommandOption,
   type ChatInputCommandInteraction,
   type Interaction,
   type Message,
@@ -15,35 +13,37 @@ import {
   type User,
 } from "discord.js";
 
-import { ADMIN_GROUP_ID, permissionForCommand, type Permission } from "./access-control.js";
+import { ADMIN_GROUP_ID, type Permission } from "./access-control.js";
 import { agentLabel, agentReasoningLabel, agentReasoningOptions, type AgentExternalSnapshot, type AgentId, type AgentPromptInput, type AgentSessionCallbacks, type AgentSessionInfo, type AgentSessionService } from "./agent.js";
-import { getExternalSnapshotForSession } from "./agent-activity.js";
+import { getAgentActivityLog, getExternalSnapshotForSession } from "./agent-activity.js";
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { AgentUpdateManager, type AgentUpdateOperation } from "./agent-updates.js";
 import { enabledAgents } from "./agent-factory.js";
 import { collectRecentWorkspaceArtifacts, ensureOutDir, formatArtifactSummary, persistWorkspaceArtifactReport } from "./artifacts.js";
 import { buildFileInstructions, outboxPath, stageFile, type StagedFile } from "./attachments.js";
 import { AuditLogStore, type AuditEvent } from "./audit-log.js";
-import { BotPreferencesStore, parseMirrorMode, parseNotifyMode } from "./bot-preferences.js";
-import { capabilitiesOf, formatDurationSeconds, formatLocalDateTime, renderExternalMirrorEvent, renderExternalMirrorStatus, renderPromptFailure, trimLine } from "./bot-rendering.js";
-import { renderAgentUpdateJobAction, renderAgentUpdateJobsAction } from "./channel-actions.js";
+import { BotPreferencesStore, parseMirrorMode, parseNotifyMode, parseVoiceBackendPreference } from "./bot-preferences.js";
+import { capabilitiesOf, filterActivityEvents, formatLocalDateTime, parseActivityOptions, renderExternalMirrorEvent, renderExternalMirrorStatus, renderPromptFailure, trimLine, type TurnProgress } from "./bot-rendering.js";
+import { renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction } from "./channel-actions.js";
 import { ChannelCommandService } from "./channel-command-service.js";
 import { deliverChannelAction } from "./channel-runtime.js";
 import type { ChannelContext } from "./channel-adapter.js";
-import { checkAuthStatus } from "./codex-auth.js";
-import { checkClaudeCodeAuthStatus } from "./claude-code-auth.js";
+import { checkAuthStatus, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
+import { checkClaudeCodeAuthStatus, startClaudeCodeLogin, startClaudeCodeLogout } from "./claude-code-auth.js";
 import type { ConnectorConfig, ToolVerbosity } from "./config.js";
 import { discordContextKey, isDiscordContextKey, parseDiscordContextKey, type ChannelContextKey } from "./context-key.js";
 import { DiscordBotChannelRuntime, actionFromDiscordCustomId, discordActionRows, splitDiscordMessage, trimDiscordMessage } from "./discord-channel-runtime.js";
+import { createDiscordArtifactCommandHandler, sendRecentDiscordArtifacts } from "./discord-artifacts.js";
+import { argumentFromDiscordInteraction, discordCommands, isUnauthenticatedDiscordCommandAllowed, parseDiscordMessageCommand, permissionForDiscordAction, requiredPermissionForDiscordCommand } from "./discord-command-surface.js";
 import { discordRateLimiter, getDiscordRateLimitMetrics } from "./discord-rate-limit.js";
 import { friendlyErrorText } from "./error-messages.js";
-import { checkHermesAuthStatus } from "./hermes-auth.js";
+import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./hermes-auth.js";
 import { spawnConnectorRestart, spawnSelfUpdate } from "./operations.js";
 import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
 import { checkPiAuthStatus } from "./pi-auth.js";
-import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
+import { PromptStore, toPromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
 import { RelayArtifactService } from "./relay-artifact-service.js";
-import { configureRedaction } from "./redaction.js";
+import { configureRedaction, redactText } from "./redaction.js";
 import { renderSessionInfoPlain } from "./session-format.js";
 import { canWriteWithLock, SessionLockStore } from "./session-locks.js";
 import { SessionRegistry } from "./session-registry.js";
@@ -51,6 +51,8 @@ import { transcribeAudio, type TranscriptionBackend } from "./voice.js";
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "./workspace-policy.js";
 import { UserStore, type AuthenticatedUser } from "./user-management.js";
 import { WebActivityStore, type WebActivityActor } from "./web-state.js";
+
+export { isUnauthenticatedDiscordCommandAllowed, permissionForDiscordAction, requiredPermissionForDiscordCommand } from "./discord-command-surface.js";
 
 const EDIT_DEBOUNCE_MS = 1500;
 const TYPING_INTERVAL_MS = 4500;
@@ -148,6 +150,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
   const agentUpdates = new AgentUpdateManager();
   const commandService = new ChannelCommandService(config);
   const busyStates = new Map<ChannelContextKey, BusyState>();
+  const turnProgress = new Map<ChannelContextKey, TurnProgress>();
   const draining = new Set<ChannelContextKey>();
   const picks = new Map<string, PickState>();
   const responseOwners = new Map<string, ChannelContextKey>();
@@ -312,6 +315,16 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
   const updateSession = (request: DiscordRequest, session: AgentSessionService): void => {
     registry.updateMetadata(request.contextKey, session);
   };
+
+  const artifactDeps = {
+    config,
+    runtime,
+    artifactService,
+    getSession,
+    reply,
+    appendActivity,
+  };
+  const commandArtifacts = createDiscordArtifactCommandHandler<DiscordRequest>(artifactDeps);
 
   const getBusyReason = (contextKey: ChannelContextKey): BusyReason => {
     const state = busyStates.get(contextKey);
@@ -575,6 +588,48 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     return checkAuthStatus(config.codexApiKey);
   };
 
+  const checkLoginAuthStatus = async (info: AgentSessionInfo): Promise<{ authenticated: boolean; detail: string; method?: string }> => {
+    if (info.agentId === "hermes") return checkHermesAuthStatus({ baseUrl: config.hermesApiBaseUrl, apiKey: config.hermesApiKey });
+    if (info.agentId === "claude-code") return checkClaudeCodeAuthStatus(config.claudeCodeCliPath);
+    return checkAuthStatus(config.codexApiKey);
+  };
+
+  const startAgentLogin = (info: AgentSessionInfo): Promise<LoginResult> => {
+    if (info.agentId === "hermes") return startHermesLogin(config.hermesCliPath);
+    if (info.agentId === "claude-code") return startClaudeCodeLogin(config.claudeCodeCliPath);
+    if (info.agentId === "codex") return startCodexLogin();
+    return Promise.resolve({
+      success: false,
+      message: `${info.agentLabel} login is not managed by NordRelay. Run the agent login flow on the host.`,
+    });
+  };
+
+  const startAgentLogout = (info: AgentSessionInfo): Promise<LoginResult> => {
+    if (info.agentId === "hermes") return startHermesLogout(config.hermesCliPath);
+    if (info.agentId === "claude-code") return startClaudeCodeLogout(config.claudeCodeCliPath);
+    if (info.agentId === "codex") return startCodexLogout();
+    return Promise.resolve({
+      success: false,
+      message: `${info.agentLabel} logout is not managed by NordRelay. Run the agent logout flow on the host.`,
+    });
+  };
+
+  const hostLoginCommand = (info: AgentSessionInfo): string => {
+    if (info.agentId === "hermes") return `${config.hermesCliPath ?? "hermes"} login --no-browser`;
+    if (info.agentId === "claude-code") return `${config.claudeCodeCliPath ?? "claude"} auth login`;
+    if (info.agentId === "pi") return `${config.piCliPath ?? "pi"} auth login`;
+    if (info.agentId === "openclaw") return `${config.openClawCliPath ?? "openclaw"} login`;
+    return "codex login --device-auth";
+  };
+
+  const hostLogoutCommand = (info: AgentSessionInfo): string => {
+    if (info.agentId === "hermes") return `${config.hermesCliPath ?? "hermes"} logout`;
+    if (info.agentId === "claude-code") return `${config.claudeCodeCliPath ?? "claude"} auth logout`;
+    if (info.agentId === "pi") return `${config.piCliPath ?? "pi"} auth logout`;
+    if (info.agentId === "openclaw") return `${config.openClawCliPath ?? "openclaw"} logout`;
+    return "codex logout";
+  };
+
   const denyIfLocked = async (request: DiscordRequest): Promise<boolean> => {
     const lock = lockStore.get(request.contextKey);
     const isAdmin = request.authUser?.groups.some((group) => group.id === ADMIN_GROUP_ID) ?? false;
@@ -639,6 +694,15 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     const toolVerbosity: ToolVerbosity = config.toolVerbosity;
     const startedAt = Date.now();
     const turnId = randomUUID().slice(0, 12);
+    const progress: TurnProgress = {
+      status: "running",
+      promptDescription: envelope.description,
+      startedAt,
+      updatedAt: startedAt,
+      toolCounts,
+      textCharacters: 0,
+    };
+    turnProgress.set(request.contextKey, progress);
 
     const scheduleFlush = (): void => {
       if (flushTimer || !running) {
@@ -707,10 +771,15 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     const callbacks: AgentSessionCallbacks = {
       onTextDelta: (delta) => {
         accumulatedText += delta;
+        progress.textCharacters = accumulatedText.length;
+        progress.updatedAt = Date.now();
         void ensureResponse().then(() => scheduleFlush()).catch((error) => console.error("Failed to send Discord response:", error));
       },
       onToolStart: (toolName) => {
         toolCounts.set(toolName, (toolCounts.get(toolName) ?? 0) + 1);
+        progress.currentTool = toolName;
+        progress.lastTool = toolName;
+        progress.updatedAt = Date.now();
         appendActivity(request, {
           status: "running",
           type: "tool_started",
@@ -726,6 +795,8 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       },
       onToolUpdate: () => {},
       onToolEnd: (_toolCallId, isError) => {
+        progress.currentTool = undefined;
+        progress.updatedAt = Date.now();
         appendActivity(request, {
           status: isError ? "failed" : "completed",
           type: isError ? "tool_failed" : "tool_completed",
@@ -737,6 +808,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
         });
       },
       onTodoUpdate: (items) => {
+        progress.updatedAt = Date.now();
         const text = [
           "Plan:",
           ...items.map((item) => `${item.completed ? "[x]" : "[ ]"} ${item.text}`),
@@ -751,6 +823,9 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       },
       onTurnComplete: () => {},
       onAgentEnd: () => {
+        progress.status = "completed";
+        progress.completedAt = Date.now();
+        progress.updatedAt = progress.completedAt;
         void finalize().catch((error) => console.error("Failed to finalize Discord response:", error));
       },
     };
@@ -790,10 +865,13 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
 
       await session.prompt(envelope.input, callbacks);
       updateSession(request, session);
+      progress.status = "completed";
+      progress.completedAt = Date.now();
+      progress.updatedAt = progress.completedAt;
       await finalize();
       await artifactService.persistWorkspaceArtifactsForTurn(session.getInfo().workspace, turnId, new Date(startedAt));
       if (config.discordAutoSendArtifacts) {
-        await sendRecentArtifacts(request, session, new Date(startedAt), turnId);
+        await sendRecentDiscordArtifacts(artifactDeps, request, session, new Date(startedAt), turnId);
       }
       appendActivity(request, {
         status: "completed",
@@ -813,6 +891,10 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
         description: envelope.description,
       });
     } catch (error) {
+      progress.status = "failed";
+      progress.completedAt = Date.now();
+      progress.updatedAt = progress.completedAt;
+      progress.error = friendlyErrorText(error);
       const errorText = renderPromptFailure(accumulatedText, error);
       if (responseMessageId) {
         await runtime.editMessage(request.context, responseMessageId, { text: trimDiscordMessage(errorText), fallbackText: trimDiscordMessage(errorText) }).catch(() => {});
@@ -861,32 +943,6 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     } finally {
       draining.delete(request.contextKey);
     }
-  };
-
-  const sendRecentArtifacts = async (request: DiscordRequest, session: AgentSessionService, since: Date, turnId: string): Promise<void> => {
-    const report = await collectRecentWorkspaceArtifacts(session.getInfo().workspace, {
-      since,
-      until: new Date(),
-      maxFileSize: config.maxFileSize,
-      limit: 5,
-    });
-    if (report.artifacts.length === 0) {
-      return;
-    }
-    await reply(request, `${report.artifacts.length} artifacts generated.`);
-    for (const artifact of report.artifacts.slice(0, 5)) {
-      await runtime.sendFile(request.context, { localPath: artifact.localPath, name: artifact.name }).catch((error) => {
-        console.error(`Failed to send Discord artifact ${artifact.name}:`, error);
-      });
-    }
-    appendActivity(request, {
-      status: "info",
-      type: "artifacts_sent",
-      detail: `${report.artifacts.length} artifacts for ${turnId}`,
-      threadId: session.getInfo().threadId,
-      workspace: session.getInfo().workspace,
-      agentId: session.getInfo().agentId,
-    });
   };
 
   const deliverCliGeneratedArtifacts = async (
@@ -973,6 +1029,15 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       case "agent":
         await commandAgent(request, argument);
         return;
+      case "auth":
+        await commandAuth(request);
+        return;
+      case "login":
+        await commandLogin(request);
+        return;
+      case "logout":
+        await commandLogout(request);
+        return;
       case "session":
         await commandSession(request);
         return;
@@ -1021,9 +1086,15 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       case "sync":
         await commandSync(request);
         return;
-      case "activity":
       case "tasks":
+      case "progress":
+        await commandProgress(request);
+        return;
+      case "activity":
         await commandActivity(request, argument);
+        return;
+      case "audit":
+        await commandAudit(request, argument);
         return;
       case "artifacts":
         await commandArtifacts(request, argument);
@@ -1041,6 +1112,9 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
         return;
       case "support":
         await commandDiagnostics(request);
+        return;
+      case "restart":
+        await commandRestart(request);
         return;
       case "update":
         await commandUpdate(request, argument);
@@ -1063,6 +1137,21 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
         return;
       case "voice":
         await commandVoice(request, argument);
+        return;
+      case "workspaces":
+        await commandWorkspaces(request);
+        return;
+      case "pin":
+        await commandPin(request, argument);
+        return;
+      case "unpin":
+        await commandUnpin(request, argument);
+        return;
+      case "pinned":
+        await commandPinned(request);
+        return;
+      case "handback":
+        await commandHandback(request);
         return;
       case "register_channel":
         await commandRegisterChannel(request);
@@ -1088,7 +1177,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       "",
       "Send a message to prompt the selected agent, or use slash commands.",
       "",
-      "Core commands: `/agent`, `/session`, `/sessions`, `/new`, `/switch`, `/model`, `/reasoning`, `/fast`, `/queue`, `/stop`, `/retry`, `/artifacts`, `/logs`, `/version`, `/diagnostics`, `/update`, `/lock`, `/unlock`.",
+      "Core commands: `/agent`, `/agents`, `/auth`, `/login`, `/logout`, `/session`, `/sessions`, `/new`, `/switch`, `/attach`, `/handback`, `/workspaces`, `/pin`, `/unpin`, `/pinned`, `/model`, `/reasoning`, `/fast`, `/launch`, `/launch_profiles`, `/queue`, `/clearqueue`, `/cancel`, `/stop`, `/retry`, `/sync`, `/progress`, `/activity`, `/audit`, `/artifacts`, `/logs`, `/version`, `/diagnostics`, `/support`, `/restart`, `/update`, `/lock`, `/unlock`, `/locks`, `/mirror`, `/notify`, `/voice`, `/channels`, `/whoami`, `/link`, `/register_channel`.",
       "",
       renderSessionInfoPlain(session.getInfo()),
     ].join("\n"));
@@ -1118,6 +1207,88 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     await reply(request, "Select agent:", {
       buttons: choices.map((id, index) => [{ label: agentLabel(id), action: `discord_pick:${pickId}:${index}` }]),
     });
+  };
+
+  const commandAuth = async (request: DiscordRequest): Promise<void> => {
+    const session = await getSession(request, { deferThreadStart: true });
+    const info = session.getInfo();
+    if (!capabilitiesOf(info).auth) {
+      await deliverChannelAction(runtime, request.context, commandService.renderHostAuthInstruction(info.agentLabel, hostLoginCommand(info), "login"));
+      return;
+    }
+    const status = await checkAgentAuthStatus(info);
+    await deliverChannelAction(runtime, request.context, commandService.renderAuthStatus({
+      label: info.agentLabel,
+      authenticated: status.authenticated,
+      method: status.method,
+      detail: status.detail,
+    }));
+  };
+
+  const commandLogin = async (request: DiscordRequest): Promise<void> => {
+    const session = await getSession(request, { deferThreadStart: true });
+    const info = session.getInfo();
+    if (!capabilitiesOf(info).login) {
+      await deliverChannelAction(runtime, request.context, commandService.renderHostAuthInstruction(info.agentLabel, hostLoginCommand(info), "login"));
+      return;
+    }
+    const auth = await checkLoginAuthStatus(info);
+    if (info.agentId !== "hermes" && auth.authenticated) {
+      await reply(request, `${info.agentLabel} is already authenticated via ${auth.method ?? "unknown"}.`);
+      return;
+    }
+    if (!config.enableTelegramLogin) {
+      await reply(request, `Remote login is disabled. Run this on the host: ${hostLoginCommand(info)}`);
+      return;
+    }
+    const result = await startAgentLogin(info);
+    appendActivity(request, {
+      status: result.success ? "info" : "failed",
+      type: result.success ? "login_started" : "login_failed",
+      threadId: info.threadId,
+      workspace: info.workspace,
+      agentId: info.agentId,
+      detail: redactText(result.message),
+    });
+    await deliverChannelAction(runtime, request.context, commandService.renderAuthActionResult("login", {
+      ...result,
+      message: redactText(result.message),
+    }));
+  };
+
+  const commandLogout = async (request: DiscordRequest): Promise<void> => {
+    const session = await getSession(request, { deferThreadStart: true });
+    const info = session.getInfo();
+    if (!capabilitiesOf(info).logout) {
+      await deliverChannelAction(runtime, request.context, commandService.renderHostAuthInstruction(info.agentLabel, hostLogoutCommand(info), "logout"));
+      return;
+    }
+    const auth = await checkLoginAuthStatus(info);
+    if (auth.method === "api-key") {
+      await reply(request, `Cannot logout ${info.agentLabel} while API-key authentication is active. Remove the API key from .env to use CLI auth.`);
+      return;
+    }
+    if (!config.enableTelegramLogin) {
+      await reply(request, `Remote auth management is disabled. Run this on the host: ${hostLogoutCommand(info)}`);
+      return;
+    }
+    if (info.agentId !== "hermes" && !auth.authenticated) {
+      await reply(request, `${info.agentLabel} is not currently authenticated.`);
+      return;
+    }
+    const result = await startAgentLogout(info);
+    appendActivity(request, {
+      status: result.success ? "info" : "failed",
+      type: result.success ? "logout_completed" : "logout_failed",
+      threadId: info.threadId,
+      workspace: info.workspace,
+      agentId: info.agentId,
+      detail: redactText(result.message),
+    });
+    await deliverChannelAction(runtime, request.context, commandService.renderAuthActionResult("logout", {
+      ...result,
+      message: redactText(result.message),
+    }));
   };
 
   const commandSession = async (request: DiscordRequest): Promise<void> => {
@@ -1234,11 +1405,28 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       await reply(request, `Launch profiles are not supported for ${session.getInfo().agentLabel}.`);
       return;
     }
-    const requested = argument.trim();
+    const parts = argument.trim().split(/\s+/).filter(Boolean);
+    const requested = parts[0] ?? "";
+    const confirmed = parts.slice(1).some((part) => part.toLowerCase() === "confirm");
     if (requested) {
-      session.setLaunchProfile(requested);
+      const profile = session.listLaunchProfiles().find((candidate) => candidate.id === requested);
+      if (!profile) {
+        await reply(request, `Unknown launch profile: ${requested}`);
+        return;
+      }
+      if (profile.unsafe && !confirmed) {
+        await reply(request, [
+          `Confirm launch profile: ${profile.label}`,
+          `Behavior: ${profile.behavior}`,
+          "",
+          "WARNING: This profile uses danger-full-access.",
+          `Run \`/launch ${profile.id} confirm\` to enable it for new or reattached threads in this Discord context.`,
+        ].join("\n"));
+        return;
+      }
+      session.setLaunchProfile(profile.id);
       updateSession(request, session);
-      await reply(request, `Launch profile set to ${requested}.`);
+      await reply(request, `Launch profile set to ${profile.label}.\nBehavior: ${profile.behavior}`);
       return;
     }
     const profiles = session.listLaunchProfiles();
@@ -1256,12 +1444,13 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
         await reply(request, promptStore.isPaused(request.contextKey) ? "Queue is paused and empty." : "Queue is empty.");
         return;
       }
-      await reply(request, [
-        `Queue${promptStore.isPaused(request.contextKey) ? " (paused)" : ""}:`,
-        ...queue.map((item, index) => `${index + 1}. ${item.id}: ${item.description}`),
-      ].join("\n"), {
-        buttons: queue.slice(0, 10).map((item) => [
+      await deliverChannelAction(runtime, request.context, {
+        ...renderQueueListAction(queue, promptStore.isPaused(request.contextKey)),
+        buttons: queue.slice(0, 5).map((item) => [
           { label: `Run ${item.id}`, action: `discord_queue_run:${request.contextKey}:${item.id}` },
+          { label: "Top", action: `discord_queue_top:${request.contextKey}:${item.id}` },
+          { label: "Up", action: `discord_queue_up:${request.contextKey}:${item.id}` },
+          { label: "Down", action: `discord_queue_down:${request.contextKey}:${item.id}` },
           { label: `Cancel ${item.id}`, action: `discord_queue_cancel:${request.contextKey}:${item.id}` },
         ]),
       });
@@ -1321,26 +1510,44 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     await reply(request, `Sync complete: ${result.changedFields.join(", ") || "already current"}.`);
   };
 
-  const commandActivity = async (request: DiscordRequest, argument: string): Promise<void> => {
-    const limit = Math.max(1, Math.min(20, Number.parseInt(argument, 10) || 10));
-    const events = activityStore.list({ limit, source: "all" });
-    await reply(request, events.map((event) => `${formatLocalDateTime(new Date(event.timestamp))} ${event.source}/${event.status} ${event.type}: ${event.prompt || event.detail || ""}`).join("\n") || "No activity.");
+  const commandProgress = async (request: DiscordRequest): Promise<void> => {
+    const session = await getSession(request, { deferThreadStart: true });
+    const external = getExternalSnapshotForSession(session, config, { maxEvents: 0 });
+    const state = getBusyState(request.contextKey);
+    await deliverChannelAction(runtime, request.context, commandService.renderProgress(
+      turnProgress.get(request.contextKey),
+      promptStore.list(request.contextKey).length,
+      {
+        processing: state.processing || session.isProcessing(),
+        switching: state.switching,
+        transcribing: false,
+        approving: false,
+        external: Boolean(external?.activity.active),
+      },
+      session.getInfo(),
+    ));
   };
 
-  const commandArtifacts = async (request: DiscordRequest, argument: string): Promise<void> => {
+  const commandActivity = async (request: DiscordRequest, argument: string): Promise<void> => {
     const session = await getSession(request, { deferThreadStart: true });
-    const [action, turnId] = argument.trim().split(/\s+/, 2);
-    if (action === "zip" && turnId) {
-      const zip = await artifactService.createZip(session.getInfo().workspace, turnId);
-      if (!zip) {
-        await reply(request, "Could not create ZIP for artifact turn.");
-        return;
-      }
-      await runtime.sendFile(request.context, { localPath: zip.path, name: zip.name });
+    const info = session.getInfo();
+    if (!capabilitiesOf(info).activityLog) {
+      await reply(request, `${info.agentLabel} activity timelines are not available yet.`);
       return;
     }
-    const reports = await artifactService.list(session.getInfo().workspace, 10);
-    await reply(request, reports.map((report) => `${report.turnId}: ${report.artifacts.length} files, ${report.totalSizeBytes} bytes`).join("\n") || "No generated artifacts found for this workspace.");
+    const threadId = session.getActiveThreadId();
+    if (!threadId) {
+      await reply(request, "No active thread yet.");
+      return;
+    }
+    const options = parseActivityOptions(argument);
+    const events = filterActivityEvents(getAgentActivityLog(session, config, options.exportFile ? 200 : options.limit), options);
+    await deliverChannelAction(runtime, request.context, commandService.renderActivity(threadId, events, options));
+  };
+
+  const commandAudit = async (request: DiscordRequest, argument: string): Promise<void> => {
+    const limit = Math.max(1, Math.min(100, Number.parseInt(argument, 10) || 20));
+    await deliverChannelAction(runtime, request.context, commandService.renderAudit(auditLog.list(limit)));
   };
 
   const commandLogs = async (request: DiscordRequest, argument: string): Promise<void> => {
@@ -1369,14 +1576,48 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
   };
 
   const commandUpdate = async (request: DiscordRequest, argument: string): Promise<void> => {
-    const [target, second] = argument.trim().split(/\s+/, 2);
+    const tokens = argument.trim().split(/\s+/).filter(Boolean);
+    const [target, second] = tokens;
     if (!target) {
       const update = spawnSelfUpdate();
       await reply(request, `NordRelay update started with ${update.method}. Log: ${update.logPath}`);
       return;
     }
+    if (target === "agents" || target === "agent") {
+      await deliverChannelAction(runtime, request.context, renderAgentUpdatePickerAction(listAgentAdapterDescriptors()));
+      return;
+    }
     if (target === "jobs") {
       await deliverChannelAction(runtime, request.context, renderAgentUpdateJobsAction(agentUpdates.list()));
+      return;
+    }
+    if (target === "log" && second) {
+      await deliverChannelAction(runtime, request.context, renderAgentUpdateLogAction(agentUpdates.readLog(second)));
+      return;
+    }
+    if (target === "cancel" && second) {
+      await deliverChannelAction(runtime, request.context, renderAgentUpdateJobAction(agentUpdates.cancel(second)));
+      appendActivity(request, {
+        status: "info",
+        type: "agent_update_cancel_requested",
+        workspace: config.workspace,
+        detail: second,
+      });
+      return;
+    }
+    if (target === "input" && second) {
+      const input = tokens.slice(2).join(" ");
+      if (!input.trim()) {
+        await reply(request, "Usage: `/update input <job-id> <text>`");
+        return;
+      }
+      await deliverChannelAction(runtime, request.context, renderAgentUpdateJobAction(agentUpdates.sendInput(second, input)));
+      appendActivity(request, {
+        status: "info",
+        type: "agent_update_input_sent",
+        workspace: config.workspace,
+        detail: second,
+      });
       return;
     }
     const operation: AgentUpdateOperation = target === "install" ? "install" : "update";
@@ -1405,6 +1646,114 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     await reply(request, "Session locked to you.");
   };
 
+  const commandRestart = async (request: DiscordRequest): Promise<void> => {
+    spawnConnectorRestart();
+    appendActivity(request, {
+      status: "info",
+      type: "connector_restart_requested",
+      workspace: config.workspace,
+      detail: "Discord restart command",
+    });
+    await reply(request, "Restarting connector. Discord may disconnect briefly.");
+  };
+
+  const commandWorkspaces = async (request: DiscordRequest): Promise<void> => {
+    const session = await getSession(request, { deferThreadStart: true });
+    const info = session.getInfo();
+    if (!capabilitiesOf(info).workspaces) {
+      await reply(request, `${info.agentLabel} workspace listing is not supported.`);
+      return;
+    }
+    await deliverChannelAction(runtime, request.context, commandService.renderWorkspaces(
+      info,
+      filterAllowedWorkspaces(session.listWorkspaces(), config),
+    ));
+  };
+
+  const commandPin = async (request: DiscordRequest, argument: string): Promise<void> => {
+    const session = await getSession(request, { deferThreadStart: true });
+    const threadId = argument.trim() || session.getActiveThreadId();
+    if (!threadId) {
+      await reply(request, "No active thread to pin. Use `/pin <thread-id>`.");
+      return;
+    }
+    if (!session.getSessionRecord(threadId)) {
+      await reply(request, `Unknown ${session.getInfo().agentLabel} session: ${threadId}`);
+      return;
+    }
+    const pinned = registry.pinThread(request.contextKey, threadId);
+    appendActivity(request, {
+      status: "info",
+      type: "session_pinned",
+      threadId,
+      workspace: session.getSessionRecord(threadId)?.cwd ?? session.getInfo().workspace,
+      agentId: session.getInfo().agentId,
+      detail: threadId,
+    });
+    await reply(request, `Pinned thread: ${threadId}\nTotal pinned: ${pinned.length}`);
+  };
+
+  const commandUnpin = async (request: DiscordRequest, argument: string): Promise<void> => {
+    const session = await getSession(request, { deferThreadStart: true });
+    const threadId = argument.trim() || session.getActiveThreadId();
+    if (!threadId) {
+      await reply(request, "No active thread to unpin. Use `/unpin <thread-id>`.");
+      return;
+    }
+    const pinned = registry.unpinThread(request.contextKey, threadId);
+    appendActivity(request, {
+      status: "info",
+      type: "session_unpinned",
+      threadId,
+      workspace: session.getInfo().workspace,
+      agentId: session.getInfo().agentId,
+      detail: threadId,
+    });
+    await reply(request, `Unpinned thread: ${threadId}\nTotal pinned: ${pinned.length}`);
+  };
+
+  const commandPinned = async (request: DiscordRequest): Promise<void> => {
+    const session = await getSession(request, { deferThreadStart: true });
+    const pinned = registry.listPinnedThreadIds(request.contextKey);
+    const records = pinned
+      .map((threadId) => session.getSessionRecord(threadId))
+      .filter((record): record is NonNullable<ReturnType<AgentSessionService["getSessionRecord"]>> => Boolean(record));
+    if (records.length === 0) {
+      await reply(request, "No pinned threads.");
+      return;
+    }
+    const pickId = createPick("session", records.map((record) => record.id));
+    await reply(request, [
+      `Pinned threads (${records.length}):`,
+      ...records.map((record, index) => `${index + 1}. ${record.title || record.id}\n   ${record.id}\n   ${record.cwd || "-"}`),
+    ].join("\n"), {
+      buttons: records.map((record, index) => [{ label: trimLine(record.title || record.id, 70), action: `discord_pick:${pickId}:${index}` }]),
+    });
+  };
+
+  const commandHandback = async (request: DiscordRequest): Promise<void> => {
+    const session = await getSession(request, { deferThreadStart: true });
+    if (getBusyReason(request.contextKey).busy) {
+      await reply(request, "Cannot hand back while a prompt is running. Use `/stop` first.");
+      return;
+    }
+    if (!session.hasActiveThread()) {
+      await reply(request, "No active thread to hand back.");
+      return;
+    }
+    const result = session.handback();
+    updateSession(request, session);
+    appendActivity(request, {
+      status: "info",
+      type: "handback",
+      threadId: result.threadId,
+      workspace: result.workspace,
+      agentId: session.getInfo().agentId,
+      detail: result.command ?? result.threadId ?? "handback",
+    });
+    await deliverChannelAction(runtime, request.context, commandService.renderHandback(result));
+  };
+
   const commandMirror = async (request: DiscordRequest, argument: string): Promise<void> => {
     const mode = parseMirrorMode(argument, preferencesStore.get(request.contextKey).mirrorMode ?? config.discordMirrorMode);
     preferencesStore.update(request.contextKey, { mirrorMode: mode });
@@ -1418,8 +1767,18 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
   };
 
   const commandVoice = async (request: DiscordRequest, argument: string): Promise<void> => {
-    if (argument.trim() === "transcribe-only on") preferencesStore.update(request.contextKey, { voiceTranscribeOnly: true });
-    else if (argument.trim() === "transcribe-only off") preferencesStore.update(request.contextKey, { voiceTranscribeOnly: false });
+    const normalized = argument.trim().toLowerCase();
+    const parts = normalized.split(/\s+/).filter(Boolean);
+    if (parts[0] === "backend" && parts[1]) {
+      preferencesStore.update(request.contextKey, { voiceBackend: parseVoiceBackendPreference(parts[1]) });
+    } else if (parts[0] === "language" && parts[1]) {
+      preferencesStore.update(request.contextKey, { voiceLanguage: parts[1] === "auto" ? null : parts[1] });
+    } else if ((parts[0] === "transcribe-only" || parts[0] === "transcribe_only") && parts[1]) {
+      preferencesStore.update(request.contextKey, { voiceTranscribeOnly: ["on", "true", "yes", "1"].includes(parts[1]) });
+    } else if (argument.trim()) {
+      await reply(request, "Usage: `/voice`, `/voice backend auto|parakeet|faster-whisper|openai`, `/voice language auto|<code>`, or `/voice transcribe_only on|off`.");
+      return;
+    }
     const prefs = preferencesStore.get(request.contextKey);
     await reply(request, `Voice backend: ${prefs.voiceBackend ?? config.voicePreferredBackend}\nLanguage: ${prefs.voiceLanguage ?? config.voiceDefaultLanguage ?? "auto"}\nTranscribe only: ${prefs.voiceTranscribeOnly ?? config.voiceTranscribeOnly}`);
   };
@@ -1510,7 +1869,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     if (message.author.bot) return;
     const request = requestFromMessage(message);
     const text = message.content.trim();
-    const parsed = parseMessageCommand(text);
+    const parsed = parseDiscordMessageCommand(text);
     if (parsed) {
       if (config.discordCommandMode === "slash") return;
       await handleCommand(request, parsed.command, parsed.argument);
@@ -1534,7 +1893,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     if (interaction.isChatInputCommand()) {
       if (config.discordCommandMode === "message") return;
       const request = requestFromInteraction(interaction);
-      const argument = argumentFromInteraction(interaction);
+      const argument = argumentFromDiscordInteraction(interaction);
       await handleCommand(request, interaction.commandName, argument);
       return;
     }
@@ -1572,6 +1931,23 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     const queueMatch = action.match(/^discord_queue_(run|cancel|top|up|down):(.+):([^:]+)$/);
     if (queueMatch?.[1] && queueMatch[2] === request.contextKey) {
       await commandQueue(request, `${queueMatch[1]} ${queueMatch[3]}`);
+      return;
+    }
+    const artifactMatch = action.match(/^discord_artifact_(send|zip|delete):(.+):([^:]+)$/);
+    if (artifactMatch?.[1] && artifactMatch[2] === request.contextKey) {
+      await commandArtifacts(request, `${artifactMatch[1]} ${artifactMatch[3]}`);
+      return;
+    }
+    const updateMatch = action.match(/^agent-update:(start|log|cancel):(.+)$/);
+    if (updateMatch?.[1]) {
+      const updateAction = updateMatch[1];
+      const value = updateMatch[2] ?? "";
+      if (updateAction === "start") await commandUpdate(request, value);
+      else await commandUpdate(request, `${updateAction} ${value}`);
+      return;
+    }
+    if (action === "agent-update:jobs") {
+      await commandUpdate(request, "jobs");
       return;
     }
     const abortMatch = action.match(/^discord_abort:(.+)$/);
@@ -1774,104 +2150,6 @@ export function canSendSystemMessagesToDiscordContext(userStore: UserStore, cont
     channel.channelId === parsed.channelId &&
     (channel.guildId ?? "") === (parsed.guildId ?? "")
   );
-}
-
-function parseMessageCommand(text: string): { command: string; argument: string } | null {
-  const match = text.match(/^\/([a-zA-Z0-9_-]+)(?:\s+([\s\S]*))?$/);
-  return match?.[1] ? { command: match[1].toLowerCase(), argument: match[2]?.trim() ?? "" } : null;
-}
-
-function argumentFromInteraction(interaction: ChatInputCommandInteraction): string {
-  if (interaction.commandName === "prompt") {
-    return interaction.options.getString("text") ?? "";
-  }
-  if (interaction.commandName === "queue") {
-    return [interaction.options.getString("action"), interaction.options.getString("id")].filter(Boolean).join(" ");
-  }
-  if (interaction.commandName === "update") {
-    return [interaction.options.getString("target"), interaction.options.getString("agent")].filter(Boolean).join(" ");
-  }
-  return interaction.options.getString("value") ?? interaction.options.getString("query") ?? interaction.options.getString("thread_id") ?? "";
-}
-
-export function requiredPermissionForDiscordCommand(command: string, argument: string): Permission | null {
-  if (command === "prompt") return "prompt.send";
-  if (command === "queue") return argument.trim() ? "queue.write" : "queue.read";
-  return permissionForCommand(command);
-}
-
-export function isUnauthenticatedDiscordCommandAllowed(command: string): boolean {
-  return command === "link";
-}
-
-export function permissionForDiscordAction(action: string): Permission | null {
-  if (action.startsWith("discord_queue_")) return "queue.write";
-  if (action.startsWith("discord_abort:")) return "prompt.abort";
-  if (action.startsWith("discord_pick:")) return "sessions.write";
-  return null;
-}
-
-function discordCommands(): Array<Record<string, unknown>> {
-  const textOption = (name = "value", description = "Value", required = false): APIApplicationCommandOption => ({
-    type: 3,
-    name,
-    description,
-    required,
-  });
-  return [
-    command("start", "Start or inspect the current NordRelay context"),
-    command("help", "Show Discord adapter help"),
-    command("prompt", "Send a prompt to the selected agent", [textOption("text", "Prompt text", true)]),
-    command("agent", "Select or show the active agent", [textOption("value", "Agent id")]),
-    command("session", "Show the active session"),
-    command("sessions", "Browse recent sessions", [textOption("query", "Search query")]),
-    command("new", "Create a new session", [textOption("value", "Workspace path")]),
-    command("switch", "Switch to a session", [textOption("thread_id", "Thread id", true)]),
-    command("attach", "Attach a session", [textOption("thread_id", "Thread id", true)]),
-    command("model", "Select or show models", [textOption("value", "Model id")]),
-    command("reasoning", "Select reasoning effort", [textOption("value", "Reasoning value")]),
-    command("effort", "Select reasoning effort", [textOption("value", "Reasoning value")]),
-    command("fast", "Toggle fast mode", [textOption("value", "on/off")]),
-    command("launch", "Select launch profile", [textOption("value", "Launch profile id")]),
-    command("queue", "Show or manage queue", [textOption("action", "pause/resume/clear/run/cancel/top/up/down"), textOption("id", "Queue id")]),
-    command("clearqueue", "Clear queue"),
-    command("cancel", "Cancel queued prompt", [textOption("value", "Queue id", true)]),
-    command("abort", "Abort the active task"),
-    command("stop", "Abort the active task"),
-    command("retry", "Retry the last prompt"),
-    command("sync", "Sync from local agent state"),
-    command("activity", "Show recent activity", [textOption("value", "Limit")]),
-    command("tasks", "Show recent tasks", [textOption("value", "Limit")]),
-    command("artifacts", "List or send artifacts", [textOption("value", "zip <turn-id>")]),
-    command("logs", "Show logs", [textOption("value", "Target and line count")]),
-    command("version", "Show versions"),
-    command("status", "Show status"),
-    command("health", "Show health"),
-    command("diagnostics", "Show diagnostics"),
-    command("support", "Show support diagnostics"),
-    command("update", "Update NordRelay or agents", [textOption("target", "jobs, install, or agent id"), textOption("agent", "Agent id for install")]),
-    command("lock", "Lock this context"),
-    command("unlock", "Unlock this context"),
-    command("locks", "List locks"),
-    command("mirror", "Set mirror mode", [textOption("value", "off/status/final/full")]),
-    command("notify", "Set notification mode", [textOption("value", "off/minimal/all")]),
-    command("voice", "Show or change voice settings", [textOption("value", "transcribe-only on/off")]),
-    command("register_channel", "Enable this Discord channel for NordRelay"),
-    command("link", "Link this Discord account with a NordRelay code", [textOption("value", "Link code", true)]),
-    command("whoami", "Show linked NordRelay user"),
-    command("channels", "Show channel adapters"),
-    command("agents", "Show agent adapters"),
-  ];
-}
-
-function command(name: string, description: string, options: APIApplicationCommandOption[] = []): Record<string, unknown> {
-  return {
-    name,
-    description,
-    type: 1,
-    dm_permission: true,
-    options,
-  };
 }
 
 function inferMimeType(name: string): string {
