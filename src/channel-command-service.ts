@@ -3,6 +3,18 @@ import type { AgentActivityEvent, AgentHandbackResult, AgentId, AgentSessionInfo
 import { enabledAgents } from "./agent-factory.js";
 import type { AuditEvent } from "./audit-log.js";
 import {
+  type BotPreferencesStore,
+  formatQuietHours,
+  isQuietNow,
+  parseMirrorMode,
+  parseNotifyMode,
+  parseQuietHours,
+  parseVoiceBackendPreference,
+  type ChannelMirrorMode,
+  type ChannelNotifyMode,
+  type QuietHours,
+} from "./bot-preferences.js";
+import {
   logTailRequests,
   parseLogsCommand,
   renderAgentsAction,
@@ -12,6 +24,7 @@ import {
 } from "./channel-actions.js";
 import { listChannelDescriptors } from "./channel-adapter.js";
 import type { ConnectorConfig } from "./config.js";
+import { friendlyErrorText } from "./error-messages.js";
 import { escapeHTML } from "./format.js";
 import {
   getConnectorHealth,
@@ -26,6 +39,7 @@ import {
   renderAuditEvents,
   renderProgressHTML,
   renderProgressPlain,
+  parseToggle,
   renderVersionCheckHTML,
   renderVersionCheckPlain,
   type ActivityOptions,
@@ -33,6 +47,21 @@ import {
   type TurnProgress,
 } from "./bot-rendering.js";
 import { renderSessionInfoHTML, renderSessionInfoPlain } from "./session-format.js";
+import { getAvailableBackends } from "./voice.js";
+
+export type CommandChannelSource = "telegram" | "discord";
+
+export interface ChannelPreferenceCommandOptions {
+  source: CommandChannelSource;
+  contextKey: string;
+  argument: string;
+  preferencesStore: BotPreferencesStore;
+}
+
+export interface ChannelMirrorCommandOptions extends ChannelPreferenceCommandOptions {
+  cliMirrorSupported?: boolean;
+  agentLabel?: string;
+}
 
 export class ChannelCommandService {
   constructor(private readonly config: ConnectorConfig) {}
@@ -137,6 +166,141 @@ export class ChannelCommandService {
     return renderAuditEvents(events);
   }
 
+  renderMirrorPreference(options: ChannelMirrorCommandOptions): ChannelActionResponse {
+    if (options.cliMirrorSupported === false) {
+      const text = `CLI mirroring is not supported for ${options.agentLabel ?? "this agent"} yet.`;
+      return { plain: text, html: escapeHTML(text) };
+    }
+
+    const argument = options.argument.trim();
+    if (argument) {
+      const normalized = argument.toLowerCase();
+      if (!["off", "status", "final", "full"].includes(normalized)) {
+        return usageResponse("Usage: /mirror [off|status|final|full]");
+      }
+      options.preferencesStore.update(options.contextKey, {
+        mirrorMode: parseMirrorMode(argument, this.defaultMirrorMode(options.source)),
+      });
+    }
+
+    const mode = this.effectiveMirrorMode(options.source, options.contextKey, options.preferencesStore);
+    const minInterval = options.source === "telegram" ? this.config.telegramMirrorMinUpdateMs : this.config.discordMirrorMinUpdateMs;
+    return {
+      plain: [
+        `CLI mirroring: ${mode}`,
+        `Minimum update interval: ${minInterval} ms`,
+        "Modes: off, status, final, full",
+      ].join("\n"),
+      html: [
+        `<b>CLI mirroring:</b> <code>${escapeHTML(mode)}</code>`,
+        `<b>Minimum update interval:</b> <code>${minInterval} ms</code>`,
+        "<b>Modes:</b> <code>off</code>, <code>status</code>, <code>final</code>, <code>full</code>",
+      ].join("\n"),
+    };
+  }
+
+  renderNotifyPreference(options: ChannelPreferenceCommandOptions): ChannelActionResponse {
+    const argument = options.argument.trim();
+    if (argument) {
+      const quietMatch = argument.match(/^quiet\s+(.+)$/i);
+      if (quietMatch) {
+        try {
+          const quietHours = quietMatch[1]!.toLowerCase() === "off" ? null : parseQuietHours(quietMatch[1]);
+          options.preferencesStore.update(options.contextKey, { quietHours });
+        } catch (error) {
+          const text = `Invalid quiet hours: ${friendlyErrorText(error)}`;
+          return { plain: text, html: escapeHTML(text) };
+        }
+      } else {
+        const normalized = argument.toLowerCase();
+        if (!["off", "minimal", "all"].includes(normalized)) {
+          return usageResponse("Usage: /notify [off|minimal|all] or /notify quiet HH-HH");
+        }
+        options.preferencesStore.update(options.contextKey, {
+          notifyMode: parseNotifyMode(argument, this.defaultNotifyMode(options.source)),
+        });
+      }
+    }
+
+    const mode = this.effectiveNotifyMode(options.source, options.contextKey, options.preferencesStore);
+    const quietHours = this.effectiveQuietHours(options.source, options.contextKey, options.preferencesStore);
+    return {
+      plain: [
+        `Notifications: ${mode}`,
+        `Quiet hours: ${formatQuietHours(quietHours)}`,
+        `Currently quiet: ${isQuietNow(quietHours) ? "yes" : "no"}`,
+      ].join("\n"),
+      html: [
+        `<b>Notifications:</b> <code>${escapeHTML(mode)}</code>`,
+        `<b>Quiet hours:</b> <code>${escapeHTML(formatQuietHours(quietHours))}</code>`,
+        `<b>Currently quiet:</b> <code>${isQuietNow(quietHours) ? "yes" : "no"}</code>`,
+      ].join("\n"),
+    };
+  }
+
+  async renderVoicePreference(options: ChannelPreferenceCommandOptions): Promise<ChannelActionResponse> {
+    const argument = options.argument.trim();
+    if (argument) {
+      const parts = argument.split(/\s+/);
+      const key = parts[0]?.toLowerCase();
+      const value = parts.slice(1).join(" ").trim();
+      if (key === "backend" && value) {
+        const normalized = value.toLowerCase();
+        if (!["auto", "parakeet", "faster-whisper", "openai"].includes(normalized)) {
+          return usageResponse("Usage: /voice backend auto|parakeet|faster-whisper|openai");
+        }
+        options.preferencesStore.update(options.contextKey, { voiceBackend: parseVoiceBackendPreference(value) });
+      } else if (key === "language") {
+        options.preferencesStore.update(options.contextKey, { voiceLanguage: value && value.toLowerCase() !== "auto" ? value : null });
+      } else if (key === "transcribe_only" || key === "transcribe-only") {
+        const enabled = parseToggle(value);
+        if (enabled === undefined) {
+          return usageResponse("Usage: /voice transcribe_only on|off");
+        }
+        options.preferencesStore.update(options.contextKey, { voiceTranscribeOnly: enabled });
+      } else {
+        return usageResponse("Usage: /voice, /voice backend auto|parakeet|faster-whisper|openai, /voice language auto|language-code, /voice transcribe_only on|off");
+      }
+    }
+
+    const backends = await getAvailableBackends().catch(() => []);
+    if (backends.length === 0) {
+      const plain = [
+        "Voice transcription is not available.",
+        "",
+        "Install faster-whisper + ffmpeg, install parakeet-coreml on macOS Apple Silicon, or set OPENAI_API_KEY.",
+        "Cloud transcription uses OPENAI_API_KEY, not CODEX_API_KEY.",
+      ].join("\n");
+      const html = [
+        "<b>Voice transcription is not available.</b>",
+        "",
+        "Install <code>faster-whisper</code> + ffmpeg, install <code>parakeet-coreml</code> on macOS Apple Silicon, or set <code>OPENAI_API_KEY</code>.",
+        "<i>Cloud transcription uses OPENAI_API_KEY, not CODEX_API_KEY.</i>",
+      ].join("\n");
+      return { plain, html };
+    }
+
+    const prefs = options.preferencesStore.get(options.contextKey);
+    const backendPreference = prefs.voiceBackend ?? this.config.voicePreferredBackend;
+    const language = prefs.voiceLanguage === undefined ? this.config.voiceDefaultLanguage ?? null : prefs.voiceLanguage;
+    const transcribeOnly = prefs.voiceTranscribeOnly ?? this.config.voiceTranscribeOnly;
+    const joined = backends.join(" + ");
+    return {
+      plain: [
+        `Voice backends: ${joined}`,
+        `Preferred backend: ${backendPreference}`,
+        `Language: ${language ?? "auto"}`,
+        `Transcribe only: ${transcribeOnly ? "on" : "off"}`,
+      ].join("\n"),
+      html: [
+        `<b>Voice backends:</b> <code>${escapeHTML(joined)}</code>`,
+        `<b>Preferred backend:</b> <code>${escapeHTML(backendPreference)}</code>`,
+        `<b>Language:</b> <code>${escapeHTML(language ?? "auto")}</code>`,
+        `<b>Transcribe only:</b> <code>${transcribeOnly ? "on" : "off"}</code>`,
+      ].join("\n"),
+    };
+  }
+
   renderWorkspaces(info: AgentSessionInfo, workspaces: string[]): ChannelActionResponse {
     const unique = [...new Set(workspaces)].filter(Boolean);
     const rows = unique.length > 0
@@ -179,6 +343,31 @@ export class ChannelCommandService {
       ].join("\n"),
     };
   }
+
+  private defaultMirrorMode(source: CommandChannelSource): ChannelMirrorMode {
+    return source === "telegram" ? this.config.telegramMirrorMode : this.config.discordMirrorMode;
+  }
+
+  private defaultNotifyMode(source: CommandChannelSource): ChannelNotifyMode {
+    return source === "telegram" ? this.config.telegramNotifyMode : this.config.discordNotifyMode;
+  }
+
+  private defaultQuietHours(source: CommandChannelSource): QuietHours | null | undefined {
+    return source === "telegram" ? this.config.telegramQuietHours : this.config.discordQuietHours;
+  }
+
+  private effectiveMirrorMode(source: CommandChannelSource, contextKey: string, preferencesStore: BotPreferencesStore): ChannelMirrorMode {
+    return preferencesStore.get(contextKey).mirrorMode ?? this.defaultMirrorMode(source);
+  }
+
+  private effectiveNotifyMode(source: CommandChannelSource, contextKey: string, preferencesStore: BotPreferencesStore): ChannelNotifyMode {
+    return preferencesStore.get(contextKey).notifyMode ?? this.defaultNotifyMode(source);
+  }
+
+  private effectiveQuietHours(source: CommandChannelSource, contextKey: string, preferencesStore: BotPreferencesStore): QuietHours | null | undefined {
+    const prefs = preferencesStore.get(contextKey);
+    return prefs.quietHours === undefined ? this.defaultQuietHours(source) : prefs.quietHours;
+  }
 }
 
 export function cliPathOptions(config: ConnectorConfig): {
@@ -197,4 +386,8 @@ export function cliPathOptions(config: ConnectorConfig): {
 
 function shellEscape(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function usageResponse(text: string): ChannelActionResponse {
+  return { plain: text, html: escapeHTML(text) };
 }

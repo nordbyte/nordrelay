@@ -1,29 +1,14 @@
 import type { Bot, Context } from "grammy";
 
-import {
-  type BotPreferencesStore,
-  formatQuietHours,
-  isQuietNow,
-  parseMirrorMode,
-  parseNotifyMode,
-  parseQuietHours,
-  parseVoiceBackendPreference,
-  type QuietHours,
-  type TelegramMirrorMode,
-  type TelegramNotifyMode,
-  type VoiceBackendPreference,
-} from "./bot-preferences.js";
+import type { BotPreferencesStore } from "./bot-preferences.js";
 import {
   capabilitiesOf,
-  idOf,
   labelOf,
-  parseToggle,
 } from "./bot-rendering.js";
+import type { ChannelCommandService } from "./channel-command-service.js";
 import type { ConnectorConfig } from "./config.js";
 import type { TelegramContextKey } from "./context-key.js";
-import { friendlyErrorText } from "./error-messages.js";
 import { escapeHTML } from "./format.js";
-import { getAvailableBackends } from "./voice.js";
 import {
   evaluateWorkspacePolicy,
   filterAllowedWorkspaces,
@@ -35,14 +20,9 @@ import { safeReply } from "./telegram-output.js";
 export interface TelegramPreferenceCommandOptions {
   bot: Bot<Context>;
   config: ConnectorConfig;
+  commandService: ChannelCommandService;
   preferencesStore: BotPreferencesStore;
   getContextSession: GetTelegramContextSession;
-  getEffectiveMirrorMode: (contextKey: TelegramContextKey) => TelegramMirrorMode;
-  getEffectiveNotifyMode: (contextKey: TelegramContextKey) => TelegramNotifyMode;
-  getEffectiveQuietHours: (contextKey: TelegramContextKey) => QuietHours | null | undefined;
-  getEffectiveVoiceBackend: (contextKey: TelegramContextKey) => VoiceBackendPreference;
-  getEffectiveVoiceLanguage: (contextKey: TelegramContextKey) => string | null | undefined;
-  isVoiceTranscribeOnly: (contextKey: TelegramContextKey) => boolean;
 }
 
 export function registerTelegramPreferenceCommands(options: TelegramPreferenceCommandOptions): void {
@@ -58,29 +38,15 @@ export function registerTelegramPreferenceCommands(options: TelegramPreferenceCo
       return;
     }
     const argument = (ctx.message?.text ?? "").replace(/^\/mirror(?:@\w+)?\s*/i, "").trim();
-    if (argument) {
-      const mode = parseMirrorMode(argument, options.getEffectiveMirrorMode(contextKey));
-      if (!["off", "status", "final", "full"].includes(argument.toLowerCase())) {
-        await safeReply(ctx, escapeHTML("Usage: /mirror [off|status|final|full]"), {
-          fallbackText: "Usage: /mirror [off|status|final|full]",
-        });
-        return;
-      }
-      options.preferencesStore.update(contextKey, { mirrorMode: mode });
-    }
-
-    const mode = options.getEffectiveMirrorMode(contextKey);
-    const plain = [
-      `CLI mirroring: ${mode}`,
-      `Minimum update interval: ${options.config.telegramMirrorMinUpdateMs} ms`,
-      "Modes: off, status, final, full",
-    ].join("\n");
-    const html = [
-      `<b>CLI mirroring:</b> <code>${escapeHTML(mode)}</code>`,
-      `<b>Minimum update interval:</b> <code>${options.config.telegramMirrorMinUpdateMs} ms</code>`,
-      "<b>Modes:</b> <code>off</code>, <code>status</code>, <code>final</code>, <code>full</code>",
-    ].join("\n");
-    await safeReply(ctx, html, { fallbackText: plain });
+    const response = options.commandService.renderMirrorPreference({
+      source: "telegram",
+      contextKey,
+      argument,
+      preferencesStore: options.preferencesStore,
+      cliMirrorSupported: capabilitiesOf(session.getInfo()).cliMirror,
+      agentLabel: labelOf(session.getInfo()),
+    });
+    await safeReply(ctx, response.html, { fallbackText: response.plain });
   });
 
   options.bot.command("notify", async (ctx) => {
@@ -90,44 +56,13 @@ export function registerTelegramPreferenceCommands(options: TelegramPreferenceCo
     }
     const { contextKey } = contextSession;
     const argument = (ctx.message?.text ?? "").replace(/^\/notify(?:@\w+)?\s*/i, "").trim();
-    if (argument) {
-      const quietMatch = argument.match(/^quiet\s+(.+)$/i);
-      if (quietMatch) {
-        let quietHours: QuietHours | null;
-        try {
-          quietHours = quietMatch[1]!.toLowerCase() === "off" ? null : parseQuietHours(quietMatch[1]);
-        } catch (error) {
-          await safeReply(ctx, escapeHTML(`Invalid quiet hours: ${friendlyErrorText(error)}`), {
-            fallbackText: `Invalid quiet hours: ${friendlyErrorText(error)}`,
-          });
-          return;
-        }
-        options.preferencesStore.update(contextKey, { quietHours });
-      } else {
-        const mode = parseNotifyMode(argument, options.getEffectiveNotifyMode(contextKey));
-        if (!["off", "minimal", "all"].includes(argument.toLowerCase())) {
-          await safeReply(ctx, escapeHTML("Usage: /notify [off|minimal|all] or /notify quiet HH-HH"), {
-            fallbackText: "Usage: /notify [off|minimal|all] or /notify quiet HH-HH",
-          });
-          return;
-        }
-        options.preferencesStore.update(contextKey, { notifyMode: mode });
-      }
-    }
-
-    const mode = options.getEffectiveNotifyMode(contextKey);
-    const quietHours = options.getEffectiveQuietHours(contextKey);
-    const plain = [
-      `Notifications: ${mode}`,
-      `Quiet hours: ${formatQuietHours(quietHours)}`,
-      `Currently quiet: ${isQuietNow(quietHours) ? "yes" : "no"}`,
-    ].join("\n");
-    const html = [
-      `<b>Notifications:</b> <code>${escapeHTML(mode)}</code>`,
-      `<b>Quiet hours:</b> <code>${escapeHTML(formatQuietHours(quietHours))}</code>`,
-      `<b>Currently quiet:</b> <code>${isQuietNow(quietHours) ? "yes" : "no"}</code>`,
-    ].join("\n");
-    await safeReply(ctx, html, { fallbackText: plain });
+    const response = options.commandService.renderNotifyPreference({
+      source: "telegram",
+      contextKey,
+      argument,
+      preferencesStore: options.preferencesStore,
+    });
+    await safeReply(ctx, response.html, { fallbackText: response.plain });
   });
 
   options.bot.command("workspaces", async (ctx) => {
@@ -175,72 +110,12 @@ export function registerTelegramPreferenceCommands(options: TelegramPreferenceCo
     }
     const { contextKey } = contextSession;
     const argument = (ctx.message?.text ?? "").replace(/^\/voice(?:@\w+)?\s*/i, "").trim();
-    if (argument) {
-      const parts = argument.split(/\s+/);
-      const key = parts[0]?.toLowerCase();
-      const value = parts.slice(1).join(" ").trim();
-      if (key === "backend" && value) {
-        options.preferencesStore.update(contextKey, { voiceBackend: parseVoiceBackendPreference(value) });
-      } else if (key === "language") {
-        options.preferencesStore.update(contextKey, { voiceLanguage: value && value.toLowerCase() !== "auto" ? value : null });
-      } else if (key === "transcribe_only" || key === "transcribe-only") {
-        const enabled = parseToggle(value);
-        if (enabled === undefined) {
-          await safeReply(ctx, escapeHTML("Usage: /voice transcribe_only on|off"), {
-            fallbackText: "Usage: /voice transcribe_only on|off",
-          });
-          return;
-        }
-        options.preferencesStore.update(contextKey, { voiceTranscribeOnly: enabled });
-      } else {
-        await safeReply(ctx, escapeHTML("Usage: /voice, /voice backend auto|parakeet|faster-whisper|openai, /voice language auto|<code>, /voice transcribe_only on|off"), {
-          fallbackText: "Usage: /voice, /voice backend auto|parakeet|faster-whisper|openai, /voice language auto|<code>, /voice transcribe_only on|off",
-        });
-        return;
-      }
-    }
-
-    const backends = await getAvailableBackends().catch(() => []);
-
-    if (backends.length === 0) {
-      await safeReply(
-        ctx,
-        [
-          "<b>Voice transcription is not available.</b>",
-          "",
-          "Install <code>faster-whisper</code> + ffmpeg, install <code>parakeet-coreml</code> on macOS Apple Silicon, or set <code>OPENAI_API_KEY</code>.",
-          "<i>Cloud transcription uses OPENAI_API_KEY, not CODEX_API_KEY.</i>",
-        ].join("\n"),
-        {
-          fallbackText: [
-            "Voice transcription is not available.",
-            "",
-            "Install faster-whisper + ffmpeg, install parakeet-coreml on macOS Apple Silicon, or set OPENAI_API_KEY.",
-            "Cloud transcription uses OPENAI_API_KEY, not CODEX_API_KEY.",
-          ].join("\n"),
-        },
-      );
-      return;
-    }
-
-    const joined = backends.join(" + ");
-    const backendPreference = options.getEffectiveVoiceBackend(contextKey);
-    const language = options.getEffectiveVoiceLanguage(contextKey);
-    const transcribeOnly = options.isVoiceTranscribeOnly(contextKey);
-    const plain = [
-      `Voice backends: ${joined}`,
-      `Preferred backend: ${backendPreference}`,
-      `Language: ${language ?? "auto"}`,
-      `Transcribe only: ${transcribeOnly ? "on" : "off"}`,
-    ].join("\n");
-    const html = [
-      `<b>Voice backends:</b> <code>${escapeHTML(joined)}</code>`,
-      `<b>Preferred backend:</b> <code>${escapeHTML(backendPreference)}</code>`,
-      `<b>Language:</b> <code>${escapeHTML(language ?? "auto")}</code>`,
-      `<b>Transcribe only:</b> <code>${transcribeOnly ? "on" : "off"}</code>`,
-    ].join("\n");
-    await safeReply(ctx, html, {
-      fallbackText: plain,
+    const response = await options.commandService.renderVoicePreference({
+      source: "telegram",
+      contextKey,
+      argument,
+      preferencesStore: options.preferencesStore,
     });
+    await safeReply(ctx, response.html, { fallbackText: response.plain });
   });
 }

@@ -22,7 +22,7 @@ import { enabledAgents } from "./agent-factory.js";
 import { collectRecentWorkspaceArtifacts, ensureOutDir, formatArtifactSummary, persistWorkspaceArtifactReport } from "./artifacts.js";
 import { buildFileInstructions, outboxPath, stageFile, type StagedFile } from "./attachments.js";
 import { AuditLogStore, type AuditEvent } from "./audit-log.js";
-import { BotPreferencesStore, parseMirrorMode, parseNotifyMode, parseVoiceBackendPreference } from "./bot-preferences.js";
+import { BotPreferencesStore } from "./bot-preferences.js";
 import { capabilitiesOf, filterActivityEvents, formatLocalDateTime, parseActivityOptions, renderExternalMirrorEvent, renderExternalMirrorStatus, renderPromptFailure, trimLine, type TurnProgress } from "./bot-rendering.js";
 import { renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction } from "./channel-actions.js";
 import { ChannelCommandService } from "./channel-command-service.js";
@@ -1756,32 +1756,34 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
   };
 
   const commandMirror = async (request: DiscordRequest, argument: string): Promise<void> => {
-    const mode = parseMirrorMode(argument, preferencesStore.get(request.contextKey).mirrorMode ?? config.discordMirrorMode);
-    preferencesStore.update(request.contextKey, { mirrorMode: mode });
-    await reply(request, `CLI mirror mode: ${mode}`);
+    const session = await getSession(request, { deferThreadStart: true });
+    const info = session.getInfo();
+    await deliverChannelAction(runtime, request.context, commandService.renderMirrorPreference({
+      source: "discord",
+      contextKey: request.contextKey,
+      argument,
+      preferencesStore,
+      cliMirrorSupported: capabilitiesOf(info).cliMirror,
+      agentLabel: info.agentLabel,
+    }));
   };
 
   const commandNotify = async (request: DiscordRequest, argument: string): Promise<void> => {
-    const mode = parseNotifyMode(argument, preferencesStore.get(request.contextKey).notifyMode ?? config.discordNotifyMode);
-    preferencesStore.update(request.contextKey, { notifyMode: mode });
-    await reply(request, `Notify mode: ${mode}`);
+    await deliverChannelAction(runtime, request.context, commandService.renderNotifyPreference({
+      source: "discord",
+      contextKey: request.contextKey,
+      argument,
+      preferencesStore,
+    }));
   };
 
   const commandVoice = async (request: DiscordRequest, argument: string): Promise<void> => {
-    const normalized = argument.trim().toLowerCase();
-    const parts = normalized.split(/\s+/).filter(Boolean);
-    if (parts[0] === "backend" && parts[1]) {
-      preferencesStore.update(request.contextKey, { voiceBackend: parseVoiceBackendPreference(parts[1]) });
-    } else if (parts[0] === "language" && parts[1]) {
-      preferencesStore.update(request.contextKey, { voiceLanguage: parts[1] === "auto" ? null : parts[1] });
-    } else if ((parts[0] === "transcribe-only" || parts[0] === "transcribe_only") && parts[1]) {
-      preferencesStore.update(request.contextKey, { voiceTranscribeOnly: ["on", "true", "yes", "1"].includes(parts[1]) });
-    } else if (argument.trim()) {
-      await reply(request, "Usage: `/voice`, `/voice backend auto|parakeet|faster-whisper|openai`, `/voice language auto|<code>`, or `/voice transcribe_only on|off`.");
-      return;
-    }
-    const prefs = preferencesStore.get(request.contextKey);
-    await reply(request, `Voice backend: ${prefs.voiceBackend ?? config.voicePreferredBackend}\nLanguage: ${prefs.voiceLanguage ?? config.voiceDefaultLanguage ?? "auto"}\nTranscribe only: ${prefs.voiceTranscribeOnly ?? config.voiceTranscribeOnly}`);
+    await deliverChannelAction(runtime, request.context, await commandService.renderVoicePreference({
+      source: "discord",
+      contextKey: request.contextKey,
+      argument,
+      preferencesStore,
+    }));
   };
 
   const commandRegisterChannel = async (request: DiscordRequest): Promise<void> => {

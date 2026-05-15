@@ -2436,14 +2436,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   registerTelegramPreferenceCommands({
     bot,
     config,
+    commandService,
     preferencesStore,
     getContextSession,
-    getEffectiveMirrorMode,
-    getEffectiveNotifyMode,
-    getEffectiveQuietHours,
-    getEffectiveVoiceBackend,
-    getEffectiveVoiceLanguage,
-    isVoiceTranscribeOnly,
   });
 
   registerTelegramDiagnosticsCommands({
