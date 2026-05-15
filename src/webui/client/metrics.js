@@ -61,6 +61,12 @@ function rateRows(name,rate){
     ['Buckets',(rate?.buckets||[]).length]
   ].map(([k,v])=>[name+' '+k,v]);
 }
+function webRouteRows(d){
+  return (d.web?.routes||[]).slice(0,8).map(route=>[route.method+' '+route.path,route.averageMs+'ms avg / '+route.maxMs+'ms max / '+route.count+' hit(s)']);
+}
+function webSlowRows(d){
+  return (d.web?.slowest||[]).slice(0,8).map(sample=>[sample.method+' '+sample.path,sample.durationMs+'ms / '+sample.statusCode+' / '+fmtDate(sample.at)]);
+}
 function renderMetrics(d){
   const adapters=d.adapters||{};
   const adapterCards=Object.entries(adapters).map(([name,rate])=>card(name.charAt(0).toUpperCase()+name.slice(1)+' rate limits',rateRows('',rate).map(([k,v])=>[String(k).trim(),v]))).join('');
@@ -68,6 +74,8 @@ function renderMetrics(d){
     card('Runtime',metricStatusRows(d))+
     card('Process',metricProcessRows(d))+
     card('Jobs',metricJobRows(d))+
+    card('Web API latency',webRouteRows(d))+
+    card('Slow Web API calls',webSlowRows(d))+
     adapterCards+
     '</div>';
 }

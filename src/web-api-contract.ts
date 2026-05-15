@@ -49,8 +49,15 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   exact("/api/peers/pair", ["POST"], "peers.write"),
   exact("/api/peers/probe", ["POST"], "peers.connect"),
   exact("/api/peers/discover", ["GET"], "peers.connect"),
+  exact("/api/peers/discovery-jobs", ["GET", "POST"], readWrite("peers.connect", "peers.connect")),
+  dynamic("/api/peers/discovery-jobs/:id", "^/api/peers/discovery-jobs/[^/]+$", ["GET"], "peers.connect", `/api/peers/discovery-jobs/${stringToken}`),
+  dynamic("/api/peers/discovery-jobs/:id/cancel", "^/api/peers/discovery-jobs/[^/]+/cancel$", ["POST"], "peers.connect", `/api/peers/discovery-jobs/${stringToken}/cancel`),
+  dynamic("/api/peers/discovery-jobs/:id/log", "^/api/peers/discovery-jobs/[^/]+/log$", ["GET"], "peers.connect", `/api/peers/discovery-jobs/${stringToken}/log`),
+  exact("/api/peers/identity/backup", ["GET"], "peers.write"),
+  exact("/api/peers/identity/restore", ["POST"], "peers.write"),
   exact("/api/peers/global-sessions", ["GET"], "sessions.read"),
   dynamic("/api/peers/invitations/:id", "^/api/peers/invitations/[^/]+$", ["DELETE"], "peers.write", `/api/peers/invitations/${stringToken}`),
+  dynamic("/api/peers/:id/repin", "^/api/peers/[^/]+/repin$", ["POST"], "peers.write", `/api/peers/${stringToken}/repin`),
   dynamic("/api/peers/:id/health", "^/api/peers/[^/]+/health$", ["GET"], "peers.connect", `/api/peers/${stringToken}/health`),
   dynamic("/api/peers/:id", "^/api/peers/[^/]+$", ["PATCH", "DELETE"], "peers.write", `/api/peers/${stringToken}`),
   dynamic("/api/peers/:id/proxy", "^/api/peers/[^/]+/proxy$", ["POST"], "peers.connect", `/api/peers/${stringToken}/proxy`),
@@ -129,13 +136,19 @@ type WebApiRouteFromContract = typeof WEB_API_ROUTE_DEFINITIONS[number];
 export type WebApiStaticPathFromContract = Extract<WebApiRouteFromContract, { pattern?: undefined }>["path"];
 export type WebApiDynamicPathFromContract = NonNullable<WebApiRouteFromContract["dynamicType"]>;
 
-export function permissionForWebRequestFromContract(method: string | undefined, pathname: string): Permission | null {
+export function routeForWebRequest(method: string | undefined, pathname: string): WebApiRouteFromContract | null {
   const verb = normalizeMethod(method);
-  const rule = WEB_API_ROUTE_DEFINITIONS.find((candidate) =>
+  const route = WEB_API_ROUTE_DEFINITIONS.find((candidate) =>
     (candidate.pattern ? new RegExp(candidate.pattern).test(pathname) : candidate.path === pathname)
   );
-  const methods: readonly WebHttpMethod[] = rule?.methods ?? [];
-  if (!rule || !methods.includes(verb)) {
+  const methods: readonly WebHttpMethod[] = route?.methods ?? [];
+  return route && methods.includes(verb) ? route : null;
+}
+
+export function permissionForWebRequestFromContract(method: string | undefined, pathname: string): Permission | null {
+  const verb = normalizeMethod(method);
+  const rule = routeForWebRequest(verb, pathname);
+  if (!rule) {
     return null;
   }
   return resolvePermission(rule.permissions, verb);

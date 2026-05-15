@@ -12,7 +12,7 @@ import path from "node:path";
 import selfsigned from "selfsigned";
 
 import { readJsonFileWithBackup, writeJsonFileAtomic, writeTextFileAtomic } from "./persistence.js";
-import type { PeerNodeIdentity } from "./peer-types.js";
+import type { PeerIdentityBackup, PeerNodeIdentity } from "./peer-types.js";
 
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 
@@ -75,6 +75,60 @@ export function loadOrCreatePeerIdentity(home = process.env.NORDRELAY_HOME || DE
       createdAt: identity.createdAt,
     },
     privateKey: identity.privateKey,
+  };
+}
+
+export function exportPeerIdentityBackup(home = process.env.NORDRELAY_HOME || DEFAULT_HOME, name?: string): PeerIdentityBackup {
+  const identity = loadOrCreatePeerIdentity(home, name);
+  const tls = existsSync(path.join(home, "tls", "peer.crt"))
+    ? ensurePeerTlsFiles(home, identity.public)
+    : undefined;
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    identity: identity.public,
+    privateKey: identity.privateKey,
+    tlsFingerprint: tls?.fingerprint,
+  };
+}
+
+export function restorePeerIdentityBackup(
+  backup: PeerIdentityBackup,
+  home = process.env.NORDRELAY_HOME || DEFAULT_HOME,
+): LoadedPeerIdentity {
+  if (!backup || backup.version !== 1 || !backup.identity?.publicKey || !backup.privateKey) {
+    throw new Error("Invalid peer identity backup.");
+  }
+  const fingerprint = fingerprintForPublicKey(backup.identity.publicKey);
+  if (fingerprint !== backup.identity.fingerprint) {
+    throw new Error("Peer identity backup fingerprint does not match the public key.");
+  }
+  const probe = `nordrelay-identity-restore:${Date.now()}`;
+  const signature = signPeerPayload(backup.privateKey, probe);
+  if (!verifyPeerPayload(backup.identity.publicKey, probe, signature)) {
+    throw new Error("Peer identity backup private key does not match the public key.");
+  }
+  const payload: PersistedPeerIdentity = {
+    nodeId: backup.identity.nodeId,
+    name: backup.identity.name || defaultNodeName(),
+    publicKey: backup.identity.publicKey,
+    privateKey: backup.privateKey,
+    fingerprint,
+    createdAt: backup.identity.createdAt || new Date().toISOString(),
+  };
+  const filePath = path.join(home, "identity.json");
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  writeJsonFileAtomic(filePath, payload);
+  chmodSync(filePath, 0o600);
+  return {
+    public: {
+      nodeId: payload.nodeId,
+      name: payload.name,
+      publicKey: payload.publicKey,
+      fingerprint: payload.fingerprint,
+      createdAt: payload.createdAt,
+    },
+    privateKey: payload.privateKey,
   };
 }
 

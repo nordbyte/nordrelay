@@ -95,6 +95,12 @@ export interface PublicPeerRecord {
   remoteStatus?: string;
   lastError?: string;
   healthHistory?: PeerHealthSample[];
+  effectiveAccess?: {
+    scopes: Permission[];
+    allowedAgents: AgentId[];
+    allowedWorkspaceRoots: string[];
+    workspaceAliases: Record<string, string>;
+  };
 }
 
 export interface PublicPeerInvitationRecord {
@@ -162,6 +168,36 @@ export interface PeerDiscoveryResult {
   scanned: number;
   candidates: PeerDiscoveryCandidate[];
   warnings: string[];
+}
+
+export type PeerDiscoveryJobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+
+export interface PeerDiscoveryJobSnapshot {
+  id: string;
+  status: PeerDiscoveryJobStatus;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  scanned: number;
+  total: number;
+  candidates: PeerDiscoveryCandidate[];
+  warnings: string[];
+  log: string[];
+  error?: string;
+  options: {
+    targets: string[];
+    timeoutMs: number;
+    concurrency: number;
+    maxHosts: number;
+  };
+}
+
+export interface PeerIdentityBackup {
+  version: 1;
+  exportedAt: string;
+  identity: PeerNodeIdentity;
+  privateKey: string;
+  tlsFingerprint?: string;
 }
 
 export interface PeerInviteResult {
@@ -259,6 +295,12 @@ export function publicPeer(record: PeerRecord): PublicPeerRecord {
     remoteStatus: record.remoteStatus,
     lastError: record.lastError,
     healthHistory: record.healthHistory?.map((sample) => ({ ...sample })),
+    effectiveAccess: {
+      scopes: [...record.scopes],
+      allowedAgents: [...record.allowedAgents],
+      allowedWorkspaceRoots: [...record.allowedWorkspaceRoots],
+      workspaceAliases: { ...record.workspaceAliases },
+    },
   };
 }
 

@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { URL } from "node:url";
@@ -28,11 +28,14 @@ import {
   readJsonBody,
   sendJson,
   sendText,
+  isRequestBodyTooLargeError,
 } from "./web-dashboard-http.js";
 import { renderDashboardApp, renderFirstRunSetupPage, renderLoginPage } from "./web-dashboard-pages.js";
 import { handleDashboardRuntimeRoute } from "./web-dashboard-runtime-routes.js";
 import { handleDashboardSessionRoute } from "./web-dashboard-session-routes.js";
 import { handleDashboardPeerRoute } from "./web-dashboard-peer-routes.js";
+import { PeerDiscoveryJobManager } from "./peer-discovery-jobs.js";
+import { recordWebApiMetric } from "./web-performance.js";
 
 interface DashboardOptions {
   host: string;
@@ -54,9 +57,11 @@ const runtime = new RelayRuntime(config);
 const settings = new SettingsService(resolveDashboardEnvPath(options.home));
 const users = new UserStore(options.home);
 const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
+const peerDiscoveryJobs = new PeerDiscoveryJobManager(config);
 const loginAttempts = new Map<string, RateLimitBucket>();
 const firstRunSetupToken = users.hasAdminUser() ? undefined : randomBytes(18).toString("base64url");
 const firstRunSetupRequiresToken = !isLoopbackHost(options.host);
+const csrfSecret = randomBytes(32).toString("base64url");
 
 if (firstRunSetupToken) {
   console.log(`NordRelay first-run setup token: ${firstRunSetupToken}`);
@@ -65,8 +70,19 @@ if (firstRunSetupToken) {
 class AccessDeniedError extends Error {}
 
 const server = createServer((req, res) => {
+  const startedAt = Date.now();
+  const pathName = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`).pathname;
+  res.on("finish", () => {
+    recordWebApiMetric({
+      method: req.method ?? "GET",
+      path: pathName,
+      statusCode: res.statusCode,
+      durationMs: Date.now() - startedAt,
+    });
+  });
   void handleRequest(req, res).catch((error) => {
-    sendJson(res, error instanceof AccessDeniedError ? 403 : 500, { error: friendlyErrorText(error) });
+    const status = error instanceof AccessDeniedError ? 403 : isRequestBodyTooLargeError(error) ? 413 : 500;
+    sendJson(res, status, { error: friendlyErrorText(error) });
   });
 });
 
@@ -97,7 +113,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       sendJson(res, 401, { error: "Authentication required", adminConfigured: users.hasAdminUser() });
       return;
     }
-    sendJson(res, 200, currentUserDto(authenticated));
+    sendJson(res, 200, currentUserDto(authenticated, req));
     return;
   }
 
@@ -111,6 +127,21 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       return;
     }
     sendJson(res, 401, { error: "Authentication required", adminConfigured: users.hasAdminUser() });
+    return;
+  }
+
+  if (requiresCsrf(req, url) && !verifyCsrf(req)) {
+    audit({
+      action: "permission_denied",
+      status: "denied",
+      channelId: "web",
+      contextKey: "web",
+      actor: webActivityActor(authenticated),
+      actorId: authenticated.user.id,
+      actorRole: authenticated.groups.map((group) => group.name).join(", "),
+      description: `Invalid CSRF token for ${req.method ?? "GET"} ${url.pathname}`,
+    });
+    sendJson(res, 403, { error: "Invalid CSRF token." });
     return;
   }
 
@@ -200,7 +231,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   if (req.method === "GET" && url.pathname === "/api/bootstrap") {
     await assertCurrentSessionScope(authUser);
     sendJson(res, 200, {
-      auth: currentUserDto(authUser),
+      auth: currentUserDto(authUser, req),
       channels: listChannelDescriptors(),
       agentAdapters: listAgentAdapterDescriptors().filter((adapter) => users.canUseAgent(authUser, adapter.id)),
       adapterConformance: scopedAdapterConformance(authUser),
@@ -236,6 +267,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     config,
     home: options.home,
     runtime,
+    discoveryJobs: peerDiscoveryJobs,
     activityActor: webActivityActor(authUser),
     auditPeerAction: (action, description) => auditUserAction(authUser, action, description),
   })) {
@@ -386,8 +418,8 @@ async function handleFirstRunSetup(req: IncomingMessage, res: ServerResponse): P
     actor: webActivityActor(authUser),
     detail: authUser.user.email,
   });
-  setSessionCookie(res, session.token);
-  sendJson(res, 201, currentUserDto(authUser));
+  setSessionCookie(res, session.token, req);
+  sendJson(res, 201, currentUserDto(authUser, undefined, session.token));
 }
 
 async function handleLogin(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -444,8 +476,8 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse): Promise<v
     actor: webActivityActor(authUser),
     detail: authUser.user.email,
   });
-  setSessionCookie(res, session.token);
-  sendJson(res, 200, currentUserDto(authUser));
+  setSessionCookie(res, session.token, req);
+  sendJson(res, 200, currentUserDto(authUser, undefined, session.token));
 }
 
 function isLoopbackRequest(req: IncomingMessage): boolean {
@@ -462,6 +494,10 @@ function isLoopbackHost(host: string): boolean {
 
 function handleLogout(req: IncomingMessage, res: ServerResponse): void {
   const authUser = authenticateRequest(req);
+  if (authUser && !verifyCsrf(req)) {
+    sendJson(res, 403, { error: "Invalid CSRF token." });
+    return;
+  }
   users.destroyWebSession(parseCookies(req.headers.cookie ?? "").nr_session);
   if (authUser) {
     auditUserAction(authUser, "auth_logout", authUser.user.email);
@@ -491,20 +527,60 @@ function authenticateRequest(req: IncomingMessage): AuthenticatedUser | null {
   return users.resolveWebSession(cookies.nr_session);
 }
 
-function setSessionCookie(res: ServerResponse, token: string): void {
-  res.setHeader("set-cookie", `nr_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/`);
+function setSessionCookie(res: ServerResponse, token: string, req?: IncomingMessage): void {
+  const secure = req && isHttpsRequest(req) ? "; Secure" : "";
+  res.setHeader("set-cookie", `nr_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/${secure}`);
 }
 
 function clearSessionCookie(res: ServerResponse): void {
   res.setHeader("set-cookie", "nr_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0");
 }
 
-function currentUserDto(authUser: AuthenticatedUser) {
+function isHttpsRequest(req: IncomingMessage): boolean {
+  return Boolean((req.socket as { encrypted?: boolean }).encrypted) ||
+    String(req.headers["x-forwarded-proto"] ?? "").split(",")[0]?.trim().toLowerCase() === "https";
+}
+
+function currentUserDto(authUser: AuthenticatedUser, req?: IncomingMessage, sessionToken?: string) {
+  const token = sessionToken ?? (req ? parseCookies(req.headers.cookie ?? "").nr_session : undefined);
   return {
     user: publicUser(authUser.user),
     groups: authUser.groups,
     permissions: authUser.permissions,
+    csrfToken: token ? csrfTokenForSession(token) : undefined,
   };
+}
+
+function requiresCsrf(req: IncomingMessage, url: URL): boolean {
+  const method = (req.method ?? "GET").toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
+    return false;
+  }
+  return url.pathname.startsWith("/api/");
+}
+
+function verifyCsrf(req: IncomingMessage): boolean {
+  const sessionToken = parseCookies(req.headers.cookie ?? "").nr_session;
+  const supplied = headerValue(req, "x-nordrelay-csrf");
+  if (!sessionToken || !supplied) {
+    return false;
+  }
+  return safeEqualString(supplied, csrfTokenForSession(sessionToken));
+}
+
+function csrfTokenForSession(sessionToken: string): string {
+  return createHmac("sha256", csrfSecret).update(sessionToken).digest("base64url");
+}
+
+function headerValue(req: IncomingMessage, name: string): string {
+  const value = req.headers[name.toLowerCase()];
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
+}
+
+function safeEqualString(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 function audit(event: Omit<AuditEvent, "id" | "timestamp" | "channelId"> & { channelId?: AuditEvent["channelId"] }): void {

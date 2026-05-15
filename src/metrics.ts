@@ -4,6 +4,7 @@ import { getDiscordRateLimitMetrics } from "./discord-rate-limit.js";
 import type { UnifiedJobDto } from "./relay-runtime-types.js";
 import { getSlackRateLimitMetrics } from "./slack-rate-limit.js";
 import { getTelegramRateLimitMetrics } from "./telegram-rate-limit.js";
+import { getWebApiPerformanceMetrics } from "./web-performance.js";
 import type { WebActivityEvent } from "./web-state.js";
 
 const startedAt = Date.now();
@@ -62,6 +63,7 @@ export interface RuntimeMetricsDto {
     discord: ReturnType<typeof getDiscordRateLimitMetrics>;
     slack: ReturnType<typeof getSlackRateLimitMetrics>;
   };
+  web: ReturnType<typeof getWebApiPerformanceMetrics>;
 }
 
 export function buildRuntimeMetrics(input: {
@@ -103,6 +105,7 @@ export function buildRuntimeMetrics(input: {
       discord: getDiscordRateLimitMetrics(),
       slack: getSlackRateLimitMetrics(),
     },
+    web: getWebApiPerformanceMetrics(),
   };
 }
 

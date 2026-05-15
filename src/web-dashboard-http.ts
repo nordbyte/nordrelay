@@ -4,7 +4,15 @@ import type { URL } from "node:url";
 
 import type { AgentUpdateOperation } from "./agent-updates.js";
 
-const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
+const DEFAULT_JSON_BODY_LIMIT = 64 * 1024 * 1024;
+const SECURITY_HEADERS = {
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+  "permissions-policy": "camera=(), microphone=(), geolocation=()",
+  "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+};
+const JSON_HEADERS = { ...SECURITY_HEADERS, "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
 
 export type WebLogTarget = "connector" | "update" | "agent-updates";
 
@@ -17,10 +25,24 @@ export function parseCookies(cookieHeader: string): Record<string, string> {
   return cookies;
 }
 
-export async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+export class RequestBodyTooLargeError extends Error {
+  readonly statusCode = 413;
+}
+
+export function isRequestBodyTooLargeError(error: unknown): error is RequestBodyTooLargeError {
+  return error instanceof RequestBodyTooLargeError;
+}
+
+export async function readJsonBody(req: IncomingMessage, maxBytes = DEFAULT_JSON_BODY_LIMIT): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
+  let size = 0;
   for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > maxBytes) {
+      throw new RequestBodyTooLargeError(`Request body is too large. Max ${Math.round(maxBytes / 1024 / 1024)} MB.`);
+    }
+    chunks.push(buffer);
   }
   const text = Buffer.concat(chunks).toString("utf8").trim();
   if (!text) {
@@ -35,12 +57,13 @@ export function sendJson(res: ServerResponse, status: number, value: unknown): v
 }
 
 export function sendText(res: ServerResponse, status: number, text: string, contentType: string): void {
-  res.writeHead(status, { "content-type": contentType, "cache-control": "no-store" });
+  res.writeHead(status, { ...SECURITY_HEADERS, "content-type": contentType, "cache-control": "no-store" });
   res.end(text);
 }
 
 export function sendFile(res: ServerResponse, filePath: string, filename: string): void {
   res.writeHead(200, {
+    ...SECURITY_HEADERS,
     "content-type": "application/octet-stream",
     "content-disposition": `attachment; filename="${filename.replace(/"/g, "")}"`,
   });

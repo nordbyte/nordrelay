@@ -25,7 +25,14 @@ export function startPeerHealthMonitor(options: {
       const peers = store.list().filter((peer) => peer.enabled && peer.url);
       await Promise.all(peers.map(async (peer) => {
         try {
-          await client.rpc(peer.id, "peer.ping");
+          const startedAt = Date.now();
+          const result = await client.rpc(peer.id, "peer.ping");
+          const record = result && typeof result === "object" ? result as { version?: unknown; status?: unknown } : {};
+          store.markSeen(peer.id, {
+            latencyMs: Date.now() - startedAt,
+            remoteVersion: typeof record.version === "string" ? record.version : undefined,
+            remoteStatus: typeof record.status === "string" ? record.status : "online",
+          });
         } catch (error) {
           store.markError(peer.id, error instanceof Error ? error.message : String(error));
         }

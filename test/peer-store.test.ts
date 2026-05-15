@@ -97,6 +97,12 @@ describe("PeerStore", () => {
       remoteStatus: "online",
     });
     expect(updated.healthHistory?.at(-1)).toMatchObject({ status: "online", latencyMs: 42 });
+    expect(updated.effectiveAccess).toMatchObject({
+      scopes: ["inspect"],
+      allowedAgents: ["pi"],
+      allowedWorkspaceRoots: [],
+      workspaceAliases: { demo: "/srv/demo" },
+    });
     expect(updated).not.toHaveProperty("secret");
   });
 

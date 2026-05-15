@@ -246,7 +246,8 @@ export function renderDashboardApp(): string {
 
       <section class="page" id="page-peers">
         <div class="panel">
-          <div class="row"><button id="loadPeersBtn">Reload peers</button><button id="createPeerInviteBtn">Create invite</button><button id="addPeerBtn" class="secondary">Add peer</button><button id="discoverPeersBtn" class="secondary">Discover LAN peers</button></div>
+          <div class="row"><button id="loadPeersBtn">Reload peers</button><button id="createPeerInviteBtn">Create invite</button><button id="addPeerBtn" class="secondary">Add peer</button><button id="discoverPeersBtn" class="secondary">Discover LAN peers</button><button id="cancelPeerDiscoveryBtn" class="secondary">Cancel discovery</button><button id="exportPeerIdentityBtn" class="secondary">Export identity</button><button id="restorePeerIdentityBtn" class="secondary">Restore identity</button></div>
+          <div class="row"><input id="peerDiscoveryTargets" placeholder="Optional targets: 192.168.178.0/24, 192.168.178.10-50, host.local, https://host:31979"><input id="peerDiscoveryMaxHosts" type="number" min="1" max="65536" value="512" title="Max hosts"><input id="peerDiscoveryConcurrency" type="number" min="1" max="128" value="32" title="Concurrency"></div>
           <div id="peerStatus" class="list"></div>
           <h2>Configured peers</h2>
           <div id="peersList" class="list"></div>

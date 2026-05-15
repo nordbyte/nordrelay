@@ -20,6 +20,7 @@ const sessionsPager=createPaginator('sessionsPager',()=>loadSessions(false),50);
 async function loadBootstrap(){
   const local = await api('/api/bootstrap',{local:true});
   state.auth = local.auth || null;
+  state.csrfToken = local.auth?.csrfToken || state.csrfToken || null;
   state.permissions = local.auth?.permissions || [];
   await loadPeerSelector();
   const data = state.selectedPeer && state.selectedPeer !== 'local' ? await api('/api/bootstrap') : local;

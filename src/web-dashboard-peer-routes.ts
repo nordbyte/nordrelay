@@ -5,14 +5,17 @@ import { AGENT_IDS, isAgentId, type AgentId } from "./agent.js";
 import type { AuditEvent } from "./audit-log.js";
 import type { ConnectorConfig } from "./config.js";
 import {
+  exportPeerIdentityBackup,
   ensurePeerTlsFiles,
   loadOrCreatePeerIdentity,
+  restorePeerIdentityBackup,
 } from "./peer-identity.js";
-import { checkPeerEndpoint, pairPeer, RemoteRelayClient } from "./peer-client.js";
+import { checkPeerEndpoint, checkPeerIdentityEndpoint, pairPeer, RemoteRelayClient } from "./peer-client.js";
+import type { PeerDiscoveryJobManager } from "./peer-discovery-jobs.js";
 import { buildPeerReadiness, peerListenUrl } from "./peer-readiness.js";
 import { discoverLanPeers } from "./peer-discovery.js";
 import { PeerStore } from "./peer-store.js";
-import { publicPeer, type PeerWebProxyPayload } from "./peer-types.js";
+import { publicPeer, type PeerIdentityBackup, type PeerWebProxyPayload } from "./peer-types.js";
 import type { RelayRuntime } from "./relay-runtime.js";
 import type { WebActivityActor } from "./web-state.js";
 import {
@@ -29,6 +32,7 @@ export interface DashboardPeerRouteOptions {
   config: ConnectorConfig;
   home: string;
   runtime?: RelayRuntime;
+  discoveryJobs?: PeerDiscoveryJobManager;
   activityActor: WebActivityActor;
   auditPeerAction?: (action: AuditEvent["action"], description: string) => void;
 }
@@ -89,17 +93,69 @@ export async function handleDashboardPeerRoute(
     if (peerId) {
       const probe = await new RemoteRelayClient(store).rpc(peerId, "peer.probe", {}, options.activityActor);
       sendJson(res, 200, { type: "remote", peerId, readiness, probe });
+      options.auditPeerAction?.("peer_probe", peerId);
       return true;
     }
     const expectedTlsFingerprint = options.config.peerPublicUrl ? undefined : tls?.fingerprint;
     const probe = await checkPeerEndpoint(readiness.listenUrl, { expectedTlsFingerprint });
     sendJson(res, 200, { type: "local", readiness, probe });
+    options.auditPeerAction?.("peer_probe", readiness.listenUrl);
     return true;
   }
 
   if (req.method === "GET" && url.pathname === "/api/peers/discover") {
-    const result = await discoverLanPeers(options.config);
+    const result = await discoverLanPeers(options.config, discoveryOptionsFromQuery(url));
     sendJson(res, 200, result);
+    options.auditPeerAction?.("peer_discovery_started", `sync scan ${result.scanned} targets`);
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/peers/discovery-jobs") {
+    sendJson(res, 200, { jobs: options.discoveryJobs?.list() ?? [] });
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/peers/discovery-jobs") {
+    const body = await readJsonBody(req);
+    const job = await options.discoveryJobs!.start(discoveryOptionsFromBody(body));
+    sendJson(res, 202, { job });
+    options.auditPeerAction?.("peer_discovery_started", job.id);
+    return true;
+  }
+
+  const discoveryJobMatch = url.pathname.match(/^\/api\/peers\/discovery-jobs\/([^/]+)(?:\/(cancel|log))?$/);
+  if (discoveryJobMatch?.[1]) {
+    const id = decodeURIComponent(discoveryJobMatch[1]);
+    const action = discoveryJobMatch[2];
+    if (req.method === "GET" && action === "log") {
+      sendJson(res, 200, { id, plain: options.discoveryJobs?.log(id) ?? "" });
+      return true;
+    }
+    if (req.method === "POST" && action === "cancel") {
+      const job = options.discoveryJobs?.cancel(id);
+      sendJson(res, 200, { job });
+      options.auditPeerAction?.("peer_discovery_cancelled", id);
+      return true;
+    }
+    if (req.method === "GET" && !action) {
+      sendJson(res, 200, { job: options.discoveryJobs?.get(id) ?? null });
+      return true;
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/peers/identity/backup") {
+    const backup = exportPeerIdentityBackup(options.home, options.config.peerName);
+    sendJson(res, 200, { backup });
+    options.auditPeerAction?.("peer_identity_backup_exported", backup.identity.nodeId);
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/peers/identity/restore") {
+    const body = await readJsonBody(req);
+    const backup = objectRecord(body.backup) as unknown as PeerIdentityBackup;
+    const restored = restorePeerIdentityBackup(backup, options.home);
+    sendJson(res, 200, { identity: restored.public });
+    options.auditPeerAction?.("peer_identity_restored", restored.public.nodeId);
     return true;
   }
 
@@ -141,6 +197,26 @@ export async function handleDashboardPeerRoute(
     });
     sendJson(res, 200, { peer: publicPeer(peer) });
     options.auditPeerAction?.("peer_updated", `${peer.name} (${peer.id})`);
+    return true;
+  }
+
+  const repinMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/repin$/);
+  if (repinMatch?.[1] && req.method === "POST") {
+    const peerId = decodeURIComponent(repinMatch[1]);
+    const peer = store.get(peerId);
+    if (!peer?.url) {
+      throw new Error("Peer URL is required before TLS re-pin.");
+    }
+    const probe = await checkPeerIdentityEndpoint(peer.url, { timeoutMs: options.config.peerDiscoveryTimeoutMs });
+    if (!probe.ok || !probe.identity) {
+      throw new Error(`Peer identity could not be verified: ${probe.detail}`);
+    }
+    if (probe.identity.nodeId !== peer.nodeId || probe.identity.publicKey !== peer.publicKey || probe.identity.fingerprint !== peer.fingerprint) {
+      throw new Error("Peer identity changed. Re-pair this peer instead of re-pinning TLS.");
+    }
+    const updated = store.updatePeerTlsFingerprint(peer.id, probe.tlsFingerprint);
+    sendJson(res, 200, { peer: publicPeer(updated), probe });
+    options.auditPeerAction?.("peer_tls_repinned", `${updated.name} (${updated.id})`);
     return true;
   }
 
@@ -201,6 +277,7 @@ export async function handleDashboardPeerRoute(
     const peerId = decodeURIComponent(healthMatch[1]);
     const data = await new RemoteRelayClient(store).rpc(peerId, "peer.ping", undefined, options.activityActor);
     sendJson(res, 200, { data, peer: publicPeer(store.get(peerId)!) });
+    options.auditPeerAction?.("peer_health_checked", peerId);
     return true;
   }
 
@@ -238,6 +315,29 @@ export async function handleDashboardPeerRoute(
 
 function parseScopes(values: string[]): Permission[] {
   return values.filter(isPermission);
+}
+
+function discoveryOptionsFromQuery(url: URL) {
+  return {
+    targets: url.searchParams.getAll("target").concat((url.searchParams.get("targets") ?? "").split(/[\n,]/)).map((value) => value.trim()).filter(Boolean),
+    timeoutMs: optionalPositiveNumber(url.searchParams.get("timeoutMs")),
+    concurrency: optionalPositiveNumber(url.searchParams.get("concurrency")),
+    maxHosts: optionalPositiveNumber(url.searchParams.get("maxHosts")),
+  };
+}
+
+function discoveryOptionsFromBody(body: Record<string, unknown>) {
+  return {
+    targets: arrayStringField(body, "targets"),
+    timeoutMs: optionalNumberField(body, "timeoutMs"),
+    concurrency: optionalNumberField(body, "concurrency"),
+    maxHosts: optionalNumberField(body, "maxHosts"),
+  };
+}
+
+function optionalPositiveNumber(value: string | null): number | undefined {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function parseAgents(values: string[]): AgentId[] {

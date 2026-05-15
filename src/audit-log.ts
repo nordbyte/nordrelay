@@ -43,7 +43,14 @@ export type AuditAction =
   | "peer_invite_deleted"
   | "peer_paired"
   | "peer_updated"
-  | "peer_revoked";
+  | "peer_revoked"
+  | "peer_probe"
+  | "peer_health_checked"
+  | "peer_discovery_started"
+  | "peer_discovery_cancelled"
+  | "peer_tls_repinned"
+  | "peer_identity_backup_exported"
+  | "peer_identity_restored";
 
 export interface AuditEvent {
   id: string;

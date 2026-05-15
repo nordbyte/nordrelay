@@ -6,7 +6,7 @@ import type { AgentUpdateJobSnapshot } from "./agent-updates.js";
 import type { AuditEvent } from "./audit-log.js";
 import type { ChannelDescriptor } from "./channel-adapter.js";
 import type { ClearLogResult, ConnectorHealth, ConnectorRuntimeState, FormattedLogTail, SelfUpdateResult, VersionChecks } from "./operations.js";
-import type { PeerDiscoveryResult, PeerSnapshot } from "./peer-types.js";
+import type { PeerDiscoveryJobSnapshot, PeerDiscoveryResult, PeerIdentityBackup, PeerSnapshot, PublicPeerRecord } from "./peer-types.js";
 import type { WebApiDynamicPathFromContract, WebApiStaticPathFromContract } from "./web-api-contract.js";
 import type {
   ActiveSessionsDto,
@@ -53,6 +53,7 @@ export interface WebCurrentUserDto {
   user: PublicUser;
   groups: GroupRecord[];
   permissions: Permission[];
+  csrfToken?: string;
 }
 
 export interface WebBootstrapResponse {
@@ -134,6 +135,8 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/session/launch" ? { profileId: string } :
   P extends "/api/queue" ? { action: string; id?: string } :
   P extends "/api/artifacts/bulk" ? { action: "delete"; turnIds: string[] } :
+  P extends "/api/peers/discovery-jobs" ? { targets?: string[]; timeoutMs?: number; concurrency?: number; maxHosts?: number } :
+  P extends "/api/peers/identity/restore" ? { backup: PeerIdentityBackup } :
   P extends "/api/logs/clear" ? { target?: "connector" | "update" | "agent-updates" } :
   P extends "/api/settings" ? { settings: Record<string, string | null | undefined> } :
   P extends "/api/users" ? { email: string; displayName?: string; password: string; groupIds?: string[]; active?: boolean; telegramUserId?: number; discordUserId?: string } :
@@ -172,7 +175,13 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/adapters/health" ? { adapters: WebAdapterHealthDto[] } :
   P extends "/api/adapters/conformance" ? AdapterConformanceMatrix :
   P extends "/api/peers" ? PeerSnapshot :
+  P extends "/api/peers/identity/backup" ? { backup: PeerIdentityBackup } :
+  P extends "/api/peers/identity/restore" ? { identity: PeerIdentityBackup["identity"] } :
   P extends "/api/peers/discover" ? PeerDiscoveryResult :
+  P extends "/api/peers/discovery-jobs" ? { jobs: PeerDiscoveryJobSnapshot[] } | { job: PeerDiscoveryJobSnapshot } :
+  P extends `/api/peers/discovery-jobs/${string}/log` ? { id: string; plain: string } :
+  P extends `/api/peers/discovery-jobs/${string}/cancel` | `/api/peers/discovery-jobs/${string}` ? { job: PeerDiscoveryJobSnapshot | null } :
+  P extends `/api/peers/${string}/repin` ? { peer: PublicPeerRecord; probe: unknown } :
   P extends "/api/peers/probe" ? unknown :
   P extends "/api/peers/global-sessions" ? unknown :
   P extends "/api/permissions" | "/api/users" ? WebUserManagementResponse :

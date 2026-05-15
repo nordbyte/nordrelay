@@ -20,6 +20,7 @@ async function api(path, options = {}) {
   assertApiRoute(url.pathname, method);
   if (!options.local && shouldProxyApi(url.pathname)) {
     const peerId = selectedPeerTarget();
+    const csrfToken = /** @type {{ NORDRELAY_WEBUI_RUNTIME_STATE?: { csrfToken?: string | null } }} */ (globalThis).NORDRELAY_WEBUI_RUNTIME_STATE?.csrfToken;
     const proxyBody = JSON.stringify({
       method,
       path: url.pathname,
@@ -29,7 +30,7 @@ async function api(path, options = {}) {
     });
     const res = await fetch('/api/peers/'+encodeURIComponent(peerId)+'/proxy', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...(csrfToken ? { 'x-nordrelay-csrf': csrfToken } : {}) },
       body: proxyBody,
     });
     if (res.status === 401) { location.reload(); return /** @type {never} */ (undefined); }
@@ -39,8 +40,10 @@ async function api(path, options = {}) {
     return data;
   }
   const body = normalizeBody(options.body);
+  const csrfToken = /** @type {{ NORDRELAY_WEBUI_RUNTIME_STATE?: { csrfToken?: string | null } }} */ (globalThis).NORDRELAY_WEBUI_RUNTIME_STATE?.csrfToken;
   const headers = {
     ...(body !== undefined && shouldSendJsonHeader(options.body) ? { 'content-type': 'application/json' } : {}),
+    ...(method !== 'GET' && csrfToken ? { 'x-nordrelay-csrf': csrfToken } : {}),
     ...(options.headers || {}),
   };
   const res = await fetch(url.pathname + url.search, { method, headers, body });
@@ -66,7 +69,12 @@ function shouldProxyApi(path) {
     path === '/api/peers/pair' ||
     path === '/api/peers/probe' ||
     path === '/api/peers/discover' ||
+    path === '/api/peers/discovery-jobs' ||
+    path === '/api/peers/identity/backup' ||
+    path === '/api/peers/identity/restore' ||
+    /^\/api\/peers\/discovery-jobs\//.test(path) ||
     /^\/api\/peers\/[^/]+(?:\/events|\/proxy)?$/.test(path) ||
+    /^\/api\/peers\/[^/]+\/repin$/.test(path) ||
     isLocalAdminApi(path)
   );
 }

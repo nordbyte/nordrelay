@@ -219,6 +219,23 @@ export class PeerStore {
     return next;
   }
 
+  updatePeerTlsFingerprint(id: string, tlsFingerprint: string | undefined): PeerRecord {
+    let next: PeerRecord | null = null;
+    this.mutatePayload((payload) => {
+      const peer = payload.peers.find((candidate) => candidate.id === id || candidate.nodeId === id);
+      if (!peer) {
+        throw new Error("Peer not found.");
+      }
+      peer.tlsFingerprint = tlsFingerprint || undefined;
+      peer.updatedAt = new Date().toISOString();
+      next = clonePeer(peer);
+    });
+    if (!next) {
+      throw new Error("Peer not found.");
+    }
+    return next;
+  }
+
   markSeen(id: string, patch: PeerHealthPatch = {}): void {
     const checkedAt = new Date().toISOString();
     this.patchPeer(id, (peer) => ({

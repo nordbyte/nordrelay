@@ -1,4 +1,4 @@
-const state = { snapshot:null, controls:null, newSessionControls:null, enabledAgents:[], auth:null, permissions:[], settings:[], currentPage:'overview', settingsGroup:null, settingsWizard:null, accessTab:'users', logsPlain:'', logTimer:null, toastTimer:null, stickyToastActive:false, stickyToastText:'', cliStatusActive:false, webMirror:null, selectedArtifactTurns:new Set(), mediaRecorder:null, recordedChunks:[], events:null, reconnectTimer:null, notifications:false, toolTooltipTimer:null, toolTooltipTarget:null, toolsVisible:false, agentUpdateJobs:[], sessionsRequestId:0, activeSessions:null, peers:null, peerInviteSecrets:{}, peerProbeResult:null, selectedPeer:localStorage.getItem('nordrelayPeerTarget')||'local' };
+const state = { snapshot:null, controls:null, newSessionControls:null, enabledAgents:[], auth:null, csrfToken:null, permissions:[], settings:[], currentPage:'overview', settingsGroup:null, settingsWizard:null, accessTab:'users', logsPlain:'', logTimer:null, toastTimer:null, stickyToastActive:false, stickyToastText:'', cliStatusActive:false, webMirror:null, selectedArtifactTurns:new Set(), mediaRecorder:null, recordedChunks:[], events:null, reconnectTimer:null, notifications:false, toolTooltipTimer:null, toolTooltipTarget:null, toolsVisible:false, agentUpdateJobs:[], sessionsRequestId:0, activeSessions:null, peers:null, peerInviteSecrets:{}, peerProbeResult:null, peerDiscoveryJobs:[], selectedPeer:localStorage.getItem('nordrelayPeerTarget')||'local' };
 globalThis.NORDRELAY_WEBUI_RUNTIME_STATE=state;
 function toast(msg,options={}){const el=document.getElementById('toast');const text=String(msg??'');if(state.toastTimer)clearTimeout(state.toastTimer);state.toastTimer=null;if(options.sticky){state.stickyToastActive=true;state.stickyToastText=text;if(el.textContent!==text)el.textContent=text;if(el.style.display!=='block')el.style.display='block';return}el.textContent=text;el.style.display='block';state.toastTimer=setTimeout(()=>{state.toastTimer=null;if(state.stickyToastActive){el.textContent=state.stickyToastText;el.style.display='block';return}el.style.display='none'},options.duration||3500)}
 function clearStickyToast(){state.stickyToastActive=false;state.stickyToastText='';if(state.toastTimer)clearTimeout(state.toastTimer);state.toastTimer=null}
@@ -36,7 +36,8 @@ function applyPermissions(){
     ['#clearLogsBtn','logs.clear'],
     ['#createUserBtn,#createGroupBtn,#createChatBtn,#createDiscordChannelBtn,#createSlackChannelBtn','users.write'],
     ['#createPeerInviteBtn,#addPeerBtn,[data-peer-edit],[data-peer-toggle],[data-peer-revoke],[data-peer-invite-delete]','peers.write'],
-    ['#checkPeerReachabilityBtn,#discoverPeersBtn,[data-peer-probe]','peers.connect'],
+    ['#checkPeerReachabilityBtn,#discoverPeersBtn,#cancelPeerDiscoveryBtn,[data-peer-probe]','peers.connect'],
+    ['#exportPeerIdentityBtn,#restorePeerIdentityBtn,[data-peer-repin]','peers.write'],
     ['#lockSessionBtn,#unlockSessionBtn','sessions.write'],
     ['[data-switch]','sessions.write'],
     ['[data-queue],[data-q]','queue.write'],
