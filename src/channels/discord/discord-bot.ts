@@ -14,17 +14,17 @@ import {
 } from "discord.js";
 
 import { ADMIN_GROUP_ID, type Permission } from "../../access/access-control.js";
-import { agentLabel, agentReasoningLabel, agentReasoningOptions, type AgentExternalSnapshot, type AgentId, type AgentPromptInput, type AgentSessionInfo, type AgentSessionService } from "../../agents/shared/agent.js";
+import { agentLabel, agentReasoningLabel, agentReasoningOptions, type AgentId, type AgentPromptInput, type AgentSessionInfo, type AgentSessionService } from "../../agents/shared/agent.js";
 import { getAgentActivityLog, getExternalSnapshotForSession } from "../../agents/shared/agent-activity.js";
 import { hostAgentLoginCommand, hostAgentLogoutCommand } from "../../agents/shared/agent-auth-commands.js";
 import { listAgentAdapterDescriptors } from "../../agents/shared/agent-adapter.js";
 import { AgentUpdateManager, type AgentUpdateOperation } from "../../agents/shared/agent-updates.js";
 import { enabledAgents } from "../../agents/shared/agent-factory.js";
-import { collectRecentWorkspaceArtifacts, ensureOutDir, formatArtifactSummary, persistWorkspaceArtifactReport } from "../../artifacts/artifacts.js";
+import { ensureOutDir } from "../../artifacts/artifacts.js";
 import { buildFileInstructions, outboxPath, stageFile, type StagedFile } from "../../artifacts/attachments.js";
 import { AuditLogStore } from "../../access/audit-log.js";
 import { BotPreferencesStore } from "../../state/bot-preferences.js";
-import { capabilitiesOf, filterActivityEvents, formatLocalDateTime, parseActivityOptions, renderExternalMirrorEvent, renderExternalMirrorStatus, renderPromptFailure, trimLine, type TurnProgress } from "../shared/bot-rendering.js";
+import { capabilitiesOf, filterActivityEvents, formatLocalDateTime, parseActivityOptions, renderPromptFailure, trimLine, type TurnProgress } from "../shared/bot-rendering.js";
 import { renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction } from "../shared/channel-actions.js";
 import {
   createChannelActivityRecorder,
@@ -40,6 +40,9 @@ import { discordHelpCommandList } from "../shared/channel-command-catalog.js";
 import { createChannelPromptEngine } from "../shared/channel-prompt-engine.js";
 import { runChannelPeerPrompt } from "../shared/channel-peer-prompt.js";
 import { deliverChannelAction } from "../shared/channel-runtime.js";
+import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
+import { createChannelExternalMirrorController } from "../shared/channel-external-mirror-controller.js";
+import { monitorChannelExternalContexts } from "../shared/channel-external-monitor.js";
 import type { ChannelContext } from "../shared/channel-adapter.js";
 import type { LoginResult } from "../../agents/codex/codex-auth.js";
 import type { ConnectorConfig } from "../../core/config.js";
@@ -320,219 +323,6 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     await queueStatusMessages.update(contextKey, context, text);
   };
 
-  const sendExternalMirrorTyping = async (
-    context: ChannelContext,
-    state: DiscordExternalMirrorState,
-  ): Promise<void> => {
-    const now = Date.now();
-    if (state.lastTypingAt && now - state.lastTypingAt < TYPING_INTERVAL_MS) {
-      return;
-    }
-    state.lastTypingAt = now;
-    await runtime.sendTyping(context).catch(() => {});
-  };
-
-  const sendExternalWorkingNotice = async (
-    context: ChannelContext,
-    state: DiscordExternalMirrorState,
-    snapshot: AgentExternalSnapshot,
-  ): Promise<void> => {
-    const turnKey = snapshot.activity.turnId ?? snapshot.activity.startedAt?.toISOString() ?? "unknown";
-    if (state.workingNoticeTurnKey === turnKey) {
-      return;
-    }
-
-    const prompt = trimLine(snapshot.latestUserMessage ?? "", 250);
-    const text = prompt
-      ? `**Working on** ${prompt}`
-      : `**Working on** external ${snapshot.agentLabel} task...`;
-    await runtime.sendMessage(context, {
-      text,
-      fallbackText: prompt ? `Working on ${prompt}` : `Working on external ${snapshot.agentLabel} task...`,
-    });
-    state.workingNoticeTurnKey = turnKey;
-  };
-
-  const mirrorExternalSnapshot = async (
-    contextKey: ChannelContextKey,
-    context: ChannelContext,
-    session: AgentSessionService,
-    snapshot: AgentExternalSnapshot,
-  ): Promise<void> => {
-    const previous = externalMirrors.get(contextKey);
-    let state = previous;
-    if (!state || state.threadId !== snapshot.threadId || state.rolloutPath !== snapshot.sourcePath) {
-      state = {
-        threadId: snapshot.threadId,
-        rolloutPath: snapshot.sourcePath,
-        lastLine: snapshot.lineCount,
-        turnId: snapshot.activity.turnId,
-        startedAt: snapshot.activity.startedAt,
-      };
-      externalMirrors.set(contextKey, state);
-    }
-
-    const mirrorMode = preferencesStore.get(contextKey).mirrorMode ?? config.discordMirrorMode;
-    if (snapshot.activity.active) {
-      state.turnId = snapshot.activity.turnId;
-      state.startedAt = snapshot.activity.startedAt;
-      const turnKey = snapshot.activity.turnId ?? snapshot.activity.startedAt?.toISOString() ?? "unknown";
-      if (state.activityStartedTurnKey !== turnKey) {
-        const info = session.getInfo();
-        activityStore.append({
-          source: "cli",
-          status: "running",
-          type: "cli_turn_started",
-          contextKey,
-          threadId: snapshot.threadId,
-          workspace: info.workspace,
-          agentId: info.agentId,
-          actor: { channel: "cli", label: `${snapshot.agentLabel} CLI` },
-          prompt: snapshot.latestUserMessage ?? `${snapshot.agentLabel} CLI task`,
-          detail: `${snapshot.sourceLabel}: ${snapshot.sourcePath}`,
-        });
-        state.activityStartedTurnKey = turnKey;
-        state.activityFinishedTurnKey = undefined;
-        state.activityToolStartLines = [];
-        state.activityToolEndLines = [];
-      }
-      if (mirrorMode !== "off") {
-        await sendExternalMirrorTyping(context, state);
-      }
-      if (mirrorMode === "final") {
-        await sendExternalWorkingNotice(context, state, snapshot);
-        state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
-        return;
-      }
-      if (mirrorMode === "off") {
-        state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
-        return;
-      }
-
-      const status = renderExternalMirrorStatus(snapshot, promptStore.list(contextKey).length);
-      const statusMessage = { text: status.html, fallbackText: status.plain, parseMode: "html" as const };
-      const now = Date.now();
-      const canUpdateStatus = !state.latestStatusAt || now - state.latestStatusAt >= config.discordMirrorMinUpdateMs;
-      if (!state.statusMessageId) {
-        const sent = await runtime.sendMessage(context, statusMessage);
-        state.statusMessageId = sent.messageId;
-        state.latestStatusAt = now;
-      } else if (state.latestStatus !== status.plain && canUpdateStatus) {
-        await runtime.editMessage(context, state.statusMessageId, statusMessage);
-        state.latestStatusAt = now;
-      }
-      state.latestStatus = status.plain;
-
-      if (mirrorMode === "full") {
-        const newEvents = snapshot.events
-          .filter((event) => event.lineNumber > (state.latestMirroredEventLine ?? state.lastLine))
-          .filter((event) => event.kind === "tool" || event.kind === "task")
-          .slice(-4);
-        for (const event of newEvents) {
-          const rendered = renderExternalMirrorEvent(event);
-          if (!rendered) {
-            continue;
-          }
-          await deliverChannelAction(runtime, context, rendered);
-          state.latestMirroredEventLine = event.lineNumber;
-        }
-      }
-
-      const info = session.getInfo();
-      const loggedStartLines = new Set(state.activityToolStartLines ?? []);
-      const loggedEndLines = new Set(state.activityToolEndLines ?? []);
-      for (const event of snapshot.events.filter((event) => event.lineNumber > state.lastLine && event.kind === "tool")) {
-        if (event.status === "started" && !loggedStartLines.has(event.lineNumber)) {
-          activityStore.append({
-            source: "cli",
-            status: "running",
-            type: "cli_tool_started",
-            contextKey,
-            threadId: snapshot.threadId,
-            workspace: info.workspace,
-            agentId: info.agentId,
-            actor: { channel: "cli", label: `${snapshot.agentLabel} CLI` },
-            prompt: snapshot.latestUserMessage ?? undefined,
-            detail: event.toolName ?? "tool",
-          });
-          loggedStartLines.add(event.lineNumber);
-        }
-        if ((event.status === "finished" || event.status === "failed") && !loggedEndLines.has(event.lineNumber)) {
-          activityStore.append({
-            source: "cli",
-            status: event.status === "failed" ? "failed" : "completed",
-            type: event.status === "failed" ? "cli_tool_failed" : "cli_tool_completed",
-            contextKey,
-            threadId: snapshot.threadId,
-            workspace: info.workspace,
-            agentId: info.agentId,
-            actor: { channel: "cli", label: `${snapshot.agentLabel} CLI` },
-            prompt: snapshot.latestUserMessage ?? undefined,
-            detail: event.toolName ?? "tool",
-          });
-          loggedEndLines.add(event.lineNumber);
-        }
-      }
-      state.activityToolStartLines = [...loggedStartLines].slice(-200);
-      state.activityToolEndLines = [...loggedEndLines].slice(-200);
-      state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
-      return;
-    }
-
-    if (!previous) {
-      state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
-      return;
-    }
-
-    const terminalEvent = [...snapshot.events].reverse().find((event) => event.kind === "task" && event.status && event.status !== "started");
-    if (terminalEvent) {
-      const turnKey = terminalEvent.turnId ?? snapshot.activity.turnId ?? state.startedAt?.toString() ?? "unknown";
-      if (state.activityFinishedTurnKey !== turnKey) {
-        const info = session.getInfo();
-        const startedAt = state.startedAt instanceof Date ? state.startedAt : state.startedAt ? new Date(state.startedAt) : snapshot.activity.startedAt;
-        activityStore.append({
-          source: "cli",
-          status: terminalEvent.status === "aborted" ? "aborted" : terminalEvent.status === "failed" ? "failed" : "completed",
-          type: "cli_turn_finished",
-          contextKey,
-          threadId: snapshot.threadId,
-          workspace: info.workspace,
-          agentId: info.agentId,
-          actor: { channel: "cli", label: `${snapshot.agentLabel} CLI` },
-          prompt: snapshot.latestUserMessage ?? undefined,
-          detail: `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`,
-          durationMs: startedAt && terminalEvent.timestamp ? Math.max(0, terminalEvent.timestamp.getTime() - startedAt.getTime()) : undefined,
-        });
-        state.activityFinishedTurnKey = turnKey;
-      }
-      if (mirrorMode !== "off") {
-        const doneText = `${snapshot.agentLabel} CLI task ${terminalEvent.status}.`;
-        if (state.statusMessageId) {
-          await runtime.editMessage(context, state.statusMessageId, { text: doneText, fallbackText: doneText });
-        } else {
-          await runtime.sendMessage(context, { text: doneText, fallbackText: doneText });
-        }
-      }
-
-      const finalAgent = snapshot.events.filter((event) => event.kind === "agent" && event.text).at(-1);
-      if (mirrorMode !== "off" && mirrorMode !== "status" && finalAgent?.text && finalAgent.lineNumber !== state.latestAgentLine) {
-        await runtime.sendMessage(context, {
-          text: `**${snapshot.agentLabel} CLI final answer:**`,
-          fallbackText: `${snapshot.agentLabel} CLI final answer:`,
-        });
-        for (const chunk of splitDiscordMessage(finalAgent.text)) {
-          await runtime.sendMessage(context, { text: chunk, fallbackText: chunk });
-        }
-        state.latestAgentLine = finalAgent.lineNumber;
-      }
-
-      await deliverCliGeneratedArtifacts(contextKey, context, session, state.startedAt, terminalEvent.turnId);
-    }
-
-    state.workingNoticeTurnKey = undefined;
-    state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
-  };
-
   const ensureActiveThread = async (request: DiscordRequest, session: AgentSessionService): Promise<void> => {
     if (!session.hasActiveThread()) {
       await session.newThread();
@@ -794,59 +584,77 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     startedAt: Date | null | undefined,
     turnId: string | null,
   ): Promise<void> => {
-    if (!startedAt || !turnId) {
-      return;
-    }
-    const state = externalMirrors.get(contextKey);
-    if (state?.artifactsDeliveredForTurnId === turnId) {
-      return;
-    }
-
-    const workspace = session.getInfo().workspace;
-    const report = await collectRecentWorkspaceArtifacts(workspace, {
-      since: startedAt,
-      until: new Date(),
-      maxFileSize: config.maxFileSize,
-      limit: 5,
-      ignoreDirs: config.artifactIgnoreDirs,
-      ignoreGlobs: config.artifactIgnoreGlobs,
-    });
-    if (report.artifacts.length === 0 && report.skippedCount === 0 && !report.omittedCount) {
-      if (state) state.artifactsDeliveredForTurnId = turnId;
-      return;
-    }
-
-    const persisted = await persistWorkspaceArtifactReport(workspace, turnId, report).catch((error) => {
-      console.error("Failed to persist Discord CLI artifact report:", error);
-      return null;
-    });
-    const summary = formatArtifactSummary(report.artifacts, report.skippedCount, report.omittedCount);
-    if (summary) {
-      await runtime.sendMessage(context, { text: summary, fallbackText: summary });
-    }
-
-    if (config.discordAutoSendArtifacts) {
-      for (const artifact of (persisted?.artifacts ?? report.artifacts).slice(0, 5)) {
-        await runtime.sendFile(context, { localPath: artifact.localPath, name: artifact.name }).catch((error) => {
-          console.error(`Failed to send Discord CLI artifact ${artifact.name}:`, error);
-        });
-      }
-    }
-
-    const info = session.getInfo();
-    activityStore.append({
-      source: "cli",
-      status: "info",
-      type: config.discordAutoSendArtifacts ? "artifacts_sent" : "artifacts_detected",
+    await deliverChannelCliArtifacts({
+      config,
       contextKey,
-      threadId: info.threadId,
-      workspace: info.workspace,
-      agentId: info.agentId,
-      actor: { channel: "cli", label: `${info.agentLabel} CLI` },
-      detail: summary,
+      session,
+      startedAt,
+      turnId,
+      state: externalMirrors.get(contextKey),
+      autoSend: config.discordAutoSendArtifacts,
+      sendSummaryWhenAutoSendDisabled: true,
+      logPrefix: "Discord",
+      sendSummary: (summary) => runtime.sendMessage(context, { text: summary, fallbackText: summary }).then(() => {}),
+      sendArtifact: (artifact) => runtime.sendFile(context, { localPath: artifact.localPath, name: artifact.name }).then(() => {}).catch((error) => {
+        console.error(`Failed to send Discord CLI artifact ${artifact.name}:`, error);
+      }),
+      appendActivity: (input) => {
+        activityStore.append(input);
+      },
     });
-    if (state) state.artifactsDeliveredForTurnId = turnId;
   };
+
+  const externalMirrorController = createChannelExternalMirrorController<string>({
+    config,
+    states: externalMirrors,
+    typingIntervalMs: TYPING_INTERVAL_MS,
+    minUpdateMs: () => config.discordMirrorMinUpdateMs,
+    mirrorMode: (contextKey) => preferencesStore.get(contextKey).mirrorMode ?? config.discordMirrorMode,
+    queueLength: (contextKey) => promptStore.list(contextKey).length,
+    activityActor: (snapshot) => ({ channel: "cli", label: `${snapshot.agentLabel} CLI` }),
+    appendActivity: (input) => {
+      activityStore.append(input);
+    },
+    sendTyping: (_contextKey, context) => runtime.sendTyping(context).catch(() => {}),
+    sendWorkingNotice: async (_contextKey, context, state, snapshot, prompt) => {
+      const turnKey = snapshot.activity.turnId ?? snapshot.activity.startedAt?.toISOString() ?? "unknown";
+      if (state.workingNoticeTurnKey === turnKey) {
+        return;
+      }
+      const text = prompt ? `**Working on** ${prompt}` : `**Working on** external ${snapshot.agentLabel} task...`;
+      await runtime.sendMessage(context, {
+        text,
+        fallbackText: prompt ? `Working on ${prompt}` : `Working on external ${snapshot.agentLabel} task...`,
+      });
+      state.workingNoticeTurnKey = turnKey;
+    },
+    sendStatus: async (_contextKey, context, _state, rendered) => {
+      const sent = await runtime.sendMessage(context, { text: rendered.html, fallbackText: rendered.plain, parseMode: "html" });
+      return sent.messageId;
+    },
+    editStatus: (_contextKey, context, _state, messageId, rendered) =>
+      runtime.editMessage(context, messageId, { text: rendered.html, fallbackText: rendered.plain, parseMode: "html" }),
+    sendEvent: (_contextKey, context, _state, rendered) => deliverChannelAction(runtime, context, rendered).then(() => {}),
+    sendDone: (_contextKey, context, state, text) => {
+      if (state.statusMessageId) {
+        return runtime.editMessage(context, state.statusMessageId, { text, fallbackText: text });
+      }
+      return runtime.sendMessage(context, { text, fallbackText: text }).then(() => {});
+    },
+    sendFinalAnswer: async (_contextKey, context, _state, snapshot, text) => {
+      await runtime.sendMessage(context, {
+        text: `**${snapshot.agentLabel} CLI final answer:**`,
+        fallbackText: `${snapshot.agentLabel} CLI final answer:`,
+      });
+      for (const chunk of splitDiscordMessage(text)) {
+        await runtime.sendMessage(context, { text: chunk, fallbackText: chunk });
+      }
+    },
+    deliverArtifacts: (contextKey, context, session, state, turnId) =>
+      deliverCliGeneratedArtifacts(contextKey, context, session, state.startedAt, turnId),
+  });
+
+  const mirrorExternalSnapshot = externalMirrorController.mirror;
 
   const commandDispatcher = createSharedChannelCommandDispatcher<DiscordRequest>({
     transport: "discord",
@@ -1724,50 +1532,33 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
   };
 
   const monitorExternalContexts = async (): Promise<void> => {
-    const keys = new Set([
-      ...registry.listContexts().map((context) => context.contextKey),
-      ...promptStore.listContextKeys(),
-    ].filter(isDiscordContextKey));
-
-    for (const contextKey of keys) {
-      const parsed = parseDiscordContextKey(contextKey);
-      if (!parsed) continue;
-      if (!canSendSystemMessagesToDiscordContext(userStore, contextKey)) {
-        continue;
-      }
-      const guildId = parsed.guildId?.startsWith("dm-") ? undefined : parsed.guildId;
-      if (!isDiscordGuildAllowed(guildId) || !isDiscordChannelAllowedByEnv(parsed.channelId)) {
-        continue;
-      }
-      const session = await registry.getOrCreate(contextKey, { deferThreadStart: true }).catch(() => null);
-      if (!session) continue;
-      const context: ChannelContext = {
-        channelId: "discord",
-        chatId: parsed.threadId ?? parsed.channelId,
-        topicId: parsed.threadId,
-      };
-      const snapshot = getExternalSnapshotForSession(session, config, { maxEvents: 1 });
-      const previous = externalMirrors.get(contextKey);
-      const mirrorSnapshot = snapshot
-        ? getExternalSnapshotForSession(session, config, {
-          afterLine: previous?.lastLine ?? Number.MAX_SAFE_INTEGER,
-        }) ?? snapshot
-        : null;
-      if (mirrorSnapshot && !session.isProcessing()) {
-        await mirrorExternalSnapshot(contextKey, context, session, mirrorSnapshot);
-      }
-      if (mirrorSnapshot?.activity.active) {
-        if (promptStore.list(contextKey).length > 0) {
-          await updateQueueStatusMessage(
-            contextKey,
-            context,
-            `Waiting for ${mirrorSnapshot.agentLabel} CLI task... ${promptStore.list(contextKey).length} queued${promptStore.isPaused(contextKey) ? " (paused)" : ""}.`,
-          ).catch(() => {});
-        }
-        continue;
-      }
-      if (promptStore.list(contextKey).length > 0 && !promptStore.isPaused(contextKey) && !session.isProcessing()) {
-        await updateQueueStatusMessage(contextKey, context, `CLI task finished, running queued prompt 1/${promptStore.list(contextKey).length}.`).catch(() => {});
+    await monitorChannelExternalContexts({
+      config,
+      registry,
+      promptStore,
+      isContextKey: isDiscordContextKey,
+      canSendSystemMessages: (contextKey) => canSendSystemMessagesToDiscordContext(userStore, contextKey),
+      isAllowed: (contextKey) => {
+        const parsed = parseDiscordContextKey(contextKey);
+        if (!parsed) return false;
+        const guildId = parsed.guildId?.startsWith("dm-") ? undefined : parsed.guildId;
+        return isDiscordGuildAllowed(guildId) && isDiscordChannelAllowedByEnv(parsed.channelId);
+      },
+      contextForKey: (contextKey) => {
+        const parsed = parseDiscordContextKey(contextKey);
+        if (!parsed) return null;
+        return {
+          channelId: "discord",
+          chatId: parsed.threadId ?? parsed.channelId,
+          ...(parsed.threadId ? { topicId: parsed.threadId } : {}),
+        };
+      },
+      previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
+      mirrorSnapshot: mirrorExternalSnapshot,
+      updateQueueStatus: updateQueueStatusMessage,
+      drainQueue: async (contextKey, context) => {
+        const parsed = parseDiscordContextKey(contextKey);
+        if (!parsed) return;
         const systemRequest: DiscordRequest = {
           contextKey,
           context,
@@ -1778,8 +1569,8 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
           source: "message",
         };
         await drainQueue(systemRequest);
-      }
-    }
+      },
+    });
   };
 
   const registerSlashCommands = async (): Promise<void> => {

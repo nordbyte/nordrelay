@@ -10,10 +10,13 @@ const budgets = [
   { file: "src/runtime/relay-runtime-prompt-queue-artifacts.ts", maxLines: 550 },
   { file: "src/runtime/relay-runtime-sessions.ts", maxLines: 900 },
   { file: "src/runtime/relay-runtime-updates-jobs.ts", maxLines: 600 },
+  { file: "src/runtime/relay-runtime-delegate.ts", maxLines: 260 },
   { file: "src/web/web-dashboard.ts", maxLines: 1100 },
-  { file: "src/channels/discord/discord-bot.ts", maxLines: 2100 },
-  { file: "src/channels/slack/slack-bot.ts", maxLines: 1700 },
-  { file: "src/channels/telegram/bot.ts", maxLines: 4300 },
+  { file: "src/channels/shared/channel-cli-artifacts.ts", maxLines: 120 },
+  { file: "src/channels/shared/channel-external-mirror-controller.ts", maxLines: 360 },
+  { file: "src/channels/discord/discord-bot.ts", maxLines: 1800 },
+  { file: "src/channels/slack/slack-bot.ts", maxLines: 1550 },
+  { file: "src/channels/telegram/bot.ts", maxLines: 4100 },
 ];
 
 const failures = [];

@@ -4,17 +4,17 @@ import { App } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 
 import { ADMIN_GROUP_ID, type Permission } from "../../access/access-control.js";
-import { agentLabel, agentReasoningLabel, agentReasoningOptions, type AgentExternalSnapshot, type AgentId, type AgentPromptInput, type AgentSessionInfo, type AgentSessionService } from "../../agents/shared/agent.js";
+import { agentLabel, agentReasoningLabel, agentReasoningOptions, type AgentId, type AgentPromptInput, type AgentSessionInfo, type AgentSessionService } from "../../agents/shared/agent.js";
 import { getAgentActivityLog, getExternalSnapshotForSession } from "../../agents/shared/agent-activity.js";
 import { hostAgentLoginCommand, hostAgentLogoutCommand } from "../../agents/shared/agent-auth-commands.js";
 import { listAgentAdapterDescriptors } from "../../agents/shared/agent-adapter.js";
 import { AgentUpdateManager, type AgentUpdateOperation } from "../../agents/shared/agent-updates.js";
 import { enabledAgents } from "../../agents/shared/agent-factory.js";
-import { collectRecentWorkspaceArtifacts, ensureOutDir, formatArtifactSummary, persistWorkspaceArtifactReport } from "../../artifacts/artifacts.js";
+import { ensureOutDir } from "../../artifacts/artifacts.js";
 import { buildFileInstructions, outboxPath, stageFile, type StagedFile } from "../../artifacts/attachments.js";
 import { AuditLogStore } from "../../access/audit-log.js";
 import { BotPreferencesStore } from "../../state/bot-preferences.js";
-import { capabilitiesOf, filterActivityEvents, parseActivityOptions, renderExternalMirrorEvent, renderExternalMirrorStatus, renderPromptFailure, trimLine, type TurnProgress } from "../shared/bot-rendering.js";
+import { capabilitiesOf, filterActivityEvents, parseActivityOptions, renderPromptFailure, trimLine, type TurnProgress } from "../shared/bot-rendering.js";
 import { parseAgentUpdateId, renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction } from "../shared/channel-actions.js";
 import type { ChannelContext } from "../shared/channel-adapter.js";
 import {
@@ -31,6 +31,9 @@ import { ChannelCommandService } from "../shared/channel-command-service.js";
 import { createChannelPromptEngine } from "../shared/channel-prompt-engine.js";
 import { runChannelPeerPrompt } from "../shared/channel-peer-prompt.js";
 import { deliverChannelAction } from "../shared/channel-runtime.js";
+import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
+import { createChannelExternalMirrorController } from "../shared/channel-external-mirror-controller.js";
+import { monitorChannelExternalContexts } from "../shared/channel-external-monitor.js";
 import type { LoginResult } from "../../agents/codex/codex-auth.js";
 import type { ConnectorConfig } from "../../core/config.js";
 import { isSlackContextKey, parseSlackContextKey, slackContextKey, type ChannelContextKey } from "../shared/context-key.js";
@@ -282,107 +285,6 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     await queueStatusMessages.update(contextKey, context, text);
   };
 
-  const sendExternalWorkingNotice = async (context: ChannelContext, state: SlackExternalMirrorState, snapshot: AgentExternalSnapshot): Promise<void> => {
-    const turnKey = snapshot.activity.turnId ?? snapshot.activity.startedAt?.toISOString() ?? "unknown";
-    if (state.workingNoticeTurnKey === turnKey) {
-      return;
-    }
-    const prompt = trimLine(snapshot.latestUserMessage ?? "", 250);
-    const text = prompt ? `*Working on* ${prompt}` : `*Working on* external ${snapshot.agentLabel} task...`;
-    await runtime.sendMessage(context, {
-      text,
-      fallbackText: prompt ? `Working on ${prompt}` : `Working on external ${snapshot.agentLabel} task...`,
-    });
-    state.workingNoticeTurnKey = turnKey;
-  };
-
-  const mirrorExternalSnapshot = async (
-    contextKey: ChannelContextKey,
-    context: ChannelContext,
-    session: AgentSessionService,
-    snapshot: AgentExternalSnapshot,
-  ): Promise<void> => {
-    let state = externalMirrors.get(contextKey);
-    if (!state || state.threadId !== snapshot.threadId || state.rolloutPath !== snapshot.sourcePath) {
-      state = {
-        threadId: snapshot.threadId,
-        rolloutPath: snapshot.sourcePath,
-        lastLine: snapshot.lineCount,
-        turnId: snapshot.activity.turnId,
-        startedAt: snapshot.activity.startedAt,
-      };
-      externalMirrors.set(contextKey, state);
-    }
-
-    const mirrorMode = preferencesStore.get(contextKey).mirrorMode ?? config.slackMirrorMode;
-    if (snapshot.activity.active) {
-      state.turnId = snapshot.activity.turnId;
-      state.startedAt = snapshot.activity.startedAt;
-      if (mirrorMode !== "off") {
-        const now = Date.now();
-        if (!state.lastTypingAt || now - state.lastTypingAt >= TYPING_INTERVAL_MS) {
-          state.lastTypingAt = now;
-          await runtime.sendTyping(context).catch(() => {});
-        }
-      }
-      if (mirrorMode === "final") {
-        await sendExternalWorkingNotice(context, state, snapshot);
-        state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
-        return;
-      }
-      if (mirrorMode === "off") {
-        state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
-        return;
-      }
-
-      const status = renderExternalMirrorStatus(snapshot, promptStore.list(contextKey).length);
-      const now = Date.now();
-      const canUpdateStatus = !state.latestStatusAt || now - state.latestStatusAt >= config.slackMirrorMinUpdateMs;
-      if (!state.statusMessageId) {
-        const sent = await runtime.sendMessage(context, { text: status.plain, fallbackText: status.plain });
-        state.statusMessageId = sent.messageId;
-        state.latestStatusAt = now;
-      } else if (state.latestStatus !== status.plain && canUpdateStatus) {
-        await runtime.editMessage(context, state.statusMessageId, { text: status.plain, fallbackText: status.plain });
-        state.latestStatusAt = now;
-      }
-      state.latestStatus = status.plain;
-
-      if (mirrorMode === "full") {
-        const newEvents = snapshot.events
-          .filter((event) => event.lineNumber > (state.latestMirroredEventLine ?? state.lastLine))
-          .slice(-6);
-        for (const event of newEvents) {
-          const rendered = renderExternalMirrorEvent(event);
-          if (rendered) {
-            await runtime.sendMessage(context, { text: rendered.plain, fallbackText: rendered.plain });
-            state.latestMirroredEventLine = event.lineNumber;
-          }
-        }
-      }
-      state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
-      return;
-    }
-
-    const terminalEvent = [...snapshot.events].reverse().find((event) => event.kind === "task" && event.status && event.status !== "started");
-    if (terminalEvent) {
-      const finalAgent = snapshot.events.filter((event) => event.kind === "agent" && event.text).at(-1);
-      if (mirrorMode !== "off" && mirrorMode !== "status" && finalAgent?.text && finalAgent.lineNumber !== state.latestAgentLine) {
-        await runtime.sendMessage(context, {
-          text: `*${snapshot.agentLabel} CLI final answer:*`,
-          fallbackText: `${snapshot.agentLabel} CLI final answer:`,
-        });
-        for (const chunk of splitSlackMessage(finalAgent.text)) {
-          await runtime.sendMessage(context, { text: chunk, fallbackText: chunk });
-        }
-        state.latestAgentLine = finalAgent.lineNumber;
-      }
-      await deliverCliGeneratedArtifacts(contextKey, context, session, state.startedAt, terminalEvent.turnId);
-    }
-    state.workingNoticeTurnKey = undefined;
-    state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
-  };
-
   const ensureActiveThread = async (request: SlackRequest, session: AgentSessionService): Promise<void> => {
     if (!session.hasActiveThread()) {
       await session.newThread();
@@ -565,41 +467,81 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     startedAt: Date | null | undefined,
     turnId: string | null,
   ): Promise<void> => {
-    if (!startedAt || !turnId) return;
-    const state = externalMirrors.get(contextKey);
-    if (state?.artifactsDeliveredForTurnId === turnId) return;
-    const workspace = session.getInfo().workspace;
-    const report = await collectRecentWorkspaceArtifacts(workspace, {
-      since: startedAt,
-      until: new Date(),
-      maxFileSize: config.maxFileSize,
-      limit: 5,
-      ignoreDirs: config.artifactIgnoreDirs,
-      ignoreGlobs: config.artifactIgnoreGlobs,
+    await deliverChannelCliArtifacts({
+      config,
+      contextKey,
+      session,
+      startedAt,
+      turnId,
+      state: externalMirrors.get(contextKey),
+      autoSend: config.slackAutoSendArtifacts,
+      sendSummaryWhenAutoSendDisabled: true,
+      logPrefix: "Slack",
+      sendSummary: (summary) => runtime.sendMessage(context, { text: summary, fallbackText: summary }).then(() => {}),
+      sendArtifact: (artifact) => runtime.sendFile(context, { localPath: artifact.localPath, name: artifact.name }).then(() => {}).catch((error) => {
+        console.error(`Failed to send Slack CLI artifact ${artifact.name}:`, error);
+      }),
+      appendActivity: (input) => {
+        activityStore.append(input);
+      },
     });
-    if (report.artifacts.length === 0 && report.skippedCount === 0 && !report.omittedCount) {
-      if (state) state.artifactsDeliveredForTurnId = turnId;
-      return;
-    }
-    const persisted = await persistWorkspaceArtifactReport(workspace, turnId, report).catch((error) => {
-      console.error("Failed to persist Slack CLI artifact report:", error);
-      return null;
-    });
-    const summary = formatArtifactSummary(report.artifacts, report.skippedCount, report.omittedCount);
-    if (summary) {
-      await runtime.sendMessage(context, { text: summary, fallbackText: summary });
-    }
-    if (config.slackAutoSendArtifacts) {
-      for (const artifact of (persisted?.artifacts ?? report.artifacts).slice(0, 5)) {
-        await runtime.sendFile(context, { localPath: artifact.localPath, name: artifact.name }).catch((error) => {
-          console.error(`Failed to send Slack CLI artifact ${artifact.name}:`, error);
-        });
-      }
-    }
-    const info = session.getInfo();
-    activityStore.append({ source: "cli", status: "info", type: config.slackAutoSendArtifacts ? "artifacts_sent" : "artifacts_detected", contextKey, threadId: info.threadId, workspace: info.workspace, agentId: info.agentId, actor: { channel: "cli", label: `${info.agentLabel} CLI` }, detail: summary });
-    if (state) state.artifactsDeliveredForTurnId = turnId;
   };
+
+  const externalMirrorController = createChannelExternalMirrorController<string>({
+    config,
+    states: externalMirrors,
+    typingIntervalMs: TYPING_INTERVAL_MS,
+    minUpdateMs: () => config.slackMirrorMinUpdateMs,
+    mirrorMode: (contextKey) => preferencesStore.get(contextKey).mirrorMode ?? config.slackMirrorMode,
+    queueLength: (contextKey) => promptStore.list(contextKey).length,
+    activityActor: (snapshot) => ({ channel: "cli", label: `${snapshot.agentLabel} CLI` }),
+    appendActivity: (input) => {
+      activityStore.append(input);
+    },
+    sendTyping: (_contextKey, context) => runtime.sendTyping(context).catch(() => {}),
+    sendWorkingNotice: async (_contextKey, context, state, snapshot, prompt) => {
+      const turnKey = snapshot.activity.turnId ?? snapshot.activity.startedAt?.toISOString() ?? "unknown";
+      if (state.workingNoticeTurnKey === turnKey) {
+        return;
+      }
+      const text = prompt ? `*Working on* ${prompt}` : `*Working on* external ${snapshot.agentLabel} task...`;
+      await runtime.sendMessage(context, {
+        text,
+        fallbackText: prompt ? `Working on ${prompt}` : `Working on external ${snapshot.agentLabel} task...`,
+      });
+      state.workingNoticeTurnKey = turnKey;
+    },
+    sendStatus: async (_contextKey, context, _state, rendered) => {
+      const sent = await runtime.sendMessage(context, { text: rendered.plain, fallbackText: rendered.plain });
+      return sent.messageId;
+    },
+    editStatus: (_contextKey, context, _state, messageId, rendered) =>
+      runtime.editMessage(context, messageId, { text: rendered.plain, fallbackText: rendered.plain }),
+    sendEvent: (_contextKey, context, _state, rendered) =>
+      runtime.sendMessage(context, { text: rendered.plain, fallbackText: rendered.plain }).then(() => {}),
+    sendDone: (_contextKey, context, state, text) => {
+      if (state.statusMessageId) {
+        return runtime.editMessage(context, state.statusMessageId, { text, fallbackText: text });
+      }
+      return runtime.sendMessage(context, { text, fallbackText: text }).then(() => {});
+    },
+    sendFinalAnswer: async (_contextKey, context, _state, snapshot, text) => {
+      await runtime.sendMessage(context, {
+        text: `*${snapshot.agentLabel} CLI final answer:*`,
+        fallbackText: `${snapshot.agentLabel} CLI final answer:`,
+      });
+      for (const chunk of splitSlackMessage(text)) {
+        await runtime.sendMessage(context, { text: chunk, fallbackText: chunk });
+      }
+    },
+    deliverArtifacts: (contextKey, context, session, state, turnId) =>
+      deliverCliGeneratedArtifacts(contextKey, context, session, state.startedAt, turnId),
+    fullEventFilter: () => true,
+    fullEventLimit: 6,
+    requirePreviousForTerminal: false,
+  });
+
+  const mirrorExternalSnapshot = externalMirrorController.mirror;
 
   const commandDispatcher = createSharedChannelCommandDispatcher<SlackRequest>({
     transport: "slack",
@@ -1320,32 +1262,29 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
   };
 
   const monitorExternalContexts = async (): Promise<void> => {
-    const keys = new Set([...registry.listContexts().map((context) => context.contextKey), ...promptStore.listContextKeys()].filter(isSlackContextKey));
-    for (const contextKey of keys) {
-      const parsed = parseSlackContextKey(contextKey);
-      if (!parsed) continue;
-      if (!canSendSystemMessagesToSlackContext(userStore, contextKey)) continue;
-      if (!isSlackTeamAllowed(parsed.teamId) || !isSlackChannelAllowedByEnv(parsed.channelId)) continue;
-      const session = await registry.getOrCreate(contextKey, { deferThreadStart: true }).catch(() => null);
-      if (!session) continue;
-      const context: ChannelContext = { channelId: "slack", chatId: parsed.channelId, topicId: parsed.threadTs };
-      const previous = externalMirrors.get(contextKey);
-      const snapshot = getExternalSnapshotForSession(session, config, { afterLine: previous?.lastLine ?? Number.MAX_SAFE_INTEGER }) ??
-        getExternalSnapshotForSession(session, config, { maxEvents: 1 });
-      if (snapshot && !session.isProcessing()) {
-        await mirrorExternalSnapshot(contextKey, context, session, snapshot);
-      }
-      if (snapshot?.activity.active) {
-        if (promptStore.list(contextKey).length > 0) {
-          await updateQueueStatusMessage(contextKey, context, `Waiting for ${snapshot.agentLabel} CLI task... ${promptStore.list(contextKey).length} queued${promptStore.isPaused(contextKey) ? " (paused)" : ""}.`).catch(() => {});
-        }
-        continue;
-      }
-      if (promptStore.list(contextKey).length > 0 && !promptStore.isPaused(contextKey) && !session.isProcessing()) {
-        await updateQueueStatusMessage(contextKey, context, `CLI task finished, running queued prompt 1/${promptStore.list(contextKey).length}.`).catch(() => {});
+    await monitorChannelExternalContexts({
+      config,
+      registry,
+      promptStore,
+      isContextKey: isSlackContextKey,
+      canSendSystemMessages: (contextKey) => canSendSystemMessagesToSlackContext(userStore, contextKey),
+      isAllowed: (contextKey) => {
+        const parsed = parseSlackContextKey(contextKey);
+        return Boolean(parsed && isSlackTeamAllowed(parsed.teamId) && isSlackChannelAllowedByEnv(parsed.channelId));
+      },
+      contextForKey: (contextKey) => {
+        const parsed = parseSlackContextKey(contextKey);
+        return parsed ? { channelId: "slack", chatId: parsed.channelId, ...(parsed.threadTs ? { topicId: parsed.threadTs } : {}) } : null;
+      },
+      previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
+      mirrorSnapshot: mirrorExternalSnapshot,
+      updateQueueStatus: updateQueueStatusMessage,
+      drainQueue: async (contextKey, context) => {
+        const parsed = parseSlackContextKey(contextKey);
+        if (!parsed) return;
         await drainQueue({ contextKey, context, userId: "system", channelId: parsed.channelId, teamId: parsed.teamId, isDirectMessage: false, source: "system" });
-      }
-    }
+      },
+    });
   };
 
   (app as unknown as SlackBoltApp).event("message", async ({ event }) => {

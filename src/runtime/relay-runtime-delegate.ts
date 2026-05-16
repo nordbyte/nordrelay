@@ -1,32 +1,220 @@
+import type { AuditEvent, AuditListOptions } from "../access/audit-log.js";
+import type { SessionLock } from "../access/session-locks.js";
+import type { ArtifactTurnReport } from "../artifacts/artifacts.js";
+import type { LoginResult } from "../agents/codex/codex-auth.js";
 import type {
-  ActiveSessionsDto,
-  QueueItemDto,
-  RelaySnapshot,
-  UnifiedJobsDto,
-  WebTasksDto,
-} from "./relay-runtime-types.js";
+  AgentCapabilities,
+  AgentId,
+  AgentSessionInfo,
+  AgentSessionService,
+  AgentThreadRecord,
+} from "../agents/shared/agent.js";
+import type { AgentUpdateJobSnapshot, AgentUpdateOperation } from "../agents/shared/agent-updates.js";
+import type { ChannelMirrorRegistry } from "../channels/shared/channel-mirror-registry.js";
+import type { ChannelTurnService } from "../channels/shared/channel-turn-service.js";
+import type { ChannelContextKey } from "../channels/shared/context-key.js";
+import type { ConnectorConfig } from "../core/config.js";
+import type { BotPreferencesStore } from "../state/bot-preferences.js";
+import type { UnifiedJobStore } from "../state/job-store.js";
+import type { PromptEnvelope } from "../state/prompt-store.js";
+import type { PromptStore } from "../state/prompt-store.js";
+import type { ContextMetadata, SessionRegistry } from "../state/session-registry.js";
+import type { FormattedLogTail, SelfUpdateResult } from "../support/operations.js";
+import type { SupportBundleResult } from "../support/support-bundle.js";
 import type {
+  WebActivityActor,
   WebActivityCategory,
   WebActivityEvent,
   WebActivitySource,
   WebActivityStatus,
+  WebActivityStore,
   WebChatMessage,
+  WebChatStore,
 } from "../web/web-state.js";
+import type { RelayArtifactService } from "./relay-artifact-service.js";
+import type { RelayAuthService } from "./relay-auth-service.js";
+import type { RelayDashboardService } from "./relay-dashboard-service.js";
+import type { RelayExternalActivityMonitor } from "./relay-external-activity-monitor.js";
+import type { RelayQueueAction, RelayQueueService } from "./relay-queue-service.js";
+import type { RuntimeMetricsDto } from "./metrics.js";
+import type { RuntimeSnapshotCache } from "./runtime-cache.js";
+import type {
+  ActiveSessionDto,
+  ActiveSessionsDto,
+  ArtifactPreviewDto,
+  ArtifactReportDto,
+  DashboardControlOptions,
+  QueueItemDto,
+  RelayEvent,
+  RelaySnapshot,
+  SessionPageDto,
+  UnifiedJobDto,
+  UnifiedJobsDto,
+  UploadPromptFile,
+  UploadPromptResult,
+  WebAdapterHealthDto,
+  WebAuthDto,
+  WebDiagnosticsDto,
+  WebPermissionsDto,
+  WebTaskDto,
+  WebTasksDto,
+} from "./relay-runtime-types.js";
+import type { AgentUpdateManager } from "../agents/shared/agent-updates.js";
+import type { AuditLogStore } from "../access/audit-log.js";
+import type { SessionLockStore } from "../access/session-locks.js";
 
 export interface RelayRuntimeActivityOptions {
   limit?: number;
-  category?: WebActivityCategory;
+  category?: WebActivityCategory | "all";
   sinceMs?: number;
-  source?: WebActivitySource;
-  status?: WebActivityStatus;
+  since?: string | number;
+  source?: WebActivitySource | "all";
+  status?: WebActivityStatus | "all";
+  actor?: string;
+  agentId?: AgentId | "all" | string;
+  threadId?: string;
+  workspace?: string;
+  type?: string;
 }
 
-export type RelayRuntimeDelegate = Record<string, any> & {
+export interface RelayRuntimeDelegate {
+  readonly config: ConnectorConfig;
+  readonly contextKey: ChannelContextKey;
+  readonly registry: SessionRegistry;
+  readonly promptStore: PromptStore;
+  readonly chatStore: WebChatStore;
+  readonly activityStore: WebActivityStore;
+  readonly auditStore: AuditLogStore;
+  readonly preferencesStore: BotPreferencesStore;
+  readonly lockStore: SessionLockStore;
+  readonly agentUpdates: AgentUpdateManager;
+  readonly queueService: RelayQueueService;
+  readonly jobStore: UnifiedJobStore;
+  readonly artifactService: RelayArtifactService;
+  readonly mirrorRegistry: ChannelMirrorRegistry;
+  readonly externalActivityMonitor: RelayExternalActivityMonitor;
+  readonly cache: RuntimeSnapshotCache;
+  readonly dashboardService: RelayDashboardService;
+  readonly turnService: ChannelTurnService;
+  readonly authService: RelayAuthService;
+  readonly subscribers: Set<(event: RelayEvent) => void>;
+  readonly agentUpdateActors: Map<string, WebActivityActor>;
+  readonly agentUpdateStates: Map<string, { status: AgentUpdateJobSnapshot["status"]; needsInput: boolean }>;
+  readonly externalMonitor?: NodeJS.Timeout;
+  activeSessionsBroadcastTimer: NodeJS.Timeout | null;
+  activeSessionsLastBroadcastAt: number;
+  draining: boolean;
+  currentTurnId: string | null;
+  accumulatedText: string;
+  currentTurnStartedAt: number;
+  currentProgress: WebTaskDto | null;
+
+  subscribe(callback: (event: RelayEvent) => void): () => void;
   snapshot(): Promise<RelaySnapshot>;
-  chatHistory(limit?: number): Promise<WebChatMessage[]>;
-  activeSessions(): Promise<ActiveSessionsDto>;
-  activity(options?: RelayRuntimeActivityOptions): WebActivityEvent[];
-  queue(): QueueItemDto[];
+  status(): Promise<Record<string, unknown>>;
+  bootstrapStatus(): Promise<Record<string, unknown>>;
+  version(): Promise<Record<string, unknown>>;
+  updateConnector(actor?: WebActivityActor): SelfUpdateResult;
+  agentUpdateJobs(): AgentUpdateJobSnapshot[];
+  startAgentUpdate(agentId: AgentId, operation?: AgentUpdateOperation, actor?: WebActivityActor): AgentUpdateJobSnapshot;
+  agentUpdateLog(id: string): ReturnType<AgentUpdateManager["readLog"]>;
+  deleteAgentUpdateLog(id: string, actor?: WebActivityActor): AgentUpdateJobSnapshot;
+  sendAgentUpdateInput(id: string, input: string, actor?: WebActivityActor): AgentUpdateJobSnapshot;
+  cancelAgentUpdate(id: string, actor?: WebActivityActor): AgentUpdateJobSnapshot;
+  diagnostics(): Promise<WebDiagnosticsDto>;
+  adapterHealth(): Promise<WebAdapterHealthDto[]>;
+  permissions(): WebPermissionsDto;
   tasks(): WebTasksDto;
   jobs(): Promise<UnifiedJobsDto>;
-};
+  jobLog(id: string): Promise<{ job: UnifiedJobDto | null; plain: string }>;
+  jobAction(id: string, action: "cancel" | "retry", actor?: WebActivityActor): Promise<UnifiedJobsDto>;
+  activeSessions(): Promise<ActiveSessionsDto>;
+  metrics(): Promise<RuntimeMetricsDto>;
+  audit(options?: number | AuditListOptions): AuditEvent[];
+  supportBundle(actor?: WebActivityActor): Promise<SupportBundleResult>;
+  locks(): SessionLock[];
+  lockWebSession(ownerName?: string, actor?: WebActivityActor): SessionLock;
+  unlockWebSession(actor?: WebActivityActor): { removed: boolean; locks: SessionLock[] };
+  controlOptions(agentId?: AgentId): Promise<DashboardControlOptions>;
+  authStatus(agentId?: AgentId): Promise<WebAuthDto>;
+  login(agentId?: AgentId, actor?: WebActivityActor): Promise<WebAuthDto & { result: LoginResult | null }>;
+  logout(agentId?: AgentId, actor?: WebActivityActor): Promise<WebAuthDto & { result: LoginResult | null }>;
+  chatHistory(limit?: number): Promise<WebChatMessage[]>;
+  webMirrorPreference(argument?: string, actor?: WebActivityActor): Promise<{
+    mode: string;
+    minInterval: number;
+    response: { plain: string; html: string };
+  }>;
+  sessionDetail(threadId: string): Promise<Record<string, unknown>>;
+  clearChatHistory(actor?: WebActivityActor): Promise<{ removed: number; messages: WebChatMessage[] }>;
+  activity(options?: RelayRuntimeActivityOptions): WebActivityEvent[];
+  retry(actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }>;
+  sync(actor?: WebActivityActor): Promise<ReturnType<AgentSessionService["syncFromAgentState"]>>;
+  listSessions(limit?: number, query?: string, agentId?: AgentId): Promise<AgentThreadRecord[]>;
+  listSessionsPage(page?: number, pageSize?: number, query?: string, agentId?: AgentId): Promise<SessionPageDto>;
+  filteredSessions(session: AgentSessionService, query: string, limit: number): AgentThreadRecord[];
+  listModels(): Promise<ReturnType<AgentSessionService["listModels"]>>;
+  setAgent(agentId: AgentId, actor?: WebActivityActor): Promise<AgentSessionInfo>;
+  newSession(options?: {
+    agentId?: AgentId;
+    workspace?: string;
+    model?: string;
+    reasoningEffort?: string;
+    launchProfileId?: string;
+    fastMode?: boolean;
+  }, actor?: WebActivityActor): Promise<AgentSessionInfo>;
+  switchSession(threadId: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
+  attachSession(threadId: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
+  setModel(model: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
+  setReasoningEffort(effort: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
+  setFastMode(enabled: boolean, actor?: WebActivityActor): Promise<AgentSessionInfo>;
+  setLaunchProfile(profileId: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
+  handback(actor?: WebActivityActor): Promise<ReturnType<AgentSessionService["handback"]>>;
+  abort(actor?: WebActivityActor): Promise<void>;
+  sendPrompt(text: string, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }>;
+  sendUploadPrompt(options: { text?: string; files: UploadPromptFile[] }, actor?: WebActivityActor): Promise<UploadPromptResult>;
+  sendEnvelope(envelope: PromptEnvelope, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }>;
+  queue(): QueueItemDto[];
+  queuePaused(): boolean;
+  queueAction(action: RelayQueueAction, id?: string, actor?: WebActivityActor): QueueItemDto[];
+  artifacts(): Promise<ArtifactReportDto[]>;
+  artifact(turnId: string): Promise<ArtifactTurnReport | null>;
+  deleteArtifact(turnId: string, actor?: WebActivityActor): Promise<boolean>;
+  createArtifactZip(turnId: string, actor?: WebActivityActor): Promise<{ path: string; name: string } | null>;
+  artifactPreview(turnId: string, relativePath: string): Promise<ArtifactPreviewDto | null>;
+  logs(target?: "connector" | "update" | "agent-updates", lines?: number): Promise<FormattedLogTail>;
+  clearLogs(target?: "connector" | "update" | "agent-updates", actor?: WebActivityActor): { ok: true; filePath: string; clearedAt: string };
+  restartConnector(actor?: WebActivityActor): { ok: true; message: string };
+  dispose(): void;
+
+  getSession(deferThreadStart: boolean): Promise<AgentSessionService>;
+  listKnownContextMetadata(): ContextMetadata[];
+  discoverRunningConnectorSessions(): ActiveSessionDto[];
+  discoverActiveCodexSessions(knownContexts: ContextMetadata[], preferences: BotPreferencesStore): ActiveSessionDto[];
+  externalActiveSession(meta: ContextMetadata, knownContexts: ContextMetadata[], preferences: BotPreferencesStore): ActiveSessionDto | null;
+  sessionStubForMetadata(meta: ContextMetadata, agentId: AgentId, capabilities: AgentCapabilities): AgentSessionService;
+  capabilitiesForAgent(agentId: AgentId): AgentCapabilities;
+  activeSessionKey(session: Pick<ActiveSessionDto, "agentId" | "threadId" | "id">): string;
+  preferredActiveSession(existing: ActiveSessionDto | undefined, candidate: ActiveSessionDto): ActiveSessionDto;
+  getControlSession(agentId?: AgentId): Promise<{ session: AgentSessionService; dispose: boolean }>;
+  cliPathOptions(): { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string; claudeCodeCliPath?: string };
+  ensureActiveThread(session: AgentSessionService): Promise<void>;
+  ensureIdle(session: AgentSessionService): void;
+  runPrompt(session: AgentSessionService, envelope: PromptEnvelope): Promise<void>;
+  drainQueue(): Promise<void>;
+  updateSession(session: AgentSessionService): void;
+  recordActivity(input: Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }): WebActivityEvent;
+  recordAgentUpdateLifecycle(job: AgentUpdateJobSnapshot): void;
+  appendActivity(input: Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }): WebActivityEvent;
+  enrichActivityInput<T extends Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }>(input: T): T;
+  enrichActivityEvent(event: WebActivityEvent, info?: AgentSessionInfo): WebActivityEvent;
+  enrichActivityFields<T extends Pick<WebActivityEvent, "threadId"> & Partial<Pick<WebActivityEvent, "workspace" | "agentId">>>(event: T, info?: AgentSessionInfo): T;
+  appendAudit(input: Omit<AuditEvent, "id" | "timestamp" | "channelId">): AuditEvent;
+  updateCurrentProgress(patch?: Partial<WebTaskDto>): void;
+  addCurrentTool(toolName: string): void;
+  broadcastQueue(): void;
+  broadcastStatus(message: string, level?: "info" | "warn" | "error"): void;
+  broadcast(event: RelayEvent): void;
+  scheduleActiveSessionsBroadcast(): void;
+  publicInfo(session: AgentSessionService): AgentSessionInfo;
+}

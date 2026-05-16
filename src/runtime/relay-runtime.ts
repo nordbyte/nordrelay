@@ -34,7 +34,7 @@ import { listThreads as listCodexThreads } from "../agents/codex/codex-state.js"
 import type { ConnectorConfig } from "../core/config.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import { friendlyErrorText } from "../core/error-messages.js";
-import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "../support/operations.js";
+import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate, type FormattedLogTail } from "../support/operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "../state/prompt-store.js";
 import { UnifiedJobStore } from "../state/job-store.js";
 import { buildRuntimeMetrics, type RuntimeMetricsDto } from "./metrics.js";
@@ -240,37 +240,37 @@ export interface RelayRuntimeOptions {
 }
 
 export class RelayRuntime {
-  private readonly contextKey: ChannelContextKey;
-  private readonly registry: SessionRegistry;
-  private readonly promptStore: PromptStore;
-  private readonly chatStore: WebChatStore;
-  private readonly activityStore: WebActivityStore;
-  private readonly auditStore: AuditLogStore;
-  private readonly preferencesStore: BotPreferencesStore;
-  private readonly lockStore: SessionLockStore;
-  private readonly agentUpdates: AgentUpdateManager;
-  private readonly queueService: RelayQueueService;
-  private readonly jobStore: UnifiedJobStore;
-  private readonly artifactService: RelayArtifactService;
-  private readonly mirrorRegistry: ChannelMirrorRegistry;
-  private readonly externalActivityMonitor: RelayExternalActivityMonitor;
-  private readonly cache = new RuntimeSnapshotCache();
-  private readonly dashboardService: RelayDashboardService;
-  private readonly turnService: ChannelTurnService;
-  private readonly authService: RelayAuthService;
-  private readonly subscribers = new Set<(event: RelayEvent) => void>();
-  private readonly agentUpdateActors = new Map<string, WebActivityActor>();
-  private readonly agentUpdateStates = new Map<string, { status: AgentUpdateJobSnapshot["status"]; needsInput: boolean }>();
-  private readonly externalMonitor?: NodeJS.Timeout;
-  private activeSessionsBroadcastTimer: NodeJS.Timeout | null = null;
-  private activeSessionsLastBroadcastAt = 0;
-  private draining = false;
-  private currentTurnId: string | null = null;
-  private accumulatedText = "";
-  private currentTurnStartedAt = 0;
-  private currentProgress: WebTaskDto | null = null;
+  readonly contextKey: ChannelContextKey;
+  readonly registry: SessionRegistry;
+  readonly promptStore: PromptStore;
+  readonly chatStore: WebChatStore;
+  readonly activityStore: WebActivityStore;
+  readonly auditStore: AuditLogStore;
+  readonly preferencesStore: BotPreferencesStore;
+  readonly lockStore: SessionLockStore;
+  readonly agentUpdates: AgentUpdateManager;
+  readonly queueService: RelayQueueService;
+  readonly jobStore: UnifiedJobStore;
+  readonly artifactService: RelayArtifactService;
+  readonly mirrorRegistry: ChannelMirrorRegistry;
+  readonly externalActivityMonitor: RelayExternalActivityMonitor;
+  readonly cache = new RuntimeSnapshotCache();
+  readonly dashboardService: RelayDashboardService;
+  readonly turnService: ChannelTurnService;
+  readonly authService: RelayAuthService;
+  readonly subscribers = new Set<(event: RelayEvent) => void>();
+  readonly agentUpdateActors = new Map<string, WebActivityActor>();
+  readonly agentUpdateStates = new Map<string, { status: AgentUpdateJobSnapshot["status"]; needsInput: boolean }>();
+  readonly externalMonitor?: NodeJS.Timeout;
+  activeSessionsBroadcastTimer: NodeJS.Timeout | null = null;
+  activeSessionsLastBroadcastAt = 0;
+  draining = false;
+  currentTurnId: string | null = null;
+  accumulatedText = "";
+  currentTurnStartedAt = 0;
+  currentProgress: WebTaskDto | null = null;
 
-  constructor(private readonly config: ConnectorConfig, options: RelayRuntimeOptions = {}) {
+  constructor(readonly config: ConnectorConfig, options: RelayRuntimeOptions = {}) {
     this.contextKey = options.contextKey ?? WEB_CONTEXT_KEY;
     this.registry = new SessionRegistry(config, {
       fileName: options.registryFileName ?? "web-contexts.json",
@@ -357,127 +357,127 @@ export class RelayRuntime {
   }
 
   subscribe(callback: (event: RelayEvent) => void): () => void {
-    return relayRuntimeSubscribe(this as any, callback);
+    return relayRuntimeSubscribe(this, callback);
   }
 
   async snapshot(): Promise<RelaySnapshot> {
-    return relayRuntimeSnapshot(this as any);
+    return relayRuntimeSnapshot(this);
   }
 
   async status(): Promise<Record<string, unknown>> {
-    return relayRuntimeStatus(this as any);
+    return relayRuntimeStatus(this);
   }
 
   async bootstrapStatus(): Promise<Record<string, unknown>> {
-    return relayRuntimeBootstrapStatus(this as any);
+    return relayRuntimeBootstrapStatus(this);
   }
 
   async version(): Promise<Record<string, unknown>> {
-    return relayRuntimeVersion(this as any);
+    return relayRuntimeVersion(this);
   }
 
   updateConnector(actor?: WebActivityActor): ReturnType<typeof spawnSelfUpdate> {
-    return relayRuntimeUpdateConnector(this as any, actor);
+    return relayRuntimeUpdateConnector(this, actor);
   }
 
   agentUpdateJobs(): AgentUpdateJobSnapshot[] {
-    return relayRuntimeAgentUpdateJobs(this as any);
+    return relayRuntimeAgentUpdateJobs(this);
   }
 
   startAgentUpdate(agentId: AgentId, operation: AgentUpdateOperation = "update", actor?: WebActivityActor): AgentUpdateJobSnapshot {
-    return relayRuntimeStartAgentUpdate(this as any, agentId, operation, actor);
+    return relayRuntimeStartAgentUpdate(this, agentId, operation, actor);
   }
 
   agentUpdateLog(id: string): ReturnType<AgentUpdateManager["readLog"]> {
-    return relayRuntimeAgentUpdateLog(this as any, id);
+    return relayRuntimeAgentUpdateLog(this, id);
   }
 
   deleteAgentUpdateLog(id: string, actor?: WebActivityActor): AgentUpdateJobSnapshot {
-    return relayRuntimeDeleteAgentUpdateLog(this as any, id, actor);
+    return relayRuntimeDeleteAgentUpdateLog(this, id, actor);
   }
 
   sendAgentUpdateInput(id: string, input: string, actor?: WebActivityActor): AgentUpdateJobSnapshot {
-    return relayRuntimeSendAgentUpdateInput(this as any, id, input, actor);
+    return relayRuntimeSendAgentUpdateInput(this, id, input, actor);
   }
 
   cancelAgentUpdate(id: string, actor?: WebActivityActor): AgentUpdateJobSnapshot {
-    return relayRuntimeCancelAgentUpdate(this as any, id, actor);
+    return relayRuntimeCancelAgentUpdate(this, id, actor);
   }
 
   async diagnostics(): Promise<WebDiagnosticsDto> {
-    return relayRuntimeDiagnostics(this as any);
+    return relayRuntimeDiagnostics(this);
   }
 
   async adapterHealth(): Promise<WebAdapterHealthDto[]> {
-    return relayRuntimeAdapterHealth(this as any);
+    return relayRuntimeAdapterHealth(this);
   }
 
   permissions(): WebPermissionsDto {
-    return relayRuntimePermissions(this as any);
+    return relayRuntimePermissions(this);
   }
 
   tasks(): WebTasksDto {
-    return relayRuntimeTasks(this as any);
+    return relayRuntimeTasks(this);
   }
 
   async jobs(): Promise<UnifiedJobsDto> {
-    return relayRuntimeJobs(this as any);
+    return relayRuntimeJobs(this);
   }
 
   async jobLog(id: string): Promise<{ job: UnifiedJobDto | null; plain: string }> {
-    return relayRuntimeJobLog(this as any, id);
+    return relayRuntimeJobLog(this, id);
   }
 
   async jobAction(id: string, action: "cancel" | "retry", actor?: WebActivityActor): Promise<UnifiedJobsDto> {
-    return relayRuntimeJobAction(this as any, id, action, actor);
+    return relayRuntimeJobAction(this, id, action, actor);
   }
 
   async activeSessions(): Promise<ActiveSessionsDto> {
-    return relayRuntimeActiveSessions(this as any);
+    return relayRuntimeActiveSessions(this);
   }
 
   async metrics(): Promise<RuntimeMetricsDto> {
-    return relayRuntimeMetrics(this as any);
+    return relayRuntimeMetrics(this);
   }
 
   audit(options: number | AuditListOptions = 50): AuditEvent[] {
-    return relayRuntimeAudit(this as any, options);
+    return relayRuntimeAudit(this, options);
   }
 
   async supportBundle(actor?: WebActivityActor): Promise<SupportBundleResult> {
-    return relayRuntimeSupportBundle(this as any, actor);
+    return relayRuntimeSupportBundle(this, actor);
   }
 
   locks(): SessionLock[] {
-    return relayRuntimeLocks(this as any);
+    return relayRuntimeLocks(this);
   }
 
   lockWebSession(ownerName = "Web dashboard", actor?: WebActivityActor): SessionLock {
-    return relayRuntimeLockWebSession(this as any, ownerName, actor);
+    return relayRuntimeLockWebSession(this, ownerName, actor);
   }
 
   unlockWebSession(actor?: WebActivityActor): { removed: boolean; locks: SessionLock[] } {
-    return relayRuntimeUnlockWebSession(this as any, actor);
+    return relayRuntimeUnlockWebSession(this, actor);
   }
 
   async controlOptions(agentId?: AgentId): Promise<DashboardControlOptions> {
-    return relayRuntimeControlOptions(this as any, agentId);
+    return relayRuntimeControlOptions(this, agentId);
   }
 
   async authStatus(agentId?: AgentId): Promise<WebAuthDto> {
-    return relayRuntimeAuthStatus(this as any, agentId);
+    return relayRuntimeAuthStatus(this, agentId);
   }
 
   async login(agentId?: AgentId, actor?: WebActivityActor): Promise<WebAuthDto & { result: LoginResult | null }> {
-    return relayRuntimeLogin(this as any, agentId, actor);
+    return relayRuntimeLogin(this, agentId, actor);
   }
 
   async logout(agentId?: AgentId, actor?: WebActivityActor): Promise<WebAuthDto & { result: LoginResult | null }> {
-    return relayRuntimeLogout(this as any, agentId, actor);
+    return relayRuntimeLogout(this, agentId, actor);
   }
 
   async chatHistory(limit = 200): Promise<WebChatMessage[]> {
-    return relayRuntimeChatHistory(this as any, limit);
+    return relayRuntimeChatHistory(this, limit);
   }
 
   async webMirrorPreference(argument = "", actor?: WebActivityActor): Promise<{
@@ -485,15 +485,15 @@ export class RelayRuntime {
     minInterval: number;
     response: { plain: string; html: string };
   }> {
-    return relayRuntimeWebMirrorPreference(this as any, argument, actor);
+    return relayRuntimeWebMirrorPreference(this, argument, actor);
   }
 
   async sessionDetail(threadId: string): Promise<Record<string, unknown>> {
-    return relayRuntimeSessionDetail(this as any, threadId);
+    return relayRuntimeSessionDetail(this, threadId);
   }
 
   async clearChatHistory(actor?: WebActivityActor): Promise<{ removed: number; messages: WebChatMessage[] }> {
-    return relayRuntimeClearChatHistory(this as any, actor);
+    return relayRuntimeClearChatHistory(this, actor);
   }
 
   activity(options: {
@@ -508,35 +508,35 @@ export class RelayRuntime {
     type?: string;
     since?: string | number;
   } = {}): WebActivityEvent[] {
-    return relayRuntimeActivity(this as any, options);
+    return relayRuntimeActivity(this, options);
   }
 
   async retry(actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }> {
-    return relayRuntimeRetry(this as any, actor);
+    return relayRuntimeRetry(this, actor);
   }
 
   async sync(actor?: WebActivityActor): Promise<ReturnType<AgentSessionService["syncFromAgentState"]>> {
-    return relayRuntimeSync(this as any, actor);
+    return relayRuntimeSync(this, actor);
   }
 
   async listSessions(limit = 80, query = "", agentId?: AgentId): Promise<AgentThreadRecord[]> {
-    return relayRuntimeListSessions(this as any, limit, query, agentId);
+    return relayRuntimeListSessions(this, limit, query, agentId);
   }
 
   async listSessionsPage(page = 1, pageSize = MAX_WEB_SESSION_PAGE_SIZE, query = "", agentId?: AgentId): Promise<SessionPageDto> {
-    return relayRuntimeListSessionsPage(this as any, page, pageSize, query, agentId);
+    return relayRuntimeListSessionsPage(this, page, pageSize, query, agentId);
   }
 
-  private filteredSessions(session: AgentSessionService, query: string, limit: number): AgentThreadRecord[] {
-    return relayRuntimeFilteredSessions(this as any, session, query, limit);
+  filteredSessions(session: AgentSessionService, query: string, limit: number): AgentThreadRecord[] {
+    return relayRuntimeFilteredSessions(this, session, query, limit);
   }
 
   async listModels(): Promise<ReturnType<AgentSessionService["listModels"]>> {
-    return relayRuntimeListModels(this as any);
+    return relayRuntimeListModels(this);
   }
 
   async setAgent(agentId: AgentId, actor?: WebActivityActor): Promise<AgentSessionInfo> {
-    return relayRuntimeSetAgent(this as any, agentId, actor);
+    return relayRuntimeSetAgent(this, agentId, actor);
   }
 
   async newSession(options: {
@@ -547,219 +547,219 @@ export class RelayRuntime {
     launchProfileId?: string;
     fastMode?: boolean;
   } = {}, actor?: WebActivityActor): Promise<AgentSessionInfo> {
-    return relayRuntimeNewSession(this as any, options, actor);
+    return relayRuntimeNewSession(this, options, actor);
   }
 
   async switchSession(threadId: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
-    return relayRuntimeSwitchSession(this as any, threadId, actor);
+    return relayRuntimeSwitchSession(this, threadId, actor);
   }
 
   async attachSession(threadId: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
-    return relayRuntimeAttachSession(this as any, threadId, actor);
+    return relayRuntimeAttachSession(this, threadId, actor);
   }
 
   async setModel(model: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
-    return relayRuntimeSetModel(this as any, model, actor);
+    return relayRuntimeSetModel(this, model, actor);
   }
 
   async setReasoningEffort(effort: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
-    return relayRuntimeSetReasoningEffort(this as any, effort, actor);
+    return relayRuntimeSetReasoningEffort(this, effort, actor);
   }
 
   async setFastMode(enabled: boolean, actor?: WebActivityActor): Promise<AgentSessionInfo> {
-    return relayRuntimeSetFastMode(this as any, enabled, actor);
+    return relayRuntimeSetFastMode(this, enabled, actor);
   }
 
   async setLaunchProfile(profileId: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
-    return relayRuntimeSetLaunchProfile(this as any, profileId, actor);
+    return relayRuntimeSetLaunchProfile(this, profileId, actor);
   }
 
   async handback(actor?: WebActivityActor): Promise<ReturnType<AgentSessionService["handback"]>> {
-    return relayRuntimeHandback(this as any, actor);
+    return relayRuntimeHandback(this, actor);
   }
 
   async abort(actor?: WebActivityActor): Promise<void> {
-    return relayRuntimeAbort(this as any, actor);
+    return relayRuntimeAbort(this, actor);
   }
 
   async sendPrompt(text: string, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }> {
-    return relayRuntimeSendPrompt(this as any, text, actor);
+    return relayRuntimeSendPrompt(this, text, actor);
   }
 
   async sendUploadPrompt(options: { text?: string; files: UploadPromptFile[] }, actor?: WebActivityActor): Promise<UploadPromptResult> {
-    return relayRuntimeSendUploadPrompt(this as any, options, actor);
+    return relayRuntimeSendUploadPrompt(this, options, actor);
   }
 
-  private async sendEnvelope(envelope: PromptEnvelope, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }> {
-    return relayRuntimeSendEnvelope(this as any, envelope, actor);
+  async sendEnvelope(envelope: PromptEnvelope, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }> {
+    return relayRuntimeSendEnvelope(this, envelope, actor);
   }
 
   queue(): QueueItemDto[] {
-    return relayRuntimeQueue(this as any);
+    return relayRuntimeQueue(this);
   }
 
   queuePaused(): boolean {
-    return relayRuntimeQueuePaused(this as any);
+    return relayRuntimeQueuePaused(this);
   }
 
   queueAction(action: RelayQueueAction, id?: string, actor?: WebActivityActor): QueueItemDto[] {
-    return relayRuntimeQueueAction(this as any, action, id, actor);
+    return relayRuntimeQueueAction(this, action, id, actor);
   }
 
   async artifacts(): Promise<ArtifactReportDto[]> {
-    return relayRuntimeArtifacts(this as any);
+    return relayRuntimeArtifacts(this);
   }
 
   async artifact(turnId: string): Promise<ArtifactTurnReport | null> {
-    return relayRuntimeArtifact(this as any, turnId);
+    return relayRuntimeArtifact(this, turnId);
   }
 
   async deleteArtifact(turnId: string, actor?: WebActivityActor): Promise<boolean> {
-    return relayRuntimeDeleteArtifact(this as any, turnId, actor);
+    return relayRuntimeDeleteArtifact(this, turnId, actor);
   }
 
   async createArtifactZip(turnId: string, actor?: WebActivityActor): Promise<{ path: string; name: string } | null> {
-    return relayRuntimeCreateArtifactZip(this as any, turnId, actor);
+    return relayRuntimeCreateArtifactZip(this, turnId, actor);
   }
 
   async artifactPreview(turnId: string, relativePath: string): Promise<ArtifactPreviewDto | null> {
-    return relayRuntimeArtifactPreview(this as any, turnId, relativePath);
+    return relayRuntimeArtifactPreview(this, turnId, relativePath);
   }
 
-  async logs(target: "connector" | "update" | "agent-updates" = "connector", lines = 100): Promise<ReturnType<typeof readFormattedLogTail>> {
-    return relayRuntimeLogs(this as any, target, lines);
+  async logs(target: "connector" | "update" | "agent-updates" = "connector", lines = 100): Promise<FormattedLogTail> {
+    return relayRuntimeLogs(this, target, lines);
   }
 
   clearLogs(target: "connector" | "update" | "agent-updates" = "connector", actor?: WebActivityActor): { ok: true; filePath: string; clearedAt: string } {
-    return relayRuntimeClearLogs(this as any, target, actor);
+    return relayRuntimeClearLogs(this, target, actor);
   }
 
   restartConnector(actor?: WebActivityActor): { ok: true; message: string } {
-    return relayRuntimeRestartConnector(this as any, actor);
+    return relayRuntimeRestartConnector(this, actor);
   }
 
   dispose(): void {
-    return relayRuntimeDispose(this as any);
+    return relayRuntimeDispose(this);
   }
 
-  private async getSession(deferThreadStart: boolean): Promise<AgentSessionService> {
-    return relayRuntimeGetSession(this as any, deferThreadStart);
+  async getSession(deferThreadStart: boolean): Promise<AgentSessionService> {
+    return relayRuntimeGetSession(this, deferThreadStart);
   }
 
-  private listKnownContextMetadata(): ContextMetadata[] {
-    return relayRuntimeListKnownContextMetadata(this as any);
+  listKnownContextMetadata(): ContextMetadata[] {
+    return relayRuntimeListKnownContextMetadata(this);
   }
 
-  private discoverRunningConnectorSessions(): ActiveSessionDto[] {
-    return relayRuntimeDiscoverRunningConnectorSessions(this as any);
+  discoverRunningConnectorSessions(): ActiveSessionDto[] {
+    return relayRuntimeDiscoverRunningConnectorSessions(this);
   }
 
-  private discoverActiveCodexSessions(knownContexts: ContextMetadata[], preferences: BotPreferencesStore): ActiveSessionDto[] {
-    return relayRuntimeDiscoverActiveCodexSessions(this as any, knownContexts, preferences);
+  discoverActiveCodexSessions(knownContexts: ContextMetadata[], preferences: BotPreferencesStore): ActiveSessionDto[] {
+    return relayRuntimeDiscoverActiveCodexSessions(this, knownContexts, preferences);
   }
 
-  private externalActiveSession(meta: ContextMetadata, knownContexts: ContextMetadata[], preferences: BotPreferencesStore): ActiveSessionDto | null {
-    return relayRuntimeExternalActiveSession(this as any, meta, knownContexts, preferences);
+  externalActiveSession(meta: ContextMetadata, knownContexts: ContextMetadata[], preferences: BotPreferencesStore): ActiveSessionDto | null {
+    return relayRuntimeExternalActiveSession(this, meta, knownContexts, preferences);
   }
 
-  private sessionStubForMetadata(meta: ContextMetadata, agentId: AgentId, capabilities: AgentCapabilities): AgentSessionService {
-    return relayRuntimeSessionStubForMetadata(this as any, meta, agentId, capabilities);
+  sessionStubForMetadata(meta: ContextMetadata, agentId: AgentId, capabilities: AgentCapabilities): AgentSessionService {
+    return relayRuntimeSessionStubForMetadata(this, meta, agentId, capabilities);
   }
 
-  private capabilitiesForAgent(agentId: AgentId): AgentCapabilities {
-    return relayRuntimeCapabilitiesForAgent(this as any, agentId);
+  capabilitiesForAgent(agentId: AgentId): AgentCapabilities {
+    return relayRuntimeCapabilitiesForAgent(this, agentId);
   }
 
-  private activeSessionKey(session: Pick<ActiveSessionDto, "agentId" | "threadId" | "id">): string {
-    return relayRuntimeActiveSessionKey(this as any, session);
+  activeSessionKey(session: Pick<ActiveSessionDto, "agentId" | "threadId" | "id">): string {
+    return relayRuntimeActiveSessionKey(this, session);
   }
 
-  private preferredActiveSession(existing: ActiveSessionDto | undefined, candidate: ActiveSessionDto): ActiveSessionDto {
-    return relayRuntimePreferredActiveSession(this as any, existing, candidate);
+  preferredActiveSession(existing: ActiveSessionDto | undefined, candidate: ActiveSessionDto): ActiveSessionDto {
+    return relayRuntimePreferredActiveSession(this, existing, candidate);
   }
 
-  private async getControlSession(agentId?: AgentId): Promise<{ session: AgentSessionService; dispose: boolean }> {
-    return relayRuntimeGetControlSession(this as any, agentId);
+  async getControlSession(agentId?: AgentId): Promise<{ session: AgentSessionService; dispose: boolean }> {
+    return relayRuntimeGetControlSession(this, agentId);
   }
 
-  private cliPathOptions(): { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string; claudeCodeCliPath?: string } {
-    return relayRuntimeCliPathOptions(this as any);
+  cliPathOptions(): { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string; claudeCodeCliPath?: string } {
+    return relayRuntimeCliPathOptions(this);
   }
 
-  private async ensureActiveThread(session: AgentSessionService): Promise<void> {
-    return relayRuntimeEnsureActiveThread(this as any, session);
+  async ensureActiveThread(session: AgentSessionService): Promise<void> {
+    return relayRuntimeEnsureActiveThread(this, session);
   }
 
-  private ensureIdle(session: AgentSessionService): void {
-    return relayRuntimeEnsureIdle(this as any, session);
+  ensureIdle(session: AgentSessionService): void {
+    return relayRuntimeEnsureIdle(this, session);
   }
 
-  private async runPrompt(session: AgentSessionService, envelope: PromptEnvelope): Promise<void> {
-    return relayRuntimeRunPrompt(this as any, session, envelope);
+  async runPrompt(session: AgentSessionService, envelope: PromptEnvelope): Promise<void> {
+    return relayRuntimeRunPrompt(this, session, envelope);
   }
 
-  private async drainQueue(): Promise<void> {
-    return relayRuntimeDrainQueue(this as any);
+  async drainQueue(): Promise<void> {
+    return relayRuntimeDrainQueue(this);
   }
 
-  private updateSession(session: AgentSessionService): void {
-    return relayRuntimeUpdateSession(this as any, session);
+  updateSession(session: AgentSessionService): void {
+    return relayRuntimeUpdateSession(this, session);
   }
 
   recordActivity(input: Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }): WebActivityEvent {
-    return relayRuntimeRecordActivity(this as any, input);
+    return relayRuntimeRecordActivity(this, input);
   }
 
-  private recordAgentUpdateLifecycle(job: AgentUpdateJobSnapshot): void {
-    return relayRuntimeRecordAgentUpdateLifecycle(this as any, job);
+  recordAgentUpdateLifecycle(job: AgentUpdateJobSnapshot): void {
+    return relayRuntimeRecordAgentUpdateLifecycle(this, job);
   }
 
-  private appendActivity(input: Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }): WebActivityEvent {
-    return relayRuntimeAppendActivity(this as any, input);
+  appendActivity(input: Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }): WebActivityEvent {
+    return relayRuntimeAppendActivity(this, input);
   }
 
-  private enrichActivityInput<T extends Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }>(input: T): T {
-    return relayRuntimeEnrichActivityInput(this as any, input);
+  enrichActivityInput<T extends Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }>(input: T): T {
+    return relayRuntimeEnrichActivityInput(this, input);
   }
 
-  private enrichActivityEvent(event: WebActivityEvent, info?: AgentSessionInfo): WebActivityEvent {
-    return relayRuntimeEnrichActivityEvent(this as any, event, info);
+  enrichActivityEvent(event: WebActivityEvent, info?: AgentSessionInfo): WebActivityEvent {
+    return relayRuntimeEnrichActivityEvent(this, event, info);
   }
 
-  private enrichActivityFields<T extends Pick<WebActivityEvent, "threadId"> & Partial<Pick<WebActivityEvent, "workspace" | "agentId">>>(event: T, info?: AgentSessionInfo): T {
-    return relayRuntimeEnrichActivityFields(this as any, event, info);
+  enrichActivityFields<T extends Pick<WebActivityEvent, "threadId"> & Partial<Pick<WebActivityEvent, "workspace" | "agentId">>>(event: T, info?: AgentSessionInfo): T {
+    return relayRuntimeEnrichActivityFields(this, event, info);
   }
 
-  private appendAudit(input: Omit<AuditEvent, "id" | "timestamp" | "channelId">): AuditEvent {
-    return relayRuntimeAppendAudit(this as any, input);
+  appendAudit(input: Omit<AuditEvent, "id" | "timestamp" | "channelId">): AuditEvent {
+    return relayRuntimeAppendAudit(this, input);
   }
 
-  private updateCurrentProgress(patch: Partial<WebTaskDto> = {}): void {
-    return relayRuntimeUpdateCurrentProgress(this as any, patch);
+  updateCurrentProgress(patch: Partial<WebTaskDto> = {}): void {
+    return relayRuntimeUpdateCurrentProgress(this, patch);
   }
 
-  private addCurrentTool(toolName: string): void {
-    return relayRuntimeAddCurrentTool(this as any, toolName);
+  addCurrentTool(toolName: string): void {
+    return relayRuntimeAddCurrentTool(this, toolName);
   }
 
-  private broadcastQueue(): void {
-    return relayRuntimeBroadcastQueue(this as any);
+  broadcastQueue(): void {
+    return relayRuntimeBroadcastQueue(this);
   }
 
-  private broadcastStatus(message: string, level: "info" | "warn" | "error" = "info"): void {
-    return relayRuntimeBroadcastStatus(this as any, message, level);
+  broadcastStatus(message: string, level: "info" | "warn" | "error" = "info"): void {
+    return relayRuntimeBroadcastStatus(this, message, level);
   }
 
-  private broadcast(event: RelayEvent): void {
-    return relayRuntimeBroadcast(this as any, event);
+  broadcast(event: RelayEvent): void {
+    return relayRuntimeBroadcast(this, event);
   }
 
-  private scheduleActiveSessionsBroadcast(): void {
-    return relayRuntimeScheduleActiveSessionsBroadcast(this as any);
+  scheduleActiveSessionsBroadcast(): void {
+    return relayRuntimeScheduleActiveSessionsBroadcast(this);
   }
 
-  private publicInfo(session: AgentSessionService): AgentSessionInfo {
-    return relayRuntimePublicInfo(this as any, session);
+  publicInfo(session: AgentSessionService): AgentSessionInfo {
+    return relayRuntimePublicInfo(this, session);
   }
 
 }

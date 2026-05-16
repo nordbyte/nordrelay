@@ -14,12 +14,10 @@ import {
 } from "../../artifacts/attachments.js";
 import {
   collectArtifactReport,
-  collectRecentWorkspaceArtifacts,
   createArtifactZipBundle,
   ensureOutDir,
   formatArtifactSummary,
   isTelegramImagePreview,
-  persistWorkspaceArtifactReport,
   pruneConnectorTurnDirs,
   telegramArtifactFilename,
   totalArtifactSize,
@@ -38,6 +36,7 @@ import {
   type VoiceBackendPreference,
 } from "../../state/bot-preferences.js";
 import { renderAgentUpdateJobAction, type ChannelActionResponse } from "../shared/channel-actions.js";
+import type { ChannelContext } from "../shared/channel-adapter.js";
 import { createChannelBusyStore } from "../shared/channel-bridge-controller.js";
 import type {
   ChannelBusyReason,
@@ -48,6 +47,9 @@ import type {
 import { ChannelCommandService } from "../shared/channel-command-service.js";
 import { runChannelPeerPrompt } from "../shared/channel-peer-prompt.js";
 import { deliverChannelAction } from "../shared/channel-runtime.js";
+import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
+import { createChannelExternalMirrorController } from "../shared/channel-external-mirror-controller.js";
+import { monitorChannelExternalContexts } from "../shared/channel-external-monitor.js";
 import { createChannelTurnLifecycle, createChannelTypingLoop } from "../shared/channel-turn-lifecycle.js";
 import {
   agentLabel,
@@ -70,7 +72,6 @@ import {
 } from "../../agents/shared/agent-auth-commands.js";
 import {
   getExternalActivityForSession,
-  getExternalSnapshotForSession,
 } from "../../agents/shared/agent-activity.js";
 import { checkAuthStatus, clearAuthCache, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "../../agents/codex/codex-auth.js";
 import { formatLaunchProfileBehavior } from "../../agents/codex/codex-launch.js";
@@ -152,8 +153,6 @@ import {
   labelOf,
   orderPinnedSessions,
   parseFastModeArgument,
-  renderExternalMirrorEvent,
-  renderExternalMirrorStatus,
   renderPromptFailure,
   renderTodoList,
   renderToolEndMessage,
@@ -611,312 +610,24 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   };
 
   const monitorExternalContexts = async (): Promise<void> => {
-    const contextKeys = new Set<TelegramContextKey>([
-      ...registry.listContexts().map((context) => context.contextKey),
-      ...promptStore.listContextKeys(),
-    ].filter(isTelegramContextKey));
-
-    for (const contextKey of contextKeys) {
-      await monitorExternalContext(contextKey);
-    }
-  };
-
-  const monitorExternalContext = async (contextKey: TelegramContextKey): Promise<void> => {
-    if (!isTelegramContextKey(contextKey)) {
-      return;
-    }
-    if (!canSendSystemMessagesToContext(contextKey)) {
-      return;
-    }
-
-    const session = await registry.getOrCreate(contextKey, { deferThreadStart: true }).catch(() => null);
-    if (!session) {
-      return;
-    }
-
-    const info = session.getInfo();
-    if (!capabilitiesOf(info).externalActivity) {
-      const parsed = parseContextKey(contextKey);
-      const queueLength = promptStore.list(contextKey).length;
-      if (queueLength > 0 && !promptStore.isPaused(contextKey) && !session.isProcessing()) {
+    await monitorChannelExternalContexts({
+      config,
+      registry,
+      promptStore,
+      isContextKey: isTelegramContextKey,
+      canSendSystemMessages: canSendSystemMessagesToContext,
+      contextForKey: channelContextFromTelegramKey,
+      previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
+      mirrorSnapshot: async (contextKey, _context, session, snapshot) => {
+        const parsed = parseContextKey(contextKey);
+        await mirrorExternalSnapshot(contextKey, parsed.chatId, session, snapshot);
+      },
+      updateQueueStatus: (contextKey, _context, text) => updateQueueStatusMessage(contextKey, text),
+      drainQueue: async (contextKey, _context, session) => {
+        const parsed = parseContextKey(contextKey);
         await drainQueuedPrompts(createSystemContext(contextKey), contextKey, parsed.chatId, session);
-      }
-      return;
-    }
-
-    const threadId = session.getActiveThreadId();
-    const parsed = parseContextKey(contextKey);
-    const queueLength = promptStore.list(contextKey).length;
-    const paused = promptStore.isPaused(contextKey);
-
-    if (!threadId) {
-      if (queueLength > 0 && !paused && !session.isProcessing()) {
-        await drainQueuedPrompts(createSystemContext(contextKey), contextKey, parsed.chatId, session);
-      }
-      return;
-    }
-
-    const previous = externalMirrors.get(contextKey);
-    const snapshot = getExternalSnapshotForSession(session, config, {
-      afterLine: previous?.lastLine ?? Number.MAX_SAFE_INTEGER,
-    }) ?? getExternalSnapshotForSession(session, config, {
-      maxEvents: 0,
+      },
     });
-
-    if (!snapshot) {
-      if (queueLength > 0 && !paused && !session.isProcessing()) {
-        await drainQueuedPrompts(createSystemContext(contextKey), contextKey, parsed.chatId, session);
-      }
-      return;
-    }
-
-    if (!session.isProcessing()) {
-      await mirrorExternalSnapshot(contextKey, parsed.chatId, session, snapshot);
-    }
-
-    const activity = snapshot.activity;
-    if (activity.active && queueLength > 0) {
-      await updateQueueStatusMessage(
-        contextKey,
-        `Waiting for ${info.agentLabel} CLI task... ${queueLength} queued${paused ? " (paused)" : ""}.`,
-      );
-      return;
-    }
-
-    if (!activity.active && queueLength > 0 && !paused && !session.isProcessing()) {
-      await updateQueueStatusMessage(contextKey, `CLI task finished, running queued prompt 1/${queueLength}.`);
-      await drainQueuedPrompts(createSystemContext(contextKey), contextKey, parsed.chatId, session);
-    }
-  };
-
-  const sendExternalMirrorTyping = async (
-    chatId: TelegramChatId,
-    messageThreadId: number | undefined,
-    state: ExternalMirrorState,
-  ): Promise<void> => {
-    const now = Date.now();
-    if (state.lastTypingAt && now - state.lastTypingAt < TYPING_INTERVAL_MS) {
-      return;
-    }
-    state.lastTypingAt = now;
-    await sendChatActionSafe(bot.api, chatId, "typing", messageThreadId).catch(() => {});
-  };
-
-  const sendExternalWorkingNotice = async (
-    chatId: TelegramChatId,
-    messageThreadId: number | undefined,
-    state: ExternalMirrorState,
-    snapshot: AgentExternalSnapshot,
-  ): Promise<void> => {
-    const turnKey = snapshot.activity.turnId ?? snapshot.activity.startedAt?.toISOString() ?? "unknown";
-    if (state.workingNoticeTurnKey === turnKey) {
-      return;
-    }
-
-    const prompt = trimLine(snapshot.latestUserMessage ?? "", 250);
-    const fallbackText = prompt ? `Working on ${prompt}` : `Working on external ${snapshot.agentLabel} task...`;
-    const html = prompt
-      ? `<b>Working on</b> ${escapeHTML(prompt)}`
-      : `<b>Working on</b> external ${escapeHTML(snapshot.agentLabel)} task...`;
-    await sendTextMessage(bot.api, chatId, html, {
-      fallbackText,
-      messageThreadId,
-    });
-    state.workingNoticeTurnKey = turnKey;
-  };
-
-  const mirrorExternalSnapshot = async (
-    contextKey: TelegramContextKey,
-    chatId: TelegramChatId,
-    session: AgentSessionService,
-    snapshot: AgentExternalSnapshot,
-  ): Promise<void> => {
-    const parsed = parseContextKey(contextKey);
-    const previous = externalMirrors.get(contextKey);
-    let state = previous;
-    if (!state || state.threadId !== snapshot.threadId || state.rolloutPath !== snapshot.sourcePath) {
-      state = {
-        threadId: snapshot.threadId,
-        rolloutPath: snapshot.sourcePath,
-        lastLine: snapshot.lineCount,
-        turnId: snapshot.activity.turnId,
-        startedAt: snapshot.activity.startedAt,
-      };
-      externalMirrors.set(contextKey, state);
-    }
-
-    const mirrorMode = getEffectiveMirrorMode(contextKey);
-    if (snapshot.activity.active) {
-      state.turnId = snapshot.activity.turnId;
-      state.startedAt = snapshot.activity.startedAt;
-      const turnKey = snapshot.activity.turnId ?? snapshot.activity.startedAt?.toISOString() ?? "unknown";
-      if (state.activityStartedTurnKey !== turnKey) {
-        const info = session.getInfo();
-        appendActivity({
-          source: "cli",
-          status: "running",
-          type: "cli_turn_started",
-          contextKey,
-          threadId: snapshot.threadId,
-          workspace: info.workspace,
-          agentId: info.agentId,
-          actor: CLI_ACTIVITY_ACTOR,
-          prompt: snapshot.latestUserMessage ?? `${snapshot.agentLabel} CLI task`,
-          detail: `${snapshot.sourceLabel}: ${snapshot.sourcePath}`,
-        });
-        state.activityStartedTurnKey = turnKey;
-        state.activityFinishedTurnKey = undefined;
-        state.activityToolStartLines = [];
-        state.activityToolEndLines = [];
-      }
-      if (mirrorMode !== "off") {
-        await sendExternalMirrorTyping(chatId, parsed.messageThreadId, state);
-      }
-      if (mirrorMode === "final") {
-        await sendExternalWorkingNotice(chatId, parsed.messageThreadId, state, snapshot);
-        state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
-        return;
-      }
-      if (mirrorMode === "off") {
-        state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
-        return;
-      }
-      const status = renderExternalMirrorStatus(snapshot, promptStore.list(contextKey).length);
-      const now = Date.now();
-      const canUpdateStatus = !state.latestStatusAt || now - state.latestStatusAt >= config.telegramMirrorMinUpdateMs;
-      if (!state.statusMessageId) {
-        const message = await sendTextMessage(bot.api, chatId, status.html, {
-          fallbackText: status.plain,
-          messageThreadId: parsed.messageThreadId,
-        });
-        state.statusMessageId = message.message_id;
-        state.latestStatusAt = now;
-      } else if (state.latestStatus !== status.plain && canUpdateStatus) {
-        await safeEditMessage(bot, chatId, state.statusMessageId, status.html, {
-          fallbackText: status.plain,
-        });
-        state.latestStatusAt = now;
-      }
-      state.latestStatus = status.plain;
-      if (mirrorMode === "full") {
-        const newEvents = snapshot.events
-          .filter((event) => event.lineNumber > (state.latestMirroredEventLine ?? state.lastLine))
-          .filter((event) => event.kind === "tool" || event.kind === "task")
-          .slice(-4);
-        for (const event of newEvents) {
-          const rendered = renderExternalMirrorEvent(event);
-          if (!rendered) {
-            continue;
-          }
-          await sendTextMessage(bot.api, chatId, rendered.html, {
-            fallbackText: rendered.plain,
-            messageThreadId: parsed.messageThreadId,
-          });
-          state.latestMirroredEventLine = event.lineNumber;
-        }
-      }
-      const info = session.getInfo();
-      const loggedStartLines = new Set(state.activityToolStartLines ?? []);
-      const loggedEndLines = new Set(state.activityToolEndLines ?? []);
-      for (const event of snapshot.events.filter((event) => event.lineNumber > state.lastLine && event.kind === "tool")) {
-        if (event.status === "started" && !loggedStartLines.has(event.lineNumber)) {
-          appendActivity({
-            source: "cli",
-            status: "running",
-            type: "cli_tool_started",
-            contextKey,
-            threadId: snapshot.threadId,
-            workspace: info.workspace,
-            agentId: info.agentId,
-            actor: CLI_ACTIVITY_ACTOR,
-            prompt: snapshot.latestUserMessage ?? undefined,
-            detail: event.toolName ?? "tool",
-          });
-          loggedStartLines.add(event.lineNumber);
-        }
-        if ((event.status === "finished" || event.status === "failed") && !loggedEndLines.has(event.lineNumber)) {
-          appendActivity({
-            source: "cli",
-            status: event.status === "failed" ? "failed" : "completed",
-            type: event.status === "failed" ? "cli_tool_failed" : "cli_tool_completed",
-            contextKey,
-            threadId: snapshot.threadId,
-            workspace: info.workspace,
-            agentId: info.agentId,
-            actor: CLI_ACTIVITY_ACTOR,
-            prompt: snapshot.latestUserMessage ?? undefined,
-            detail: event.toolName ?? "tool",
-          });
-          loggedEndLines.add(event.lineNumber);
-        }
-      }
-      state.activityToolStartLines = [...loggedStartLines].slice(-200);
-      state.activityToolEndLines = [...loggedEndLines].slice(-200);
-      state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
-      return;
-    }
-
-    if (!previous) {
-      state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
-      return;
-    }
-
-    const terminalEvent = [...snapshot.events].reverse().find((event) => event.kind === "task" && event.status && event.status !== "started");
-    if (terminalEvent) {
-      const turnKey = terminalEvent.turnId ?? snapshot.activity.turnId ?? state.startedAt?.toString() ?? "unknown";
-      if (state.activityFinishedTurnKey !== turnKey) {
-        const info = session.getInfo();
-        const startedAt = state.startedAt instanceof Date ? state.startedAt : state.startedAt ? new Date(state.startedAt) : snapshot.activity.startedAt;
-        appendActivity({
-          source: "cli",
-          status: terminalEvent.status === "aborted" ? "aborted" : terminalEvent.status === "failed" ? "failed" : "completed",
-          type: "cli_turn_finished",
-          contextKey,
-          threadId: snapshot.threadId,
-          workspace: info.workspace,
-          agentId: info.agentId,
-          actor: CLI_ACTIVITY_ACTOR,
-          prompt: snapshot.latestUserMessage ?? undefined,
-          detail: `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`,
-          durationMs: startedAt && terminalEvent.timestamp ? Math.max(0, terminalEvent.timestamp.getTime() - startedAt.getTime()) : undefined,
-        });
-        state.activityFinishedTurnKey = turnKey;
-      }
-      if (mirrorMode !== "off") {
-        const doneText = `${snapshot.agentLabel} CLI task ${terminalEvent.status}.`;
-        if (state.statusMessageId) {
-          await safeEditMessage(bot, chatId, state.statusMessageId, escapeHTML(doneText), {
-            fallbackText: doneText,
-          });
-        } else if (shouldNotify(contextKey, "minimal")) {
-          await sendTextMessage(bot.api, chatId, escapeHTML(doneText), {
-            fallbackText: doneText,
-            messageThreadId: parsed.messageThreadId,
-          });
-        }
-      }
-
-      const finalAgent = snapshot.events.filter((event) => event.kind === "agent" && event.text).at(-1);
-      if (mirrorMode !== "off" && mirrorMode !== "status" && finalAgent?.text && finalAgent.lineNumber !== state.latestAgentLine) {
-        await sendTextMessage(bot.api, chatId, `<b>${escapeHTML(snapshot.agentLabel)} CLI final answer:</b>`, {
-          fallbackText: `${snapshot.agentLabel} CLI final answer:`,
-          messageThreadId: parsed.messageThreadId,
-        });
-        for (const chunk of splitMarkdownForTelegram(finalAgent.text)) {
-          await sendTextMessage(bot.api, chatId, chunk.text, {
-            parseMode: chunk.parseMode,
-            fallbackText: chunk.fallbackText,
-            messageThreadId: parsed.messageThreadId,
-          });
-        }
-        state.latestAgentLine = finalAgent.lineNumber;
-      }
-
-      await deliverCliGeneratedArtifacts(contextKey, chatId, session, state.startedAt, terminalEvent.turnId, parsed.messageThreadId);
-    }
-
-    state.workingNoticeTurnKey = undefined;
-    state.lastLine = Math.max(state.lastLine, snapshot.lineCount);
   };
 
   const canSendSystemMessagesToContext = (contextKey: TelegramContextKey): boolean => {
@@ -941,61 +652,124 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     if (!canSendSystemMessagesToContext(contextKey)) {
       return;
     }
-    if (!startedAt || !turnId) {
-      return;
-    }
-
-    const state = externalMirrors.get(contextKey);
-    if (state?.artifactsDeliveredForTurnId === turnId) {
-      return;
-    }
-
-    const workspace = session.getInfo().workspace;
-    const report = await collectRecentWorkspaceArtifacts(workspace, {
-      since: startedAt,
-      until: new Date(),
-      maxFileSize: config.maxFileSize,
-      limit: 5,
-      ignoreDirs: config.artifactIgnoreDirs,
-      ignoreGlobs: config.artifactIgnoreGlobs,
-    });
-    if (isEmptyArtifactReport(report)) {
-      if (state) state.artifactsDeliveredForTurnId = turnId;
-      return;
-    }
-
-    const persistedReport = await persistWorkspaceArtifactReport(workspace, turnId, report).catch((error) => {
-      console.error("Failed to persist CLI artifact report:", error);
-      return null;
-    });
-
-    if (!config.telegramAutoSendArtifacts) {
-      if (state) state.artifactsDeliveredForTurnId = turnId;
-      return;
-    }
-
-    const summary = formatArtifactSummary(report.artifacts, report.skippedCount, report.omittedCount);
-    await sendTextMessage(bot.api, chatId, escapeHTML(summary), {
-      fallbackText: summary,
-      messageThreadId,
-    });
-    for (const artifact of (persistedReport?.artifacts ?? report.artifacts)) {
-      await sendArtifactFileByApi(bot.api, chatId, artifact, messageThreadId);
-    }
-    const info = session.getInfo();
-    appendActivity({
-      source: "cli",
-      status: "info",
-      type: "artifacts_sent",
+    await deliverChannelCliArtifacts({
+      config,
       contextKey,
-      threadId: info.threadId,
-      workspace: info.workspace,
-      agentId: info.agentId,
-      actor: CLI_ACTIVITY_ACTOR,
-      detail: summary,
+      session,
+      startedAt,
+      turnId,
+      state: externalMirrors.get(contextKey),
+      autoSend: config.telegramAutoSendArtifacts,
+      sendSummaryWhenAutoSendDisabled: false,
+      logPrefix: "Telegram",
+      sendSummary: (summary) => sendTextMessage(bot.api, chatId, escapeHTML(summary), {
+        fallbackText: summary,
+        messageThreadId,
+      }).then(() => {}),
+      sendArtifact: (artifact) => sendArtifactFileByApi(bot.api, chatId, artifact, messageThreadId).then(() => {}),
+      appendActivity,
     });
-    if (state) state.artifactsDeliveredForTurnId = turnId;
   };
+
+  const channelContextFromTelegramKey = (contextKey: TelegramContextKey): ChannelContext => {
+    const parsed = parseContextKey(contextKey);
+    return {
+      channelId: "telegram",
+      chatId: String(parsed.chatId),
+      ...(parsed.messageThreadId ? { topicId: String(parsed.messageThreadId) } : {}),
+    };
+  };
+
+  const externalMirrorController = createChannelExternalMirrorController<number>({
+    config,
+    states: externalMirrors,
+    typingIntervalMs: TYPING_INTERVAL_MS,
+    minUpdateMs: () => config.telegramMirrorMinUpdateMs,
+    mirrorMode: (contextKey) => getEffectiveMirrorMode(contextKey as TelegramContextKey),
+    queueLength: (contextKey) => promptStore.list(contextKey as TelegramContextKey).length,
+    activityActor: () => CLI_ACTIVITY_ACTOR,
+    appendActivity,
+    sendTyping: async (contextKey) => {
+      const parsed = parseContextKey(contextKey as TelegramContextKey);
+      await sendChatActionSafe(bot.api, parsed.chatId, "typing", parsed.messageThreadId).catch(() => {});
+    },
+    sendWorkingNotice: async (contextKey, _context, state, snapshot, prompt) => {
+      const turnKey = snapshot.activity.turnId ?? snapshot.activity.startedAt?.toISOString() ?? "unknown";
+      if (state.workingNoticeTurnKey === turnKey) {
+        return;
+      }
+      const parsed = parseContextKey(contextKey as TelegramContextKey);
+      const fallbackText = prompt ? `Working on ${prompt}` : `Working on external ${snapshot.agentLabel} task...`;
+      const html = prompt
+        ? `<b>Working on</b> ${escapeHTML(prompt)}`
+        : `<b>Working on</b> external ${escapeHTML(snapshot.agentLabel)} task...`;
+      await sendTextMessage(bot.api, parsed.chatId, html, {
+        fallbackText,
+        messageThreadId: parsed.messageThreadId,
+      });
+      state.workingNoticeTurnKey = turnKey;
+    },
+    sendStatus: async (contextKey, _context, _state, rendered) => {
+      const parsed = parseContextKey(contextKey as TelegramContextKey);
+      const message = await sendTextMessage(bot.api, parsed.chatId, rendered.html, {
+        fallbackText: rendered.plain,
+        messageThreadId: parsed.messageThreadId,
+      });
+      return message.message_id;
+    },
+    editStatus: async (contextKey, _context, _state, messageId, rendered) => {
+      const parsed = parseContextKey(contextKey as TelegramContextKey);
+      await safeEditMessage(bot, parsed.chatId, messageId, rendered.html, {
+        fallbackText: rendered.plain,
+      });
+    },
+    sendEvent: async (contextKey, _context, _state, rendered) => {
+      const parsed = parseContextKey(contextKey as TelegramContextKey);
+      await sendTextMessage(bot.api, parsed.chatId, rendered.html, {
+        fallbackText: rendered.plain,
+        messageThreadId: parsed.messageThreadId,
+      });
+    },
+    sendDone: async (contextKey, _context, state, text) => {
+      const parsed = parseContextKey(contextKey as TelegramContextKey);
+      if (state.statusMessageId) {
+        await safeEditMessage(bot, parsed.chatId, state.statusMessageId, escapeHTML(text), {
+          fallbackText: text,
+        });
+        return;
+      }
+      await sendTextMessage(bot.api, parsed.chatId, escapeHTML(text), {
+        fallbackText: text,
+        messageThreadId: parsed.messageThreadId,
+      });
+    },
+    sendFinalAnswer: async (contextKey, _context, _state, snapshot, text) => {
+      const parsed = parseContextKey(contextKey as TelegramContextKey);
+      await sendTextMessage(bot.api, parsed.chatId, `<b>${escapeHTML(snapshot.agentLabel)} CLI final answer:</b>`, {
+        fallbackText: `${snapshot.agentLabel} CLI final answer:`,
+        messageThreadId: parsed.messageThreadId,
+      });
+      for (const chunk of splitMarkdownForTelegram(text)) {
+        await sendTextMessage(bot.api, parsed.chatId, chunk.text, {
+          parseMode: chunk.parseMode,
+          fallbackText: chunk.fallbackText,
+          messageThreadId: parsed.messageThreadId,
+        });
+      }
+    },
+    deliverArtifacts: (contextKey, _context, session, state, turnId) => {
+      const parsed = parseContextKey(contextKey as TelegramContextKey);
+      return deliverCliGeneratedArtifacts(contextKey as TelegramContextKey, parsed.chatId, session, state.startedAt, turnId, parsed.messageThreadId);
+    },
+    shouldSendDone: (contextKey) => shouldNotify(contextKey as TelegramContextKey, "minimal"),
+  });
+
+  const mirrorExternalSnapshot = (
+    contextKey: TelegramContextKey,
+    _chatId: TelegramChatId,
+    session: AgentSessionService,
+    snapshot: AgentExternalSnapshot,
+  ): Promise<void> => externalMirrorController.mirror(contextKey, channelContextFromTelegramKey(contextKey), session, snapshot);
 
   const scheduleExternalQueueDrain = (
     ctx: Context,
