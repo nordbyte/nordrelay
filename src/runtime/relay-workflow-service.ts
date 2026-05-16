@@ -355,6 +355,7 @@ export class RelayWorkflowService {
     }
     if (step.sessionMode === "attach") {
       if (!step.threadId) throw new Error(`Workflow step ${step.name} needs a thread id.`);
+      if (step.agentId) await this.options.setAgent(step.agentId, actor);
       await this.options.attachSession(step.threadId, actor);
       return;
     }

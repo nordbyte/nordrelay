@@ -160,6 +160,71 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator(`#messages [data-trace-id="${promptBody?.correlationId}"]`)).toBeVisible();
   });
 
+  test("builds workflows with step cards and variable forms", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
+    await page.goto(mock.baseUrl);
+    await navigateDashboard(page, "Workflows");
+
+    await page.locator('[data-workflow-tab="workflows"]').click();
+    await page.getByRole("button", { name: "Create workflow" }).click();
+
+    await expect(page.locator("#adminDialogTitle")).toHaveText("Create workflow");
+    await expect(page.locator("#adminDialogBody")).toContainText("Workflow builder");
+    await expect(page.locator("#adminDialogBody")).toContainText("Advanced JSON import/export");
+    await expect(page.locator("#adminDialogBody")).not.toContainText("Steps JSON");
+    await expect(page.locator("[data-workflow-builder-step]")).toHaveCount(1);
+
+    await page.locator("#dlgWorkflowName").fill("Builder smoke workflow");
+    await page.locator('[data-workflow-builder-step]').first().locator('[data-builder-field="name"]').fill("Prompt step");
+    await page.locator('[data-workflow-builder-step]').first().locator('[data-builder-field="prompt"]').fill("Run {{target}}");
+
+    await page.locator("[data-workflow-builder-add]").click();
+    await expect(page.locator("[data-workflow-builder-step]")).toHaveCount(2);
+    const secondStep = page.locator("[data-workflow-builder-step]").nth(1);
+    await secondStep.locator('[data-builder-field="name"]').fill("Template step");
+    await secondStep.locator('[data-builder-field="source"]').selectOption("template");
+    await secondStep.locator('[data-builder-field="templateId"]').selectOption("template-review");
+    await secondStep.locator('[data-builder-field="sessionMode"]').selectOption("new");
+    await secondStep.locator('[data-builder-field="agentId"]').selectOption("pi");
+    await secondStep.locator('[data-builder-field="workspace"]').fill("/tmp/project");
+    await secondStep.locator('[data-builder-field="model"]').fill("pi-default");
+    await secondStep.locator('[data-builder-field="reasoningEffort"]').selectOption("high");
+    await secondStep.locator('[data-builder-field="launchProfileId"]').selectOption("default");
+    await expect(page.locator("#workflowBuilderPreview")).toContainText("Run {{target}}");
+    await expect(page.locator("#workflowBuilderPreview")).toContainText("Review {{target}}");
+    await expect(page.locator("#workflowBuilderPreview")).toContainText("Variables: target");
+
+    await page.locator("#adminDialogSubmit").click();
+    await expect.poll(() => mock.requests.some((request) => request.path === "/api/workflows" && request.method === "POST")).toBe(true);
+    const createRequest = mock.requests.find((request) => request.path === "/api/workflows" && request.method === "POST");
+    expect(createRequest?.body).toMatchObject({
+      name: "Builder smoke workflow",
+      steps: [
+        { name: "Prompt step", prompt: "Run {{target}}", sessionMode: "current", target: "local" },
+        {
+          name: "Template step",
+          templateId: "template-review",
+          sessionMode: "new",
+          agentId: "pi",
+          workspace: "/tmp/project",
+          model: "pi-default",
+          reasoningEffort: "high",
+          launchProfileId: "default",
+          target: "local",
+        },
+      ],
+    });
+
+    await page.locator('[data-workflow-run="workflow-existing"]').click();
+    await expect(page.locator("#adminDialogTitle")).toHaveText("Run workflow");
+    await expect(page.locator("#adminDialogBody")).toContainText("Set variables for this run");
+    await page.locator('[data-workflow-variable="target"]').fill("src/runtime");
+    await page.locator("#adminDialogSubmit").click();
+    await expect.poll(() => mock.requests.some((request) => request.path === "/api/workflows/workflow-existing/run" && request.method === "POST")).toBe(true);
+    const runRequest = mock.requests.find((request) => request.path === "/api/workflows/workflow-existing/run" && request.method === "POST");
+    expect(runRequest?.body).toMatchObject({ variables: { target: "src/runtime" } });
+  });
+
   test("controls WebUI CLI mirroring from the chat toolbar and slash command", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
@@ -697,6 +762,27 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   if (url.pathname === "/api/settings") return method === "PATCH" ? settingsPatchResponse(body) : settings();
   if (url.pathname === "/api/settings/wizard/test") return wizardTestResponse(body);
   if (url.pathname === "/api/active-sessions") return activeSessions();
+  if (url.pathname === "/api/templates") {
+    if (method === "POST") return { template: savedTemplate(body) };
+    return { templates: workflowTemplates() };
+  }
+  if (url.pathname.match(/^\/api\/templates\/[^/]+\/preview$/)) return workflowPreview("Template preview", ["Review {{target}}"]);
+  if (url.pathname.match(/^\/api\/templates\/[^/]+\/run$/)) return { run: workflowRun("Template run") };
+  if (url.pathname.match(/^\/api\/templates\/[^/]+$/)) {
+    if (method === "DELETE") return { removed: true };
+    return { template: savedTemplate(body) };
+  }
+  if (url.pathname === "/api/workflows") {
+    if (method === "POST") return { workflow: savedWorkflow(body) };
+    return { workflows: workflows(), runs: workflowRuns() };
+  }
+  if (url.pathname.match(/^\/api\/workflows\/[^/]+\/preview$/)) return workflowPreview("Workflow preview", ["Run {{target}}", "Review {{target}}"]);
+  if (url.pathname.match(/^\/api\/workflows\/[^/]+\/run$/)) return { run: workflowRun("Workflow run") };
+  if (url.pathname.match(/^\/api\/workflows\/[^/]+$/)) {
+    if (method === "DELETE") return { removed: true };
+    return { workflow: savedWorkflow(body) };
+  }
+  if (url.pathname.match(/^\/api\/workflow-runs\/[^/]+\/cancel$/)) return workflowRun("Workflow run", "aborted");
   if (url.pathname === "/api/version") return version();
   if (url.pathname === "/api/agent-updates") return { jobs };
   if (url.pathname === "/api/agent-update") {
@@ -840,7 +926,77 @@ function currentUser() {
 }
 
 function permissions() {
-  return ["inspect", "sessions.read", "sessions.write", "prompt.send", "prompt.abort", "files.read", "files.write", "settings.read", "settings.write", "auth.manage", "diagnostics.read", "logs.read", "logs.clear", "queue.read", "queue.write", "updates.run", "system.restart", "users.read", "users.write", "audit.read", "peers.read", "peers.write", "peers.connect"];
+  return ["inspect", "sessions.read", "sessions.write", "prompt.send", "prompt.abort", "files.read", "files.write", "settings.read", "settings.write", "auth.manage", "diagnostics.read", "logs.read", "logs.clear", "queue.read", "queue.write", "updates.run", "system.restart", "users.read", "users.write", "audit.read", "peers.read", "peers.write", "peers.connect", "workflows.read", "workflows.write", "workflows.run"];
+}
+
+function workflowTemplates() {
+  return [
+    {
+      id: "template-review",
+      name: "Review template",
+      description: "Reusable review prompt",
+      tags: ["review"],
+      prompt: "Review {{target}} and summarize risks.",
+      variables: [{ name: "target", required: true }],
+      scope: "shared",
+      createdAt: now(),
+      updatedAt: now(),
+    },
+  ];
+}
+
+function workflows() {
+  return [
+    {
+      id: "workflow-existing",
+      name: "Existing workflow",
+      description: "Builder workflow",
+      tags: ["smoke"],
+      scope: "private",
+      steps: [
+        {
+          id: "step-existing",
+          name: "Review",
+          type: "prompt",
+          prompt: "Review {{target}}",
+          sessionMode: "current",
+          target: "local",
+          requiresApproval: false,
+          continueOnError: false,
+        },
+      ],
+      createdAt: now(),
+      updatedAt: now(),
+    },
+  ];
+}
+
+function workflowRuns() {
+  return [];
+}
+
+function savedTemplate(body: unknown) {
+  return { id: "template-created", ...(body as Record<string, unknown>), createdAt: now(), updatedAt: now() };
+}
+
+function savedWorkflow(body: unknown) {
+  return { id: "workflow-created", ...(body as Record<string, unknown>), createdAt: now(), updatedAt: now() };
+}
+
+function workflowPreview(name: string, prompts: string[]) {
+  return { name, prompts: prompts.map((prompt, index) => ({ stepId: `preview-${index + 1}`, name: `Step ${index + 1}`, prompt })) };
+}
+
+function workflowRun(name: string, status = "queued") {
+  return {
+    id: "workflow-run-1",
+    name,
+    status,
+    steps: [],
+    currentStepIndex: 0,
+    createdAt: now(),
+    updatedAt: now(),
+  };
 }
 
 function chatMessages() {
