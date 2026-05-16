@@ -25,6 +25,7 @@ import { AuditLogStore, type AuditEvent } from "./audit-log.js";
 import { BotPreferencesStore } from "./bot-preferences.js";
 import { capabilitiesOf, filterActivityEvents, formatLocalDateTime, parseActivityOptions, renderExternalMirrorEvent, renderExternalMirrorStatus, renderPromptFailure, trimLine, type TurnProgress } from "./bot-rendering.js";
 import { renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction } from "./channel-actions.js";
+import type { ChannelBusyReason, ChannelBusyState, ChannelExternalMirrorState, ChannelPickState, ChannelQueueStatusState } from "./channel-bridge-state.js";
 import { createSharedChannelCommandDispatcher } from "./channel-command-core.js";
 import { ChannelCommandService } from "./channel-command-service.js";
 import { discordHelpCommandList } from "./channel-command-catalog.js";
@@ -85,41 +86,14 @@ interface DiscordRequest {
   authUser?: AuthenticatedUser;
 }
 
-type BusyState = { processing: boolean; switching: boolean };
-type BusyReason =
-  | { busy: false; kind: "idle" }
-  | { busy: true; kind: "connector"; state: BusyState }
-  | { busy: true; kind: "external"; agentLabel: string };
+type BusyState = ChannelBusyState;
+type BusyReason = ChannelBusyReason<{ agentLabel: string }>;
 
-type PickState = {
-  kind: "agent" | "session" | "model" | "reasoning" | "launch" | "queue" | "artifact" | "update";
-  values: string[];
-};
+type PickState = ChannelPickState<"agent" | "session" | "model" | "reasoning" | "launch" | "queue" | "artifact" | "update">;
 
-type DiscordExternalMirrorState = {
-  threadId: string;
-  rolloutPath: string;
-  lastLine: number;
-  lastTypingAt?: number;
-  workingNoticeTurnKey?: string | null;
-  statusMessageId?: string;
-  turnId?: string | null;
-  startedAt?: Date | null;
-  latestStatus?: string;
-  latestStatusAt?: number;
-  latestAgentLine?: number;
-  latestMirroredEventLine?: number;
-  artifactsDeliveredForTurnId?: string | null;
-  activityStartedTurnKey?: string;
-  activityFinishedTurnKey?: string;
-  activityToolStartLines?: number[];
-  activityToolEndLines?: number[];
-};
+type DiscordExternalMirrorState = ChannelExternalMirrorState<string>;
 
-type DiscordQueueStatusState = {
-  messageId?: string;
-  lastText?: string;
-};
+type DiscordQueueStatusState = ChannelQueueStatusState<string>;
 
 export function createDiscordBridge(config: ConnectorConfig, registry: SessionRegistry): DiscordBridge | null {
   if (!config.discordEnabled) {

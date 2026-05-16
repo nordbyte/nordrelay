@@ -5,14 +5,13 @@ import type { URL } from "node:url";
 import type { AgentUpdateOperation } from "./agent-updates.js";
 
 const DEFAULT_JSON_BODY_LIMIT = 64 * 1024 * 1024;
-const SECURITY_HEADERS = {
+const BASE_SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
   "referrer-policy": "no-referrer",
   "permissions-policy": "camera=(), microphone=(), geolocation=()",
-  "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
 };
-const JSON_HEADERS = { ...SECURITY_HEADERS, "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
+const JSON_HEADERS = { ...webSecurityHeaders(), "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
 
 export type WebLogTarget = "connector" | "update" | "agent-updates";
 
@@ -56,14 +55,14 @@ export function sendJson(res: ServerResponse, status: number, value: unknown): v
   res.end(`${JSON.stringify(value)}\n`);
 }
 
-export function sendText(res: ServerResponse, status: number, text: string, contentType: string): void {
-  res.writeHead(status, { ...SECURITY_HEADERS, "content-type": contentType, "cache-control": "no-store" });
+export function sendText(res: ServerResponse, status: number, text: string, contentType: string, options: { cspNonce?: string } = {}): void {
+  res.writeHead(status, { ...webSecurityHeaders(options.cspNonce), "content-type": contentType, "cache-control": "no-store" });
   res.end(text);
 }
 
 export function sendFile(res: ServerResponse, filePath: string, filename: string): void {
   res.writeHead(200, {
-    ...SECURITY_HEADERS,
+    ...webSecurityHeaders(),
     "content-type": "application/octet-stream",
     "content-disposition": `attachment; filename="${filename.replace(/"/g, "")}"`,
   });
@@ -188,4 +187,13 @@ export function requiredSearch(url: URL, key: string): string {
 function stripDataUrlPrefix(value: string): string {
   const comma = value.indexOf(",");
   return value.startsWith("data:") && comma !== -1 ? value.slice(comma + 1) : value;
+}
+
+export function webSecurityHeaders(cspNonce?: string): Record<string, string> {
+  const scriptSrc = cspNonce ? `'self' 'nonce-${cspNonce}'` : "'self'";
+  const styleSrc = cspNonce ? `'self' 'nonce-${cspNonce}'` : "'self'";
+  return {
+    ...BASE_SECURITY_HEADERS,
+    "content-security-policy": `default-src 'self'; script-src ${scriptSrc}; style-src ${styleSrc}; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
+  };
 }

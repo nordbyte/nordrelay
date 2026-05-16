@@ -107,6 +107,32 @@ describe("PeerRuntimeService", () => {
 
     expect(calls).toEqual(["/allowed/app"]);
   });
+
+  it("implements proxy routes for adapter conformance and session locks", async () => {
+    const service = new PeerRuntimeService(config(), runtime({
+      locks: () => [{ contextKey: "web:dashboard", owner: { userId: "web", label: "Web", channel: "web" }, expiresAt: "2026-05-16T10:00:00.000Z", createdAt: "2026-05-16T09:00:00.000Z" }],
+      lockWebSession: (ownerName: string) => ({ contextKey: "web:dashboard", owner: { userId: "peer", label: ownerName, channel: "web" }, expiresAt: "2026-05-16T10:00:00.000Z", createdAt: "2026-05-16T09:00:00.000Z" }),
+      unlockWebSession: () => ({ removed: true, locks: [] }),
+    }));
+
+    await expect(service.handle(peer({ scopes: ["inspect"] }), {
+      protocolVersion: 1,
+      type: "web.proxy",
+      payload: { method: "GET", path: "/api/adapters/conformance" },
+    })).resolves.toMatchObject({ agents: expect.any(Array), channels: expect.any(Array) });
+
+    await expect(service.handle(peer({ scopes: ["sessions.read", "sessions.write"] }), {
+      protocolVersion: 1,
+      type: "web.proxy",
+      payload: { method: "GET", path: "/api/locks" },
+    })).resolves.toMatchObject({ locks: expect.any(Array) });
+
+    await expect(service.handle(peer({ scopes: ["sessions.read", "sessions.write"] }), {
+      protocolVersion: 1,
+      type: "web.proxy",
+      payload: { method: "POST", path: "/api/locks", body: { ownerName: "Remote Peer" } },
+    })).resolves.toMatchObject({ lock: { owner: { label: "Remote Peer" } } });
+  });
 });
 
 function peer(patch: Partial<PeerRecord> = {}): PeerRecord {

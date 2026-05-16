@@ -16,6 +16,7 @@ import { BotPreferencesStore } from "./bot-preferences.js";
 import { capabilitiesOf, filterActivityEvents, parseActivityOptions, renderExternalMirrorEvent, renderExternalMirrorStatus, renderPromptFailure, trimLine, type TurnProgress } from "./bot-rendering.js";
 import { parseAgentUpdateId, renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction } from "./channel-actions.js";
 import type { ChannelContext } from "./channel-adapter.js";
+import type { ChannelBusyReason, ChannelBusyState, ChannelExternalMirrorState, ChannelPickState, ChannelQueueStatusState } from "./channel-bridge-state.js";
 import { createSharedChannelCommandDispatcher } from "./channel-command-core.js";
 import { slackHelpCommandList } from "./channel-command-catalog.js";
 import { ChannelCommandService } from "./channel-command-service.js";
@@ -75,37 +76,14 @@ interface SlackRequest {
   authUser?: AuthenticatedUser;
 }
 
-type BusyState = { processing: boolean; switching: boolean };
-type BusyReason =
-  | { busy: false; kind: "idle" }
-  | { busy: true; kind: "connector"; state: BusyState }
-  | { busy: true; kind: "external"; agentLabel: string };
+type BusyState = ChannelBusyState;
+type BusyReason = ChannelBusyReason<{ agentLabel: string }>;
 
-type PickState = {
-  kind: "agent" | "session" | "model" | "reasoning" | "launch";
-  values: string[];
-};
+type PickState = ChannelPickState<"agent" | "session" | "model" | "reasoning" | "launch">;
 
-type SlackExternalMirrorState = {
-  threadId: string;
-  rolloutPath: string;
-  lastLine: number;
-  lastTypingAt?: number;
-  workingNoticeTurnKey?: string | null;
-  statusMessageId?: string;
-  turnId?: string | null;
-  startedAt?: Date | null;
-  latestStatus?: string;
-  latestStatusAt?: number;
-  latestAgentLine?: number;
-  latestMirroredEventLine?: number;
-  artifactsDeliveredForTurnId?: string | null;
-};
+type SlackExternalMirrorState = ChannelExternalMirrorState<string>;
 
-type SlackQueueStatusState = {
-  messageId?: string;
-  lastText?: string;
-};
+type SlackQueueStatusState = ChannelQueueStatusState<string>;
 
 export function createSlackBridge(config: ConnectorConfig, registry: SessionRegistry): SlackBridge | null {
   if (!config.slackEnabled) {

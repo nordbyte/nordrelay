@@ -70,8 +70,10 @@ function shouldProxyApi(path) {
     path === '/api/peers/probe' ||
     path === '/api/peers/discover' ||
     path === '/api/peers/discovery-jobs' ||
+    path === '/api/peers/global-sessions' ||
     path === '/api/peers/identity/backup' ||
     path === '/api/peers/identity/restore' ||
+    path === '/api/settings/wizard/test' ||
     /^\/api\/peers\/discovery-jobs\//.test(path) ||
     /^\/api\/peers\/[^/]+(?:\/events|\/proxy)?$/.test(path) ||
     /^\/api\/peers\/[^/]+\/repin$/.test(path) ||

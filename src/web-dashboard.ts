@@ -36,6 +36,8 @@ import { handleDashboardSessionRoute } from "./web-dashboard-session-routes.js";
 import { handleDashboardPeerRoute } from "./web-dashboard-peer-routes.js";
 import { PeerDiscoveryJobManager } from "./peer-discovery-jobs.js";
 import { recordWebApiMetric } from "./web-performance.js";
+import { createCspNonce, isMutatingWebApiRequest, requiresWebCsrf } from "./web-dashboard-security.js";
+import { consumeRateLimit, resetRateLimit, type RateLimitBucket } from "./web-rate-limit.js";
 
 interface DashboardOptions {
   host: string;
@@ -43,13 +45,10 @@ interface DashboardOptions {
   home: string;
 }
 
-interface RateLimitBucket {
-  count: number;
-  resetAt: number;
-  blockedUntil?: number;
-}
-
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
+const WEB_API_MUTATION_LIMIT = 240;
+const WEB_API_MUTATION_WINDOW_MS = 60_000;
+const WEB_API_MUTATION_BLOCK_MS = 60_000;
 
 const options = parseOptions(process.argv.slice(2));
 const config = loadConfig();
@@ -57,8 +56,9 @@ const runtime = new RelayRuntime(config);
 const settings = new SettingsService(resolveDashboardEnvPath(options.home));
 const users = new UserStore(options.home);
 const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
-const peerDiscoveryJobs = new PeerDiscoveryJobManager(config);
+const peerDiscoveryJobs = new PeerDiscoveryJobManager(config, options.home);
 const loginAttempts = new Map<string, RateLimitBucket>();
+const apiMutationAttempts = new Map<string, RateLimitBucket>();
 const firstRunSetupToken = users.hasAdminUser() ? undefined : randomBytes(18).toString("base64url");
 const firstRunSetupRequiresToken = !isLoopbackHost(options.host);
 const csrfSecret = randomBytes(32).toString("base64url");
@@ -119,15 +119,36 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   if (!authenticated) {
     if (url.pathname === "/" || url.pathname === "/index.html") {
+      const cspNonce = createCspNonce();
       if (!users.hasAdminUser()) {
-        sendText(res, 200, renderFirstRunSetupPage({ tokenRequired: firstRunSetupRequiresToken || !isLoopbackRequest(req) }), "text/html; charset=utf-8");
+        sendText(
+          res,
+          200,
+          renderFirstRunSetupPage({ tokenRequired: firstRunSetupRequiresToken || !isLoopbackRequest(req), cspNonce }),
+          "text/html; charset=utf-8",
+          { cspNonce },
+        );
         return;
       }
-      sendText(res, 200, renderLoginPage({ adminConfigured: users.hasAdminUser() }), "text/html; charset=utf-8");
+      sendText(res, 200, renderLoginPage({ adminConfigured: users.hasAdminUser(), cspNonce }), "text/html; charset=utf-8", { cspNonce });
       return;
     }
     sendJson(res, 401, { error: "Authentication required", adminConfigured: users.hasAdminUser() });
     return;
+  }
+
+  if (isMutatingWebApiRequest(req.method, url.pathname)) {
+    const limited = consumeRateLimit(
+      apiMutationAttempts,
+      `${req.socket.remoteAddress ?? "unknown"}:${authenticated.user.id}`,
+      WEB_API_MUTATION_LIMIT,
+      WEB_API_MUTATION_WINDOW_MS,
+      WEB_API_MUTATION_BLOCK_MS,
+    );
+    if (limited.limited) {
+      sendJson(res, 429, { error: "Too many API changes. Try again later.", retryAfterMs: limited.retryAfterMs });
+      return;
+    }
   }
 
   if (requiresCsrf(req, url) && !verifyCsrf(req)) {
@@ -155,7 +176,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   }
 
   if (url.pathname === "/" || url.pathname === "/index.html") {
-    sendText(res, 200, renderDashboardApp(), "text/html; charset=utf-8");
+    const cspNonce = createCspNonce();
+    sendText(res, 200, renderDashboardApp({ cspNonce }), "text/html; charset=utf-8", { cspNonce });
     return;
   }
 
@@ -552,11 +574,7 @@ function currentUserDto(authUser: AuthenticatedUser, req?: IncomingMessage, sess
 }
 
 function requiresCsrf(req: IncomingMessage, url: URL): boolean {
-  const method = (req.method ?? "GET").toUpperCase();
-  if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
-    return false;
-  }
-  return url.pathname.startsWith("/api/");
+  return requiresWebCsrf(req.method, url.pathname);
 }
 
 function verifyCsrf(req: IncomingMessage): boolean {
@@ -772,33 +790,6 @@ async function assertCurrentSessionScope(authUser: AuthenticatedUser): Promise<v
 
 function objectValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-
-function consumeRateLimit(
-  buckets: Map<string, RateLimitBucket>,
-  key: string,
-  limit: number,
-  windowMs: number,
-  blockMs: number,
-): { limited: boolean; retryAfterMs?: number } {
-  const now = Date.now();
-  const existing = buckets.get(key);
-  if (existing?.blockedUntil && existing.blockedUntil > now) {
-    return { limited: true, retryAfterMs: existing.blockedUntil - now };
-  }
-  const bucket = !existing || existing.resetAt <= now ? { count: 0, resetAt: now + windowMs } : existing;
-  bucket.count += 1;
-  if (bucket.count > limit) {
-    bucket.blockedUntil = now + blockMs;
-    buckets.set(key, bucket);
-    return { limited: true, retryAfterMs: blockMs };
-  }
-  buckets.set(key, bucket);
-  return { limited: false };
-}
-
-function resetRateLimit(buckets: Map<string, RateLimitBucket>, key: string): void {
-  buckets.delete(key);
 }
 
 function parseAgentId(value: string | undefined) {

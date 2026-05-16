@@ -38,6 +38,12 @@ import {
   type VoiceBackendPreference,
 } from "./bot-preferences.js";
 import { renderAgentUpdateJobAction, type ChannelActionResponse } from "./channel-actions.js";
+import type {
+  ChannelBusyReason,
+  ChannelBusyState,
+  ChannelExternalMirrorState,
+  ChannelQueueStatusState,
+} from "./channel-bridge-state.js";
 import { ChannelCommandService } from "./channel-command-service.js";
 import { runChannelPeerPrompt } from "./channel-peer-prompt.js";
 import { deliverChannelAction } from "./channel-runtime.js";
@@ -215,43 +221,17 @@ type PendingMediaGroup = {
   timer: NodeJS.Timeout;
 };
 
-type BusyState = {
-  processing: boolean;
-  switching: boolean;
+type BusyState = ChannelBusyState & {
   transcribing: boolean;
   approving: boolean;
   external?: boolean;
 };
 
-type BusyReason =
-  | { busy: false; kind: "idle" }
-  | { busy: true; kind: "connector"; state: BusyState }
-  | { busy: true; kind: "external"; activity: AgentExternalActivity };
+type BusyReason = ChannelBusyReason<{ activity: AgentExternalActivity }>;
 
-type ExternalMirrorState = {
-  threadId: string;
-  rolloutPath: string;
-  lastLine: number;
-  lastTypingAt?: number;
-  workingNoticeTurnKey?: string | null;
-  statusMessageId?: number;
-  turnId?: string | null;
-  startedAt?: Date | null;
-  latestStatus?: string;
-  latestStatusAt?: number;
-  latestAgentLine?: number;
-  latestMirroredEventLine?: number;
-  artifactsDeliveredForTurnId?: string | null;
-  activityStartedTurnKey?: string;
-  activityFinishedTurnKey?: string;
-  activityToolStartLines?: number[];
-  activityToolEndLines?: number[];
-};
+type ExternalMirrorState = ChannelExternalMirrorState<number>;
 
-type QueueStatusState = {
-  messageId?: number;
-  lastText?: string;
-};
+type QueueStatusState = ChannelQueueStatusState<number>;
 
 export function createBot(config: ConnectorConfig, registry: SessionRegistry): Bot<Context> {
   configureRedaction(config.telegramRedactPatterns);

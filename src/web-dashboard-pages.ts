@@ -1,13 +1,14 @@
 import { renderDashboardNav } from "./web-dashboard-ui.js";
 
-export function renderLoginPage(options: { adminConfigured: boolean }): string {
+export function renderLoginPage(options: { adminConfigured: boolean; cspNonce?: string }): string {
+  const nonce = nonceAttr(options.cspNonce);
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NordRelay Login</title>
-  <style>
+  <style${nonce}>
     body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f5f2;color:#181c19;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
     form{width:min(420px,calc(100vw - 32px));background:white;border:1px solid #dfe3dc;border-radius:8px;padding:24px;box-shadow:0 20px 60px rgba(20,30,24,.08)}
     h1{font-size:24px;margin:0 0 8px}
@@ -27,7 +28,7 @@ export function renderLoginPage(options: { adminConfigured: boolean }): string {
     <button ${options.adminConfigured ? "" : "disabled"}>Sign in</button>
     <div class="error" id="error"></div>
   </form>
-  <script>
+  <script${nonce}>
     document.getElementById('login').addEventListener('submit', async (event) => {
       event.preventDefault();
       const payload = {
@@ -46,14 +47,15 @@ export function renderLoginPage(options: { adminConfigured: boolean }): string {
 </html>`;
 }
 
-export function renderFirstRunSetupPage(options: { tokenRequired: boolean }): string {
+export function renderFirstRunSetupPage(options: { tokenRequired: boolean; cspNonce?: string }): string {
+  const nonce = nonceAttr(options.cspNonce);
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NordRelay First Run</title>
-  <style>
+  <style${nonce}>
     body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f5f2;color:#181c19;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
     form{width:min(460px,calc(100vw - 32px));background:white;border:1px solid #dfe3dc;border-radius:8px;padding:24px;box-shadow:0 20px 60px rgba(20,30,24,.08)}
     h1{font-size:24px;margin:0 0 8px}
@@ -77,7 +79,7 @@ export function renderFirstRunSetupPage(options: { tokenRequired: boolean }): st
     <button>Create admin</button>
     <div class="error" id="error"></div>
   </form>
-  <script>
+  <script${nonce}>
     document.getElementById('setup').addEventListener('submit', async (event) => {
       event.preventDefault();
       const payload = {
@@ -99,14 +101,15 @@ export function renderFirstRunSetupPage(options: { tokenRequired: boolean }): st
 </html>`;
 }
 
-export function renderDashboardApp(): string {
+export function renderDashboardApp(options: { cspNonce?: string } = {}): string {
+  const nonce = nonceAttr(options.cspNonce);
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NordRelay Dashboard</title>
-  <script>document.documentElement.dataset.theme = localStorage.getItem('nordrelayTheme') || 'light';</script>
+  <script${nonce}>document.documentElement.dataset.theme = localStorage.getItem('nordrelayTheme') || 'light';</script>
   <link rel="stylesheet" href="/assets/dashboard.css">
 </head>
 <body>
@@ -376,4 +379,8 @@ export function renderDashboardApp(): string {
   <script src="/assets/dashboard.js"></script>
 </body>
 </html>`;
+}
+
+function nonceAttr(cspNonce?: string): string {
+  return cspNonce ? ` nonce="${cspNonce.replace(/"/g, "")}"` : "";
 }

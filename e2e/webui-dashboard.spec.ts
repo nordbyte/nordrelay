@@ -454,6 +454,34 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.getByRole("heading", { name: "Logs" })).toBeVisible();
     await expect(page.locator("#logs")).toHaveCSS("overflow-y", "auto");
   });
+
+  test("runs core settings, chat, peers, and version flows on mobile", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(mock.baseUrl);
+
+    await page.getByRole("button", { name: "Menu" }).click();
+    await page.getByRole("button", { name: "Settings" }).click();
+    await expect(page.locator("#settingsTabs")).toContainText("Agents");
+    await page.locator('[data-setting-tab="Discord"]').click();
+    await expect(page.locator('[data-setting-box="DISCORD_CLIENT_ID"]')).toBeVisible();
+
+    await page.getByRole("button", { name: "Menu" }).click();
+    await page.getByRole("button", { name: "Chat" }).click();
+    await expect(page.locator("#messages")).toHaveCSS("overflow-y", "auto");
+    await page.locator("#promptInput").fill("Mobile prompt smoke");
+    await page.locator("#promptForm button").last().click();
+    await expect(page.locator("#messages")).toContainText("Queued prompt queue-web-1");
+
+    await page.getByRole("button", { name: "Menu" }).click();
+    await page.getByRole("button", { name: "Peers" }).click();
+    await expect(page.locator("#peerStatus")).toContainText("Local peer identity");
+    await expect(page.locator("#peersList")).toContainText("Ubuntu Workstation");
+
+    await page.getByRole("button", { name: "Menu" }).click();
+    await page.getByRole("button", { name: "Version" }).click();
+    await expect(page.locator("#versionPanel")).toContainText("NordRelay");
+    await expect(page.locator("#agentUpdateJobs")).toContainText("No agent update jobs");
+  });
 });
 
 async function startMockDashboardServer(): Promise<MockServer> {
@@ -532,6 +560,7 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   if (url.pathname === "/api/update") return { method: "npm", logPath: "/tmp/update.log", sourceRoot: "/tmp/nordrelay", summary: "mock update" };
   if (url.pathname === "/api/peers") return peers();
   if (url.pathname === "/api/peers/probe") return peerProbe(body);
+  if (url.pathname === "/api/peers/discovery-jobs") return { jobs: discoveryJobs() };
   if (url.pathname === "/api/peers/global-sessions") return globalPeerSessions();
   if (url.pathname.match(/^\/api\/peers\/invitations\/[^/]+$/) && method === "DELETE") return { removed: true };
   if (url.pathname.match(/^\/api\/peers\/[^/]+\/health$/)) return { data: { version: "0.7.0" } };
@@ -1044,6 +1073,36 @@ function peerProbe(body: unknown) {
       detail: "Peer health endpoint is reachable.",
     },
   };
+}
+
+function discoveryJobs() {
+  return [
+    {
+      id: "discover-1",
+      status: "completed",
+      createdAt: now(),
+      startedAt: now(),
+      completedAt: now(),
+      scanned: 2,
+      total: 2,
+      candidates: [
+        {
+          url: "https://10.0.0.12:31979",
+          host: "10.0.0.12",
+          port: 31979,
+          scheme: "https",
+          nodeId: "remote-node",
+          name: "Ubuntu Workstation",
+          fingerprint: "remote-fingerprint",
+          tlsFingerprint: "mock-tls-fingerprint",
+          latencyMs: 24,
+        },
+      ],
+      warnings: [],
+      log: ["[5/16/2026, 10:00:00 AM] Completed with 1 candidate(s)."],
+      options: { targets: ["10.0.0.12"], timeoutMs: 250, concurrency: 8, maxHosts: 64 },
+    },
+  ];
 }
 
 function globalPeerSessions() {

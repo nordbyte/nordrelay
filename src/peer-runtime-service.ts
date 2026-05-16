@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { enabledAgents } from "./agent-factory.js";
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
+import { buildAdapterConformanceMatrix } from "./adapter-conformance.js";
 import { isAgentId, type AgentId, type AgentSessionInfo, type AgentThreadRecord } from "./agent.js";
 import { permissionForWebRequest, type Permission } from "./access-control.js";
 import { listChannelDescriptors } from "./channel-adapter.js";
@@ -148,6 +149,12 @@ export class PeerRuntimeService {
     if (method === "GET" && path === "/api/adapters/health") {
       return { adapters: (await runtime.adapterHealth()).filter((adapter) => this.canUseAgent(peer, adapter.id)) };
     }
+    if (method === "GET" && path === "/api/adapters/conformance") {
+      return buildAdapterConformanceMatrix({
+        agents: listAgentAdapterDescriptors().filter((adapter) => this.canUseAgent(peer, adapter.id)),
+        channels: listChannelDescriptors(),
+      });
+    }
     if (method === "GET" && path === "/api/diagnostics") return this.scopedDiagnostics(peer, await runtime.diagnostics());
     if (method === "GET" && path === "/api/diagnostics/bundle") {
       await this.assertCurrentSessionScope(peer, runtime);
@@ -163,6 +170,11 @@ export class PeerRuntimeService {
       this.assertAgentScope(peer, agentId);
       return this.scopedControlOptions(peer, await runtime.controlOptions(agentId));
     }
+    if (method === "GET" && path === "/api/locks") return { locks: runtime.locks() };
+    if (method === "POST" && path === "/api/locks") {
+      return { lock: runtime.lockWebSession(stringValue(body.ownerName) || `Peer ${peer.name}`, remoteActor), locks: runtime.locks() };
+    }
+    if (method === "DELETE" && path === "/api/locks") return runtime.unlockWebSession(remoteActor);
     if (method === "GET" && path === "/api/auth/status") {
       const agentId = parseAgentId(query.agent);
       this.assertAgentScope(peer, agentId);

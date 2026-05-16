@@ -29,20 +29,17 @@ import { BotPreferencesStore } from "./bot-preferences.js";
 import { ChannelCommandService } from "./channel-command-service.js";
 import { ChannelTurnService } from "./channel-turn-service.js";
 import { activeSessionSourceForContextKey, ChannelMirrorRegistry } from "./channel-mirror-registry.js";
-import { checkAuthStatus, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
-import { checkClaudeCodeAuthStatus, startClaudeCodeLogin, startClaudeCodeLogout } from "./claude-code-auth.js";
+import type { LoginResult } from "./codex-auth.js";
 import { listThreads as listCodexThreads } from "./codex-state.js";
 import type { ConnectorConfig } from "./config.js";
 import type { ChannelContextKey } from "./context-key.js";
 import { friendlyErrorText } from "./error-messages.js";
-import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./hermes-auth.js";
-import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
 import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "./operations.js";
-import { checkPiAuthStatus } from "./pi-auth.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "./prompt-store.js";
 import { UnifiedJobStore } from "./job-store.js";
 import { buildRuntimeMetrics, type RuntimeMetricsDto } from "./metrics.js";
 import { RelayArtifactService } from "./relay-artifact-service.js";
+import { RelayAuthService } from "./relay-auth-service.js";
 import { RelayExternalActivityMonitor } from "./relay-external-activity-monitor.js";
 import { RelayQueueService, type RelayQueueAction } from "./relay-queue-service.js";
 import { RuntimeSnapshotCache } from "./runtime-cache.js";
@@ -154,6 +151,7 @@ export class RelayRuntime {
   private readonly cache = new RuntimeSnapshotCache();
   private readonly dashboardService: RelayDashboardService;
   private readonly turnService: ChannelTurnService;
+  private readonly authService: RelayAuthService;
   private readonly subscribers = new Set<(event: RelayEvent) => void>();
   private readonly agentUpdateActors = new Map<string, WebActivityActor>();
   private readonly agentUpdateStates = new Map<string, { status: AgentUpdateJobSnapshot["status"]; needsInput: boolean }>();
@@ -181,6 +179,7 @@ export class RelayRuntime {
     this.queueService = new RelayQueueService(this.promptStore, this.contextKey);
     this.jobStore = new UnifiedJobStore(config.workspace, config.stateBackend, config.unifiedJobMaxItems);
     this.artifactService = new RelayArtifactService(config);
+    this.authService = new RelayAuthService(config);
     this.mirrorRegistry = new ChannelMirrorRegistry(config, this.promptStore);
     this.agentUpdates = new AgentUpdateManager({
       onUpdate: (job) => {
@@ -226,7 +225,7 @@ export class RelayRuntime {
       contextKey: this.contextKey,
       chatStore: this.chatStore,
       artifactService: this.artifactService,
-      checkAuth: (info) => this.checkAgentAuth(info),
+      checkAuth: (info) => this.authService.check(info),
       ensureActiveThread: (session) => this.ensureActiveThread(session),
       updateSession: (session) => this.updateSession(session),
       appendActivity: (input) => this.appendActivity(input),
@@ -811,7 +810,7 @@ export class RelayRuntime {
           hostLogoutCommand: hostLogoutCommand(info, this.config),
         };
       }
-      const status = await this.checkAgentAuth(info);
+      const status = await this.authService.check(info);
       return {
         agentId: info.agentId,
         agentLabel: info.agentLabel,
@@ -854,7 +853,7 @@ export class RelayRuntime {
           },
         };
       }
-      const result = await this.startAgentLogin(info);
+      const result = await this.authService.startLogin(info);
       this.appendActivity({
         source: "web",
         status: result.success ? "info" : "failed",
@@ -907,7 +906,7 @@ export class RelayRuntime {
           },
         };
       }
-      const current = await this.checkAgentAuth(info);
+      const current = await this.authService.check(info);
       if (current.method === "api-key") {
         return {
           ...(await this.authStatus(info.agentId)),
@@ -917,7 +916,7 @@ export class RelayRuntime {
           },
         };
       }
-      const result = await this.startAgentLogout(info);
+      const result = await this.authService.startLogout(info);
       this.appendActivity({
         source: "web",
         status: result.success ? "info" : "failed",
@@ -1890,61 +1889,6 @@ export class RelayRuntime {
       await session.newThread();
       this.updateSession(session);
     }
-  }
-
-  private async checkAgentAuth(info: AgentSessionInfo): Promise<{ authenticated: boolean; detail: string; method?: string }> {
-    if (info.agentId === "pi") {
-      return checkPiAuthStatus(info.model);
-    }
-    if (info.agentId === "hermes") {
-      return checkHermesAuthStatus({
-        baseUrl: this.config.hermesApiBaseUrl,
-        apiKey: this.config.hermesApiKey,
-      });
-    }
-    if (info.agentId === "openclaw") {
-      return checkOpenClawAuthStatus({
-        gatewayUrl: this.config.openClawGatewayUrl,
-        token: this.config.openClawGatewayToken,
-        password: this.config.openClawGatewayPassword,
-      });
-    }
-    if (info.agentId === "claude-code") {
-      return checkClaudeCodeAuthStatus(this.config.claudeCodeCliPath);
-    }
-    return checkAuthStatus(this.config.codexApiKey);
-  }
-
-  private async startAgentLogin(info: AgentSessionInfo): Promise<LoginResult> {
-    if (info.agentId === "hermes") {
-      return startHermesLogin(this.config.hermesCliPath);
-    }
-    if (info.agentId === "claude-code") {
-      return startClaudeCodeLogin(this.config.claudeCodeCliPath);
-    }
-    if (info.agentId === "codex") {
-      return startCodexLogin();
-    }
-    return {
-      success: false,
-      message: `${info.agentLabel} login is not managed by NordRelay. Run the agent login flow on the host.`,
-    };
-  }
-
-  private async startAgentLogout(info: AgentSessionInfo): Promise<LoginResult> {
-    if (info.agentId === "hermes") {
-      return startHermesLogout(this.config.hermesCliPath);
-    }
-    if (info.agentId === "claude-code") {
-      return startClaudeCodeLogout(this.config.claudeCodeCliPath);
-    }
-    if (info.agentId === "codex") {
-      return startCodexLogout();
-    }
-    return {
-      success: false,
-      message: `${info.agentLabel} logout is not managed by NordRelay. Run the agent logout flow on the host.`,
-    };
   }
 
   private ensureIdle(session: AgentSessionService): void {
