@@ -1486,7 +1486,7 @@ function runtimeBuildStatus() {
   ]);
   const distTargets = [
     path.join(RUNTIME_ROOT, "dist", "index.js"),
-    path.join(RUNTIME_ROOT, "dist", "web-dashboard.js"),
+    path.join(RUNTIME_ROOT, "dist", "web", "web-dashboard.js"),
     path.join(RUNTIME_ROOT, "dist", "webui-assets", "dashboard.js"),
     path.join(RUNTIME_ROOT, "dist", "webui-assets", "dashboard.css"),
   ];
@@ -1583,12 +1583,12 @@ async function runInteractiveStep(label, command, args, settings = {}) {
 }
 
 async function resolveWebRuntimeEntry() {
-  const distEntry = path.join(RUNTIME_ROOT, "dist", "web-dashboard.js");
+  const distEntry = path.join(RUNTIME_ROOT, "dist", "web", "web-dashboard.js");
   if (fs.existsSync(distEntry)) {
     return { command: process.execPath, args: [distEntry] };
   }
 
-  const tsEntry = path.join(RUNTIME_ROOT, "src", "web-dashboard.ts");
+  const tsEntry = path.join(RUNTIME_ROOT, "src", "web", "web-dashboard.ts");
   const tsxBin = path.join(RUNTIME_ROOT, "node_modules", ".bin", process.platform === "win32" ? "tsx.cmd" : "tsx");
   if (fs.existsSync(tsEntry) && fs.existsSync(tsxBin)) {
     return { command: tsxBin, args: [tsEntry] };

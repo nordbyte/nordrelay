@@ -5,4 +5,4 @@ export PATH="${PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/s
 : "${HOME:?Set HOME before starting nordrelay}"
 
 cd "${NORDRELAY_SOURCE_ROOT:-$HOME/projects/nordrelay}"
-exec node dist/index.js
+exec node plugins/nordrelay/scripts/nordrelay.mjs foreground

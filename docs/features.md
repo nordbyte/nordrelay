@@ -244,4 +244,4 @@
 - CI runs on Ubuntu, Windows, and macOS with typecheck, Vitest, Playwright WebUI browser tests, package dry run, npm audit, and a separate secret-scan workflow.
 - `npm run dev`, `npm run build`, `npm run check`, `npm test`, `npm run test:e2e`, `npm start`, `npm stop`, and `npm run status` are available.
 - Dockerfile and `docker-compose.yml` are included for containerized operation.
-- A `launchd/start.sh` helper is included for host-managed startup.
+- A `scripts/launchd-start.sh` helper is included for host-managed macOS startup.

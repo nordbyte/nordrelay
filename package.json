@@ -34,7 +34,7 @@
   "files": [
     "dist/",
     "plugins/",
-    "launchd/",
+    "scripts/launchd-start.sh",
     ".env.example",
     "Dockerfile",
     "docker-compose.yml"

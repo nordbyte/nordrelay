@@ -30,7 +30,7 @@ The compose file mounts:
 launchd helper:
 
 ```bash
-NORDRELAY_SOURCE_ROOT=~/projects/nordrelay launchd/start.sh
+NORDRELAY_SOURCE_ROOT=~/projects/nordrelay scripts/launchd-start.sh
 ```
 
 Linux systemd example:
