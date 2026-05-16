@@ -78,6 +78,7 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#agentAdapters")).toContainText("Codex");
     await expect(page.locator("#chatAdapters")).toContainText("Telegram");
     await expect(page.locator("#footerHealth")).toContainText("Health: ready");
+    await expect(page.getByRole("button", { name: "Refresh" })).toHaveCount(0);
 
     await navigateDashboard(page, "Chat");
     await expect(page.locator("#messages")).toContainText("Existing web message");
@@ -270,13 +271,10 @@ test.describe("NordRelay WebUI", () => {
     await expect
       .poll(async () => page.locator("#accessTabs").evaluate((el) => el.scrollHeight <= el.clientHeight))
       .toBe(true);
-    await expect
-      .poll(async () => {
-        const tabs = await page.locator("#accessTabs").boundingBox();
-        const toolbar = await page.locator(".access-toolbar").boundingBox();
-        return Boolean(tabs && toolbar && tabs.y < toolbar.y);
-      })
-      .toBe(true);
+    await expect(page.locator('[data-access-tab-panel="users"] h2')).toHaveCount(0);
+    await expect(page.locator('[data-access-tab-panel="users"] .access-heading-actions')).toContainText("Reload");
+    await expect(page.locator('[data-access-tab-panel="users"] .access-heading-actions')).toContainText("Create user");
+    await expect(page.locator(".access-toolbar")).toBeHidden();
     await expect(page.locator("#createUserBtn")).toBeVisible();
     await expect(page.locator("#createGroupBtn")).toBeHidden();
     await expect(page.locator("#accessPanel")).toContainText("Admin");
@@ -294,6 +292,14 @@ test.describe("NordRelay WebUI", () => {
 
     await page.locator('[data-access-tab="groups"]').click();
     await expect(page.getByRole("tab", { name: "Groups" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator(".access-toolbar")).toBeVisible();
+    await expect
+      .poll(async () => {
+        const tabs = await page.locator("#accessTabs").boundingBox();
+        const toolbar = await page.locator(".access-toolbar").boundingBox();
+        return Boolean(tabs && toolbar && tabs.y < toolbar.y);
+      })
+      .toBe(true);
     await expect(page.locator("#createGroupBtn")).toBeVisible();
     await expect(page.locator("#createUserBtn")).toBeHidden();
 

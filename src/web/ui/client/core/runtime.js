@@ -91,7 +91,6 @@ document.querySelectorAll('nav button[data-page]').forEach(b=>b.onclick=()=>page
 document.querySelectorAll('[data-nav-toggle]').forEach(b=>b.onclick=()=>{const sectionId=b.dataset.navToggle;const section=document.querySelector('[data-nav-section="'+cssEscape(sectionId)+'"]');setNavSectionOpen(sectionId,section?.dataset.navOpen!=='true');syncNavSections()});
 initNavSections();
 document.getElementById('menuBtn').onclick=()=>document.getElementById('sidebar').classList.toggle('open');
-document.getElementById('refreshBtn').onclick=()=>loadBootstrap();
 document.getElementById('themeBtn').onclick=toggleTheme;
 document.getElementById('toggleToolsBtn').onclick=toggleTools;
 document.getElementById('logoutBtn').onclick=()=>safe(async()=>{await api('/api/dashboard/logout',{method:'POST'});location.href='/'});

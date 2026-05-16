@@ -141,7 +141,6 @@ ${faviconLinks}
           <select id="peerSelect" title="NordRelay target"></select>
           <select id="agentSelect"></select>
           <button id="themeBtn" class="secondary" title="Toggle dark theme">Dark</button>
-          <button id="refreshBtn">Refresh</button>
           <button id="logoutBtn" class="secondary">Logout</button>
         </div>
       </header>
@@ -283,10 +282,10 @@ ${faviconLinks}
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-access-tab="audit">Audit</button>
             </div>
           </div>
-          <div class="row access-toolbar"><button id="loadAccessBtn">Reload users</button><button id="createUserBtn" data-access-action-tabs="users">Create user</button><button id="createGroupBtn" data-access-action-tabs="groups" class="secondary" style="display:none">Create group</button><button id="createChatBtn" data-access-action-tabs="telegram" class="secondary" style="display:none">Add Telegram chat</button><button id="createDiscordChannelBtn" data-access-action-tabs="discord" class="secondary" style="display:none">Add Discord channel</button><button id="createSlackChannelBtn" data-access-action-tabs="slack" class="secondary" style="display:none">Add Slack channel</button><button id="lockSessionBtn" data-access-action-tabs="locks" class="secondary" style="display:none">Lock web session</button><button id="unlockSessionBtn" data-access-action-tabs="locks" class="secondary" style="display:none">Unlock web session</button></div>
+          <div class="row access-toolbar" hidden><button id="createGroupBtn" data-access-action-tabs="groups" class="secondary" style="display:none">Create group</button><button id="createChatBtn" data-access-action-tabs="telegram" class="secondary" style="display:none">Add Telegram chat</button><button id="createDiscordChannelBtn" data-access-action-tabs="discord" class="secondary" style="display:none">Add Discord channel</button><button id="createSlackChannelBtn" data-access-action-tabs="slack" class="secondary" style="display:none">Add Slack channel</button><button id="lockSessionBtn" data-access-action-tabs="locks" class="secondary" style="display:none">Lock web session</button><button id="unlockSessionBtn" data-access-action-tabs="locks" class="secondary" style="display:none">Unlock web session</button></div>
           <div class="access-tab active" data-access-tab-panel="users">
             <div class="access-tab-heading">
-              <h2>Users</h2>
+              <div class="row access-heading-actions"><button id="loadAccessBtn" class="secondary">Reload</button><button id="createUserBtn" data-access-action-tabs="users">Create user</button></div>
               <div class="access-filter-row">
                 <input id="userSearch" placeholder="Search users">
                 <select id="userStatusFilter"><option value="all">All statuses</option><option value="active">Active</option><option value="disabled">Disabled</option></select>
