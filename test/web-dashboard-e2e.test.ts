@@ -85,6 +85,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('href="/assets/dashboard.css"');
     expect(pageSource).toContain('href="/favicon.ico"');
     expect(pageSource).toContain('src="/assets/logo.png"');
+    expect(pageSource).toContain('width="44" height="44"');
+    expect(pageSource).toContain('class="brand-separator"');
     expect(pageSource).toContain('src="/assets/dashboard.js"');
     expect(pageSource).not.toContain("<style>${dashboardCss()}</style>");
     expect(pageSource).not.toContain("<script>${dashboardJs()}</script>");

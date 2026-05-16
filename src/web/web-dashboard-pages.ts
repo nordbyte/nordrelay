@@ -123,7 +123,8 @@ ${faviconLinks}
 <body>
   <div class="app">
     <aside class="sidebar" id="sidebar">
-      <div class="brand"><img class="brand-mark" src="/assets/logo.png" alt="" width="38" height="38" aria-hidden="true"><div><strong>NordRelay</strong><small>Remote control</small></div></div>
+      <div class="brand"><img class="brand-mark" src="/assets/logo.png" alt="" width="44" height="44" aria-hidden="true"><div><strong>NordRelay</strong><small>Remote control</small></div></div>
+      <div class="brand-separator" aria-hidden="true"></div>
       <nav>
         ${renderDashboardNav()}
       </nav>
