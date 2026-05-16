@@ -3,12 +3,12 @@
 html{font-size:16px;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif;line-height:1.4;font-synthesis:none}
 .app{min-height:100vh;display:grid;grid-template-columns:260px 1fr}
-.sidebar{background:var(--sidebar);color:var(--sidebar-text);padding:18px;display:flex;flex-direction:column;gap:0}
-.brand{display:flex;align-items:center;gap:12px}
+.sidebar{position:sticky;top:0;height:100vh;background:var(--sidebar);color:var(--sidebar-text);display:flex;flex-direction:column;gap:0;overflow:hidden}
+.brand{display:flex;align-items:center;gap:12px;height:calc(var(--dashboard-header-height) - 1px);padding:0 18px}
 .brand-mark{display:block;width:44px;height:44px;border-radius:8px;object-fit:cover;flex:0 0 44px}
 .brand small{display:block;color:var(--sidebar-muted)}
-.brand-separator{height:1px;margin:calc(var(--dashboard-header-height) - 18px - 44px - 1px) -18px 22px;background:var(--border)}
-nav{display:flex;flex-direction:column;gap:6px}
+.brand-separator{height:1px;background:var(--border);flex:0 0 1px}
+nav{display:flex;flex:1;min-height:0;flex-direction:column;gap:6px;overflow:auto;padding:22px 18px 18px}
 nav button,.menu{border:0;border-radius:6px;padding:10px 12px;background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer}
 nav button.active,nav button:hover{background:color-mix(in srgb,var(--accent) 35%,transparent)}
 main{min-width:0;display:flex;flex-direction:column}
