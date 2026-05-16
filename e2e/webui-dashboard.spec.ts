@@ -68,6 +68,7 @@ test.describe("NordRelay WebUI", () => {
       "Queue",
       "Tasks",
       "Activity",
+      "Trace",
       "Artifacts",
     ]);
     await expect(page.getByRole("heading", { name: "Active Sessions" })).toBeVisible();
