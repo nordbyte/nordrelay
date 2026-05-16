@@ -40,4 +40,12 @@ describe("nordrelay CLI script", () => {
     expect(source).toContain("function printHelp()");
     expect(source).toContain('if (options.command === "help")');
   });
+
+  it("runs through npm bin symlinks", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain("function isMainScript");
+    expect(source).toContain("fs.realpathSync.native(argvPath)");
+    expect(source).toContain("if (isMainScript(process.argv[1]))");
+  });
 });

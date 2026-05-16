@@ -39,6 +39,15 @@ function readRuntimePackageVersion() {
   }
 }
 
+function isMainScript(argvPath) {
+  if (!argvPath) return false;
+  try {
+    return fs.realpathSync.native(argvPath) === fs.realpathSync.native(SCRIPT_PATH);
+  } catch {
+    return path.resolve(argvPath) === SCRIPT_PATH;
+  }
+}
+
 function parseArgs(argv) {
   const copy = [...argv];
   let command = "foreground";
@@ -2174,7 +2183,7 @@ export {
   serviceInstallSpec,
 };
 
-if (process.argv[1] && path.resolve(process.argv[1]) === SCRIPT_PATH) {
+if (isMainScript(process.argv[1])) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
