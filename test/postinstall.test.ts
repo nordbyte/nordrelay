@@ -10,11 +10,24 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const script = path.join(root, "scripts", "postinstall.mjs");
 
 function runPostinstall(env: NodeJS.ProcessEnv) {
+  const childEnv: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    const normalizedKey = key.toLowerCase();
+    if (
+      normalizedKey === "path"
+      || normalizedKey.startsWith("npm_config_")
+      || normalizedKey.startsWith("nordrelay_postinstall_")
+    ) {
+      continue;
+    }
+    childEnv[key] = value;
+  }
+
   return spawnSync(process.execPath, [script], {
     cwd: root,
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...childEnv,
       ...env,
     },
   });
