@@ -279,15 +279,46 @@ ${faviconLinks}
 
       <section class="page" id="page-peers">
         <div class="panel">
-          <div class="row"><button id="loadPeersBtn">Reload peers</button><button id="createPeerInviteBtn">Create invite</button><button id="addPeerBtn" class="secondary">Add peer</button><button id="discoverPeersBtn" class="secondary">Discover LAN peers</button><button id="cancelPeerDiscoveryBtn" class="secondary">Cancel discovery</button><button id="exportPeerIdentityBtn" class="secondary">Export identity</button><button id="restorePeerIdentityBtn" class="secondary">Restore identity</button></div>
-          <div class="row"><input id="peerDiscoveryTargets" placeholder="Optional targets: 192.168.178.0/24, 192.168.178.10-50, host.local, https://host:31979"><input id="peerDiscoveryMaxHosts" type="number" min="1" max="65536" value="512" title="Max hosts"><input id="peerDiscoveryConcurrency" type="number" min="1" max="128" value="32" title="Concurrency"></div>
-          <div id="peerStatus" class="list"></div>
-          <h2>Configured peers</h2>
-          <div id="peersList" class="list"></div>
-          <h2>LAN discovery</h2>
-          <div id="peerDiscovery" class="list"></div>
-          <h2>Open invitations</h2>
-          <div id="peerInvites" class="list"></div>
+          <div class="section-header peer-section-header">
+            <div id="peerTabs" class="section-tabs peer-tabs" role="tablist" aria-label="Peer sections">
+              <button type="button" role="tab" aria-selected="true" tabindex="0" data-peer-tab="status" class="active">Status</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-peer-tab="peers">Peers</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-peer-tab="invitations">Invitations</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-peer-tab="discovery">Discovery</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-peer-tab="global">Global Sessions</button>
+            </div>
+          </div>
+          <div class="peer-tab active" data-peer-tab-panel="status">
+            <div class="peer-tab-heading">
+              <div class="row peer-heading-actions"><button id="loadPeersBtn">Reload status</button><button id="exportPeerIdentityBtn" class="secondary">Export identity</button><button id="restorePeerIdentityBtn" class="secondary">Restore identity</button></div>
+            </div>
+            <div id="peerStatus" class="list"></div>
+          </div>
+          <div class="peer-tab" data-peer-tab-panel="peers">
+            <div class="peer-tab-heading">
+              <div class="row peer-heading-actions"><button id="addPeerBtn" class="secondary">Add peer</button><button id="reloadPeersListBtn" class="secondary">Reload peers</button></div>
+            </div>
+            <div id="peersList" class="list"></div>
+          </div>
+          <div class="peer-tab" data-peer-tab-panel="invitations">
+            <div class="peer-tab-heading">
+              <div class="row peer-heading-actions"><button id="createPeerInviteBtn">Create invite</button><button id="reloadPeerInvitesBtn" class="secondary">Reload invitations</button></div>
+            </div>
+            <div id="peerInvites" class="list"></div>
+          </div>
+          <div class="peer-tab" data-peer-tab-panel="discovery">
+            <div class="peer-tab-heading">
+              <div class="row peer-heading-actions"><button id="discoverPeersBtn" class="secondary">Discover LAN peers</button><button id="cancelPeerDiscoveryBtn" class="secondary">Cancel discovery</button></div>
+            </div>
+            <div class="row peer-discovery-controls"><input id="peerDiscoveryTargets" placeholder="Optional targets: 192.168.178.0/24, 192.168.178.10-50, host.local, https://host:31979"><input id="peerDiscoveryMaxHosts" type="number" min="1" max="65536" value="512" title="Max hosts"><input id="peerDiscoveryConcurrency" type="number" min="1" max="128" value="32" title="Concurrency"></div>
+            <div id="peerDiscovery" class="list"></div>
+          </div>
+          <div class="peer-tab" data-peer-tab-panel="global">
+            <div class="peer-tab-heading">
+              <div class="row peer-heading-actions"><input id="globalPeerSessionSearch" placeholder="Search sessions across peers"><button id="loadGlobalPeerSessionsBtn">Load global sessions</button></div>
+            </div>
+            <div id="globalPeerSessionsPanel" class="list"><div class="item"><div id="globalPeerSessionsList">Load global sessions to inspect sessions across connected peers.</div></div></div>
+          </div>
         </div>
       </section>
 

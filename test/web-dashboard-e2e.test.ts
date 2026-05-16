@@ -153,14 +153,21 @@ describe("web dashboard browser-flow assets", () => {
 
   it("includes peer discovery and peer health history in the WebUI", () => {
     const js = dashboardJs();
+    const css = dashboardCss();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
     const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
 
+    expect(pageSource).toContain('id="peerTabs"');
+    expect(pageSource).toContain('data-peer-tab="status"');
+    expect(pageSource).toContain('data-peer-tab-panel="discovery"');
     expect(pageSource).toContain("Discover LAN peers");
     expect(pageSource).toContain('id="peerDiscovery"');
+    expect(js).toContain("function switchPeerTab");
+    expect(js).toContain("data-peer-tab-panel");
     expect(js).toContain("function discoverPeers");
     expect(js).toContain("/api/peers/discover");
     expect(js).toContain("Health history");
+    expect(css).toContain(".peer-tab");
     expect(contract).toContain('exact("/api/peers/discover"');
   });
 

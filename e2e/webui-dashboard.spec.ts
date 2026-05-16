@@ -394,13 +394,16 @@ test.describe("NordRelay WebUI", () => {
     await page.getByRole("button", { name: "Check local endpoint" }).click();
     await expect(page.locator("#peerProbeResult")).toContainText("Local endpoint check");
     await expect(page.locator("#peerProbeResult")).toContainText("reachable");
+    await page.getByRole("tab", { name: "Peers" }).click();
     await expect(page.locator("#peersList")).toContainText("Ubuntu Workstation");
     await page.locator('[data-peer-probe="peer-ubuntu"]').click();
     await expect(page.locator("#peerProbeResult")).toContainText("Remote probe from Ubuntu Workstation");
+    await page.getByRole("tab", { name: "Invitations" }).click();
     await expect(page.locator("#peerInvites")).toContainText("MacBook invite");
     page.once("dialog", (dialog) => dialog.accept());
     await page.locator('[data-peer-invite-delete="invite-1"]').click();
     await expect.poll(() => mock.requests.some((request) => request.path === "/api/peers/invitations/invite-1" && request.method === "DELETE")).toBe(true);
+    await page.getByRole("tab", { name: "Global Sessions" }).click();
     await page.getByRole("button", { name: "Load global sessions" }).click();
     await expect(page.locator("#globalPeerSessionsList")).toContainText("peer-thread-1");
   });
@@ -448,6 +451,7 @@ test.describe("NordRelay WebUI", () => {
 
     await page.goto(mock.baseUrl);
     await navigateDashboard(page, "Peers");
+    await page.getByRole("tab", { name: "Invitations" }).click();
     await page.getByRole("button", { name: "Create invite" }).click();
     await page.locator("#adminDialogSubmit").click();
 
@@ -486,6 +490,7 @@ test.describe("NordRelay WebUI", () => {
     await navigateDashboard(page, "Peers");
 
     await expect(page.locator("#peerStatus")).toContainText("Peer server is disabled");
+    await page.getByRole("tab", { name: "Invitations" }).click();
     await page.getByRole("button", { name: "Create invite" }).click();
     await expect(page.locator("#adminDialogBody")).toContainText("Pairing warning");
     await expect(page.locator("#adminDialogBody")).toContainText("pairing will fail");
@@ -637,6 +642,7 @@ test.describe("NordRelay WebUI", () => {
     await page.getByRole("button", { name: "Menu" }).click();
     await navigateDashboard(page, "Peers");
     await expect(page.locator("#peerStatus")).toContainText("Local peer identity");
+    await page.getByRole("tab", { name: "Peers" }).click();
     await expect(page.locator("#peersList")).toContainText("Ubuntu Workstation");
 
     await page.getByRole("button", { name: "Menu" }).click();

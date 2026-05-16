@@ -1,5 +1,6 @@
 import { createServer, type Server } from "node:http";
 import { mkdir, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 import { webhookCallback } from "grammy";
@@ -7,6 +8,7 @@ import { webhookCallback } from "grammy";
 import { agentLabel, type AgentId } from "./agents/shared/agent.js";
 import { createBot, registerCommands } from "./channels/telegram/bot.js";
 import { createDiscordBridge } from "./channels/discord/discord-bot.js";
+import { startDiscordBridgeOrDisable } from "./channels/discord/discord-startup.js";
 import { createSlackBridge } from "./channels/slack/slack-bot.js";
 import { checkAuthStatus } from "./agents/codex/codex-auth.js";
 import { describeCodexCli, resolveCodexCli } from "./agents/codex/codex-cli.js";
@@ -20,6 +22,8 @@ import { describeHermesCli, resolveHermesCli } from "./agents/hermes/hermes-cli.
 import { checkOpenClawAuthStatus } from "./agents/openclaw/openclaw-auth.js";
 import { describeOpenClawCli, resolveOpenClawCli } from "./agents/openclaw/openclaw-cli.js";
 import { installConsoleLogger } from "./core/logger.js";
+import { friendlyErrorText } from "./core/error-messages.js";
+import { resolveDashboardEnvPath, SettingsService } from "./core/settings-service.js";
 import { checkPiAuthStatus } from "./agents/pi/pi-auth.js";
 import { describePiCli, resolvePiCli } from "./agents/pi/pi-cli.js";
 import { startPeerHealthMonitor, type PeerHealthMonitorHandle } from "./peers/peer-health-monitor.js";
@@ -49,8 +53,16 @@ try {
     bot = createBot(config, registry);
     await registerCommands(bot);
   }
+  const requestedDiscordEnabled = config.discordEnabled;
   discordBridge = createDiscordBridge(config, registry);
-  await discordBridge?.start();
+  discordBridge = await startDiscordBridgeOrDisable(config, discordBridge);
+  if (requestedDiscordEnabled && !config.discordEnabled) {
+    try {
+      await persistDiscordDisabledSetting();
+    } catch (error) {
+      config.adapterWarnings = [...(config.adapterWarnings ?? []), `Failed to persist DISCORD_ENABLED=false: ${friendlyErrorText(error)}`];
+    }
+  }
   slackBridge = createSlackBridge(config, registry);
   await slackBridge?.start();
   if (config.peerEnabled) {
@@ -170,6 +182,14 @@ async function checkDefaultAgentAuth(config: ConnectorConfig): Promise<{
     return checkClaudeCodeAuthStatus(config.claudeCodeCliPath);
   }
   return checkAuthStatus(config.codexApiKey);
+}
+
+async function persistDiscordDisabledSetting(): Promise<void> {
+  const home = process.env.NORDRELAY_HOME || path.join(os.homedir(), ".nordrelay");
+  const result = await new SettingsService(resolveDashboardEnvPath(home)).update({ DISCORD_ENABLED: "false" });
+  if (result.errors.length > 0) {
+    throw new Error(result.errors.map((error) => `${error.key}: ${error.message}`).join("; "));
+  }
 }
 
 let shuttingDown = false;
