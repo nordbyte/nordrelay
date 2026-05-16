@@ -1,6 +1,7 @@
 const state = { snapshot:null, controls:null, newSessionControls:null, enabledAgents:[], auth:null, csrfToken:null, permissions:[], settings:[], currentPage:'overview', settingsGroup:null, settingsWizard:null, accessTab:'users', logsPlain:'', logTimer:null, toastTimer:null, stickyToastActive:false, stickyToastText:'', cliStatusActive:false, webMirror:null, selectedArtifactTurns:new Set(), mediaRecorder:null, recordedChunks:[], events:null, reconnectTimer:null, notifications:false, toolTooltipTimer:null, toolTooltipTarget:null, toolsVisible:false, agentUpdateJobs:[], sessionsRequestId:0, chatHistoryRequestId:0, chatRenderVersion:0, activeSessions:null, peers:null, peerInviteSecrets:{}, peerProbeResult:null, peerDiscoveryJobs:[], selectedPeer:localStorage.getItem('nordrelayPeerTarget')||'local' };
 globalThis.NORDRELAY_WEBUI_RUNTIME_STATE=state;
 const PAGE_LABELS={overview:'Overview',chat:'Chat',sessions:'Sessions',queue:'Queue',tasks:'Tasks',metrics:'Metrics',activity:'Activity',artifacts:'Artifacts',adapters:'Adapters',peers:'Peers',access:'Users',version:'Version',settings:'Settings',logs:'Logs',diagnostics:'Diagnostics'};
+const NAV_OPEN_STORAGE_KEY='nordrelayNavOpenSections';
 function toast(msg,options={}){const el=document.getElementById('toast');const text=String(msg??'');if(state.toastTimer)clearTimeout(state.toastTimer);state.toastTimer=null;if(options.sticky){state.stickyToastActive=true;state.stickyToastText=text;if(el.textContent!==text)el.textContent=text;if(el.style.display!=='block')el.style.display='block';return}el.textContent=text;el.style.display='block';state.toastTimer=setTimeout(()=>{state.toastTimer=null;if(state.stickyToastActive){el.textContent=state.stickyToastText;el.style.display='block';return}el.style.display='none'},options.duration||3500)}
 function clearStickyToast(){state.stickyToastActive=false;state.stickyToastText='';if(state.toastTimer)clearTimeout(state.toastTimer);state.toastTimer=null}
 function esc(s){return String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
@@ -19,6 +20,7 @@ function disabledAttr(permission){return can(permission)?'':' disabled title="Pe
 function hiddenStyle(permission){return can(permission)?'':' style="display:none"'}
 function applyPermissions(){
   document.querySelectorAll('[data-permission]').forEach(el=>{const allowed=can(el.dataset.permission);el.hidden=!allowed;el.disabled=!allowed});
+  syncNavSections();
   const currentButton=document.querySelector('nav button[data-page="'+cssEscape(state.currentPage)+'"]');
   if(currentButton&&currentButton.hidden){const first=[...document.querySelectorAll('nav button[data-page]')].find(b=>!b.hidden);if(first)page(first.dataset.page)}
   const disableMap=[
@@ -49,6 +51,32 @@ function applyPermissions(){
   ];
   disableMap.forEach(([selector,permission])=>document.querySelectorAll(selector).forEach(el=>{el.disabled=!can(permission);if(!can(permission))el.title='Permission required: '+permission}));
 }
+function readOpenNavSections(){try{const raw=localStorage.getItem(NAV_OPEN_STORAGE_KEY);if(!raw)return null;const parsed=JSON.parse(raw);return Array.isArray(parsed)?new Set(parsed.filter(Boolean)):null}catch{return null}}
+function writeOpenNavSections(){const open=[...document.querySelectorAll('[data-nav-section]')].filter(section=>section.dataset.navOpen==='true').map(section=>section.dataset.navSection).filter(Boolean);localStorage.setItem(NAV_OPEN_STORAGE_KEY,JSON.stringify(open))}
+function setNavSectionOpen(sectionId,open,options={}){const section=document.querySelector('[data-nav-section="'+cssEscape(sectionId)+'"]');if(!section)return;const items=section.querySelector('.nav-section-items');const toggle=section.querySelector('[data-nav-toggle]');section.dataset.navOpen=open?'true':'false';if(items)items.hidden=!open;if(toggle)toggle.setAttribute('aria-expanded',open?'true':'false');if(options.persist!==false)writeOpenNavSections()}
+function sectionForPage(name){const button=document.querySelector('nav button[data-page="'+cssEscape(name)+'"]');return button?.closest('[data-nav-section]')?.dataset.navSection||''}
+function openSectionForPage(name,options={}){const sectionId=sectionForPage(name);if(sectionId)setNavSectionOpen(sectionId,true,options)}
+function syncNavSections(){
+  document.querySelectorAll('[data-nav-section]').forEach(section=>{
+    const visiblePages=[...section.querySelectorAll('button[data-page]')].filter(button=>!button.hidden);
+    const hasVisiblePages=visiblePages.length>0;
+    section.hidden=!hasVisiblePages;
+    const active=visiblePages.some(button=>button.dataset.page===state.currentPage);
+    section.classList.toggle('active',active);
+    section.querySelector('[data-nav-toggle]')?.classList.toggle('active',active);
+    if(active&&section.dataset.navOpen!=='true')setNavSectionOpen(section.dataset.navSection,true,{persist:false});
+  });
+}
+function initNavSections(){
+  const saved=readOpenNavSections();
+  document.querySelectorAll('[data-nav-section]').forEach(section=>{
+    const sectionId=section.dataset.navSection;
+    const open=saved?saved.has(sectionId):section.dataset.navDefaultOpen==='true';
+    setNavSectionOpen(sectionId,open,{persist:false});
+  });
+  openSectionForPage(state.currentPage,{persist:false});
+  syncNavSections();
+}
 function modelLabel(m){const meta=[m.contextWindow?compactNum(m.contextWindow):'',m.supportsImages===true?'img':m.supportsImages===false?'text':'',m.supportsThinking===true?'think':''].filter(Boolean).join(' ');return (m.displayName||m.slug)+(meta?' · '+meta:'')}
 function fmtAge(ms){const sec=Math.max(0,Math.floor(ms/1000));if(sec<60)return sec+'s ago';const min=Math.floor(sec/60);if(min<60)return min+'m ago';return Math.floor(min/60)+'h ago'}
 function isCliRunningStatus(msg){return / CLI running\b/.test(String(msg||''))}
@@ -57,9 +85,11 @@ function applyTheme(theme){document.documentElement.dataset.theme=theme;localSto
 function toggleTheme(){applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark')}
 function setToolsVisible(visible){state.toolsVisible=Boolean(visible);const layout=document.getElementById('chatLayout');const panel=document.getElementById('toolPanel');const button=document.getElementById('toggleToolsBtn');layout?.classList.toggle('tools-hidden',!state.toolsVisible);if(panel)panel.hidden=!state.toolsVisible;if(button){button.textContent=state.toolsVisible?'Hide Tools':'Show Tools';button.setAttribute('aria-expanded',state.toolsVisible?'true':'false')}}
 function toggleTools(){setToolsVisible(!state.toolsVisible)}
-function page(name){state.currentPage=name;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+name));document.getElementById('pageTitle').textContent=PAGE_LABELS[name]||name[0].toUpperCase()+name.slice(1);document.getElementById('sidebar').classList.remove('open'); void reloadCurrentPage().catch(err=>toast(err.message||String(err)));}
+function page(name){state.currentPage=name;openSectionForPage(name);document.querySelectorAll('nav button[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===name));syncNavSections();document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+name));document.getElementById('pageTitle').textContent=PAGE_LABELS[name]||name[0].toUpperCase()+name.slice(1);document.getElementById('sidebar').classList.remove('open'); void reloadCurrentPage().catch(err=>toast(err.message||String(err)));}
 async function reloadCurrentPage(options={}){const name=state.currentPage;if(name==='overview') await loadActiveSessions(); if(name==='chat'){const [historyRendered]=await Promise.all([loadChatHistory({forceScroll:true}),loadMirrorPreference()]);if(historyRendered)scrollChatToBottom({force:true})} if(name==='sessions') await loadSessions(true,options.agentId); if(name==='settings') await loadSettings(); if(name==='logs') await loadLogs(); if(name==='diagnostics') await loadDiagnostics(); if(name==='artifacts') await loadArtifacts(); if(name==='activity') await loadActivity(); if(name==='tasks') await loadTasks(); if(name==='metrics') await loadMetrics(); if(name==='adapters') await loadAdapterHealth(); if(name==='peers') await loadPeers(); if(name==='access') await loadAccess(); if(name==='version') await loadVersion();}
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>page(b.dataset.page));
+document.querySelectorAll('nav button[data-page]').forEach(b=>b.onclick=()=>page(b.dataset.page));
+document.querySelectorAll('[data-nav-toggle]').forEach(b=>b.onclick=()=>{const sectionId=b.dataset.navToggle;const section=document.querySelector('[data-nav-section="'+cssEscape(sectionId)+'"]');setNavSectionOpen(sectionId,section?.dataset.navOpen!=='true');syncNavSections()});
+initNavSections();
 document.getElementById('menuBtn').onclick=()=>document.getElementById('sidebar').classList.toggle('open');
 document.getElementById('refreshBtn').onclick=()=>loadBootstrap();
 document.getElementById('themeBtn').onclick=toggleTheme;

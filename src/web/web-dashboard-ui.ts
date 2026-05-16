@@ -6,26 +6,67 @@ export interface DashboardPage {
   permission: Permission;
 }
 
-export const DASHBOARD_PAGES: DashboardPage[] = [
-  { id: "overview", label: "Overview", permission: "inspect" },
-  { id: "chat", label: "Chat", permission: "sessions.read" },
-  { id: "sessions", label: "Sessions", permission: "sessions.read" },
-  { id: "queue", label: "Queue", permission: "queue.read" },
-  { id: "tasks", label: "Tasks", permission: "inspect" },
-  { id: "metrics", label: "Metrics", permission: "inspect" },
-  { id: "activity", label: "Activity", permission: "sessions.read" },
-  { id: "artifacts", label: "Artifacts", permission: "files.read" },
-  { id: "adapters", label: "Adapters", permission: "inspect" },
-  { id: "peers", label: "Peers", permission: "peers.read" },
-  { id: "access", label: "Users", permission: "users.read" },
-  { id: "version", label: "Version", permission: "inspect" },
-  { id: "settings", label: "Settings", permission: "settings.read" },
-  { id: "logs", label: "Logs", permission: "logs.read" },
-  { id: "diagnostics", label: "Diagnostics", permission: "diagnostics.read" },
+export interface DashboardNavSection {
+  id: string;
+  label: string;
+  defaultOpen?: boolean;
+  pages: DashboardPage[];
+}
+
+export const DASHBOARD_NAV_SECTIONS: DashboardNavSection[] = [
+  {
+    id: "work",
+    label: "Work",
+    defaultOpen: true,
+    pages: [
+      { id: "overview", label: "Overview", permission: "inspect" },
+      { id: "chat", label: "Chat", permission: "sessions.read" },
+      { id: "sessions", label: "Sessions", permission: "sessions.read" },
+      { id: "queue", label: "Queue", permission: "queue.read" },
+      { id: "tasks", label: "Tasks", permission: "inspect" },
+      { id: "activity", label: "Activity", permission: "sessions.read" },
+      { id: "artifacts", label: "Artifacts", permission: "files.read" },
+    ],
+  },
+  {
+    id: "operations",
+    label: "Operations",
+    pages: [
+      { id: "metrics", label: "Metrics", permission: "inspect" },
+      { id: "adapters", label: "Adapters", permission: "inspect" },
+      { id: "version", label: "Version", permission: "inspect" },
+      { id: "logs", label: "Logs", permission: "logs.read" },
+      { id: "diagnostics", label: "Diagnostics", permission: "diagnostics.read" },
+    ],
+  },
+  {
+    id: "administration",
+    label: "Administration",
+    pages: [
+      { id: "access", label: "Users", permission: "users.read" },
+      { id: "settings", label: "Settings", permission: "settings.read" },
+      { id: "peers", label: "Peers", permission: "peers.read" },
+    ],
+  },
 ];
 
+export const DASHBOARD_PAGES: DashboardPage[] = DASHBOARD_NAV_SECTIONS.flatMap((section) => section.pages);
+
+function renderDashboardPageButton(page: DashboardPage, activePage: string): string {
+  return `<button type="button" data-page="${page.id}" data-permission="${page.permission}"${page.id === activePage ? ' class="active"' : ""}>${page.label}</button>`;
+}
+
+function renderDashboardNavSection(section: DashboardNavSection, activePage: string): string {
+  const isOpen = section.defaultOpen === true || section.pages.some((page) => page.id === activePage);
+  const itemsId = `nav-section-${section.id}`;
+  return `<div class="nav-section" data-nav-section="${section.id}" data-nav-open="${isOpen ? "true" : "false"}" data-nav-default-open="${section.defaultOpen === true ? "true" : "false"}">
+          <button type="button" class="nav-section-toggle" data-nav-toggle="${section.id}" aria-expanded="${isOpen ? "true" : "false"}" aria-controls="${itemsId}">${section.label}</button>
+          <div class="nav-section-items" id="${itemsId}"${isOpen ? "" : " hidden"}>
+            ${section.pages.map((page) => renderDashboardPageButton(page, activePage)).join("\n            ")}
+          </div>
+        </div>`;
+}
+
 export function renderDashboardNav(activePage = "overview"): string {
-  return DASHBOARD_PAGES.map((page) =>
-    `<button data-page="${page.id}" data-permission="${page.permission}"${page.id === activePage ? ' class="active"' : ""}>${page.label}</button>`,
-  ).join("\n        ");
+  return DASHBOARD_NAV_SECTIONS.map((section) => renderDashboardNavSection(section, activePage)).join("\n        ");
 }

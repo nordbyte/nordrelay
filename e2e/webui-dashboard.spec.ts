@@ -2,7 +2,7 @@ import { createReadStream } from "node:fs";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { CODEX_AGENT_CAPABILITIES, PI_AGENT_CAPABILITIES } from "../src/agents/shared/agent.js";
 import { buildAdapterConformanceMatrix } from "../src/agents/shared/adapter-conformance.js";
@@ -16,6 +16,28 @@ interface MockServer {
   server: Server;
   close: () => Promise<void>;
   requests: Array<{ method: string; path: string; body: unknown }>;
+}
+
+const NAV_SECTION_BY_PAGE: Record<string, string> = {
+  Metrics: "operations",
+  Adapters: "operations",
+  Version: "operations",
+  Logs: "operations",
+  Diagnostics: "operations",
+  Users: "administration",
+  Settings: "administration",
+  Peers: "administration",
+};
+
+async function navigateDashboard(page: Page, label: string): Promise<void> {
+  const section = NAV_SECTION_BY_PAGE[label];
+  if (section) {
+    const toggle = page.locator(`[data-nav-toggle="${section}"]`);
+    if ((await toggle.count()) > 0 && (await toggle.getAttribute("aria-expanded")) !== "true") {
+      await toggle.click();
+    }
+  }
+  await page.getByRole("button", { name: label, exact: true }).click();
 }
 
 test.describe("NordRelay WebUI", () => {
@@ -34,6 +56,20 @@ test.describe("NordRelay WebUI", () => {
     await page.goto(mock.baseUrl);
 
     await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Work", exact: true })).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByRole("button", { name: "Operations", exact: true })).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("button", { name: "Administration", exact: true })).toHaveAttribute("aria-expanded", "false");
+    await expect(page.locator('[data-nav-section="operations"] .nav-section-items')).toBeHidden();
+    await expect(page.locator('[data-nav-section="administration"] .nav-section-items')).toBeHidden();
+    await expect(page.locator('[data-nav-section="work"] button[data-page]')).toHaveText([
+      "Overview",
+      "Chat",
+      "Sessions",
+      "Queue",
+      "Tasks",
+      "Activity",
+      "Artifacts",
+    ]);
     await expect(page.getByRole("heading", { name: "Active Sessions" })).toBeVisible();
     await expect(page.locator("#activeSessions")).toContainText("Run active smoke test");
     await expect(page.locator("#activeSessions")).toContainText("exec_command");
@@ -43,7 +79,7 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#chatAdapters")).toContainText("Telegram");
     await expect(page.locator("#footerHealth")).toContainText("Health: ready");
 
-    await page.getByRole("button", { name: "Chat" }).click();
+    await navigateDashboard(page, "Chat");
     await expect(page.locator("#messages")).toContainText("Existing web message");
     await expect(page.locator("#messages")).toHaveCSS("overflow-y", "auto");
     await expect(page.locator("#toolPanel")).toBeHidden();
@@ -52,7 +88,7 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#toolPanel")).toBeVisible();
     await expect(page.getByRole("button", { name: "Hide Tools" })).toHaveAttribute("aria-expanded", "true");
 
-    await page.getByRole("button", { name: "Settings" }).click();
+    await navigateDashboard(page, "Settings");
     await expect(page.locator("#settingsTabs")).toContainText("Agents");
     await expect(page.locator("#settingsForm")).toContainText("Enable Codex");
     await page.locator('[data-setting-tab="Discord"]').click();
@@ -68,15 +104,15 @@ test.describe("NordRelay WebUI", () => {
     const settingsRequest = mock.requests.find((request) => request.path === "/api/settings" && request.method === "PATCH");
     expect(settingsRequest?.body).toMatchObject({ settings: { NORDRELAY_PI_ENABLED: "true" } });
 
-    await page.getByRole("button", { name: "Version" }).click();
+    await navigateDashboard(page, "Version");
     await expect(page.locator("#versionPanel")).toContainText("NordRelay");
     await expect(page.locator("#agentUpdateJobs")).toContainText("No agent update jobs");
 
-    await page.getByRole("button", { name: "Tasks" }).click();
+    await navigateDashboard(page, "Tasks");
     await expect(page.locator("#tasksList")).toContainText("Unified jobs");
     await expect(page.locator("#tasksList")).toContainText("Queued prompt queue-web-1");
 
-    await page.getByRole("button", { name: "Metrics" }).click();
+    await navigateDashboard(page, "Metrics");
     await expect(page.locator("#metricsPanel")).toContainText("Runtime");
     await expect(page.locator("#metricsPanel")).toContainText("Telegram rate limits");
     await expect(page.locator("#metricsPanel")).toContainText("Slack rate limits");
@@ -85,7 +121,7 @@ test.describe("NordRelay WebUI", () => {
   test("sends prompts through the typed API client and shows queued feedback", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
-    await page.getByRole("button", { name: "Chat" }).click();
+    await navigateDashboard(page, "Chat");
 
     await page.locator("#promptInput").fill("Run a browser smoke test");
     await page.locator("#promptForm button").last().click();
@@ -98,7 +134,7 @@ test.describe("NordRelay WebUI", () => {
   test("controls WebUI CLI mirroring from the chat toolbar and slash command", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
-    await page.getByRole("button", { name: "Chat" }).click();
+    await navigateDashboard(page, "Chat");
 
     await expect(page.locator("#mirrorModeSelect")).toHaveValue("status");
     await page.locator("#mirrorModeSelect").selectOption("full");
@@ -151,7 +187,7 @@ test.describe("NordRelay WebUI", () => {
       });
     });
     await page.goto(mock.baseUrl);
-    await page.getByRole("button", { name: "Chat" }).click();
+    await navigateDashboard(page, "Chat");
 
     await expect(page.locator("#messages .chat-inline-code")).toContainText("npm test");
     await expect(page.locator("#messages .chat-inline-code").first()).toHaveClass(/copy-id/);
@@ -175,7 +211,7 @@ test.describe("NordRelay WebUI", () => {
   test("preserves chat scroll position when live history updates arrive", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
-    await page.getByRole("button", { name: "Chat" }).click();
+    await navigateDashboard(page, "Chat");
 
     const messages = Array.from({ length: 80 }, (_, index) => ({
       id: `scroll-${index}`,
@@ -223,7 +259,7 @@ test.describe("NordRelay WebUI", () => {
   test("renders Discord and Slack access controls and filters registered channels", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
-    await page.getByRole("button", { name: "Users" }).click();
+    await navigateDashboard(page, "Users");
 
     await expect(page.locator("#pageTitle")).toHaveText("Users");
     await expect(page.locator("#createUserBtn")).toBeVisible();
@@ -271,19 +307,19 @@ test.describe("NordRelay WebUI", () => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
 
-    await page.getByRole("button", { name: "Adapters" }).click();
+    await navigateDashboard(page, "Adapters");
     await expect(page.locator("#adapterConformance")).toContainText("Agent capability contract");
     await expect(page.locator("#adapterConformance")).toContainText("Channel command contract");
     await expect(page.locator("#adapterConformance")).toContainText("Codex");
     await expect(page.locator("#adapterConformance")).toContainText("Telegram");
 
-    await page.getByRole("button", { name: "Artifacts" }).click();
+    await navigateDashboard(page, "Artifacts");
     await expect(page.locator("#artifactList")).toContainText("turn-web-1");
     await page.getByRole("button", { name: "Preview" }).click();
     await expect(page.locator("#artifactPreview")).toContainText("report.txt");
     await expect(page.locator("#artifactPreview")).toContainText("Artifact preview smoke");
 
-    await page.getByRole("button", { name: "Peers" }).click();
+    await navigateDashboard(page, "Peers");
     await expect(page.locator("#peerStatus")).toContainText("Local peer identity");
     await expect(page.locator("#peerStatus")).toContainText("Manual reachability check");
     await expect(page.locator("#peerStatus")).toContainText("nordrelay peer check https://127.0.0.1:31979");
@@ -343,7 +379,7 @@ test.describe("NordRelay WebUI", () => {
     });
 
     await page.goto(mock.baseUrl);
-    await page.getByRole("button", { name: "Peers" }).click();
+    await navigateDashboard(page, "Peers");
     await page.getByRole("button", { name: "Create invite" }).click();
     await page.locator("#adminDialogSubmit").click();
 
@@ -379,7 +415,7 @@ test.describe("NordRelay WebUI", () => {
     });
 
     await page.goto(mock.baseUrl);
-    await page.getByRole("button", { name: "Peers" }).click();
+    await navigateDashboard(page, "Peers");
 
     await expect(page.locator("#peerStatus")).toContainText("Peer server is disabled");
     await page.getByRole("button", { name: "Create invite" }).click();
@@ -391,7 +427,7 @@ test.describe("NordRelay WebUI", () => {
   test("starts agent install/update jobs from the version page", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
-    await page.getByRole("button", { name: "Version" }).click();
+    await navigateDashboard(page, "Version");
 
     page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Install" }).click();
@@ -404,7 +440,7 @@ test.describe("NordRelay WebUI", () => {
   test("guides channel setup through the settings wizard", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
-    await page.getByRole("button", { name: "Settings" }).click();
+    await navigateDashboard(page, "Settings");
     await page.getByRole("button", { name: "Setup wizard" }).click();
 
     await expect(page.locator("#settingsForm")).toContainText("Telegram");
@@ -445,7 +481,7 @@ test.describe("NordRelay WebUI", () => {
     });
 
     await page.goto(mock.baseUrl);
-    await page.getByRole("button", { name: "Settings" }).click();
+    await navigateDashboard(page, "Settings");
     await page.getByRole("button", { name: "Setup wizard" }).click();
 
     const telegramCard = page.locator(".wizard-card").filter({ hasText: "Telegram" });
@@ -456,7 +492,7 @@ test.describe("NordRelay WebUI", () => {
   test("blocks wizard save while required settings are missing", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
-    await page.getByRole("button", { name: "Settings" }).click();
+    await navigateDashboard(page, "Settings");
     await page.getByRole("button", { name: "Setup wizard" }).click();
     await page.locator('[data-start-wizard="discord"]').click();
 
@@ -471,7 +507,7 @@ test.describe("NordRelay WebUI", () => {
 
     await page.getByRole("button", { name: "Menu" }).click();
     await expect(page.locator("#sidebar")).toHaveClass(/open/);
-    await page.getByRole("button", { name: "Logs" }).click();
+    await navigateDashboard(page, "Logs");
 
     await expect(page.getByRole("heading", { name: "Logs" })).toBeVisible();
     await expect(page.locator("#logs")).toHaveCSS("overflow-y", "auto");
@@ -482,25 +518,25 @@ test.describe("NordRelay WebUI", () => {
     await page.goto(mock.baseUrl);
 
     await page.getByRole("button", { name: "Menu" }).click();
-    await page.getByRole("button", { name: "Settings" }).click();
+    await navigateDashboard(page, "Settings");
     await expect(page.locator("#settingsTabs")).toContainText("Agents");
     await page.locator('[data-setting-tab="Discord"]').click();
     await expect(page.locator('[data-setting-box="DISCORD_CLIENT_ID"]')).toBeVisible();
 
     await page.getByRole("button", { name: "Menu" }).click();
-    await page.getByRole("button", { name: "Chat" }).click();
+    await navigateDashboard(page, "Chat");
     await expect(page.locator("#messages")).toHaveCSS("overflow-y", "auto");
     await page.locator("#promptInput").fill("Mobile prompt smoke");
     await page.locator("#promptForm button").last().click();
     await expect(page.locator("#messages")).toContainText("Queued prompt queue-web-1");
 
     await page.getByRole("button", { name: "Menu" }).click();
-    await page.getByRole("button", { name: "Peers" }).click();
+    await navigateDashboard(page, "Peers");
     await expect(page.locator("#peerStatus")).toContainText("Local peer identity");
     await expect(page.locator("#peersList")).toContainText("Ubuntu Workstation");
 
     await page.getByRole("button", { name: "Menu" }).click();
-    await page.getByRole("button", { name: "Version" }).click();
+    await navigateDashboard(page, "Version");
     await expect(page.locator("#versionPanel")).toContainText("NordRelay");
     await expect(page.locator("#agentUpdateJobs")).toContainText("No agent update jobs");
   });
