@@ -34,6 +34,7 @@
   "files": [
     "dist/",
     "plugins/",
+    "scripts/postinstall.mjs",
     "scripts/launchd-start.sh",
     ".env.example",
     "Dockerfile",
@@ -48,6 +49,7 @@
     "env:check": "node --import tsx scripts/generate-env-example.mjs --check",
     "env:generate": "node --import tsx scripts/generate-env-example.mjs",
     "foreground": "node plugins/nordrelay/scripts/nordrelay.mjs foreground",
+    "postinstall": "node scripts/postinstall.mjs",
     "prepack": "npm run build",
     "prepublishOnly": "npm run check && npm test && npm run build",
     "security:audit": "npm audit --audit-level=high",

@@ -22,6 +22,8 @@ nordrelay doctor
 nordrelay start
 ```
 
+If `nordrelay` is not found after a global npm install, the npm global bin directory is not in your shell `PATH`. New installs run a postinstall check and print the exact command to add the bin directory to your shell profile.
+
 Open the dashboard:
 
 ```bash

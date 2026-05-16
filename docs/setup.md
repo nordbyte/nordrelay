@@ -15,6 +15,8 @@ nordrelay start
 npm is the fastest install path and is the recommended default for normal use. `nordrelay init` writes the private runtime config to `~/.nordrelay/nordrelay.env`.
 If you start `nordrelay web` before creating an admin, the dashboard opens a first-run setup wizard. Remote setup requires the one-time setup token printed in the NordRelay console.
 
+If `nordrelay init` returns `command not found`, check the postinstall warning printed by npm. It reports the npm global bin directory and the shell profile line needed to add it to `PATH`, for example `export PATH="/opt/homebrew/bin:$PATH"` on macOS/Homebrew installs.
+
 Non-interactive setup is also supported:
 
 ```bash
