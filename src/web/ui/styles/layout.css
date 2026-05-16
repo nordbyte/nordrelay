@@ -13,7 +13,8 @@ nav button,.menu{border:0;border-radius:6px;padding:10px 12px;background:transpa
 nav button.active,nav button:hover{background:color-mix(in srgb,var(--accent) 35%,transparent)}
 .nav-section{display:flex;flex-direction:column;gap:4px}
 .nav-section[hidden],.nav-section-items[hidden]{display:none}
-.nav-section+.nav-section{margin-top:8px;padding-top:10px;border-top:1px solid color-mix(in srgb,var(--sidebar-border) 72%,transparent)}
+.nav-primary{display:flex;flex-direction:column;gap:4px}
+.nav-primary+.nav-section,.nav-section+.nav-section{margin-top:8px;padding-top:10px;border-top:1px solid color-mix(in srgb,var(--sidebar-border) 72%,transparent)}
 .nav-section-items{display:flex;flex-direction:column;gap:4px}
 .nav-section-toggle{min-height:30px!important;height:30px!important;padding:0 8px!important;color:var(--sidebar-muted);font-size:11px;font-weight:760;line-height:1;text-transform:uppercase;letter-spacing:.04em;justify-content:space-between!important}
 .nav-section-toggle::after{content:"";width:7px;height:7px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg) translateY(-1px);opacity:.8}

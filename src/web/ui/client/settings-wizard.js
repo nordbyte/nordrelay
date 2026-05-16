@@ -63,7 +63,7 @@ function safeDocLink(label,url){return '<a href="'+attr(url)+'" target="_blank" 
 function wizardLinkList(links=[]){return links.length?'<div class="wizard-links">'+links.map(([label,url])=>safeDocLink(label,url)).join('')+'</div>':''}
 function startSettingsWizard(channel){const wizard=SETUP_WIZARDS[channel];if(!wizard)return;const values={};for(const [key,value] of Object.entries(wizard.defaults||{})){const setting=settingByKey(key);if(!setting?.configured||key.endsWith('_ENABLED'))values[key]=value}state.settingsWizard={channel,step:0,values,errors:[],testResult:null};renderSettingsWizardStep()}
 function openSettingsWizardHome(){if(!can('settings.write')){toast('Permission required: settings.write');return}state.settingsWizard={home:true};renderSettingsWizardHome()}
-function setSettingsChromeVisible(visible){document.getElementById('settingsTabHeader').style.display=visible?'':'none';document.getElementById('settingsActions').style.display=visible?'':'none'}
+function setSettingsChromeVisible(visible){document.getElementById('settingsTabHeader').style.display=visible?'':'none';document.getElementById('settingsSubnav').style.display=visible?'':'none';document.getElementById('settingsActions').style.display=visible?'':'none'}
 function closeSettingsWizard(){state.settingsWizard=null;setSettingsChromeVisible(true);renderSettings()}
 function wizardRequiredValuePresent(key){const value=wizardCurrentValue(key);if(!value)return false;const setting=settingByKey(key);if(isMaskedSettingValue(value))return setting?.kind==='secret'&&(setting.configured||setting.masked);return true}
 function wizardMissingRequired(wizard){return (wizard.required||[]).filter(key=>!wizardRequiredValuePresent(key))}

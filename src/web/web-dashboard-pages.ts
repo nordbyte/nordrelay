@@ -353,6 +353,7 @@ ${faviconLinks}
           <div id="settingsTabHeader" class="section-header settings-section-header">
             <div id="settingsTabs" class="section-tabs settings-tabs" role="tablist" aria-label="Settings sections"></div>
           </div>
+          <div id="settingsSubnav" class="settings-subnav" hidden></div>
           <div id="settingsActions" class="row settings-actions"><button id="saveSettingsBtn">Save settings</button><button id="settingsWizardBtn" class="secondary">Setup wizard</button><button id="restartBtn" class="secondary">Restart NordRelay</button><span id="settingsStatus"></span></div>
           <div id="settingsForm" class="settings-grid"></div>
         </div>

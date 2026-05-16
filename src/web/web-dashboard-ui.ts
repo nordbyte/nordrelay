@@ -13,21 +13,17 @@ export interface DashboardNavSection {
   pages: DashboardPage[];
 }
 
+export const DASHBOARD_PRIMARY_NAV_PAGES: DashboardPage[] = [
+  { id: "overview", label: "Overview", permission: "inspect" },
+  { id: "chat", label: "Chat", permission: "sessions.read" },
+  { id: "sessions", label: "Sessions", permission: "sessions.read" },
+  { id: "queue", label: "Queue", permission: "queue.read" },
+  { id: "tasks", label: "Tasks", permission: "inspect" },
+  { id: "activity", label: "Activity", permission: "sessions.read" },
+  { id: "artifacts", label: "Artifacts", permission: "files.read" },
+];
+
 export const DASHBOARD_NAV_SECTIONS: DashboardNavSection[] = [
-  {
-    id: "work",
-    label: "Work",
-    defaultOpen: true,
-    pages: [
-      { id: "overview", label: "Overview", permission: "inspect" },
-      { id: "chat", label: "Chat", permission: "sessions.read" },
-      { id: "sessions", label: "Sessions", permission: "sessions.read" },
-      { id: "queue", label: "Queue", permission: "queue.read" },
-      { id: "tasks", label: "Tasks", permission: "inspect" },
-      { id: "activity", label: "Activity", permission: "sessions.read" },
-      { id: "artifacts", label: "Artifacts", permission: "files.read" },
-    ],
-  },
   {
     id: "operations",
     label: "Operations",
@@ -50,7 +46,10 @@ export const DASHBOARD_NAV_SECTIONS: DashboardNavSection[] = [
   },
 ];
 
-export const DASHBOARD_PAGES: DashboardPage[] = DASHBOARD_NAV_SECTIONS.flatMap((section) => section.pages);
+export const DASHBOARD_PAGES: DashboardPage[] = [
+  ...DASHBOARD_PRIMARY_NAV_PAGES,
+  ...DASHBOARD_NAV_SECTIONS.flatMap((section) => section.pages),
+];
 
 function renderDashboardPageButton(page: DashboardPage, activePage: string): string {
   return `<button type="button" data-page="${page.id}" data-permission="${page.permission}"${page.id === activePage ? ' class="active"' : ""}>${page.label}</button>`;
@@ -68,5 +67,9 @@ function renderDashboardNavSection(section: DashboardNavSection, activePage: str
 }
 
 export function renderDashboardNav(activePage = "overview"): string {
-  return DASHBOARD_NAV_SECTIONS.map((section) => renderDashboardNavSection(section, activePage)).join("\n        ");
+  const primary = `<div class="nav-primary">
+            ${DASHBOARD_PRIMARY_NAV_PAGES.map((page) => renderDashboardPageButton(page, activePage)).join("\n            ")}
+          </div>`;
+  const sections = DASHBOARD_NAV_SECTIONS.map((section) => renderDashboardNavSection(section, activePage)).join("\n        ");
+  return `${primary}\n        ${sections}`;
 }

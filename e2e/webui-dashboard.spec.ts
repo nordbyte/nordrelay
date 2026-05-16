@@ -56,12 +56,12 @@ test.describe("NordRelay WebUI", () => {
     await page.goto(mock.baseUrl);
 
     await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Work", exact: true })).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByRole("button", { name: "Work", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Operations", exact: true })).toHaveAttribute("aria-expanded", "false");
     await expect(page.getByRole("button", { name: "Administration", exact: true })).toHaveAttribute("aria-expanded", "false");
     await expect(page.locator('[data-nav-section="operations"] .nav-section-items')).toBeHidden();
     await expect(page.locator('[data-nav-section="administration"] .nav-section-items')).toBeHidden();
-    await expect(page.locator('[data-nav-section="work"] button[data-page]')).toHaveText([
+    await expect(page.locator('nav > .nav-primary button[data-page]')).toHaveText([
       "Overview",
       "Chat",
       "Sessions",
@@ -91,6 +91,9 @@ test.describe("NordRelay WebUI", () => {
 
     await navigateDashboard(page, "Settings");
     await expect(page.locator("#settingsTabs")).toContainText("Agents");
+    await expect(page.locator("#settingsTabs")).toContainText("Chat");
+    await expect(page.locator("#settingsTabs")).not.toContainText("Codex");
+    await expect(page.locator("#settingsTabs")).not.toContainText("Telegram");
     await expect(page.locator(".settings-section-header #settingsTabs")).toBeVisible();
     await expect(page.locator("#settingsTabs")).toHaveAttribute("role", "tablist");
     await expect(page.getByRole("tab", { name: /Agents/ })).toHaveAttribute("aria-selected", "true");
@@ -103,12 +106,14 @@ test.describe("NordRelay WebUI", () => {
       })
       .toBe(true);
     await expect(page.locator("#settingsForm")).toContainText("Enable Codex");
-    await page.locator('[data-setting-tab="Discord"]').click();
-    await expect(page.getByRole("tab", { name: /Discord/ })).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("tab", { name: /Chat/ }).click();
+    await expect(page.getByRole("tab", { name: /Chat/ })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#settingsSubgroupSelect")).toHaveValue("Telegram");
+    await page.locator("#settingsSubgroupSelect").selectOption("Discord");
     await expect(page.locator('[data-setting-box="DISCORD_BOT_TOKEN"] .setting-info')).toHaveAttribute("title", /Discord Developer Portal/);
-    await page.locator('[data-setting-tab="Slack"]').click();
+    await page.locator("#settingsSubgroupSelect").selectOption("Slack");
     await expect(page.locator('[data-setting-box="SLACK_BOT_TOKEN"] .setting-info')).toHaveAttribute("title", /Slack API Apps/);
-    await page.locator('[data-setting-tab="Agents"]').click();
+    await page.getByRole("tab", { name: /Agents/ }).click();
 
     await page.locator('[data-setting="NORDRELAY_PI_ENABLED"]').selectOption("true");
     await expect(page.locator("#settingsStatus")).toContainText("1 unsaved change");
@@ -566,7 +571,8 @@ test.describe("NordRelay WebUI", () => {
     await navigateDashboard(page, "Settings");
     await expect(page.locator("#settingsTabs")).toContainText("Agents");
     await expect(page.locator("#settingsTabs")).toHaveAttribute("role", "tablist");
-    await page.locator('[data-setting-tab="Discord"]').click();
+    await page.getByRole("tab", { name: /Chat/ }).click();
+    await page.locator("#settingsSubgroupSelect").selectOption("Discord");
     await expect(page.locator('[data-setting-box="DISCORD_CLIENT_ID"]')).toBeVisible();
 
     await page.getByRole("button", { name: "Menu" }).click();
