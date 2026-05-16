@@ -53,6 +53,14 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".setting-info");
   });
 
+  it("includes Discord invite and channel registration guidance in the setup wizard", () => {
+    const js = dashboardJs();
+
+    expect(js).toContain("OAuth2 URL Generator");
+    expect(js).toContain("applications.commands scopes");
+    expect(js).toContain("/register_channel");
+  });
+
   it("refreshes the active page after an agent switch", () => {
     const js = dashboardJs();
 
