@@ -6,6 +6,7 @@ import type { WebActivityActor } from "../web/web-state.js";
 export const PEER_PROTOCOL_VERSION = 1;
 
 export type PeerDirection = "outbound" | "inbound" | "bidirectional";
+export type PeerTrustStatus = "trusted" | "tls-unpinned" | "error" | "disabled";
 
 export interface PeerNodeIdentity {
   nodeId: string;
@@ -95,6 +96,8 @@ export interface PublicPeerRecord {
   remoteStatus?: string;
   lastError?: string;
   healthHistory?: PeerHealthSample[];
+  trustStatus: PeerTrustStatus;
+  trustWarnings: string[];
   effectiveAccess?: {
     scopes: Permission[];
     allowedAgents: AgentId[];
@@ -272,6 +275,7 @@ export const DEFAULT_PEER_SCOPES: Permission[] = [
 ];
 
 export function publicPeer(record: PeerRecord): PublicPeerRecord {
+  const trust = peerTrust(record);
   return {
     id: record.id,
     name: record.name,
@@ -295,6 +299,8 @@ export function publicPeer(record: PeerRecord): PublicPeerRecord {
     remoteStatus: record.remoteStatus,
     lastError: record.lastError,
     healthHistory: record.healthHistory?.map((sample) => ({ ...sample })),
+    trustStatus: trust.status,
+    trustWarnings: trust.warnings,
     effectiveAccess: {
       scopes: [...record.scopes],
       allowedAgents: [...record.allowedAgents],
@@ -302,6 +308,23 @@ export function publicPeer(record: PeerRecord): PublicPeerRecord {
       workspaceAliases: { ...record.workspaceAliases },
     },
   };
+}
+
+function peerTrust(record: PeerRecord): { status: PeerTrustStatus; warnings: string[] } {
+  const warnings: string[] = [];
+  if (!record.enabled) {
+    warnings.push("Peer is disabled.");
+    return { status: "disabled", warnings };
+  }
+  if (record.lastError) {
+    warnings.push(record.lastError);
+    return { status: "error", warnings };
+  }
+  if (record.url?.startsWith("https://") && !record.tlsFingerprint) {
+    warnings.push("TLS fingerprint is not pinned yet. Probe or re-pin this peer before using it over untrusted networks.");
+    return { status: "tls-unpinned", warnings };
+  }
+  return { status: "trusted", warnings };
 }
 
 export function publicInvitation(record: PeerInvitationRecord): PublicPeerInvitationRecord {

@@ -203,6 +203,7 @@ ${faviconLinks}
         <div class="panel">
           <div class="row"><button id="reloadTasksBtn">Reload tasks</button></div>
           <div id="tasksList" class="list"></div>
+          <div id="jobsPager" class="pager"></div>
         </div>
       </section>
 
@@ -235,6 +236,14 @@ ${faviconLinks}
         <div class="panel">
           <div class="row"><select id="activitySource"><option value="all">All sources</option><option value="web">Web</option><option value="telegram">Telegram</option><option value="discord">Discord</option><option value="slack">Slack</option><option value="cli">CLI</option></select><select id="activityCategory"><option value="all">All categories</option><option value="prompt">Prompt</option><option value="session">Session</option><option value="queue">Queue</option><option value="agent-update">Agent update</option><option value="artifact">Artifact</option><option value="system">System</option><option value="auth">Auth</option><option value="security">Security</option><option value="tool">Tool</option></select><select id="activityStatus"><option value="all">All statuses</option><option value="queued">Queued</option><option value="running">Running</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="aborted">Aborted</option><option value="info">Info</option></select><input id="activityActor" placeholder="Actor"><input id="activityAgent" placeholder="Agent"><input id="activityThread" placeholder="Thread ID"><input id="activityWorkspace" placeholder="Workspace"><input id="activityType" placeholder="Type"><input id="activitySince" type="datetime-local"><input id="activityLimit" type="number" value="100" min="1" max="500"><button id="loadActivityBtn">Load activity</button><button id="exportActivityBtn" class="secondary">Export</button></div>
           <div id="activityList" class="list"></div>
+          <div id="activityPager" class="pager"></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-trace">
+        <div class="panel">
+          <div class="row"><input id="traceCorrelationId" placeholder="Correlation ID"><button id="loadTraceBtn">Load trace</button></div>
+          <div id="traceDetail" class="list"></div>
         </div>
       </section>
 
@@ -243,6 +252,7 @@ ${faviconLinks}
           <div class="row"><button id="reloadArtifactsBtn">Reload artifacts</button><input id="artifactSearch" placeholder="Search artifacts"><select id="artifactKind"><option value="all">All files</option><option value="images">Images</option><option value="docs">Docs/code</option></select><button id="zipSelectedArtifactsBtn" class="secondary">ZIP selected</button><button id="deleteSelectedArtifactsBtn" class="danger">Delete selected</button></div>
           <div id="artifactPreview" class="preview"></div>
           <div id="artifactList" class="list"></div>
+          <div id="artifactPager" class="pager"></div>
         </div>
       </section>
 
@@ -335,6 +345,7 @@ ${faviconLinks}
             </div>
             <div class="row audit-filter-row"><select id="auditChannel"><option value="all">All channels</option><option value="web">Web</option><option value="telegram">Telegram</option><option value="discord">Discord</option><option value="slack">Slack</option></select><select id="auditCategory"><option value="all">All categories</option><option value="prompt">Prompt</option><option value="session">Session</option><option value="queue">Queue</option><option value="agent-update">Agent update</option><option value="artifact">Artifact</option><option value="system">System</option><option value="auth">Auth</option><option value="security">Security</option><option value="tool">Tool</option></select><select id="auditStatus"><option value="all">All statuses</option><option value="ok">OK</option><option value="failed">Failed</option><option value="denied">Denied</option></select><input id="auditActor" placeholder="Actor"><input id="auditAgent" placeholder="Agent"><input id="auditThread" placeholder="Thread ID"><input id="auditWorkspace" placeholder="Workspace"><input id="auditSince" type="datetime-local"><input id="auditLimit" type="number" value="50" min="1" max="500"></div>
             <div id="auditList" class="list"></div>
+            <div id="auditPager" class="pager"></div>
           </div>
         </div>
       </section>

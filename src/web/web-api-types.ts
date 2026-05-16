@@ -12,10 +12,13 @@ import type {
   ActiveSessionsDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
+  CursorPageDto,
   DashboardControlOptions,
   QueueItemDto,
   RelaySnapshot,
   SessionPageDto,
+  TraceDetailDto,
+  UnifiedJobsDto,
   UploadPromptResult,
   WebAdapterHealthDto,
   WebAuthDto,
@@ -137,6 +140,7 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/artifacts/bulk" ? { action: "delete"; turnIds: string[] } :
   P extends "/api/peers/discovery-jobs" ? { targets?: string[]; timeoutMs?: number; concurrency?: number; maxHosts?: number } :
   P extends "/api/peers/identity/restore" ? { backup: PeerIdentityBackup } :
+  P extends `/api/peers/${string}/rotate` ? { expiresMinutes?: number } :
   P extends "/api/logs/clear" ? { target?: "connector" | "update" | "agent-updates" } :
   P extends "/api/settings" ? { settings: Record<string, string | null | undefined> } :
   P extends "/api/users" ? { email: string; displayName?: string; password: string; groupIds?: string[]; active?: boolean; telegramUserId?: number; discordUserId?: string } :
@@ -165,6 +169,8 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/health" ? WebStatusResponse :
   P extends "/api/snapshot" ? RelaySnapshot :
   P extends "/api/tasks" | "/api/progress" ? WebTasksDto :
+  P extends "/api/jobs" ? UnifiedJobsDto :
+  P extends "/api/trace" ? TraceDetailDto :
   P extends "/api/active-sessions" ? ActiveSessionsDto :
   P extends "/api/version" ? WebVersionResponse :
   P extends "/api/update" ? SelfUpdateResult :
@@ -182,6 +188,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends `/api/peers/discovery-jobs/${string}/log` ? { id: string; plain: string } :
   P extends `/api/peers/discovery-jobs/${string}/cancel` | `/api/peers/discovery-jobs/${string}` ? { job: PeerDiscoveryJobSnapshot | null } :
   P extends `/api/peers/${string}/repin` ? { peer: PublicPeerRecord; probe: unknown } :
+  P extends `/api/peers/${string}/rotate` ? { peer: PublicPeerRecord; invitation: unknown; code: string; command: string; readiness?: unknown; warnings?: string[] } :
   P extends "/api/peers/probe" ? unknown :
   P extends "/api/peers/global-sessions" ? unknown :
   P extends "/api/permissions" | "/api/users" ? WebUserManagementResponse :
@@ -189,7 +196,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/telegram-chats" ? { chats: TelegramChatAccessRecord[] } :
   P extends "/api/discord-channels" ? { channels: DiscordChannelAccessRecord[] } :
   P extends "/api/slack-channels" ? { channels: SlackChannelAccessRecord[] } :
-  P extends "/api/audit" ? { events: AuditEvent[] } :
+  P extends "/api/audit" ? { events: AuditEvent[]; pagination?: CursorPageDto<AuditEvent>["pagination"] } :
   P extends "/api/locks" ? { locks: SessionLock[]; lock?: SessionLock } :
   P extends "/api/auth/status" | "/api/auth/login" | "/api/auth/logout" ? WebAuthDto :
   P extends "/api/settings" ? SettingsSnapshot | SettingsUpdateResult :
@@ -205,8 +212,8 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/queue" ? { queue: QueueItemDto[]; paused: boolean } :
   P extends "/api/chat/history" ? { messages: WebChatMessage[]; removed?: number } :
   P extends "/api/chat/mirror" ? { mode: string; minInterval: number; response: { plain: string; html: string } } :
-  P extends "/api/activity" ? { events: WebActivityEvent[] } :
-  P extends "/api/artifacts" ? { reports: ArtifactReportDto[]; removed?: boolean } :
+  P extends "/api/activity" ? { events: WebActivityEvent[]; pagination?: CursorPageDto<WebActivityEvent>["pagination"] } :
+  P extends "/api/artifacts" ? { reports: ArtifactReportDto[]; pagination?: CursorPageDto<ArtifactReportDto>["pagination"]; removed?: boolean } :
   P extends "/api/artifacts/bulk" ? { removed: string[] } :
   P extends "/api/artifacts/preview" ? ArtifactPreviewDto :
   P extends "/api/logs" ? FormattedLogTail :

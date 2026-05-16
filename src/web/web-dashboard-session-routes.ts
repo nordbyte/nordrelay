@@ -14,6 +14,7 @@ import {
   sendJson,
   stringField,
 } from "./web-dashboard-http.js";
+import { cursorPage, normalizeCursorLimit } from "../core/pagination.js";
 
 export interface DashboardSessionRouteOptions {
   runtime: RelayRuntime;
@@ -276,19 +277,23 @@ export async function handleDashboardSessionRoute(
   }
 
   if (req.method === "GET" && url.pathname === "/api/activity") {
+    const limit = normalizeCursorLimit(numberParam(url, "limit", 100), 100, 500);
+    const scoped = options.filterActivityByScope(authUser, runtime.activity({
+      limit: 500,
+      source: (url.searchParams.get("source") || "all") as never,
+      status: (url.searchParams.get("status") || "all") as never,
+      category: (url.searchParams.get("category") || "all") as WebActivityCategory | "all",
+      actor: url.searchParams.get("actor") || undefined,
+      agentId: url.searchParams.get("agent") || "all",
+      threadId: url.searchParams.get("thread") || undefined,
+      workspace: url.searchParams.get("workspace") || undefined,
+      type: url.searchParams.get("type") || undefined,
+      since: url.searchParams.get("since") || undefined,
+    }));
+    const scopedPage = cursorPage(scoped, url.searchParams.get("cursor") || undefined, limit, (event) => event.id);
     sendJson(res, 200, {
-      events: options.filterActivityByScope(authUser, runtime.activity({
-        limit: numberParam(url, "limit", 100),
-        source: (url.searchParams.get("source") || "all") as never,
-        status: (url.searchParams.get("status") || "all") as never,
-        category: (url.searchParams.get("category") || "all") as WebActivityCategory | "all",
-        actor: url.searchParams.get("actor") || undefined,
-        agentId: url.searchParams.get("agent") || "all",
-        threadId: url.searchParams.get("thread") || undefined,
-        workspace: url.searchParams.get("workspace") || undefined,
-        type: url.searchParams.get("type") || undefined,
-        since: url.searchParams.get("since") || undefined,
-      })),
+      events: scopedPage.items,
+      pagination: scopedPage.pagination,
     });
     return true;
   }

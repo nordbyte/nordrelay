@@ -79,11 +79,13 @@ import type {
   ActiveSessionsDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
+  CursorPageDto,
   DashboardControlOptions,
   QueueItemDto,
   RelayEvent,
   RelaySnapshot,
   SessionPageDto,
+  TraceDetailDto,
   UnifiedJobDto,
   UnifiedJobsDto,
   UploadPromptFile,
@@ -103,12 +105,14 @@ export type {
   ActiveSessionsDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
+  CursorPageDto,
   DashboardControlOptions,
   ExternalMirrorState,
   QueueItemDto,
   RelayEvent,
   RelaySnapshot,
   SessionPageDto,
+  TraceDetailDto,
   UnifiedJobDto,
   UnifiedJobsDto,
   UploadPromptFile,
@@ -131,12 +135,14 @@ import {
   relayRuntimePermissions,
   relayRuntimeMetrics,
   relayRuntimeAudit,
+  relayRuntimeAuditPage,
   relayRuntimeSupportBundle,
   relayRuntimeLogs,
   relayRuntimeClearLogs,
   relayRuntimeRestartConnector,
   relayRuntimeDispose
 } from "./relay-runtime-dashboard.js";
+import { relayRuntimeTrace } from "./relay-runtime-trace.js";
 import {
   relayRuntimeUpdateConnector,
   relayRuntimeAgentUpdateJobs,
@@ -189,6 +195,7 @@ import {
   relayRuntimeSessionDetail,
   relayRuntimeClearChatHistory,
   relayRuntimeActivity,
+  relayRuntimeActivityPage,
   relayRuntimeRetry,
   relayRuntimeSync,
   relayRuntimeListSessions,
@@ -420,8 +427,8 @@ export class RelayRuntime {
     return relayRuntimeTasks(this);
   }
 
-  async jobs(): Promise<UnifiedJobsDto> {
-    return relayRuntimeJobs(this);
+  async jobs(options: { limit?: number; cursor?: string } = {}): Promise<UnifiedJobsDto> {
+    return relayRuntimeJobs(this, options);
   }
 
   async jobLog(id: string): Promise<{ job: UnifiedJobDto | null; plain: string }> {
@@ -442,6 +449,14 @@ export class RelayRuntime {
 
   audit(options: number | AuditListOptions = 50): AuditEvent[] {
     return relayRuntimeAudit(this, options);
+  }
+
+  auditPage(options: AuditListOptions = {}): CursorPageDto<AuditEvent> {
+    return relayRuntimeAuditPage(this, options);
+  }
+
+  async trace(correlationId: string): Promise<TraceDetailDto> {
+    return relayRuntimeTrace(this, correlationId);
   }
 
   async supportBundle(actor?: WebActivityActor): Promise<SupportBundleResult> {
@@ -509,6 +524,22 @@ export class RelayRuntime {
     since?: string | number;
   } = {}): WebActivityEvent[] {
     return relayRuntimeActivity(this, options);
+  }
+
+  activityPage(options: {
+    limit?: number;
+    cursor?: string;
+    source?: WebActivitySource | "all";
+    status?: WebActivityStatus | "all";
+    category?: WebActivityCategory | "all";
+    actor?: string;
+    agentId?: AgentId | "all" | string;
+    threadId?: string;
+    workspace?: string;
+    type?: string;
+    since?: string | number;
+  } = {}): CursorPageDto<WebActivityEvent> {
+    return relayRuntimeActivityPage(this, options);
   }
 
   async retry(actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string; correlationId?: string }> {
@@ -606,8 +637,8 @@ export class RelayRuntime {
     return relayRuntimeQueueAction(this, action, id, actor);
   }
 
-  async artifacts(): Promise<ArtifactReportDto[]> {
-    return relayRuntimeArtifacts(this);
+  async artifacts(limit = 20): Promise<ArtifactReportDto[]> {
+    return relayRuntimeArtifacts(this, limit);
   }
 
   async artifact(turnId: string): Promise<ArtifactTurnReport | null> {

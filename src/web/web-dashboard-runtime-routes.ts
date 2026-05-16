@@ -110,7 +110,15 @@ export async function handleDashboardRuntimeRoute(
   }
 
   if (req.method === "GET" && url.pathname === "/api/jobs") {
-    sendJson(res, 200, await runtime.jobs());
+    sendJson(res, 200, await runtime.jobs({
+      limit: numberParam(url, "limit", 100),
+      cursor: url.searchParams.get("cursor") || undefined,
+    }));
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/trace") {
+    sendJson(res, 200, await runtime.trace(stringField(Object.fromEntries(url.searchParams), "correlationId")));
     return true;
   }
 

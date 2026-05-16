@@ -6,6 +6,7 @@ import {
   type WebActivityActor,
   type WebActivityCategory,
 } from "../core/activity-events.js";
+import { cursorPage, normalizeCursorLimit, type CursorPage } from "../core/pagination.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "../state/state-backend.js";
 
@@ -49,6 +50,7 @@ export type AuditAction =
   | "peer_discovery_started"
   | "peer_discovery_cancelled"
   | "peer_tls_repinned"
+  | "peer_rotation_invite_created"
   | "peer_identity_backup_exported"
   | "peer_identity_restored";
 
@@ -79,6 +81,7 @@ interface PersistedAuditLog {
 
 export interface AuditListOptions {
   limit?: number;
+  cursor?: string;
   channelId?: AuditEvent["channelId"] | "all";
   status?: AuditEvent["status"] | "all";
   action?: AuditAction | "all" | string;
@@ -123,20 +126,39 @@ export class AuditLogStore {
 
   list(options: number | AuditListOptions = 20): AuditEvent[] {
     const resolved = typeof options === "number" ? { limit: options } : options;
-    const limit = Math.max(1, Math.min(500, resolved.limit ?? 20));
-    const since = normalizeSince(resolved.since);
+    return this.listPage(resolved).items;
+  }
+
+  listPage(options: AuditListOptions = {}): CursorPage<AuditEvent> {
+    const limit = normalizeCursorLimit(options.limit, 20, 500);
+    const events = this.filteredEvents(options)
+      .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
+    return cursorPage(events, options.cursor, limit, (event) => event.id);
+  }
+
+  findByCorrelationId(correlationId: string, limit = 100): AuditEvent[] {
+    const needle = correlationId.trim();
+    if (!needle) {
+      return [];
+    }
     return this.readPayload().events
-      .filter((event) => !resolved.channelId || resolved.channelId === "all" || event.channelId === resolved.channelId)
-      .filter((event) => !resolved.status || resolved.status === "all" || event.status === resolved.status)
-      .filter((event) => !resolved.action || resolved.action === "all" || event.action === resolved.action)
-      .filter((event) => !resolved.category || resolved.category === "all" || (event.category ?? auditCategoryForAction(event.action)) === resolved.category)
-      .filter((event) => !resolved.agentId || resolved.agentId === "all" || event.agentId === resolved.agentId)
-      .filter((event) => !resolved.threadId || event.threadId === resolved.threadId)
-      .filter((event) => !resolved.workspace || event.workspace === resolved.workspace)
-      .filter((event) => !resolved.actor || auditActorMatches(event, resolved.actor))
-      .filter((event) => !since || Date.parse(event.timestamp) >= since)
-      .slice(-limit)
-      .reverse();
+      .filter((event) => event.correlationId === needle)
+      .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp))
+      .slice(-Math.max(1, Math.min(500, limit)));
+  }
+
+  private filteredEvents(options: AuditListOptions): AuditEvent[] {
+    const since = normalizeSince(options.since);
+    return this.readPayload().events
+      .filter((event) => !options.channelId || options.channelId === "all" || event.channelId === options.channelId)
+      .filter((event) => !options.status || options.status === "all" || event.status === options.status)
+      .filter((event) => !options.action || options.action === "all" || event.action === options.action)
+      .filter((event) => !options.category || options.category === "all" || (event.category ?? auditCategoryForAction(event.action)) === options.category)
+      .filter((event) => !options.agentId || options.agentId === "all" || event.agentId === options.agentId)
+      .filter((event) => !options.threadId || event.threadId === options.threadId)
+      .filter((event) => !options.workspace || event.workspace === options.workspace)
+      .filter((event) => !options.actor || auditActorMatches(event, options.actor))
+      .filter((event) => !since || Date.parse(event.timestamp) >= since);
   }
 
   private readPayload(): PersistedAuditLog {

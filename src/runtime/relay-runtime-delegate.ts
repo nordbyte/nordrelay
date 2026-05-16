@@ -43,6 +43,7 @@ import type {
   ActiveSessionsDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
+  CursorPageDto,
   DashboardControlOptions,
   QueueItemDto,
   RelayEvent,
@@ -58,6 +59,7 @@ import type {
   WebPermissionsDto,
   WebTaskDto,
   WebTasksDto,
+  TraceDetailDto,
 } from "./relay-runtime-types.js";
 import type { AgentUpdateManager } from "../agents/shared/agent-updates.js";
 import type { AuditLogStore } from "../access/audit-log.js";
@@ -125,12 +127,14 @@ export interface RelayRuntimeDelegate {
   adapterHealth(): Promise<WebAdapterHealthDto[]>;
   permissions(): WebPermissionsDto;
   tasks(): WebTasksDto;
-  jobs(): Promise<UnifiedJobsDto>;
+  jobs(options?: { limit?: number; cursor?: string }): Promise<UnifiedJobsDto>;
   jobLog(id: string): Promise<{ job: UnifiedJobDto | null; plain: string }>;
   jobAction(id: string, action: "cancel" | "retry", actor?: WebActivityActor): Promise<UnifiedJobsDto>;
   activeSessions(): Promise<ActiveSessionsDto>;
   metrics(): Promise<RuntimeMetricsDto>;
   audit(options?: number | AuditListOptions): AuditEvent[];
+  auditPage(options?: AuditListOptions): CursorPageDto<AuditEvent>;
+  trace(correlationId: string): Promise<TraceDetailDto>;
   supportBundle(actor?: WebActivityActor): Promise<SupportBundleResult>;
   locks(): SessionLock[];
   lockWebSession(ownerName?: string, actor?: WebActivityActor): SessionLock;
@@ -148,6 +152,7 @@ export interface RelayRuntimeDelegate {
   sessionDetail(threadId: string): Promise<Record<string, unknown>>;
   clearChatHistory(actor?: WebActivityActor): Promise<{ removed: number; messages: WebChatMessage[] }>;
   activity(options?: RelayRuntimeActivityOptions): WebActivityEvent[];
+  activityPage(options?: RelayRuntimeActivityOptions & { cursor?: string }): CursorPageDto<WebActivityEvent>;
   retry(actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string; correlationId?: string }>;
   sync(actor?: WebActivityActor): Promise<ReturnType<AgentSessionService["syncFromAgentState"]>>;
   listSessions(limit?: number, query?: string, agentId?: AgentId): Promise<AgentThreadRecord[]>;
@@ -177,7 +182,7 @@ export interface RelayRuntimeDelegate {
   queue(): QueueItemDto[];
   queuePaused(): boolean;
   queueAction(action: RelayQueueAction, id?: string, actor?: WebActivityActor): QueueItemDto[];
-  artifacts(): Promise<ArtifactReportDto[]>;
+  artifacts(limit?: number): Promise<ArtifactReportDto[]>;
   artifact(turnId: string): Promise<ArtifactTurnReport | null>;
   deleteArtifact(turnId: string, actor?: WebActivityActor): Promise<boolean>;
   createArtifactZip(turnId: string, actor?: WebActivityActor): Promise<{ path: string; name: string } | null>;

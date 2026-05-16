@@ -3,7 +3,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
 import type { AuthenticatedUser } from "../access/user-management.js";
 import type { WebActivityActor } from "./web-state.js";
+import { cursorPage, normalizeCursorLimit } from "../core/pagination.js";
 import {
+  numberParam,
   readJsonBody,
   requiredSearch,
   sendFile,
@@ -28,7 +30,10 @@ export async function handleDashboardArtifactRoute(
 
   if (req.method === "GET" && url.pathname === "/api/artifacts") {
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { reports: await runtime.artifacts() });
+    const limit = normalizeCursorLimit(numberParam(url, "limit", 50), 50, 200);
+    const reports = await runtime.artifacts(500);
+    const page = cursorPage(reports, url.searchParams.get("cursor") || undefined, limit, (report) => report.turnId);
+    sendJson(res, 200, { reports: page.items, pagination: page.pagination });
     return true;
   }
 

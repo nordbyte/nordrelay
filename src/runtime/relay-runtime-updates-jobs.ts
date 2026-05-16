@@ -34,6 +34,7 @@ import { listThreads as listCodexThreads } from "../agents/codex/codex-state.js"
 import type { ConnectorConfig } from "../core/config.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import { friendlyErrorText } from "../core/error-messages.js";
+import { cursorPage, normalizeCursorLimit } from "../core/pagination.js";
 import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "../support/operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "../state/prompt-store.js";
 import { UnifiedJobStore } from "../state/job-store.js";
@@ -259,7 +260,7 @@ export function relayRuntimeTasks(runtime: RelayRuntimeDelegate): WebTasksDto {
     };
   }
 
-export async function relayRuntimeJobs(runtime: RelayRuntimeDelegate): Promise<UnifiedJobsDto> {
+export async function relayRuntimeJobs(runtime: RelayRuntimeDelegate, options: { limit?: number; cursor?: string } = {}): Promise<UnifiedJobsDto> {
     const jobs: UnifiedJobDto[] = [];
     const current = runtime.currentProgress;
     if (current) {
@@ -290,6 +291,7 @@ export async function relayRuntimeJobs(runtime: RelayRuntimeDelegate): Promise<U
         threadId: null,
         workspace: runtime.config.workspace,
         owner: item.activityActor,
+        correlationId: item.correlationId,
         startedAt: createdAt,
         updatedAt: createdAt,
         summary: item.description,
@@ -346,8 +348,12 @@ export async function relayRuntimeJobs(runtime: RelayRuntimeDelegate): Promise<U
 
     const liveJobs = dedupeJobs(jobs);
     const storedJobs = runtime.jobStore.upsertMany(liveJobs);
+    const sortedJobs = dedupeJobs([...liveJobs, ...storedJobs]).sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+    const limit = normalizeCursorLimit(options.limit, 100, 500);
+    const page = cursorPage(sortedJobs, options.cursor, limit, (job) => job.id);
     return {
-      jobs: dedupeJobs([...liveJobs, ...storedJobs]).sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)),
+      jobs: page.items,
+      pagination: page.pagination,
       updatedAt: new Date().toISOString(),
     };
   }
@@ -356,13 +362,13 @@ export async function relayRuntimeJobLog(runtime: RelayRuntimeDelegate, id: stri
     if (id.startsWith("agent-update:")) {
       const updateId = id.slice("agent-update:".length);
       const log = runtime.agentUpdates.readLog(updateId);
-      return { job: (await runtime.jobs()).jobs.find((job) => job.id === id) ?? null, plain: log.plain };
+      return { job: (await runtime.jobs({ limit: 500 })).jobs.find((job) => job.id === id) ?? null, plain: log.plain };
     }
     if (id.startsWith("queue:")) {
       const queueId = id.slice("queue:".length);
       const item = runtime.queueService.rawList().find((candidate: { id: string }) => candidate.id === queueId);
       return {
-        job: (await runtime.jobs()).jobs.find((job) => job.id === id) ?? null,
+        job: (await runtime.jobs({ limit: 500 })).jobs.find((job) => job.id === id) ?? null,
         plain: item ? [
           `Queued prompt: ${item.id}`,
           `Created: ${new Date(item.createdAt).toISOString()}`,
@@ -372,7 +378,7 @@ export async function relayRuntimeJobLog(runtime: RelayRuntimeDelegate, id: stri
         ].filter(Boolean).join("\n") : "Queued prompt not found.",
       };
     }
-    const job = (await runtime.jobs()).jobs.find((candidate) => candidate.id === id) ?? null;
+    const job = (await runtime.jobs({ limit: 500 })).jobs.find((candidate) => candidate.id === id) ?? null;
     return { job, plain: job?.logTail || job?.logPath || job?.summary || runtime.jobStore.get(id)?.summary || "No log available for this job." };
   }
 

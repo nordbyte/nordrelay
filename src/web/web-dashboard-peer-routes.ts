@@ -220,6 +220,26 @@ export async function handleDashboardPeerRoute(
     return true;
   }
 
+  const rotateMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/rotate$/);
+  if (rotateMatch?.[1] && req.method === "POST") {
+    const body = await readJsonBody(req);
+    const readiness = await buildPeerReadiness(options.config);
+    const created = store.createRotationInvitation(decodeURIComponent(rotateMatch[1]), {
+      expiresInMs: (optionalNumberField(body, "expiresMinutes") ?? 10) * 60 * 1000,
+    });
+    const command = `nordrelay peer add ${readiness.listenUrl} --code ${created.code}`;
+    sendJson(res, 201, {
+      peer: created.peer,
+      invitation: created.invitation,
+      code: created.code,
+      command,
+      readiness,
+      warnings: readiness.warnings,
+    });
+    options.auditPeerAction?.("peer_rotation_invite_created", `${created.peer.name} (${created.peer.id})`);
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/peers/global-sessions") {
     const query = optionalStringField(Object.fromEntries(url.searchParams), "query") ?? "";
     const agent = parseAgent(optionalStringField(Object.fromEntries(url.searchParams), "agent"));

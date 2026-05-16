@@ -16,6 +16,32 @@ function createPaginator(containerId, onChange, pageSize=50){
   };
 }
 const sessionsPager=createPaginator('sessionsPager',()=>loadSessions(false),50);
+function createCursorPager(containerId,onChange){
+  const container=document.getElementById(containerId);
+  return {
+    stack:[],
+    cursor:null,
+    nextCursor:null,
+    hasNext:false,
+    total:0,
+    reset(){this.stack=[];this.cursor=null;this.nextCursor=null;this.hasNext=false;this.total=0},
+    render(meta={}){
+      if(!container)return;
+      this.nextCursor=meta.nextCursor||null;
+      this.hasNext=Boolean(meta.hasNext);
+      this.total=Number(meta.total||0);
+      container.innerHTML='<span>'+esc(this.total?this.total+' total':'')+'</span><div class="pager-actions"><button data-cursor-action="prev" '+(!this.stack.length?'disabled':'')+'>Previous</button><button data-cursor-action="next" '+(!this.hasNext?'disabled':'')+'>Next</button></div>';
+      const prev=container.querySelector('[data-cursor-action="prev"]');
+      const next=container.querySelector('[data-cursor-action="next"]');
+      prev.onclick=()=>{if(this.stack.length){this.cursor=this.stack.pop()||null;onChange()}};
+      next.onclick=()=>{if(this.hasNext&&this.nextCursor){this.stack.push(this.cursor);this.cursor=this.nextCursor;onChange()}};
+    }
+  };
+}
+const activityPager=createCursorPager('activityPager',()=>loadActivity(false));
+const auditPager=createCursorPager('auditPager',()=>loadAudit(false));
+const artifactPager=createCursorPager('artifactPager',()=>loadArtifacts(false));
+const jobsPager=createCursorPager('jobsPager',()=>loadTasks(false));
 
 async function loadBootstrap(){
   const local = await api('/api/bootstrap',{local:true});

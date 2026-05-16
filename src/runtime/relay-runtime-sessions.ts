@@ -79,6 +79,7 @@ import type {
   ActiveSessionsDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
+  CursorPageDto,
   DashboardControlOptions,
   QueueItemDto,
   RelayEvent,
@@ -461,6 +462,27 @@ export function relayRuntimeActivity(runtime: RelayRuntimeDelegate, options: {
   } = {}): WebActivityEvent[] {
     const currentInfo = runtime.registry.get(runtime.contextKey)?.getInfo();
     return runtime.activityStore.list(options).map((event: WebActivityEvent) => runtime.enrichActivityEvent(event, currentInfo));
+  }
+
+export function relayRuntimeActivityPage(runtime: RelayRuntimeDelegate, options: {
+    limit?: number;
+    cursor?: string;
+    source?: WebActivitySource | "all";
+    status?: WebActivityStatus | "all";
+    category?: WebActivityCategory | "all";
+    actor?: string;
+    agentId?: AgentId | "all" | string;
+    threadId?: string;
+    workspace?: string;
+    type?: string;
+    since?: string | number;
+  } = {}): CursorPageDto<WebActivityEvent> {
+    const currentInfo = runtime.registry.get(runtime.contextKey)?.getInfo();
+    const page = runtime.activityStore.listPage(options);
+    return {
+      ...page,
+      items: page.items.map((event: WebActivityEvent) => runtime.enrichActivityEvent(event, currentInfo)),
+    };
   }
 
 export async function relayRuntimeRetry(runtime: RelayRuntimeDelegate, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string; correlationId?: string }> {

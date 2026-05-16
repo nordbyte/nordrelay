@@ -9,6 +9,8 @@ import type {
 } from "../agents/shared/agent.js";
 import type { AgentUpdateJobSnapshot } from "../agents/shared/agent-updates.js";
 import type { ConnectorHealth, VersionChecks } from "../support/operations.js";
+import type { AuditEvent } from "../access/audit-log.js";
+import type { CursorPageMeta } from "../core/pagination.js";
 import type { SlackDiagnostics } from "../channels/slack/slack-diagnostics.js";
 import type {
   WebActivityActor,
@@ -107,6 +109,11 @@ export interface ArtifactReportDto {
     relativePath: string;
     sizeBytes: number;
   }>;
+}
+
+export interface CursorPageDto<T> {
+  items: T[];
+  pagination: CursorPageMeta;
 }
 
 export interface SessionPageDto {
@@ -233,6 +240,7 @@ export interface UnifiedJobDto {
   logTail?: string;
   queueId?: string;
   updateJobId?: string;
+  correlationId?: string;
   canCancel: boolean;
   canRetry: boolean;
   canReadLog: boolean;
@@ -240,7 +248,40 @@ export interface UnifiedJobDto {
 
 export interface UnifiedJobsDto {
   jobs: UnifiedJobDto[];
+  pagination?: CursorPageMeta;
   updatedAt: string;
+}
+
+export interface TraceTimelineItemDto {
+  id: string;
+  at: string;
+  source: "activity" | "audit" | "chat" | "queue" | "job";
+  status?: string;
+  type: string;
+  title: string;
+  detail?: string;
+  threadId?: string | null;
+  workspace?: string;
+  agentId?: AgentId;
+}
+
+export interface TraceDetailDto {
+  correlationId: string;
+  summary: {
+    startedAt: string | null;
+    updatedAt: string | null;
+    status: string;
+    sources: string[];
+    threadId?: string | null;
+    workspace?: string;
+    agentId?: AgentId;
+  };
+  activity: WebActivityEvent[];
+  audit: AuditEvent[];
+  chat: WebChatMessage[];
+  queue: QueueItemDto[];
+  jobs: UnifiedJobDto[];
+  timeline: TraceTimelineItemDto[];
 }
 
 export type { WebActivityActor, WebActivityCategory };

@@ -136,6 +136,28 @@ describe("web dashboard state stores", () => {
       expect(store.list({ actor: "ricardo@example.com" })[0]?.source).toBe("telegram");
       expect(store.list({ actor: "123456789" })[0]?.source).toBe("telegram");
       expect(store.list({ agentId: "codex", threadId: "thread-a", workspace: "/repo/a", type: "tool" })[0]?.source).toBe("cli");
+      const firstPage = store.listPage({ limit: 1 });
+      expect(firstPage.items).toHaveLength(1);
+      expect(firstPage.pagination.hasNext).toBe(true);
+      const secondPage = store.listPage({ limit: 1, cursor: firstPage.pagination.nextCursor ?? undefined });
+      expect(secondPage.items).toHaveLength(1);
+      expect(secondPage.items[0]?.id).not.toBe(firstPage.items[0]?.id);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("finds chat and activity events by correlation id", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-web-trace-"));
+    try {
+      const chat = new WebChatStore(workspace, "json", 10);
+      const activity = new WebActivityStore(workspace, "json", 10);
+      chat.append({ threadId: "thread-a", role: "user", text: "trace me", source: "web", correlationId: "cid-1" });
+      chat.append({ threadId: "thread-a", role: "agent", text: "other", source: "web", correlationId: "cid-2" });
+      activity.append({ source: "web", status: "running", type: "prompt_started", threadId: "thread-a", correlationId: "cid-1" });
+
+      expect(chat.findByCorrelationId("cid-1")).toMatchObject([{ text: "trace me" }]);
+      expect(activity.findByCorrelationId("cid-1")).toMatchObject([{ type: "prompt_started" }]);
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }

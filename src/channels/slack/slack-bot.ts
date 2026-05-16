@@ -29,6 +29,7 @@ import { createSharedChannelCommandDispatcher } from "../shared/channel-command-
 import { slackHelpCommandList } from "../shared/channel-command-catalog.js";
 import { ChannelCommandService } from "../shared/channel-command-service.js";
 import { createChannelPromptEngine } from "../shared/channel-prompt-engine.js";
+import { queueChannelPromptIfBusy } from "../shared/channel-prompt-queue.js";
 import { runChannelPeerPrompt } from "../shared/channel-peer-prompt.js";
 import { deliverChannelAction } from "../shared/channel-runtime.js";
 import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
@@ -40,7 +41,7 @@ import { isSlackContextKey, parseSlackContextKey, slackContextKey, type ChannelC
 import { friendlyErrorText } from "../../core/error-messages.js";
 import { spawnConnectorRestart, spawnSelfUpdate } from "../../support/operations.js";
 import { RemoteRelayClient } from "../../peers/peer-client.js";
-import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "../../state/prompt-store.js";
+import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "../../state/prompt-store.js";
 import { RelayArtifactService } from "../../runtime/relay-artifact-service.js";
 import { RelayAuthService } from "../../runtime/relay-auth-service.js";
 import { configureRedaction, redactText } from "../../core/redaction.js";
@@ -361,18 +362,17 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
       return;
     }
 
-    const busy = getBusyReason(request.contextKey);
-    if (busy.busy) {
-      const item = options.fromQueue && isQueuedPrompt(envelope) ? envelope as QueuedPrompt : promptStore.enqueue(request.contextKey, envelope);
-      const position = promptStore.list(request.contextKey).findIndex((queued) => queued.id === item.id) + 1;
-      const text = busy.kind === "external"
-        ? `Queued prompt ${item.id} at position ${position}. The ${busy.agentLabel} session is still active and is processing a previous task.`
-        : `Queued prompt ${item.id} at position ${position}.`;
-      await reply(request, text, {
-        buttons: [[{ label: "Cancel queued message", action: `slack_queue_cancel:${request.contextKey}:${item.id}` }]],
-      });
-      appendActivity(request, { status: "queued", type: "prompt_queued", prompt: item.description, detail: text });
-      audit(request, { action: "prompt_queued", status: "ok", promptId: item.id, description: item.description });
+    if (await queueChannelPromptIfBusy({
+      request,
+      envelope,
+      fromQueue: options.fromQueue,
+      promptStore,
+      busy: getBusyReason(request.contextKey),
+      actionPrefix: "slack",
+      reply,
+      appendActivity,
+      audit,
+    })) {
       return;
     }
 
@@ -1471,8 +1471,4 @@ function inferMimeType(name: string): string {
   if (lower.endsWith(".m4a")) return "audio/mp4";
   if (lower.endsWith(".webm")) return "audio/webm";
   return "application/octet-stream";
-}
-
-function isQueuedPrompt(value: unknown): value is QueuedPrompt {
-  return Boolean(value && typeof value === "object" && "id" in value && "contextKey" in value);
 }

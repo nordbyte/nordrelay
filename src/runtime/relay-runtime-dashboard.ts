@@ -79,6 +79,7 @@ import type {
   ActiveSessionsDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
+  CursorPageDto,
   DashboardControlOptions,
   QueueItemDto,
   RelayEvent,
@@ -209,6 +210,10 @@ export async function relayRuntimeMetrics(runtime: RelayRuntimeDelegate): Promis
 
 export function relayRuntimeAudit(runtime: RelayRuntimeDelegate, options: number | AuditListOptions = 50): AuditEvent[] {
     return runtime.auditStore.list(options);
+  }
+
+export function relayRuntimeAuditPage(runtime: RelayRuntimeDelegate, options: AuditListOptions = {}): CursorPageDto<AuditEvent> {
+    return runtime.auditStore.listPage(options);
   }
 
 export async function relayRuntimeSupportBundle(runtime: RelayRuntimeDelegate, actor?: WebActivityActor): Promise<SupportBundleResult> {

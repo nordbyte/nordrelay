@@ -77,6 +77,7 @@ function shouldProxyApi(path) {
     /^\/api\/peers\/discovery-jobs\//.test(path) ||
     /^\/api\/peers\/[^/]+(?:\/events|\/proxy)?$/.test(path) ||
     /^\/api\/peers\/[^/]+\/repin$/.test(path) ||
+    /^\/api\/peers\/[^/]+\/rotate$/.test(path) ||
     isLocalAdminApi(path)
   );
 }

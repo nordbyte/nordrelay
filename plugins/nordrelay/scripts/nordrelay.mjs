@@ -860,7 +860,7 @@ function parsePeerFlags(argv) {
   const copy = [...argv];
   const subcommand = copy[0] && !copy[0].startsWith("-") ? copy.shift() : "list";
   const flags = { subcommand, url: undefined };
-  if (["add", "test", "check", "revoke"].includes(subcommand) && copy[0] && !copy[0].startsWith("-")) {
+  if (["add", "test", "check", "revoke", "trust", "rotate"].includes(subcommand) && copy[0] && !copy[0].startsWith("-")) {
     flags.url = copy.shift();
     flags.id = flags.url;
   }
@@ -923,6 +923,7 @@ async function commandPeer(options) {
       if (peer.lastSeenAt) console.log(`  Last seen: ${peer.lastSeenAt}`);
       if (peer.lastLatencyMs !== undefined) console.log(`  Latency: ${peer.lastLatencyMs}ms`);
       if (peer.remoteVersion) console.log(`  Remote version: ${peer.remoteVersion}`);
+      if (peer.trustStatus) console.log(`  Trust: ${peer.trustStatus}${peer.trustWarnings?.length ? ` (${peer.trustWarnings.join("; ")})` : ""}`);
       if (peer.lastError) console.log(`  Last error: ${peer.lastError}`);
     }
     return;
@@ -999,7 +1000,32 @@ async function commandPeer(options) {
     return;
   }
 
-  throw new Error("Usage: nordrelay peer [identity|list|invite|add|test|check|revoke]");
+  if (flags.subcommand === "trust") {
+    const id = flags.id || await ask(null, "Peer id", "");
+    const peer = store.get(id);
+    if (!peer?.url) throw new Error("Peer URL is required before TLS trust can be updated.");
+    const probe = await clientMod.checkPeerIdentityEndpoint(peer.url, { timeoutMs: 5000 });
+    if (!probe.ok || !probe.identity) throw new Error(`Peer identity could not be verified: ${probe.detail}`);
+    if (probe.identity.nodeId !== peer.nodeId || probe.identity.publicKey !== peer.publicKey || probe.identity.fingerprint !== peer.fingerprint) {
+      throw new Error("Peer identity changed. Re-pair this peer instead of trusting the TLS fingerprint.");
+    }
+    const updated = store.updatePeerTlsFingerprint(peer.id, probe.tlsFingerprint);
+    console.log(`Trusted TLS fingerprint for ${updated.name}: ${updated.tlsFingerprint || "-"}`);
+    return;
+  }
+
+  if (flags.subcommand === "rotate") {
+    const id = flags.id || await ask(null, "Peer id", "");
+    const url = process.env.NORDRELAY_PEER_PUBLIC_URL || `${process.env.NORDRELAY_PEER_TLS_ENABLED === "false" ? "http" : "https"}://${process.env.NORDRELAY_PEER_HOST || "127.0.0.1"}:${process.env.NORDRELAY_PEER_PORT || "31979"}`;
+    const created = store.createRotationInvitation(id, { expiresInMs: Number.isFinite(flags.expiresMinutes) ? flags.expiresMinutes * 60 * 1000 : undefined });
+    console.log(`Rotation invite for ${created.peer.name} (${created.peer.id}).`);
+    console.log(`Pairing code: ${created.code}`);
+    console.log(`Expires: ${created.invitation.expiresAt}`);
+    console.log(`Command: nordrelay peer add ${url} --code ${created.code}`);
+    return;
+  }
+
+  throw new Error("Usage: nordrelay peer [identity|list|invite|add|test|check|trust|rotate|revoke]");
 }
 
 function parseServiceFlags(argv) {
@@ -1010,10 +1036,14 @@ function parseServiceFlags(argv) {
     start: true,
     name: process.platform === "win32" ? "NordRelay" : "nordrelay",
     label: "io.nordbyte.nordrelay",
+    dryRun: false,
+    platform: process.platform,
   };
   for (let i = 0; i < copy.length; i += 1) {
     const arg = copy[i];
     if (arg === "--no-start") flags.start = false;
+    else if (arg === "--dry-run") flags.dryRun = true;
+    else if (arg === "--platform") flags.platform = requireValue(copy, ++i, arg);
     else if (arg === "--name") flags.name = requireValue(copy, ++i, arg);
     else if (arg === "--label") flags.label = requireValue(copy, ++i, arg);
   }
@@ -1027,11 +1057,15 @@ async function commandService(options) {
   const flags = parseServiceFlags(options.rawFlags);
 
   if (flags.subcommand === "install") {
-    if (process.platform === "darwin") {
+    if (flags.dryRun) {
+      printServiceInstallDryRun(options, flags);
+      return;
+    }
+    if (flags.platform === "darwin") {
       await installLaunchdService(options, flags);
       return;
     }
-    if (process.platform === "win32") {
+    if (flags.platform === "win32") {
       await installWindowsTask(options, flags);
       return;
     }
@@ -1040,11 +1074,11 @@ async function commandService(options) {
   }
 
   if (flags.subcommand === "uninstall" || flags.subcommand === "remove") {
-    if (process.platform === "darwin") {
+    if (flags.platform === "darwin") {
       await uninstallLaunchdService(flags);
       return;
     }
-    if (process.platform === "win32") {
+    if (flags.platform === "win32") {
       await uninstallWindowsTask(flags);
       return;
     }
@@ -1061,31 +1095,15 @@ async function commandService(options) {
 }
 
 async function installSystemdUserService(options, flags) {
-  const unitDir = path.join(os.homedir(), ".config", "systemd", "user");
-  const unitPath = path.join(unitDir, `${flags.name}.service`);
+  const spec = buildSystemdUserServiceSpec(options, flags);
+  const unitDir = path.dirname(spec.path);
+  const unitPath = spec.path;
   await mkdirp(unitDir);
-  const args = serviceRunArgs(options);
-  const execStart = [process.execPath, SCRIPT_PATH, ...args].map(systemdQuote).join(" ");
-  await fsp.writeFile(unitPath, [
-    "[Unit]",
-    "Description=NordRelay connector and WebUI",
-    "After=network-online.target",
-    "",
-    "[Service]",
-    "Type=simple",
-    `ExecStart=${execStart}`,
-    "Restart=on-failure",
-    "RestartSec=5",
-    `Environment=NORDRELAY_HOME=${systemdQuote(options.home)}`,
-    "",
-    "[Install]",
-    "WantedBy=default.target",
-    "",
-  ].join("\n"));
+  await fsp.writeFile(unitPath, spec.content);
   console.log(`Installed systemd user service: ${unitPath}`);
-  runPlatformCommand("systemctl", ["--user", "daemon-reload"], "Reload systemd user units");
-  const action = flags.start ? "enable --now" : "enable";
-  runPlatformCommand("systemctl", ["--user", "enable", flags.start ? "--now" : "", `${flags.name}.service`].filter(Boolean), `systemctl --user ${action} ${flags.name}.service`);
+  for (const command of spec.commands) {
+    runPlatformCommand(command.command, command.args, command.label, command.settings);
+  }
   console.log(`Status: nordrelay service status`);
 }
 
@@ -1098,19 +1116,17 @@ async function uninstallSystemdUserService(flags) {
 }
 
 async function installLaunchdService(options, flags) {
-  const launchAgentsDir = path.join(os.homedir(), "Library", "LaunchAgents");
-  const plistPath = path.join(launchAgentsDir, `${flags.label}.plist`);
+  const spec = buildLaunchdServiceSpec(options, flags);
+  const launchAgentsDir = path.dirname(spec.path);
+  const plistPath = spec.path;
   await mkdirp(launchAgentsDir);
-  const args = [SCRIPT_PATH, ...serviceRunArgs(options)];
-  await fsp.writeFile(plistPath, launchdPlist(flags.label, process.execPath, args, options.home));
+  await fsp.writeFile(plistPath, spec.content);
   console.log(`Installed launchd service: ${plistPath}`);
-  const domain = `gui/${process.getuid?.() ?? ""}`;
-  runPlatformCommand("launchctl", ["bootout", domain, plistPath], `Unload existing ${flags.label}`, { allowFailure: true });
-  if (flags.start) {
-    runPlatformCommand("launchctl", ["bootstrap", domain, plistPath], `Load ${flags.label}`);
-    runPlatformCommand("launchctl", ["enable", `${domain}/${flags.label}`], `Enable ${flags.label}`, { allowFailure: true });
-    runPlatformCommand("launchctl", ["kickstart", "-k", `${domain}/${flags.label}`], `Start ${flags.label}`, { allowFailure: true });
-  } else {
+  for (const command of spec.commands) {
+    runPlatformCommand(command.command, command.args, command.label, command.settings);
+  }
+  if (!flags.start) {
+    const domain = launchdDomain();
     console.log(`Start later with: launchctl bootstrap ${domain} ${plistPath}`);
   }
 }
@@ -1124,11 +1140,9 @@ async function uninstallLaunchdService(flags) {
 }
 
 async function installWindowsTask(options, flags) {
-  const taskCommand = windowsTaskCommand(process.execPath, [SCRIPT_PATH, ...serviceRunArgs(options)]);
-  const args = ["/Create", "/F", "/SC", "ONLOGON", "/TN", flags.name, "/TR", taskCommand];
-  runPlatformCommand("schtasks", args, `Create Windows task ${flags.name}`);
-  if (flags.start) {
-    runPlatformCommand("schtasks", ["/Run", "/TN", flags.name], `Start Windows task ${flags.name}`, { allowFailure: true });
+  const spec = buildWindowsTaskServiceSpec(options, flags);
+  for (const command of spec.commands) {
+    runPlatformCommand(command.command, command.args, command.label, command.settings);
   }
   console.log(`Installed Windows task: ${flags.name}`);
 }
@@ -1156,6 +1170,98 @@ function serviceRunArgs(options) {
   if (options.host) args.push("--host", options.host);
   if (options.port) args.push("--port", String(options.port));
   return args;
+}
+
+function buildSystemdUserServiceSpec(options, flags) {
+  const unitPath = path.join(os.homedir(), ".config", "systemd", "user", `${flags.name}.service`);
+  const execStart = [process.execPath, SCRIPT_PATH, ...serviceRunArgs(options)].map(systemdQuote).join(" ");
+  const content = [
+    "[Unit]",
+    "Description=NordRelay connector and WebUI",
+    "After=network-online.target",
+    "",
+    "[Service]",
+    "Type=simple",
+    `ExecStart=${execStart}`,
+    "Restart=on-failure",
+    "RestartSec=5",
+    `Environment=NORDRELAY_HOME=${systemdQuote(options.home)}`,
+    "",
+    "[Install]",
+    "WantedBy=default.target",
+    "",
+  ].join("\n");
+  const action = flags.start ? "enable --now" : "enable";
+  return {
+    platform: "linux",
+    path: unitPath,
+    content,
+    commands: [
+      { command: "systemctl", args: ["--user", "daemon-reload"], label: "Reload systemd user units" },
+      { command: "systemctl", args: ["--user", "enable", flags.start ? "--now" : "", `${flags.name}.service`].filter(Boolean), label: `systemctl --user ${action} ${flags.name}.service` },
+    ],
+  };
+}
+
+function buildLaunchdServiceSpec(options, flags) {
+  const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${flags.label}.plist`);
+  const domain = launchdDomain();
+  const commands = [
+    { command: "launchctl", args: ["bootout", domain, plistPath], label: `Unload existing ${flags.label}`, settings: { allowFailure: true } },
+  ];
+  if (flags.start) {
+    commands.push(
+      { command: "launchctl", args: ["bootstrap", domain, plistPath], label: `Load ${flags.label}` },
+      { command: "launchctl", args: ["enable", `${domain}/${flags.label}`], label: `Enable ${flags.label}`, settings: { allowFailure: true } },
+      { command: "launchctl", args: ["kickstart", "-k", `${domain}/${flags.label}`], label: `Start ${flags.label}`, settings: { allowFailure: true } },
+    );
+  }
+  return {
+    platform: "darwin",
+    path: plistPath,
+    content: launchdPlist(flags.label, process.execPath, [SCRIPT_PATH, ...serviceRunArgs(options)], options.home),
+    commands,
+  };
+}
+
+function buildWindowsTaskServiceSpec(options, flags) {
+  const taskCommand = windowsTaskCommand(process.execPath, [SCRIPT_PATH, ...serviceRunArgs(options)]);
+  const commands = [
+    { command: "schtasks", args: ["/Create", "/F", "/SC", "ONLOGON", "/TN", flags.name, "/TR", taskCommand], label: `Create Windows task ${flags.name}` },
+  ];
+  if (flags.start) {
+    commands.push({ command: "schtasks", args: ["/Run", "/TN", flags.name], label: `Start Windows task ${flags.name}`, settings: { allowFailure: true } });
+  }
+  return {
+    platform: "win32",
+    path: flags.name,
+    content: "",
+    commands,
+  };
+}
+
+function serviceInstallSpec(options, flags) {
+  if (flags.platform === "darwin") return buildLaunchdServiceSpec(options, flags);
+  if (flags.platform === "win32") return buildWindowsTaskServiceSpec(options, flags);
+  return buildSystemdUserServiceSpec(options, flags);
+}
+
+function printServiceInstallDryRun(options, flags) {
+  const spec = serviceInstallSpec(options, flags);
+  console.log(`Service install dry-run (${spec.platform})`);
+  console.log(`Target: ${spec.path}`);
+  if (spec.content) {
+    console.log("--- file content ---");
+    console.log(spec.content.trimEnd());
+  }
+  console.log("--- commands ---");
+  for (const command of spec.commands) {
+    console.log(formatCommand(command.command, command.args));
+  }
+}
+
+function launchdDomain() {
+  return `gui/${process.getuid?.() ?? ""}`;
 }
 
 function runPlatformCommand(command, args, label, settings = {}) {
@@ -2158,6 +2264,7 @@ function printHelp() {
   console.log("  --home <path>        Runtime home directory");
   console.log("  --host <host>        WebUI bind host");
   console.log("  --port <port>        WebUI port");
+  console.log("  service install --dry-run [--platform linux|darwin|win32]");
   console.log("  --build              Build source runtime before start/web/restart");
   console.log("  --force              Overwrite existing config during init");
   console.log("  --help, -h           Show this help");
@@ -2205,7 +2312,17 @@ async function main() {
   process.exitCode = 2;
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+export {
+  buildLaunchdServiceSpec,
+  buildSystemdUserServiceSpec,
+  buildWindowsTaskServiceSpec,
+  parseServiceFlags,
+  serviceInstallSpec,
+};
+
+if (process.argv[1] && path.resolve(process.argv[1]) === SCRIPT_PATH) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

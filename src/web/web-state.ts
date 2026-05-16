@@ -7,6 +7,7 @@ import {
   type WebActivityActor,
   type WebActivityCategory,
 } from "../core/activity-events.js";
+import { cursorPage, normalizeCursorLimit, type CursorPage } from "../core/pagination.js";
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "../state/state-backend.js";
 
 export type WebChatRole = "user" | "agent" | "system" | "tool";
@@ -134,6 +135,18 @@ export class WebChatStore {
     return messages.slice(-Math.max(1, Math.min(this.maxMessages, limit)));
   }
 
+  findByCorrelationId(correlationId: string, limit = 100): WebChatMessage[] {
+    const needle = correlationId.trim();
+    if (!needle) {
+      return [];
+    }
+    return Object.values(this.readPayload().messagesByThread)
+      .flat()
+      .filter((message) => message.correlationId === needle)
+      .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp))
+      .slice(-Math.max(1, Math.min(this.maxMessages, limit)));
+  }
+
   clear(threadId: string | null | undefined): number {
     const payload = this.readPayload();
     const key = threadId || "pending";
@@ -201,7 +214,50 @@ export class WebActivityStore {
     type?: string;
     since?: string | number;
   } = {}): WebActivityEvent[] {
-    const limit = Math.max(1, Math.min(500, options.limit ?? 100));
+    return this.listPage(options).items;
+  }
+
+  listPage(options: {
+    limit?: number;
+    cursor?: string;
+    source?: WebActivitySource | "all";
+    status?: WebActivityStatus | "all";
+    category?: WebActivityCategory | "all";
+    actor?: string;
+    agentId?: AgentId | "all" | string;
+    threadId?: string;
+    workspace?: string;
+    type?: string;
+    since?: string | number;
+  } = {}): CursorPage<WebActivityEvent> {
+    const limit = normalizeCursorLimit(options.limit, 100, 500);
+    const events = this.filteredEvents(options)
+      .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
+    return cursorPage(events, options.cursor, limit, (event) => event.id);
+  }
+
+  findByCorrelationId(correlationId: string, limit = 100): WebActivityEvent[] {
+    const needle = correlationId.trim();
+    if (!needle) {
+      return [];
+    }
+    return this.readPayload().events
+      .filter((event) => event.correlationId === needle)
+      .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp))
+      .slice(-Math.max(1, Math.min(500, limit)));
+  }
+
+  private filteredEvents(options: {
+    source?: WebActivitySource | "all";
+    status?: WebActivityStatus | "all";
+    category?: WebActivityCategory | "all";
+    actor?: string;
+    agentId?: AgentId | "all" | string;
+    threadId?: string;
+    workspace?: string;
+    type?: string;
+    since?: string | number;
+  }): WebActivityEvent[] {
     const since = normalizeSince(options.since);
     return this.readPayload().events
       .filter((event) => !options.source || options.source === "all" || event.source === options.source)
@@ -212,9 +268,7 @@ export class WebActivityStore {
       .filter((event) => !options.workspace || event.workspace === options.workspace)
       .filter((event) => !options.type || event.type.toLowerCase().includes(options.type.toLowerCase()))
       .filter((event) => !options.actor || activityActorMatches(event.actor, options.actor))
-      .filter((event) => !since || Date.parse(event.timestamp) >= since)
-      .slice(-limit)
-      .reverse();
+      .filter((event) => !since || Date.parse(event.timestamp) >= since);
   }
 
   private readPayload(): PersistedWebActivity {

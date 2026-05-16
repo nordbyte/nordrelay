@@ -317,9 +317,9 @@ export function relayRuntimeQueueAction(runtime: RelayRuntimeDelegate, action: R
     return runtime.queue();
   }
 
-export async function relayRuntimeArtifacts(runtime: RelayRuntimeDelegate): Promise<ArtifactReportDto[]> {
+export async function relayRuntimeArtifacts(runtime: RelayRuntimeDelegate, limit = 20): Promise<ArtifactReportDto[]> {
     const session = await runtime.getSession(true);
-    return runtime.artifactService.list(session.getInfo().workspace, 20);
+    return runtime.artifactService.list(session.getInfo().workspace, limit);
   }
 
 export async function relayRuntimeArtifact(runtime: RelayRuntimeDelegate, turnId: string): Promise<ArtifactTurnReport | null> {

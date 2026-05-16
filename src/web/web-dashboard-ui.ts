@@ -20,6 +20,7 @@ export const DASHBOARD_PRIMARY_NAV_PAGES: DashboardPage[] = [
   { id: "queue", label: "Queue", permission: "queue.read" },
   { id: "tasks", label: "Tasks", permission: "inspect" },
   { id: "activity", label: "Activity", permission: "sessions.read" },
+  { id: "trace", label: "Trace", permission: "sessions.read" },
   { id: "artifacts", label: "Artifacts", permission: "files.read" },
 ];
 

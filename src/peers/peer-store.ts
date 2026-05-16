@@ -116,6 +116,23 @@ export class PeerStore {
     return { invitation: publicInvitation(invitation), code };
   }
 
+  createRotationInvitation(id: string, options: Pick<PeerInviteOptions, "expiresInMs"> = {}): { peer: PublicPeerRecord; invitation: PublicPeerInvitationRecord; code: string } {
+    const peer = this.get(id);
+    if (!peer) {
+      throw new Error("Peer not found.");
+    }
+    const created = this.createInvitation({
+      name: `${peer.name} rotation`,
+      group: peer.group,
+      expiresInMs: options.expiresInMs,
+      scopes: peer.scopes,
+      allowedAgents: peer.allowedAgents,
+      allowedWorkspaceRoots: peer.allowedWorkspaceRoots,
+      workspaceAliases: peer.workspaceAliases,
+    });
+    return { peer: publicPeer(peer), ...created };
+  }
+
   consumeInvitation(code: string, usedByNodeId: string): PeerInvitationRecord {
     const trimmed = code.trim();
     if (!trimmed) {

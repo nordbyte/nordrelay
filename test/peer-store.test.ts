@@ -106,6 +106,43 @@ describe("PeerStore", () => {
     expect(updated).not.toHaveProperty("secret");
   });
 
+  it("reports peer trust and creates rotation invitations from existing access", () => {
+    const store = newStore();
+    const peer = store.upsertPeer({
+      name: "Remote",
+      group: "LAN",
+      url: "https://remote.example:31979",
+      nodeId: "node-remote",
+      publicKey: "public-key",
+      fingerprint: "sha256:abc",
+      secret: "shared-secret",
+      scopes: ["inspect", "sessions.read"],
+      allowedAgents: ["codex"],
+      allowedWorkspaceRoots: ["/srv/app"],
+      workspaceAliases: { app: "/srv/app" },
+    });
+
+    expect(store.listPublic()[0]).toMatchObject({
+      trustStatus: "tls-unpinned",
+      trustWarnings: expect.arrayContaining([expect.stringContaining("TLS fingerprint")]),
+    });
+
+    const trusted = store.updatePeerTlsFingerprint(peer.id, "aa:bb");
+    expect(trusted.tlsFingerprint).toBe("aa:bb");
+    expect(store.listPublic()[0]).toMatchObject({ trustStatus: "trusted" });
+
+    const rotation = store.createRotationInvitation(peer.id, { expiresInMs: 60_000 });
+    expect(rotation.peer.id).toBe(peer.id);
+    expect(rotation.invitation).toMatchObject({
+      group: "LAN",
+      scopes: ["inspect", "sessions.read"],
+      allowedAgents: ["codex"],
+      allowedWorkspaceRoots: ["/srv/app"],
+      workspaceAliases: { app: "/srv/app" },
+    });
+    expect(rotation.code).toHaveLength(24);
+  });
+
   it("tracks peer groups and bounded health history", () => {
     const store = newStore();
     const peer = store.upsertPeer({
