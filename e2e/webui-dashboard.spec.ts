@@ -262,6 +262,17 @@ test.describe("NordRelay WebUI", () => {
     await navigateDashboard(page, "Users");
 
     await expect(page.locator("#pageTitle")).toHaveText("Users");
+    await expect(page.locator(".access-section-header #accessTabs")).toBeVisible();
+    await expect(page.locator("#accessTabs")).toHaveAttribute("role", "tablist");
+    await expect(page.getByRole("tab", { name: "Users" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#accessTabs")).toHaveCSS("border-radius", "0px");
+    await expect
+      .poll(async () => {
+        const tabs = await page.locator("#accessTabs").boundingBox();
+        const toolbar = await page.locator(".access-toolbar").boundingBox();
+        return Boolean(tabs && toolbar && tabs.y < toolbar.y);
+      })
+      .toBe(true);
     await expect(page.locator("#createUserBtn")).toBeVisible();
     await expect(page.locator("#createGroupBtn")).toBeHidden();
     await expect(page.locator("#accessPanel")).toContainText("Admin");
@@ -278,6 +289,7 @@ test.describe("NordRelay WebUI", () => {
     await page.locator("#closeUserDetailBtn").click();
 
     await page.locator('[data-access-tab="groups"]').click();
+    await expect(page.getByRole("tab", { name: "Groups" })).toHaveAttribute("aria-selected", "true");
     await expect(page.locator("#createGroupBtn")).toBeVisible();
     await expect(page.locator("#createUserBtn")).toBeHidden();
 

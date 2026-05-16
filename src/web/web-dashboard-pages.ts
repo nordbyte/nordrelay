@@ -272,16 +272,18 @@ ${faviconLinks}
 
       <section class="page" id="page-access">
         <div class="panel">
-          <div class="row access-toolbar"><button id="loadAccessBtn">Reload users</button><button id="createUserBtn" data-access-action-tabs="users">Create user</button><button id="createGroupBtn" data-access-action-tabs="groups" class="secondary" style="display:none">Create group</button><button id="createChatBtn" data-access-action-tabs="telegram" class="secondary" style="display:none">Add Telegram chat</button><button id="createDiscordChannelBtn" data-access-action-tabs="discord" class="secondary" style="display:none">Add Discord channel</button><button id="createSlackChannelBtn" data-access-action-tabs="slack" class="secondary" style="display:none">Add Slack channel</button><button id="lockSessionBtn" data-access-action-tabs="locks" class="secondary" style="display:none">Lock web session</button><button id="unlockSessionBtn" data-access-action-tabs="locks" class="secondary" style="display:none">Unlock web session</button></div>
-          <div id="accessTabs" class="tabs access-tabs">
-            <button type="button" data-access-tab="users" class="active">Users</button>
-            <button type="button" data-access-tab="groups">Groups</button>
-            <button type="button" data-access-tab="telegram">Telegram</button>
-            <button type="button" data-access-tab="discord">Discord</button>
-            <button type="button" data-access-tab="slack">Slack</button>
-            <button type="button" data-access-tab="locks">Locks</button>
-            <button type="button" data-access-tab="audit">Audit</button>
+          <div class="section-header access-section-header">
+            <div id="accessTabs" class="section-tabs access-tabs" role="tablist" aria-label="Users sections">
+              <button type="button" role="tab" aria-selected="true" tabindex="0" data-access-tab="users" class="active">Users</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-access-tab="groups">Groups</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-access-tab="telegram">Telegram</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-access-tab="discord">Discord</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-access-tab="slack">Slack</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-access-tab="locks">Locks</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-access-tab="audit">Audit</button>
+            </div>
           </div>
+          <div class="row access-toolbar"><button id="loadAccessBtn">Reload users</button><button id="createUserBtn" data-access-action-tabs="users">Create user</button><button id="createGroupBtn" data-access-action-tabs="groups" class="secondary" style="display:none">Create group</button><button id="createChatBtn" data-access-action-tabs="telegram" class="secondary" style="display:none">Add Telegram chat</button><button id="createDiscordChannelBtn" data-access-action-tabs="discord" class="secondary" style="display:none">Add Discord channel</button><button id="createSlackChannelBtn" data-access-action-tabs="slack" class="secondary" style="display:none">Add Slack channel</button><button id="lockSessionBtn" data-access-action-tabs="locks" class="secondary" style="display:none">Lock web session</button><button id="unlockSessionBtn" data-access-action-tabs="locks" class="secondary" style="display:none">Unlock web session</button></div>
           <div class="access-tab active" data-access-tab-panel="users">
             <div class="access-tab-heading">
               <h2>Users</h2>
