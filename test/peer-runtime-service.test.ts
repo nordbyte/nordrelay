@@ -133,6 +133,41 @@ describe("PeerRuntimeService", () => {
       payload: { method: "POST", path: "/api/locks", body: { ownerName: "Remote Peer" } },
     })).resolves.toMatchObject({ lock: { owner: { label: "Remote Peer" } } });
   });
+
+  it("scopes proxied workflow and template lists by peer agent/workspace limits", async () => {
+    const service = new PeerRuntimeService(config(), runtime({
+      workflowService: {
+        list: () => ({
+          templates: [
+            { id: "allowed-template", name: "Allowed", prompt: "A", tags: [], variables: [], scope: "shared", defaultAgentId: "codex", defaultWorkspace: "/allowed/app", createdAt: "2026-05-16T10:00:00.000Z", updatedAt: "2026-05-16T10:00:00.000Z" },
+            { id: "denied-template", name: "Denied", prompt: "B", tags: [], variables: [], scope: "shared", defaultAgentId: "pi", defaultWorkspace: "/other/app", createdAt: "2026-05-16T10:00:00.000Z", updatedAt: "2026-05-16T10:00:00.000Z" },
+          ],
+          workflows: [
+            { id: "allowed-workflow", name: "Allowed flow", tags: [], scope: "shared", createdAt: "2026-05-16T10:00:00.000Z", updatedAt: "2026-05-16T10:00:00.000Z", steps: [{ id: "s1", name: "One", type: "prompt", prompt: "A", agentId: "codex", workspace: "/allowed/app", sessionMode: "current", target: "local", requiresApproval: false, continueOnError: false }] },
+            { id: "denied-workflow", name: "Denied flow", tags: [], scope: "shared", createdAt: "2026-05-16T10:00:00.000Z", updatedAt: "2026-05-16T10:00:00.000Z", steps: [{ id: "s2", name: "Two", type: "prompt", prompt: "B", agentId: "pi", workspace: "/other/app", sessionMode: "current", target: "local", requiresApproval: false, continueOnError: false }] },
+          ],
+          runs: [],
+        }),
+      },
+    }));
+    const scopedPeer = peer({
+      scopes: ["workflows.read"],
+      allowedAgents: ["codex"],
+      allowedWorkspaceRoots: ["/allowed"],
+    });
+
+    await expect(service.handle(scopedPeer, {
+      protocolVersion: 1,
+      type: "web.proxy",
+      payload: { method: "GET", path: "/api/templates" },
+    })).resolves.toMatchObject({ templates: [{ id: "allowed-template" }] });
+
+    await expect(service.handle(scopedPeer, {
+      protocolVersion: 1,
+      type: "web.proxy",
+      payload: { method: "GET", path: "/api/workflows" },
+    })).resolves.toMatchObject({ workflows: [{ id: "allowed-workflow" }] });
+  });
 });
 
 function peer(patch: Partial<PeerRecord> = {}): PeerRecord {

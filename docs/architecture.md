@@ -12,8 +12,9 @@
 - `src/core/config-metadata.ts`: shared setting metadata used by the WebUI settings page and generated `.env.example`.
 - `src/support/support-bundle.ts` and `src/support/zip-writer.ts`: redacted diagnostics bundle creation with a dependency-free ZIP writer.
 - `src/runtime/relay-queue-service.ts`, `src/runtime/relay-artifact-service.ts`, and `src/runtime/relay-external-activity-monitor.ts`: Web runtime queue operations, artifact preview/export/persistence, and external CLI activity mirroring.
+- `src/runtime/relay-workflow-service.ts` and `src/state/workflow-store.ts`: prompt-template storage, workflow/run persistence, variable rendering, sequential execution, busy waiting, unified job tracking, and cancel/retry handling.
 - `src/runtime/relay-runtime-types.ts`: shared Runtime/WebUI DTO types used by runtime, API contracts, and dashboard code.
-- `src/web/web-dashboard-http.ts`, `src/web/web-dashboard-pages.ts`, and `src/web/web-dashboard-runtime-routes.ts`: dashboard HTTP helpers, HTML shell rendering, and operational runtime API routes.
+- `src/web/web-dashboard-http.ts`, `src/web/web-dashboard-pages.ts`, `src/web/web-dashboard-runtime-routes.ts`, and `src/web/web-dashboard-workflow-routes.ts`: dashboard HTTP helpers, HTML shell rendering, operational runtime API routes, and workflow/template APIs.
 - `src/web/ui/`: focused WebUI source assets for core runtime state/API helpers, overview rendering, live events, chat/session workflows, admin pages, and CSS sections.
 - `src/state/bot-preferences.ts`: per-context mirror, notification, quiet-hour, and voice preference persistence.
 - `src/channels/telegram/telegram-rate-limit.ts`: centralized Telegram API send/edit/document rate limiting and retry-after tracking.

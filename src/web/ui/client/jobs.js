@@ -25,6 +25,7 @@ function renderUnifiedJobs(jobs){
 function jobActionPermission(job,action){
   if(job.id==='web:current'&&action==='cancel')return'prompt.abort';
   if(String(job.id||'').startsWith('queue:'))return'queue.write';
+  if(String(job.id||'').startsWith('workflow-run:'))return'workflows.run';
   if(String(job.id||'').startsWith('support-bundle:'))return'diagnostics.read';
   return'updates.run';
 }

@@ -14,6 +14,7 @@ import { checkPeerEndpoint } from "./peer-client.js";
 import type { PeerRecord, PeerRpcRequest, PeerWebProxyPayload } from "./peer-types.js";
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
 import type { ActiveSessionsDto, RelayEvent, RelaySnapshot, SessionPageDto, UnifiedJobDto, UnifiedJobsDto, WebDiagnosticsDto, WebTasksDto } from "../runtime/relay-runtime-types.js";
+import type { PromptTemplate, Workflow, WorkflowRun, WorkflowStep } from "../state/workflow-store.js";
 import type { WebActivityActor } from "../web/web-state.js";
 
 export class PeerRuntimeService {
@@ -169,6 +170,67 @@ export class PeerRuntimeService {
       const agentId = parseAgentId(query.agent);
       this.assertAgentScope(peer, agentId);
       return this.scopedControlOptions(peer, await runtime.controlOptions(agentId));
+    }
+    if (method === "GET" && path === "/api/templates") {
+      return { templates: runtime.workflowService.list().templates.filter((template) => this.canUseTemplate(peer, template)) };
+    }
+    if (method === "POST" && path === "/api/templates") {
+      const input = parseTemplateInput(body);
+      this.assertTemplateInputScope(peer, input);
+      return { template: runtime.workflowService.saveTemplate(input, remoteActor) };
+    }
+    const templateMatch = path.match(/^\/api\/templates\/([^/]+)(?:\/(run|preview))?$/);
+    if (templateMatch?.[1]) {
+      const id = decodeURIComponent(templateMatch[1]);
+      const action = templateMatch[2];
+      this.assertTemplateScope(peer, runtime, id);
+      if (method === "PUT" && !action) {
+        const input = { ...parseTemplateInput(body), id };
+        this.assertTemplateInputScope(peer, input);
+        return { template: runtime.workflowService.saveTemplate(input, remoteActor) };
+      }
+      if (method === "DELETE" && !action) return runtime.workflowService.deleteTemplate(id, remoteActor);
+      if (method === "POST" && action === "preview") return runtime.workflowService.previewTemplate(id, variableRecord(body.variables));
+      if (method === "POST" && action === "run") {
+        await this.assertCurrentSessionScope(peer, runtime);
+        return { run: await runtime.workflowService.runTemplate(id, variableRecord(body.variables), remoteActor) };
+      }
+    }
+    if (method === "GET" && path === "/api/workflows") {
+      const list = runtime.workflowService.list();
+      return {
+        workflows: list.workflows.filter((workflow) => this.canUseWorkflow(peer, workflow)),
+        runs: list.runs.filter((run) => this.canUseWorkflowRun(peer, runtime, run)),
+      };
+    }
+    if (method === "POST" && path === "/api/workflows") {
+      const input = parseWorkflowInput(body);
+      this.assertWorkflowInputScope(peer, input);
+      return { workflow: runtime.workflowService.saveWorkflow(input, remoteActor) };
+    }
+    const workflowRunMatch = path.match(/^\/api\/workflow-runs\/([^/]+)(?:\/cancel)?$/);
+    if (workflowRunMatch?.[1]) {
+      const id = decodeURIComponent(workflowRunMatch[1]);
+      this.assertWorkflowRunScope(peer, runtime, id);
+      if (method === "GET" && !path.endsWith("/cancel")) return { run: runtime.workflowStore.getRun(id) };
+      if (method === "POST" && path.endsWith("/cancel")) return { run: await runtime.workflowService.cancelRun(id, remoteActor) };
+    }
+    const workflowMatch = path.match(/^\/api\/workflows\/([^/]+)(?:\/(run|preview))?$/);
+    if (workflowMatch?.[1]) {
+      const id = decodeURIComponent(workflowMatch[1]);
+      const action = workflowMatch[2];
+      this.assertWorkflowScope(peer, runtime, id);
+      if (method === "PUT" && !action) {
+        const input = { ...parseWorkflowInput(body), id };
+        this.assertWorkflowInputScope(peer, input);
+        return { workflow: runtime.workflowService.saveWorkflow(input, remoteActor) };
+      }
+      if (method === "DELETE" && !action) return runtime.workflowService.deleteWorkflow(id, remoteActor);
+      if (method === "POST" && action === "preview") return runtime.workflowService.previewWorkflow(id, variableRecord(body.variables));
+      if (method === "POST" && action === "run") {
+        await this.assertCurrentSessionScope(peer, runtime);
+        return { run: runtime.workflowService.runWorkflow(id, variableRecord(body.variables), remoteActor) };
+      }
     }
     if (method === "GET" && path === "/api/locks") return { locks: runtime.locks() };
     if (method === "POST" && path === "/api/locks") {
@@ -507,6 +569,65 @@ export class PeerRuntimeService {
     return this.canUseSession(peer, job);
   }
 
+  private canUseTemplate(peer: PeerRecord, template: PromptTemplate): boolean {
+    return (!template.defaultAgentId || this.canUseAgent(peer, template.defaultAgentId)) &&
+      this.workspaceAllowed(peer, template.defaultWorkspace);
+  }
+
+  private canUseWorkflow(peer: PeerRecord, workflow: Workflow): boolean {
+    return workflow.steps.every((step) => this.canUseWorkflowStep(peer, step));
+  }
+
+  private canUseWorkflowStep(peer: PeerRecord, step: WorkflowStep): boolean {
+    return (!step.agentId || this.canUseAgent(peer, step.agentId)) &&
+      this.workspaceAllowed(peer, step.workspace);
+  }
+
+  private assertTemplateScope(peer: PeerRecord, runtime: RelayRuntime, id: string): void {
+    const template = runtime.workflowStore.getTemplate(id);
+    if (template && !this.canUseTemplate(peer, template)) {
+      throw new Error("Peer is not allowed to use this template.");
+    }
+  }
+
+  private assertWorkflowScope(peer: PeerRecord, runtime: RelayRuntime, id: string): void {
+    const workflow = runtime.workflowStore.getWorkflow(id);
+    if (workflow && !this.canUseWorkflow(peer, workflow)) {
+      throw new Error("Peer is not allowed to use this workflow.");
+    }
+  }
+
+  private assertTemplateInputScope(peer: PeerRecord, input: Partial<PromptTemplate>): void {
+    if (input.defaultAgentId) this.assertAgentScope(peer, input.defaultAgentId);
+    this.assertWorkspaceScope(peer, input.defaultWorkspace);
+  }
+
+  private assertWorkflowInputScope(peer: PeerRecord, input: Partial<Workflow>): void {
+    for (const step of input.steps ?? []) {
+      if (step.agentId) this.assertAgentScope(peer, step.agentId);
+      this.assertWorkspaceScope(peer, step.workspace);
+    }
+  }
+
+  private canUseWorkflowRun(peer: PeerRecord, runtime: RelayRuntime, run: WorkflowRun): boolean {
+    if (run.workflowId) {
+      const workflow = runtime.workflowStore.getWorkflow(run.workflowId);
+      return !workflow || this.canUseWorkflow(peer, workflow);
+    }
+    if (run.templateId) {
+      const template = runtime.workflowStore.getTemplate(run.templateId);
+      return !template || this.canUseTemplate(peer, template);
+    }
+    return true;
+  }
+
+  private assertWorkflowRunScope(peer: PeerRecord, runtime: RelayRuntime, id: string): void {
+    const run = runtime.workflowStore.getRun(id);
+    if (run && !this.canUseWorkflowRun(peer, runtime, run)) {
+      throw new Error("Peer is not allowed to use this workflow run.");
+    }
+  }
+
   private assertAgentUpdateJobScope(peer: PeerRecord, runtime: RelayRuntime, id: string): void {
     const job = runtime.agentUpdateJobs().find((candidate) => candidate.id === id);
     if (job) {
@@ -680,7 +801,79 @@ function permissionForJobAction(id: string, action: "cancel" | "retry"): Permiss
   if (id.startsWith("support-bundle:")) {
     return "diagnostics.read";
   }
+  if (id.startsWith("workflow-run:")) {
+    return "workflows.run";
+  }
   return "updates.run";
+}
+
+function parseTemplateInput(body: Record<string, unknown>): Partial<PromptTemplate> & Pick<PromptTemplate, "name" | "prompt"> {
+  return {
+    id: stringValue(body.id) || undefined,
+    name: requiredString(body.name, "name"),
+    description: stringValue(body.description) || undefined,
+    tags: stringList(body.tags),
+    prompt: requiredString(body.prompt, "prompt"),
+    variables: Array.isArray(body.variables) ? body.variables.map((variable) => {
+      const record = objectRecord(variable);
+      return {
+        name: requiredString(record.name, "variable.name"),
+        label: stringValue(record.label) || undefined,
+        required: record.required !== false,
+        defaultValue: stringValue(record.defaultValue) || undefined,
+      };
+    }) : undefined,
+    defaultAgentId: parseAgentId(body.defaultAgentId),
+    defaultWorkspace: stringValue(body.defaultWorkspace) || undefined,
+    defaultModel: stringValue(body.defaultModel) || undefined,
+    defaultReasoning: stringValue(body.defaultReasoning) || undefined,
+    defaultLaunchProfile: stringValue(body.defaultLaunchProfile) || undefined,
+    scope: body.scope === "shared" ? "shared" : "private",
+  };
+}
+
+function parseWorkflowInput(body: Record<string, unknown>): Partial<Workflow> & Pick<Workflow, "name" | "steps"> {
+  return {
+    id: stringValue(body.id) || undefined,
+    name: requiredString(body.name, "name"),
+    description: stringValue(body.description) || undefined,
+    tags: stringList(body.tags),
+    steps: Array.isArray(body.steps) ? body.steps.map(parseWorkflowStepInput) : [],
+    scope: body.scope === "shared" ? "shared" : "private",
+  };
+}
+
+function parseWorkflowStepInput(value: unknown): WorkflowStep {
+  const record = objectRecord(value);
+  const target = stringValue(record.target);
+  return {
+    id: stringValue(record.id) || "",
+    name: stringValue(record.name) || "Step",
+    type: "prompt",
+    prompt: stringValue(record.prompt) || undefined,
+    templateId: stringValue(record.templateId) || undefined,
+    agentId: parseAgentId(record.agentId),
+    workspace: stringValue(record.workspace) || undefined,
+    model: stringValue(record.model) || undefined,
+    reasoningEffort: stringValue(record.reasoningEffort) || undefined,
+    launchProfileId: stringValue(record.launchProfileId) || undefined,
+    sessionMode: record.sessionMode === "new" || record.sessionMode === "attach" ? record.sessionMode : "current",
+    threadId: stringValue(record.threadId) || undefined,
+    target: target.startsWith("peer:") ? target as WorkflowStep["target"] : "local",
+    requiresApproval: Boolean(record.requiresApproval),
+    continueOnError: Boolean(record.continueOnError),
+  };
+}
+
+function variableRecord(value: unknown): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(objectRecord(value)).map(([key, raw]) => [key, String(raw ?? "")]),
+  );
+}
+
+function stringList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  return String(value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
 }
 
 function uniqueStrings(values: string[]): string[] {

@@ -37,6 +37,8 @@ import { friendlyErrorText } from "../core/error-messages.js";
 import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate, type FormattedLogTail } from "../support/operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "../state/prompt-store.js";
 import { UnifiedJobStore } from "../state/job-store.js";
+import { WorkflowStore } from "../state/workflow-store.js";
+import { RelayWorkflowService } from "./relay-workflow-service.js";
 import { buildRuntimeMetrics, type RuntimeMetricsDto } from "./metrics.js";
 import { RelayArtifactService } from "./relay-artifact-service.js";
 import { RelayAuthService } from "./relay-auth-service.js";
@@ -94,6 +96,8 @@ import type {
   WebAuthDto,
   WebDiagnosticsDto,
   WebPermissionsDto,
+  WorkflowPreviewDto,
+  WorkflowRunResultDto,
   WebTaskDto,
   WebTasksDto,
 } from "./relay-runtime-types.js";
@@ -121,6 +125,8 @@ export type {
   WebAuthDto,
   WebDiagnosticsDto,
   WebPermissionsDto,
+  WorkflowPreviewDto,
+  WorkflowRunResultDto,
   WebTaskDto,
   WebTasksDto,
 } from "./relay-runtime-types.js";
@@ -258,6 +264,8 @@ export class RelayRuntime {
   readonly agentUpdates: AgentUpdateManager;
   readonly queueService: RelayQueueService;
   readonly jobStore: UnifiedJobStore;
+  readonly workflowStore: WorkflowStore;
+  readonly workflowService: RelayWorkflowService;
   readonly artifactService: RelayArtifactService;
   readonly mirrorRegistry: ChannelMirrorRegistry;
   readonly externalActivityMonitor: RelayExternalActivityMonitor;
@@ -291,6 +299,7 @@ export class RelayRuntime {
     this.lockStore = new SessionLockStore(config.workspace, config.stateBackend);
     this.queueService = new RelayQueueService(this.promptStore, this.contextKey);
     this.jobStore = new UnifiedJobStore(config.workspace, config.stateBackend, config.unifiedJobMaxItems);
+    this.workflowStore = new WorkflowStore(config.workspace, config.stateBackend);
     this.artifactService = new RelayArtifactService(config);
     this.authService = new RelayAuthService(config);
     this.mirrorRegistry = new ChannelMirrorRegistry(config, this.promptStore);
@@ -360,6 +369,20 @@ export class RelayRuntime {
       setAccumulatedText: (text) => {
         this.accumulatedText = text;
       },
+    });
+    this.workflowService = new RelayWorkflowService({
+      store: this.workflowStore,
+      getSession: (deferThreadStart) => this.getSession(deferThreadStart),
+      newSession: (input, actor) => this.newSession(input, actor),
+      setAgent: (agentId, actor) => this.setAgent(agentId, actor),
+      attachSession: (threadId, actor) => this.attachSession(threadId, actor),
+      runPrompt: (session, envelope) => this.runPrompt(session, envelope),
+      isSessionBusy: (session) => session.isProcessing() || Boolean(getExternalSnapshotForSession(session, this.config, { maxEvents: 0 })?.activity.active),
+      abort: (actor) => this.abort(actor),
+      appendActivity: (input) => this.appendActivity(input),
+      appendAudit: (input) => this.appendAudit(input),
+      upsertJob: (job) => { this.jobStore.upsert(job); },
+      broadcastStatus: (message, level) => this.broadcastStatus(message, level),
     });
   }
 

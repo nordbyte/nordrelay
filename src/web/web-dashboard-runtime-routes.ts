@@ -199,5 +199,8 @@ function permissionForJobAction(id: string, action: "cancel" | "retry"): Permiss
   if (id.startsWith("support-bundle:")) {
     return "diagnostics.read";
   }
+  if (id.startsWith("workflow-run:")) {
+    return action === "cancel" ? "workflows.run" : "workflows.run";
+  }
   return "updates.run";
 }

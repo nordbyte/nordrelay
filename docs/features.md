@@ -17,6 +17,8 @@
 - Codex session usage is read from local rollout JSONL files, including context-used percent, total input/output tokens, 5h limit remaining, and weekly limit remaining.
 - `/handback` returns a ready-to-run CLI command for continuing in the native agent CLI.
 - `/retry` resends the last prompt for the current chat context.
+- Prompt templates and multi-step workflows can be created in the WebUI, previewed with variables, run locally or through a selected peer target, and started from Telegram, Discord, or Slack with `/template` and `/workflow`.
+- Workflow runs are tracked as unified jobs with step status, trace links, retry/cancel actions, and persisted run history under the active NordRelay state backend.
 - `/queue`, inline run/top/up/down/cancel buttons, `/cancel <queue-id>`, and `/clearqueue` manage queued prompts for a busy chat context.
 - `/queue later <minutes> <prompt>` schedules a prompt for later execution, and `/queue inspect <queue-id>` shows full queue metadata.
 - `/abort`, `/stop`, and the inline Abort button cancel the active agent turn.

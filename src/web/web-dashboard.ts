@@ -35,6 +35,7 @@ import { renderDashboardApp, renderFirstRunSetupPage, renderLoginPage } from "./
 import { handleDashboardRuntimeRoute } from "./web-dashboard-runtime-routes.js";
 import { handleDashboardSessionRoute } from "./web-dashboard-session-routes.js";
 import { handleDashboardPeerRoute } from "./web-dashboard-peer-routes.js";
+import { handleDashboardWorkflowRoute } from "./web-dashboard-workflow-routes.js";
 import { PeerDiscoveryJobManager } from "../peers/peer-discovery-jobs.js";
 import { recordWebApiMetric } from "./web-performance.js";
 import { createCspNonce, isMutatingWebApiRequest, requiresWebCsrf } from "./web-dashboard-security.js";
@@ -317,6 +318,14 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     discoveryJobs: peerDiscoveryJobs,
     activityActor: webActivityActor(authUser),
     auditPeerAction: (action, description) => auditUserAction(authUser, action, description),
+  })) {
+    return;
+  }
+
+  if (await handleDashboardWorkflowRoute(req, res, url, {
+    runtime,
+    authUser,
+    activityActor: webActivityActor(authUser),
   })) {
     return;
   }

@@ -18,6 +18,8 @@ import type { BotPreferencesStore } from "../state/bot-preferences.js";
 import type { UnifiedJobStore } from "../state/job-store.js";
 import type { PromptEnvelope } from "../state/prompt-store.js";
 import type { PromptStore } from "../state/prompt-store.js";
+import type { RelayWorkflowService } from "./relay-workflow-service.js";
+import type { WorkflowStore } from "../state/workflow-store.js";
 import type { ContextMetadata, SessionRegistry } from "../state/session-registry.js";
 import type { FormattedLogTail, SelfUpdateResult } from "../support/operations.js";
 import type { SupportBundleResult } from "../support/support-bundle.js";
@@ -92,6 +94,8 @@ export interface RelayRuntimeDelegate {
   readonly agentUpdates: AgentUpdateManager;
   readonly queueService: RelayQueueService;
   readonly jobStore: UnifiedJobStore;
+  readonly workflowStore: WorkflowStore;
+  readonly workflowService: RelayWorkflowService;
   readonly artifactService: RelayArtifactService;
   readonly mirrorRegistry: ChannelMirrorRegistry;
   readonly externalActivityMonitor: RelayExternalActivityMonitor;

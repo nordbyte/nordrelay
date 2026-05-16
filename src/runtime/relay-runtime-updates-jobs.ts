@@ -378,6 +378,28 @@ export async function relayRuntimeJobLog(runtime: RelayRuntimeDelegate, id: stri
         ].filter(Boolean).join("\n") : "Queued prompt not found.",
       };
     }
+    if (id.startsWith("workflow-run:")) {
+      const runId = id.slice("workflow-run:".length);
+      const run = runtime.workflowStore.getRun(runId);
+      return {
+        job: (await runtime.jobs({ limit: 500 })).jobs.find((job) => job.id === id) ?? null,
+        plain: run ? [
+          `Workflow run: ${run.name}`,
+          `Status: ${run.status}`,
+          `Created: ${run.createdAt}`,
+          run.startedAt ? `Started: ${run.startedAt}` : "",
+          run.finishedAt ? `Finished: ${run.finishedAt}` : "",
+          run.error ? `Error: ${run.error}` : "",
+          "",
+          ...run.steps.map((step, index) => [
+            `${index + 1}. ${step.name}: ${step.status}`,
+            step.correlationId ? `   Correlation: ${step.correlationId}` : "",
+            step.error ? `   Error: ${step.error}` : "",
+            step.prompt ? `   Prompt: ${step.prompt}` : "",
+          ].filter(Boolean).join("\n")),
+        ].filter(Boolean).join("\n") : "Workflow run not found.",
+      };
+    }
     const job = (await runtime.jobs({ limit: 500 })).jobs.find((candidate) => candidate.id === id) ?? null;
     return { job, plain: job?.logTail || job?.logPath || job?.summary || runtime.jobStore.get(id)?.summary || "No log available for this job." };
   }
@@ -422,6 +444,24 @@ export async function relayRuntimeJobAction(runtime: RelayRuntimeDelegate, id: s
         runtime.cancelAgentUpdate(updateId, actor);
       } else {
         runtime.startAgentUpdate(current.agentId, current.operation, actor);
+      }
+      return runtime.jobs();
+    }
+    if (id.startsWith("workflow-run:")) {
+      const runId = id.slice("workflow-run:".length);
+      if (action === "cancel") {
+        await runtime.workflowService.cancelRun(runId, actor);
+      } else {
+        const run = runtime.workflowStore.getRun(runId);
+        if (run?.status === "paused") {
+          runtime.workflowService.resumeRun(runId, actor);
+        } else if (run?.workflowId) {
+          runtime.workflowService.runWorkflow(run.workflowId, run.variables, actor);
+        } else if (run?.templateId) {
+          await runtime.workflowService.runTemplate(run.templateId, run.variables, actor);
+        } else {
+          throw new Error("Workflow run cannot be retried.");
+        }
       }
       return runtime.jobs();
     }

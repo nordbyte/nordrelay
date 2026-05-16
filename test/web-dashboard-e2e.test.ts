@@ -30,6 +30,23 @@ describe("web dashboard browser-flow assets", () => {
     expect(contract).toContain('dynamic("/api/jobs/:id/action"');
   });
 
+  it("includes workflow templates and workflow runs in the WebUI", () => {
+    const js = dashboardJs();
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
+
+    expect(pageSource).toContain('id="page-workflows"');
+    expect(pageSource).toContain('id="createTemplateBtn"');
+    expect(pageSource).toContain('id="createWorkflowBtn"');
+    expect(js).toContain("function loadWorkflows");
+    expect(js).toContain("/api/templates");
+    expect(js).toContain("/api/workflows");
+    expect(js).toContain("/api/workflow-runs/");
+    expect(contract).toContain('exact("/api/templates"');
+    expect(contract).toContain('exact("/api/workflows"');
+    expect(contract).toContain('dynamic("/api/workflow-runs/:id/cancel"');
+  });
+
   it("passes WebUI correlation IDs through prompts and queued feedback", () => {
     const js = dashboardJs();
 

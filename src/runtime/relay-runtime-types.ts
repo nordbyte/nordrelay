@@ -20,6 +20,7 @@ import type {
   WebActivityStatus,
   WebChatMessage,
 } from "../web/web-state.js";
+import type { PromptTemplate, Workflow, WorkflowRun } from "../state/workflow-store.js";
 
 export type RelayEvent =
   | { type: "snapshot"; data: RelaySnapshot }
@@ -214,6 +215,7 @@ export type UnifiedJobKind =
   | "web-turn"
   | "external-turn"
   | "queued-prompt"
+  | "workflow-run"
   | "agent-update"
   | "connector-update"
   | "support-bundle";
@@ -250,6 +252,27 @@ export interface UnifiedJobsDto {
   jobs: UnifiedJobDto[];
   pagination?: CursorPageMeta;
   updatedAt: string;
+}
+
+export interface WorkflowPreviewDto {
+  workflowId?: string;
+  templateId?: string;
+  name: string;
+  prompts: Array<{
+    stepId: string;
+    name: string;
+    prompt: string;
+  }>;
+}
+
+export interface WorkflowRunResultDto {
+  run: WorkflowRun;
+}
+
+export interface WorkflowListDto {
+  templates: PromptTemplate[];
+  workflows: Workflow[];
+  runs: WorkflowRun[];
 }
 
 export interface TraceTimelineItemDto {

@@ -115,6 +115,7 @@ See [Commands](docs/commands.md) for the complete Telegram, Discord, Slack, queu
 - Independent sessions per Telegram chat/topic, Discord DM/channel/thread, Slack DM/channel/thread, WebUI, and peer target.
 - Streaming replies, typing/status indicators, tool activity, queue handling, retry, abort/stop, and CLI handback.
 - File, photo, voice/audio, and generated artifact workflows.
+- Prompt templates and multi-step workflows with variable preview, run history, and unified job tracking.
 - Per-user and per-group access control for WebUI and chat adapters.
 - Optional peer federation for controlling agents on other trusted NordRelay hosts.
 - WebUI dashboard for chat, sessions, settings, logs, diagnostics, updates, artifacts, peers, metrics, and users.

@@ -36,6 +36,7 @@ import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
 import { createChannelExternalMirrorController } from "../shared/channel-external-mirror-controller.js";
 import { monitorChannelExternalContexts } from "../shared/channel-external-monitor.js";
 import { getLastAgentMessageText, parseLastAgentMessageOptions } from "../shared/last-agent-message.js";
+import { channelTemplatePrompt, channelWorkflowPrompts, parseChannelWorkflowArgument, renderChannelTemplateList, renderChannelWorkflowList } from "../shared/channel-workflow-commands.js";
 import type { LoginResult } from "../../agents/codex/codex-auth.js";
 import type { ConnectorConfig } from "../../core/config.js";
 import { isSlackContextKey, parseSlackContextKey, slackContextKey, type ChannelContextKey } from "../shared/context-key.js";
@@ -570,6 +571,10 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
       { names: ["abort", "stop"], handler: (request) => commandAbort(request) },
       { names: ["retry"], handler: (request) => commandRetry(request) },
       { names: ["last"], handler: (request, argument) => commandLast(request, argument) },
+      { names: ["templates"], handler: (request) => reply(request, renderChannelTemplateList(config)) },
+      { names: ["workflows"], handler: (request) => reply(request, renderChannelWorkflowList(config)) },
+      { names: ["template"], handler: (request, argument) => commandTemplate(request, argument) },
+      { names: ["workflow"], handler: (request, argument) => commandWorkflow(request, argument) },
       { names: ["sync"], handler: (request) => commandSync(request) },
       { names: ["tasks", "progress"], handler: (request) => commandProgress(request) },
       { names: ["activity"], handler: (request, argument) => commandActivity(request, argument) },
@@ -913,6 +918,34 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     const session = await getSession(request, { deferThreadStart: true });
     const result = getLastAgentMessageText(session, config, parseLastAgentMessageOptions(argument));
     await reply(request, result.text);
+  };
+
+  const commandTemplate = async (request: SlackRequest, argument: string): Promise<void> => {
+    if (!argument.trim()) {
+      await reply(request, "Usage: `/template <template-id> {\"variable\":\"value\"}`");
+      return;
+    }
+    const { id, variables } = parseChannelWorkflowArgument(argument);
+    await handlePrompt(request, channelTemplatePrompt(config, id, variables).prompt);
+  };
+
+  const commandWorkflow = async (request: SlackRequest, argument: string): Promise<void> => {
+    if (!argument.trim()) {
+      await reply(request, "Usage: `/workflow <workflow-id> {\"variable\":\"value\"}`");
+      return;
+    }
+    const { id, variables } = parseChannelWorkflowArgument(argument);
+    const prompts = channelWorkflowPrompts(config, id, variables);
+    const [first, ...rest] = prompts;
+    if (!first) {
+      await reply(request, "Workflow has no runnable steps.");
+      return;
+    }
+    for (const item of rest) {
+      promptStore.enqueue(request.contextKey, toPromptEnvelope(item.prompt));
+    }
+    await reply(request, `Workflow queued with ${prompts.length} step(s).`);
+    await handlePrompt(request, first.prompt);
   };
 
   const commandSync = async (request: SlackRequest): Promise<void> => {

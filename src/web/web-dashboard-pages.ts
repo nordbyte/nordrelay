@@ -163,6 +163,7 @@ ${faviconLinks}
               <button id="newSessionBtn">New session</button>
               <button id="retryBtn" class="secondary">Retry</button>
               <button id="editLastBtn" class="secondary">Edit last</button>
+              <button id="templatePickerBtn" class="secondary" type="button">Templates</button>
               <button id="syncBtn" class="secondary">Sync</button>
               <button id="notifyBtn" class="secondary">Notify</button>
               <label class="mirror-control" title="Mirror local CLI activity into this WebUI chat">
@@ -196,6 +197,30 @@ ${faviconLinks}
             </form>
           </div>
           <div class="panel side-panel" id="toolPanel" hidden><h2>Tools / Plan</h2><div id="toolStream" class="tool-stream"></div></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-workflows">
+        <div class="panel">
+          <div class="section-header workflow-section-header">
+            <div id="workflowTabs" class="section-tabs workflow-tabs" role="tablist" aria-label="Workflow sections">
+              <button type="button" role="tab" aria-selected="true" tabindex="0" data-workflow-tab="templates" class="active">Templates</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-workflow-tab="workflows">Workflows</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-workflow-tab="runs">Runs</button>
+            </div>
+          </div>
+          <div class="workflow-tab active" data-workflow-tab-panel="templates">
+            <div class="row workflow-heading-actions"><button id="createTemplateBtn">Create template</button><button id="reloadWorkflowsBtn" class="secondary">Reload</button><input id="templateSearch" placeholder="Search templates"></div>
+            <div id="templateList" class="list"></div>
+          </div>
+          <div class="workflow-tab" data-workflow-tab-panel="workflows">
+            <div class="row workflow-heading-actions"><button id="createWorkflowBtn">Create workflow</button><input id="workflowSearch" placeholder="Search workflows"></div>
+            <div id="workflowList" class="list"></div>
+          </div>
+          <div class="workflow-tab" data-workflow-tab-panel="runs">
+            <div class="row workflow-heading-actions"><button id="reloadWorkflowRunsBtn" class="secondary">Reload runs</button></div>
+            <div id="workflowRunList" class="list"></div>
+          </div>
         </div>
       </section>
 

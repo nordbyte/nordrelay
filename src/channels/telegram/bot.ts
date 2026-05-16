@@ -130,6 +130,7 @@ import {
 } from "./telegram-queue-commands.js";
 import { registerTelegramSupportCommands } from "./telegram-support-command.js";
 import { registerTelegramUpdateCommands } from "./telegram-update-commands.js";
+import { registerTelegramWorkflowCommands } from "./telegram-workflow-commands.js";
 import {
   appendWithCap,
   authHelpText,
@@ -2439,6 +2440,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   });
 
   registerTelegramLastCommand({ bot, config, getContextSession });
+  registerTelegramWorkflowCommands({ bot, config, promptStore, getContextSession, handleUserPrompt: startUserPrompt });
 
   registerTelegramQueueCommands({
     bot,

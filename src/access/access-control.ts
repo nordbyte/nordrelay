@@ -16,6 +16,9 @@ export type Permission =
   | "logs.clear"
   | "queue.read"
   | "queue.write"
+  | "workflows.read"
+  | "workflows.write"
+  | "workflows.run"
   | "updates.run"
   | "system.restart"
   | "users.read"
@@ -41,6 +44,9 @@ export const ALL_PERMISSIONS: Permission[] = [
   "logs.clear",
   "queue.read",
   "queue.write",
+  "workflows.read",
+  "workflows.write",
+  "workflows.run",
   "updates.run",
   "system.restart",
   "users.read",
@@ -87,6 +93,8 @@ export const BUILTIN_GROUPS: GroupDefinition[] = [
       "auth.manage",
       "queue.read",
       "queue.write",
+      "workflows.read",
+      "workflows.run",
     ],
     system: true,
   },
@@ -99,6 +107,7 @@ export const BUILTIN_GROUPS: GroupDefinition[] = [
       "sessions.read",
       "files.read",
       "settings.read",
+      "workflows.read",
     ],
     system: true,
   },
@@ -133,6 +142,10 @@ const COMMAND_PERMISSIONS = new Map<string, Permission>([
   ["pinned", "sessions.read"],
   ["locks", "sessions.read"],
   ["queue", "queue.read"],
+  ["templates", "workflows.read"],
+  ["template", "workflows.run"],
+  ["workflows", "workflows.read"],
+  ["workflow", "workflows.run"],
   ["artifacts", "files.read"],
   ["agent", "settings.write"],
   ["mirror", "settings.write"],

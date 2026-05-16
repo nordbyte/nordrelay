@@ -1,5 +1,5 @@
-.access-tab,.adapter-tab,.peer-tab{display:none}
-.access-tab.active,.adapter-tab.active,.peer-tab.active{display:block}
+.access-tab,.adapter-tab,.peer-tab,.workflow-tab{display:none}
+.access-tab.active,.adapter-tab.active,.peer-tab.active,.workflow-tab.active{display:block}
 .section-header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:-12px -16px 0;padding:0 16px}
 .access-section-header,.settings-section-header,.adapter-section-header,.peer-section-header{margin-bottom:12px}
 .section-tabs{display:flex;align-items:flex-end;gap:2px;width:100%;min-width:0;min-height:43px;overflow-x:auto;overflow-y:hidden;border-bottom:1px solid var(--border)}
@@ -8,6 +8,7 @@
 .section-tabs button.active,.section-tabs button[aria-selected="true"]{box-shadow:inset 0 -2px 0 var(--accent);background:transparent;color:var(--text)}
 .section-tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
 .access-tab-heading,.peer-tab-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px}
+.workflow-heading-actions{margin:0 0 12px}
 .adapter-heading-actions,.peer-heading-actions{display:flex;align-items:center;gap:8px;justify-content:flex-start;margin:0 0 10px}
 .access-tab-heading input{max-width:320px}
 .peer-heading-actions input{max-width:360px}

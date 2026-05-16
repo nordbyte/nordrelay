@@ -55,7 +55,7 @@ User management:
 - Users, groups, Telegram identities, Telegram group-chat access, Discord identities, Discord channel access, Slack identities, Slack channel access, and web sessions are stored in `~/.nordrelay/users.json`.
 - Manage users in the WebUI Users page or with `nordrelay user list`, `create-admin`, `create`, `reset-password`, `link-telegram`, `link-discord`, `link-slack`, `link-code`, `discord-link-code`, and `slack-link-code`.
 - Built-in groups are `admin`, `user`, and `readonly`.
-- Group permissions include `inspect`, `sessions.read`, `sessions.write`, `prompt.send`, `prompt.abort`, `files.read`, `files.write`, `settings.read`, `settings.write`, `auth.manage`, `diagnostics.read`, `logs.read`, `logs.clear`, `queue.read`, `queue.write`, `updates.run`, `system.restart`, `users.read`, `users.write`, `audit.read`, `peers.read`, `peers.write`, and `peers.connect`.
+- Group permissions include `inspect`, `sessions.read`, `sessions.write`, `prompt.send`, `prompt.abort`, `files.read`, `files.write`, `settings.read`, `settings.write`, `auth.manage`, `diagnostics.read`, `logs.read`, `logs.clear`, `queue.read`, `queue.write`, `workflows.read`, `workflows.write`, `workflows.run`, `updates.run`, `system.restart`, `users.read`, `users.write`, `audit.read`, `peers.read`, `peers.write`, and `peers.connect`.
 - Custom groups can also restrict access to specific agent ids, workspace roots, Telegram chat ids, Discord channel ids, and Slack channel ids.
 
 Peers:

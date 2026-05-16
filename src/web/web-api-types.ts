@@ -23,8 +23,11 @@ import type {
   WebAdapterHealthDto,
   WebAuthDto,
   WebDiagnosticsDto,
+  WorkflowPreviewDto,
+  WorkflowRunResultDto,
   WebTasksDto,
 } from "../runtime/relay-runtime.js";
+import type { PromptTemplate, Workflow, WorkflowRun, WorkflowStep } from "../state/workflow-store.js";
 import type { SessionLock } from "../access/session-locks.js";
 import type { SettingsSnapshot, SettingsUpdateResult } from "../core/settings-service.js";
 import type {
@@ -143,6 +146,12 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends `/api/peers/${string}/rotate` ? { expiresMinutes?: number } :
   P extends "/api/logs/clear" ? { target?: "connector" | "update" | "agent-updates" } :
   P extends "/api/settings" ? { settings: Record<string, string | null | undefined> } :
+  P extends "/api/templates" ? { name: string; prompt: string; description?: string; tags?: string[]; variables?: PromptTemplate["variables"]; scope?: "private" | "shared"; defaultAgentId?: AgentId; defaultWorkspace?: string; defaultModel?: string; defaultReasoning?: string; defaultLaunchProfile?: string } :
+  P extends `/api/templates/${string}` ? { name: string; prompt: string; description?: string; tags?: string[]; variables?: PromptTemplate["variables"]; scope?: "private" | "shared"; defaultAgentId?: AgentId; defaultWorkspace?: string; defaultModel?: string; defaultReasoning?: string; defaultLaunchProfile?: string } :
+  P extends `/api/templates/${string}/run` | `/api/templates/${string}/preview` ? { variables?: Record<string, string> } :
+  P extends "/api/workflows" ? { name: string; description?: string; tags?: string[]; steps: WorkflowStep[]; scope?: "private" | "shared" } :
+  P extends `/api/workflows/${string}` ? { name: string; description?: string; tags?: string[]; steps: WorkflowStep[]; scope?: "private" | "shared" } :
+  P extends `/api/workflows/${string}/run` | `/api/workflows/${string}/preview` ? { variables?: Record<string, string> } :
   P extends "/api/users" ? { email: string; displayName?: string; password: string; groupIds?: string[]; active?: boolean; telegramUserId?: number; discordUserId?: string } :
   P extends `/api/users/${string}/password` ? { password: string } :
   P extends `/api/users/${string}/telegram` ? { createCode?: boolean; telegramUserId?: number; username?: string } :
@@ -200,6 +209,15 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/locks" ? { locks: SessionLock[]; lock?: SessionLock } :
   P extends "/api/auth/status" | "/api/auth/login" | "/api/auth/logout" ? WebAuthDto :
   P extends "/api/settings" ? SettingsSnapshot | SettingsUpdateResult :
+  P extends "/api/templates" ? { templates: PromptTemplate[] } | { template: PromptTemplate } :
+  P extends `/api/templates/${string}/run` ? WorkflowRunResultDto :
+  P extends `/api/templates/${string}/preview` ? WorkflowPreviewDto :
+  P extends `/api/templates/${string}` ? { template?: PromptTemplate; removed?: boolean } :
+  P extends "/api/workflows" ? { workflows: Workflow[]; runs?: WorkflowRun[] } | { workflow: Workflow } :
+  P extends `/api/workflows/${string}/run` ? WorkflowRunResultDto :
+  P extends `/api/workflows/${string}/preview` ? WorkflowPreviewDto :
+  P extends `/api/workflows/${string}` ? { workflow?: Workflow; removed?: boolean } :
+  P extends `/api/workflow-runs/${string}/cancel` | `/api/workflow-runs/${string}` ? { run: WorkflowRun | null } :
   P extends "/api/control-options" ? DashboardControlOptions :
   P extends "/api/sessions" ? SessionPageDto :
   P extends "/api/sessions/new" | "/api/sessions/switch" | "/api/sessions/attach" | "/api/agent" | "/api/session/model" | "/api/session/reasoning" | "/api/session/fast" | "/api/session/launch" ? { session: AgentSessionInfo } :
