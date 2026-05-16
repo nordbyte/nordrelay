@@ -282,10 +282,9 @@ ${faviconLinks}
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-access-tab="audit">Audit</button>
             </div>
           </div>
-          <div class="row access-toolbar" hidden><button id="createGroupBtn" data-access-action-tabs="groups" class="secondary" style="display:none">Create group</button><button id="createChatBtn" data-access-action-tabs="telegram" class="secondary" style="display:none">Add Telegram chat</button><button id="createDiscordChannelBtn" data-access-action-tabs="discord" class="secondary" style="display:none">Add Discord channel</button><button id="createSlackChannelBtn" data-access-action-tabs="slack" class="secondary" style="display:none">Add Slack channel</button><button id="lockSessionBtn" data-access-action-tabs="locks" class="secondary" style="display:none">Lock web session</button><button id="unlockSessionBtn" data-access-action-tabs="locks" class="secondary" style="display:none">Unlock web session</button></div>
           <div class="access-tab active" data-access-tab-panel="users">
             <div class="access-tab-heading">
-              <div class="row access-heading-actions"><button id="loadAccessBtn" class="secondary">Reload</button><button id="createUserBtn" data-access-action-tabs="users">Create user</button></div>
+              <div class="row access-heading-actions"><button id="loadAccessBtn" class="secondary">Reload</button><button id="createUserBtn">Create user</button></div>
               <div class="access-filter-row">
                 <input id="userSearch" placeholder="Search users">
                 <select id="userStatusFilter"><option value="all">All statuses</option><option value="active">Active</option><option value="disabled">Disabled</option></select>
@@ -297,38 +296,44 @@ ${faviconLinks}
             <div id="usersPager" class="pager"></div>
           </div>
           <div class="access-tab" data-access-tab-panel="groups">
-            <h2>Groups</h2>
-            <div class="access-filter-row"><input id="groupSearch" placeholder="Search groups"></div>
+            <div class="access-tab-heading">
+              <div class="row access-heading-actions"><button id="createGroupBtn" class="secondary">Create group</button></div>
+              <div class="access-filter-row"><input id="groupSearch" placeholder="Search groups"></div>
+            </div>
             <div id="groupsList" class="list"></div>
           </div>
           <div class="access-tab" data-access-tab-panel="telegram">
             <div class="access-tab-heading">
-              <h2>Telegram chats</h2>
+              <div class="row access-heading-actions"><button id="createChatBtn" class="secondary">Add Telegram chat</button></div>
               <input id="telegramChatSearch" placeholder="Search Telegram chats">
             </div>
             <div id="telegramChatsList" class="list"></div>
           </div>
           <div class="access-tab" data-access-tab-panel="discord">
             <div class="access-tab-heading">
-              <h2>Discord channels</h2>
+              <div class="row access-heading-actions"><button id="createDiscordChannelBtn" class="secondary">Add Discord channel</button></div>
               <input id="discordChannelSearch" placeholder="Search Discord channels">
             </div>
             <div id="discordChannelsList" class="list"></div>
           </div>
           <div class="access-tab" data-access-tab-panel="slack">
             <div class="access-tab-heading">
-              <h2>Slack channels</h2>
+              <div class="row access-heading-actions"><button id="createSlackChannelBtn" class="secondary">Add Slack channel</button></div>
               <input id="slackChannelSearch" placeholder="Search Slack channels">
             </div>
             <div id="slackChannelsList" class="list"></div>
           </div>
           <div class="access-tab" data-access-tab-panel="locks">
-            <h2>Locks</h2>
+            <div class="access-tab-heading">
+              <div class="row access-heading-actions"><button id="lockSessionBtn" class="secondary">Lock web session</button><button id="unlockSessionBtn" class="secondary">Unlock web session</button></div>
+            </div>
             <div id="locksList" class="list"></div>
           </div>
           <div class="access-tab" data-access-tab-panel="audit">
-            <h2>Audit</h2>
-            <div class="row"><select id="auditChannel"><option value="all">All channels</option><option value="web">Web</option><option value="telegram">Telegram</option><option value="discord">Discord</option><option value="slack">Slack</option></select><select id="auditCategory"><option value="all">All categories</option><option value="prompt">Prompt</option><option value="session">Session</option><option value="queue">Queue</option><option value="agent-update">Agent update</option><option value="artifact">Artifact</option><option value="system">System</option><option value="auth">Auth</option><option value="security">Security</option><option value="tool">Tool</option></select><select id="auditStatus"><option value="all">All statuses</option><option value="ok">OK</option><option value="failed">Failed</option><option value="denied">Denied</option></select><input id="auditActor" placeholder="Actor"><input id="auditAgent" placeholder="Agent"><input id="auditThread" placeholder="Thread ID"><input id="auditWorkspace" placeholder="Workspace"><input id="auditSince" type="datetime-local"><input id="auditLimit" type="number" value="50" min="1" max="500"><button id="loadAuditBtn">Load audit</button><button id="exportAuditBtn" class="secondary">Export</button></div>
+            <div class="access-tab-heading">
+              <div class="row access-heading-actions"><button id="loadAuditBtn">Load audit</button><button id="exportAuditBtn" class="secondary">Export</button></div>
+            </div>
+            <div class="row audit-filter-row"><select id="auditChannel"><option value="all">All channels</option><option value="web">Web</option><option value="telegram">Telegram</option><option value="discord">Discord</option><option value="slack">Slack</option></select><select id="auditCategory"><option value="all">All categories</option><option value="prompt">Prompt</option><option value="session">Session</option><option value="queue">Queue</option><option value="agent-update">Agent update</option><option value="artifact">Artifact</option><option value="system">System</option><option value="auth">Auth</option><option value="security">Security</option><option value="tool">Tool</option></select><select id="auditStatus"><option value="all">All statuses</option><option value="ok">OK</option><option value="failed">Failed</option><option value="denied">Denied</option></select><input id="auditActor" placeholder="Actor"><input id="auditAgent" placeholder="Agent"><input id="auditThread" placeholder="Thread ID"><input id="auditWorkspace" placeholder="Workspace"><input id="auditSince" type="datetime-local"><input id="auditLimit" type="number" value="50" min="1" max="500"></div>
             <div id="auditList" class="list"></div>
           </div>
         </div>
@@ -345,8 +350,10 @@ ${faviconLinks}
 
       <section class="page" id="page-settings">
         <div class="panel">
-          <div class="row"><button id="saveSettingsBtn">Save settings</button><button id="settingsWizardBtn" class="secondary">Setup wizard</button><button id="restartBtn" class="secondary">Restart NordRelay</button><span id="settingsStatus"></span></div>
-          <div id="settingsTabs" class="tabs"></div>
+          <div id="settingsTabHeader" class="section-header settings-section-header">
+            <div id="settingsTabs" class="section-tabs settings-tabs" role="tablist" aria-label="Settings sections"></div>
+          </div>
+          <div id="settingsActions" class="row settings-actions"><button id="saveSettingsBtn">Save settings</button><button id="settingsWizardBtn" class="secondary">Setup wizard</button><button id="restartBtn" class="secondary">Restart NordRelay</button><span id="settingsStatus"></span></div>
           <div id="settingsForm" class="settings-grid"></div>
         </div>
       </section>

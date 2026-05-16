@@ -91,8 +91,20 @@ test.describe("NordRelay WebUI", () => {
 
     await navigateDashboard(page, "Settings");
     await expect(page.locator("#settingsTabs")).toContainText("Agents");
+    await expect(page.locator(".settings-section-header #settingsTabs")).toBeVisible();
+    await expect(page.locator("#settingsTabs")).toHaveAttribute("role", "tablist");
+    await expect(page.getByRole("tab", { name: /Agents/ })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#settingsTabs")).toHaveCSS("border-radius", "0px");
+    await expect
+      .poll(async () => {
+        const tabs = await page.locator("#settingsTabs").boundingBox();
+        const actions = await page.locator("#settingsActions").boundingBox();
+        return Boolean(tabs && actions && tabs.y < actions.y);
+      })
+      .toBe(true);
     await expect(page.locator("#settingsForm")).toContainText("Enable Codex");
     await page.locator('[data-setting-tab="Discord"]').click();
+    await expect(page.getByRole("tab", { name: /Discord/ })).toHaveAttribute("aria-selected", "true");
     await expect(page.locator('[data-setting-box="DISCORD_BOT_TOKEN"] .setting-info')).toHaveAttribute("title", /Discord Developer Portal/);
     await page.locator('[data-setting-tab="Slack"]').click();
     await expect(page.locator('[data-setting-box="SLACK_BOT_TOKEN"] .setting-info')).toHaveAttribute("title", /Slack API Apps/);
@@ -274,7 +286,7 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator('[data-access-tab-panel="users"] h2')).toHaveCount(0);
     await expect(page.locator('[data-access-tab-panel="users"] .access-heading-actions')).toContainText("Reload");
     await expect(page.locator('[data-access-tab-panel="users"] .access-heading-actions')).toContainText("Create user");
-    await expect(page.locator(".access-toolbar")).toBeHidden();
+    await expect(page.locator(".access-toolbar")).toHaveCount(0);
     await expect(page.locator("#createUserBtn")).toBeVisible();
     await expect(page.locator("#createGroupBtn")).toBeHidden();
     await expect(page.locator("#accessPanel")).toContainText("Admin");
@@ -292,19 +304,19 @@ test.describe("NordRelay WebUI", () => {
 
     await page.locator('[data-access-tab="groups"]').click();
     await expect(page.getByRole("tab", { name: "Groups" })).toHaveAttribute("aria-selected", "true");
-    await expect(page.locator(".access-toolbar")).toBeVisible();
-    await expect
-      .poll(async () => {
-        const tabs = await page.locator("#accessTabs").boundingBox();
-        const toolbar = await page.locator(".access-toolbar").boundingBox();
-        return Boolean(tabs && toolbar && tabs.y < toolbar.y);
-      })
-      .toBe(true);
+    await expect(page.locator('[data-access-tab-panel="groups"] h2')).toHaveCount(0);
+    await expect(page.locator('[data-access-tab-panel="groups"] .access-heading-actions')).toContainText("Create group");
     await expect(page.locator("#createGroupBtn")).toBeVisible();
     await expect(page.locator("#createUserBtn")).toBeHidden();
 
+    await page.locator('[data-access-tab="telegram"]').click();
+    await expect(page.locator('[data-access-tab-panel="telegram"] h2')).toHaveCount(0);
+    await expect(page.locator('[data-access-tab-panel="telegram"] .access-heading-actions')).toContainText("Add Telegram chat");
+    await expect(page.locator("#createChatBtn")).toBeVisible();
+
     await expect(page.locator("#accessTabs")).toContainText("Discord");
     await page.locator('[data-access-tab="discord"]').click();
+    await expect(page.locator('[data-access-tab-panel="discord"] h2')).toHaveCount(0);
     await expect(page.locator("#discordChannelsList")).toContainText("Engineering Ops");
     await expect(page.locator("#createDiscordChannelBtn")).toBeVisible();
     await expect(page.locator("#createGroupBtn")).toBeHidden();
@@ -316,6 +328,7 @@ test.describe("NordRelay WebUI", () => {
 
     await expect(page.locator("#accessTabs")).toContainText("Slack");
     await page.locator('[data-access-tab="slack"]').click();
+    await expect(page.locator('[data-access-tab-panel="slack"] h2')).toHaveCount(0);
     await expect(page.locator("#slackChannelsList")).toContainText("Slack Engineering");
     await expect(page.locator("#createSlackChannelBtn")).toBeVisible();
 
@@ -323,6 +336,16 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#slackChannelsList")).toContainText("Slack Engineering");
     await page.locator("#slackChannelSearch").fill("missing");
     await expect(page.locator("#slackChannelsList")).toContainText("No Slack channels registered.");
+
+    await page.locator('[data-access-tab="locks"]').click();
+    await expect(page.locator('[data-access-tab-panel="locks"] h2')).toHaveCount(0);
+    await expect(page.locator('[data-access-tab-panel="locks"] .access-heading-actions')).toContainText("Lock web session");
+    await expect(page.locator("#lockSessionBtn")).toBeVisible();
+
+    await page.locator('[data-access-tab="audit"]').click();
+    await expect(page.locator('[data-access-tab-panel="audit"] h2')).toHaveCount(0);
+    await expect(page.locator('[data-access-tab-panel="audit"] .access-heading-actions')).toContainText("Load audit");
+    await expect(page.locator("#loadAuditBtn")).toBeVisible();
   });
 
   test("renders adapter conformance, artifact previews, and peer global sessions", async ({ page }) => {
@@ -542,6 +565,7 @@ test.describe("NordRelay WebUI", () => {
     await page.getByRole("button", { name: "Menu" }).click();
     await navigateDashboard(page, "Settings");
     await expect(page.locator("#settingsTabs")).toContainText("Agents");
+    await expect(page.locator("#settingsTabs")).toHaveAttribute("role", "tablist");
     await page.locator('[data-setting-tab="Discord"]').click();
     await expect(page.locator('[data-setting-box="DISCORD_CLIENT_ID"]')).toBeVisible();
 
