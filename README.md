@@ -22,7 +22,15 @@ nordrelay doctor
 nordrelay start
 ```
 
-If `nordrelay` is not found after a global npm install, the npm global bin directory is not in your shell `PATH`. New installs run a postinstall check and print the exact command to add the bin directory to your shell profile.
+NordRelay is published to the npm registry, so pnpm and Yarn can install the same package:
+
+```bash
+pnpm dlx @nordbyte/nordrelay init
+pnpm add -g @nordbyte/nordrelay
+yarn dlx @nordbyte/nordrelay init
+```
+
+If `nordrelay` is not found after a global npm or pnpm install, the package-manager global bin directory is not in your shell `PATH`. New installs run a postinstall check and print the exact command to add the bin directory to your shell profile.
 
 Open the dashboard:
 

@@ -126,8 +126,8 @@ export interface WebApiClientOptions<P extends WebApiPath = WebApiPath> {
 }
 
 export type WebApiRequestBody<P extends WebApiPath> =
-  P extends "/api/prompt" ? { text: string } :
-  P extends "/api/prompt/upload" ? { text?: string; files: Array<{ name: string; mimeType?: string; dataBase64: string }> } :
+  P extends "/api/prompt" ? { text: string; correlationId?: string } :
+  P extends "/api/prompt/upload" ? { text?: string; correlationId?: string; files: Array<{ name: string; mimeType?: string; dataBase64: string }> } :
   P extends "/api/agent" ? { agentId: AgentId } :
   P extends "/api/agent-update" ? { agentId: AgentId; operation?: "update" | "install" } :
   P extends "/api/sessions/new" ? { agentId?: AgentId; workspace?: string; model?: string; reasoningEffort?: string; launchProfileId?: string; fastMode?: boolean } :

@@ -257,12 +257,12 @@ export class PeerRuntimeService {
     }
     if (method === "POST" && path === "/api/prompt") {
       await this.assertCurrentSessionScope(peer, runtime);
-      return runtime.sendPrompt(requiredString(body.text, "text"), remoteActor);
+      return runtime.sendPrompt(requiredString(body.text, "text"), remoteActor, stringValue(body.correlationId) || undefined);
     }
     if (method === "POST" && path === "/api/prompt/upload") {
       await this.assertCurrentSessionScope(peer, runtime);
       const files = Array.isArray(body.files) ? body.files.map((file, index) => parseUploadFile(file, index)) : [];
-      return runtime.sendUploadPrompt({ text: stringValue(body.text), files }, remoteActor);
+      return runtime.sendUploadPrompt({ text: stringValue(body.text), correlationId: stringValue(body.correlationId) || undefined, files }, remoteActor);
     }
     if (method === "POST" && (path === "/api/abort" || path === "/api/stop")) {
       await this.assertCurrentSessionScope(peer, runtime);

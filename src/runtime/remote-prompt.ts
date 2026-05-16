@@ -15,7 +15,7 @@ export async function peerPromptProxyPayload(prompt: PromptEnvelope): Promise<Pe
     return {
       method: "POST",
       path: "/api/prompt",
-      body: { text: prompt.input },
+      body: promptBody(prompt, { text: prompt.input }),
     };
   }
 
@@ -24,18 +24,22 @@ export async function peerPromptProxyPayload(prompt: PromptEnvelope): Promise<Pe
     return {
       method: "POST",
       path: "/api/prompt/upload",
-      body: {
+      body: promptBody(prompt, {
         text: prompt.input.text ?? "",
         files,
-      },
+      }),
     };
   }
 
   return {
     method: "POST",
     path: "/api/prompt",
-    body: { text: prompt.input.text || prompt.description },
+    body: promptBody(prompt, { text: prompt.input.text || prompt.description }),
   };
+}
+
+function promptBody(prompt: PromptEnvelope, body: Record<string, unknown>): Record<string, unknown> {
+  return prompt.correlationId ? { ...body, correlationId: prompt.correlationId } : body;
 }
 
 async function remoteUploadFiles(prompt: PromptEnvelope): Promise<RemoteUploadFile[]> {

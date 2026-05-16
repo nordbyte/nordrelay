@@ -227,6 +227,7 @@
 - Telegram sends/edits/documents are routed through a rate-limit queue that honors Telegram retry-after responses.
 - Mirror, notification, quiet-hour, and automatic artifact-delivery defaults are configured through channel-neutral `NORDRELAY_*` settings, with WebUI, Telegram, Discord, and Slack override keys when a channel should differ.
 - The WebUI Tasks page includes a unified Jobs view for active WebUI turns, external CLI turns, queued prompts, agent update/install jobs, self-updates, and diagnostics bundle exports, with log, cancel, and retry actions where supported.
+- WebUI prompts, queued jobs, peer-proxied prompts, chat history, activity, audit events, and the Trace page share correlation IDs so a turn can be followed across transport, queue, agent execution, and diagnostics.
 - Unified Jobs are persisted across restarts and retain recent prompt, queue, update, connector-update, and support-bundle history for WebUI inspection.
 - The WebUI Metrics page reports queue state, active/completed/failed turns, job counts, average prompt duration, and Telegram/Discord/Slack rate-limit counters.
 - Expensive dashboard views such as version checks, adapter health, and diagnostics use a short stale-while-refresh server cache so the UI can render recent data while fresh checks run in the background.

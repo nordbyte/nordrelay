@@ -18,10 +18,12 @@ afterEach(() => {
 
 describe("peerPromptProxyPayload", () => {
   it("sends plain text prompts through the prompt endpoint", async () => {
-    await expect(peerPromptProxyPayload(toPromptEnvelope("hello"))).resolves.toEqual({
+    const envelope = { ...toPromptEnvelope("hello"), correlationId: "cid-peer-1" };
+
+    await expect(peerPromptProxyPayload(envelope)).resolves.toEqual({
       method: "POST",
       path: "/api/prompt",
-      body: { text: "hello" },
+      body: { text: "hello", correlationId: "cid-peer-1" },
     });
   });
 
@@ -38,14 +40,18 @@ describe("peerPromptProxyPayload", () => {
       sizeBytes: 10,
     };
 
-    const payload = await peerPromptProxyPayload(toPromptEnvelope({
+    const payload = await peerPromptProxyPayload({
+      ...toPromptEnvelope({
       text: "Summarize this file",
       stagedFileInstructions: buildFileInstructions([staged], path.join(dir, "out")),
-    }));
+      }),
+      correlationId: "cid-upload-1",
+    });
 
     expect(payload.path).toBe("/api/prompt/upload");
     expect(payload.body).toMatchObject({
       text: "Summarize this file",
+      correlationId: "cid-upload-1",
       files: [{ name: "notes.txt", mimeType: "text/plain", dataBase64: Buffer.from("hello file").toString("base64") }],
     });
   });

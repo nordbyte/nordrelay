@@ -134,6 +134,8 @@ test.describe("NordRelay WebUI", () => {
     await navigateDashboard(page, "Tasks");
     await expect(page.locator("#tasksList")).toContainText("Unified jobs");
     await expect(page.locator("#tasksList")).toContainText("Queued prompt queue-web-1");
+    await expect(page.locator("#tasksList")).toContainText("CID:");
+    await expect(page.locator('#tasksList [data-trace-id="cid-job-1"]')).toBeVisible();
 
     await navigateDashboard(page, "Metrics");
     await expect(page.locator("#metricsPanel")).toContainText("Runtime");
@@ -151,7 +153,10 @@ test.describe("NordRelay WebUI", () => {
 
     await expect(page.locator("#messages")).toContainText("Queued prompt queue-web-1");
     const promptRequest = mock.requests.find((request) => request.path === "/api/prompt");
-    expect(promptRequest?.body).toMatchObject({ text: "Run a browser smoke test" });
+    const promptBody = promptRequest?.body as { text?: string; correlationId?: string } | undefined;
+    expect(promptBody).toMatchObject({ text: "Run a browser smoke test", correlationId: expect.stringMatching(/^[a-f0-9]{12}$/) });
+    await expect(page.locator("#messages")).toContainText("CID:");
+    await expect(page.locator(`#messages [data-trace-id="${promptBody?.correlationId}"]`)).toBeVisible();
   });
 
   test("controls WebUI CLI mirroring from the chat toolbar and slash command", async ({ page }) => {
@@ -681,7 +686,7 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   if (url.pathname === "/api/chat/history") return method === "DELETE" ? { messages: [], removed: 1 } : { messages: chatMessages() };
   if (url.pathname === "/api/chat/mirror") return mirrorPreference(body);
   if (url.pathname === "/api/queue") return { queue: [], paused: false };
-  if (url.pathname === "/api/prompt") return { queued: true, queueId: "queue-web-1", files: [] };
+  if (url.pathname === "/api/prompt") return { queued: true, queueId: "queue-web-1", correlationId: (body as { correlationId?: string } | null)?.correlationId, files: [] };
   if (url.pathname === "/api/settings") return method === "PATCH" ? settingsPatchResponse(body) : settings();
   if (url.pathname === "/api/settings/wizard/test") return wizardTestResponse(body);
   if (url.pathname === "/api/active-sessions") return activeSessions();
@@ -914,6 +919,7 @@ function jobsList() {
         updatedAt: now(),
         summary: "Run a browser smoke test",
         queueId: "queue-web-1",
+        correlationId: "cid-job-1",
         canCancel: true,
         canRetry: true,
         canReadLog: true,

@@ -199,7 +199,7 @@ export async function handleDashboardSessionRoute(
   if (req.method === "POST" && url.pathname === "/api/prompt") {
     const body = await readJsonBody(req);
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 202, await runtime.sendPrompt(stringField(body, "text"), options.activityActor));
+    sendJson(res, 202, await runtime.sendPrompt(stringField(body, "text"), options.activityActor, optionalStringField(body, "correlationId")));
     return true;
   }
 
@@ -208,6 +208,7 @@ export async function handleDashboardSessionRoute(
     await options.assertCurrentSessionScope(authUser);
     sendJson(res, 202, await runtime.sendUploadPrompt({
       text: optionalStringField(body, "text"),
+      correlationId: optionalStringField(body, "correlationId"),
       files: parseUploadFiles(body.files),
     }, options.activityActor));
     return true;

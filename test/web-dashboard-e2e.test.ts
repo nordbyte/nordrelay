@@ -21,10 +21,23 @@ describe("web dashboard browser-flow assets", () => {
     const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
 
     expect(js).toContain("function renderUnifiedJobs");
+    expect(js).toContain("function uiTraceControls");
+    expect(js).toContain("bindUiCopyButtons(target)");
+    expect(js).toContain("bindUiTraceButtons(target)");
     expect(js).toContain("/api/jobs");
     expect(js).toContain("data-job-action");
     expect(contract).toContain('exact("/api/jobs"');
     expect(contract).toContain('dynamic("/api/jobs/:id/action"');
+  });
+
+  it("passes WebUI correlation IDs through prompts and queued feedback", () => {
+    const js = dashboardJs();
+
+    expect(js).toContain("function createWebCorrelationId");
+    expect(js).toContain("body:JSON.stringify({text,correlationId})");
+    expect(js).toContain("body:JSON.stringify({text,correlationId,files:payloadFiles})");
+    expect(js).toContain("appendQueuedMessage(r.queueId,r.correlationId||correlationId)");
+    expect(js).toContain("function appendQueuedMessage(id,correlationId)");
   });
 
   it("renders Discord setting help icons from setting metadata", () => {
@@ -65,7 +78,7 @@ describe("web dashboard browser-flow assets", () => {
     const js = dashboardJs();
 
     expect(js).toContain("data-update-agent");
-    expect(js).toContain("data-update-operation");
+    expect(js).toContain("updateOperation");
     expect(js).toContain("Install");
     expect(js).toContain("data-update-delete-log");
     expect(js).toContain("Delete Log");

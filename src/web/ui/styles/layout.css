@@ -27,7 +27,7 @@ h1{font-size:24px;margin:0}
 h2{font-size:16px;margin:0 0 12px}
 p{margin:4px 0 0;color:var(--muted)}
 a{color:var(--link)}
-.header-actions,.row,.chat-toolbar,.attachment-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.header-actions,.row,.toolbar,.ui-actions,.chat-toolbar,.attachment-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .mirror-control{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;line-height:1}
 .mirror-control select{min-width:86px}
 .menu{display:none;background:var(--surface-soft);color:var(--text)}

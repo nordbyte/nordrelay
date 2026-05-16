@@ -35,7 +35,7 @@ import type { ConnectorConfig } from "../core/config.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import { friendlyErrorText } from "../core/error-messages.js";
 import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "../support/operations.js";
-import { ensurePromptCorrelationId, PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "../state/prompt-store.js";
+import { createCorrelationId, ensurePromptCorrelationId, PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "../state/prompt-store.js";
 import { UnifiedJobStore } from "../state/job-store.js";
 import { buildRuntimeMetrics, type RuntimeMetricsDto } from "./metrics.js";
 import { RelayArtifactService } from "./relay-artifact-service.js";
@@ -127,20 +127,21 @@ const ACTIVE_ACTIVITY_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_WEB_SESSION_PAGE_SIZE = 50;
 const MAX_CHAT_HISTORY = 250;
 
-export async function relayRuntimeSendPrompt(runtime: RelayRuntimeDelegate, text: string, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string; correlationId?: string }> {
+export async function relayRuntimeSendPrompt(runtime: RelayRuntimeDelegate, text: string, actor?: WebActivityActor, correlationId?: string): Promise<{ queued: boolean; queueId?: string; correlationId?: string }> {
     const trimmed = text.trim();
     if (!trimmed) {
       throw new Error("Prompt is empty.");
     }
-    return runtime.sendEnvelope({ ...toPromptEnvelope(trimmed), activityActor: actor }, actor);
+    return runtime.sendEnvelope({ ...toPromptEnvelope(trimmed), correlationId, activityActor: actor }, actor);
   }
 
-export async function relayRuntimeSendUploadPrompt(runtime: RelayRuntimeDelegate, options: { text?: string; files: UploadPromptFile[] }, actor?: WebActivityActor): Promise<UploadPromptResult> {
+export async function relayRuntimeSendUploadPrompt(runtime: RelayRuntimeDelegate, options: { text?: string; files: UploadPromptFile[]; correlationId?: string }, actor?: WebActivityActor): Promise<UploadPromptResult> {
     const text = options.text?.trim() ?? "";
     const files = options.files.filter((file) => file.data.byteLength > 0);
     if (!text && files.length === 0) {
       throw new Error("Prompt is empty.");
     }
+    const correlationId = options.correlationId?.trim() || createCorrelationId();
 
     const session = await runtime.getSession(false);
     const workspace = session.getInfo().workspace;
@@ -183,6 +184,7 @@ export async function relayRuntimeSendUploadPrompt(runtime: RelayRuntimeDelegate
             workspace,
             agentId: session.getInfo().agentId,
             actor,
+            correlationId,
             detail: `${staged.safeName} via ${result.backend}`,
             durationMs: result.durationMs,
           });
@@ -199,6 +201,7 @@ export async function relayRuntimeSendUploadPrompt(runtime: RelayRuntimeDelegate
         workspace,
         agentId: session.getInfo().agentId,
         actor,
+        correlationId,
         detail: `${stagedFiles.length} file(s): ${stagedFiles.map((file) => file.safeName).join(", ")}`,
       });
     }
@@ -207,6 +210,7 @@ export async function relayRuntimeSendUploadPrompt(runtime: RelayRuntimeDelegate
     if (runtime.config.voiceTranscribeOnly && audioOnly && !text) {
       return {
         queued: false,
+        correlationId,
         transcript: transcriptParts.join("\n\n"),
         transcribeOnly: true,
         files: uploadFileDtos(stagedFiles),
@@ -225,7 +229,7 @@ export async function relayRuntimeSendUploadPrompt(runtime: RelayRuntimeDelegate
       promptInput.stagedFileInstructions = buildFileInstructions(stagedFiles, outDir);
     }
 
-    const result = await runtime.sendEnvelope({ ...toPromptEnvelope(promptInput, outDir), activityActor: actor }, actor);
+    const result = await runtime.sendEnvelope({ ...toPromptEnvelope(promptInput, outDir), correlationId, activityActor: actor }, actor);
     return {
       ...result,
       transcript: transcriptParts.join("\n\n") || undefined,
@@ -311,6 +315,8 @@ export function relayRuntimeQueueAction(runtime: RelayRuntimeDelegate, action: R
       status: "ok",
       contextKey: runtime.contextKey,
       actor,
+      correlationId: affected?.correlationId,
+      promptId: affected?.id,
       description: id ? `${action}: ${id}` : action,
     });
     runtime.broadcastQueue();

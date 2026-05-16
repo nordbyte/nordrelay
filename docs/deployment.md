@@ -75,3 +75,13 @@ Build before starting a service:
 npm install
 npm run build
 ```
+
+Package-manager install smoke tests in CI verify:
+
+```bash
+npm install -g @nordbyte/nordrelay
+pnpm dlx @nordbyte/nordrelay help
+yarn dlx @nordbyte/nordrelay help
+```
+
+pnpm and Yarn do not require a separate NordRelay release. They install the npm package from the npm registry.

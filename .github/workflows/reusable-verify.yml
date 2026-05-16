@@ -136,5 +136,17 @@ jobs:
       - name: Package dry run
         run: npm pack --dry-run
 
-      - name: Fresh global install smoke
-        run: node scripts/fresh-install-smoke.mjs
+      - name: npm global install smoke
+        run: node scripts/fresh-install-smoke.mjs --manager npm --mode global
+
+      - name: Enable Corepack package managers
+        if: matrix.node == 22
+        run: corepack enable
+
+      - name: pnpm dlx install smoke
+        if: matrix.node == 22
+        run: node scripts/fresh-install-smoke.mjs --manager pnpm --mode dlx
+
+      - name: Yarn dlx install smoke
+        if: matrix.node == 22
+        run: node scripts/fresh-install-smoke.mjs --manager yarn --mode dlx

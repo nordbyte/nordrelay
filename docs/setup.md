@@ -12,10 +12,18 @@ nordrelay doctor
 nordrelay start
 ```
 
-npm is the fastest install path and is the recommended default for normal use. `nordrelay init` writes the private runtime config to `~/.nordrelay/nordrelay.env`.
+npm is the fastest install path and is the recommended default for normal use. The same package is available through pnpm and Yarn because both install from the npm registry:
+
+```bash
+pnpm dlx @nordbyte/nordrelay init
+pnpm add -g @nordbyte/nordrelay
+yarn dlx @nordbyte/nordrelay init
+```
+
+`nordrelay init` writes the private runtime config to `~/.nordrelay/nordrelay.env`.
 If you start `nordrelay web` before creating an admin, the dashboard opens a first-run setup wizard. Remote setup requires the one-time setup token printed in the NordRelay console.
 
-If `nordrelay init` returns `command not found`, check the postinstall warning printed by npm. It reports the npm global bin directory and the shell profile line needed to add it to `PATH`, for example `export PATH="/opt/homebrew/bin:$PATH"` on macOS/Homebrew installs. `nordrelay doctor` also checks whether the CLI and npm global bin directory are currently visible on `PATH`.
+If `nordrelay init` returns `command not found`, check the postinstall warning printed by npm or pnpm. It reports the package-manager global bin directory and the shell profile line needed to add it to `PATH`, for example `export PATH="/opt/homebrew/bin:$PATH"` on macOS/Homebrew installs. `nordrelay doctor` also checks whether the CLI and npm global bin directory are currently visible on `PATH`.
 
 Non-interactive setup is also supported:
 

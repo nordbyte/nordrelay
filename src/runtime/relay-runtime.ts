@@ -613,11 +613,11 @@ export class RelayRuntime {
     return relayRuntimeAbort(this, actor);
   }
 
-  async sendPrompt(text: string, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string; correlationId?: string }> {
-    return relayRuntimeSendPrompt(this, text, actor);
+  async sendPrompt(text: string, actor?: WebActivityActor, correlationId?: string): Promise<{ queued: boolean; queueId?: string; correlationId?: string }> {
+    return relayRuntimeSendPrompt(this, text, actor, correlationId);
   }
 
-  async sendUploadPrompt(options: { text?: string; files: UploadPromptFile[] }, actor?: WebActivityActor): Promise<UploadPromptResult> {
+  async sendUploadPrompt(options: { text?: string; files: UploadPromptFile[]; correlationId?: string }, actor?: WebActivityActor): Promise<UploadPromptResult> {
     return relayRuntimeSendUploadPrompt(this, options, actor);
   }
 

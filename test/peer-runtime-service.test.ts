@@ -41,10 +41,10 @@ describe("PeerRuntimeService", () => {
   });
 
   it("proxies allowed prompt requests with a peer actor", async () => {
-    const calls: Array<{ text: string; actorLabel?: string }> = [];
+    const calls: Array<{ text: string; actorLabel?: string; correlationId?: string }> = [];
     const service = new PeerRuntimeService(config(), runtime({
-      sendPrompt: async (text: string, actor: { label?: string }) => {
-        calls.push({ text, actorLabel: actor.label });
+      sendPrompt: async (text: string, actor: { label?: string }, correlationId?: string) => {
+        calls.push({ text, actorLabel: actor.label, correlationId });
         return { ok: true };
       },
     }));
@@ -52,11 +52,11 @@ describe("PeerRuntimeService", () => {
     await expect(service.handle(peer({ scopes: ["prompt.send"] }), {
       protocolVersion: 1,
       type: "web.proxy",
-      payload: { method: "POST", path: "/api/prompt", body: { text: "hello" } },
+      payload: { method: "POST", path: "/api/prompt", body: { text: "hello", correlationId: "cid-peer-1" } },
       actor: { channel: "web", id: "user-1", label: "Ricardo" },
     })).resolves.toEqual({ ok: true });
 
-    expect(calls).toEqual([{ text: "hello", actorLabel: "Ricardo via Peer" }]);
+    expect(calls).toEqual([{ text: "hello", actorLabel: "Ricardo via Peer", correlationId: "cid-peer-1" }]);
   });
 
   it("routes proxied requests through a source-context runtime", async () => {
