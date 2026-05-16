@@ -266,6 +266,10 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#accessTabs")).toHaveAttribute("role", "tablist");
     await expect(page.getByRole("tab", { name: "Users" })).toHaveAttribute("aria-selected", "true");
     await expect(page.locator("#accessTabs")).toHaveCSS("border-radius", "0px");
+    await expect(page.locator("#accessTabs")).toHaveCSS("overflow-y", "hidden");
+    await expect
+      .poll(async () => page.locator("#accessTabs").evaluate((el) => el.scrollHeight <= el.clientHeight))
+      .toBe(true);
     await expect
       .poll(async () => {
         const tabs = await page.locator("#accessTabs").boundingBox();
