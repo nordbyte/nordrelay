@@ -1821,6 +1821,34 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
   };
 
+  const startUserPrompt = (
+    ctx: Context,
+    contextKey: TelegramContextKey,
+    chatId: TelegramChatId,
+    session: AgentSessionService,
+    prompt: AgentPromptInput | PromptEnvelope,
+    options: { fromQueue?: boolean; approved?: boolean; reaction?: boolean } = {},
+  ): Promise<void> => {
+    const { reaction = true, ...promptOptions } = options;
+    void (async () => {
+      if (reaction) {
+        await setReaction(ctx, "👀");
+      }
+      try {
+        await handleUserPrompt(ctx, contextKey, chatId, session, prompt, promptOptions);
+        if (reaction) {
+          await setReaction(ctx, "👍");
+        }
+      } catch (error) {
+        if (reaction) {
+          await clearReaction(ctx);
+        }
+        console.error("Failed to run Telegram prompt in background:", error);
+      }
+    })();
+    return Promise.resolve();
+  };
+
   const drainQueuedPrompts = async (
     ctx: Context,
     contextKey: TelegramContextKey,
@@ -2163,13 +2191,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       promptInput.text = Array.from(new Set(captions)).join("\n\n");
     }
 
-    await setReaction(pending.ctx, "👀");
-    try {
-      await handleUserPrompt(pending.ctx, pending.contextKey, pending.chatId, pending.session, toPromptEnvelope(promptInput, outDir));
-      await setReaction(pending.ctx, "👍");
-    } catch {
-      await clearReaction(pending.ctx);
-    }
+    await startUserPrompt(pending.ctx, pending.contextKey, pending.chatId, pending.session, toPromptEnvelope(promptInput, outDir));
   };
 
   bot.use(createTelegramAccessMiddleware({ userStore, contextUsers, audit }));
@@ -2412,13 +2434,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
-    await setReaction(ctx, "👀");
-    try {
-      await handleUserPrompt(ctx, contextKey, chatId, session, cached);
-      await setReaction(ctx, "👍");
-    } catch {
-      await clearReaction(ctx);
-    }
+    await startUserPrompt(ctx, contextKey, chatId, session, cached);
   });
 
   registerTelegramQueueCommands({
@@ -2430,7 +2446,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     updateQueueStatusMessage,
     scheduleExternalQueueDrain,
     drainQueuedPrompts,
-    handleUserPrompt,
+    handleUserPrompt: startUserPrompt,
     auditContext,
     activityActor: telegramActivityActor,
     appendActivity: appendTelegramActivity,
@@ -3300,7 +3316,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       actor: pending.prompt.activityActor,
     });
 
-    await handleUserPrompt(ctx, pending.contextKey, chatId ?? parseContextKey(pending.contextKey).chatId, contextSession.session, pending.prompt, {
+    await startUserPrompt(ctx, pending.contextKey, chatId ?? parseContextKey(pending.contextKey).chatId, contextSession.session, pending.prompt, {
       approved: true,
     });
   });
@@ -3793,13 +3809,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const { contextKey, session } = contextSession;
-    await setReaction(ctx, "👀");
-    try {
-      await handleUserPrompt(ctx, contextKey, ctx.chat.id, session, userText);
-      await setReaction(ctx, "👍");
-    } catch {
-      await clearReaction(ctx);
-    }
+    await startUserPrompt(ctx, contextKey, ctx.chat.id, session, userText);
   });
 
   bot.on(["message:voice", "message:audio"], async (ctx) => {
@@ -3877,13 +3887,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
-    await setReaction(ctx, "👀");
-    try {
-      await handleUserPrompt(ctx, contextKey, chatId, session, transcript);
-      await setReaction(ctx, "👍");
-    } catch {
-      await clearReaction(ctx);
-    }
+    await startUserPrompt(ctx, contextKey, chatId, session, transcript);
   });
 
   bot.on("message:photo", async (ctx) => {
@@ -3966,13 +3970,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       type: "attachment_staged",
       detail: stagedPhoto.safeName,
     });
-    await setReaction(ctx, "👀");
-    try {
-      await handleUserPrompt(ctx, contextKey, chatId, session, toPromptEnvelope(promptInput, outDir));
-      await setReaction(ctx, "👍");
-    } catch {
-      await clearReaction(ctx);
-    }
+    await startUserPrompt(ctx, contextKey, chatId, session, toPromptEnvelope(promptInput, outDir));
   });
 
   bot.on("message:document", async (ctx) => {
@@ -4073,13 +4071,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       promptInput.text = caption;
     }
 
-    await setReaction(ctx, "👀");
-    try {
-      await handleUserPrompt(ctx, contextKey, chatId, session, toPromptEnvelope(promptInput, outDir));
-      await setReaction(ctx, "👍");
-    } catch {
-      await clearReaction(ctx);
-    }
+    await startUserPrompt(ctx, contextKey, chatId, session, toPromptEnvelope(promptInput, outDir));
   });
 
   bot.catch((error) => {
