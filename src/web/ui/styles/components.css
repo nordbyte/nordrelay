@@ -89,6 +89,7 @@
 }
 .log-view{max-height:min(64vh,720px);min-height:320px}
 .log-line{display:block}
+.log-line.INFO{color:var(--pre-text);font-weight:400}
 .log-line.ERROR{color:var(--danger);font-weight:700}
 .log-line.WARN{color:#8a6a12;font-weight:700}
 .tool-tooltip{position:fixed;z-index:60;display:none;max-width:220px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--pre);color:var(--pre-text);font-size:12px;box-shadow:var(--shadow);pointer-events:none}

@@ -563,6 +563,34 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#logs")).toHaveCSS("overflow-y", "auto");
   });
 
+  test("colors log levels and multiline entries consistently", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop log rendering flow");
+    await page.goto(mock.baseUrl);
+    await navigateDashboard(page, "Logs");
+
+    const lines = page.locator("#logs .log-line");
+    await expect(lines).toHaveCount(6);
+    await expect(lines.nth(0)).toHaveClass(/INFO/);
+    await expect(lines.nth(1)).toHaveClass(/INFO/);
+    await expect(lines.nth(2)).toHaveClass(/WARN/);
+    await expect(lines.nth(3)).toHaveClass(/WARN/);
+    await expect(lines.nth(4)).toHaveClass(/ERROR/);
+    await expect(lines.nth(5)).toHaveClass(/ERROR/);
+
+    const colors = await lines.evaluateAll((items) => items.map((item) => getComputedStyle(item).color));
+    expect(colors[1]).toBe(colors[0]);
+    expect(colors[3]).toBe(colors[2]);
+    expect(colors[5]).toBe(colors[4]);
+    expect(colors[0]).not.toBe(colors[2]);
+    expect(colors[2]).not.toBe(colors[4]);
+
+    await page.locator("#logLevel").selectOption("WARN");
+    await expect(lines).toHaveCount(2);
+    await expect(page.locator("#logs")).toContainText("Slow check");
+    await expect(page.locator("#logs")).toContainText("warn detail");
+    await expect(page.locator("#logs")).not.toContainText("Started");
+  });
+
   test("runs core settings, chat, peers, and version flows on mobile", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(mock.baseUrl);
@@ -661,7 +689,7 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   if (url.pathname === "/api/artifacts/preview") return artifactPreview(url.searchParams.get("path") || "report.txt");
   if (url.pathname === "/api/artifacts/file") return { name: "report.txt", mimeType: "text/plain", dataBase64: Buffer.from("Artifact preview smoke\n").toString("base64") };
   if (url.pathname === "/api/artifacts/zip") return { name: "turn-web-1.zip", mimeType: "application/zip", dataBase64: Buffer.from("zip").toString("base64") };
-  if (url.pathname === "/api/logs") return { filePath: "/tmp/nordrelay.log", requestedLines: 120, lineCount: 2, updatedAt: new Date().toISOString(), plain: "2026-05-14 10:00:00 INFO Started\n2026-05-14 10:01:00 WARN Slow check" };
+  if (url.pathname === "/api/logs") return { filePath: "/tmp/nordrelay.log", requestedLines: 120, lineCount: 6, updatedAt: new Date().toISOString(), plain: "2026-05-14 10:00:00 INFO Started\ninfo detail\n2026-05-14 10:01:00 WARN Slow check\nwarn detail\n2026-05-14 10:02:00 ERROR Failed\nstack detail" };
   if (url.pathname === "/api/logs/clear") return { filePath: "/tmp/nordrelay.log", clearedAt: new Date().toISOString() };
   if (url.pathname === "/api/diagnostics") return { health: health(), versionChecks: version().versionChecks, snapshot: bootstrap(session).status.snapshot, runtime: { stateBackend: "json", sourceWorkspace: "/tmp/project", queuePaused: false, externalMirror: null, agentDiagnostics: { lines: [] } } };
   if (url.pathname === "/api/users") return users();
