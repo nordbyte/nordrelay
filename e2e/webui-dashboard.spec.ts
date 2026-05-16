@@ -225,10 +225,31 @@ test.describe("NordRelay WebUI", () => {
     await page.goto(mock.baseUrl);
     await page.getByRole("button", { name: "Users" }).click();
 
+    await expect(page.locator("#pageTitle")).toHaveText("Users");
+    await expect(page.locator("#createUserBtn")).toBeVisible();
+    await expect(page.locator("#createGroupBtn")).toBeHidden();
+    await expect(page.locator("#accessPanel")).toContainText("Admin");
+    await page.locator("#userSearch").fill("missing");
+    await expect(page.locator("#accessPanel")).toContainText("No users match");
+    await page.locator("#userSearch").fill("admin");
+    await expect(page.locator("#accessPanel")).toContainText("Admin");
+    await page.getByRole("button", { name: "Details" }).click();
+    await expect(page.locator("#userDetailDialog")).toBeVisible();
+    await expect(page.locator("#userDetail")).toContainText("Effective access");
+    await page.locator('[data-user-detail-tab="identities"]').click();
+    await expect(page.locator("#userDetail")).toContainText("Discord");
+    await expect(page.locator("#userDetail")).toContainText("Slack");
+    await page.locator("#closeUserDetailBtn").click();
+
+    await page.locator('[data-access-tab="groups"]').click();
+    await expect(page.locator("#createGroupBtn")).toBeVisible();
+    await expect(page.locator("#createUserBtn")).toBeHidden();
+
     await expect(page.locator("#accessTabs")).toContainText("Discord");
     await page.locator('[data-access-tab="discord"]').click();
     await expect(page.locator("#discordChannelsList")).toContainText("Engineering Ops");
     await expect(page.locator("#createDiscordChannelBtn")).toBeVisible();
+    await expect(page.locator("#createGroupBtn")).toBeHidden();
 
     await page.locator("#discordChannelSearch").fill("ops");
     await expect(page.locator("#discordChannelsList")).toContainText("Engineering Ops");

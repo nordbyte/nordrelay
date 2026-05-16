@@ -272,7 +272,7 @@ ${faviconLinks}
 
       <section class="page" id="page-access">
         <div class="panel">
-          <div class="row"><button id="loadAccessBtn">Reload users</button><button id="createUserBtn">Create user</button><button id="createGroupBtn" class="secondary">Create group</button><button id="createChatBtn" class="secondary">Add Telegram chat</button><button id="createDiscordChannelBtn" class="secondary">Add Discord channel</button><button id="createSlackChannelBtn" class="secondary">Add Slack channel</button><button id="lockSessionBtn" class="secondary">Lock web session</button><button id="unlockSessionBtn" class="secondary">Unlock web session</button></div>
+          <div class="row access-toolbar"><button id="loadAccessBtn">Reload users</button><button id="createUserBtn" data-access-action-tabs="users">Create user</button><button id="createGroupBtn" data-access-action-tabs="groups" class="secondary" style="display:none">Create group</button><button id="createChatBtn" data-access-action-tabs="telegram" class="secondary" style="display:none">Add Telegram chat</button><button id="createDiscordChannelBtn" data-access-action-tabs="discord" class="secondary" style="display:none">Add Discord channel</button><button id="createSlackChannelBtn" data-access-action-tabs="slack" class="secondary" style="display:none">Add Slack channel</button><button id="lockSessionBtn" data-access-action-tabs="locks" class="secondary" style="display:none">Lock web session</button><button id="unlockSessionBtn" data-access-action-tabs="locks" class="secondary" style="display:none">Unlock web session</button></div>
           <div id="accessTabs" class="tabs access-tabs">
             <button type="button" data-access-tab="users" class="active">Users</button>
             <button type="button" data-access-tab="groups">Groups</button>
@@ -283,14 +283,28 @@ ${faviconLinks}
             <button type="button" data-access-tab="audit">Audit</button>
           </div>
           <div class="access-tab active" data-access-tab-panel="users">
-            <div id="accessPanel" class="settings-grid"></div>
+            <div class="access-tab-heading">
+              <h2>Users</h2>
+              <div class="access-filter-row">
+                <input id="userSearch" placeholder="Search users">
+                <select id="userStatusFilter"><option value="all">All statuses</option><option value="active">Active</option><option value="disabled">Disabled</option></select>
+                <select id="userGroupFilter"><option value="all">All groups</option></select>
+                <select id="userIdentityFilter"><option value="all">All identities</option><option value="telegram">Telegram linked</option><option value="discord">Discord linked</option><option value="slack">Slack linked</option><option value="web">Web sessions</option><option value="unlinked">No chat identity</option></select>
+              </div>
+            </div>
+            <div id="accessPanel" class="list user-list"></div>
+            <div id="usersPager" class="pager"></div>
           </div>
           <div class="access-tab" data-access-tab-panel="groups">
             <h2>Groups</h2>
+            <div class="access-filter-row"><input id="groupSearch" placeholder="Search groups"></div>
             <div id="groupsList" class="list"></div>
           </div>
           <div class="access-tab" data-access-tab-panel="telegram">
-            <h2>Telegram chats</h2>
+            <div class="access-tab-heading">
+              <h2>Telegram chats</h2>
+              <input id="telegramChatSearch" placeholder="Search Telegram chats">
+            </div>
             <div id="telegramChatsList" class="list"></div>
           </div>
           <div class="access-tab" data-access-tab-panel="discord">
@@ -375,6 +389,10 @@ ${faviconLinks}
   <dialog id="sessionDetailDialog">
     <div id="sessionDetail"></div>
     <div class="row dialog-actions"><button id="closeSessionDetailBtn" class="secondary">Close</button></div>
+  </dialog>
+  <dialog id="userDetailDialog">
+    <div id="userDetail"></div>
+    <div class="row dialog-actions"><button id="closeUserDetailBtn" class="secondary">Close</button></div>
   </dialog>
   <dialog id="adminDialog">
     <form method="dialog" id="adminDialogForm">

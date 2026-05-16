@@ -23,6 +23,7 @@ const assets = [
       "src/web/ui/client/jobs.js",
       "src/web/ui/client/metrics.js",
       "src/web/ui/client/admin.js",
+      "src/web/ui/client/users.js",
       "src/web/ui/client/settings-wizard.js",
     ],
   },

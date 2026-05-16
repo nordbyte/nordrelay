@@ -133,6 +133,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(readFileSync("src/web/ui/client/workflows.js", "utf8")).toContain("function loadSessions");
     expect(readFileSync("src/web/ui/client/jobs.js", "utf8")).toContain("function renderUnifiedJobs");
     expect(readFileSync("src/web/ui/client/metrics.js", "utf8")).toContain("function loadMetrics");
+    expect(readFileSync("src/web/ui/client/users.js", "utf8")).toContain("function renderUserManagementV2");
     expect(readFileSync("src/web/ui/styles/theme.css", "utf8")).toContain(":root");
     expect(readFileSync("src/web/ui/styles/layout.css", "utf8")).toContain(".chat-layout");
   });
