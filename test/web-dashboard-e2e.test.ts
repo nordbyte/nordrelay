@@ -42,6 +42,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function loadWorkflows");
     expect(js).toContain("document.addEventListener('click'");
     expect(js).toContain("[data-workflow-tab]");
+    expect(readFileSync("scripts/build-web-assets.mjs", "utf8")).toContain("src/web/ui/client/workflows-page.js");
     expect(js).toContain("/api/templates");
     expect(js).toContain("/api/workflows");
     expect(js).toContain("/api/workflow-runs/");
