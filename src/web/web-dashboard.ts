@@ -20,7 +20,7 @@ import { UserStore, publicUser, type AuthenticatedUser } from "../access/user-ma
 import type { WebActivityActor } from "./web-state.js";
 import { handleDashboardAccessRoute } from "./web-dashboard-access-routes.js";
 import { handleDashboardArtifactRoute } from "./web-dashboard-artifact-routes.js";
-import { dashboardCss, dashboardJs, dashboardStaticAsset } from "./web-dashboard-assets.js";
+import { dashboardAssetVersion, dashboardCss, dashboardJs, dashboardStaticAsset } from "./web-dashboard-assets.js";
 import {
   objectRecord,
   optionalStringField,
@@ -183,7 +183,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   if (url.pathname === "/" || url.pathname === "/index.html") {
     const cspNonce = createCspNonce();
-    sendText(res, 200, renderDashboardApp({ cspNonce }), "text/html; charset=utf-8", { cspNonce });
+    sendText(res, 200, renderDashboardApp({ cspNonce, assetVersion: dashboardAssetVersion() }), "text/html; charset=utf-8", { cspNonce });
     return;
   }
 

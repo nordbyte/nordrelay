@@ -32,6 +32,7 @@ describe("web dashboard browser-flow assets", () => {
 
   it("includes workflow templates and workflow runs in the WebUI", () => {
     const js = dashboardJs();
+    const css = dashboardCss();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
     const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
 
@@ -39,9 +40,13 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('id="createTemplateBtn"');
     expect(pageSource).toContain('id="createWorkflowBtn"');
     expect(js).toContain("function loadWorkflows");
+    expect(js).toContain("document.addEventListener('click'");
+    expect(js).toContain("[data-workflow-tab]");
     expect(js).toContain("/api/templates");
     expect(js).toContain("/api/workflows");
     expect(js).toContain("/api/workflow-runs/");
+    expect(css).toContain(".workflow-section-header");
+    expect(css).toContain(".workflow-tab-heading");
     expect(contract).toContain('exact("/api/templates"');
     expect(contract).toContain('exact("/api/workflows"');
     expect(contract).toContain('dynamic("/api/workflow-runs/:id/cancel"');
@@ -126,12 +131,12 @@ describe("web dashboard browser-flow assets", () => {
     expect(serverSource).toContain('/assets/dashboard.js');
     expect(serverSource).toContain('/assets/logo.png');
     expect(serverSource).toContain('/favicon.ico');
-    expect(pageSource).toContain('href="/assets/dashboard.css"');
+    expect(pageSource).toContain('href="/assets/dashboard.css?v=');
     expect(pageSource).toContain('href="/favicon.ico"');
     expect(pageSource).toContain('src="/assets/logo.png"');
     expect(pageSource).toContain('width="44" height="44"');
     expect(pageSource).toContain('class="brand-separator"');
-    expect(pageSource).toContain('src="/assets/dashboard.js"');
+    expect(pageSource).toContain('src="/assets/dashboard.js?v=');
     expect(pageSource).not.toContain("<style>${dashboardCss()}</style>");
     expect(pageSource).not.toContain("<script>${dashboardJs()}</script>");
     expect(dashboardCss()).toContain("--sidebar-border:#2a3a30");

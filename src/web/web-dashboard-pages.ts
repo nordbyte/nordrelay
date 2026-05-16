@@ -1,5 +1,10 @@
 import { renderDashboardNav } from "./web-dashboard-ui.js";
 
+export interface DashboardAppOptions {
+  cspNonce?: string;
+  assetVersion?: string;
+}
+
 const faviconLinks = `
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" href="/assets/favicon.png">
@@ -108,8 +113,9 @@ ${faviconLinks}
 </html>`;
 }
 
-export function renderDashboardApp(options: { cspNonce?: string } = {}): string {
+export function renderDashboardApp(options: DashboardAppOptions = {}): string {
   const nonce = nonceAttr(options.cspNonce);
+  const assetVersion = encodeURIComponent(options.assetVersion ?? "dev");
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -118,7 +124,7 @@ export function renderDashboardApp(options: { cspNonce?: string } = {}): string 
   <title>NordRelay Dashboard</title>
 ${faviconLinks}
   <script${nonce}>document.documentElement.dataset.theme = localStorage.getItem('nordrelayTheme') || 'light';</script>
-  <link rel="stylesheet" href="/assets/dashboard.css">
+  <link rel="stylesheet" href="/assets/dashboard.css?v=${assetVersion}">
 </head>
 <body>
   <div class="app">
@@ -210,15 +216,23 @@ ${faviconLinks}
             </div>
           </div>
           <div class="workflow-tab active" data-workflow-tab-panel="templates">
-            <div class="row workflow-heading-actions"><button id="createTemplateBtn">Create template</button><button id="reloadWorkflowsBtn" class="secondary">Reload</button><input id="templateSearch" placeholder="Search templates"></div>
+            <div class="workflow-tab-heading">
+              <div class="row workflow-heading-actions"><button id="reloadWorkflowsBtn" class="secondary">Reload</button><button id="createTemplateBtn">Create template</button></div>
+              <div class="workflow-filter-row"><input id="templateSearch" placeholder="Search templates"></div>
+            </div>
             <div id="templateList" class="list"></div>
           </div>
           <div class="workflow-tab" data-workflow-tab-panel="workflows">
-            <div class="row workflow-heading-actions"><button id="createWorkflowBtn">Create workflow</button><input id="workflowSearch" placeholder="Search workflows"></div>
+            <div class="workflow-tab-heading">
+              <div class="row workflow-heading-actions"><button id="createWorkflowBtn">Create workflow</button></div>
+              <div class="workflow-filter-row"><input id="workflowSearch" placeholder="Search workflows"></div>
+            </div>
             <div id="workflowList" class="list"></div>
           </div>
           <div class="workflow-tab" data-workflow-tab-panel="runs">
-            <div class="row workflow-heading-actions"><button id="reloadWorkflowRunsBtn" class="secondary">Reload runs</button></div>
+            <div class="workflow-tab-heading">
+              <div class="row workflow-heading-actions"><button id="reloadWorkflowRunsBtn" class="secondary">Reload runs</button></div>
+            </div>
             <div id="workflowRunList" class="list"></div>
           </div>
         </div>
@@ -491,7 +505,7 @@ ${faviconLinks}
   </dialog>
   <div id="toolTooltip" class="tool-tooltip"></div>
   <div id="toast"></div>
-  <script src="/assets/dashboard.js"></script>
+  <script src="/assets/dashboard.js?v=${assetVersion}"></script>
 </body>
 </html>`;
 }

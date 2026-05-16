@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,6 +34,15 @@ export function dashboardJs(): string {
 
 export function dashboardCss(): string {
   return readDashboardAsset("dashboard.css", styleSources);
+}
+
+export function dashboardAssetVersion(): string {
+  return createHash("sha256")
+    .update(dashboardCss())
+    .update("\n")
+    .update(dashboardJs())
+    .digest("hex")
+    .slice(0, 12);
 }
 
 export interface DashboardStaticAsset {
