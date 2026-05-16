@@ -64,6 +64,7 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator('nav > .nav-primary button[data-page]')).toHaveText([
       "Overview",
       "Chat",
+      "Workflows",
       "Sessions",
       "Queue",
       "Tasks",
