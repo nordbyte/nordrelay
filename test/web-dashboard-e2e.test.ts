@@ -90,6 +90,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('src="/assets/dashboard.js"');
     expect(pageSource).not.toContain("<style>${dashboardCss()}</style>");
     expect(pageSource).not.toContain("<script>${dashboardJs()}</script>");
+    expect(dashboardCss()).toContain("--sidebar-border:#2a3a30");
+    expect(dashboardCss()).toContain(".brand-separator{height:1px;background:var(--sidebar-border)");
     expect(dashboardCss()).toContain(".sidebar{position:sticky;top:0;height:100vh");
     expect(dashboardCss()).toContain("height:calc(var(--dashboard-header-height) - 1px);padding:0 18px");
   });
