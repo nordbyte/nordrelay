@@ -253,7 +253,7 @@ export class PeerRuntimeService {
     }
     if (method === "POST" && path === "/api/session/launch") {
       await this.assertCurrentSessionScope(peer, runtime);
-      return { session: await runtime.setLaunchProfile(requiredString(body.profileId, "profileId"), remoteActor) };
+      return { session: await runtime.setLaunchProfile(requiredString(body.profileId, "profileId"), remoteActor, { applyToCurrent: Boolean(body.apply) }) };
     }
     if (method === "POST" && path === "/api/prompt") {
       await this.assertCurrentSessionScope(peer, runtime);

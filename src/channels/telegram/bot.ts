@@ -72,6 +72,7 @@ import {
 } from "../../agents/shared/agent-auth-commands.js";
 import {
   getExternalActivityForSession,
+  getExternalSnapshotForSession,
 } from "../../agents/shared/agent-activity.js";
 import { checkAuthStatus, clearAuthCache, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "../../agents/codex/codex-auth.js";
 import { formatLaunchProfileBehavior } from "../../agents/codex/codex-launch.js";
@@ -2467,6 +2468,77 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     await safeReply(ctx, htmlLines.join("\n"), { fallbackText: plainLines.join("\n") });
   });
 
+  const parseLaunchCommandArgument = (ctx: Context): { profileId: string; confirmed: boolean; applyToCurrent: boolean } | null => {
+    const message = ctx.message;
+    const text = message && "text" in message ? String(message.text ?? "") : "";
+    const argument = text.replace(/^\/(?:launch|launch_profiles)(?:@\w+)?\s*/i, "").trim();
+    if (!argument) {
+      return null;
+    }
+    const parts = argument.split(/\s+/).filter(Boolean);
+    return {
+      profileId: parts[0] ?? "",
+      confirmed: parts.slice(1).some((part) => part.toLowerCase() === "confirm"),
+      applyToCurrent: parts.slice(1).some((part) => ["apply", "current", "now"].includes(part.toLowerCase())),
+    };
+  };
+
+  const setTelegramLaunchProfile = async (
+    ctx: Context,
+    contextKey: TelegramContextKey,
+    session: AgentSessionService,
+    profileId: string,
+    applyToCurrent: boolean,
+  ): Promise<{ info: AgentSessionInfo; appliedToActiveThread: boolean }> => {
+    const result = applyToCurrent && session.setLaunchProfileForCurrentSession
+      ? await session.setLaunchProfileForCurrentSession(profileId)
+      : { value: session.setLaunchProfile(profileId).id, appliedToActiveThread: false };
+    updateSessionMetadata(contextKey, session);
+    const info = session.getInfo();
+    appendTelegramActivity(ctx, contextKey, session, {
+      status: "info",
+      type: result.appliedToActiveThread ? "launch_profile_applied" : "launch_profile_changed",
+      threadId: info.threadId,
+      workspace: info.workspace,
+      agentId: info.agentId,
+      detail: info.launchProfileLabel,
+    });
+    return { info, appliedToActiveThread: result.appliedToActiveThread };
+  };
+
+  const externalLaunchApplyBlocker = (session: AgentSessionService): string | null => {
+    const external = getExternalSnapshotForSession(session, config, { maxEvents: 0 });
+    return external?.activity.active && !session.isProcessing()
+      ? `Cannot apply launch profile while the external ${external.agentLabel} CLI task is still running.`
+      : null;
+  };
+
+  const renderLaunchProfileResult = (
+    info: AgentSessionInfo,
+    profileBehavior: string,
+    applyRequested: boolean,
+    appliedToActiveThread: boolean,
+  ): { html: string; plain: string } => {
+    const suffix = applyRequested
+      ? appliedToActiveThread
+        ? "Applied to the current idle thread."
+        : "No active idle thread was attached; applies to the next thread."
+      : "Applies to new or reattached threads.";
+    const html = [
+      `<b>Launch profile set to</b> <code>${escapeHTML(info.launchProfileLabel)}</code>`,
+      `<b>Behavior:</b> <code>${escapeHTML(profileBehavior || info.launchProfileBehavior)}</code>`,
+      "",
+      escapeHTML(suffix),
+    ].join("\n");
+    const plain = [
+      `Launch profile set to ${info.launchProfileLabel}`,
+      `Behavior: ${profileBehavior || info.launchProfileBehavior}`,
+      "",
+      suffix,
+    ].join("\n");
+    return { html, plain };
+  };
+
   const openLaunchProfilesPicker = async (ctx: Context): Promise<void> => {
     const chatId = ctx.chat?.id;
     if (!chatId) {
@@ -2493,6 +2565,44 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const profiles = session.listLaunchProfiles();
+    const commandArgument = parseLaunchCommandArgument(ctx);
+    if (commandArgument?.profileId) {
+      const profile = profiles.find((candidate) => candidate.id === commandArgument.profileId);
+      if (!profile) {
+        const text = `Unknown launch profile: ${commandArgument.profileId}`;
+        await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+        return;
+      }
+      if (profile.unsafe && !commandArgument.confirmed) {
+        const command = `/launch ${profile.id} confirm${commandArgument.applyToCurrent ? " apply" : ""}`;
+        const html = [
+          `<b>Confirm launch profile:</b> <code>${escapeHTML(profile.label)}</code>`,
+          `<b>Behavior:</b> <code>${escapeHTML(profile.behavior)}</code>`,
+          "",
+          "⚠️ <b>This profile uses danger-full-access.</b>",
+          `Run <code>${escapeHTML(command)}</code> to ${commandArgument.applyToCurrent ? "apply it to the current idle thread" : "enable it for new or reattached threads"}.`,
+        ].join("\n");
+        const plain = [
+          `Confirm launch profile: ${profile.label}`,
+          `Behavior: ${profile.behavior}`,
+          "",
+          "WARNING: This profile uses danger-full-access.",
+          `Run ${command} to ${commandArgument.applyToCurrent ? "apply it to the current idle thread" : "enable it for new or reattached threads"}.`,
+        ].join("\n");
+        await safeReply(ctx, html, { fallbackText: plain });
+        return;
+      }
+      const blocker = commandArgument.applyToCurrent ? externalLaunchApplyBlocker(session) : null;
+      if (blocker) {
+        await safeReply(ctx, escapeHTML(blocker), { fallbackText: blocker });
+        return;
+      }
+      const { info: updatedInfo, appliedToActiveThread } = await setTelegramLaunchProfile(ctx, contextKey, session, profile.id, commandArgument.applyToCurrent);
+      const resultText = renderLaunchProfileResult(updatedInfo, profile.behavior, commandArgument.applyToCurrent, appliedToActiveThread);
+      await safeReply(ctx, resultText.html, { fallbackText: resultText.plain });
+      return;
+    }
+
     const selectedLaunchProfile = session.getInfo();
     const launchButtons = profiles.map((profile, index) => ({
       label: formatAgentLaunchProfileLabel(profile, profile.id === selectedLaunchProfile.launchProfileId),
@@ -2512,12 +2622,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       `<b>Behavior:</b> <code>${escapeHTML(selectedLaunchProfile.launchProfileBehavior)}</code>`,
       "",
       "Select a profile for new or reattached threads:",
+      "Use <code>/launch &lt;profile-id&gt; apply</code> to apply a profile to the current idle thread.",
     ];
     const plainLines = [
       `Selected launch profile: ${selectedLaunchProfile.launchProfileLabel}`,
       `Behavior: ${selectedLaunchProfile.launchProfileBehavior}`,
       "",
       "Select a profile for new or reattached threads:",
+      "Use /launch <profile-id> apply to apply a profile to the current idle thread.",
     ];
 
     if (selectedLaunchProfile.unsafeLaunch) {
@@ -3384,7 +3496,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
       await ctx.answerCallbackQuery({ text: "Confirm danger-full-access" });
       const confirmKeyboard = new InlineKeyboard()
-        .text("Enable danger-full-access", `launchconfirm_yes:${profile.id}`)
+        .text("Enable for next launches", `launchconfirm_yes:${profile.id}:next`)
+        .row()
+        .text("Apply to current session", `launchconfirm_yes:${profile.id}:apply`)
         .row()
         .text("Cancel", `launchconfirm_no:${profile.id}`);
       const html = [
@@ -3392,14 +3506,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         `<b>Behavior:</b> <code>${escapeHTML(profile.behavior)}</code>`,
         "",
         "⚠️ <b>This profile uses danger-full-access.</b>",
-        "It will apply to new or reattached threads in this Telegram context.",
+        "Choose whether to apply it only to future launches or to the current idle thread now.",
       ].join("\n");
       const plain = [
         `Confirm launch profile: ${profile.label}`,
         `Behavior: ${profile.behavior}`,
         "",
         "WARNING: This profile uses danger-full-access.",
-        "It will apply to new or reattached threads in this Telegram context.",
+        "Choose whether to apply it only to future launches or to the current idle thread now.",
       ].join("\n");
 
       if (messageId) {
@@ -3418,43 +3532,70 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
     await ctx.answerCallbackQuery({ text: `Launch set to ${profile.label}` });
     clearLaunchSelectionState(contextKey);
-    session.setLaunchProfile(profile.id);
-    updateSessionMetadata(contextKey, session);
-    const info = session.getInfo();
-    appendTelegramActivity(ctx, contextKey, session, {
-      status: "info",
-      type: "launch_profile_changed",
-      threadId: info.threadId,
-      workspace: info.workspace,
-      agentId: info.agentId,
-      detail: info.launchProfileLabel,
-    });
-
-    const html = [
-      `<b>Launch profile set to</b> <code>${escapeHTML(info.launchProfileLabel)}</code>`,
-      `<b>Behavior:</b> <code>${escapeHTML(info.launchProfileBehavior)}</code>`,
-      "",
-      "Applies to new or reattached threads.",
-    ].join("\n");
-    const plain = [
-      `Launch profile set to ${info.launchProfileLabel}`,
-      `Behavior: ${info.launchProfileBehavior}`,
-      "",
-      "Applies to new or reattached threads.",
-    ].join("\n");
+    const { info } = await setTelegramLaunchProfile(ctx, contextKey, session, profile.id, false);
+    const resultText = renderLaunchProfileResult(info, profile.behavior, false, false);
+    const applyKeyboard = new InlineKeyboard().text("Apply to current session", `launchapply:${profile.id}`);
 
     if (messageId) {
-      await safeEditMessage(bot, chatId, messageId, html, { fallbackText: plain });
+      await safeEditMessage(bot, chatId, messageId, resultText.html, {
+        fallbackText: resultText.plain,
+        replyMarkup: applyKeyboard,
+      });
     } else {
-      await safeReply(ctx, html, { fallbackText: plain });
+      await safeReply(ctx, resultText.html, {
+        fallbackText: resultText.plain,
+        replyMarkup: applyKeyboard,
+      });
     }
   });
 
-  bot.callbackQuery(/^launchconfirm_(yes|no):([a-z0-9_-]+)$/, async (ctx) => {
+  bot.callbackQuery(/^launchapply:([a-z0-9_-]+)$/, async (ctx) => {
+    const chatId = ctx.chat?.id;
+    const messageId = ctx.callbackQuery.message?.message_id;
+    const profileId = ctx.match?.[1];
+    if (!chatId || !messageId || !profileId) {
+      return;
+    }
+
+    const contextSession = await getContextSession(ctx, { deferThreadStart: true });
+    if (!contextSession) {
+      return;
+    }
+
+    const { contextKey, session } = contextSession;
+    if (isBusy(contextKey)) {
+      await ctx.answerCallbackQuery({ text: "Wait for the current prompt to finish" });
+      return;
+    }
+
+    const profile = session.listLaunchProfiles().find((candidate) => candidate.id === profileId);
+    if (!profile) {
+      await ctx.answerCallbackQuery({ text: "Launch profile no longer exists" });
+      return;
+    }
+    if (profile.unsafe) {
+      await ctx.answerCallbackQuery({ text: "Confirm danger-full-access first" });
+      return;
+    }
+
+    const blocker = externalLaunchApplyBlocker(session);
+    if (blocker) {
+      await ctx.answerCallbackQuery({ text: "External CLI task is still running" });
+      await safeEditMessage(bot, chatId, messageId, escapeHTML(blocker), { fallbackText: blocker });
+      return;
+    }
+    const { info, appliedToActiveThread } = await setTelegramLaunchProfile(ctx, contextKey, session, profile.id, true);
+    const resultText = renderLaunchProfileResult(info, profile.behavior, true, appliedToActiveThread);
+    await ctx.answerCallbackQuery({ text: appliedToActiveThread ? "Applied to current session" : "Launch profile updated" });
+    await safeEditMessage(bot, chatId, messageId, resultText.html, { fallbackText: resultText.plain });
+  });
+
+  bot.callbackQuery(/^launchconfirm_(yes|no):([a-z0-9_-]+)(?::(apply|next))?$/, async (ctx) => {
     const chatId = ctx.chat?.id;
     const messageId = ctx.callbackQuery.message?.message_id;
     const action = ctx.match?.[1];
     const confirmedProfileId = ctx.match?.[2];
+    const mode = ctx.match?.[3] === "apply" ? "apply" : "next";
 
     if (!chatId || !messageId || !action || !confirmedProfileId) {
       return;
@@ -3509,31 +3650,19 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     clearLaunchSelectionState(contextKey);
-    session.setLaunchProfile(profile.id);
-    updateSessionMetadata(contextKey, session);
-    const info = session.getInfo();
-    appendTelegramActivity(ctx, contextKey, session, {
-      status: "info",
-      type: "launch_profile_changed",
-      threadId: info.threadId,
-      workspace: info.workspace,
-      agentId: info.agentId,
-      detail: info.launchProfileLabel,
-    });
-    await ctx.answerCallbackQuery({ text: `Launch set to ${info.launchProfileLabel}` });
+    const applyToCurrent = mode === "apply";
+    const blocker = applyToCurrent ? externalLaunchApplyBlocker(session) : null;
+    if (blocker) {
+      await ctx.answerCallbackQuery({ text: "External CLI task is still running" });
+      await safeEditMessage(bot, chatId, messageId, escapeHTML(blocker), { fallbackText: blocker });
+      return;
+    }
+    const { info, appliedToActiveThread } = await setTelegramLaunchProfile(ctx, contextKey, session, profile.id, applyToCurrent);
+    await ctx.answerCallbackQuery({ text: applyToCurrent && appliedToActiveThread ? "Applied to current session" : `Launch set to ${info.launchProfileLabel}` });
 
-    const html = [
-      `<b>Launch profile set to</b> <code>${escapeHTML(info.launchProfileLabel)}</code>`,
-      `<b>Behavior:</b> <code>${escapeHTML(info.launchProfileBehavior)}</code>`,
-      "",
-      "⚠️ <i>danger-full-access confirmed for new or reattached threads.</i>",
-    ].join("\n");
-    const plain = [
-      `Launch profile set to ${info.launchProfileLabel}`,
-      `Behavior: ${info.launchProfileBehavior}`,
-      "",
-      "danger-full-access confirmed for new or reattached threads.",
-    ].join("\n");
+    const resultText = renderLaunchProfileResult(info, profile.behavior, applyToCurrent, appliedToActiveThread);
+    const html = `${resultText.html}\n\n⚠️ <i>danger-full-access confirmed.</i>`;
+    const plain = `${resultText.plain}\n\ndanger-full-access confirmed.`;
 
     await safeEditMessage(bot, chatId, messageId, html, { fallbackText: plain });
   });

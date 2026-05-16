@@ -173,7 +173,7 @@ export interface RelayRuntimeDelegate {
   setModel(model: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
   setReasoningEffort(effort: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
   setFastMode(enabled: boolean, actor?: WebActivityActor): Promise<AgentSessionInfo>;
-  setLaunchProfile(profileId: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
+  setLaunchProfile(profileId: string, actor?: WebActivityActor, options?: { applyToCurrent?: boolean }): Promise<AgentSessionInfo>;
   handback(actor?: WebActivityActor): Promise<ReturnType<AgentSessionService["handback"]>>;
   abort(actor?: WebActivityActor): Promise<void>;
   sendPrompt(text: string, actor?: WebActivityActor, correlationId?: string): Promise<{ queued: boolean; queueId?: string; correlationId?: string }>;

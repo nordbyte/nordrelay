@@ -718,13 +718,35 @@ export async function relayRuntimeSetFastMode(runtime: RelayRuntimeDelegate, ena
     return info;
   }
 
-export async function relayRuntimeSetLaunchProfile(runtime: RelayRuntimeDelegate, profileId: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
+export async function relayRuntimeSetLaunchProfile(
+  runtime: RelayRuntimeDelegate,
+  profileId: string,
+  actor?: WebActivityActor,
+  options: { applyToCurrent?: boolean } = {},
+): Promise<AgentSessionInfo> {
     const session = await runtime.getSession(true);
     runtime.ensureIdle(session);
-    session.setLaunchProfile(profileId);
+    if (options.applyToCurrent) {
+      const external = getExternalSnapshotForSession(session, runtime.config, { maxEvents: 0 });
+      if (external?.activity.active && !session.isProcessing()) {
+        throw new Error(`Cannot apply launch profile while the external ${external.agentLabel} CLI task is still running.`);
+      }
+    }
+    const result = options.applyToCurrent && session.setLaunchProfileForCurrentSession
+      ? await session.setLaunchProfileForCurrentSession(profileId)
+      : { value: session.setLaunchProfile(profileId).id, appliedToActiveThread: false };
     runtime.updateSession(session);
     const info = runtime.publicInfo(session);
-    runtime.appendActivity({ source: "web", status: "info", type: "launch_profile_changed", threadId: info.threadId, workspace: info.workspace, agentId: info.agentId, actor, detail: info.launchProfileLabel ?? profileId });
+    runtime.appendActivity({
+      source: "web",
+      status: "info",
+      type: result.appliedToActiveThread ? "launch_profile_applied" : "launch_profile_changed",
+      threadId: info.threadId,
+      workspace: info.workspace,
+      agentId: info.agentId,
+      actor,
+      detail: info.launchProfileLabel ?? result.value ?? profileId,
+    });
     return info;
   }
 

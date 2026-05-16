@@ -812,6 +812,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     const parts = argument.trim().split(/\s+/).filter(Boolean);
     const requested = parts[0] ?? "";
     const confirmed = parts.slice(1).some((part) => part.toLowerCase() === "confirm");
+    const applyToCurrent = parts.slice(1).some((part) => ["apply", "current", "now"].includes(part.toLowerCase()));
     if (requested) {
       const profile = session.listLaunchProfiles().find((candidate) => candidate.id === requested);
       if (!profile) {
@@ -819,17 +820,31 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
         return;
       }
       if (profile.unsafe && !confirmed) {
-        await reply(request, [`Confirm launch profile: ${profile.label}`, `Behavior: ${profile.behavior}`, "", "WARNING: This profile uses danger-full-access.", `Run \`/launch ${profile.id} confirm\` to enable it for new or reattached threads in this Slack context.`].join("\n"));
+        await reply(request, [`Confirm launch profile: ${profile.label}`, `Behavior: ${profile.behavior}`, "", "WARNING: This profile uses danger-full-access.", `Run \`/launch ${profile.id} confirm${applyToCurrent ? " apply" : ""}\` to ${applyToCurrent ? "apply it to the current idle thread" : "enable it for new or reattached threads"} in this Slack context.`].join("\n"));
         return;
       }
-      session.setLaunchProfile(profile.id);
+      if (applyToCurrent) {
+        const external = getExternalSnapshotForSession(session, config, { maxEvents: 0 });
+        if (external?.activity.active && !session.isProcessing()) {
+          await reply(request, `Cannot apply launch profile while the external ${external.agentLabel} CLI task is still running.`);
+          return;
+        }
+      }
+      const result = applyToCurrent && session.setLaunchProfileForCurrentSession
+        ? await session.setLaunchProfileForCurrentSession(profile.id)
+        : { value: session.setLaunchProfile(profile.id).id, appliedToActiveThread: false };
       updateSession(request, session);
-      await reply(request, `Launch profile set to ${profile.label}.\nBehavior: ${profile.behavior}`);
+      const suffix = applyToCurrent
+        ? result.appliedToActiveThread
+          ? "Applied to the current idle thread."
+          : "No active idle thread was attached; applies to the next thread."
+        : "Applies to new or reattached threads.";
+      await reply(request, `Launch profile set to ${profile.label}.\nBehavior: ${profile.behavior}\n\n${suffix}`);
       return;
     }
     const profiles = session.listLaunchProfiles();
     const pickId = createPick("launch", profiles.map((profile) => profile.id));
-    await reply(request, "Select launch profile:", { buttons: profiles.map((profile, index) => [{ label: trimLine(profile.label || profile.id, 75), action: `slack_pick:${pickId}:${index}` }]) });
+    await reply(request, "Select launch profile:\nUse `/launch <profile-id> apply` to apply a profile to the current idle thread.", { buttons: profiles.map((profile, index) => [{ label: trimLine(profile.label || profile.id, 75), action: `slack_pick:${pickId}:${index}` }]) });
   };
 
   const commandQueue = async (request: SlackRequest, argument: string): Promise<void> => {

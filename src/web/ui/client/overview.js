@@ -141,12 +141,13 @@ function renderSessionControls(){
   document.getElementById('sessionControls').innerHTML=[
     caps.modelSelection?'<label>Model<select id="controlModel"'+disabledAttr('settings.write')+'>'+modelOptions+'</select></label>':'',
     caps.reasoningSelection?'<label>'+esc(c.reasoningLabel||'Reasoning')+'<select id="controlReasoning"'+disabledAttr('settings.write')+'>'+reasoningOptions+'</select></label>':'',
-    caps.launchProfiles?'<label>Launch<select id="controlLaunch"'+disabledAttr('settings.write')+'>'+launchOptions+'</select></label>':'',
+    caps.launchProfiles?'<label>Launch<select id="controlLaunch"'+disabledAttr('settings.write')+'>'+launchOptions+'</select></label><button id="applyLaunchBtn" class="secondary" title="Apply selected launch profile to the current idle session"'+disabledAttr('settings.write')+'>Apply to Current</button>':'',
     caps.fastMode?'<label class="checkbox"><input id="controlFast" type="checkbox" '+(s.fastMode?'checked':'')+disabledAttr('settings.write')+'> Fast mode</label>':''
   ].join('');
   const model=document.getElementById('controlModel'); if(model) model.onchange=()=>safe(async()=>{if(model.value){await api('/api/session/model',{method:'POST',body:JSON.stringify({model:model.value})});toast('Model updated');loadBootstrap()}});
   const reasoning=document.getElementById('controlReasoning'); if(reasoning) reasoning.onchange=()=>safe(async()=>{await api('/api/session/reasoning',{method:'POST',body:JSON.stringify({reasoning:reasoning.value})});toast((c.reasoningLabel||'Reasoning')+' updated');loadBootstrap()});
   const launch=document.getElementById('controlLaunch'); if(launch) launch.onchange=()=>safe(async()=>{await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId:launch.value})});toast('Launch profile updated');loadBootstrap()});
+  const applyLaunch=document.getElementById('applyLaunchBtn'); if(applyLaunch&&launch) applyLaunch.onclick=()=>safe(async()=>{await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId:launch.value,apply:true})});toast('Launch profile applied to current session');loadBootstrap()});
   const fast=document.getElementById('controlFast'); if(fast) fast.onchange=()=>safe(async()=>{await api('/api/session/fast',{method:'POST',body:JSON.stringify({enabled:fast.checked})});toast('Fast mode updated');loadBootstrap()});
 }
 function renderAdapters(channels, agents){

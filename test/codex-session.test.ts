@@ -365,6 +365,39 @@ describe("CodexSessionService", () => {
     });
   });
 
+  it("setLaunchProfileForCurrentSession reattaches an idle active thread with the requested profile", async () => {
+    const service = await CodexSessionService.create(createConfig(), {
+      resumeThreadId: "thread-launch",
+    });
+
+    const result = service.setLaunchProfileForCurrentSession("readonly");
+    const codexInstance = mockState.codexInstances.at(-1);
+
+    expect(result).toEqual({
+      value: "readonly",
+      appliedToActiveThread: true,
+    });
+    expect(codexInstance.resumeThread).toHaveBeenLastCalledWith("thread-launch", {
+      model: "o3",
+      sandboxMode: "read-only",
+      workingDirectory: "/workspace/base",
+      approvalPolicy: "never",
+      skipGitRepoCheck: true,
+    });
+    expect(service.getInfo()).toEqual({
+      threadId: "thread-launch",
+      workspace: "/workspace/base",
+      model: "o3",
+      launchProfileId: "readonly",
+      launchProfileLabel: "Read Only",
+      launchProfileBehavior: "read-only / never",
+      sandboxMode: "read-only",
+      approvalPolicy: "never",
+      fastMode: true,
+      unsafeLaunch: false,
+    });
+  });
+
   it("setFastMode disables fast mode and reattaches an idle active thread", async () => {
     const service = await CodexSessionService.create(createConfig(), {
       resumeThreadId: "thread-fast",

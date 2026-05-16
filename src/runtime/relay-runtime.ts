@@ -601,8 +601,8 @@ export class RelayRuntime {
     return relayRuntimeSetFastMode(this, enabled, actor);
   }
 
-  async setLaunchProfile(profileId: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
-    return relayRuntimeSetLaunchProfile(this, profileId, actor);
+  async setLaunchProfile(profileId: string, actor?: WebActivityActor, options: { applyToCurrent?: boolean } = {}): Promise<AgentSessionInfo> {
+    return relayRuntimeSetLaunchProfile(this, profileId, actor, options);
   }
 
   async handback(actor?: WebActivityActor): Promise<ReturnType<AgentSessionService["handback"]>> {

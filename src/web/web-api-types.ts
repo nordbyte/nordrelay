@@ -135,7 +135,7 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/session/model" ? { model: string } :
   P extends "/api/session/reasoning" ? { reasoning: string } :
   P extends "/api/session/fast" ? { enabled: boolean } :
-  P extends "/api/session/launch" ? { profileId: string } :
+  P extends "/api/session/launch" ? { profileId: string; apply?: boolean } :
   P extends "/api/queue" ? { action: string; id?: string } :
   P extends "/api/artifacts/bulk" ? { action: "delete"; turnIds: string[] } :
   P extends "/api/peers/discovery-jobs" ? { targets?: string[]; timeoutMs?: number; concurrency?: number; maxHosts?: number } :

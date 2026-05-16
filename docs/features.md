@@ -65,6 +65,7 @@
 - Supports model selection through `/model`, using Codex model cache when available and fallback models otherwise.
 - Supports reasoning effort selection through `/reasoning` and the backward-compatible `/effort` alias: `minimal`, `low`, `medium`, `high`, `xhigh`.
 - Supports launch profiles through `/launch_profiles` and `/launch`.
+- Existing idle Codex threads can be reattached with a new launch profile through `/launch <profile-id> apply` or the WebUI Apply to Current action.
 - Built-in launch profiles include Default, Read Only, Review, and optional Full Access.
 - Custom launch profiles can be configured with `CODEX_LAUNCH_PROFILES_JSON`.
 - Unsafe `danger-full-access` profiles require `ENABLE_UNSAFE_LAUNCH_PROFILES=true` and channel confirmation.

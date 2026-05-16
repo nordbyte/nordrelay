@@ -30,6 +30,7 @@ function applyPermissions(){
     ['#retryBtn','prompt.send'],
     ['#syncBtn,#handbackBtn','sessions.write'],
     ['#mirrorModeSelect','settings.write'],
+    ['#applyLaunchBtn','settings.write'],
     ['#abortBtn','prompt.abort'],
     ['#clearChatBtn','sessions.write'],
     ['#saveSettingsBtn','settings.write'],

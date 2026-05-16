@@ -366,6 +366,7 @@ export interface AgentSessionService {
   setReasoningEffort(effort: string): void;
   setReasoningEffortForCurrentSession(effort: string): AgentSettingResult | Promise<AgentSettingResult>;
   setLaunchProfile(profileId: string): CodexLaunchProfile;
+  setLaunchProfileForCurrentSession?(profileId: string): AgentSettingResult | Promise<AgentSettingResult>;
   setFastMode(enabled: boolean): AgentFastModeResult;
   getSelectedLaunchProfile(): CodexLaunchProfile;
   syncFromAgentState(options?: { reattach?: boolean }): AgentSyncResult;

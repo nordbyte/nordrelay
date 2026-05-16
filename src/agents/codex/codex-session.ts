@@ -449,6 +449,15 @@ export class CodexSessionService {
     return this.currentLaunchProfile;
   }
 
+  setLaunchProfileForCurrentSession(profileId: string): SessionSettingResult {
+    this.ensureIdle("change launch profile");
+    const profile = getLaunchProfile(this.config, profileId);
+    this.currentLaunchProfile = profile;
+    this.resetCodexClient();
+    const appliedToActiveThread = this.reattachActiveThread(profile);
+    return { value: profile.id, appliedToActiveThread };
+  }
+
   setFastMode(enabled: boolean): FastModeResult {
     this.ensureIdle("change fast mode");
 
@@ -695,13 +704,13 @@ export class CodexSessionService {
     this.activeThreadLaunchProfile = this.resolveThreadLaunchProfile(record);
   }
 
-  private reattachActiveThread(): boolean {
+  private reattachActiveThread(launchProfileOverride?: CodexLaunchProfile): boolean {
     if (!this.thread) {
       this.resetCodexClient();
       return false;
     }
 
-    const launchProfile = this.activeThreadLaunchProfile ?? this.currentLaunchProfile;
+    const launchProfile = launchProfileOverride ?? this.activeThreadLaunchProfile ?? this.currentLaunchProfile;
     if (this.currentThreadId) {
       this.thread = this.getCodex().resumeThread(
         this.currentThreadId,

@@ -192,7 +192,9 @@ export async function handleDashboardSessionRoute(
   if (req.method === "POST" && url.pathname === "/api/session/launch") {
     const body = await readJsonBody(req);
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { session: await runtime.setLaunchProfile(stringField(body, "profileId"), options.activityActor) });
+    sendJson(res, 200, {
+      session: await runtime.setLaunchProfile(stringField(body, "profileId"), options.activityActor, { applyToCurrent: Boolean(body?.apply) }),
+    });
     return true;
   }
 

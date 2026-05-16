@@ -117,6 +117,15 @@ describe("loadConfig", () => {
     delete process.env.NORDRELAY_STATE_BACKEND;
     delete process.env.NORDRELAY_AUDIT_MAX_EVENTS;
     delete process.env.NORDRELAY_SESSION_LOCK_TTL_MS;
+    delete process.env.NORDRELAY_PEER_ENABLED;
+    delete process.env.NORDRELAY_PEER_NAME;
+    delete process.env.NORDRELAY_PEER_HOST;
+    delete process.env.NORDRELAY_PEER_PORT;
+    delete process.env.NORDRELAY_PEER_PUBLIC_URL;
+    delete process.env.NORDRELAY_PEER_TLS_ENABLED;
+    delete process.env.NORDRELAY_PEER_REQUIRE_TLS;
+    delete process.env.NORDRELAY_PEER_DISCOVERY_TIMEOUT_MS;
+    delete process.env.NORDRELAY_PEER_HEALTH_CHECK_MS;
     delete process.env.ENABLE_TELEGRAM_LOGIN;
     delete process.env.ENABLE_TELEGRAM_REACTIONS;
     delete process.env.VOICE_PREFERRED_BACKEND;

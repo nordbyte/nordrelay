@@ -43,7 +43,7 @@
 - `/workspaces` lists workspaces known to the selected agent and allowed by the workspace policy.
 - `/abort` cancels the current operation.
 - `/stop` is an alias for `/abort`.
-- `/launch_profiles` or `/launch` opens the launch profile picker.
+- `/launch_profiles` or `/launch` opens the launch profile picker. `/launch <profile-id> apply` applies a launch profile to the current idle thread; unsafe profiles require `confirm apply`.
 - `/fast [on|off]` toggles Codex fast mode. Without an argument it flips the current state.
 - `/model` opens the model picker.
 - `/reasoning` opens the selected agent's reasoning or thinking picker.
@@ -83,7 +83,7 @@ Discord supports slash commands and `/command` text messages for the shared comm
 - `/queue`, `/sessions`, `/agent`, `/model`, `/reasoning`, `/launch`, `/artifacts`, `/update`, and `/stop` use Discord buttons where component limits allow.
 - `/peers` and `/target local|<peer-id>` use the same paired-instance target selection as Telegram.
 - `/artifacts latest`, `/artifacts zip latest`, `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, and `/artifacts delete <turn-id>` are available in Discord.
-- Unsafe launch profiles require explicit confirmation with `/launch <profile-id> confirm`.
+- Unsafe launch profiles require explicit confirmation with `/launch <profile-id> confirm`; add `apply` to reattach the current idle thread immediately.
 - Discord does not support Telegram reactions or Telegram webhook transport; typing, message edits, attachments, files, DMs, guild channels, and threads are supported.
 
 
@@ -97,7 +97,7 @@ Slack supports the configured slash command and `/command` text messages for the
 - `/queue`, `/sessions`, `/agent`, `/model`, `/reasoning`, `/launch`, `/artifacts`, `/update`, and `/stop` use Slack buttons where Block Kit limits allow.
 - `/peers` and `/target local|<peer-id>` use the same paired-instance target selection as Telegram and Discord.
 - `/artifacts latest`, `/artifacts zip latest`, `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, and `/artifacts delete <turn-id>` are available in Slack.
-- Unsafe launch profiles require explicit confirmation with `/launch <profile-id> confirm`.
+- Unsafe launch profiles require explicit confirmation with `/launch <profile-id> confirm`; add `apply` to reattach the current idle thread immediately.
 - Slack does not support Telegram reactions or Telegram webhook transport; typing/status, message edits, attachments, files, DMs, channels, and threads are supported.
 
 
@@ -189,6 +189,8 @@ Choose launch profile:
 
 ```text
 /launch_profiles
+/launch readonly apply
+/launch full-access confirm apply
 ```
 
-Tap the profile. Unsafe profiles require confirmation before they become active.
+Tap the profile to select it for new or reattached threads. Use `apply` when you want an idle active Codex thread to be reattached immediately with the selected launch behavior.
