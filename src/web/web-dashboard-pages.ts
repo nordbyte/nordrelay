@@ -258,10 +258,22 @@ ${faviconLinks}
 
       <section class="page" id="page-adapters">
         <div class="panel">
-          <div class="row"><button id="reloadAdaptersBtn">Reload adapters</button></div>
-          <div id="adapterHealth" class="list"></div>
-          <h2 class="task-section-title">Adapter Conformance</h2>
-          <div id="adapterConformance" class="list"></div>
+          <div class="adapter-section-header">
+            <div id="adapterTabs" class="section-tabs adapter-tabs" role="tablist" aria-label="Adapter sections">
+              <button type="button" role="tab" aria-selected="true" tabindex="0" data-adapter-tab="adapters" class="active">Adapters</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-adapter-tab="conformance">Adapter Conformance</button>
+            </div>
+          </div>
+          <div id="adapterPanel" class="adapter-panel">
+            <div class="adapter-tab active" data-adapter-tab-panel="adapters">
+              <div class="adapter-heading-actions"><button id="reloadAdaptersBtn">Reload adapters</button></div>
+              <div id="adapterHealth" class="list"></div>
+            </div>
+            <div class="adapter-tab" data-adapter-tab-panel="conformance">
+              <div class="adapter-heading-actions"><button id="reloadAdapterConformanceBtn" class="secondary">Reload conformance</button></div>
+              <div id="adapterConformance" class="list"></div>
+            </div>
+          </div>
         </div>
       </section>
 

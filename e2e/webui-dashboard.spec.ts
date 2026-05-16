@@ -15,7 +15,7 @@ interface MockServer {
   baseUrl: string;
   server: Server;
   close: () => Promise<void>;
-  requests: Array<{ method: string; path: string; body: unknown }>;
+  requests: Array<{ method: string; path: string; query: Record<string, string>; body: unknown }>;
 }
 
 const NAV_SECTION_BY_PAGE: Record<string, string> = {
@@ -125,6 +125,10 @@ test.describe("NordRelay WebUI", () => {
 
     await navigateDashboard(page, "Version");
     await expect(page.locator("#versionPanel")).toContainText("NordRelay");
+    await expect(page.locator("#versionPanel .version-grid")).toBeVisible();
+    await expect
+      .poll(async () => page.locator("#versionPanel .version-grid").evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length))
+      .toBe(2);
     await expect(page.locator("#agentUpdateJobs")).toContainText("No agent update jobs");
 
     await navigateDashboard(page, "Tasks");
@@ -359,6 +363,14 @@ test.describe("NordRelay WebUI", () => {
     await page.goto(mock.baseUrl);
 
     await navigateDashboard(page, "Adapters");
+    await expect(page.locator(".adapter-section-header #adapterTabs")).toBeVisible();
+    await expect(page.locator("#adapterTabs")).toHaveAttribute("role", "tablist");
+    await expect(page.getByRole("tab", { name: "Adapters" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#adapterHealth")).toContainText("Codex");
+    await expect(page.locator('[data-adapter-tab-panel="conformance"]')).toBeHidden();
+    await page.getByRole("tab", { name: "Adapter Conformance" }).click();
+    await expect(page.getByRole("tab", { name: "Adapter Conformance" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator('[data-adapter-tab-panel="conformance"]')).toBeVisible();
     await expect(page.locator("#adapterConformance")).toContainText("Agent capability contract");
     await expect(page.locator("#adapterConformance")).toContainText("Channel command contract");
     await expect(page.locator("#adapterConformance")).toContainText("Codex");
@@ -590,6 +602,12 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#logs")).toContainText("Slow check");
     await expect(page.locator("#logs")).toContainText("warn detail");
     await expect(page.locator("#logs")).not.toContainText("Started");
+
+    const beforeTargetSwitch = mock.requests.length;
+    await page.locator("#logTarget").selectOption("agent-updates");
+    await expect
+      .poll(() => mock.requests.slice(beforeTargetSwitch).some((request) => request.path === "/api/logs" && request.query.target === "agent-updates"))
+      .toBe(true);
   });
 
   test("runs core settings, chat, peers, and version flows on mobile", async ({ page }) => {
@@ -638,7 +656,7 @@ async function startMockDashboardServer(): Promise<MockServer> {
 
     if (url.pathname.startsWith("/api/")) {
       const body = await readJson(req);
-      requests.push({ method: req.method ?? "GET", path: url.pathname, body });
+      requests.push({ method: req.method ?? "GET", path: url.pathname, query: Object.fromEntries(url.searchParams), body });
       return sendJson(res, 200, apiResponse(url, req.method ?? "GET", body, jobs));
     }
 
