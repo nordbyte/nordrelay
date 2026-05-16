@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import readline from "node:readline/promises";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const FALLBACK_VERSION = "0.3.1";
@@ -238,6 +238,7 @@ function formatDashboardUrl(endpoint) {
 async function commandStart(options, settings = {}) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
+  warnIfCliPathMissing();
   await prepareRuntimeForLaunch(options);
   const dashboard = resolveDashboardEndpoint(options);
 
@@ -429,6 +430,46 @@ async function commandStatus(options) {
   console.log(`Log: ${options.logFile}`);
   console.log(`WebUI log: ${options.webLogFile}`);
   if (state.error) console.log(`Error: ${state.error}`);
+}
+
+function cliPathDiagnostics() {
+  const resolved = findExecutable(APP_NAME);
+  const globalBin = resolveNpmGlobalBinDir();
+  const candidate = globalBin ? path.join(globalBin, process.platform === "win32" ? `${APP_NAME}.cmd` : APP_NAME) : null;
+  const pathContainsGlobalBin = globalBin ? pathListIncludes(globalBin) : false;
+  const expected = [candidate, SCRIPT_PATH].filter(Boolean);
+  const resolvedKnown = Boolean(resolved && expected.some((item) => pathsEqualOrLinked(resolved, item)));
+  const hint = globalBin
+    ? process.platform === "win32"
+      ? `Add ${globalBin} to PATH and reopen the terminal.`
+      : `Add ${globalBin} to PATH, for example: export PATH="${globalBin}:$PATH"`
+    : "Ensure the npm global bin directory is on PATH.";
+  return {
+    ok: Boolean(resolved),
+    resolved,
+    globalBin,
+    pathContainsGlobalBin,
+    expected: candidate,
+    resolvedKnown,
+    detail: resolved
+      ? resolvedKnown
+        ? resolved
+        : `${resolved} (different command target; current wrapper: ${SCRIPT_PATH})`
+      : `not found on PATH${globalBin ? `; npm global bin: ${globalBin}` : ""}`,
+    hint,
+  };
+}
+
+function warnIfCliPathMissing() {
+  if (envFlag("NORDRELAY_SUPPRESS_PATH_WARNING")) {
+    return;
+  }
+  const diagnostics = cliPathDiagnostics();
+  if (diagnostics.ok) {
+    return;
+  }
+  console.warn(`Warning: \`${APP_NAME}\` is not available on PATH.`);
+  console.warn(`Hint: ${diagnostics.hint}`);
 }
 
 async function commandUpdate(options) {
@@ -671,6 +712,7 @@ function quoteWindowsCmdArg(value) {
 
 async function commandInit(options) {
   await mkdirp(options.home);
+  warnIfCliPathMissing();
   const envPath = path.join(options.home, "nordrelay.env");
   const userStore = await createUserStore(options.home);
   if (fs.existsSync(envPath) && !options.force) {
@@ -960,6 +1002,234 @@ async function commandPeer(options) {
   throw new Error("Usage: nordrelay peer [identity|list|invite|add|test|check|revoke]");
 }
 
+function parseServiceFlags(argv) {
+  const copy = [...argv];
+  const subcommand = copy[0] && !copy[0].startsWith("-") ? copy.shift() : "status";
+  const flags = {
+    subcommand,
+    start: true,
+    name: process.platform === "win32" ? "NordRelay" : "nordrelay",
+    label: "io.nordbyte.nordrelay",
+  };
+  for (let i = 0; i < copy.length; i += 1) {
+    const arg = copy[i];
+    if (arg === "--no-start") flags.start = false;
+    else if (arg === "--name") flags.name = requireValue(copy, ++i, arg);
+    else if (arg === "--label") flags.label = requireValue(copy, ++i, arg);
+  }
+  return flags;
+}
+
+async function commandService(options) {
+  await mkdirp(options.home);
+  loadEnvFiles(options.home);
+  warnIfCliPathMissing();
+  const flags = parseServiceFlags(options.rawFlags);
+
+  if (flags.subcommand === "install") {
+    if (process.platform === "darwin") {
+      await installLaunchdService(options, flags);
+      return;
+    }
+    if (process.platform === "win32") {
+      await installWindowsTask(options, flags);
+      return;
+    }
+    await installSystemdUserService(options, flags);
+    return;
+  }
+
+  if (flags.subcommand === "uninstall" || flags.subcommand === "remove") {
+    if (process.platform === "darwin") {
+      await uninstallLaunchdService(flags);
+      return;
+    }
+    if (process.platform === "win32") {
+      await uninstallWindowsTask(flags);
+      return;
+    }
+    await uninstallSystemdUserService(flags);
+    return;
+  }
+
+  if (flags.subcommand === "status") {
+    await commandServiceStatus(flags);
+    return;
+  }
+
+  throw new Error("Usage: nordrelay service [install|uninstall|status] [--no-start] [--name <name>] [--label <label>]");
+}
+
+async function installSystemdUserService(options, flags) {
+  const unitDir = path.join(os.homedir(), ".config", "systemd", "user");
+  const unitPath = path.join(unitDir, `${flags.name}.service`);
+  await mkdirp(unitDir);
+  const args = serviceRunArgs(options);
+  const execStart = [process.execPath, SCRIPT_PATH, ...args].map(systemdQuote).join(" ");
+  await fsp.writeFile(unitPath, [
+    "[Unit]",
+    "Description=NordRelay connector and WebUI",
+    "After=network-online.target",
+    "",
+    "[Service]",
+    "Type=simple",
+    `ExecStart=${execStart}`,
+    "Restart=on-failure",
+    "RestartSec=5",
+    `Environment=NORDRELAY_HOME=${systemdQuote(options.home)}`,
+    "",
+    "[Install]",
+    "WantedBy=default.target",
+    "",
+  ].join("\n"));
+  console.log(`Installed systemd user service: ${unitPath}`);
+  runPlatformCommand("systemctl", ["--user", "daemon-reload"], "Reload systemd user units");
+  const action = flags.start ? "enable --now" : "enable";
+  runPlatformCommand("systemctl", ["--user", "enable", flags.start ? "--now" : "", `${flags.name}.service`].filter(Boolean), `systemctl --user ${action} ${flags.name}.service`);
+  console.log(`Status: nordrelay service status`);
+}
+
+async function uninstallSystemdUserService(flags) {
+  runPlatformCommand("systemctl", ["--user", "disable", "--now", `${flags.name}.service`], `Disable ${flags.name}.service`);
+  const unitPath = path.join(os.homedir(), ".config", "systemd", "user", `${flags.name}.service`);
+  await fsp.rm(unitPath, { force: true });
+  runPlatformCommand("systemctl", ["--user", "daemon-reload"], "Reload systemd user units");
+  console.log(`Removed systemd user service: ${unitPath}`);
+}
+
+async function installLaunchdService(options, flags) {
+  const launchAgentsDir = path.join(os.homedir(), "Library", "LaunchAgents");
+  const plistPath = path.join(launchAgentsDir, `${flags.label}.plist`);
+  await mkdirp(launchAgentsDir);
+  const args = [SCRIPT_PATH, ...serviceRunArgs(options)];
+  await fsp.writeFile(plistPath, launchdPlist(flags.label, process.execPath, args, options.home));
+  console.log(`Installed launchd service: ${plistPath}`);
+  const domain = `gui/${process.getuid?.() ?? ""}`;
+  runPlatformCommand("launchctl", ["bootout", domain, plistPath], `Unload existing ${flags.label}`, { allowFailure: true });
+  if (flags.start) {
+    runPlatformCommand("launchctl", ["bootstrap", domain, plistPath], `Load ${flags.label}`);
+    runPlatformCommand("launchctl", ["enable", `${domain}/${flags.label}`], `Enable ${flags.label}`, { allowFailure: true });
+    runPlatformCommand("launchctl", ["kickstart", "-k", `${domain}/${flags.label}`], `Start ${flags.label}`, { allowFailure: true });
+  } else {
+    console.log(`Start later with: launchctl bootstrap ${domain} ${plistPath}`);
+  }
+}
+
+async function uninstallLaunchdService(flags) {
+  const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${flags.label}.plist`);
+  const domain = `gui/${process.getuid?.() ?? ""}`;
+  runPlatformCommand("launchctl", ["bootout", domain, plistPath], `Unload ${flags.label}`, { allowFailure: true });
+  await fsp.rm(plistPath, { force: true });
+  console.log(`Removed launchd service: ${plistPath}`);
+}
+
+async function installWindowsTask(options, flags) {
+  const taskCommand = windowsTaskCommand(process.execPath, [SCRIPT_PATH, ...serviceRunArgs(options)]);
+  const args = ["/Create", "/F", "/SC", "ONLOGON", "/TN", flags.name, "/TR", taskCommand];
+  runPlatformCommand("schtasks", args, `Create Windows task ${flags.name}`);
+  if (flags.start) {
+    runPlatformCommand("schtasks", ["/Run", "/TN", flags.name], `Start Windows task ${flags.name}`, { allowFailure: true });
+  }
+  console.log(`Installed Windows task: ${flags.name}`);
+}
+
+async function uninstallWindowsTask(flags) {
+  runPlatformCommand("schtasks", ["/Delete", "/F", "/TN", flags.name], `Delete Windows task ${flags.name}`, { allowFailure: true });
+  console.log(`Removed Windows task: ${flags.name}`);
+}
+
+async function commandServiceStatus(flags) {
+  if (process.platform === "darwin") {
+    const domain = `gui/${process.getuid?.() ?? ""}`;
+    runPlatformCommand("launchctl", ["print", `${domain}/${flags.label}`], `launchd status ${flags.label}`, { allowFailure: true });
+    return;
+  }
+  if (process.platform === "win32") {
+    runPlatformCommand("schtasks", ["/Query", "/TN", flags.name], `Windows task status ${flags.name}`, { allowFailure: true });
+    return;
+  }
+  runPlatformCommand("systemctl", ["--user", "status", `${flags.name}.service`, "--no-pager"], `systemd user status ${flags.name}.service`, { allowFailure: true });
+}
+
+function serviceRunArgs(options) {
+  const args = ["service-run", "--home", options.home];
+  if (options.host) args.push("--host", options.host);
+  if (options.port) args.push("--port", String(options.port));
+  return args;
+}
+
+function runPlatformCommand(command, args, label, settings = {}) {
+  const resolved = findExecutable(command);
+  if (!resolved) {
+    console.log(`${label}: ${command} not found. Run this step manually if this platform service manager is available.`);
+    return false;
+  }
+  const useShell = isWindowsShellScript(resolved);
+  console.log(`${label}: ${formatCommand(resolved, args)}`);
+  const result = spawnSync(useShell ? formatShellCommand(resolved, args) : resolved, useShell ? [] : args, {
+    cwd: RUNTIME_ROOT,
+    env: process.env,
+    shell: useShell,
+    stdio: "inherit",
+    windowsHide: false,
+  });
+  if (result.status !== 0 && !settings.allowFailure) {
+    throw new Error(`${label} failed with exit code ${result.status ?? "unknown"}`);
+  }
+  return result.status === 0;
+}
+
+function systemdQuote(value) {
+  return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function launchdPlist(label, command, args, home) {
+  const programArguments = [command, ...args]
+    .map((value) => `    <string>${xmlEscape(value)}</string>`)
+    .join("\n");
+  return [
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+    "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">",
+    "<plist version=\"1.0\">",
+    "<dict>",
+    "  <key>Label</key>",
+    `  <string>${xmlEscape(label)}</string>`,
+    "  <key>ProgramArguments</key>",
+    "  <array>",
+    programArguments,
+    "  </array>",
+    "  <key>EnvironmentVariables</key>",
+    "  <dict>",
+    "    <key>NORDRELAY_HOME</key>",
+    `    <string>${xmlEscape(home)}</string>`,
+    "  </dict>",
+    "  <key>RunAtLoad</key>",
+    "  <true/>",
+    "  <key>KeepAlive</key>",
+    "  <true/>",
+    "  <key>StandardOutPath</key>",
+    `  <string>${xmlEscape(path.join(home, "service.log"))}</string>`,
+    "  <key>StandardErrorPath</key>",
+    `  <string>${xmlEscape(path.join(home, "service.log"))}</string>`,
+    "</dict>",
+    "</plist>",
+    "",
+  ].join("\n");
+}
+
+function windowsTaskCommand(command, args) {
+  return [command, ...args].map((part) => `"${String(part).replace(/"/g, '""')}"`).join(" ");
+}
+
+function xmlEscape(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 function parseUserFlags(argv) {
   const copy = [...argv];
   const subcommand = copy[0] && !copy[0].startsWith("-") ? copy.shift() : "list";
@@ -1092,6 +1362,11 @@ async function commandDoctor(options) {
   const userSnapshot = userStore?.snapshot();
   const checks = [];
   checks.push(check("Node.js >= 22", Number.parseInt(process.versions.node.split(".")[0], 10) >= 22, process.version));
+  const cliPath = cliPathDiagnostics();
+  checks.push(check("NordRelay CLI on PATH", cliPath.ok, cliPath.ok ? cliPath.detail : `${cliPath.detail}; ${cliPath.hint}`, "warn"));
+  if (cliPath.globalBin) {
+    checks.push(check("npm global bin on PATH", cliPath.pathContainsGlobalBin, cliPath.globalBin, "warn"));
+  }
   const telegramRequested = process.env.TELEGRAM_ENABLED !== "false";
   const discordRequested = process.env.DISCORD_ENABLED === "true";
   const slackRequested = process.env.SLACK_ENABLED === "true";
@@ -1245,9 +1520,18 @@ async function checkOpenClawGateway() {
 async function commandWeb(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
+  warnIfCliPathMissing();
   await prepareRuntimeForLaunch(options);
   await ensureConnectorStartedForWeb(options);
   await startWebDashboard(options, { detached: false });
+}
+
+async function commandServiceRun(options) {
+  await mkdirp(options.home);
+  loadEnvFiles(options.home);
+  await prepareRuntimeForLaunch(options);
+  await ensureConnectorStartedForWeb(options);
+  await startWebDashboard(options, { detached: false, stopConnectorOnExit: true });
 }
 
 async function startWebDashboard(options, settings = {}) {
@@ -1335,6 +1619,9 @@ async function startWebDashboard(options, settings = {}) {
     exitCode: exit.code,
     signal: exit.signal,
   });
+  if (settings.stopConnectorOnExit) {
+    await commandStop(options, { keepWeb: true });
+  }
   if (exit.signal) {
     process.kill(process.pid, exit.signal);
     return;
@@ -1723,6 +2010,70 @@ function findExecutable(command, pathValue = process.env.PATH, pathextValue = pr
   return null;
 }
 
+function resolveNpmGlobalBinDir(env = process.env) {
+  const prefix = resolveNpmGlobalPrefix(env);
+  if (!prefix) {
+    return null;
+  }
+  return process.platform === "win32" ? prefix : path.join(prefix, "bin");
+}
+
+function resolveNpmGlobalPrefix(env = process.env) {
+  if (env.npm_config_prefix) {
+    return path.resolve(env.npm_config_prefix);
+  }
+  const npm = resolveNpmSpawnCommand(env);
+  if (!npm) {
+    return null;
+  }
+  const command = npm.shell
+    ? formatShellCommand(npm.command, [...npm.argsPrefix, "prefix", "-g"])
+    : npm.command;
+  const args = npm.shell ? [] : [...npm.argsPrefix, "prefix", "-g"];
+  const result = spawnSync(command, args, {
+    cwd: os.homedir(),
+    env,
+    shell: npm.shell,
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 5000,
+  });
+  if (result.status !== 0) {
+    return null;
+  }
+  const prefix = String(result.stdout || "").trim().split(/\r?\n/).at(-1)?.trim();
+  return prefix ? path.resolve(prefix) : null;
+}
+
+function pathListIncludes(directory, pathValue = process.env.PATH) {
+  const normalized = normalizePathForCompare(directory);
+  return (pathValue || "")
+    .split(path.delimiter)
+    .filter(Boolean)
+    .some((entry) => normalizePathForCompare(entry) === normalized);
+}
+
+function pathsEqualOrLinked(left, right) {
+  if (!left || !right) {
+    return false;
+  }
+  const normalizedLeft = normalizePathForCompare(left);
+  const normalizedRight = normalizePathForCompare(right);
+  if (normalizedLeft === normalizedRight) {
+    return true;
+  }
+  try {
+    return normalizePathForCompare(fs.realpathSync(left)) === normalizePathForCompare(fs.realpathSync(right));
+  } catch {
+    return false;
+  }
+}
+
+function normalizePathForCompare(value) {
+  const resolved = path.resolve(value || "");
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
 function windowsExecutableExtensions(pathextValue) {
   const pathext = (pathextValue || ".COM;.EXE;.BAT;.CMD")
     .split(";")
@@ -1792,6 +2143,7 @@ function printHelp() {
   console.log("  init                 Create local config and first admin user");
   console.log("  user                 Manage users, groups, and channel links");
   console.log("  peer                 Manage secure NordRelay peer federation");
+  console.log("  service              Install, remove, or inspect the OS service");
   console.log("  doctor               Validate the local setup");
   console.log("  web, dashboard       Start the WebUI and connector");
   console.log("  start                Start the connector");
@@ -1824,6 +2176,7 @@ async function main() {
   if (options.command === "init") return commandInit(options);
   if (options.command === "user") return commandUser(options);
   if (options.command === "peer") return commandPeer(options);
+  if (options.command === "service") return commandService(options);
   if (options.command === "doctor") return commandDoctor(options);
   if (options.command === "update") return commandUpdate(options);
   if (options.command === "web" || options.command === "dashboard") return commandWeb(options);
@@ -1840,13 +2193,14 @@ async function main() {
     return;
   }
   if (options.command === "foreground") return commandForeground(options);
+  if (options.command === "service-run") return commandServiceRun(options);
   if (options.command === "--version" || options.command === "version") {
     console.log(`${APP_NAME} ${VERSION}`);
     return;
   }
 
   console.error(`Unknown command: ${options.command}`);
-  console.error("Usage: nordrelay [init|user|peer|doctor|web|start|stop|restart|status|update|foreground|version]");
+  console.error("Usage: nordrelay [init|user|peer|service|doctor|web|start|stop|restart|status|update|foreground|version]");
   console.error("Run `nordrelay --help` for details.");
   process.exitCode = 2;
 }

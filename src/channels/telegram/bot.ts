@@ -37,7 +37,7 @@ import {
 } from "../../state/bot-preferences.js";
 import { renderAgentUpdateJobAction, type ChannelActionResponse } from "../shared/channel-actions.js";
 import type { ChannelContext } from "../shared/channel-adapter.js";
-import { createChannelBusyStore } from "../shared/channel-bridge-controller.js";
+import { createChannelActivityRecorder, createChannelBusyStore } from "../shared/channel-bridge-controller.js";
 import type {
   ChannelBusyReason,
   ChannelBusyState,
@@ -870,6 +870,18 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     return activityStore.append(input);
   }
 
+  const appendTelegramBridgeActivity = createChannelActivityRecorder<{
+    contextKey: TelegramContextKey;
+    context: ChannelContext;
+    authUser?: NonNullable<ReturnType<typeof getAuthenticatedUser>>;
+    ctx: Context;
+  }>({
+    source: "telegram",
+    workspace: config.workspace,
+    activityStore,
+    actorFor: (request) => telegramActivityActor(request.ctx),
+  });
+
   function appendTelegramActivity(
     ctx: Context,
     contextKey: TelegramContextKey,
@@ -877,15 +889,23 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     input: Partial<Omit<WebActivityEvent, "id" | "timestamp" | "source" | "contextKey">> & Pick<WebActivityEvent, "status" | "type"> & { timestamp?: string },
   ): WebActivityEvent {
     const info = session.getInfo();
-    return appendActivity({
-      source: "telegram",
+    const event = appendTelegramBridgeActivity({
       contextKey,
+      context: telegramChannelContextFromCtx(ctx) ?? {
+        channelId: "telegram",
+        chatId: String(ctx.chat?.id ?? contextKey),
+        userId: ctx.from?.id !== undefined ? String(ctx.from.id) : undefined,
+        username: ctx.from?.username,
+      },
+      authUser: getAuthenticatedUser(ctx) ?? undefined,
+      ctx,
+    }, {
       ...input,
       threadId: input.threadId ?? info.threadId,
       workspace: input.workspace ?? info.workspace,
       agentId: input.agentId ?? idOf(info),
-      actor: input.actor ?? telegramActivityActor(ctx),
     });
+    return event;
   }
 
   function recordTelegramAgentUpdateLifecycle(job: { id: string; agentId: AgentId; agentLabel: string; operation: AgentUpdateOperation; status: string; needsInput: boolean; startedAt: string; updatedAt: string; finishedAt?: string; error?: string }): void {

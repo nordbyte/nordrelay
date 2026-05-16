@@ -148,7 +148,7 @@ export interface RelayRuntimeDelegate {
   sessionDetail(threadId: string): Promise<Record<string, unknown>>;
   clearChatHistory(actor?: WebActivityActor): Promise<{ removed: number; messages: WebChatMessage[] }>;
   activity(options?: RelayRuntimeActivityOptions): WebActivityEvent[];
-  retry(actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }>;
+  retry(actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string; correlationId?: string }>;
   sync(actor?: WebActivityActor): Promise<ReturnType<AgentSessionService["syncFromAgentState"]>>;
   listSessions(limit?: number, query?: string, agentId?: AgentId): Promise<AgentThreadRecord[]>;
   listSessionsPage(page?: number, pageSize?: number, query?: string, agentId?: AgentId): Promise<SessionPageDto>;
@@ -171,9 +171,9 @@ export interface RelayRuntimeDelegate {
   setLaunchProfile(profileId: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
   handback(actor?: WebActivityActor): Promise<ReturnType<AgentSessionService["handback"]>>;
   abort(actor?: WebActivityActor): Promise<void>;
-  sendPrompt(text: string, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }>;
+  sendPrompt(text: string, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string; correlationId?: string }>;
   sendUploadPrompt(options: { text?: string; files: UploadPromptFile[] }, actor?: WebActivityActor): Promise<UploadPromptResult>;
-  sendEnvelope(envelope: PromptEnvelope, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }>;
+  sendEnvelope(envelope: PromptEnvelope, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string; correlationId?: string }>;
   queue(): QueueItemDto[];
   queuePaused(): boolean;
   queueAction(action: RelayQueueAction, id?: string, actor?: WebActivityActor): QueueItemDto[];

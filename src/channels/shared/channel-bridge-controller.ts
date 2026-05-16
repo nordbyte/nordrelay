@@ -85,13 +85,13 @@ export function createChannelQueueStatusController<Key extends string, MessageId
 }
 
 export function createChannelActivityRecorder<Request extends ChannelBridgeRequestBase>(options: {
-  source: "discord" | "slack";
+  source: "telegram" | "discord" | "slack";
   workspace: string;
   activityStore: WebActivityStore;
   actorFor(request: Request): WebActivityActor;
-}): (request: Request, input: ChannelActivityInput) => void {
+}): (request: Request, input: ChannelActivityInput) => ReturnType<WebActivityStore["append"]> {
   return (request, input) => {
-    options.activityStore.append({
+    return options.activityStore.append({
       source: options.source,
       contextKey: request.contextKey,
       actor: input.actor ?? options.actorFor(request),

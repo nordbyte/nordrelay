@@ -14,6 +14,22 @@ npm run status
 npm stop
 ```
 
+OS user service:
+
+```bash
+nordrelay service install
+nordrelay service status
+nordrelay service uninstall
+```
+
+`nordrelay service install` creates the matching host integration for the current OS:
+
+- Linux: `~/.config/systemd/user/nordrelay.service`
+- macOS: `~/Library/LaunchAgents/io.nordbyte.nordrelay.plist`
+- Windows: a Task Scheduler task named `NordRelay`
+
+The service runs `nordrelay service-run`, which starts the connector and WebUI together. Use `--no-start` to only write/register the service without starting it immediately. Use `--host` and `--port` during install when the WebUI should bind to a non-default endpoint.
+
 Docker Compose:
 
 ```bash
@@ -24,7 +40,8 @@ docker compose down
 
 The compose file mounts:
 
-- `${HOME}/.codex` into the container for Codex auth and thread state.
+- `${HOME}/.nordrelay` into the container for NordRelay runtime state.
+- Agent-specific auth/state directories, such as `${HOME}/.codex`, when those agents are enabled.
 - `./workspace` as `/workspace` for container workspaces.
 
 launchd helper:

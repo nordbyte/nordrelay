@@ -35,7 +35,7 @@ import type { ConnectorConfig } from "../core/config.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import { friendlyErrorText } from "../core/error-messages.js";
 import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "../support/operations.js";
-import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "../state/prompt-store.js";
+import { ensurePromptCorrelationId, PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "../state/prompt-store.js";
 import { UnifiedJobStore } from "../state/job-store.js";
 import { buildRuntimeMetrics, type RuntimeMetricsDto } from "./metrics.js";
 import { RelayArtifactService } from "./relay-artifact-service.js";
@@ -127,7 +127,7 @@ const ACTIVE_ACTIVITY_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_WEB_SESSION_PAGE_SIZE = 50;
 const MAX_CHAT_HISTORY = 250;
 
-export async function relayRuntimeSendPrompt(runtime: RelayRuntimeDelegate, text: string, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }> {
+export async function relayRuntimeSendPrompt(runtime: RelayRuntimeDelegate, text: string, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string; correlationId?: string }> {
     const trimmed = text.trim();
     if (!trimmed) {
       throw new Error("Prompt is empty.");
@@ -233,12 +233,13 @@ export async function relayRuntimeSendUploadPrompt(runtime: RelayRuntimeDelegate
     };
   }
 
-export async function relayRuntimeSendEnvelope(runtime: RelayRuntimeDelegate, envelope: PromptEnvelope, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }> {
+export async function relayRuntimeSendEnvelope(runtime: RelayRuntimeDelegate, envelope: PromptEnvelope, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string; correlationId?: string }> {
     const activityActor = envelope.activityActor ?? actor;
+    const correlated = ensurePromptCorrelationId({ ...envelope, activityActor });
     const session = await runtime.getSession(false);
     const external = getExternalSnapshotForSession(session, runtime.config, { maxEvents: 0 });
     if (session.isProcessing() || external?.activity.active) {
-      const queued = runtime.queueService.enqueue(envelope);
+      const queued = runtime.queueService.enqueue(correlated);
       const info = runtime.publicInfo(session);
       runtime.appendActivity({
         source: "web",
@@ -248,7 +249,8 @@ export async function relayRuntimeSendEnvelope(runtime: RelayRuntimeDelegate, en
         workspace: info.workspace,
         agentId: info.agentId,
         actor: activityActor,
-        prompt: envelope.description,
+        correlationId: correlated.correlationId,
+        prompt: correlated.description,
         detail: external?.activity.active
           ? `Queued because ${external.agentLabel} CLI is still processing another task.`
           : `Queued at position ${runtime.queueService.length()}.`,
@@ -262,19 +264,20 @@ export async function relayRuntimeSendEnvelope(runtime: RelayRuntimeDelegate, en
         workspace: info.workspace,
         promptId: queued.id,
         actor: activityActor,
-        description: envelope.description,
+        correlationId: correlated.correlationId,
+        description: correlated.description,
       });
       if (external?.activity.active) {
         runtime.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${runtime.queueService.length()} queued.`, "info");
       }
       runtime.broadcastQueue();
-      return { queued: true, queueId: queued.id };
+      return { queued: true, queueId: queued.id, correlationId: correlated.correlationId };
     }
 
-    void runtime.runPrompt(session, { ...envelope, activityActor }).catch((error: unknown) => {
-      runtime.broadcast({ type: "turn_error", id: runtime.currentTurnId ?? "turn", error: friendlyErrorText(error), at: new Date().toISOString() });
+    void runtime.runPrompt(session, correlated).catch((error: unknown) => {
+      runtime.broadcast({ type: "turn_error", id: runtime.currentTurnId ?? "turn", error: friendlyErrorText(error), at: new Date().toISOString(), correlationId: correlated.correlationId });
     });
-    return { queued: false };
+    return { queued: false, correlationId: correlated.correlationId };
   }
 
 export function relayRuntimeQueue(runtime: RelayRuntimeDelegate): QueueItemDto[] {
@@ -299,6 +302,7 @@ export function relayRuntimeQueueAction(runtime: RelayRuntimeDelegate, action: R
       threadId: null,
       workspace: runtime.config.workspace,
       actor,
+      correlationId: affected?.correlationId,
       prompt: affected?.description,
       detail: id ? `${action}: ${id}` : `${action}: ${before.length} queued`,
     });

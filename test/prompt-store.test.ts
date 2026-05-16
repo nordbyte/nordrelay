@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { PromptStore, toPromptEnvelope } from "../src/state/prompt-store.js";
+import { ensurePromptCorrelationId, PromptStore, toPromptEnvelope } from "../src/state/prompt-store.js";
 
 describe("PromptStore", () => {
   it("persists last prompts and queues", () => {
@@ -23,6 +23,23 @@ describe("PromptStore", () => {
           description: "queued · 1 image",
         }),
       ]);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("adds stable correlation ids to prompt envelopes and queued prompts", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "prompt-store-"));
+    try {
+      const store = new PromptStore(workspace);
+      const envelope = ensurePromptCorrelationId(toPromptEnvelope("trace me"));
+      const queued = store.enqueue("123", envelope);
+      const loaded = new PromptStore(workspace);
+
+      expect(envelope.correlationId).toMatch(/^[a-f0-9]{12}$/);
+      expect(queued.correlationId).toBe(envelope.correlationId);
+      expect(loaded.list("123")[0]?.correlationId).toBe(envelope.correlationId);
+      expect(ensurePromptCorrelationId(envelope).correlationId).toBe(envelope.correlationId);
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }

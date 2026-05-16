@@ -80,6 +80,8 @@ nordrelay doctor
 nordrelay web
 nordrelay restart
 nordrelay update
+nordrelay service install
+nordrelay service status
 ```
 
 Chat adapters share the core command set:

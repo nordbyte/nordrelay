@@ -7,6 +7,7 @@ import type { WebActivityActor } from "../web/web-state.js";
 export interface PromptEnvelope {
   input: AgentPromptInput;
   description: string;
+  correlationId?: string;
   artifactOutDir?: string;
   activityActor?: WebActivityActor;
 }
@@ -280,6 +281,18 @@ export function toPromptEnvelope(input: AgentPromptInput, artifactOutDir?: strin
   };
 }
 
+export function createCorrelationId(): string {
+  return randomUUID().replace(/-/g, "").slice(0, 12);
+}
+
+export function ensurePromptCorrelationId<T extends PromptEnvelope>(prompt: T): T & { correlationId: string } {
+  const existing = prompt.correlationId?.trim();
+  if (existing) {
+    return { ...prompt, correlationId: existing };
+  }
+  return { ...prompt, correlationId: createCorrelationId() };
+}
+
 function createQueueId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 8);
 }
@@ -289,7 +302,9 @@ function isPromptEnvelope(value: unknown): value is PromptEnvelope {
     return false;
   }
   const candidate = value as PromptEnvelope;
-  return isCodexPromptInput(candidate.input) && typeof candidate.description === "string";
+  return isCodexPromptInput(candidate.input) &&
+    typeof candidate.description === "string" &&
+    (candidate.correlationId === undefined || typeof candidate.correlationId === "string");
 }
 
 function isQueuedPrompt(value: unknown): value is QueuedPrompt {

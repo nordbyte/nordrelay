@@ -463,7 +463,7 @@ export function relayRuntimeActivity(runtime: RelayRuntimeDelegate, options: {
     return runtime.activityStore.list(options).map((event: WebActivityEvent) => runtime.enrichActivityEvent(event, currentInfo));
   }
 
-export async function relayRuntimeRetry(runtime: RelayRuntimeDelegate, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }> {
+export async function relayRuntimeRetry(runtime: RelayRuntimeDelegate, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string; correlationId?: string }> {
     const cached = runtime.queueService.getLastPrompt();
     if (!cached) {
       throw new Error("Nothing to retry. Send a message first.");

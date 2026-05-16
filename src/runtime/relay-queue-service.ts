@@ -66,6 +66,7 @@ export function queueItemDto(item: QueuedPrompt): QueueItemDto {
     description: item.description,
     createdAt: new Date(item.createdAt).toISOString(),
     attempts: item.attempts ?? 0,
+    correlationId: item.correlationId,
     notBefore: item.notBefore ? new Date(item.notBefore).toISOString() : undefined,
     lastError: item.lastError,
   };

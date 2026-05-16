@@ -67,6 +67,7 @@ export interface AuditEvent {
   threadId?: string | null;
   workspace?: string;
   promptId?: string;
+  correlationId?: string;
   description?: string;
   detail?: string;
 }

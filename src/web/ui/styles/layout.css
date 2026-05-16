@@ -88,7 +88,7 @@ input[type=file]{display:none}
 .tool-stream{display:flex;flex-direction:column;gap:8px;overflow:auto;max-height:calc(100vh - 190px);padding-right:4px}
 .tool{border:1px solid var(--border-soft);border-radius:6px;padding:8px;background:var(--surface-soft);white-space:pre-wrap;word-break:break-word}
 .list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
-.item{border:1px solid var(--border-soft);border-radius:8px;padding:12px;background:var(--surface-soft)}
+.item{border:1px solid var(--border-soft);border-radius:8px;padding:12px;background:var(--surface-soft);content-visibility:auto;contain-intrinsic-size:96px}
 .item strong{display:block;overflow-wrap:anywhere;line-height:1.25}
 .item small{display:block;color:var(--muted);overflow-wrap:anywhere;line-height:1.35}
 .queue-item{cursor:grab}

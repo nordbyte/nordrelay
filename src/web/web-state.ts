@@ -20,6 +20,7 @@ export interface WebChatMessage {
   text: string;
   timestamp: string;
   source: WebActivitySource;
+  correlationId?: string;
   turnId?: string;
   key?: string;
 }
@@ -36,6 +37,7 @@ export interface WebActivityEvent {
   workspace?: string;
   agentId?: AgentId;
   actor?: WebActivityActor;
+  correlationId?: string;
   prompt?: string;
   detail?: string;
   durationMs?: number;
@@ -105,6 +107,7 @@ export class WebChatStore {
       existing.role = input.role;
       existing.text = input.text;
       existing.source = input.source;
+      existing.correlationId = input.correlationId;
       existing.turnId = input.turnId;
       existing.timestamp = input.timestamp ?? now;
       existing.key = input.key;

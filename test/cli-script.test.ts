@@ -18,7 +18,7 @@ describe("nordrelay CLI script", () => {
 
     expect(source).toContain("async function commandUpdate");
     expect(source).toContain('options.command === "update"');
-    expect(source).toContain("nordrelay [init|user|peer|doctor|web|start|stop|restart|status|update|foreground|version]");
+    expect(source).toContain("nordrelay [init|user|peer|service|doctor|web|start|stop|restart|status|update|foreground|version]");
     expect(source).toContain("@nordbyte/nordrelay@latest");
   });
 

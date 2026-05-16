@@ -170,6 +170,7 @@ export class RelayExternalActivityMonitor {
           role: "agent",
           text: finalText,
           source: "cli",
+          correlationId: externalCorrelationId(snapshot),
           turnId: terminalEvent.turnId ?? undefined,
           key: externalMessageKey("final", snapshot, terminalEvent.lineNumber),
         });
@@ -181,6 +182,7 @@ export class RelayExternalActivityMonitor {
           type: "turn_complete",
           id: terminalEvent.turnId ?? "cli",
           at: terminalEvent.timestamp?.toISOString() ?? new Date().toISOString(),
+          correlationId: externalCorrelationId(snapshot),
         });
       }
       this.options.appendActivity({
@@ -191,6 +193,7 @@ export class RelayExternalActivityMonitor {
         workspace: info.workspace,
         agentId: info.agentId,
         actor: CLI_ACTIVITY_ACTOR,
+        correlationId: externalCorrelationId(snapshot),
         prompt: snapshot.latestUserMessage ?? undefined,
         detail: `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`,
         durationMs: durationFromDates(externalStartedAt, terminalEvent.timestamp),
@@ -223,6 +226,7 @@ export class RelayExternalActivityMonitor {
         role: "system",
         text: `Working on ${trimLine(prompt, 500)}`,
         source: "cli",
+        correlationId: externalCorrelationId(snapshot),
         turnId: snapshot.activity.turnId ?? undefined,
         timestamp: snapshot.activity.startedAt?.toISOString(),
         key: externalMessageKey("working", snapshot),
@@ -240,6 +244,7 @@ export class RelayExternalActivityMonitor {
       workspace: info.workspace,
       agentId: info.agentId,
       actor: CLI_ACTIVITY_ACTOR,
+      correlationId: externalCorrelationId(snapshot),
       prompt,
       detail: `${snapshot.sourceLabel}: ${snapshot.sourcePath}`,
     });
@@ -254,6 +259,7 @@ export class RelayExternalActivityMonitor {
             id: snapshot.activity.turnId ?? "cli",
             toolCallId: `cli-${event.lineNumber}`,
             toolName: event.toolName ?? "tool",
+            correlationId: externalCorrelationId(snapshot),
           });
         }
         this.options.appendActivity({
@@ -264,6 +270,7 @@ export class RelayExternalActivityMonitor {
           workspace: info.workspace,
           agentId: info.agentId,
           actor: CLI_ACTIVITY_ACTOR,
+          correlationId: externalCorrelationId(snapshot),
           detail: event.toolName ?? "tool",
         });
       }
@@ -274,6 +281,7 @@ export class RelayExternalActivityMonitor {
             id: snapshot.activity.turnId ?? "cli",
             toolCallId: `cli-${event.lineNumber}`,
             isError: false,
+            correlationId: externalCorrelationId(snapshot),
           });
         }
         this.options.appendActivity({
@@ -284,6 +292,7 @@ export class RelayExternalActivityMonitor {
           workspace: info.workspace,
           agentId: info.agentId,
           actor: CLI_ACTIVITY_ACTOR,
+          correlationId: externalCorrelationId(snapshot),
           detail: event.toolName ?? "tool",
         });
       }
@@ -294,6 +303,7 @@ export class RelayExternalActivityMonitor {
             id: snapshot.activity.turnId ?? "cli",
             toolCallId: `cli-${event.lineNumber}`,
             isError: true,
+            correlationId: externalCorrelationId(snapshot),
           });
         }
         this.options.appendActivity({
@@ -325,6 +335,7 @@ export class RelayExternalActivityMonitor {
         role: event.kind === "tool" ? "tool" : "system",
         text: rendered.plain,
         source: "cli",
+        correlationId: externalCorrelationId(snapshot),
         turnId: event.turnId ?? snapshot.activity.turnId ?? undefined,
         timestamp: event.timestamp?.toISOString(),
         key: externalMessageKey("event", snapshot, event.lineNumber),
@@ -348,6 +359,7 @@ export class RelayExternalActivityMonitor {
       role: "system",
       text: text ?? renderExternalMirrorStatus(snapshot, this.options.queueLength()).plain,
       source: "cli",
+      correlationId: externalCorrelationId(snapshot),
       turnId: snapshot.activity.turnId ?? undefined,
       key: externalMessageKey("status", snapshot),
     });
@@ -369,6 +381,10 @@ function externalMessageKey(kind: string, snapshot: AgentExternalSnapshot, lineN
     snapshot.activity.turnId ?? "turn",
     lineNumber ?? "",
   ].join(":");
+}
+
+function externalCorrelationId(snapshot: AgentExternalSnapshot): string {
+  return `cli:${snapshot.agentId}:${snapshot.activity.turnId ?? snapshot.threadId}`;
 }
 
 function externalStatusLine(snapshot: AgentExternalSnapshot, queueLength: number): string {

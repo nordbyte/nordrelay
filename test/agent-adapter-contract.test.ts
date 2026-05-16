@@ -156,4 +156,29 @@ describe("agent adapter contracts", () => {
       expect(CAPABILITIES_BY_AGENT[agentId].subscriptionLimits, `${agentId}.subscriptionLimits`).toBe(false);
     }
   });
+
+  it("keeps transport-facing adapter capabilities internally consistent", () => {
+    for (const descriptor of listAgentAdapterDescriptors()) {
+      const capabilities = descriptor.capabilities;
+      expect(capabilities.workspaces, `${descriptor.id} workspace continuity`).toBe(true);
+      expect(capabilities.attachments, `${descriptor.id} attachment support`).toBe(true);
+      expect(capabilities.activityLog, `${descriptor.id} activity timeline`).toBe(true);
+
+      if (capabilities.externalActivity) {
+        expect(capabilities.cliMirror, `${descriptor.id} CLI mirror for external activity`).toBe(true);
+      }
+      if (capabilities.modelSelection) {
+        expect(SERVICE_CLASS_BY_AGENT[descriptor.id].prototype.setModel, `${descriptor.id} setModel`).toBeTypeOf("function");
+        expect(SERVICE_CLASS_BY_AGENT[descriptor.id].prototype.setModelForCurrentSession, `${descriptor.id} setModelForCurrentSession`).toBeTypeOf("function");
+      }
+      if (capabilities.reasoningSelection) {
+        expect(agentReasoningOptions(descriptor.id).length, `${descriptor.id} reasoning option contract`).toBeGreaterThan(0);
+        expect(SERVICE_CLASS_BY_AGENT[descriptor.id].prototype.setReasoningEffort, `${descriptor.id} setReasoningEffort`).toBeTypeOf("function");
+        expect(SERVICE_CLASS_BY_AGENT[descriptor.id].prototype.setReasoningEffortForCurrentSession, `${descriptor.id} setReasoningEffortForCurrentSession`).toBeTypeOf("function");
+      }
+      if (capabilities.handback) {
+        expect(SERVICE_CLASS_BY_AGENT[descriptor.id].prototype.handback, `${descriptor.id} handback`).toBeTypeOf("function");
+      }
+    }
+  });
 });

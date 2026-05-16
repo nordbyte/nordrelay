@@ -50,12 +50,14 @@ export class ChannelTurnService {
       }
     }
     const turnId = randomUUID().slice(0, 12);
+    const correlationId = envelope.correlationId ?? turnId;
     const startedMs = Date.now();
     this.options.setCurrentTurn(turnId, startedMs, "");
     this.options.setCurrentProgress({
       id: turnId,
       source: this.options.source,
       status: "running",
+      correlationId,
       prompt: envelope.description,
       agentId: info.agentId,
       agentLabel: info.agentLabel,
@@ -76,6 +78,7 @@ export class ChannelTurnService {
       role: "user",
       text: envelope.description,
       source: this.options.source,
+      correlationId,
       turnId,
       timestamp: startedAt,
     });
@@ -87,6 +90,7 @@ export class ChannelTurnService {
       workspace: info.workspace,
       agentId: info.agentId,
       actor,
+      correlationId,
       prompt: envelope.description,
     });
     this.options.appendAudit({
@@ -97,9 +101,10 @@ export class ChannelTurnService {
       threadId: info.threadId,
       workspace: info.workspace,
       actor,
+      correlationId,
       description: envelope.description,
     });
-    this.options.broadcast({ type: "turn_start", id: turnId, prompt: envelope.description, at: startedAt, source: this.options.source });
+    this.options.broadcast({ type: "turn_start", id: turnId, prompt: envelope.description, at: startedAt, source: this.options.source, correlationId });
 
     try {
       await session.prompt(envelope.input as AgentPromptInput, this.callbacks(turnId, info, envelope, actor));
@@ -112,6 +117,7 @@ export class ChannelTurnService {
           role: "agent",
           text,
           source: this.options.source,
+          correlationId,
           turnId,
         });
       }
@@ -123,6 +129,7 @@ export class ChannelTurnService {
         workspace: info.workspace,
         agentId: info.agentId,
         actor,
+        correlationId,
         prompt: envelope.description,
         durationMs: Date.now() - this.options.getCurrentTurnStartedAt(),
       });
@@ -134,10 +141,11 @@ export class ChannelTurnService {
         threadId: info.threadId,
         workspace: info.workspace,
         actor,
+        correlationId,
         description: envelope.description,
       });
       this.updateCurrentProgress({ status: "completed" });
-      this.options.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString() });
+      this.options.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString(), correlationId });
       this.options.broadcast({ type: "chat_history", messages: await this.options.chatHistory() });
     } catch (error) {
       const errorText = friendlyErrorText(error);
@@ -146,6 +154,7 @@ export class ChannelTurnService {
         role: "system",
         text: `Error: ${errorText}`,
         source: this.options.source,
+        correlationId,
         turnId,
       });
       this.options.appendActivity({
@@ -156,6 +165,7 @@ export class ChannelTurnService {
         workspace: info.workspace,
         agentId: info.agentId,
         actor,
+        correlationId,
         prompt: envelope.description,
         detail: errorText,
         durationMs: Date.now() - this.options.getCurrentTurnStartedAt(),
@@ -168,11 +178,12 @@ export class ChannelTurnService {
         threadId: info.threadId,
         workspace: info.workspace,
         actor,
+        correlationId,
         description: envelope.description,
         detail: errorText,
       });
       this.updateCurrentProgress({ status: "failed", detail: errorText });
-      this.options.broadcast({ type: "turn_error", id: turnId, error: errorText, at: new Date().toISOString() });
+      this.options.broadcast({ type: "turn_error", id: turnId, error: errorText, at: new Date().toISOString(), correlationId });
       this.options.broadcast({ type: "chat_history", messages: await this.options.chatHistory() });
       throw error;
     } finally {
@@ -191,12 +202,13 @@ export class ChannelTurnService {
     envelope: PromptEnvelope,
     actor: WebActivityActor | undefined,
   ): AgentSessionCallbacks {
+    const correlationId = envelope.correlationId ?? turnId;
     return {
       onTextDelta: (delta) => {
         const nextText = this.options.getAccumulatedText() + delta;
         this.options.setAccumulatedText(nextText);
         this.updateCurrentProgress({ outputChars: nextText.length });
-        this.options.broadcast({ type: "text_delta", id: turnId, delta });
+        this.options.broadcast({ type: "text_delta", id: turnId, delta, correlationId });
       },
       onToolStart: (toolName, toolCallId) => {
         this.addCurrentTool(toolName);
@@ -208,14 +220,15 @@ export class ChannelTurnService {
           workspace: info.workspace,
           agentId: info.agentId,
           actor,
+          correlationId,
           prompt: envelope.description,
           detail: toolName,
         });
-        this.options.broadcast({ type: "tool_start", id: turnId, toolCallId, toolName });
+        this.options.broadcast({ type: "tool_start", id: turnId, toolCallId, toolName, correlationId });
       },
       onToolUpdate: (toolCallId, partialResult) => {
         this.updateCurrentProgress();
-        this.options.broadcast({ type: "tool_update", id: turnId, toolCallId, partialResult });
+        this.options.broadcast({ type: "tool_update", id: turnId, toolCallId, partialResult, correlationId });
       },
       onToolEnd: (toolCallId, isError) => {
         const progress = this.options.getCurrentProgress();
@@ -229,17 +242,18 @@ export class ChannelTurnService {
           workspace: info.workspace,
           agentId: info.agentId,
           actor,
+          correlationId,
           prompt: envelope.description,
           detail: toolName,
         });
-        this.options.broadcast({ type: "tool_end", id: turnId, toolCallId, isError });
+        this.options.broadcast({ type: "tool_end", id: turnId, toolCallId, isError, correlationId });
       },
       onTodoUpdate: (items) => {
         this.updateCurrentProgress({ detail: `Plan: ${items.filter((item) => item.completed).length}/${items.length} done` });
-        this.options.broadcast({ type: "todo_update", id: turnId, items });
+        this.options.broadcast({ type: "todo_update", id: turnId, items, correlationId });
       },
       onTurnComplete: () => {},
-      onAgentEnd: () => this.options.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString() }),
+      onAgentEnd: () => this.options.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString(), correlationId }),
     };
   }
 

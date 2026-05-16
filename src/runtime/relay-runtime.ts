@@ -511,7 +511,7 @@ export class RelayRuntime {
     return relayRuntimeActivity(this, options);
   }
 
-  async retry(actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }> {
+  async retry(actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string; correlationId?: string }> {
     return relayRuntimeRetry(this, actor);
   }
 
@@ -582,7 +582,7 @@ export class RelayRuntime {
     return relayRuntimeAbort(this, actor);
   }
 
-  async sendPrompt(text: string, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }> {
+  async sendPrompt(text: string, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string; correlationId?: string }> {
     return relayRuntimeSendPrompt(this, text, actor);
   }
 
@@ -590,7 +590,7 @@ export class RelayRuntime {
     return relayRuntimeSendUploadPrompt(this, options, actor);
   }
 
-  async sendEnvelope(envelope: PromptEnvelope, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string }> {
+  async sendEnvelope(envelope: PromptEnvelope, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string; correlationId?: string }> {
     return relayRuntimeSendEnvelope(this, envelope, actor);
   }
 

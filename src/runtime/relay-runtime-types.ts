@@ -24,14 +24,14 @@ export type RelayEvent =
   | { type: "chat_history"; messages: WebChatMessage[] }
   | { type: "activity_update"; events: WebActivityEvent[] }
   | { type: "active_sessions_update"; active: ActiveSessionsDto }
-  | { type: "turn_start"; id: string; prompt: string; at: string; source?: WebActivitySource }
-  | { type: "text_delta"; id: string; delta: string }
-  | { type: "tool_start"; id: string; toolCallId: string; toolName: string }
-  | { type: "tool_update"; id: string; toolCallId: string; partialResult: string }
-  | { type: "tool_end"; id: string; toolCallId: string; isError: boolean }
-  | { type: "todo_update"; id: string; items: Array<{ text: string; completed: boolean }> }
-  | { type: "turn_complete"; id: string; at: string }
-  | { type: "turn_error"; id: string; error: string; at: string }
+  | { type: "turn_start"; id: string; prompt: string; at: string; source?: WebActivitySource; correlationId?: string }
+  | { type: "text_delta"; id: string; delta: string; correlationId?: string }
+  | { type: "tool_start"; id: string; toolCallId: string; toolName: string; correlationId?: string }
+  | { type: "tool_update"; id: string; toolCallId: string; partialResult: string; correlationId?: string }
+  | { type: "tool_end"; id: string; toolCallId: string; isError: boolean; correlationId?: string }
+  | { type: "todo_update"; id: string; items: Array<{ text: string; completed: boolean }>; correlationId?: string }
+  | { type: "turn_complete"; id: string; at: string; correlationId?: string }
+  | { type: "turn_error"; id: string; error: string; at: string; correlationId?: string }
   | { type: "queue_update"; queue: QueueItemDto[]; paused: boolean }
   | { type: "session_update"; session: AgentSessionInfo }
   | { type: "agent_update"; job: AgentUpdateJobSnapshot }
@@ -89,6 +89,7 @@ export interface QueueItemDto {
   description: string;
   createdAt: string;
   attempts: number;
+  correlationId?: string;
   notBefore?: string;
   lastError?: string;
 }
@@ -127,6 +128,7 @@ export interface UploadPromptFile {
 export interface UploadPromptResult {
   queued: boolean;
   queueId?: string;
+  correlationId?: string;
   transcript?: string;
   transcribeOnly?: boolean;
   files: Array<{
@@ -177,6 +179,7 @@ export interface WebTaskDto {
   id: string;
   source: WebActivitySource;
   status: WebActivityStatus;
+  correlationId?: string;
   prompt?: string;
   agentId?: AgentId;
   agentLabel?: string;
