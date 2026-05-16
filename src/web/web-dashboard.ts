@@ -20,7 +20,7 @@ import { UserStore, publicUser, type AuthenticatedUser } from "../access/user-ma
 import type { WebActivityActor } from "./web-state.js";
 import { handleDashboardAccessRoute } from "./web-dashboard-access-routes.js";
 import { handleDashboardArtifactRoute } from "./web-dashboard-artifact-routes.js";
-import { dashboardCss, dashboardJs } from "./web-dashboard-assets.js";
+import { dashboardCss, dashboardJs, dashboardStaticAsset } from "./web-dashboard-assets.js";
 import {
   objectRecord,
   optionalStringField,
@@ -28,6 +28,7 @@ import {
   readJsonBody,
   sendJson,
   sendText,
+  sendStaticFile,
   isRequestBodyTooLargeError,
 } from "./web-dashboard-http.js";
 import { renderDashboardApp, renderFirstRunSetupPage, renderLoginPage } from "./web-dashboard-pages.js";
@@ -104,6 +105,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   }
   if (url.pathname === "/api/dashboard/logout" && req.method === "POST") {
     handleLogout(req, res);
+    return;
+  }
+
+  if (servePublicDashboardAsset(url.pathname, res)) {
     return;
   }
 
@@ -202,6 +207,26 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   }
 
   await handleApi(req, res, url, authenticated);
+}
+
+function servePublicDashboardAsset(pathname: string, res: ServerResponse): boolean {
+  const assetName = pathname === "/favicon.ico"
+    ? "favicon.ico"
+    : pathname === "/assets/favicon.png"
+      ? "favicon.png"
+      : pathname === "/assets/logo.png"
+        ? "logo.png"
+        : null;
+  if (!assetName) {
+    return false;
+  }
+  const asset = dashboardStaticAsset(assetName);
+  if (!asset) {
+    sendText(res, 404, "not found\n", "text/plain; charset=utf-8");
+    return true;
+  }
+  sendStaticFile(res, asset.filePath, asset.contentType);
+  return true;
 }
 
 async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, authUser: AuthenticatedUser): Promise<void> {

@@ -3,7 +3,7 @@ import { Script } from "node:vm";
 
 import { describe, expect, it } from "vitest";
 
-import { dashboardCss, dashboardJs } from "../src/web/web-dashboard-assets.js";
+import { dashboardCss, dashboardJs, dashboardStaticAsset } from "../src/web/web-dashboard-assets.js";
 
 describe("web dashboard browser-flow assets", () => {
   it("includes the agent feature matrix and dedicated agent update log flow", () => {
@@ -80,10 +80,20 @@ describe("web dashboard browser-flow assets", () => {
 
     expect(serverSource).toContain('/assets/dashboard.css');
     expect(serverSource).toContain('/assets/dashboard.js');
+    expect(serverSource).toContain('/assets/logo.png');
+    expect(serverSource).toContain('/favicon.ico');
     expect(pageSource).toContain('href="/assets/dashboard.css"');
+    expect(pageSource).toContain('href="/favicon.ico"');
+    expect(pageSource).toContain('src="/assets/logo.png"');
     expect(pageSource).toContain('src="/assets/dashboard.js"');
     expect(pageSource).not.toContain("<style>${dashboardCss()}</style>");
     expect(pageSource).not.toContain("<script>${dashboardJs()}</script>");
+  });
+
+  it("resolves WebUI logo and favicon assets from source files", () => {
+    expect(dashboardStaticAsset("logo.png")?.contentType).toBe("image/png");
+    expect(dashboardStaticAsset("favicon.png")?.contentType).toBe("image/png");
+    expect(dashboardStaticAsset("favicon.ico")?.contentType).toBe("image/x-icon");
   });
 
   it("guards dashboard stream and session data with scoped user access", () => {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,6 +38,12 @@ const assets = [
   },
 ];
 
+const staticAssets = [
+  "favicon.ico",
+  "favicon.png",
+  "logo.png",
+];
+
 for (const asset of assets) {
   const source = asset.sources
     .map((source) => readFileSync(path.join(root, source), "utf8").trimEnd())
@@ -58,6 +64,18 @@ for (const asset of assets) {
     const outDir = path.join(root, "dist", "webui-assets");
     mkdirSync(outDir, { recursive: true });
     writeFileSync(path.join(outDir, asset.name), body, "utf8");
+  }
+}
+
+for (const assetName of staticAssets) {
+  const sourcePath = path.join(root, "src", "web", "ui", "assets", assetName);
+  if (!existsSync(sourcePath)) {
+    throw new Error(`WebUI static asset is missing: ${sourcePath}`);
+  }
+  if (!checkOnly) {
+    const outDir = path.join(root, "dist", "webui-assets");
+    mkdirSync(outDir, { recursive: true });
+    copyFileSync(sourcePath, path.join(outDir, assetName));
   }
 }
 

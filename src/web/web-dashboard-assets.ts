@@ -33,6 +33,26 @@ export function dashboardCss(): string {
   return readDashboardAsset("dashboard.css", styleSources);
 }
 
+export interface DashboardStaticAsset {
+  filePath: string;
+  contentType: string;
+}
+
+const staticAssetTypes: Record<string, string> = {
+  "favicon.ico": "image/x-icon",
+  "favicon.png": "image/png",
+  "logo.png": "image/png",
+};
+
+export function dashboardStaticAsset(assetName: string): DashboardStaticAsset | null {
+  const contentType = staticAssetTypes[assetName];
+  if (!contentType) {
+    return null;
+  }
+  const filePath = dashboardStaticAssetPath(assetName);
+  return filePath ? { filePath, contentType } : null;
+}
+
 function readDashboardAsset(assetName: string, sourceFiles: string[]): string {
   const builtAsset = path.resolve(moduleDir, "..", "webui-assets", assetName);
   if (existsSync(builtAsset)) {
@@ -43,4 +63,14 @@ function readDashboardAsset(assetName: string, sourceFiles: string[]): string {
   return sourceFiles
     .map((file) => readFileSync(path.join(sourceDir, file), "utf8"))
     .join("\n");
+}
+
+function dashboardStaticAssetPath(assetName: string): string | null {
+  const builtAsset = path.resolve(moduleDir, "..", "webui-assets", assetName);
+  if (existsSync(builtAsset)) {
+    return builtAsset;
+  }
+
+  const sourceAsset = path.join(moduleDir, "ui", "assets", assetName);
+  return existsSync(sourceAsset) ? sourceAsset : null;
 }

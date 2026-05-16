@@ -1,3 +1,4 @@
+import { createReadStream } from "node:fs";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -7,7 +8,7 @@ import { CODEX_AGENT_CAPABILITIES, PI_AGENT_CAPABILITIES } from "../src/agents/s
 import { buildAdapterConformanceMatrix } from "../src/agents/shared/adapter-conformance.js";
 import { listAgentAdapterDescriptors } from "../src/agents/shared/agent-adapter.js";
 import { listChannelDescriptors } from "../src/channels/shared/channel-adapter.js";
-import { dashboardCss, dashboardJs } from "../src/web/web-dashboard-assets.js";
+import { dashboardCss, dashboardJs, dashboardStaticAsset } from "../src/web/web-dashboard-assets.js";
 import { renderDashboardApp } from "../src/web/web-dashboard-pages.js";
 
 interface MockServer {
@@ -492,8 +493,10 @@ async function startMockDashboardServer(): Promise<MockServer> {
     if (url.pathname === "/") return sendText(res, 200, renderDashboardApp(), "text/html; charset=utf-8");
     if (url.pathname === "/assets/dashboard.css") return sendText(res, 200, dashboardCss(), "text/css; charset=utf-8");
     if (url.pathname === "/assets/dashboard.js") return sendText(res, 200, dashboardJs(), "application/javascript; charset=utf-8");
+    if (url.pathname === "/assets/logo.png") return sendDashboardAsset(res, "logo.png");
+    if (url.pathname === "/assets/favicon.png") return sendDashboardAsset(res, "favicon.png");
     if (url.pathname === "/api/events") return sendSse(res);
-    if (url.pathname === "/favicon.ico") return sendText(res, 204, "", "text/plain");
+    if (url.pathname === "/favicon.ico") return sendDashboardAsset(res, "favicon.ico");
 
     if (url.pathname.startsWith("/api/")) {
       const body = await readJson(req);
@@ -1148,6 +1151,16 @@ function sendJson(res: ServerResponse, status: number, value: unknown): void {
 function sendText(res: ServerResponse, status: number, text: string, contentType: string): void {
   res.writeHead(status, { "content-type": contentType, "cache-control": "no-store" });
   res.end(text);
+}
+
+function sendDashboardAsset(res: ServerResponse, assetName: string): void {
+  const asset = dashboardStaticAsset(assetName);
+  if (!asset) {
+    sendText(res, 404, "not found", "text/plain; charset=utf-8");
+    return;
+  }
+  res.writeHead(200, { "content-type": asset.contentType, "cache-control": "public, max-age=86400" });
+  createReadStream(asset.filePath).pipe(res);
 }
 
 async function readJson(req: NodeJS.ReadableStream): Promise<unknown> {

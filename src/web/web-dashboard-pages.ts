@@ -1,5 +1,10 @@
 import { renderDashboardNav } from "./web-dashboard-ui.js";
 
+const faviconLinks = `
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" href="/assets/favicon.png">
+  <link rel="apple-touch-icon" href="/assets/logo.png">`;
+
 export function renderLoginPage(options: { adminConfigured: boolean; cspNonce?: string }): string {
   const nonce = nonceAttr(options.cspNonce);
   return `<!doctype html>
@@ -8,6 +13,7 @@ export function renderLoginPage(options: { adminConfigured: boolean; cspNonce?: 
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NordRelay Login</title>
+${faviconLinks}
   <style${nonce}>
     body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f5f2;color:#181c19;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
     form{width:min(420px,calc(100vw - 32px));background:white;border:1px solid #dfe3dc;border-radius:8px;padding:24px;box-shadow:0 20px 60px rgba(20,30,24,.08)}
@@ -55,6 +61,7 @@ export function renderFirstRunSetupPage(options: { tokenRequired: boolean; cspNo
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NordRelay First Run</title>
+${faviconLinks}
   <style${nonce}>
     body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f5f2;color:#181c19;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
     form{width:min(460px,calc(100vw - 32px));background:white;border:1px solid #dfe3dc;border-radius:8px;padding:24px;box-shadow:0 20px 60px rgba(20,30,24,.08)}
@@ -109,13 +116,14 @@ export function renderDashboardApp(options: { cspNonce?: string } = {}): string 
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NordRelay Dashboard</title>
+${faviconLinks}
   <script${nonce}>document.documentElement.dataset.theme = localStorage.getItem('nordrelayTheme') || 'light';</script>
   <link rel="stylesheet" href="/assets/dashboard.css">
 </head>
 <body>
   <div class="app">
     <aside class="sidebar" id="sidebar">
-      <div class="brand"><span class="mark">NR</span><div><strong>NordRelay</strong><small>Remote control</small></div></div>
+      <div class="brand"><img class="brand-mark" src="/assets/logo.png" alt="" width="38" height="38" aria-hidden="true"><div><strong>NordRelay</strong><small>Remote control</small></div></div>
       <nav>
         ${renderDashboardNav()}
       </nav>

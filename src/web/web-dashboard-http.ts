@@ -69,6 +69,15 @@ export function sendFile(res: ServerResponse, filePath: string, filename: string
   createReadStream(filePath).pipe(res);
 }
 
+export function sendStaticFile(res: ServerResponse, filePath: string, contentType: string): void {
+  res.writeHead(200, {
+    ...webSecurityHeaders(),
+    "content-type": contentType,
+    "cache-control": "public, max-age=86400",
+  });
+  createReadStream(filePath).pipe(res);
+}
+
 export function stringField(value: Record<string, unknown>, key: string): string {
   const field = value[key];
   if (typeof field !== "string" || !field.trim()) {
