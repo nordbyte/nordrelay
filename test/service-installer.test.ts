@@ -5,7 +5,7 @@ import {
   buildSystemdUserServiceSpec,
   buildWindowsTaskServiceSpec,
   parseServiceFlags,
-} from "../plugins/nordrelay/scripts/nordrelay.mjs";
+} from "../plugins/nordrelay/scripts/service-installer.mjs";
 
 const options = {
   home: "/tmp/nordrelay-home",
