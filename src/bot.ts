@@ -38,6 +38,7 @@ import {
   type VoiceBackendPreference,
 } from "./bot-preferences.js";
 import { renderAgentUpdateJobAction, type ChannelActionResponse } from "./channel-actions.js";
+import { createChannelBusyStore } from "./channel-bridge-controller.js";
 import type {
   ChannelBusyReason,
   ChannelBusyState,
@@ -62,21 +63,24 @@ import {
   type AgentThreadRecord,
 } from "./agent.js";
 import {
+  agentIdForAuth as resolveAgentIdForAuth,
+  agentLabelForAuth,
+  hostAgentLoginCommand,
+  hostAgentLogoutCommand,
+} from "./agent-auth-commands.js";
+import {
   getExternalActivityForSession,
   getExternalSnapshotForSession,
 } from "./agent-activity.js";
 import { checkAuthStatus, clearAuthCache, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
-import { checkClaudeCodeAuthStatus, startClaudeCodeLogin, startClaudeCodeLogout } from "./claude-code-auth.js";
 import { formatLaunchProfileBehavior } from "./codex-launch.js";
 import type { ConnectorConfig, ToolVerbosity } from "./config.js";
 import { contextKeyFromCtx, isTelegramContextKey, isTopicContextKey, parseContextKey, type TelegramContextKey } from "./context-key.js";
 import { friendlyErrorText } from "./error-messages.js";
 import { escapeHTML } from "./format.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
-import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./hermes-auth.js";
-import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
 import { RemoteRelayClient } from "./peer-client.js";
-import { checkPiAuthStatus } from "./pi-auth.js";
+import { RelayAuthService } from "./relay-auth-service.js";
 import { configureRedaction, redactText } from "./redaction.js";
 import { canWriteWithLock, SessionLockStore } from "./session-locks.js";
 import {
@@ -244,10 +248,12 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 10 }));
   const telegramChannelRuntime = new TelegramBotChannelRuntime(bot);
 
-  const contextBusy = new Map<
-    TelegramContextKey,
-    BusyState
-  >();
+  const contextBusy = createChannelBusyStore<TelegramContextKey, BusyState>(() => ({
+    processing: false,
+    switching: false,
+    transcribing: false,
+    approving: false,
+  }));
   const pendingApprovals = new Map<
     string,
     {
@@ -275,6 +281,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
   const lockStore = new SessionLockStore(config.workspace, config.stateBackend);
   const userStore = new UserStore();
+  const authService = new RelayAuthService(config);
   const contextUsers = new WeakMap<Context, AuthenticatedUser>();
   const agentUpdateActors = new Map<string, WebActivityActor>();
   const agentUpdateStates = new Map<string, { status: string; needsInput: boolean }>();
@@ -340,20 +347,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
   const getBusyState = (
     contextKey: TelegramContextKey,
-  ): BusyState => {
-    let state = contextBusy.get(contextKey);
-    if (!state) {
-      state = { processing: false, switching: false, transcribing: false, approving: false };
-      contextBusy.set(contextKey, state);
-    }
-    return state;
-  };
+  ): BusyState => contextBusy.get(contextKey);
 
   const getExternalActivity = (session: AgentSessionService | undefined): AgentExternalActivity | null =>
     getExternalActivityForSession(session, config);
 
   const getBusyReason = (contextKey: TelegramContextKey): BusyReason => {
-    const state = contextBusy.get(contextKey);
+    const state = contextBusy.peek(contextKey);
     const session = registry.get(contextKey);
     if (state?.processing || state?.switching || state?.transcribing || state?.approving || session?.isProcessing()) {
       return { busy: true, kind: "connector", state: state ?? getBusyState(contextKey) };
@@ -388,45 +388,18 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     registry.updateMetadata(contextKey, session);
   };
 
-  const checkAgentAuthStatus = async (info: AgentSessionInfo) => {
-    if (idOf(info) === "pi") {
-      return checkPiAuthStatus(info.model);
-    }
-    if (idOf(info) === "hermes") {
-      return checkHermesAuthStatus({
-        baseUrl: config.hermesApiBaseUrl,
-        apiKey: config.hermesApiKey,
-      });
-    }
-    if (idOf(info) === "openclaw") {
-      return checkOpenClawAuthStatus({
-        gatewayUrl: config.openClawGatewayUrl,
-        token: config.openClawGatewayToken,
-        password: config.openClawGatewayPassword,
-      });
-    }
-    if (idOf(info) === "claude-code") {
-      return checkClaudeCodeAuthStatus(config.claudeCodeCliPath);
-    }
-    return checkAuthStatus(config.codexApiKey);
+  const checkAgentAuthStatus = async (info: AgentSessionInfo): Promise<{ authenticated: boolean; method: string; detail: string }> => {
+    const status = await authService.check(info);
+    return { ...status, method: status.method ?? "unknown" };
   };
 
-  const agentIdForAuth = (info?: AgentSessionInfo): AgentId => info ? idOf(info) : "codex";
+  const agentIdForAuth = resolveAgentIdForAuth;
 
-  const labelForAuth = (info?: AgentSessionInfo): string => info ? labelOf(info) : "Codex";
+  const labelForAuth = agentLabelForAuth;
 
   const checkLoginAuthStatus = async (info?: AgentSessionInfo): Promise<{ authenticated: boolean; method: string; detail: string }> => {
-    const agentId = agentIdForAuth(info);
-    if (agentId === "hermes") {
-      return checkHermesAuthStatus({
-        baseUrl: config.hermesApiBaseUrl,
-        apiKey: config.hermesApiKey,
-      });
-    }
-    if (agentId === "claude-code") {
-      return checkClaudeCodeAuthStatus(config.claudeCodeCliPath);
-    }
-    return checkAuthStatus(config.codexApiKey);
+    const status = info ? await authService.check(info) : await checkAuthStatus(config.codexApiKey);
+    return { ...status, method: status.method ?? "unknown" };
   };
 
   const replyChannelAction = async (ctx: Context, rendered: ChannelActionResponse): Promise<void> => {
@@ -484,47 +457,19 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   };
 
   const startAgentLogin = (info?: AgentSessionInfo): Promise<LoginResult> => {
-    const agentId = agentIdForAuth(info);
-    if (agentId === "hermes") {
-      return startHermesLogin(config.hermesCliPath);
-    }
-    if (agentId === "claude-code") {
-      return startClaudeCodeLogin(config.claudeCodeCliPath);
-    }
-    return startCodexLogin();
+    return info ? authService.startLogin(info) : startCodexLogin();
   };
 
   const startAgentLogout = (info?: AgentSessionInfo): Promise<LoginResult> => {
-    const agentId = agentIdForAuth(info);
-    if (agentId === "hermes") {
-      return startHermesLogout(config.hermesCliPath);
-    }
-    if (agentId === "claude-code") {
-      return startClaudeCodeLogout(config.claudeCodeCliPath);
-    }
-    return startCodexLogout();
+    return info ? authService.startLogout(info) : startCodexLogout();
   };
 
   const hostLoginCommand = (info?: AgentSessionInfo): string => {
-    const agentId = agentIdForAuth(info);
-    if (agentId === "hermes") {
-      return `${config.hermesCliPath ?? "hermes"} login --no-browser`;
-    }
-    if (agentId === "claude-code") {
-      return `${config.claudeCodeCliPath ?? "claude"} auth login`;
-    }
-    return "codex login --device-auth";
+    return hostAgentLoginCommand(config, info);
   };
 
   const hostLogoutCommand = (info?: AgentSessionInfo): string => {
-    const agentId = agentIdForAuth(info);
-    if (agentId === "hermes") {
-      return `${config.hermesCliPath ?? "hermes"} logout`;
-    }
-    if (agentId === "claude-code") {
-      return `${config.claudeCodeCliPath ?? "claude"} auth logout`;
-    }
-    return "codex logout";
+    return hostAgentLogoutCommand(config, info);
   };
 
   const isTopicContext = (contextKey: TelegramContextKey): boolean => isTopicContextKey(contextKey);

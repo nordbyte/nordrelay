@@ -6,35 +6,40 @@ import type { WebClient } from "@slack/web-api";
 import { ADMIN_GROUP_ID, type Permission } from "./access-control.js";
 import { agentLabel, agentReasoningLabel, agentReasoningOptions, type AgentExternalSnapshot, type AgentId, type AgentPromptInput, type AgentSessionInfo, type AgentSessionService } from "./agent.js";
 import { getAgentActivityLog, getExternalSnapshotForSession } from "./agent-activity.js";
+import { hostAgentLoginCommand, hostAgentLogoutCommand } from "./agent-auth-commands.js";
 import { listAgentAdapterDescriptors } from "./agent-adapter.js";
 import { AgentUpdateManager, type AgentUpdateOperation } from "./agent-updates.js";
 import { enabledAgents } from "./agent-factory.js";
 import { collectRecentWorkspaceArtifacts, ensureOutDir, formatArtifactSummary, persistWorkspaceArtifactReport } from "./artifacts.js";
 import { buildFileInstructions, outboxPath, stageFile, type StagedFile } from "./attachments.js";
-import { AuditLogStore, type AuditEvent } from "./audit-log.js";
+import { AuditLogStore } from "./audit-log.js";
 import { BotPreferencesStore } from "./bot-preferences.js";
 import { capabilitiesOf, filterActivityEvents, parseActivityOptions, renderExternalMirrorEvent, renderExternalMirrorStatus, renderPromptFailure, trimLine, type TurnProgress } from "./bot-rendering.js";
 import { parseAgentUpdateId, renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction } from "./channel-actions.js";
 import type { ChannelContext } from "./channel-adapter.js";
-import type { ChannelBusyReason, ChannelBusyState, ChannelExternalMirrorState, ChannelPickState, ChannelQueueStatusState } from "./channel-bridge-state.js";
+import {
+  createChannelActivityRecorder,
+  createChannelAuditRecorder,
+  createChannelBusyStore,
+  createChannelPermissionChecker,
+  createChannelQueueStatusController,
+} from "./channel-bridge-controller.js";
+import type { ChannelBusyReason, ChannelBusyState, ChannelExternalMirrorState, ChannelPickState } from "./channel-bridge-state.js";
 import { createSharedChannelCommandDispatcher } from "./channel-command-core.js";
 import { slackHelpCommandList } from "./channel-command-catalog.js";
 import { ChannelCommandService } from "./channel-command-service.js";
 import { createChannelPromptEngine } from "./channel-prompt-engine.js";
 import { runChannelPeerPrompt } from "./channel-peer-prompt.js";
 import { deliverChannelAction } from "./channel-runtime.js";
-import { checkAuthStatus, startLogin as startCodexLogin, startLogout as startCodexLogout, type LoginResult } from "./codex-auth.js";
-import { checkClaudeCodeAuthStatus, startClaudeCodeLogin, startClaudeCodeLogout } from "./claude-code-auth.js";
+import type { LoginResult } from "./codex-auth.js";
 import type { ConnectorConfig } from "./config.js";
 import { isSlackContextKey, parseSlackContextKey, slackContextKey, type ChannelContextKey } from "./context-key.js";
 import { friendlyErrorText } from "./error-messages.js";
-import { checkHermesAuthStatus, startHermesLogin, startHermesLogout } from "./hermes-auth.js";
 import { spawnConnectorRestart, spawnSelfUpdate } from "./operations.js";
-import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
 import { RemoteRelayClient } from "./peer-client.js";
-import { checkPiAuthStatus } from "./pi-auth.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "./prompt-store.js";
 import { RelayArtifactService } from "./relay-artifact-service.js";
+import { RelayAuthService } from "./relay-auth-service.js";
 import { configureRedaction, redactText } from "./redaction.js";
 import { renderSessionInfoPlain } from "./session-format.js";
 import { canWriteWithLock, SessionLockStore } from "./session-locks.js";
@@ -83,8 +88,6 @@ type PickState = ChannelPickState<"agent" | "session" | "model" | "reasoning" | 
 
 type SlackExternalMirrorState = ChannelExternalMirrorState<string>;
 
-type SlackQueueStatusState = ChannelQueueStatusState<string>;
-
 export function createSlackBridge(config: ConnectorConfig, registry: SessionRegistry): SlackBridge | null {
   if (!config.slackEnabled) {
     return null;
@@ -110,25 +113,24 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
   const lockStore = new SessionLockStore(config.workspace, config.stateBackend);
   const userStore = new UserStore();
   const artifactService = new RelayArtifactService(config);
+  const authService = new RelayAuthService(config);
   const agentUpdates = new AgentUpdateManager();
   const commandService = new ChannelCommandService(config);
-  const busyStates = new Map<ChannelContextKey, BusyState>();
+  const busyStates = createChannelBusyStore<ChannelContextKey>();
   const turnProgress = new Map<ChannelContextKey, TurnProgress>();
   const draining = new Set<ChannelContextKey>();
   const picks = new Map<string, PickState>();
   const externalMirrors = new Map<ChannelContextKey, SlackExternalMirrorState>();
-  const queueStatusMessages = new Map<ChannelContextKey, SlackQueueStatusState>();
+  const queueStatusMessages = createChannelQueueStatusController<ChannelContextKey, string>({
+    send: async (_contextKey, context, text) => (await runtime.sendMessage(context, { text, fallbackText: text })).messageId,
+    edit: async (_contextKey, context, messageId, text) => {
+      await runtime.editMessage(context, messageId, { text, fallbackText: text });
+    },
+  });
   const remoteClient = new RemoteRelayClient();
   let externalMonitor: NodeJS.Timeout | undefined;
 
-  const getBusyState = (contextKey: ChannelContextKey): BusyState => {
-    let state = busyStates.get(contextKey);
-    if (!state) {
-      state = { processing: false, switching: false };
-      busyStates.set(contextKey, state);
-    }
-    return state;
-  };
+  const getBusyState = (contextKey: ChannelContextKey): BusyState => busyStates.get(contextKey);
 
   const actorFor = (request: SlackRequest): WebActivityActor => ({
     channel: "slack",
@@ -138,30 +140,21 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     channelUserId: request.userId,
   });
 
-  const appendActivity = (request: SlackRequest, input: Omit<Parameters<WebActivityStore["append"]>[0], "source" | "threadId" | "workspace"> & { threadId?: string | null; workspace?: string }): void => {
-    activityStore.append({
-      source: "slack",
-      contextKey: request.contextKey,
-      actor: input.actor ?? actorFor(request),
-      workspace: input.workspace ?? config.workspace,
-      threadId: input.threadId ?? null,
-      ...input,
-    });
-  };
+  const appendActivity = createChannelActivityRecorder<SlackRequest>({
+    source: "slack",
+    workspace: config.workspace,
+    activityStore,
+    actorFor,
+  });
 
-  const audit = (request: SlackRequest, input: Omit<AuditEvent, "id" | "timestamp" | "channelId" | "contextKey"> & { contextKey?: string }): void => {
-    auditLog.append({
-      channelId: "slack",
-      contextKey: input.contextKey ?? request.contextKey,
-      actor: input.actor ?? actorFor(request),
-      actorId: request.authUser?.user.id ?? request.userId,
-      actorRole: request.authUser?.groups.map((group) => group.name).join(", ") ?? "unauthenticated",
-      ...input,
-    });
-  };
+  const audit = createChannelAuditRecorder<SlackRequest>({
+    channelId: "slack",
+    auditLog,
+    actorFor,
+    actorIdFor: (request) => request.userId,
+  });
 
-  const hasPermission = (request: SlackRequest, permission: Permission | null): boolean =>
-    userStore.hasPermission(request.authUser, permission);
+  const hasPermission = createChannelPermissionChecker<SlackRequest>(userStore);
 
   const reply = async (
     request: SlackRequest,
@@ -273,7 +266,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
   const commandArtifacts = createSlackArtifactCommandHandler<SlackRequest>(artifactDeps);
 
   const getBusyReason = (contextKey: ChannelContextKey): BusyReason => {
-    const state = busyStates.get(contextKey);
+    const state = busyStates.peek(contextKey);
     const session = registry.get(contextKey);
     if (state?.processing || state?.switching || session?.isProcessing()) {
       return { busy: true, kind: "connector", state: state ?? getBusyState(contextKey) };
@@ -286,20 +279,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
   };
 
   const updateQueueStatusMessage = async (contextKey: ChannelContextKey, context: ChannelContext, text: string): Promise<void> => {
-    const state = queueStatusMessages.get(contextKey) ?? {};
-    if (state.lastText === text && state.messageId) {
-      return;
-    }
-    if (!state.messageId) {
-      const sent = await runtime.sendMessage(context, { text, fallbackText: text });
-      state.messageId = sent.messageId;
-      state.lastText = text;
-      queueStatusMessages.set(contextKey, state);
-      return;
-    }
-    await runtime.editMessage(context, state.messageId, { text, fallbackText: text });
-    state.lastText = text;
-    queueStatusMessages.set(contextKey, state);
+    await queueStatusMessages.update(contextKey, context, text);
   };
 
   const sendExternalWorkingNotice = async (context: ChannelContext, state: SlackExternalMirrorState, snapshot: AgentExternalSnapshot): Promise<void> => {
@@ -410,48 +390,20 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     }
   };
 
-  const checkAgentAuthStatus = async (info: AgentSessionInfo): Promise<{ authenticated: boolean; detail: string; method?: string }> => {
-    if (info.agentId === "pi") return checkPiAuthStatus(info.model);
-    if (info.agentId === "hermes") return checkHermesAuthStatus({ baseUrl: config.hermesApiBaseUrl, apiKey: config.hermesApiKey });
-    if (info.agentId === "openclaw") return checkOpenClawAuthStatus({ gatewayUrl: config.openClawGatewayUrl, token: config.openClawGatewayToken, password: config.openClawGatewayPassword });
-    if (info.agentId === "claude-code") return checkClaudeCodeAuthStatus(config.claudeCodeCliPath);
-    return checkAuthStatus(config.codexApiKey);
-  };
+  const checkAgentAuthStatus = (info: AgentSessionInfo) => authService.check(info);
 
-  const checkLoginAuthStatus = async (info: AgentSessionInfo): Promise<{ authenticated: boolean; detail: string; method?: string }> => {
-    if (info.agentId === "hermes") return checkHermesAuthStatus({ baseUrl: config.hermesApiBaseUrl, apiKey: config.hermesApiKey });
-    if (info.agentId === "claude-code") return checkClaudeCodeAuthStatus(config.claudeCodeCliPath);
-    return checkAuthStatus(config.codexApiKey);
-  };
+  const checkLoginAuthStatus = (info: AgentSessionInfo) => authService.check(info);
 
-  const startAgentLogin = (info: AgentSessionInfo): Promise<LoginResult> => {
-    if (info.agentId === "hermes") return startHermesLogin(config.hermesCliPath);
-    if (info.agentId === "claude-code") return startClaudeCodeLogin(config.claudeCodeCliPath);
-    if (info.agentId === "codex") return startCodexLogin();
-    return Promise.resolve({ success: false, message: `${info.agentLabel} login is not managed by NordRelay. Run the agent login flow on the host.` });
-  };
+  const startAgentLogin = (info: AgentSessionInfo): Promise<LoginResult> => authService.startLogin(info);
 
-  const startAgentLogout = (info: AgentSessionInfo): Promise<LoginResult> => {
-    if (info.agentId === "hermes") return startHermesLogout(config.hermesCliPath);
-    if (info.agentId === "claude-code") return startClaudeCodeLogout(config.claudeCodeCliPath);
-    if (info.agentId === "codex") return startCodexLogout();
-    return Promise.resolve({ success: false, message: `${info.agentLabel} logout is not managed by NordRelay. Run the agent logout flow on the host.` });
-  };
+  const startAgentLogout = (info: AgentSessionInfo): Promise<LoginResult> => authService.startLogout(info);
 
   const hostLoginCommand = (info: AgentSessionInfo): string => {
-    if (info.agentId === "hermes") return `${config.hermesCliPath ?? "hermes"} login --no-browser`;
-    if (info.agentId === "claude-code") return `${config.claudeCodeCliPath ?? "claude"} auth login`;
-    if (info.agentId === "pi") return `${config.piCliPath ?? "pi"} auth login`;
-    if (info.agentId === "openclaw") return `${config.openClawCliPath ?? "openclaw"} login`;
-    return "codex login --device-auth";
+    return hostAgentLoginCommand(config, info);
   };
 
   const hostLogoutCommand = (info: AgentSessionInfo): string => {
-    if (info.agentId === "hermes") return `${config.hermesCliPath ?? "hermes"} logout`;
-    if (info.agentId === "claude-code") return `${config.claudeCodeCliPath ?? "claude"} auth logout`;
-    if (info.agentId === "pi") return `${config.piCliPath ?? "pi"} auth logout`;
-    if (info.agentId === "openclaw") return `${config.openClawCliPath ?? "openclaw"} logout`;
-    return "codex logout";
+    return hostAgentLogoutCommand(config, info);
   };
 
   const denyIfLocked = async (request: SlackRequest): Promise<boolean> => {
