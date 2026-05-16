@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PeerStore } from "../src/peer-store.js";
+import { PeerStore } from "../src/peers/peer-store.js";
 
 const tmpDirs: string[] = [];
 

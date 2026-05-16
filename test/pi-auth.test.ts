@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { checkPiAuthStatus } from "../src/pi-auth.js";
+import { checkPiAuthStatus } from "../src/agents/pi/pi-auth.js";
 
 describe("pi-auth", () => {
   it("checks provider environment variables for selected Pi models", () => {

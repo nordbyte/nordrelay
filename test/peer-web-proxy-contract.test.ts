@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { peerProxyCoverage } from "../src/peer-web-proxy-contract.js";
+import { peerProxyCoverage } from "../src/peers/peer-web-proxy-contract.js";
 
 describe("peer web proxy contract", () => {
   it("classifies every Web API route as proxied or local-only", () => {

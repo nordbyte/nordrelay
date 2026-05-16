@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { PromptStore, toPromptEnvelope } from "../src/prompt-store.js";
+import { PromptStore, toPromptEnvelope } from "../src/state/prompt-store.js";
 
 describe("PromptStore", () => {
   it("persists last prompts and queues", () => {

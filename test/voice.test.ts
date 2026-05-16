@@ -10,7 +10,7 @@ import {
   _setImportHook,
   getAvailableBackends,
   transcribeAudio,
-} from "../src/voice.js";
+} from "../src/artifacts/voice.js";
 
 describe("voice transcription", () => {
   const originalOpenAIKey = process.env.OPENAI_API_KEY;

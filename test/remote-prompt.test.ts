@@ -4,9 +4,9 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { buildFileInstructions, type StagedFile } from "../src/attachments.js";
-import { peerPromptProxyPayload } from "../src/remote-prompt.js";
-import { toPromptEnvelope } from "../src/prompt-store.js";
+import { buildFileInstructions, type StagedFile } from "../src/artifacts/attachments.js";
+import { peerPromptProxyPayload } from "../src/runtime/remote-prompt.js";
+import { toPromptEnvelope } from "../src/state/prompt-store.js";
 
 const tmpDirs: string[] = [];
 

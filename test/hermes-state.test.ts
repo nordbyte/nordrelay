@@ -12,7 +12,7 @@ import {
   getHermesSessionDiagnostics,
   listHermesSessions,
   listHermesWorkspaces,
-} from "../src/hermes-state.js";
+} from "../src/agents/hermes/hermes-state.js";
 
 const require = createRequire(import.meta.url);
 const sqliteAvailable = (() => {

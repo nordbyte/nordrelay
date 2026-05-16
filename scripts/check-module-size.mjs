@@ -4,16 +4,16 @@ import path from "node:path";
 const root = process.cwd();
 
 const budgets = [
-  { file: "src/relay-runtime.ts", maxLines: 850 },
-  { file: "src/relay-runtime-active-sessions.ts", maxLines: 650 },
-  { file: "src/relay-runtime-dashboard.ts", maxLines: 400 },
-  { file: "src/relay-runtime-prompt-queue-artifacts.ts", maxLines: 550 },
-  { file: "src/relay-runtime-sessions.ts", maxLines: 900 },
-  { file: "src/relay-runtime-updates-jobs.ts", maxLines: 600 },
-  { file: "src/web-dashboard.ts", maxLines: 1100 },
-  { file: "src/discord-bot.ts", maxLines: 2100 },
-  { file: "src/slack-bot.ts", maxLines: 1700 },
-  { file: "src/bot.ts", maxLines: 4300 },
+  { file: "src/runtime/relay-runtime.ts", maxLines: 850 },
+  { file: "src/runtime/relay-runtime-active-sessions.ts", maxLines: 650 },
+  { file: "src/runtime/relay-runtime-dashboard.ts", maxLines: 400 },
+  { file: "src/runtime/relay-runtime-prompt-queue-artifacts.ts", maxLines: 550 },
+  { file: "src/runtime/relay-runtime-sessions.ts", maxLines: 900 },
+  { file: "src/runtime/relay-runtime-updates-jobs.ts", maxLines: 600 },
+  { file: "src/web/web-dashboard.ts", maxLines: 1100 },
+  { file: "src/channels/discord/discord-bot.ts", maxLines: 2100 },
+  { file: "src/channels/slack/slack-bot.ts", maxLines: 1700 },
+  { file: "src/channels/telegram/bot.ts", maxLines: 4300 },
 ];
 
 const failures = [];

@@ -1,4 +1,4 @@
-import { escapeHTML, formatTelegramHTML } from "../src/format.js";
+import { escapeHTML, formatTelegramHTML } from "../src/core/format.js";
 
 describe("escapeHTML", () => {
   it("escapes HTML entities", () => {

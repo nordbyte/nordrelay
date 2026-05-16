@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { RuntimeSnapshotCache } from "../src/runtime-cache.js";
+import { RuntimeSnapshotCache } from "../src/runtime/runtime-cache.js";
 
 describe("RuntimeSnapshotCache", () => {
   it("returns stale values immediately while refreshing in the background", async () => {

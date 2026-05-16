@@ -2,8 +2,8 @@ import { createServer, type Server } from "node:http";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { HermesApiClient } from "../src/hermes-api.js";
-import { checkHermesAuthStatus } from "../src/hermes-auth.js";
+import { HermesApiClient } from "../src/agents/hermes/hermes-api.js";
+import { checkHermesAuthStatus } from "../src/agents/hermes/hermes-auth.js";
 
 describe("hermes-api", () => {
   let server: Server | null = null;

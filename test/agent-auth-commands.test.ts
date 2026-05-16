@@ -5,9 +5,9 @@ import {
   agentLabelForAuth,
   hostAgentLoginCommand,
   hostAgentLogoutCommand,
-} from "../src/agent-auth-commands.js";
-import type { AgentSessionInfo } from "../src/agent.js";
-import type { ConnectorConfig } from "../src/config.js";
+} from "../src/agents/shared/agent-auth-commands.js";
+import type { AgentSessionInfo } from "../src/agents/shared/agent.js";
+import type { ConnectorConfig } from "../src/core/config.js";
 
 const config = {
   workspace: "/repo",

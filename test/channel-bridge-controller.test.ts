@@ -6,7 +6,7 @@ import {
   createChannelBusyStore,
   createChannelPermissionChecker,
   createChannelQueueStatusController,
-} from "../src/channel-bridge-controller.js";
+} from "../src/channels/shared/channel-bridge-controller.js";
 
 describe("channel bridge controller helpers", () => {
   it("creates and reuses busy state entries", () => {

@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { findExecutableOnPath, resolveCodexCli } from "../src/codex-cli.js";
+import { findExecutableOnPath, resolveCodexCli } from "../src/agents/codex/codex-cli.js";
 
 describe("codex-cli", () => {
   it("uses an explicit CODEX_CLI_PATH when configured", () => {

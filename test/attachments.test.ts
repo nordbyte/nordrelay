@@ -11,7 +11,7 @@ import {
   outboxPath,
   sanitizeFilename,
   stageFile,
-} from "../src/attachments.js";
+} from "../src/artifacts/attachments.js";
 
 describe("sanitizeFilename", () => {
   it("passes through safe names", () => {

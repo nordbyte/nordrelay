@@ -17,7 +17,7 @@ import {
   pruneConnectorTurnDirs,
   removeArtifactTurn,
   telegramArtifactFilename,
-} from "../src/artifacts.js";
+} from "../src/artifacts/artifacts.js";
 
 describe("ensureOutDir", () => {
   const testDir = path.join(tmpdir(), `nordrelay-art-${randomUUID()}`);

@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { readCodexFastMode, writeCodexFastMode } from "../src/codex-config.js";
+import { readCodexFastMode, writeCodexFastMode } from "../src/agents/codex/codex-config.js";
 
 describe("codex-config", () => {
   const originalHome = process.env.HOME;

@@ -8,8 +8,8 @@ import {
   permissionForCallbackData,
   permissionForCommand,
   permissionForWebRequest,
-} from "../src/access-control.js";
-import { WEB_API_ROUTE_DEFINITIONS, routeForWebRequest } from "../src/web-api-contract.js";
+} from "../src/access/access-control.js";
+import { WEB_API_ROUTE_DEFINITIONS, routeForWebRequest } from "../src/web/web-api-contract.js";
 
 describe("access-control", () => {
   it("maps commands to granular permissions", () => {

@@ -4,12 +4,12 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { loadOrCreatePeerIdentity } from "../src/peer-identity.js";
-import { pairPeer, RemoteRelayClient } from "../src/peer-client.js";
-import { startPeerServer, type PeerServerHandle } from "../src/peer-server.js";
-import { PeerStore } from "../src/peer-store.js";
-import type { ConnectorConfig } from "../src/config.js";
-import type { RelayRuntime } from "../src/relay-runtime.js";
+import { loadOrCreatePeerIdentity } from "../src/peers/peer-identity.js";
+import { pairPeer, RemoteRelayClient } from "../src/peers/peer-client.js";
+import { startPeerServer, type PeerServerHandle } from "../src/peers/peer-server.js";
+import { PeerStore } from "../src/peers/peer-store.js";
+import type { ConnectorConfig } from "../src/core/config.js";
+import type { RelayRuntime } from "../src/runtime/relay-runtime.js";
 
 const tmpDirs: string[] = [];
 const handles: PeerServerHandle[] = [];

@@ -3,9 +3,9 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { ConnectorConfig } from "../src/config.js";
-import { PeerDiscoveryJobManager } from "../src/peer-discovery-jobs.js";
-import { countDiscoveryTargets } from "../src/peer-discovery.js";
+import type { ConnectorConfig } from "../src/core/config.js";
+import { PeerDiscoveryJobManager } from "../src/peers/peer-discovery-jobs.js";
+import { countDiscoveryTargets } from "../src/peers/peer-discovery.js";
 
 describe("peer discovery target expansion", () => {
   it("supports custom CIDR, range, IPv6, mDNS host, and URL targets", async () => {

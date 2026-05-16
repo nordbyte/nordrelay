@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { friendlyErrorText, translateError } from "../src/error-messages.js";
+import { friendlyErrorText, translateError } from "../src/core/error-messages.js";
 
 describe("error-messages", () => {
   describe("translateError", () => {

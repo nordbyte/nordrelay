@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { buildRuntimeMetrics } from "../src/metrics.js";
-import { recordWebApiMetric } from "../src/web-performance.js";
+import { buildRuntimeMetrics } from "../src/runtime/metrics.js";
+import { recordWebApiMetric } from "../src/web/web-performance.js";
 
 describe("runtime metrics", () => {
   it("includes process, memory, cpu, and event-loop observability", () => {

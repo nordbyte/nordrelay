@@ -5,7 +5,7 @@ import {
   formatLaunchProfileLabel,
   isUnsafeLaunchProfile,
   parseLaunchProfilesJson,
-} from "../src/codex-launch.js";
+} from "../src/agents/codex/codex-launch.js";
 
 describe("codex-launch", () => {
   it("parses valid launch profiles", () => {

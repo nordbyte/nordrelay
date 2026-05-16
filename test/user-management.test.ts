@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { ADMIN_GROUP_ID, ALL_PERMISSIONS, READONLY_GROUP_ID, USER_GROUP_ID } from "../src/access-control.js";
-import { publicUserSnapshot, UserStore } from "../src/user-management.js";
+import { ADMIN_GROUP_ID, ALL_PERMISSIONS, READONLY_GROUP_ID, USER_GROUP_ID } from "../src/access/access-control.js";
+import { publicUserSnapshot, UserStore } from "../src/access/user-management.js";
 
 describe("UserStore", () => {
   let home: string;

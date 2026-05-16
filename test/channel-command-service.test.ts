@@ -4,9 +4,9 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { BotPreferencesStore } from "../src/bot-preferences.js";
-import { ChannelCommandService } from "../src/channel-command-service.js";
-import type { ConnectorConfig } from "../src/config.js";
+import { BotPreferencesStore } from "../src/state/bot-preferences.js";
+import { ChannelCommandService } from "../src/channels/shared/channel-command-service.js";
+import type { ConnectorConfig } from "../src/core/config.js";
 
 describe("ChannelCommandService preference commands", () => {
   let workspace: string;

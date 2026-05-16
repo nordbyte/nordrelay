@@ -11,7 +11,7 @@ import {
   getPiSessionDiagnostics,
   listPiSessions,
   listPiWorkspaces,
-} from "../src/pi-state.js";
+} from "../src/agents/pi/pi-state.js";
 
 describe("pi-state", () => {
   let tempDir: string;

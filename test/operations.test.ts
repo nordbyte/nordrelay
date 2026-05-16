@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { clearLogFile, detectSelfUpdateMethod, readFormattedLogTail, resolveNpmSpawnCommand } from "../src/operations.js";
+import { clearLogFile, detectSelfUpdateMethod, readFormattedLogTail, resolveNpmSpawnCommand } from "../src/support/operations.js";
 
 const tempDirs: string[] = [];
 

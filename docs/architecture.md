@@ -3,41 +3,41 @@
 - `plugins/nordrelay/`: Codex plugin bundle with manifest, skill, command, icon, and process wrapper.
 - `plugins/nordrelay/scripts/nordrelay.mjs`: process manager for `start`, `stop`, `restart`, `status`, and `foreground`.
 - `src/index.ts`: runtime entrypoint, config load, auth check, state-file writes, polling lifecycle, shutdown.
-- `src/bot.ts`: Telegram prompt/session runtime, streaming, file/photo/voice handling, artifacts, and error handling.
-- `src/telegram-general-commands.ts`, `src/telegram-agent-commands.ts`, `src/telegram-preference-commands.ts`, `src/telegram-access-commands.ts`, `src/telegram-diagnostics-command.ts`, `src/telegram-update-commands.ts`, `src/telegram-support-command.ts`, and `src/telegram-command-menu.ts`: focused Telegram command groups for start/help/adapters, agent/auth controls, per-chat preferences, access linking, diagnostics/log/version commands, update jobs, diagnostics bundle export, and command menu registration.
-- `src/channel-adapter.ts`, `src/channel-runtime.ts`, `src/channel-command-core.ts`, `src/channel-actions.ts`, and `src/adapter-conformance.ts`: channel descriptors, shared command dispatch/coverage, outbound delivery contracts, channel-neutral responses, and generated feature/command conformance matrices.
-- `src/discord-bot.ts` and `src/slack-bot.ts`: Discord and Slack bridge runtimes built on the shared channel command core, channel runtimes, rate limiters, access checks, streaming replies, attachments, mirrors, and queue controls.
-- `src/slack-diagnostics.ts`: Slack readiness probes for token/transport config, auth, registered channel visibility, file-upload readiness, and rate-limit reporting.
-- `src/user-management.ts`, `src/user-management-types.ts`, `src/user-management-normalize.ts`, and `src/user-management-crypto.ts`: user/group/session/channel-access store with separated DTOs, payload normalization, password/token helpers, and public snapshots.
-- `src/config-metadata.ts`: shared setting metadata used by the WebUI settings page and generated `.env.example`.
-- `src/support-bundle.ts` and `src/zip-writer.ts`: redacted diagnostics bundle creation with a dependency-free ZIP writer.
-- `src/relay-queue-service.ts`, `src/relay-artifact-service.ts`, and `src/relay-external-activity-monitor.ts`: Web runtime queue operations, artifact preview/export/persistence, and external CLI activity mirroring.
-- `src/relay-runtime-types.ts`: shared Runtime/WebUI DTO types used by runtime, API contracts, and dashboard code.
-- `src/web-dashboard-http.ts`, `src/web-dashboard-pages.ts`, and `src/web-dashboard-runtime-routes.ts`: dashboard HTTP helpers, HTML shell rendering, and operational runtime API routes.
-- `src/webui/`: focused WebUI source assets for core runtime state/API helpers, overview rendering, live events, chat/session workflows, admin pages, and CSS sections.
-- `src/bot-preferences.ts`: per-context mirror, notification, quiet-hour, and voice preference persistence.
-- `src/telegram-rate-limit.ts`: centralized Telegram API send/edit/document rate limiting and retry-after tracking.
-- `src/persistence.ts`: atomic JSON/text writes with backup recovery.
-- `src/redaction.ts`: common secret redaction and custom redaction pattern support.
-- `src/workspace-policy.ts`: workspace allow/warn root evaluation.
-- `src/access-control.ts`: user/group permission definitions and command/callback/WebUI permission mapping.
-- `src/codex-session.ts`: Codex SDK service for new/resumed threads, streaming events, abort, model, reasoning, launch profiles, and handback.
-- `src/pi-session.ts`: Pi RPC service for JSONL RPC sessions, streaming events, abort, model, thinking, launch profiles, and handback.
-- `src/hermes-session.ts`: Hermes API Server service for streamed runs, stop, model, reasoning, launch profiles, attachments, and handback.
-- `src/openclaw-session.ts`: OpenClaw Gateway service for streamed runs, cancel, model, thinking, launch profiles, attachments, and handback.
-- `src/claude-code-session.ts`: Claude Agent SDK service for streamed runs, abort, model, effort, launch profiles, attachments, and handback.
-- `src/session-registry.ts`: per-chat/topic session registry and persisted context metadata.
+- `src/channels/telegram/bot.ts`: Telegram prompt/session runtime, streaming, file/photo/voice handling, artifacts, and error handling.
+- `src/channels/telegram/telegram-general-commands.ts`, `src/channels/telegram/telegram-agent-commands.ts`, `src/channels/telegram/telegram-preference-commands.ts`, `src/channels/telegram/telegram-access-commands.ts`, `src/channels/telegram/telegram-diagnostics-command.ts`, `src/channels/telegram/telegram-update-commands.ts`, `src/channels/telegram/telegram-support-command.ts`, and `src/channels/telegram/telegram-command-menu.ts`: focused Telegram command groups for start/help/adapters, agent/auth controls, per-chat preferences, access linking, diagnostics/log/version commands, update jobs, diagnostics bundle export, and command menu registration.
+- `src/channels/shared/channel-adapter.ts`, `src/channels/shared/channel-runtime.ts`, `src/channels/shared/channel-command-core.ts`, `src/channels/shared/channel-actions.ts`, and `src/agents/shared/adapter-conformance.ts`: channel descriptors, shared command dispatch/coverage, outbound delivery contracts, channel-neutral responses, and generated feature/command conformance matrices.
+- `src/channels/discord/discord-bot.ts` and `src/channels/slack/slack-bot.ts`: Discord and Slack bridge runtimes built on the shared channel command core, channel runtimes, rate limiters, access checks, streaming replies, attachments, mirrors, and queue controls.
+- `src/channels/slack/slack-diagnostics.ts`: Slack readiness probes for token/transport config, auth, registered channel visibility, file-upload readiness, and rate-limit reporting.
+- `src/access/user-management.ts`, `src/access/user-management-types.ts`, `src/access/user-management-normalize.ts`, and `src/access/user-management-crypto.ts`: user/group/session/channel-access store with separated DTOs, payload normalization, password/token helpers, and public snapshots.
+- `src/core/config-metadata.ts`: shared setting metadata used by the WebUI settings page and generated `.env.example`.
+- `src/support/support-bundle.ts` and `src/support/zip-writer.ts`: redacted diagnostics bundle creation with a dependency-free ZIP writer.
+- `src/runtime/relay-queue-service.ts`, `src/runtime/relay-artifact-service.ts`, and `src/runtime/relay-external-activity-monitor.ts`: Web runtime queue operations, artifact preview/export/persistence, and external CLI activity mirroring.
+- `src/runtime/relay-runtime-types.ts`: shared Runtime/WebUI DTO types used by runtime, API contracts, and dashboard code.
+- `src/web/web-dashboard-http.ts`, `src/web/web-dashboard-pages.ts`, and `src/web/web-dashboard-runtime-routes.ts`: dashboard HTTP helpers, HTML shell rendering, and operational runtime API routes.
+- `src/web/ui/`: focused WebUI source assets for core runtime state/API helpers, overview rendering, live events, chat/session workflows, admin pages, and CSS sections.
+- `src/state/bot-preferences.ts`: per-context mirror, notification, quiet-hour, and voice preference persistence.
+- `src/channels/telegram/telegram-rate-limit.ts`: centralized Telegram API send/edit/document rate limiting and retry-after tracking.
+- `src/state/persistence.ts`: atomic JSON/text writes with backup recovery.
+- `src/core/redaction.ts`: common secret redaction and custom redaction pattern support.
+- `src/core/workspace-policy.ts`: workspace allow/warn root evaluation.
+- `src/access/access-control.ts`: user/group permission definitions and command/callback/WebUI permission mapping.
+- `src/agents/codex/codex-session.ts`: Codex SDK service for new/resumed threads, streaming events, abort, model, reasoning, launch profiles, and handback.
+- `src/agents/pi/pi-session.ts`: Pi RPC service for JSONL RPC sessions, streaming events, abort, model, thinking, launch profiles, and handback.
+- `src/agents/hermes/hermes-session.ts`: Hermes API Server service for streamed runs, stop, model, reasoning, launch profiles, attachments, and handback.
+- `src/agents/openclaw/openclaw-session.ts`: OpenClaw Gateway service for streamed runs, cancel, model, thinking, launch profiles, attachments, and handback.
+- `src/agents/claude-code/claude-code-session.ts`: Claude Agent SDK service for streamed runs, abort, model, effort, launch profiles, attachments, and handback.
+- `src/state/session-registry.ts`: per-chat/topic session registry and persisted context metadata.
 - `test/agent-adapter-contract.test.ts`: shared adapter contract coverage for descriptors, capability flags, reasoning options, launch profiles, and `AgentSessionService` method parity.
-- `src/session-format.ts`: compact Telegram rendering for session details, token usage, and limits.
-- `src/codex-state.ts`: reader for Codex `~/.codex/state_*.sqlite` thread, workspace, model, reasoning, sandbox, and approval metadata.
-- `src/pi-state.ts`: reader for Pi session JSONL files, activity timelines, diagnostics, and external busy detection.
-- `src/hermes-state.ts`: reader for Hermes `state.db` sessions, messages, token usage, activity timelines, diagnostics, and external busy detection.
-- `src/hermes-api.ts`: Hermes API Server client for health, capabilities, models, runs, events, approvals, and stop.
-- `src/openclaw-state.ts`: reader for OpenClaw session metadata, token usage, activity timelines, diagnostics, and external busy detection.
-- `src/openclaw-gateway.ts`: OpenClaw Gateway WebSocket RPC client for health, models, runs, stream events, and cancel.
-- `src/claude-code-state.ts`: reader for Claude Code transcript JSONL files, token usage, activity timelines, diagnostics, and external busy detection.
-- `src/attachments.ts`: inbound file staging and artifact output path construction.
-- `src/artifacts.ts`: generated artifact discovery, ZIP bundling, retention, and Telegram delivery filtering.
-- `src/voice.ts`: audio decoding and transcription backend selection.
-- `src/format.ts`: Telegram-safe HTML formatting and markdown conversion.
-- `src/error-messages.ts`: user-facing error translation.
+- `src/channels/shared/session-format.ts`: compact Telegram rendering for session details, token usage, and limits.
+- `src/agents/codex/codex-state.ts`: reader for Codex `~/.codex/state_*.sqlite` thread, workspace, model, reasoning, sandbox, and approval metadata.
+- `src/agents/pi/pi-state.ts`: reader for Pi session JSONL files, activity timelines, diagnostics, and external busy detection.
+- `src/agents/hermes/hermes-state.ts`: reader for Hermes `state.db` sessions, messages, token usage, activity timelines, diagnostics, and external busy detection.
+- `src/agents/hermes/hermes-api.ts`: Hermes API Server client for health, capabilities, models, runs, events, approvals, and stop.
+- `src/agents/openclaw/openclaw-state.ts`: reader for OpenClaw session metadata, token usage, activity timelines, diagnostics, and external busy detection.
+- `src/agents/openclaw/openclaw-gateway.ts`: OpenClaw Gateway WebSocket RPC client for health, models, runs, stream events, and cancel.
+- `src/agents/claude-code/claude-code-state.ts`: reader for Claude Code transcript JSONL files, token usage, activity timelines, diagnostics, and external busy detection.
+- `src/artifacts/attachments.ts`: inbound file staging and artifact output path construction.
+- `src/artifacts/artifacts.ts`: generated artifact discovery, ZIP bundling, retention, and Telegram delivery filtering.
+- `src/artifacts/voice.ts`: audio decoding and transcription backend selection.
+- `src/core/format.ts`: Telegram-safe HTML formatting and markdown conversion.
+- `src/core/error-messages.ts`: user-facing error translation.

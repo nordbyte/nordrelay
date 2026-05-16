@@ -9,7 +9,7 @@ import {
   fingerprintForPublicKey,
   loadOrCreatePeerIdentity,
   restorePeerIdentityBackup,
-} from "../src/peer-identity.js";
+} from "../src/peers/peer-identity.js";
 
 const tmpDirs: string[] = [];
 

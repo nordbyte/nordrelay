@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { runChannelPeerPrompt, type RemotePromptClient } from "../src/channel-peer-prompt.js";
-import type { PeerEventEnvelope } from "../src/peer-types.js";
+import { runChannelPeerPrompt, type RemotePromptClient } from "../src/channels/shared/channel-peer-prompt.js";
+import type { PeerEventEnvelope } from "../src/peers/peer-types.js";
 
 class FakeRemotePromptClient implements RemotePromptClient {
   closed = false;

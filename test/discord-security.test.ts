@@ -9,11 +9,11 @@ import {
   isUnauthenticatedDiscordCommandAllowed,
   permissionForDiscordAction,
   requiredPermissionForDiscordCommand,
-} from "../src/discord-bot.js";
-import { discordCommands, parseDiscordMessageCommand } from "../src/discord-command-surface.js";
-import { discordContextKey } from "../src/context-key.js";
-import { USER_GROUP_ID } from "../src/access-control.js";
-import { UserStore } from "../src/user-management.js";
+} from "../src/channels/discord/discord-bot.js";
+import { discordCommands, parseDiscordMessageCommand } from "../src/channels/discord/discord-command-surface.js";
+import { discordContextKey } from "../src/channels/shared/context-key.js";
+import { USER_GROUP_ID } from "../src/access/access-control.js";
+import { UserStore } from "../src/access/user-management.js";
 
 describe("Discord security boundaries", () => {
   let home: string;

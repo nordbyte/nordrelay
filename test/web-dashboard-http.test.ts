@@ -2,10 +2,10 @@ import { Readable } from "node:stream";
 
 import { describe, expect, it } from "vitest";
 
-import { WEB_API_ROUTE_DEFINITIONS } from "../src/web-api-contract.js";
-import { requiresWebCsrf } from "../src/web-dashboard-security.js";
-import { isRequestBodyTooLargeError, readJsonBody, webSecurityHeaders } from "../src/web-dashboard-http.js";
-import { consumeRateLimit } from "../src/web-rate-limit.js";
+import { WEB_API_ROUTE_DEFINITIONS } from "../src/web/web-api-contract.js";
+import { requiresWebCsrf } from "../src/web/web-dashboard-security.js";
+import { isRequestBodyTooLargeError, readJsonBody, webSecurityHeaders } from "../src/web/web-dashboard-http.js";
+import { consumeRateLimit } from "../src/web/web-rate-limit.js";
 
 describe("web dashboard HTTP helpers", () => {
   it("limits JSON request bodies and reports 413-compatible errors", async () => {

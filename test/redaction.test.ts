@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { configureRedaction, redactText } from "../src/redaction.js";
+import { configureRedaction, redactText } from "../src/core/redaction.js";
 
 describe("redaction", () => {
   afterEach(() => {

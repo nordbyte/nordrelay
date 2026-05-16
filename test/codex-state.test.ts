@@ -115,7 +115,7 @@ async function loadCodexState(options: LoadOptions = {}) {
     }));
   }
 
-  return await import("../src/codex-state.js");
+  return await import("../src/agents/codex/codex-state.js");
 }
 
 function runAllQuery(sql: string, threads: ThreadFixture[], args: unknown[]) {

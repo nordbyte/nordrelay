@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { WebActivityStore, WebChatStore } from "../src/web-state.js";
+import { WebActivityStore, WebChatStore } from "../src/web/web-state.js";
 
 describe("web dashboard state stores", () => {
   it("persists chat messages per thread", () => {

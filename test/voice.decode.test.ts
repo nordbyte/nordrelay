@@ -19,7 +19,7 @@ function createSpawnMock(onSpawn: (child: FakeChildProcess) => void) {
 async function importVoiceWithSpawn(spawnMock: ReturnType<typeof createSpawnMock>) {
   vi.resetModules();
   vi.doMock("node:child_process", () => ({ spawn: spawnMock }));
-  return await import("../src/voice.js");
+  return await import("../src/artifacts/voice.js");
 }
 
 afterEach(() => {

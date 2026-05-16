@@ -5,12 +5,12 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { listAgentAdapterDescriptors } from "../src/agent-adapter.js";
-import { TelegramChannelAdapter, listChannelDescriptors, type ChannelInboundMessage } from "../src/channel-adapter.js";
-import { ChannelCommandRouter, InMemoryChannelRuntime, deliverChannelAction } from "../src/channel-runtime.js";
-import { AuditLogStore } from "../src/audit-log.js";
-import { SessionLockStore, canWriteWithLock } from "../src/session-locks.js";
-import { createDocumentStore } from "../src/state-backend.js";
+import { listAgentAdapterDescriptors } from "../src/agents/shared/agent-adapter.js";
+import { TelegramChannelAdapter, listChannelDescriptors, type ChannelInboundMessage } from "../src/channels/shared/channel-adapter.js";
+import { ChannelCommandRouter, InMemoryChannelRuntime, deliverChannelAction } from "../src/channels/shared/channel-runtime.js";
+import { AuditLogStore } from "../src/access/audit-log.js";
+import { SessionLockStore, canWriteWithLock } from "../src/access/session-locks.js";
+import { createDocumentStore } from "../src/state/state-backend.js";
 
 const require = createRequire(import.meta.url);
 const sqliteAvailable = (() => {

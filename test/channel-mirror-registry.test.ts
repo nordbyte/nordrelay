@@ -4,11 +4,11 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { BotPreferencesStore } from "../src/bot-preferences.js";
-import { ChannelMirrorRegistry, activeSessionSourceForContextKey } from "../src/channel-mirror-registry.js";
-import type { ConnectorConfig } from "../src/config.js";
-import { PromptStore, toPromptEnvelope } from "../src/prompt-store.js";
-import type { ContextMetadata } from "../src/session-registry.js";
+import { BotPreferencesStore } from "../src/state/bot-preferences.js";
+import { ChannelMirrorRegistry, activeSessionSourceForContextKey } from "../src/channels/shared/channel-mirror-registry.js";
+import type { ConnectorConfig } from "../src/core/config.js";
+import { PromptStore, toPromptEnvelope } from "../src/state/prompt-store.js";
+import type { ContextMetadata } from "../src/state/session-registry.js";
 
 describe("ChannelMirrorRegistry", () => {
   let workspace: string;

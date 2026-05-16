@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { ALL_PERMISSIONS, permissionForWebRequest, type Permission } from "../src/access-control.js";
-import { WEB_API_ROUTE_DEFINITIONS, type WebHttpMethod } from "../src/web-api-contract.js";
+import { ALL_PERMISSIONS, permissionForWebRequest, type Permission } from "../src/access/access-control.js";
+import { WEB_API_ROUTE_DEFINITIONS, type WebHttpMethod } from "../src/web/web-api-contract.js";
 
 describe("WebUI API access regressions", () => {
   it("denies every known route when the required permission is missing", () => {

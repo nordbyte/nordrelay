@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 
-import { createDefaultLaunchProfile, createLaunchProfile } from "../src/codex-launch.js";
-import type { ConnectorConfig } from "../src/config.js";
+import { createDefaultLaunchProfile, createLaunchProfile } from "../src/agents/codex/codex-launch.js";
+import type { ConnectorConfig } from "../src/core/config.js";
 
 const mockCodexState = vi.hoisted(() => {
   const getThread = vi.fn();
@@ -98,7 +98,7 @@ vi.mock("@openai/codex-sdk", () => ({
   Codex: mockState.Codex,
 }));
 
-vi.mock("../src/codex-state.js", () => ({
+vi.mock("../src/agents/codex/codex-state.js", () => ({
   getThread: mockCodexState.getThread,
   getThreadUsage: mockCodexState.getThreadUsage,
   listThreads: mockCodexState.listThreads,
@@ -106,12 +106,12 @@ vi.mock("../src/codex-state.js", () => ({
   listModels: mockCodexState.listModels,
 }));
 
-vi.mock("../src/codex-config.js", () => ({
+vi.mock("../src/agents/codex/codex-config.js", () => ({
   readCodexFastMode: mockCodexConfig.readCodexFastMode,
   writeCodexFastMode: mockCodexConfig.writeCodexFastMode,
 }));
 
-import { CodexSessionService } from "../src/codex-session.js";
+import { CodexSessionService } from "../src/agents/codex/codex-session.js";
 
 describe("CodexSessionService", () => {
   const usage = {

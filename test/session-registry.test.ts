@@ -2,8 +2,8 @@ import path from "node:path";
 
 import { vi } from "vitest";
 
-import { createDefaultLaunchProfile, createLaunchProfile } from "../src/codex-launch.js";
-import type { ConnectorConfig } from "../src/config.js";
+import { createDefaultLaunchProfile, createLaunchProfile } from "../src/agents/codex/codex-launch.js";
+import type { ConnectorConfig } from "../src/core/config.js";
 
 const mockFsState = vi.hoisted(() => {
   const files = new Map<string, string>();
@@ -92,13 +92,13 @@ vi.mock("node:fs", () => ({
   }),
 }));
 
-vi.mock("../src/codex-session.js", () => ({
+vi.mock("../src/agents/codex/codex-session.js", () => ({
   CodexSessionService: {
     create: mockSessionState.create,
   },
 }));
 
-import { SessionRegistry } from "../src/session-registry.js";
+import { SessionRegistry } from "../src/state/session-registry.js";
 
 describe("SessionRegistry", () => {
   afterEach(() => {

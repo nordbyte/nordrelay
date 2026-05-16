@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { ConnectorConfig } from "../src/config.js";
-import { PeerRuntimeService } from "../src/peer-runtime-service.js";
-import type { PeerRecord } from "../src/peer-types.js";
-import type { RelayRuntime } from "../src/relay-runtime.js";
+import type { ConnectorConfig } from "../src/core/config.js";
+import { PeerRuntimeService } from "../src/peers/peer-runtime-service.js";
+import type { PeerRecord } from "../src/peers/peer-types.js";
+import type { RelayRuntime } from "../src/runtime/relay-runtime.js";
 
 describe("PeerRuntimeService", () => {
   it("denies proxied WebUI routes when the peer lacks the required scope", async () => {

@@ -3,7 +3,7 @@ import { Script } from "node:vm";
 
 import { describe, expect, it } from "vitest";
 
-import { dashboardCss, dashboardJs } from "../src/web-dashboard-assets.js";
+import { dashboardCss, dashboardJs } from "../src/web/web-dashboard-assets.js";
 
 describe("web dashboard browser-flow assets", () => {
   it("includes the agent feature matrix and dedicated agent update log flow", () => {
@@ -18,7 +18,7 @@ describe("web dashboard browser-flow assets", () => {
 
   it("includes unified jobs on the Tasks page", () => {
     const js = dashboardJs();
-    const contract = readFileSync("src/web-api-contract.ts", "utf8");
+    const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
 
     expect(js).toContain("function renderUnifiedJobs");
     expect(js).toContain("/api/jobs");
@@ -30,7 +30,7 @@ describe("web dashboard browser-flow assets", () => {
   it("renders Discord setting help icons from setting metadata", () => {
     const js = dashboardJs();
     const css = dashboardCss();
-    const metadata = readFileSync("src/config-metadata.ts", "utf8");
+    const metadata = readFileSync("src/core/config-metadata.ts", "utf8");
 
     expect(metadata).toContain("DISCORD_SETTING_HELP");
     expect(metadata).toContain("DISCORD_BOT_TOKEN");
@@ -50,7 +50,7 @@ describe("web dashboard browser-flow assets", () => {
 
   it("renders active sessions on the overview instead of the single current session panel", () => {
     const js = dashboardJs();
-    const pageSource = readFileSync("src/web-dashboard-pages.ts", "utf8");
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
 
     expect(pageSource).toContain("Active Sessions");
     expect(pageSource).toContain('id="activeSessions"');
@@ -75,8 +75,8 @@ describe("web dashboard browser-flow assets", () => {
   });
 
   it("loads dashboard CSS and JavaScript through static asset routes", () => {
-    const serverSource = readFileSync("src/web-dashboard.ts", "utf8");
-    const pageSource = readFileSync("src/web-dashboard-pages.ts", "utf8");
+    const serverSource = readFileSync("src/web/web-dashboard.ts", "utf8");
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
 
     expect(serverSource).toContain('/assets/dashboard.css');
     expect(serverSource).toContain('/assets/dashboard.js');
@@ -87,8 +87,8 @@ describe("web dashboard browser-flow assets", () => {
   });
 
   it("guards dashboard stream and session data with scoped user access", () => {
-    const source = readFileSync("src/web-dashboard.ts", "utf8");
-    const sessionRoutes = readFileSync("src/web-dashboard-session-routes.ts", "utf8");
+    const source = readFileSync("src/web/web-dashboard.ts", "utf8");
+    const sessionRoutes = readFileSync("src/web/web-dashboard-session-routes.ts", "utf8");
 
     expect(source).toContain('users.hasPermission(authUser, "sessions.read")');
     expect(source).toContain("scopeRelayEvent(authUser, event, canUseCurrentSession)");
@@ -98,8 +98,8 @@ describe("web dashboard browser-flow assets", () => {
   });
 
   it("includes first-run admin setup guarded by a setup token", () => {
-    const source = readFileSync("src/web-dashboard.ts", "utf8");
-    const pageSource = readFileSync("src/web-dashboard-pages.ts", "utf8");
+    const source = readFileSync("src/web/web-dashboard.ts", "utf8");
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
 
     expect(source).toContain("firstRunSetupToken");
     expect(source).toContain("/api/setup/admin");
@@ -110,21 +110,21 @@ describe("web dashboard browser-flow assets", () => {
   });
 
   it("composes dashboard assets from focused WebUI modules", () => {
-    expect(readFileSync("src/webui/client/core/api-client.js", "utf8")).toContain("async function api");
-    expect(readFileSync("src/webui/client/core/runtime.js", "utf8")).toContain("const state");
-    expect(readFileSync("src/webui/client/core/components.js", "utf8")).toContain("function uiItem");
-    expect(readFileSync("src/webui/client/overview.js", "utf8")).toContain("function renderSnapshot");
-    expect(readFileSync("src/webui/client/workflows.js", "utf8")).toContain("function loadSessions");
-    expect(readFileSync("src/webui/client/jobs.js", "utf8")).toContain("function renderUnifiedJobs");
-    expect(readFileSync("src/webui/client/metrics.js", "utf8")).toContain("function loadMetrics");
-    expect(readFileSync("src/webui/styles/theme.css", "utf8")).toContain(":root");
-    expect(readFileSync("src/webui/styles/layout.css", "utf8")).toContain(".chat-layout");
+    expect(readFileSync("src/web/ui/client/core/api-client.js", "utf8")).toContain("async function api");
+    expect(readFileSync("src/web/ui/client/core/runtime.js", "utf8")).toContain("const state");
+    expect(readFileSync("src/web/ui/client/core/components.js", "utf8")).toContain("function uiItem");
+    expect(readFileSync("src/web/ui/client/overview.js", "utf8")).toContain("function renderSnapshot");
+    expect(readFileSync("src/web/ui/client/workflows.js", "utf8")).toContain("function loadSessions");
+    expect(readFileSync("src/web/ui/client/jobs.js", "utf8")).toContain("function renderUnifiedJobs");
+    expect(readFileSync("src/web/ui/client/metrics.js", "utf8")).toContain("function loadMetrics");
+    expect(readFileSync("src/web/ui/styles/theme.css", "utf8")).toContain(":root");
+    expect(readFileSync("src/web/ui/styles/layout.css", "utf8")).toContain(".chat-layout");
   });
 
   it("includes peer discovery and peer health history in the WebUI", () => {
     const js = dashboardJs();
-    const pageSource = readFileSync("src/web-dashboard-pages.ts", "utf8");
-    const contract = readFileSync("src/web-api-contract.ts", "utf8");
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
 
     expect(pageSource).toContain("Discover LAN peers");
     expect(pageSource).toContain('id="peerDiscovery"');
@@ -135,8 +135,8 @@ describe("web dashboard browser-flow assets", () => {
   });
 
   it("normalizes dashboard control typography across platforms", () => {
-    const layout = readFileSync("src/webui/styles/layout.css", "utf8");
-    const components = readFileSync("src/webui/styles/components.css", "utf8");
+    const layout = readFileSync("src/web/ui/styles/layout.css", "utf8");
+    const components = readFileSync("src/web/ui/styles/components.css", "utf8");
 
     expect(layout).toContain("line-height:1.4");
     expect(layout).toContain("button{appearance:none");

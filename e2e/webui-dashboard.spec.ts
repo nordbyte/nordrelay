@@ -3,12 +3,12 @@ import type { AddressInfo } from "node:net";
 
 import { expect, test } from "@playwright/test";
 
-import { CODEX_AGENT_CAPABILITIES, PI_AGENT_CAPABILITIES } from "../src/agent.js";
-import { buildAdapterConformanceMatrix } from "../src/adapter-conformance.js";
-import { listAgentAdapterDescriptors } from "../src/agent-adapter.js";
-import { listChannelDescriptors } from "../src/channel-adapter.js";
-import { dashboardCss, dashboardJs } from "../src/web-dashboard-assets.js";
-import { renderDashboardApp } from "../src/web-dashboard-pages.js";
+import { CODEX_AGENT_CAPABILITIES, PI_AGENT_CAPABILITIES } from "../src/agents/shared/agent.js";
+import { buildAdapterConformanceMatrix } from "../src/agents/shared/adapter-conformance.js";
+import { listAgentAdapterDescriptors } from "../src/agents/shared/agent-adapter.js";
+import { listChannelDescriptors } from "../src/channels/shared/channel-adapter.js";
+import { dashboardCss, dashboardJs } from "../src/web/web-dashboard-assets.js";
+import { renderDashboardApp } from "../src/web/web-dashboard-pages.js";
 
 interface MockServer {
   baseUrl: string;

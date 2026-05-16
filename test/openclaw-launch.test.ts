@@ -1,4 +1,4 @@
-import { findOpenClawLaunchProfile, openClawProfileAsLaunchProfile } from "../src/openclaw-launch.js";
+import { findOpenClawLaunchProfile, openClawProfileAsLaunchProfile } from "../src/agents/openclaw/openclaw-launch.js";
 
 describe("openclaw-launch", () => {
   it("maps interactive profiles to no-approval launch profiles", () => {

@@ -12,7 +12,7 @@ import {
   parseDiscordContextKey,
   parseSlackContextKey,
   slackContextKey,
-} from "../src/context-key.js";
+} from "../src/channels/shared/context-key.js";
 
 describe("context-key", () => {
   it("uses only chat id for private chats", () => {

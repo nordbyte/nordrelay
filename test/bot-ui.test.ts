@@ -5,7 +5,7 @@ import {
   renderHelpMessage,
   renderWelcomeFirstTime,
   renderWelcomeReturning,
-} from "../src/bot-ui.js";
+} from "../src/channels/telegram/bot-ui.js";
 
 describe("bot-ui", () => {
   describe("renderHelpMessage", () => {

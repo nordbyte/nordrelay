@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { listAgentAdapterDescriptors } from "../src/agent-adapter.js";
+import { listAgentAdapterDescriptors } from "../src/agents/shared/agent-adapter.js";
 import {
   AGENT_IDS,
   CODEX_AGENT_CAPABILITIES,
@@ -13,17 +13,17 @@ import {
   type AgentCapabilities,
   type AgentId,
   type AgentSessionService,
-} from "../src/agent.js";
-import { CodexSessionService } from "../src/codex-session.js";
-import { ClaudeCodeSessionService } from "../src/claude-code-session.js";
-import { createBuiltinLaunchProfiles, createDefaultLaunchProfile } from "../src/codex-launch.js";
-import { listClaudeCodeLaunchProfiles } from "../src/claude-code-launch.js";
-import { listHermesLaunchProfiles } from "../src/hermes-launch.js";
-import { HermesSessionService } from "../src/hermes-session.js";
-import { listOpenClawLaunchProfiles } from "../src/openclaw-launch.js";
-import { OpenClawSessionService } from "../src/openclaw-session.js";
-import { listPiLaunchProfiles } from "../src/pi-launch.js";
-import { PiSessionService } from "../src/pi-session.js";
+} from "../src/agents/shared/agent.js";
+import { CodexSessionService } from "../src/agents/codex/codex-session.js";
+import { ClaudeCodeSessionService } from "../src/agents/claude-code/claude-code-session.js";
+import { createBuiltinLaunchProfiles, createDefaultLaunchProfile } from "../src/agents/codex/codex-launch.js";
+import { listClaudeCodeLaunchProfiles } from "../src/agents/claude-code/claude-code-launch.js";
+import { listHermesLaunchProfiles } from "../src/agents/hermes/hermes-launch.js";
+import { HermesSessionService } from "../src/agents/hermes/hermes-session.js";
+import { listOpenClawLaunchProfiles } from "../src/agents/openclaw/openclaw-launch.js";
+import { OpenClawSessionService } from "../src/agents/openclaw/openclaw-session.js";
+import { listPiLaunchProfiles } from "../src/agents/pi/pi-launch.js";
+import { PiSessionService } from "../src/agents/pi/pi-session.js";
 
 const CAPABILITY_KEYS = [
   "launchProfiles",

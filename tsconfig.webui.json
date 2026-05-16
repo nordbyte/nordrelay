@@ -8,8 +8,8 @@
     "types": []
   },
   "include": [
-    "src/web-api-types.ts",
-    "src/webui/client/core/api-routes.generated.js",
-    "src/webui/client/core/api-client.js"
+    "src/web/web-api-types.ts",
+    "src/web/ui/client/core/api-routes.generated.js",
+    "src/web/ui/client/core/api-client.js"
   ]
 }
