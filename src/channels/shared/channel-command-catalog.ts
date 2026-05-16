@@ -48,6 +48,7 @@ export const CHANNEL_COMMANDS: readonly ChannelCommandDefinition[] = [
   { name: "pin", description: "Pin current or given thread", discordOptions: [textOption("value", "Thread id")] },
   { name: "unpin", description: "Unpin current or given thread", discordOptions: [textOption("value", "Thread id")] },
   { name: "retry", description: "Resend the last prompt", discordDescription: "Retry the last prompt" },
+  { name: "last", description: "Resend the last agent reply", discordDescription: "Resend the last agent reply", discordOptions: [textOption("value", "Optional count, up to 5")] },
   { name: "queue", description: "Show queued prompts", discordDescription: "Show or manage queue", discordOptions: [textOption("action", "pause/resume/clear/run/cancel/top/up/down"), textOption("id", "Queue id")] },
   { name: "cancel", description: "Cancel a queued prompt", discordOptions: [textOption("value", "Queue id", true)] },
   { name: "clearqueue", description: "Clear queued prompts", discordDescription: "Clear queue" },

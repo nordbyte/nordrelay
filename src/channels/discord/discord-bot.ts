@@ -44,6 +44,7 @@ import { deliverChannelAction } from "../shared/channel-runtime.js";
 import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
 import { createChannelExternalMirrorController } from "../shared/channel-external-mirror-controller.js";
 import { monitorChannelExternalContexts } from "../shared/channel-external-monitor.js";
+import { getLastAgentMessageText, parseLastAgentMessageOptions } from "../shared/last-agent-message.js";
 import type { ChannelContext } from "../shared/channel-adapter.js";
 import type { LoginResult } from "../../agents/codex/codex-auth.js";
 import type { ConnectorConfig } from "../../core/config.js";
@@ -669,6 +670,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       { names: ["cancel"], handler: (request, argument) => commandQueue(request, `cancel ${argument}`) },
       { names: ["abort", "stop"], handler: (request) => commandAbort(request) },
       { names: ["retry"], handler: (request) => commandRetry(request) },
+      { names: ["last"], handler: (request, argument) => commandLast(request, argument) },
       { names: ["sync"], handler: (request) => commandSync(request) },
       { names: ["tasks", "progress"], handler: (request) => commandProgress(request) },
       { names: ["activity"], handler: (request, argument) => commandActivity(request, argument) },
@@ -1054,6 +1056,12 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       return;
     }
     await handlePrompt(request, cached.input, cached.artifactOutDir);
+  };
+
+  const commandLast = async (request: DiscordRequest, argument: string): Promise<void> => {
+    const session = await getSession(request, { deferThreadStart: true });
+    const result = getLastAgentMessageText(session, config, parseLastAgentMessageOptions(argument));
+    await reply(request, result.text);
   };
 
   const commandSync = async (request: DiscordRequest): Promise<void> => {

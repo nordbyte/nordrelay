@@ -156,6 +156,7 @@ const COMMAND_PERMISSIONS = new Map<string, Permission>([
   ["lock", "sessions.write"],
   ["unlock", "sessions.write"],
   ["retry", "prompt.send"],
+  ["last", "sessions.read"],
   ["clearqueue", "queue.write"],
   ["cancel", "queue.write"],
   ["abort", "prompt.abort"],

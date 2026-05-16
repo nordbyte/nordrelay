@@ -24,6 +24,7 @@
 - `/attach <session-id>` binds a known session to the current chat or forum topic.
 - `/handback` detaches the active session and prints the native CLI resume command.
 - `/retry` resends the last prompt for this Telegram context.
+- `/last [count]` resends the last agent reply for the active thread. `count` can resend up to 5 recent agent replies.
 - `/queue` shows queued prompts for this Telegram context with inline run/top/up/down/cancel buttons.
 - `/queue pause` pauses automatic queued prompt execution.
 - `/queue resume` resumes automatic queued prompt execution.
@@ -81,6 +82,7 @@ Discord supports slash commands and `/command` text messages for the shared comm
 - `/prompt <text>` is available for slash-command-only deployments where regular message content is disabled.
 - `/link <code>` consumes Discord link codes created in the WebUI or with `nordrelay user discord-link-code`.
 - `/queue`, `/sessions`, `/agent`, `/model`, `/reasoning`, `/launch`, `/artifacts`, `/update`, and `/stop` use Discord buttons where component limits allow.
+- `/last [count]` resends the last agent reply for the active thread.
 - `/peers` and `/target local|<peer-id>` use the same paired-instance target selection as Telegram.
 - `/artifacts latest`, `/artifacts zip latest`, `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, and `/artifacts delete <turn-id>` are available in Discord.
 - Unsafe launch profiles require explicit confirmation with `/launch <profile-id> confirm`; add `apply` to reattach the current idle thread immediately.
@@ -95,6 +97,7 @@ Slack supports the configured slash command and `/command` text messages for the
 - `/prompt <text>` is available through the configured slash command when regular message content is disabled.
 - `/link <code>` consumes Slack link codes created in the WebUI or with `nordrelay user slack-link-code`.
 - `/queue`, `/sessions`, `/agent`, `/model`, `/reasoning`, `/launch`, `/artifacts`, `/update`, and `/stop` use Slack buttons where Block Kit limits allow.
+- `/last [count]` resends the last agent reply for the active thread.
 - `/peers` and `/target local|<peer-id>` use the same paired-instance target selection as Telegram and Discord.
 - `/artifacts latest`, `/artifacts zip latest`, `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, and `/artifacts delete <turn-id>` are available in Slack.
 - Unsafe launch profiles require explicit confirmation with `/launch <profile-id> confirm`; add `apply` to reattach the current idle thread immediately.

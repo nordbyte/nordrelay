@@ -121,6 +121,7 @@ import { registerTelegramAgentCommands } from "./telegram-agent-commands.js";
 import { registerTelegramArtifactCommands } from "./telegram-artifact-commands.js";
 import { registerTelegramDiagnosticsCommands } from "./telegram-diagnostics-command.js";
 import { registerTelegramGeneralCommands } from "./telegram-general-commands.js";
+import { registerTelegramLastCommand } from "./telegram-last-command.js";
 import { registerTelegramOperationalCommands } from "./telegram-operational-commands.js";
 import { registerTelegramPreferenceCommands } from "./telegram-preference-commands.js";
 import {
@@ -2436,6 +2437,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
     await startUserPrompt(ctx, contextKey, chatId, session, cached);
   });
+
+  registerTelegramLastCommand({ bot, config, getContextSession });
 
   registerTelegramQueueCommands({
     bot,
