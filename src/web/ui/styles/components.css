@@ -73,6 +73,8 @@
 .wizard-links{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .wizard-links a{font-size:12px;border:1px solid var(--border);border-radius:999px;padding:4px 8px;color:var(--accent);text-decoration:none;background:var(--surface)}
 .wizard-links a:hover{text-decoration:underline}
+.wizard-checklist{margin:0;padding-left:22px;color:var(--text);display:grid;gap:6px}
+.wizard-checklist li{line-height:1.45}
 .wizard-progress{display:flex;gap:8px;flex-wrap:wrap}
 .wizard-progress button{background:var(--surface);color:var(--text);border-color:var(--border);min-height:32px;height:32px;line-height:1}
 .wizard-progress button:hover{background:var(--accent-strong);color:white;border-color:var(--accent-strong)}

@@ -55,10 +55,16 @@ describe("web dashboard browser-flow assets", () => {
 
   it("includes Discord invite and channel registration guidance in the setup wizard", () => {
     const js = dashboardJs();
+    const css = dashboardCss();
 
     expect(js).toContain("OAuth2 URL Generator");
     expect(js).toContain("applications.commands scopes");
+    expect(js).toContain("View Channels, Send Messages, Send Messages in Threads, Read Message History, Attach Files, and Embed Links");
+    expect(js).toContain("Message Content Intent");
     expect(js).toContain("/register_channel");
+    expect(js).toContain("DISCORD_ALLOWED_GUILD_IDS");
+    expect(js).toContain("function wizardChecklist");
+    expect(css).toContain(".wizard-checklist");
   });
 
   it("refreshes the active page after an agent switch", () => {
