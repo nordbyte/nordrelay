@@ -11,16 +11,39 @@ permissions:
   contents: read
 
 jobs:
-  audit:
-    name: Dependency audit
+  secrets:
+    name: Secret scan
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Scan common token patterns
+        run: |
+          set -euo pipefail
+          if git grep -I -nE '(ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{40,}|npm_[A-Za-z0-9_]{30,}|[0-9]{8,}:[A-Za-z0-9_-]{35,})' -- ':!.env.example' ':!README.md'; then
+            echo "Potential secret-like token found."
+            exit 1
+          fi
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    needs: secrets
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -30,19 +53,3 @@ jobs:
 
       - name: npm audit
         run: npm run security:audit
-
-  secrets:
-    name: Secret scan
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Scan common token patterns
-        run: |
-          set -euo pipefail
-          if git grep -I -nE '(ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{40,}|npm_[A-Za-z0-9_]{30,}|[0-9]{8,}:[A-Za-z0-9_-]{35,})' -- ':!.env.example' ':!README.md'; then
-            echo "Potential secret-like token found."
-            exit 1
-          fi

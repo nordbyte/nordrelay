@@ -241,7 +241,7 @@
 - The dashboard can bind to `127.0.0.1` or `0.0.0.0`; user login and session cookies are mandatory in both modes.
 - Telegram can run with long polling or an HTTP webhook via `TELEGRAM_TRANSPORT=webhook`.
 - Version freshness checks are cached with `NORDRELAY_VERSION_CACHE_TTL_MS`, and installed agent CLI version checks are cached with `NORDRELAY_CLI_VERSION_CACHE_TTL_MS`, to keep `/version` and adapter health responsive.
-- CI runs on Ubuntu, Windows, and macOS with typecheck, Vitest, Playwright WebUI browser tests, package dry run, npm audit, and a separate secret-scan workflow.
+- CI runs Node 22/24 typecheck and Vitest on Ubuntu, Windows, and macOS first, then gates WebUI browser tests, package smoke, and npm audit behind those faster checks. The security workflow runs secret scanning before dependency audit.
 - `npm run dev`, `npm run build`, `npm run check`, `npm test`, `npm run test:e2e`, `npm start`, `npm stop`, and `npm run status` are available.
 - Dockerfile and `docker-compose.yml` are included for containerized operation.
 - A `scripts/launchd-start.sh` helper is included for host-managed macOS startup.

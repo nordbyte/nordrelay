@@ -16,9 +16,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  verify:
-    name: Verify Node.js ${{ matrix.node }} (${{ matrix.os }})
+  check:
+    name: Check Node.js ${{ matrix.node }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -32,10 +33,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -49,22 +52,83 @@ jobs:
       - name: Test
         run: npm test
 
+  webui:
+    name: WebUI browser tests
+    runs-on: ubuntu-latest
+    needs: check
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Build
         run: npm run build
 
-      - name: Install Playwright browsers (Linux)
-        if: runner.os == 'Linux'
-        run: npx playwright install --with-deps chromium
-
       - name: Install Playwright browsers
-        if: runner.os != 'Linux'
-        run: npx playwright install chromium
+        run: npx playwright install --with-deps chromium
 
       - name: WebUI browser tests
         run: npm run test:e2e
 
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    needs: check
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Security audit
         run: npm run security:audit
+
+  package-smoke:
+    name: Package smoke
+    runs-on: ubuntu-latest
+    needs: check
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
 
       - name: Package dry run
         run: npm pack --dry-run
@@ -75,14 +139,21 @@ jobs:
   npm:
     name: npmjs.com
     runs-on: ubuntu-latest
-    needs: verify
+    needs:
+      - check
+      - webui
+      - audit
+      - package-smoke
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -111,14 +182,21 @@ jobs:
   github-packages:
     name: GitHub Packages
     runs-on: ubuntu-latest
-    needs: verify
+    needs:
+      - check
+      - webui
+      - audit
+      - package-smoke
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
