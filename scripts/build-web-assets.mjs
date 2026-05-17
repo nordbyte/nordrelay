@@ -7,6 +7,7 @@ import { transformSync } from "esbuild";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const checkOnly = process.argv.includes("--check");
+const minifyAssets = process.env.NORDRELAY_WEBUI_MINIFY !== "false";
 
 const assets = [
   {
@@ -56,6 +57,7 @@ for (const asset of assets) {
     loader: asset.loader,
     format: asset.loader === "js" ? "iife" : undefined,
     legalComments: "none",
+    minify: minifyAssets,
     sourcefile: asset.name,
     target: asset.loader === "js" ? "es2022" : "chrome100",
   }).code;
@@ -84,5 +86,5 @@ for (const assetName of staticAssets) {
 }
 
 if (!checkOnly) {
-  console.log("Built WebUI assets.");
+  console.log(`Built ${minifyAssets ? "minified " : ""}WebUI assets.`);
 }

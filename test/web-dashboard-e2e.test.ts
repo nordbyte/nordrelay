@@ -324,6 +324,7 @@ describe("web dashboard browser-flow assets", () => {
   it("loads dashboard CSS and JavaScript through static asset routes", () => {
     const serverSource = readFileSync("src/web/web-dashboard.ts", "utf8");
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    const buildSource = readFileSync("scripts/build-web-assets.mjs", "utf8");
 
     expect(serverSource).toContain('/assets/dashboard.css');
     expect(serverSource).toContain('/assets/dashboard.js');
@@ -356,6 +357,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(dashboardCss()).toContain("height:calc(var(--dashboard-header-height) - 1px);padding:0 18px");
     expect(dashboardCss()).toContain("input,select,textarea{font-size:15px}");
     expect(dashboardCss()).toContain(".workflow-builder-json textarea{width:100%;min-width:0;margin-top:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px}");
+    expect(buildSource).toContain('process.env.NORDRELAY_WEBUI_MINIFY !== "false"');
+    expect(buildSource).toContain("minify: minifyAssets");
   });
 
   it("resolves WebUI logo and favicon assets from source files", () => {
