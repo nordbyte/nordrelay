@@ -49,10 +49,13 @@ async function loadQueue(){
   if(planner)renderQueuePlanner(planner);
 }
 
-async function loadQueuePlanner(){
+async function loadQueuePlanner(options={}){
   if(!can('queue.plan.read'))return;
+  setLoading('queuePlannerBoard','Loading planned prompts...');
+  setLoading('queueProgressBoard','Loading in-progress prompts...');
   const planner=await api('/api/queue/plans');
   renderQueuePlanner(planner);
+  if(options.notify)toast('Planner reloaded');
 }
 
 function renderQueuePlanner(data){
@@ -176,7 +179,7 @@ function openQueuePlanDialog(plan){
 }
 
 document.getElementById('createQueuePlanBtn').onclick=()=>openQueuePlanDialog();
-document.getElementById('reloadQueuePlansBtn').onclick=()=>safe(loadQueuePlanner);
-document.getElementById('reloadQueueProgressBtn').onclick=()=>safe(loadQueuePlanner);
+document.getElementById('reloadQueuePlansBtn').onclick=()=>safe(()=>loadQueuePlanner({notify:true}));
+document.getElementById('reloadQueueProgressBtn').onclick=()=>safe(()=>loadQueuePlanner({notify:true}));
 document.getElementById('queuePlanSearch').oninput=()=>{if(state.queuePlanner)renderQueueKanban(state.queuePlanner)};
 bindQueueTabs();

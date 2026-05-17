@@ -52,65 +52,73 @@ export function getExternalActivityForSession(
   session: AgentSessionService | undefined,
   config: ConnectorConfig,
 ): AgentExternalActivity | null {
-  const info = session?.getInfo();
-  if (!info || !(info.capabilities ?? CODEX_AGENT_CAPABILITIES).externalActivity) {
-    return null;
-  }
-  const threadId = session?.getActiveThreadId();
-  if (!threadId) {
+  let info: ReturnType<AgentSessionService["getInfo"]> | undefined;
+  let threadId: string | null | undefined;
+  try {
+    info = session?.getInfo();
+    threadId = session?.getActiveThreadId();
+  } catch {
     return null;
   }
 
-  if (info.agentId === "pi") {
-    return getPiSessionActivity(info.sessionPath ?? threadId, {
-      sessionDir: config.piSessionDir,
-      staleAfterMs: config.codexExternalBusyStaleMs,
-    });
-  }
-  if (info.agentId === "hermes") {
-    return getHermesSessionActivity(threadId, {
-      hermesHome: config.hermesHome,
-      stateDbPath: config.hermesStateDbPath,
-      workspace: info.workspace,
-      staleAfterMs: config.codexExternalBusyStaleMs,
-    });
-  }
-  if (info.agentId === "openclaw") {
-    return getOpenClawSessionActivity(threadId, {
-      cliPath: config.openClawCliPath,
-      openClawHome: config.openClawHome,
-      stateDir: config.openClawStateDir,
-      workspace: info.workspace,
-      openClawAgentId: config.openClawAgentId,
-      staleAfterMs: config.codexExternalBusyStaleMs,
-    });
-  }
-  if (info.agentId === "claude-code") {
-    return getClaudeCodeSessionActivity(threadId, {
-      configDir: config.claudeCodeConfigDir,
-      workspace: info.workspace,
-      staleAfterMs: config.codexExternalBusyStaleMs,
-    });
-  }
-
-  const activity = getThreadActivity(threadId, {
-    staleAfterMs: config.codexExternalBusyStaleMs,
-  });
-  if (!activity) {
+  if (!info || !(info.capabilities ?? CODEX_AGENT_CAPABILITIES).externalActivity || !threadId) {
     return null;
   }
-  return {
-    agentId: "codex",
-    agentLabel: "Codex",
-    threadId: activity.threadId,
-    sourcePath: activity.rolloutPath,
-    sourceLabel: "Codex rollout",
-    active: activity.active,
-    stale: activity.stale,
-    turnId: activity.turnId,
-    startedAt: activity.startedAt,
-    updatedAt: activity.updatedAt,
-  };
+
+  try {
+    if (info.agentId === "pi") {
+      return getPiSessionActivity(info.sessionPath ?? threadId, {
+        sessionDir: config.piSessionDir,
+        staleAfterMs: config.codexExternalBusyStaleMs,
+      });
+    }
+    if (info.agentId === "hermes") {
+      return getHermesSessionActivity(threadId, {
+        hermesHome: config.hermesHome,
+        stateDbPath: config.hermesStateDbPath,
+        workspace: info.workspace,
+        staleAfterMs: config.codexExternalBusyStaleMs,
+      });
+    }
+    if (info.agentId === "openclaw") {
+      return getOpenClawSessionActivity(threadId, {
+        cliPath: config.openClawCliPath,
+        openClawHome: config.openClawHome,
+        stateDir: config.openClawStateDir,
+        workspace: info.workspace,
+        openClawAgentId: config.openClawAgentId,
+        staleAfterMs: config.codexExternalBusyStaleMs,
+      });
+    }
+    if (info.agentId === "claude-code") {
+      return getClaudeCodeSessionActivity(threadId, {
+        configDir: config.claudeCodeConfigDir,
+        workspace: info.workspace,
+        staleAfterMs: config.codexExternalBusyStaleMs,
+      });
+    }
+
+    const activity = getThreadActivity(threadId, {
+      staleAfterMs: config.codexExternalBusyStaleMs,
+    });
+    if (!activity) {
+      return null;
+    }
+    return {
+      agentId: "codex",
+      agentLabel: "Codex",
+      threadId: activity.threadId,
+      sourcePath: activity.rolloutPath,
+      sourceLabel: "Codex rollout",
+      active: activity.active,
+      stale: activity.stale,
+      turnId: activity.turnId,
+      startedAt: activity.startedAt,
+      updatedAt: activity.updatedAt,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function getExternalSnapshotForSession(
@@ -118,8 +126,14 @@ export function getExternalSnapshotForSession(
   config: ConnectorConfig,
   options: { afterLine?: number; maxEvents?: number } = {},
 ): AgentExternalSnapshot | null {
-  const info = session.getInfo();
-  const threadId = session.getActiveThreadId();
+  let info: ReturnType<AgentSessionService["getInfo"]>;
+  let threadId: string | null | undefined;
+  try {
+    info = session.getInfo();
+    threadId = session.getActiveThreadId();
+  } catch {
+    return null;
+  }
   if (!(info.capabilities ?? CODEX_AGENT_CAPABILITIES).externalActivity || !threadId) {
     return null;
   }
@@ -131,7 +145,12 @@ export function getExternalSnapshotForSession(
     return cached.snapshot;
   }
 
-  const snapshot = readExternalSnapshot(info, threadId, config, options);
+  let snapshot: AgentExternalSnapshot | null;
+  try {
+    snapshot = readExternalSnapshot(info, threadId, config, options);
+  } catch {
+    snapshot = null;
+  }
   externalSnapshotCache.set(cacheKey, { expiresAt: now + EXTERNAL_SNAPSHOT_CACHE_TTL_MS, snapshot });
   if (externalSnapshotCache.size > 500) {
     pruneExternalSnapshotCache(now);

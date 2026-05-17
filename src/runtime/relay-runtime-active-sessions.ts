@@ -131,7 +131,7 @@ const MAX_CHAT_HISTORY = 250;
 
 export async function relayRuntimeActiveSessions(runtime: RelayRuntimeDelegate): Promise<ActiveSessionsDto> {
     const sessions = new Map<string, ActiveSessionDto>();
-    const knownContexts = runtime.listKnownContextMetadata();
+    const knownContexts = safeActiveSessionList(() => runtime.listKnownContextMetadata());
     const preferences = new BotPreferencesStore(runtime.config.workspace, runtime.config.stateBackend);
     const addActiveSession = (session: ActiveSessionDto): void => {
       const key = runtime.activeSessionKey(session);
@@ -151,11 +151,11 @@ export async function relayRuntimeActiveSessions(runtime: RelayRuntimeDelegate):
       });
     }
 
-    for (const active of runtime.discoverRunningConnectorSessions()) {
+    for (const active of safeActiveSessionList(() => runtime.discoverRunningConnectorSessions())) {
       addActiveSession(active);
     }
 
-    for (const active of runtime.discoverActiveCodexSessions(knownContexts, preferences)) {
+    for (const active of safeActiveSessionList(() => runtime.discoverActiveCodexSessions(knownContexts, preferences))) {
       addActiveSession(active);
     }
 
@@ -163,7 +163,7 @@ export async function relayRuntimeActiveSessions(runtime: RelayRuntimeDelegate):
       if (meta.contextKey === runtime.contextKey && runtime.currentProgress?.status === "running") {
         continue;
       }
-      const active = runtime.externalActiveSession(meta, knownContexts, preferences);
+      const active = safeActiveSession(() => runtime.externalActiveSession(meta, knownContexts, preferences));
       if (active) {
         addActiveSession(active);
       }
@@ -175,6 +175,22 @@ export async function relayRuntimeActiveSessions(runtime: RelayRuntimeDelegate):
       ),
       updatedAt: new Date().toISOString(),
     };
+  }
+
+function safeActiveSession<T>(fn: () => T): T | null {
+    try {
+      return fn();
+    } catch {
+      return null;
+    }
+  }
+
+function safeActiveSessionList<T>(fn: () => T[]): T[] {
+    try {
+      return fn();
+    } catch {
+      return [];
+    }
   }
 
 export async function relayRuntimeGetSession(runtime: RelayRuntimeDelegate, deferThreadStart: boolean): Promise<AgentSessionService> {
@@ -202,7 +218,7 @@ export function relayRuntimeListKnownContextMetadata(runtime: RelayRuntimeDelega
       sharedRegistry.disposeAll();
     }
 
-    const current = runtime.registry.get(runtime.contextKey)?.getInfo();
+    const current = safeActiveSession(() => runtime.registry.get(runtime.contextKey)?.getInfo()) ?? undefined;
     if (current) {
       add({
         contextKey: runtime.contextKey,

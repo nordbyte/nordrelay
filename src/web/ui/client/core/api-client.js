@@ -28,7 +28,7 @@ async function api(path, options = {}) {
       body: bodyObject(options.body),
       contextKey: 'web:dashboard',
     });
-    const res = await fetch('/api/peers/'+encodeURIComponent(peerId)+'/proxy', {
+    const res = await fetchApi('/api/peers/'+encodeURIComponent(peerId)+'/proxy', {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...(csrfToken ? { 'x-nordrelay-csrf': csrfToken } : {}) },
       body: proxyBody,
@@ -46,12 +46,24 @@ async function api(path, options = {}) {
     ...(method !== 'GET' && csrfToken ? { 'x-nordrelay-csrf': csrfToken } : {}),
     ...(options.headers || {}),
   };
-  const res = await fetch(url.pathname + url.search, { method, headers, body });
+  const res = await fetchApi(url.pathname + url.search, { method, headers, body });
   if (res.status === 401) { location.reload(); return /** @type {never} */ (undefined); }
   const text = await res.text();
   const data = text ? JSON.parse(text) : {};
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
+}
+
+/**
+ * @param {RequestInfo | URL} input
+ * @param {RequestInit} [init]
+ */
+async function fetchApi(input, init) {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    throw new Error("NordRelay API is unreachable. Check that the dashboard is still running, then reload the page.");
+  }
 }
 
 /**

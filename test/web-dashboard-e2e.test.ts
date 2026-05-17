@@ -108,6 +108,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('id="queueProgressBoard"');
     expect(js).toContain("function loadQueue");
     expect(js).toContain("function renderQueueKanban");
+    expect(js).toContain("loadQueuePlanner(options={})");
+    expect(js).toContain("setLoading('queuePlannerBoard','Loading planned prompts...')");
+    expect(js).toContain("loadQueuePlanner({notify:true})");
     expect(js).toContain("/api/queue/plans");
     expect(js).toContain("data-plan-enqueue");
     expect(css).toContain(".queue-kanban");
@@ -174,6 +177,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function renderChatWorkingIndicator");
     expect(js).toContain("Working...");
     expect(readFileSync("src/runtime/relay-runtime-active-sessions.ts", "utf8")).toContain("right.durationMs - left.durationMs");
+    expect(readFileSync("src/runtime/relay-runtime-active-sessions.ts", "utf8")).toContain("function safeActiveSessionList");
+    expect(readFileSync("src/agents/shared/agent-activity.ts", "utf8")).toContain("snapshot = null");
     expect(js).not.toContain("activeSessionsTimer=setInterval");
   });
 
@@ -189,6 +194,14 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("Message copied");
     expect(css).toContain(".message-copy-button");
     expect(css).toContain(".message:hover .message-copy-button");
+  });
+
+  it("uses a friendly dashboard API network failure message", () => {
+    const js = dashboardJs();
+
+    expect(js).toContain("function fetchApi");
+    expect(js).toContain("NordRelay API is unreachable. Check that the dashboard is still running, then reload the page.");
+    expect(js).not.toContain("await fetch(url.pathname + url.search");
   });
 
   it("allows every dashboard dialog to close from backdrop clicks", () => {
