@@ -207,6 +207,7 @@ describe("web dashboard browser-flow assets", () => {
   it("keeps the mobile menu closable and readable in light theme", () => {
     const js = dashboardJs();
     const css = dashboardCss();
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
 
     expect(js).toContain("function setMobileMenuOpen");
     expect(js).toContain("function toggleMobileMenu");
@@ -218,6 +219,11 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain("header{z-index:30}");
     expect(css).toContain(".sidebar{position:fixed;inset:0 auto 0 0;width:270px;height:100vh");
     expect(css).toContain("z-index:40");
+    expect(css).toContain(".menu-icon,.menu-icon::before,.menu-icon::after");
+    expect(css).toContain(".header-actions{margin-left:auto;flex-wrap:nowrap}");
+    expect(pageSource).toContain('aria-label="Open navigation"');
+    expect(pageSource).toContain('class="menu-icon"');
+    expect(pageSource).not.toContain('id="menuBtn">Menu</button>');
   });
 
   it("selects the current launch mode in the launch dropdown", () => {

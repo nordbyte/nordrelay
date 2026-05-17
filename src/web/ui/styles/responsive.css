@@ -16,7 +16,7 @@ header{z-index:30}
 .side-panel{order:-1;max-height:360px}
 .tool-stream{max-height:300px}
 .sessions-table .optional-model{display:none}
-header{align-items:flex-start}
+header{align-items:center}
 .metrics{grid-template-columns:1fr 1fr}
 }
 @media(max-width:760px){.data-table-wrap{overflow:visible;border:0;background:transparent}
@@ -35,8 +35,8 @@ header{align-items:flex-start}
 @media(max-width:560px){.metrics{grid-template-columns:1fr}
 .row{align-items:stretch}
 .row>*{width:100%}
-header{display:grid;grid-template-columns:auto 1fr}
-.header-actions{grid-column:1/3}
+header{display:flex}
+.header-actions{margin-left:auto;flex-wrap:nowrap}
 .message{max-width:100%}
 .pager{align-items:stretch}
 .pager-actions,.pager button{width:100%}

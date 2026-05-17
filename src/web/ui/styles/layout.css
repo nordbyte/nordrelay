@@ -45,7 +45,7 @@ a{color:var(--link)}
 .account-menu-group{display:grid;gap:4px;padding:6px 0;border-top:1px solid var(--border-soft);border-bottom:1px solid var(--border-soft)}
 .mirror-control{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;line-height:1}
 .mirror-control select{min-width:86px}
-.menu{display:none;background:var(--surface-soft);color:var(--text)}
+.menu{display:none;width:36px;min-width:36px;height:36px;min-height:36px;padding:0;background:var(--surface-soft);color:var(--text)}
 .menu:hover,.menu:focus{background:var(--accent-strong);border-color:var(--accent-strong);color:white;outline:none}
 .page{display:none;padding:22px}
 .page.active{display:block}
@@ -67,6 +67,11 @@ nav button{display:flex;align-items:center;justify-content:flex-start;width:100%
 button.brand-home{width:100%;min-height:calc(var(--dashboard-header-height) - 1px);height:calc(var(--dashboard-header-height) - 1px);border:0;border-radius:0;background:transparent;color:inherit;text-align:left;justify-content:flex-start;white-space:normal}
 button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--sidebar-text);outline:none}
 .menu{align-items:center;justify-content:center;line-height:1}
+.menu-icon,.menu-icon::before,.menu-icon::after{display:block;width:16px;height:2px;border-radius:999px;background:currentColor}
+.menu-icon{position:relative}
+.menu-icon::before,.menu-icon::after{content:"";position:absolute;left:0}
+.menu-icon::before{top:-5px}
+.menu-icon::after{top:5px}
 .chat-layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px;align-items:start}
 .chat-layout.tools-hidden{grid-template-columns:minmax(0,1fr)}
 .chat-layout.tools-hidden .side-panel{display:none}

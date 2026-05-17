@@ -143,7 +143,6 @@ ${faviconLinks}
     </aside>
     <main>
       <header>
-        <button class="menu" id="menuBtn">Menu</button>
         <div>
           <h1 id="pageTitle">Overview</h1>
           <p id="sessionLine">Loading session...</p>
@@ -166,6 +165,9 @@ ${faviconLinks}
               <button id="logoutBtn" class="secondary" type="button" role="menuitem">Logout</button>
             </div>
           </div>
+          <button class="menu" id="menuBtn" type="button" aria-label="Open navigation" aria-expanded="false">
+            <span class="menu-icon" aria-hidden="true"></span>
+          </button>
         </div>
       </header>
 
