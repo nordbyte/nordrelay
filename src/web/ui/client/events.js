@@ -44,14 +44,14 @@ function connectEvents(){
   events.addEventListener('session_update', e=>{loadBootstrap();loadChatHistory()});
   events.addEventListener('agent_update', e=>{const d=JSON.parse(e.data);upsertAgentUpdateJob(d.job);if(state.currentPage==='version'){renderAgentUpdateJobs();if(d.job&&d.job.status!=='running')setTimeout(loadVersion,800)}});
   events.addEventListener('queue_update', e=>{const d=JSON.parse(e.data);renderQueue(d.queue,d.paused);if(state.currentPage==='queue')void loadQueuePlanner().catch(()=>{})});
-  events.addEventListener('turn_start', e=>{const d=JSON.parse(e.data);appendMessage('user',d.prompt);currentAgentMessage=appendMessage('agent','');if(state.currentPage==='tasks')loadTasks()});
-  events.addEventListener('text_delta', e=>{const d=JSON.parse(e.data);const stick=isChatNearBottom();if(!currentAgentMessage)currentAgentMessage=appendMessage('agent','');setMessageText(currentAgentMessage,(currentAgentMessage.__rawText||'')+d.delta);if(stick)scrollChatToBottom({force:true});if(state.currentPage==='tasks')loadTasks()});
-  events.addEventListener('tool_start', e=>{const d=JSON.parse(e.data);tool('tool','Started '+d.toolName);if(state.currentPage==='tasks')loadTasks()});
+  events.addEventListener('turn_start', e=>{const d=JSON.parse(e.data);appendMessage('user',d.prompt);currentAgentMessage=appendMessage('agent','');if(isMonitorTabActive('tasks'))loadTasks()});
+  events.addEventListener('text_delta', e=>{const d=JSON.parse(e.data);const stick=isChatNearBottom();if(!currentAgentMessage)currentAgentMessage=appendMessage('agent','');setMessageText(currentAgentMessage,(currentAgentMessage.__rawText||'')+d.delta);if(stick)scrollChatToBottom({force:true});if(isMonitorTabActive('tasks'))loadTasks()});
+  events.addEventListener('tool_start', e=>{const d=JSON.parse(e.data);tool('tool','Started '+d.toolName);if(isMonitorTabActive('tasks'))loadTasks()});
   events.addEventListener('tool_update', e=>{const d=JSON.parse(e.data);if(d.partialResult)tool('tool',d.partialResult.slice(-600))});
   events.addEventListener('tool_end', e=>{const d=JSON.parse(e.data);tool(d.isError?'danger':'tool','Finished '+d.toolCallId+(d.isError?' with error':''))});
   events.addEventListener('todo_update', e=>{const d=JSON.parse(e.data);tool('tool','Plan:\n'+d.items.map(i=>(i.completed?'[x] ':'[ ] ')+i.text).join('\n'))});
   events.addEventListener('turn_error', e=>{const d=JSON.parse(e.data);appendMessage('system','Error: '+d.error);currentAgentMessage=null});
-  events.addEventListener('turn_complete', ()=>{currentAgentMessage=null;notify('NordRelay turn finished','The active task completed.');loadBootstrap();if(state.currentPage==='tasks')loadTasks()});
+  events.addEventListener('turn_complete', ()=>{currentAgentMessage=null;notify('NordRelay turn finished','The active task completed.');loadBootstrap();if(isMonitorTabActive('tasks'))loadTasks()});
   events.addEventListener('status', e=>{const d=JSON.parse(e.data);const msg=d.message||'';if(isCliRunningStatus(msg)){state.cliStatusActive=true;toast(msg,{sticky:true});return}if(isCliDoneStatus(msg)){state.cliStatusActive=false;clearStickyToast()}toast(msg)});
   events.onerror=()=>{setConnection('Reconnecting','error');if(!state.reconnectTimer)state.reconnectTimer=setTimeout(()=>{state.reconnectTimer=null;connectEvents()},5000)};
 }

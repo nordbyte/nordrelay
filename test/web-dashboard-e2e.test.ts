@@ -16,7 +16,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("/api/agent-updates");
   });
 
-  it("includes unified jobs on the Tasks page", () => {
+  it("includes unified jobs on the Monitor Tasks tab", () => {
     const js = dashboardJs();
     const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
 
@@ -28,6 +28,32 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("data-job-action");
     expect(contract).toContain('exact("/api/jobs"');
     expect(contract).toContain('dynamic("/api/jobs/:id/action"');
+  });
+
+  it("groups activity, tasks, trace, and artifacts under the Monitor page", () => {
+    const js = dashboardJs();
+    const css = dashboardCss();
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    const navSource = readFileSync("src/web/web-dashboard-ui.ts", "utf8");
+
+    expect(navSource).toContain('{ id: "monitor", label: "Monitor"');
+    expect(navSource).not.toContain('{ id: "tasks", label: "Tasks"');
+    expect(navSource).not.toContain('{ id: "activity", label: "Activity"');
+    expect(navSource).not.toContain('{ id: "trace", label: "Trace"');
+    expect(navSource).not.toContain('{ id: "artifacts", label: "Artifacts"');
+    expect(pageSource).toContain('id="page-monitor"');
+    expect(pageSource).toContain('data-monitor-tab="activity"');
+    expect(pageSource).toContain('data-monitor-tab="tasks"');
+    expect(pageSource).toContain('data-monitor-tab="trace"');
+    expect(pageSource).toContain('data-monitor-tab="artifacts"');
+    expect(pageSource).not.toContain('id="page-tasks"');
+    expect(pageSource).not.toContain('id="page-activity"');
+    expect(pageSource).not.toContain('id="page-trace"');
+    expect(pageSource).not.toContain('id="page-artifacts"');
+    expect(js).toContain("function loadMonitor");
+    expect(js).toContain("function switchMonitorTab");
+    expect(js).toContain("page('monitor')");
+    expect(css).toContain(".monitor-tab-heading");
   });
 
   it("includes workflow templates and workflow runs in the WebUI", () => {
@@ -77,6 +103,7 @@ describe("web dashboard browser-flow assets", () => {
     const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
 
     expect(pageSource).toContain('data-queue-tab="planner"');
+    expect(pageSource).toContain("queue-section-header");
     expect(pageSource).toContain('id="queuePlannerBoard"');
     expect(pageSource).toContain('id="queueProgressBoard"');
     expect(js).toContain("function loadQueue");

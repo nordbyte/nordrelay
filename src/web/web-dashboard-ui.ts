@@ -19,10 +19,7 @@ export const DASHBOARD_PRIMARY_NAV_PAGES: DashboardPage[] = [
   { id: "workflows", label: "Workflows", permission: "workflows.read" },
   { id: "sessions", label: "Sessions", permission: "sessions.read" },
   { id: "queue", label: "Queue", permission: "queue.read" },
-  { id: "tasks", label: "Tasks", permission: "inspect" },
-  { id: "activity", label: "Activity", permission: "sessions.read" },
-  { id: "trace", label: "Trace", permission: "sessions.read" },
-  { id: "artifacts", label: "Artifacts", permission: "files.read" },
+  { id: "monitor", label: "Monitor", permission: "inspect" },
 ];
 
 export const DASHBOARD_NAV_SECTIONS: DashboardNavSection[] = [
