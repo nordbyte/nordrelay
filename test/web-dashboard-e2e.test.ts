@@ -268,7 +268,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(readFileSync("src/web/ui/client/core/runtime.js", "utf8")).toContain("const state");
     expect(readFileSync("src/web/ui/client/core/components.js", "utf8")).toContain("function uiItem");
     expect(readFileSync("src/web/ui/client/profile.js", "utf8")).toContain("function openProfileDialog");
-    expect(readFileSync("src/web/ui/client/overview.js", "utf8")).toContain("function renderSnapshot");
+    const overview = readFileSync("src/web/ui/client/overview.js", "utf8");
+    expect(overview).toContain("function renderSnapshot");
+    expect(overview).toContain("uiCopyButton(thread,'Thread ID copied')");
+    expect(overview).toContain("bindUiCopyButtons(line)");
     expect(readFileSync("src/web/ui/client/workflows.js", "utf8")).toContain("function loadSessions");
     expect(readFileSync("src/web/ui/client/jobs.js", "utf8")).toContain("function renderUnifiedJobs");
     expect(readFileSync("src/web/ui/client/metrics.js", "utf8")).toContain("function loadMetrics");

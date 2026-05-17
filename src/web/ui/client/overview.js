@@ -92,7 +92,10 @@ async function loadPeerSelector(){
   }
 }
 function renderSnapshot(s){
-  document.getElementById('sessionLine').textContent=(s.session.agentLabel||'Agent')+' / '+(s.session.model||'default')+' / '+(s.session.threadId||'not started');
+  const line=document.getElementById('sessionLine');
+  const thread=s.session.threadId||'';
+  line.innerHTML=esc(s.session.agentLabel||'Agent')+' / '+esc(s.session.model||'default')+' / '+(thread?uiCopyButton(thread,'Thread ID copied'):'not started');
+  bindUiCopyButtons(line);
   document.getElementById('metrics').innerHTML=[
     ['Status',s.processing?'working':'idle'],['Agent',s.session.agentLabel],['Queue',s.queue.length],['Workspace',s.session.workspace],['Thread',s.session.threadId||'not started'],['Reasoning',s.session.reasoningEffort||'default'],['Fast',s.session.capabilities&&s.session.capabilities.fastMode?(s.session.fastMode?'on':'off'):'n/a']
   ].map(([k,v])=>'<div class="metric"><div class="label">'+esc(k)+'</div><div class="value">'+esc(v)+'</div></div>').join('');
