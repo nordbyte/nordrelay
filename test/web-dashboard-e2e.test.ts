@@ -294,6 +294,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('src="/assets/logo.png"');
     expect(pageSource).toContain('id="brandHomeBtn"');
     expect(pageSource).toContain('aria-label="Open overview"');
+    expect(pageSource).toContain('Connection: Connecting');
     expect(pageSource).toContain('width="44" height="44"');
     expect(pageSource).toContain('class="brand-separator"');
     expect(pageSource).toContain('src="/assets/dashboard.js?v=');
@@ -305,7 +306,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(dashboardCss()).toContain("scrollbar-color:var(--scrollbar-thumb) var(--scrollbar-track)");
     expect(dashboardCss()).toContain(".brand-separator{height:1px;background:var(--sidebar-border)");
     expect(dashboardCss()).toContain("button.brand-home{width:100%;min-height:calc(var(--dashboard-header-height) - 1px)");
+    expect(dashboardCss()).toContain(".footer-connection{font-weight:650}");
     expect(dashboardJs()).toContain("document.getElementById('brandHomeBtn').onclick=()=>page('overview')");
+    expect(dashboardJs()).toContain("el.textContent='Connection: '+text");
     expect(dashboardCss()).toContain(".sidebar{position:sticky;top:0;height:100vh");
     expect(dashboardCss()).toContain("height:calc(var(--dashboard-header-height) - 1px);padding:0 18px");
     expect(dashboardCss()).toContain("input,select,textarea{font-size:15px}");

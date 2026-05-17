@@ -149,7 +149,6 @@ ${faviconLinks}
           <p id="sessionLine">Loading session...</p>
         </div>
         <div class="header-actions">
-          <span id="connectionStatus" class="badge">Connecting</span>
           <select id="peerSelect" title="NordRelay target"></select>
           <select id="agentSelect"></select>
           <div class="account-menu" id="accountMenu">
@@ -521,6 +520,7 @@ ${faviconLinks}
       <footer>
         <span id="footerVersion">NordRelay</span>
         <span id="footerHealth">Health: loading</span>
+        <span id="connectionStatus" class="footer-connection connection-warn">Connection: Connecting</span>
         <span id="footerUser">User: loading</span>
       </footer>
     </main>

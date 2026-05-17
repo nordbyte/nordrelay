@@ -165,6 +165,7 @@ input[type=file]{display:none}
 .pager button:disabled{opacity:.45;cursor:not-allowed}
 pre{white-space:pre-wrap;word-break:break-word;background:var(--pre);color:var(--pre-text);border-radius:8px;padding:14px;overflow:auto}
 footer{margin-top:auto;display:flex;gap:18px;flex-wrap:wrap;padding:14px 22px;border-top:1px solid var(--border);color:var(--muted);background:var(--surface)}
+.footer-connection{font-weight:650}
 dialog{border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);width:min(720px,calc(100vw - 28px));padding:18px;box-shadow:0 18px 70px rgba(0,0,0,.22)}
 dialog::backdrop{background:rgba(0,0,0,.35)}
 .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}

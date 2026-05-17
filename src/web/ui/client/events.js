@@ -58,7 +58,7 @@ function connectEvents(){
   events.addEventListener('status', e=>{const d=JSON.parse(e.data);const msg=d.message||'';if(isCliRunningStatus(msg)){state.cliStatusActive=true;toast(msg,{sticky:true});return}if(isCliDoneStatus(msg)){state.cliStatusActive=false;clearStickyToast()}toast(msg)});
   events.onerror=()=>{setConnection('Reconnecting','error');if(!state.reconnectTimer)state.reconnectTimer=setTimeout(()=>{state.reconnectTimer=null;connectEvents()},5000)};
 }
-function setConnection(text,kind){const el=document.getElementById('connectionStatus');el.textContent=text;el.className='badge connection-'+kind}
+function setConnection(text,kind){const el=document.getElementById('connectionStatus');el.textContent='Connection: '+text;el.className='footer-connection connection-'+kind}
 async function enableNotifications(){if(!('Notification' in window)){toast('Browser notifications are not supported');return}const permission=Notification.permission==='granted'?'granted':await Notification.requestPermission();state.notifications=permission==='granted';toast(state.notifications?'Browser notifications enabled':'Browser notifications denied')}
 function notify(title,body){if(state.notifications&&'Notification' in window&&Notification.permission==='granted')new Notification(title,{body})}
 function toolAgeText(el){const created=Number(el.dataset.createdAt||Date.now());return 'Updated '+fmtAge(Date.now()-created)}
