@@ -357,6 +357,10 @@ test.describe("NordRelay WebUI", () => {
       await page.locator("#messages .message-body").first().evaluate((el) => getComputedStyle(el).fontSize),
     );
     await expect(page.locator("#messages .chat-code-block code")).toContainText("const value = 1;");
+    await expect.poll(() => page.locator("#messages .chat-code-block code").first().evaluate((el) => el.textContent ?? "")).toBe("const value = 1;");
+    await expect
+      .poll(() => page.locator("#messages .message-body").filter({ has: page.locator(".chat-code-block") }).first().evaluate((el) => el.innerHTML.includes("</pre>\n\n")))
+      .toBe(false);
     await expect(page.locator("#messages strong")).toContainText("bold");
     await expect(page.locator("#messages em")).toContainText("italic");
     await expect(page.locator('#messages a[href="https://example.com"]')).toContainText("docs");

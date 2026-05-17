@@ -277,7 +277,9 @@ describe("web dashboard browser-flow assets", () => {
     const css = dashboardCss();
 
     expect(js).toContain("function normalizeChatListSpacing");
+    expect(js).toContain("function normalizeChatCodeBlockSpacing");
     expect(js).toContain('replace(/<\\/(ul|ol)>\\n+(?=\\S)/g');
+    expect(js).toContain('replace(/(<\\/pre>)[ \\t]*\\n(?:[ \\t]*\\n)+/g');
     expect(js).toContain("chat-list-continuation");
     expect(js).toContain("start=\"'+start+'\"");
     expect(js).toContain("function chatMessageCopyButtonHtml");
