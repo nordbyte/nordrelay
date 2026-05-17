@@ -162,8 +162,16 @@ describe("web dashboard browser-flow assets", () => {
 
   it("refreshes the active page after an agent switch", () => {
     const js = dashboardJs();
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
 
+    expect(js).toContain("function selectHeaderTarget");
     expect(js).toContain("await loadBootstrap();await reloadCurrentPage({agentId:selected})");
+    expect(js).toContain("data-target-peer");
+    expect(js).toContain("data-target-agent");
+    expect(js).toContain("async function apiPeer");
+    expect(pageSource).not.toContain('id="peerSelect"');
+    expect(pageSource).not.toContain('id="agentSelect"');
+    expect(pageSource).toContain('id="sessionLine" class="header-target-line"');
     expect(js).toContain("if(name==='overview') await loadActiveSessions()");
     expect(js).toContain("if(name==='sessions') await loadSessions(true,options.agentId)");
   });
@@ -399,7 +407,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(readFileSync("src/web/ui/client/profile.js", "utf8")).toContain("function openProfileDialog");
     const overview = readFileSync("src/web/ui/client/overview.js", "utf8");
     expect(overview).toContain("function renderSnapshot");
-    expect(overview).toContain("uiCopyButton(thread,'Thread ID copied')");
+    expect(overview).toContain("uiCopyButton(thread,'Thread ID copied','copy-id header-thread-copy')");
     expect(overview).toContain("bindUiCopyButtons(line)");
     expect(readFileSync("src/web/ui/client/workflows.js", "utf8")).toContain("function loadSessions");
     expect(readFileSync("src/web/ui/client/jobs.js", "utf8")).toContain("function renderUnifiedJobs");

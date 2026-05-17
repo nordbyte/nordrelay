@@ -143,13 +143,11 @@ ${faviconLinks}
     </aside>
     <main>
       <header>
-        <div>
+        <div class="header-title">
           <h1 id="pageTitle">Overview</h1>
-          <p id="sessionLine">Loading session...</p>
+          <div id="sessionLine" class="header-target-line">Loading session...</div>
         </div>
         <div class="header-actions">
-          <select id="peerSelect" title="NordRelay target"></select>
-          <select id="agentSelect"></select>
           <div class="account-menu" id="accountMenu">
             <button id="userMenuBtn" class="secondary account-menu-button" type="button" aria-haspopup="menu" aria-expanded="false" title="Account">
               <span id="userMenuInitials" class="account-avatar">?</span>

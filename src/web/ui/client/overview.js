@@ -49,13 +49,15 @@ async function loadBootstrap(){
   state.csrfToken = local.auth?.csrfToken || state.csrfToken || null;
   state.permissions = local.auth?.permissions || [];
   applyAccountChrome(local.auth);
-  await loadPeerSelector();
+  await loadHeaderTargetCandidates(local);
   const data = state.selectedPeer && state.selectedPeer !== 'local' ? await api('/api/bootstrap') : local;
   state.snapshot = data.status.snapshot;
   state.controls = data.controls;
   state.enabledAgents = data.enabledAgents || [];
+  mergeHeaderTargetBootstrap(state.selectedPeer||'local',data);
   applyPermissions();
   renderSnapshot(state.snapshot);
+  void refreshRemoteHeaderTargets(local,data).catch(()=>renderHeaderTargetMenu(state.snapshot));
   safe(loadActiveSessions);
   renderSessionControls();
   populateNewSessionForm(data.enabledAgents);
@@ -63,43 +65,113 @@ async function loadBootstrap(){
   document.getElementById('footerVersion').textContent='NordRelay '+(data.status.health?.version || '');
   document.getElementById('footerHealth').textContent='Health: '+(data.status.health?.state?.status || 'unknown');
   document.getElementById('footerUser').textContent='User: '+(local.auth?.user?.email || '-')+(state.selectedPeer&&state.selectedPeer!=='local'?' / target peer':'');
-  const agentSelect=document.getElementById('agentSelect');
-  agentSelect.innerHTML=data.enabledAgents.map(a=>'<option value="'+a+'">'+a+'</option>').join('');
-  agentSelect.value=state.snapshot.session.agentId;
-  agentSelect.onchange=()=>safe(async()=>{const selected=agentSelect.value;const r=await api('/api/agent',{method:'POST',body:JSON.stringify({agentId:selected})});if(state.snapshot&&r.session){state.snapshot.session=r.session;renderSnapshot(state.snapshot)}toast('Agent switched');await loadBootstrap();await reloadCurrentPage({agentId:selected})});
   applyPermissions();
 }
-async function loadPeerSelector(){
-  const peerSelect=document.getElementById('peerSelect');
-  if(!peerSelect)return;
+function localHeaderTarget(local){
+  return {id:'local',name:'Local node',agents:local.enabledAgents||[],snapshot:local.status?.snapshot||null,loading:false,error:''};
+}
+function headerTargetName(peerId){
+  if(peerId==='local')return'Local node';
+  const peer=(state.peers?.peers||[]).find(p=>p.id===peerId);
+  return peer?.name||peerId;
+}
+async function loadHeaderTargetCandidates(local){
+  const localTarget=localHeaderTarget(local);
   if(!can('peers.read')){
-    peerSelect.innerHTML='<option value="local">Local</option>';
-    peerSelect.value='local';
     state.selectedPeer='local';
+    state.peerTargets=[localTarget];
     return;
   }
   try{
     const peers=await api('/api/peers',{local:true});
     state.peers=peers;
     const available=(peers.peers||[]).filter(p=>p.enabled&&p.url);
-    peerSelect.innerHTML='<option value="local">Local node</option>'+available.map(p=>'<option value="'+attr(p.id)+'">'+esc(p.name)+'</option>').join('');
     if(state.selectedPeer!=='local'&&!available.some(p=>p.id===state.selectedPeer))state.selectedPeer='local';
-    peerSelect.value=state.selectedPeer;
-    peerSelect.onchange=()=>safe(async()=>{state.selectedPeer=peerSelect.value||'local';localStorage.setItem('nordrelayPeerTarget',state.selectedPeer);connectEvents();toast(state.selectedPeer==='local'?'Target: local':'Target: '+peerSelect.options[peerSelect.selectedIndex].text);await loadBootstrap();await reloadCurrentPage()});
+    state.peerTargets=[localTarget].concat(available.map(p=>({id:p.id,name:p.name,agents:p.allowedAgents||[],snapshot:null,loading:true,error:''})));
   }catch{
-    peerSelect.innerHTML='<option value="local">Local node</option>';
-    peerSelect.value='local';
+    state.peerTargets=[localTarget];
+    state.selectedPeer='local';
   }
 }
+function mergeHeaderTargetBootstrap(peerId,bootstrap){
+  const targets=state.peerTargets||[];
+  const index=targets.findIndex(t=>t.id===peerId);
+  const entry={id:peerId,name:headerTargetName(peerId),agents:bootstrap.enabledAgents||[],snapshot:bootstrap.status?.snapshot||null,loading:false,error:''};
+  if(index>=0)targets[index]={...targets[index],...entry};
+  else targets.push(entry);
+  state.peerTargets=targets;
+}
+async function refreshRemoteHeaderTargets(local,selectedData){
+  if(!can('peers.read'))return;
+  const targets=(state.peerTargets||[]).filter(t=>t.id!=='local');
+  if(!targets.length)return;
+  await Promise.all(targets.map(async target=>{
+    try{
+      const bootstrap=state.selectedPeer===target.id?selectedData:await apiPeer(target.id,'/api/bootstrap');
+      mergeHeaderTargetBootstrap(target.id,bootstrap);
+    }catch(error){
+      const current=(state.peerTargets||[]).find(t=>t.id===target.id);
+      if(current){current.loading=false;current.error=error instanceof Error?error.message:String(error)}
+    }
+  }));
+  renderHeaderTargetMenu(state.snapshot);
+}
 function renderSnapshot(s){
-  const line=document.getElementById('sessionLine');
-  const thread=s.session.threadId||'';
-  line.innerHTML=esc(s.session.agentLabel||'Agent')+' / '+esc(s.session.model||'default')+' / '+(thread?uiCopyButton(thread,'Thread ID copied'):'not started');
-  bindUiCopyButtons(line);
+  renderHeaderTargetMenu(s);
   document.getElementById('metrics').innerHTML=[
     ['Status',s.processing?'working':'idle'],['Agent',s.session.agentLabel],['Queue',s.queue.length],['Workspace',s.session.workspace],['Thread',s.session.threadId||'not started'],['Reasoning',s.session.reasoningEffort||'default'],['Fast',s.session.capabilities&&s.session.capabilities.fastMode?(s.session.fastMode?'on':'off'):'n/a']
   ].map(([k,v])=>'<div class="metric"><div class="label">'+esc(k)+'</div><div class="value">'+esc(v)+'</div></div>').join('');
   renderQueue(s.queue,s.queuePaused);
+}
+function renderHeaderTargetMenu(s=state.snapshot){
+  const line=document.getElementById('sessionLine');
+  if(!line||!s?.session)return;
+  const session=s.session;
+  const thread=session.threadId||'';
+  const summary=[session.agentLabel||session.agentId||'Agent',session.model||'default',thread?shortMiddle(thread):'not started'].join(' / ');
+  const targets=state.peerTargets&&state.peerTargets.length?state.peerTargets:[{id:state.selectedPeer||'local',name:headerTargetName(state.selectedPeer||'local'),agents:state.enabledAgents||[],snapshot:s,loading:false,error:''}];
+  const groups=targets.map(target=>headerTargetGroupHtml(target,session)).join('');
+  line.innerHTML='<div class="compact-control header-target-menu" data-header-target-menu><button type="button" id="headerTargetBtn" class="control-menu-button header-target-button" aria-haspopup="menu" aria-expanded="false" title="'+attr('Target: '+headerTargetName(state.selectedPeer||'local'))+'">'+esc(summary)+'</button><div class="control-menu-list header-target-list" role="menu" hidden>'+groups+'</div></div>'+(thread?uiCopyButton(thread,'Thread ID copied','copy-id header-thread-copy'):'');
+  bindHeaderTargetMenu(line);
+  bindUiCopyButtons(line);
+}
+function headerTargetGroupHtml(target,currentSession){
+  const selectedPeer=(state.selectedPeer||'local')===target.id;
+  const agents=target.agents||[];
+  const selectedAgent=target.snapshot?.session?.agentId||currentSession.agentId;
+  const status=target.error?'error':target.loading?'loading':'';
+  const agentButtons=agents.length?agents.map(agent=>headerTargetAgentHtml(target,agent,selectedPeer&&selectedAgent===agent)).join(''):'<button type="button" class="header-target-agent" disabled>'+(target.loading?'Loading agents...':target.error?'Unavailable':'No agents enabled')+'</button>';
+  return '<div class="header-target-peer" data-target-peer="'+attr(target.id)+'"><div class="header-target-peer-title"><strong>'+esc(target.name||target.id)+'</strong>'+(selectedPeer?'<span class="chip">selected peer</span>':'')+(status?'<small>'+esc(status)+'</small>':'')+'</div>'+agentButtons+'</div>';
+}
+function headerTargetAgentHtml(target,agent,selected){
+  const snapshot=target.snapshot?.session;
+  const model=snapshot&&snapshot.agentId===agent?(snapshot.model||'default'):'';
+  const thread=snapshot&&snapshot.agentId===agent&&snapshot.threadId?shortMiddle(snapshot.threadId):'';
+  const meta=[model,thread].filter(Boolean).join(' / ');
+  return '<button type="button" role="menuitemradio" class="header-target-agent" data-target-peer="'+attr(target.id)+'" data-target-agent="'+attr(agent)+'" aria-selected="'+(selected?'true':'false')+'"'+disabledAttr('sessions.write')+'><span>'+esc(agent)+'</span>'+(meta?'<small>'+esc(meta)+'</small>':'')+'</button>';
+}
+function bindHeaderTargetMenu(root=document){
+  const menu=root.querySelector?.('[data-header-target-menu]');
+  const button=menu?.querySelector('#headerTargetBtn');
+  const list=menu?.querySelector('.header-target-list');
+  if(button&&list)button.onclick=event=>{event.preventDefault();event.stopPropagation();const open=list.hidden;closeCompactControlMenus(menu);list.hidden=!open;button.setAttribute('aria-expanded',open?'true':'false')};
+  root.querySelectorAll?.('[data-target-agent]').forEach(option=>option.onclick=event=>safe(async()=>{
+    event.preventDefault();event.stopPropagation();
+    if(!can('sessions.write')){toast('Permission required: sessions.write');return}
+    await selectHeaderTarget(option.dataset.targetPeer||'local',option.dataset.targetAgent||'');
+  },event));
+}
+async function selectHeaderTarget(peerId,agentId){
+  const previousPeer=state.selectedPeer||'local';
+  const changedPeer=previousPeer!==peerId;
+  state.selectedPeer=peerId||'local';
+  localStorage.setItem('nordrelayPeerTarget',state.selectedPeer);
+  if(changedPeer)connectEvents();
+  const selected=agentId;
+  const r=await api('/api/agent',{method:'POST',body:JSON.stringify({agentId:selected})});
+  if(state.snapshot&&r.session){state.snapshot.session=r.session;renderSnapshot(state.snapshot)}
+  toast('Target switched to '+headerTargetName(state.selectedPeer)+' / '+selected);
+  await loadBootstrap();await reloadCurrentPage({agentId:selected});
 }
 async function loadActiveSessions(){
   const box=document.getElementById('activeSessions');

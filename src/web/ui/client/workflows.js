@@ -30,7 +30,7 @@ function openNewSessionDialog(){populateNewSessionForm(state.enabledAgents);docu
 document.getElementById('newSessionForm').onsubmit=e=>safe(async()=>{e.preventDefault();if(!can('sessions.write')){toast('Permission required: sessions.write');return}const payload={agentId:val('newAgent'),workspace:val('newWorkspace')||undefined,model:val('newModel')||undefined,reasoningEffort:val('newReasoning')||undefined,launchProfileId:val('newLaunch')||undefined,fastMode:document.getElementById('newFast').checked};await api('/api/sessions/new',{method:'POST',body:JSON.stringify(payload)});document.getElementById('newSessionDialog').close();toast('New session started');await loadBootstrap();await loadChatHistory({forceScroll:true})},e);
 document.getElementById('cancelSessionBtn').onclick=()=>document.getElementById('newSessionDialog').close();
 function val(id){return document.getElementById(id).value.trim()}
-function activeAgentId(){return state.snapshot?.session?.agentId||document.getElementById('agentSelect').value||''}
+function activeAgentId(){return state.snapshot?.session?.agentId||''}
 function shortMiddle(value,edge=6,max=15){const text=String(value??'');if(text.length<=max)return text;return text.slice(0,edge)+'...'+text.slice(-edge)}
 function sessionRelativeTimeHtml(timestamp){return '<span class="session-age" data-session-age-at="'+attr(timestamp||'')+'" title="'+attr(fmtDate(timestamp))+'">'+esc(fmtSessionAge(timestamp))+'</span>'}
 function sessionAgeHtml(s){return sessionRelativeTimeHtml(s.createdAt||s.updatedAt)}

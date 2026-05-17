@@ -4,6 +4,8 @@ header{z-index:30}
 .sidebar.open{transform:translateX(0)}
 .menu{display:inline-flex}
 .header-actions{justify-content:flex-end}
+.header-target-button{max-width:calc(100vw - 138px)}
+.header-thread-copy{display:none}
 .page{padding:14px}
 #activeSessions{grid-template-columns:1fr}
 .overview-adapter-grid{grid-template-columns:1fr}

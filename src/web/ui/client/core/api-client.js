@@ -55,6 +55,36 @@ async function api(path, options = {}) {
 }
 
 /**
+ * @template {WebApiPath} P
+ * @param {string} peerId
+ * @param {P} path
+ * @param {import("../../../web-api-types.js").WebApiClientOptions<P>} [options]
+ * @returns {Promise<import("../../../web-api-types.js").WebApiClientResponse<P>>}
+ */
+async function apiPeer(peerId, path, options = {}) {
+  const method = normalizeMethod(options.method, options.body);
+  const url = apiUrl(path, options.query);
+  assertApiRoute(url.pathname, method);
+  const csrfToken = /** @type {{ NORDRELAY_WEBUI_RUNTIME_STATE?: { csrfToken?: string | null } }} */ (globalThis).NORDRELAY_WEBUI_RUNTIME_STATE?.csrfToken;
+  const res = await fetchApi('/api/peers/'+encodeURIComponent(peerId)+'/proxy', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...(csrfToken ? { 'x-nordrelay-csrf': csrfToken } : {}) },
+    body: JSON.stringify({
+      method,
+      path: url.pathname,
+      query: queryObject(url),
+      body: bodyObject(options.body),
+      contextKey: 'web:dashboard',
+    }),
+  });
+  if (res.status === 401) { location.reload(); return /** @type {never} */ (undefined); }
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+/**
  * @param {RequestInfo | URL} input
  * @param {RequestInit} [init]
  */
