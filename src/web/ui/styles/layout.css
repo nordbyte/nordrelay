@@ -110,7 +110,7 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .header-target-agent[aria-selected="true"]{background:var(--accent)!important;color:white!important}
 .header-target-agent[aria-selected="true"] small{color:color-mix(in srgb,white 78%,transparent)}
 .header-target-agent:disabled{opacity:.62;cursor:not-allowed}
-.header-target-session-toggle{width:30px!important;min-width:30px!important;height:auto!important;min-height:34px!important;padding:0!important;border:0!important;border-radius:6px!important;background:transparent!important;color:var(--muted)!important}
+.header-target-session-toggle{display:inline-flex!important;align-items:center!important;justify-content:center!important;width:30px!important;min-width:30px!important;height:auto!important;min-height:34px!important;padding:0!important;border:0!important;border-radius:6px!important;background:transparent!important;color:var(--muted)!important;text-align:center!important}
 .header-target-session-toggle span{display:block;width:7px;height:7px;border-right:1.7px solid currentColor;border-bottom:1.7px solid currentColor;transform:rotate(45deg) translateY(-1px)}
 .header-target-session-toggle[aria-expanded="true"] span{transform:rotate(225deg) translateY(-1px)}
 .header-target-session-toggle:hover,.header-target-session-toggle:focus{background:color-mix(in srgb,var(--accent) 12%,transparent)!important;color:var(--text)!important;outline:none}
@@ -120,6 +120,8 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .header-target-session span{overflow:hidden;text-overflow:ellipsis}
 .header-target-session small{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis}
 .header-target-session:hover,.header-target-session:focus{background:color-mix(in srgb,var(--accent) 12%,transparent)!important;color:var(--text)!important;outline:none}
+.header-target-load-more{display:flex!important;align-items:center!important;justify-content:center!important;width:100%;min-height:32px!important;margin-top:2px;padding:7px 9px!important;border:0!important;border-radius:6px!important;background:transparent!important;color:var(--link)!important;font-size:13px!important;text-align:center!important}
+.header-target-load-more:hover,.header-target-load-more:focus{background:color-mix(in srgb,var(--accent) 12%,transparent)!important;color:var(--link)!important;outline:none}
 .header-target-session-state{padding:7px 9px;color:var(--muted);font-size:12px}
 .header-target-session-state.error{color:var(--danger)}
 .compact-apply-button{width:auto;min-width:0}

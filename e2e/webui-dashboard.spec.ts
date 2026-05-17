@@ -91,7 +91,19 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#agentAdapters")).toContainText("Codex");
     await expect(page.locator("#chatAdapters")).toContainText("Telegram");
     await expect(page.locator("#footerHealth")).toContainText("Health: healthy");
+    await expect(page.locator("#metrics")).toContainText("Current Session");
+    await expect(page.locator("#metrics")).toContainText("Reasoning / Fast");
+    await expect(page.locator("#metrics")).toContainText("high / on");
+    await expect(page.locator("#metrics .metric .label").filter({ hasText: /^Fast$/ })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Refresh" })).toHaveCount(0);
+    await page.locator("#headerTargetBtn").click();
+    await page.getByRole("button", { name: "Show recent codex sessions" }).click();
+    const headerSessions = page.locator('[data-target-sessions="local::codex"]');
+    await expect(headerSessions).toContainText("Existing session 5");
+    await expect(headerSessions.locator('[data-target-session-load-more]')).toContainText("Load more");
+    await headerSessions.locator('[data-target-session-load-more]').click();
+    await expect(headerSessions).toContainText("Existing session 7");
+    await expect(headerSessions.locator('[data-target-session-load-more]')).toHaveCount(0);
 
     await navigateDashboard(page, "Chat");
     await expect(page.locator("#messages")).toContainText("Existing web message");
@@ -852,7 +864,7 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   if (url.pathname === "/api/jobs") return jobsList();
   if (url.pathname.match(/^\/api\/jobs\/[^/]+\/log$/)) return { job: jobsList().jobs[0], plain: "Queued prompt log" };
   if (url.pathname.match(/^\/api\/jobs\/[^/]+\/action$/)) return jobsList();
-  if (url.pathname === "/api/sessions") return sessions();
+  if (url.pathname === "/api/sessions") return sessions(url);
   if (url.pathname === "/api/sessions/detail") return sessionDetail();
   if (url.pathname === "/api/control-options") return controls(url.searchParams.get("agent") || "codex");
   if (url.pathname === "/api/agent") return { session };
@@ -1095,10 +1107,27 @@ function mirrorPreference(body: unknown) {
   };
 }
 
-function sessions() {
+function sessions(url?: URL) {
+  const agentId = url?.searchParams.get("agent") || "codex";
+  const page = Number(url?.searchParams.get("page") || 1);
+  const limit = Number(url?.searchParams.get("limit") || 50);
+  const all = Array.from({ length: 7 }, (_, index) => {
+    const number = index + 1;
+    return {
+      id: agentId === "pi" ? `pi-thread-${number}` : `codex-thread-${number}`,
+      agentId,
+      title: number === 1 ? "Existing session" : `Existing session ${number}`,
+      cwd: "/tmp/project",
+      model: agentId === "pi" ? "pi-default" : "gpt-5.5",
+      updatedAt: now(),
+      firstUserMessage: number === 1 ? "Existing web message" : `Existing web message ${number}`,
+    };
+  });
+  const start = Math.max(0, (page - 1) * limit);
+  const end = start + limit;
   return {
-    sessions: [{ id: "codex-thread-1", agentId: "codex", title: "Existing session", cwd: "/tmp/project", updatedAt: now(), firstUserMessage: "Existing web message" }],
-    pagination: { page: 1, pageSize: 50, hasPrevious: false, hasNext: false },
+    sessions: all.slice(start, end),
+    pagination: { page, pageSize: limit, hasPrevious: page > 1, hasNext: end < all.length },
   };
 }
 

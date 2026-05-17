@@ -139,8 +139,9 @@ async function refreshRemoteHeaderTargets(local,selectedData){
 }
 function renderSnapshot(s){
   renderHeaderTargetMenu(s);
+  const fastValue=s.session.capabilities&&s.session.capabilities.fastMode?(s.session.fastMode?'on':'off'):'n/a';
   document.getElementById('metrics').innerHTML=[
-    ['Status',s.processing?'working':'idle'],['Agent',s.session.agentLabel],['Queue',s.queue.length],['Workspace',s.session.workspace],['Thread',s.session.threadId||'not started'],['Reasoning',s.session.reasoningEffort||'default'],['Fast',s.session.capabilities&&s.session.capabilities.fastMode?(s.session.fastMode?'on':'off'):'n/a']
+    ['Current Session',s.processing?'working':'idle'],['Agent',s.session.agentLabel],['Queue',s.queue.length],['Workspace',s.session.workspace],['Thread',s.session.threadId||'not started'],['Reasoning / Fast',(s.session.reasoningEffort||'default')+' / '+fastValue]
   ].map(([k,v])=>'<div class="metric"><div class="label">'+esc(k)+'</div><div class="value">'+esc(v)+'</div></div>').join('');
   renderQueue(s.queue,s.queuePaused);
 }
@@ -173,7 +174,7 @@ function headerTargetAgentHtml(target,agent,selected){
   const thread=snapshot&&snapshot.agentId===agent&&snapshot.threadId?shortMiddle(snapshot.threadId):'';
   const meta=[model,thread].filter(Boolean).join(' / ');
   const key=headerTargetSessionKey(target.id,agent);
-  return '<div class="header-target-agent-block" data-target-agent-block="'+attr(key)+'"><div class="header-target-agent-row"><button type="button" role="menuitemradio" class="header-target-agent" data-target-peer="'+attr(target.id)+'" data-target-agent="'+attr(agent)+'" aria-selected="'+(selected?'true':'false')+'"'+disabledAttr('sessions.write')+'><span>'+esc(agent)+'</span>'+(meta?'<small>'+esc(meta)+'</small>':'')+'</button><button type="button" class="header-target-session-toggle" data-target-sessions-toggle="'+attr(key)+'" data-target-peer="'+attr(target.id)+'" data-target-agent="'+attr(agent)+'" aria-expanded="false" title="Show recent sessions"'+disabledAttr('sessions.read')+'><span aria-hidden="true"></span></button></div><div class="header-target-sessions" data-target-sessions="'+attr(key)+'" hidden></div></div>';
+  return '<div class="header-target-agent-block" data-target-agent-block="'+attr(key)+'"><div class="header-target-agent-row"><button type="button" role="menuitemradio" class="header-target-agent" data-target-peer="'+attr(target.id)+'" data-target-agent="'+attr(agent)+'" aria-selected="'+(selected?'true':'false')+'"'+disabledAttr('sessions.write')+'><span>'+esc(agent)+'</span>'+(meta?'<small>'+esc(meta)+'</small>':'')+'</button><button type="button" class="header-target-session-toggle" data-target-sessions-toggle="'+attr(key)+'" data-target-peer="'+attr(target.id)+'" data-target-agent="'+attr(agent)+'" aria-expanded="false" title="Show recent sessions" aria-label="Show recent '+attr(agent)+' sessions"'+disabledAttr('sessions.read')+'><span aria-hidden="true"></span></button></div><div class="header-target-sessions" data-target-sessions="'+attr(key)+'" hidden></div></div>';
 }
 function headerTargetSessionKey(peerId,agentId){return String(peerId||'local')+'::'+String(agentId||'')}
 function bindHeaderTargetMenu(root=document){
@@ -195,6 +196,14 @@ function bindHeaderTargetMenu(root=document){
     event.preventDefault();event.stopPropagation();
     if(!can('sessions.write')){toast('Permission required: sessions.write');return}
     await selectHeaderTargetSession(option.dataset.targetPeer||'local',option.dataset.targetAgent||'',option.dataset.targetSessionSwitch||'');
+  },event));
+  root.querySelectorAll?.('[data-target-session-load-more]').forEach(button=>button.onclick=event=>safe(async()=>{
+    event.preventDefault();event.stopPropagation();
+    if(!can('sessions.read')){toast('Permission required: sessions.read');return}
+    const panel=button.closest('[data-target-sessions]');
+    if(!panel)return;
+    const nextPage=Number(button.dataset.targetSessionNextPage||'2');
+    await loadHeaderTargetSessionsPage(panel,button.dataset.targetPeer||'local',button.dataset.targetAgent||'',nextPage);
   },event));
 }
 async function headerTargetRequest(peerId,path,options={}){
@@ -236,23 +245,40 @@ async function toggleHeaderTargetSessions(toggle){
   if(panel.dataset.loaded==='true')return;
   const peerId=toggle.dataset.targetPeer||'local';
   const agentId=toggle.dataset.targetAgent||'';
+  panel.dataset.targetPeer=peerId;
+  panel.dataset.targetAgent=agentId;
   panel.innerHTML='<div class="header-target-session-state">Loading sessions...</div>';
+  await loadHeaderTargetSessionsPage(panel,peerId,agentId,1);
+}
+async function loadHeaderTargetSessionsPage(panel,peerId,agentId,pageNumber){
   try{
-    const data=await headerTargetRequest(peerId,'/api/sessions',{query:{agent:agentId,page:1,limit:5}});
+    const data=await headerTargetRequest(peerId,'/api/sessions',{query:{agent:agentId,page:pageNumber,limit:5}});
+    const sessions=data.sessions||[];
+    const hasNext=Boolean(data.pagination?.hasNext);
+    panel.querySelector('[data-target-session-load-more]')?.remove();
     panel.dataset.loaded='true';
-    panel.innerHTML=renderHeaderTargetSessions(peerId,agentId,data.sessions||[]);
+    panel.dataset.page=String(pageNumber);
+    panel.dataset.hasNext=hasNext?'true':'false';
+    if(pageNumber<=1)panel.innerHTML=renderHeaderTargetSessions(peerId,agentId,sessions,hasNext,pageNumber+1);
+    else panel.insertAdjacentHTML('beforeend',renderHeaderTargetSessionItems(peerId,agentId,sessions)+headerTargetLoadMoreHtml(peerId,agentId,hasNext,pageNumber+1));
     bindHeaderTargetMenu(panel);
   }catch(error){
     panel.innerHTML='<div class="header-target-session-state error">'+esc(error instanceof Error?error.message:String(error))+'</div>';
   }
 }
-function renderHeaderTargetSessions(peerId,agentId,sessions){
+function renderHeaderTargetSessions(peerId,agentId,sessions,hasNext=false,nextPage=2){
   if(!sessions.length)return'<div class="header-target-session-state">No recent sessions.</div>';
+  return renderHeaderTargetSessionItems(peerId,agentId,sessions)+headerTargetLoadMoreHtml(peerId,agentId,hasNext,nextPage);
+}
+function renderHeaderTargetSessionItems(peerId,agentId,sessions){
   return sessions.slice(0,5).map(session=>{
     const title=session.title||session.firstUserMessage||session.id;
     const meta=[session.model||'',session.cwd||'',session.updatedAt?fmtSessionAge(session.updatedAt)+' ago':''].filter(Boolean).join(' / ');
     return '<button type="button" class="header-target-session" data-target-session-switch="'+attr(session.id)+'" data-target-peer="'+attr(peerId)+'" data-target-agent="'+attr(agentId)+'" title="'+attr([title,session.id,session.cwd||'',fmtDate(session.updatedAt)].filter(Boolean).join(' | '))+'"'+disabledAttr('sessions.write')+'><span>'+esc(short(title,92))+'</span><small>'+esc(shortMiddle(session.id))+(meta?' · '+esc(short(meta,120)):'')+'</small></button>';
   }).join('');
+}
+function headerTargetLoadMoreHtml(peerId,agentId,hasNext,nextPage){
+  return hasNext?'<button type="button" class="header-target-load-more" data-target-session-load-more="true" data-target-peer="'+attr(peerId)+'" data-target-agent="'+attr(agentId)+'" data-target-session-next-page="'+attr(nextPage)+'"'+disabledAttr('sessions.read')+'>Load more</button>':'';
 }
 async function loadActiveSessions(){
   const box=document.getElementById('activeSessions');
