@@ -29,7 +29,21 @@ const NAV_SECTION_BY_PAGE: Record<string, string> = {
   Peers: "administration",
 };
 
+const MONITOR_TAB_BY_PAGE: Record<string, string> = {
+  Activity: "activity",
+  Tasks: "tasks",
+  Trace: "trace",
+  Artifacts: "artifacts",
+};
+
 async function navigateDashboard(page: Page, label: string): Promise<void> {
+  const monitorTab = MONITOR_TAB_BY_PAGE[label];
+  if (monitorTab) {
+    await page.getByRole("button", { name: "Monitor", exact: true }).click();
+    await page.getByRole("tab", { name: label, exact: true }).click();
+    return;
+  }
+
   const section = NAV_SECTION_BY_PAGE[label];
   if (section) {
     const toggle = page.locator(`[data-nav-toggle="${section}"]`);
@@ -67,10 +81,7 @@ test.describe("NordRelay WebUI", () => {
       "Workflows",
       "Sessions",
       "Queue",
-      "Tasks",
-      "Activity",
-      "Trace",
-      "Artifacts",
+      "Monitor",
     ]);
     await expect(page.getByRole("heading", { name: "Active Sessions" })).toBeVisible();
     await expect(page.locator("#activeSessions")).toContainText("Run active smoke test");
