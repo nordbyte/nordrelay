@@ -5,9 +5,11 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  capDiscordCommandReplyChunks,
   canSendSystemMessagesToDiscordContext,
   isUnauthenticatedDiscordCommandAllowed,
   permissionForDiscordAction,
+  renderDiscordSessionList,
   requiredPermissionForDiscordCommand,
 } from "../src/channels/discord/discord-bot.js";
 import { discordCommands, parseDiscordMessageCommand } from "../src/channels/discord/discord-command-surface.js";
@@ -111,5 +113,25 @@ describe("Discord security boundaries", () => {
     ]) {
       expect(names.has(command)).toBe(true);
     }
+  });
+
+  it("truncates Discord session lists and command replies to prevent message floods", () => {
+    const longPrompt = "old session message ".repeat(500);
+    const rendered = renderDiscordSessionList("Sessions", [{
+      id: "019e20f7-e05b-7df3-8c1c-80d1f99850ab",
+      title: longPrompt,
+      cwd: `/workspace/${"deep-path/".repeat(80)}`,
+      firstUserMessage: longPrompt,
+    }]);
+
+    expect(rendered).toContain("Sessions:");
+    expect(rendered).toContain("old session message");
+    expect(rendered.length).toBeLessThan(500);
+    expect(rendered).not.toContain(longPrompt);
+
+    const capped = capDiscordCommandReplyChunks(Array.from({ length: 100 }, (_, index) => `chunk-${index}`), 5);
+    expect(capped).toHaveLength(5);
+    expect(capped[4]).toContain("Output truncated");
+    expect(capped.join("\n")).not.toContain("chunk-99");
   });
 });

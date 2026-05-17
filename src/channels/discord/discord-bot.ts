@@ -14,7 +14,7 @@ import {
 } from "discord.js";
 
 import { ADMIN_GROUP_ID, type Permission } from "../../access/access-control.js";
-import { agentLabel, agentReasoningLabel, agentReasoningOptions, type AgentId, type AgentPromptInput, type AgentSessionInfo, type AgentSessionService } from "../../agents/shared/agent.js";
+import { agentLabel, agentReasoningLabel, agentReasoningOptions, type AgentId, type AgentPromptInput, type AgentSessionInfo, type AgentSessionService, type AgentThreadRecord } from "../../agents/shared/agent.js";
 import { getAgentActivityLog, getExternalSnapshotForSession } from "../../agents/shared/agent-activity.js";
 import { hostAgentLoginCommand, hostAgentLogoutCommand } from "../../agents/shared/agent-auth-commands.js";
 import { listAgentAdapterDescriptors } from "../../agents/shared/agent-adapter.js";
@@ -75,6 +75,35 @@ const EDIT_DEBOUNCE_MS = 1500;
 const TYPING_INTERVAL_MS = 4500;
 const MAX_SLASH_CHOICES = 25;
 const MAX_ATTACHMENT_DOWNLOAD = 25 * 1024 * 1024;
+const MAX_DISCORD_COMMAND_REPLY_CHUNKS = 5;
+const DISCORD_SESSION_TITLE_LIMIT = 120;
+const DISCORD_SESSION_ID_LIMIT = 96;
+const DISCORD_SESSION_WORKSPACE_LIMIT = 140;
+
+type DiscordSessionListRecord = Pick<AgentThreadRecord, "id" | "title" | "cwd" | "firstUserMessage">;
+
+export function renderDiscordSessionList(title: string, records: DiscordSessionListRecord[]): string {
+  return [
+    `${title}:`,
+    ...records.map((record, index) => {
+      const label = trimLine(record.title || record.firstUserMessage || record.id, DISCORD_SESSION_TITLE_LIMIT) || trimLine(record.id, DISCORD_SESSION_TITLE_LIMIT);
+      const id = trimLine(record.id, DISCORD_SESSION_ID_LIMIT);
+      const workspace = trimLine(record.cwd || "-", DISCORD_SESSION_WORKSPACE_LIMIT);
+      return `${index + 1}. ${label}\n   ${id}\n   ${workspace}`;
+    }),
+  ].join("\n");
+}
+
+export function capDiscordCommandReplyChunks(chunks: string[], maxChunks = MAX_DISCORD_COMMAND_REPLY_CHUNKS): string[] {
+  const effectiveMax = Math.max(1, maxChunks);
+  if (chunks.length <= effectiveMax) {
+    return chunks;
+  }
+  const capped = chunks.slice(0, effectiveMax);
+  const omitted = chunks.length - effectiveMax;
+  capped[capped.length - 1] = trimDiscordMessage(`${capped[capped.length - 1]}\n\n[Output truncated: ${omitted} additional Discord message${omitted === 1 ? "" : "s"} omitted.]`);
+  return capped;
+}
 
 interface DiscordBridge {
   client: Client;
@@ -182,9 +211,9 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
   const reply = async (
     request: DiscordRequest,
     content: string,
-    options: { buttons?: Array<Array<{ label: string; action: string }>>; ephemeral?: boolean } = {},
+    options: { buttons?: Array<Array<{ label: string; action: string }>>; ephemeral?: boolean; maxChunks?: number } = {},
   ): Promise<void> => {
-    const chunks = splitDiscordMessage(content);
+    const chunks = capDiscordCommandReplyChunks(splitDiscordMessage(content), options.maxChunks);
     if (request.interaction) {
       const interaction = request.interaction;
       const bucket = request.context.topicId ?? request.context.chatId;
@@ -853,10 +882,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       return;
     }
     const pickId = createPick("session", records.map((record) => record.id));
-    await reply(request, [
-      "Sessions:",
-      ...records.map((record, index) => `${index + 1}. ${record.title || record.id}\n   ${record.id}\n   ${record.cwd || "-"}`),
-    ].join("\n"), {
+    await reply(request, renderDiscordSessionList("Sessions", records), {
       buttons: records.map((record, index) => [{ label: trimLine(record.title || record.id, 70), action: `discord_pick:${pickId}:${index}` }]),
     });
   };
@@ -1321,10 +1347,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       return;
     }
     const pickId = createPick("session", records.map((record) => record.id));
-    await reply(request, [
-      `Pinned threads (${records.length}):`,
-      ...records.map((record, index) => `${index + 1}. ${record.title || record.id}\n   ${record.id}\n   ${record.cwd || "-"}`),
-    ].join("\n"), {
+    await reply(request, renderDiscordSessionList(`Pinned threads (${records.length})`, records), {
       buttons: records.map((record, index) => [{ label: trimLine(record.title || record.id, 70), action: `discord_pick:${pickId}:${index}` }]),
     });
   };
