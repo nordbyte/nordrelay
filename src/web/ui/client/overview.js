@@ -45,6 +45,7 @@ const jobsPager=createCursorPager('jobsPager',()=>loadTasks(false));
 
 async function loadBootstrap(){
   const local = await api('/api/bootstrap',{local:true});
+  state.localBootstrap = local;
   state.auth = local.auth || null;
   state.csrfToken = local.auth?.csrfToken || state.csrfToken || null;
   state.permissions = local.auth?.permissions || [];
@@ -75,6 +76,13 @@ function headerTargetName(peerId){
   const peer=(state.peers?.peers||[]).find(p=>p.id===peerId);
   return peer?.name||peerId;
 }
+function applyHeaderPeerSnapshot(peers,local=state.localBootstrap){
+  const localTarget=localHeaderTarget(local||{enabledAgents:state.enabledAgents||[],status:{snapshot:state.snapshot}});
+  state.peers=peers;
+  const available=(peers?.peers||[]).filter(p=>p.enabled&&p.url);
+  if(state.selectedPeer!=='local'&&!available.some(p=>p.id===state.selectedPeer))state.selectedPeer='local';
+  state.peerTargets=[localTarget].concat(available.map(p=>({id:p.id,name:p.name,agents:p.allowedAgents||[],snapshot:null,loading:true,error:''})));
+}
 async function loadHeaderTargetCandidates(local){
   const localTarget=localHeaderTarget(local);
   if(!can('peers.read')){
@@ -84,10 +92,7 @@ async function loadHeaderTargetCandidates(local){
   }
   try{
     const peers=await api('/api/peers',{local:true});
-    state.peers=peers;
-    const available=(peers.peers||[]).filter(p=>p.enabled&&p.url);
-    if(state.selectedPeer!=='local'&&!available.some(p=>p.id===state.selectedPeer))state.selectedPeer='local';
-    state.peerTargets=[localTarget].concat(available.map(p=>({id:p.id,name:p.name,agents:p.allowedAgents||[],snapshot:null,loading:true,error:''})));
+    applyHeaderPeerSnapshot(peers,local);
   }catch{
     state.peerTargets=[localTarget];
     state.selectedPeer='local';

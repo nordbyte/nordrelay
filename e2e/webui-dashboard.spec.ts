@@ -571,6 +571,7 @@ test.describe("NordRelay WebUI", () => {
     await page.getByRole("tab", { name: "Invitations" }).click();
     await page.getByRole("button", { name: "Create invite" }).click();
     await page.locator("#adminDialogSubmit").click();
+    await expect(page.locator("#adminDialog")).not.toBeVisible();
 
     await expect(page.locator("#peerInvites")).toContainText(pairingCode);
     await expect(page.locator("#peerInvites")).toContainText(command);
@@ -695,7 +696,7 @@ test.describe("NordRelay WebUI", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(mock.baseUrl);
 
-    await page.getByRole("button", { name: "Menu" }).click();
+    await page.getByRole("button", { name: "Open navigation" }).click();
     await expect(page.locator("#sidebar")).toHaveClass(/open/);
     await navigateDashboard(page, "Logs");
 
@@ -741,7 +742,7 @@ test.describe("NordRelay WebUI", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(mock.baseUrl);
 
-    await page.getByRole("button", { name: "Menu" }).click();
+    await page.getByRole("button", { name: "Open navigation" }).click();
     await navigateDashboard(page, "Settings");
     await expect(page.locator("#settingsTabs")).toContainText("Agents");
     await expect(page.locator("#settingsTabs")).toHaveAttribute("role", "tablist");
@@ -749,20 +750,20 @@ test.describe("NordRelay WebUI", () => {
     await page.locator("#settingsSubgroupSelect").selectOption("Discord");
     await expect(page.locator('[data-setting-box="DISCORD_CLIENT_ID"]')).toBeVisible();
 
-    await page.getByRole("button", { name: "Menu" }).click();
+    await page.getByRole("button", { name: "Open navigation" }).click();
     await navigateDashboard(page, "Chat");
     await expect(page.locator("#messages")).toHaveCSS("overflow-y", "auto");
     await page.locator("#promptInput").fill("Mobile prompt smoke");
     await page.locator("#promptForm button").last().click();
     await expect(page.locator("#messages")).toContainText("Queued prompt queue-web-1");
 
-    await page.getByRole("button", { name: "Menu" }).click();
+    await page.getByRole("button", { name: "Open navigation" }).click();
     await navigateDashboard(page, "Peers");
     await expect(page.locator("#peerStatus")).toContainText("Local peer identity");
     await page.getByRole("tab", { name: "Peers" }).click();
     await expect(page.locator("#peersList")).toContainText("Ubuntu Workstation");
 
-    await page.getByRole("button", { name: "Menu" }).click();
+    await page.getByRole("button", { name: "Open navigation" }).click();
     await navigateDashboard(page, "Version");
     await expect(page.locator("#versionPanel")).toContainText("NordRelay");
     await expect(page.locator("#agentUpdateJobs")).toContainText("No agent update jobs");
