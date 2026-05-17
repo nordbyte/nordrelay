@@ -25,6 +25,8 @@ const DEFAULT_MARKETPLACE_ROOT = path.resolve(PLUGIN_ROOT, "../..");
 const RUNTIME_ROOT = findRuntimeRoot();
 const VERSION = readRuntimePackageVersion() || FALLBACK_VERSION;
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
+const LIFECYCLE_LOCK_TIMEOUT_MS = 10000;
+const LIFECYCLE_LOCK_STALE_MS = 60000;
 
 function nowIso() {
   return new Date().toISOString();
@@ -201,6 +203,16 @@ function isProcessRunning(pid) {
   }
 }
 
+function readProcessCommandLine(pid) {
+  if (!pid || process.platform !== "linux") return null;
+  try {
+    const raw = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8");
+    return raw.split("\0").filter(Boolean).join(" ");
+  } catch {
+    return null;
+  }
+}
+
 async function readPid(pidFile) {
   try {
     const value = Number.parseInt((await fsp.readFile(pidFile, "utf8")).trim(), 10);
@@ -208,6 +220,84 @@ async function readPid(pidFile) {
   } catch {
     return null;
   }
+}
+
+async function writePidAtomic(pidFile, pid) {
+  await mkdirp(path.dirname(pidFile));
+  const tmp = `${pidFile}.${process.pid}.tmp`;
+  await fsp.writeFile(tmp, `${pid}\n`);
+  await fsp.rename(tmp, pidFile);
+}
+
+async function isLifecycleLockStale(lockFile) {
+  try {
+    const stat = await fsp.stat(lockFile);
+    if (Date.now() - stat.mtimeMs > LIFECYCLE_LOCK_STALE_MS) {
+      return true;
+    }
+    const text = await fsp.readFile(lockFile, "utf8").catch(() => "");
+    const pid = Number.parseInt(text.trim(), 10);
+    return Number.isFinite(pid) && !isProcessRunning(pid);
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    return true;
+  }
+}
+
+async function withLifecycleLock(lockFile, task) {
+  await mkdirp(path.dirname(lockFile));
+  const deadline = Date.now() + LIFECYCLE_LOCK_TIMEOUT_MS;
+  let handle = null;
+  for (;;) {
+    try {
+      handle = await fsp.open(lockFile, "wx");
+      await handle.writeFile(`${process.pid}\n`);
+      break;
+    } catch (error) {
+      if (error?.code !== "EEXIST") {
+        throw error;
+      }
+      if (await isLifecycleLockStale(lockFile)) {
+        await fsp.rm(lockFile, { force: true });
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for lifecycle lock ${lockFile}`);
+      }
+      await sleep(100);
+    }
+  }
+
+  try {
+    return await task();
+  } finally {
+    await handle?.close().catch(() => {});
+    await fsp.rm(lockFile, { force: true });
+  }
+}
+
+function pidFileLock(pidFile) {
+  return `${pidFile}.lock`;
+}
+
+async function isManagedConnectorPid(options, pid) {
+  if (!isProcessRunning(pid)) return false;
+  const state = await readJson(options.stateFile, {});
+  const commandLine = readProcessCommandLine(pid);
+  if (commandLine) {
+    return commandLine.includes(SCRIPT_PATH) && commandLine.includes(" foreground");
+  }
+  return Number(state?.pid) === pid && state?.status !== "stopped";
+}
+
+async function isManagedWebPid(options, pid) {
+  if (!isProcessRunning(pid)) return false;
+  const state = await readWebState(options);
+  const commandLine = readProcessCommandLine(pid);
+  if (commandLine) {
+    return commandLine.includes(RUNTIME_ROOT) && commandLine.includes("web-dashboard");
+  }
+  return Number(state?.pid) === pid && state?.status !== "stopped";
 }
 
 async function readWebState(options) {
@@ -219,7 +309,7 @@ async function readWebPid(options) {
 }
 
 async function isWebDashboardRunning(options) {
-  return isProcessRunning(await readWebPid(options));
+  return await isManagedWebPid(options, await readWebPid(options));
 }
 
 async function writeWebState(options, patch) {
@@ -258,68 +348,73 @@ async function commandStart(options, settings = {}) {
   await prepareRuntimeForLaunch(options);
   const dashboard = resolveDashboardEndpoint(options);
 
-  const currentPid = await readPid(options.pidFile);
-  if (isProcessRunning(currentPid)) {
-    console.log(`Already running with PID ${currentPid}`);
-    await commandStatus(options);
-    return;
-  }
-
-  await writeJsonAtomic(options.stateFile, {
-    status: "starting",
-    pid: null,
-    updatedAt: nowIso(),
-    logFile: options.logFile,
-  });
-
-  const logFd = fs.openSync(options.logFile, "a");
-  const child = spawn(process.execPath, [SCRIPT_PATH, "foreground", ...runtimeForwardFlags(options.rawFlags)], {
-    cwd: RUNTIME_ROOT,
-    detached: true,
-    env: process.env,
-    stdio: ["ignore", logFd, logFd],
-  });
-  child.unref();
-  fs.closeSync(logFd);
-
-  await fsp.writeFile(options.pidFile, `${child.pid}\n`);
-
-  const state = await waitForState(options.stateFile, child.pid, 8000);
-  if (state?.status === "ready") {
-    console.log(`Started ${APP_NAME} ${VERSION} with PID ${child.pid}`);
-    console.log(`Workspace: ${state.workspace || "-"}`);
-    console.log(`Mode: ${state.sessionMode || "per Telegram context"}`);
-    if (!settings.skipWebHint) {
-      const webPid = await readWebPid(options);
-      const webHint = isProcessRunning(webPid) ? `(running with PID ${webPid})` : "(run `nordrelay web` to start it)";
-      console.log(`WebUI: ${formatDashboardUrl(dashboard)} ${webHint}`);
+  await withLifecycleLock(pidFileLock(options.pidFile), async () => {
+    const currentPid = await readPid(options.pidFile);
+    if (await isManagedConnectorPid(options, currentPid)) {
+      console.log(`Already running with PID ${currentPid}`);
+      await commandStatus(options);
+      return;
     }
-    console.log(`Log: ${options.logFile}`);
-    return;
-  }
-
-  if (state?.status === "error") {
-    if (!isProcessRunning(child.pid)) {
+    if (currentPid) {
       await fsp.rm(options.pidFile, { force: true });
     }
-    console.log(`Startup failed. Log: ${options.logFile}`);
-    console.log(state.error || await readStartupError(options.logFile) || "Unknown error");
-    process.exitCode = 1;
-    return;
-  }
 
-  console.log(`Started ${APP_NAME} ${VERSION} with PID ${child.pid}`);
-  if (!settings.skipWebHint) {
-    const webPid = await readWebPid(options);
-    const webHint = isProcessRunning(webPid) ? `(running with PID ${webPid})` : "(run `nordrelay web` to start it)";
-    console.log(`WebUI: ${formatDashboardUrl(dashboard)} ${webHint}`);
-  }
-  console.log(`Startup is still in progress. Log: ${options.logFile}`);
+    await writeJsonAtomic(options.stateFile, {
+      status: "starting",
+      pid: null,
+      updatedAt: nowIso(),
+      logFile: options.logFile,
+    });
+
+    const logFd = fs.openSync(options.logFile, "a");
+    const child = spawn(process.execPath, [SCRIPT_PATH, "foreground", ...runtimeForwardFlags(options.rawFlags)], {
+      cwd: RUNTIME_ROOT,
+      detached: true,
+      env: process.env,
+      stdio: ["ignore", logFd, logFd],
+    });
+    child.unref();
+    fs.closeSync(logFd);
+
+    await writePidAtomic(options.pidFile, child.pid);
+
+    const state = await waitForState(options.stateFile, child.pid, 8000);
+    if (state?.status === "ready") {
+      console.log(`Started ${APP_NAME} ${VERSION} with PID ${child.pid}`);
+      console.log(`Workspace: ${state.workspace || "-"}`);
+      console.log(`Mode: ${state.sessionMode || "per Telegram context"}`);
+      if (!settings.skipWebHint) {
+        const webPid = await readWebPid(options);
+        const webHint = await isManagedWebPid(options, webPid) ? `(running with PID ${webPid})` : "(run `nordrelay web` to start it)";
+        console.log(`WebUI: ${formatDashboardUrl(dashboard)} ${webHint}`);
+      }
+      console.log(`Log: ${options.logFile}`);
+      return;
+    }
+
+    if (state?.status === "error") {
+      if (!isProcessRunning(child.pid)) {
+        await fsp.rm(options.pidFile, { force: true });
+      }
+      console.log(`Startup failed. Log: ${options.logFile}`);
+      console.log(state.error || await readStartupError(options.logFile) || "Unknown error");
+      process.exitCode = 1;
+      return;
+    }
+
+    console.log(`Started ${APP_NAME} ${VERSION} with PID ${child.pid}`);
+    if (!settings.skipWebHint) {
+      const webPid = await readWebPid(options);
+      const webHint = await isManagedWebPid(options, webPid) ? `(running with PID ${webPid})` : "(run `nordrelay web` to start it)";
+      console.log(`WebUI: ${formatDashboardUrl(dashboard)} ${webHint}`);
+    }
+    console.log(`Startup is still in progress. Log: ${options.logFile}`);
+  });
 }
 
 async function ensureConnectorStartedForWeb(options) {
   const currentPid = await readPid(options.pidFile);
-  if (isProcessRunning(currentPid)) {
+  if (await isManagedConnectorPid(options, currentPid)) {
     console.log(`NordRelay connector already running with PID ${currentPid}.`);
     return;
   }
@@ -349,7 +444,7 @@ async function waitForState(stateFile, pid, timeoutMs) {
 
 async function stopWebDashboard(options, settings = {}) {
   const pid = await readWebPid(options);
-  if (!isProcessRunning(pid)) {
+  if (!(await isManagedWebPid(options, pid))) {
     await fsp.rm(options.webPidFile, { force: true });
     const state = await readWebState(options);
     if (state.status === "running" || state.status === "starting") {
@@ -393,7 +488,7 @@ async function commandStop(options, settings = {}) {
     await stopWebDashboard(options);
   }
   const pid = await readPid(options.pidFile);
-  if (!isProcessRunning(pid)) {
+  if (!(await isManagedConnectorPid(options, pid))) {
     console.log("Connector is not running.");
     await fsp.rm(options.pidFile, { force: true });
     return;
@@ -421,8 +516,8 @@ async function commandStatus(options) {
   const webPid = await readWebPid(options);
   const state = await readJson(options.stateFile, {});
   const webState = await readWebState(options);
-  const running = isProcessRunning(pid);
-  const webRunning = isProcessRunning(webPid);
+  const running = await isManagedConnectorPid(options, pid);
+  const webRunning = await isManagedWebPid(options, webPid);
   const webStatus = webRunning ? "running" : webState.status === "running" || webState.status === "starting" ? "stale" : webState.status || "stopped";
   if (!webRunning && (webState.status === "running" || webState.status === "starting")) {
     await fsp.rm(options.webPidFile, { force: true });
@@ -496,7 +591,7 @@ async function commandUpdate(options) {
   await mkdirp(path.dirname(updateLog));
   const log = fs.createWriteStream(updateLog, { flags: "a" });
   const sourceRoot = RUNTIME_ROOT;
-  const wasRunning = isProcessRunning(await readPid(options.pidFile));
+  const wasRunning = await isManagedConnectorPid(options, await readPid(options.pidFile));
   const summary = method === "npm"
     ? "Install latest @nordbyte/nordrelay with npm, verify the CLI, and restart if the connector is running."
     : "Pull origin/main, install dependencies, run check, tests, build, and restart if the connector is running.";
@@ -848,7 +943,7 @@ async function commandInit(options) {
 }
 
 async function createUserStore(home) {
-  const modulePath = path.join(RUNTIME_ROOT, "dist", "user-management.js");
+  const modulePath = path.join(RUNTIME_ROOT, "dist", "access", "user-management.js");
   if (!fs.existsSync(modulePath)) {
     throw new Error(`Missing user management runtime. Run \`npm run build\` in ${RUNTIME_ROOT}.`);
   }
@@ -863,12 +958,12 @@ async function peerModules() {
     "peer-client.js",
   ];
   for (const file of required) {
-    const modulePath = path.join(RUNTIME_ROOT, "dist", file);
+    const modulePath = path.join(RUNTIME_ROOT, "dist", "peers", file);
     if (!fs.existsSync(modulePath)) {
       throw new Error(`Missing peer runtime. Run \`npm run build\` in ${RUNTIME_ROOT}.`);
     }
   }
-  const [store, identity, client] = await Promise.all(required.map((file) => import(pathToFileURL(path.join(RUNTIME_ROOT, "dist", file)).href)));
+  const [store, identity, client] = await Promise.all(required.map((file) => import(pathToFileURL(path.join(RUNTIME_ROOT, "dist", "peers", file)).href)));
   return { store, identity, client };
 }
 
@@ -1507,13 +1602,6 @@ async function startWebDashboard(options, settings = {}) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
   const { host, port } = resolveDashboardEndpoint(options, { strict: true });
-  const currentPid = await readWebPid(options);
-  if (isProcessRunning(currentPid)) {
-    console.log(`NordRelay dashboard already running with PID ${currentPid}.`);
-    console.log(`NordRelay dashboard: ${formatDashboardUrl({ host, port })}`);
-    return;
-  }
-  await fsp.rm(options.webPidFile, { force: true });
   const entry = await resolveWebRuntimeEntry();
   if (!entry) {
     throw new Error(`Missing dashboard runtime. Run \`npm install\` and \`npm run build\` in ${RUNTIME_ROOT}.`);
@@ -1526,30 +1614,50 @@ async function startWebDashboard(options, settings = {}) {
     NORDRELAY_DASHBOARD_HOST: host,
     NORDRELAY_DASHBOARD_PORT: String(port),
   };
-  await writeWebState(options, {
-    status: "starting",
-    pid: null,
-    host,
-    port,
-    url: formatDashboardUrl({ host, port }),
+  let child = null;
+  let stdio = null;
+  let alreadyRunning = false;
+  await withLifecycleLock(pidFileLock(options.webPidFile), async () => {
+    const currentPid = await readWebPid(options);
+    if (await isManagedWebPid(options, currentPid)) {
+      console.log(`NordRelay dashboard already running with PID ${currentPid}.`);
+      console.log(`NordRelay dashboard: ${formatDashboardUrl({ host, port })}`);
+      alreadyRunning = true;
+      return;
+    }
+    if (currentPid) {
+      await fsp.rm(options.webPidFile, { force: true });
+    }
+
+    await writeWebState(options, {
+      status: "starting",
+      pid: null,
+      host,
+      port,
+      url: formatDashboardUrl({ host, port }),
+    });
+    stdio = settings.detached
+      ? ["ignore", fs.openSync(options.webLogFile, "a"), fs.openSync(options.webLogFile, "a")]
+      : "inherit";
+    child = spawn(entry.command, [...entry.args, "--host", host, "--port", String(port), "--home", options.home], {
+      cwd: RUNTIME_ROOT,
+      env,
+      detached: Boolean(settings.detached),
+      stdio,
+    });
+    await writePidAtomic(options.webPidFile, child.pid);
+    await writeWebState(options, {
+      status: "running",
+      pid: child.pid,
+      host,
+      port,
+      url: formatDashboardUrl({ host, port }),
+    });
   });
-  const stdio = settings.detached
-    ? ["ignore", fs.openSync(options.webLogFile, "a"), fs.openSync(options.webLogFile, "a")]
-    : "inherit";
-  const child = spawn(entry.command, [...entry.args, "--host", host, "--port", String(port), "--home", options.home], {
-    cwd: RUNTIME_ROOT,
-    env,
-    detached: Boolean(settings.detached),
-    stdio,
-  });
-  await fsp.writeFile(options.webPidFile, `${child.pid}\n`);
-  await writeWebState(options, {
-    status: "running",
-    pid: child.pid,
-    host,
-    port,
-    url: formatDashboardUrl({ host, port }),
-  });
+
+  if (alreadyRunning || !child) {
+    return;
+  }
 
   if (settings.detached) {
     child.unref();

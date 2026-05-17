@@ -48,4 +48,32 @@ describe("nordrelay CLI script", () => {
     expect(source).toContain("fs.realpathSync.native(argvPath)");
     expect(source).toContain("if (isMainScript(process.argv[1]))");
   });
+
+  it("loads built user and peer runtimes from their dist subdirectories", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain('path.join(RUNTIME_ROOT, "dist", "access", "user-management.js")');
+    expect(source).toContain('path.join(RUNTIME_ROOT, "dist", "peers", file)');
+    expect(source).not.toContain('path.join(RUNTIME_ROOT, "dist", "user-management.js")');
+    expect(source).not.toContain('path.join(RUNTIME_ROOT, "dist", file)');
+  });
+
+  it("guards connector and web lifecycle pid files with locks and process identity checks", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain("async function withLifecycleLock");
+    expect(source).toContain("function pidFileLock");
+    expect(source).toContain("async function isManagedConnectorPid");
+    expect(source).toContain("async function isManagedWebPid");
+    expect(source).toContain("await withLifecycleLock(pidFileLock(options.pidFile)");
+    expect(source).toContain("await withLifecycleLock(pidFileLock(options.webPidFile)");
+    expect(source).toContain("await writePidAtomic(options.pidFile, child.pid)");
+    expect(source).toContain("await writePidAtomic(options.webPidFile, child.pid)");
+  });
+
+  it("prevents TypeScript emits after type errors", () => {
+    const tsconfig = JSON.parse(readFileSync("tsconfig.json", "utf8"));
+
+    expect(tsconfig.compilerOptions.noEmitOnError).toBe(true);
+  });
 });

@@ -979,7 +979,7 @@ function profile(patch: Record<string, unknown> = {}) {
       preferences,
     },
     telegramIdentities: [{ id: "telegram-identity-1", userId: "user-1", telegramUserId: 296626516, username: "nordbyte", active: true, linkedAt: now(), updatedAt: now() }],
-    discordIdentities: [{ id: "discord-identity-1", userId: "user-1", discordUserId: "112233445566778899", username: "admin", active: true, linkedAt: now(), updatedAt: now() }],
+    discordIdentities: [{ id: "discord-identity-1", userId: "user-1", discordUserId: "discord-user-mock", username: "admin", active: true, linkedAt: now(), updatedAt: now() }],
     slackIdentities: [{ id: "slack-identity-1", userId: "user-1", slackUserId: "U123", teamId: "T123", username: "admin", active: true, linkedAt: now(), updatedAt: now() }],
     webSessions: [
       { id: "web-current", userId: "user-1", createdAt: now(), expiresAt: "2099-05-14T10:20:00.000Z", lastSeenAt: now() },
@@ -1353,7 +1353,7 @@ function users() {
         ...auth.user,
         groups: auth.groups,
         telegramIdentities: [],
-        discordIdentities: [{ id: "discord-identity-1", userId: "user-1", discordUserId: "112233445566778899", username: "admin", createdAt: now(), updatedAt: now() }],
+        discordIdentities: [{ id: "discord-identity-1", userId: "user-1", discordUserId: "discord-user-mock", username: "admin", createdAt: now(), updatedAt: now() }],
         slackIdentities: [{ id: "slack-identity-1", userId: "user-1", slackUserId: "U123", teamId: "T123", username: "admin", active: true, createdAt: now(), updatedAt: now() }],
         webSessions: [],
       },
@@ -1363,8 +1363,8 @@ function users() {
     discordChannels: [
       {
         id: "discord-channel-1",
-        guildId: "987654321012345678",
-        channelId: "123456789012345678",
+        guildId: "discord-guild-mock",
+        channelId: "discord-channel-mock",
         title: "Engineering Ops",
         type: "guild",
         enabled: true,

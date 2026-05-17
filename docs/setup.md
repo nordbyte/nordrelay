@@ -109,7 +109,7 @@ User and chat access management:
 - `nordrelay user create-admin --email you@example.com --name "Your Name"` creates another admin.
 - `nordrelay user create --email dev@example.com --name "Dev" --group user` creates a normal user.
 - `nordrelay user link-telegram --email you@example.com --telegram-user-id 123456789` links a Telegram account directly.
-- `nordrelay user link-discord --email you@example.com --discord-user-id 123456789012345678` links a Discord account directly.
+- `nordrelay user link-discord --email you@example.com --discord-user-id <your-discord-user-id>` links a Discord account directly.
 - `nordrelay user link-slack --email you@example.com --slack-user-id U123 --slack-team-id T123` links a Slack account directly.
 - `nordrelay user link-code --email you@example.com` creates a short-lived Telegram code that the user sends as `/link <code>` to the Telegram bot.
 - `nordrelay user discord-link-code --email you@example.com` creates a short-lived Discord code that the user sends as `/link <code>` to the Discord bot.
