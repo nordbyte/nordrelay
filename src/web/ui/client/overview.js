@@ -107,6 +107,7 @@ async function loadActiveSessions(){
 }
 function renderActiveSessions(items){
   state.activeSessions={sessions:items||[],updatedAt:new Date().toISOString()};
+  renderChatWorkingIndicator();
   const box=document.getElementById('activeSessions');
   if(!box)return;
   box.innerHTML=(items||[]).map(activeSessionCard).join('')||'<div class="item">No active sessions.</div>';

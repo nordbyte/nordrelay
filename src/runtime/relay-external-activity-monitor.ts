@@ -43,6 +43,7 @@ export interface RelayExternalActivityMonitorOptions {
   appendActivity: (input: Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }) => WebActivityEvent;
   broadcast: (event: RelayEvent) => void;
   broadcastStatus: (message: string, level?: "info" | "warn" | "error") => void;
+  scheduleActiveSessionsBroadcast: () => void;
 }
 
 export class RelayExternalActivityMonitor {
@@ -155,6 +156,7 @@ export class RelayExternalActivityMonitor {
       if (mirrorMode !== "off") {
         this.options.broadcastStatus(mirror.latestStatus, "info");
       }
+      this.options.scheduleActiveSessionsBroadcast();
       return;
     }
 
@@ -212,6 +214,7 @@ export class RelayExternalActivityMonitor {
         );
         await this.broadcastChatHistory();
       }
+      this.options.scheduleActiveSessionsBroadcast();
       await this.options.drainQueue();
     }
     mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);

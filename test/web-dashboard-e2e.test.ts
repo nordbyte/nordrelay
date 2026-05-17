@@ -115,6 +115,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function renderActiveSessions");
     expect(js).toContain("/api/active-sessions");
     expect(js).toContain("active_sessions_update");
+    expect(js).toContain("function renderChatWorkingIndicator");
+    expect(js).toContain("Working...");
     expect(js).not.toContain("activeSessionsTimer=setInterval");
   });
 
@@ -246,6 +248,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(layout).toContain("line-height:1.4");
     expect(layout).toContain("button{appearance:none");
     expect(layout).toContain("display:inline-flex");
+    expect(layout).toContain(".control-grid{display:grid");
+    expect(layout).toContain("align-items:end");
     expect(layout).toContain("nav button{display:flex");
     expect(layout).toContain(".badge,.adapter-status{display:inline-flex");
     expect(components).toContain(".chip{display:inline-flex");

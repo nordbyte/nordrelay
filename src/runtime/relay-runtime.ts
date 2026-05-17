@@ -324,6 +324,7 @@ export class RelayRuntime {
       appendActivity: (input) => this.appendActivity(input),
       broadcast: (event) => this.broadcast(event),
       broadcastStatus: (message, level) => this.broadcastStatus(message, level),
+      scheduleActiveSessionsBroadcast: () => this.scheduleActiveSessionsBroadcast(),
     });
     this.dashboardService = new RelayDashboardService({
       config,
