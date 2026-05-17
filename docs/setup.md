@@ -315,7 +315,7 @@ The dashboard is a second NordRelay client next to Telegram. It can:
 - View filtered connector/update/agent-update logs, structured diagnostics, enabled channels, and agent adapters.
 - Inspect a per-agent capability matrix showing model, reasoning, launch, fast mode, attachments, activity, usage, auth, login/logout, and handback support.
 - Check NordRelay and agent CLI versions, then start Codex, Pi, Hermes, OpenClaw, or Claude Code updates from outdated rows or installs from not-installed rows with live output, cancel, delete-log, and stdin response controls.
-- Build minified dashboard CSS and client JavaScript from modular source assets through esbuild, then serve them as authenticated static assets instead of inline HTML.
+- Build minified and precompressed dashboard CSS and client JavaScript from modular source assets through esbuild, then serve them as authenticated static assets instead of inline HTML.
 - Pair, test, enable/disable, and revoke NordRelay peers, then switch the dashboard target between the local instance and paired remote instances.
 
 Dashboard API endpoints are served under `/api/*`. Streaming uses `GET /api/events`.

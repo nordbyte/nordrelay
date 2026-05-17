@@ -1,10 +1,15 @@
-import { createReadStream } from "node:fs";
+import { createReadStream, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { URL } from "node:url";
+import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:zlib";
 
 import type { AgentUpdateOperation } from "../agents/shared/agent-updates.js";
 
 const DEFAULT_JSON_BODY_LIMIT = 64 * 1024 * 1024;
+const TEXT_COMPRESSION_THRESHOLD_BYTES = 1024;
+const JSON_COMPRESSION_THRESHOLD_BYTES = 2048;
+const DYNAMIC_GZIP_LEVEL = 6;
+const DYNAMIC_BROTLI_QUALITY = 4;
 const BASE_SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
@@ -12,8 +17,31 @@ const BASE_SECURITY_HEADERS = {
   "permissions-policy": "camera=(), microphone=(), geolocation=()",
 };
 const JSON_HEADERS = { ...webSecurityHeaders(), "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
+const responseRequests = new WeakMap<ServerResponse, IncomingMessage>();
 
 export type WebLogTarget = "connector" | "update" | "agent-updates";
+
+export interface SendTextOptions {
+  cacheControl?: string;
+  cspNonce?: string;
+}
+
+export interface SendStaticFileOptions {
+  brotliPath?: string;
+  cacheControl?: string;
+  gzipPath?: string;
+}
+
+type ResponseEncoding = "br" | "gzip";
+
+interface EncodedBody {
+  body: Buffer;
+  encoding?: ResponseEncoding;
+}
+
+export function registerWebResponseRequest(req: IncomingMessage, res: ServerResponse): void {
+  responseRequests.set(res, req);
+}
 
 export function parseCookies(cookieHeader: string): Record<string, string> {
   const cookies: Record<string, string> = {};
@@ -51,13 +79,28 @@ export async function readJsonBody(req: IncomingMessage, maxBytes = DEFAULT_JSON
 }
 
 export function sendJson(res: ServerResponse, status: number, value: unknown): void {
-  res.writeHead(status, JSON_HEADERS);
-  res.end(`${JSON.stringify(value)}\n`);
+  sendBuffer(
+    res,
+    status,
+    Buffer.from(`${JSON.stringify(value)}\n`, "utf8"),
+    JSON_HEADERS,
+    { compressionThresholdBytes: JSON_COMPRESSION_THRESHOLD_BYTES },
+  );
 }
 
-export function sendText(res: ServerResponse, status: number, text: string, contentType: string, options: { cspNonce?: string } = {}): void {
-  res.writeHead(status, { ...webSecurityHeaders(options.cspNonce), "content-type": contentType, "cache-control": "no-store" });
-  res.end(text);
+export function sendText(res: ServerResponse, status: number, text: string, contentType: string, options: SendTextOptions = {}): void {
+  const body = isHtmlContentType(contentType) ? minifyHtml(text) : text;
+  sendBuffer(
+    res,
+    status,
+    Buffer.from(body, "utf8"),
+    {
+      ...webSecurityHeaders(options.cspNonce),
+      "content-type": contentType,
+      "cache-control": options.cacheControl ?? "no-store",
+    },
+    { compressionThresholdBytes: TEXT_COMPRESSION_THRESHOLD_BYTES },
+  );
 }
 
 export function sendFile(res: ServerResponse, filePath: string, filename: string): void {
@@ -69,13 +112,27 @@ export function sendFile(res: ServerResponse, filePath: string, filename: string
   createReadStream(filePath).pipe(res);
 }
 
-export function sendStaticFile(res: ServerResponse, filePath: string, contentType: string): void {
-  res.writeHead(200, {
+export function sendStaticFile(res: ServerResponse, filePath: string, contentType: string, options: SendStaticFileOptions = {}): void {
+  const req = responseRequests.get(res);
+  const selected = selectPrecompressedFile(req, {
+    br: options.brotliPath,
+    gzip: options.gzipPath,
+  });
+  const selectedPath = selected?.filePath ?? filePath;
+  const headers: Record<string, string | number> = {
     ...webSecurityHeaders(),
     "content-type": contentType,
-    "cache-control": "public, max-age=86400",
-  });
-  createReadStream(filePath).pipe(res);
+    "cache-control": options.cacheControl ?? "public, max-age=86400",
+    "content-length": statSync(selectedPath).size,
+  };
+  if (selected?.encoding) {
+    headers["content-encoding"] = selected.encoding;
+  }
+  if (options.brotliPath || options.gzipPath) {
+    headers.vary = "Accept-Encoding";
+  }
+  res.writeHead(200, headers);
+  createReadStream(selectedPath).pipe(res);
 }
 
 export function stringField(value: Record<string, unknown>, key: string): string {
@@ -205,4 +262,98 @@ export function webSecurityHeaders(cspNonce?: string): Record<string, string> {
     ...BASE_SECURITY_HEADERS,
     "content-security-policy": `default-src 'self'; script-src ${scriptSrc}; style-src ${styleSrc}; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
   };
+}
+
+function sendBuffer(
+  res: ServerResponse,
+  status: number,
+  body: Buffer,
+  headers: Record<string, string>,
+  options: { compressionThresholdBytes: number },
+): void {
+  const req = responseRequests.get(res);
+  const encoded = encodeBodyForRequest(req, body, options.compressionThresholdBytes);
+  const responseHeaders: Record<string, string | number> = {
+    ...headers,
+    "content-length": encoded.body.length,
+  };
+  if (req) {
+    responseHeaders.vary = "Accept-Encoding";
+  }
+  if (encoded.encoding) {
+    responseHeaders["content-encoding"] = encoded.encoding;
+  }
+  res.writeHead(status, responseHeaders);
+  res.end(encoded.body);
+}
+
+function encodeBodyForRequest(req: IncomingMessage | undefined, body: Buffer, thresholdBytes: number): EncodedBody {
+  if (!req || body.length < thresholdBytes) {
+    return { body };
+  }
+  const encoding = preferredResponseEncoding(req, { br: true, gzip: true });
+  if (encoding === "br") {
+    return {
+      body: brotliCompressSync(body, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: DYNAMIC_BROTLI_QUALITY } }),
+      encoding,
+    };
+  }
+  if (encoding === "gzip") {
+    return { body: gzipSync(body, { level: DYNAMIC_GZIP_LEVEL }), encoding };
+  }
+  return { body };
+}
+
+function selectPrecompressedFile(req: IncomingMessage | undefined, paths: { br?: string; gzip?: string }): { encoding: ResponseEncoding; filePath: string } | null {
+  const encoding = preferredResponseEncoding(req, { br: Boolean(paths.br), gzip: Boolean(paths.gzip) });
+  if (encoding === "br" && paths.br) {
+    return { encoding, filePath: paths.br };
+  }
+  if (encoding === "gzip" && paths.gzip) {
+    return { encoding, filePath: paths.gzip };
+  }
+  return null;
+}
+
+function preferredResponseEncoding(req: IncomingMessage | undefined, available: Record<ResponseEncoding, boolean>): ResponseEncoding | null {
+  if (!req) {
+    return null;
+  }
+  const brQ = available.br ? acceptedEncodingQ(req, "br") : 0;
+  const gzipQ = available.gzip ? acceptedEncodingQ(req, "gzip") : 0;
+  if (brQ <= 0 && gzipQ <= 0) {
+    return null;
+  }
+  return brQ >= gzipQ ? "br" : "gzip";
+}
+
+function acceptedEncodingQ(req: IncomingMessage, encoding: ResponseEncoding): number {
+  const header = req.headers["accept-encoding"];
+  const value = Array.isArray(header) ? header.join(",") : header ?? "";
+  let wildcardQ = 0;
+  for (const part of value.split(",")) {
+    const [rawName, ...rawParams] = part.trim().split(";").map((item) => item.trim());
+    if (!rawName) {
+      continue;
+    }
+    const q = rawParams.reduce((current, param) => {
+      const match = /^q=([0-9.]+)$/i.exec(param);
+      return match ? Number(match[1]) : current;
+    }, 1);
+    if (rawName.toLowerCase() === encoding) {
+      return Number.isFinite(q) ? q : 0;
+    }
+    if (rawName === "*") {
+      wildcardQ = Number.isFinite(q) ? q : 0;
+    }
+  }
+  return wildcardQ;
+}
+
+function isHtmlContentType(contentType: string): boolean {
+  return contentType.toLowerCase().startsWith("text/html");
+}
+
+export function minifyHtml(html: string): string {
+  return html.replace(/>\s+</g, "><").trim();
 }

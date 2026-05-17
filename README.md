@@ -152,8 +152,9 @@ npm test
 npm run test:e2e
 ```
 
-WebUI CSS and JavaScript are minified by default during `npm run build`. Set
-`NORDRELAY_WEBUI_MINIFY=false` for readable local asset builds while debugging.
+WebUI CSS and JavaScript are minified and precompressed by default during
+`npm run build`. Set `NORDRELAY_WEBUI_MINIFY=false` for readable local asset
+builds while debugging.
 
 Useful runtime scripts:
 

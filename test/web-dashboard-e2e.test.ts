@@ -3,7 +3,7 @@ import { Script } from "node:vm";
 
 import { describe, expect, it } from "vitest";
 
-import { dashboardCss, dashboardJs, dashboardStaticAsset } from "../src/web/web-dashboard-assets.js";
+import { dashboardBundleAsset, dashboardCss, dashboardJs, dashboardStaticAsset } from "../src/web/web-dashboard-assets.js";
 
 describe("web dashboard browser-flow assets", () => {
   it("includes the agent feature matrix and dedicated agent update log flow", () => {
@@ -359,12 +359,28 @@ describe("web dashboard browser-flow assets", () => {
     expect(dashboardCss()).toContain(".workflow-builder-json textarea{width:100%;min-width:0;margin-top:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px}");
     expect(buildSource).toContain('process.env.NORDRELAY_WEBUI_MINIFY !== "false"');
     expect(buildSource).toContain("minify: minifyAssets");
+    expect(buildSource).toContain("gzipSync(body, { level: 9 })");
+    expect(buildSource).toContain("brotliCompressSync(body");
+    expect(serverSource).toContain("dashboardBundleAsset");
+    expect(serverSource).toContain("private, max-age=31536000, immutable");
   });
 
   it("resolves WebUI logo and favicon assets from source files", () => {
     expect(dashboardStaticAsset("logo.png")?.contentType).toBe("image/png");
     expect(dashboardStaticAsset("favicon.png")?.contentType).toBe("image/png");
     expect(dashboardStaticAsset("favicon.ico")?.contentType).toBe("image/x-icon");
+  });
+
+  it("resolves precompressed dashboard bundles when built assets exist", () => {
+    const jsAsset = dashboardBundleAsset("dashboard.js");
+    const cssAsset = dashboardBundleAsset("dashboard.css");
+
+    if (jsAsset && cssAsset) {
+      expect(jsAsset.brotliPath).toContain("dashboard.js.br");
+      expect(jsAsset.gzipPath).toContain("dashboard.js.gz");
+      expect(cssAsset.brotliPath).toContain("dashboard.css.br");
+      expect(cssAsset.gzipPath).toContain("dashboard.css.gz");
+    }
   });
 
   it("guards dashboard stream and session data with scoped user access", () => {

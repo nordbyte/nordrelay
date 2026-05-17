@@ -20,7 +20,7 @@ import { UserStore, publicUser, type AuthenticatedUser } from "../access/user-ma
 import type { WebActivityActor } from "./web-state.js";
 import { handleDashboardAccessRoute } from "./web-dashboard-access-routes.js";
 import { handleDashboardArtifactRoute } from "./web-dashboard-artifact-routes.js";
-import { dashboardAssetVersion, dashboardCss, dashboardJs, dashboardStaticAsset } from "./web-dashboard-assets.js";
+import { dashboardAssetVersion, dashboardBundleAsset, dashboardCss, dashboardJs, dashboardStaticAsset } from "./web-dashboard-assets.js";
 import {
   objectRecord,
   optionalStringField,
@@ -30,6 +30,7 @@ import {
   sendText,
   sendStaticFile,
   isRequestBodyTooLargeError,
+  registerWebResponseRequest,
 } from "./web-dashboard-http.js";
 import { renderDashboardApp, renderFirstRunSetupPage, renderLoginPage } from "./web-dashboard-pages.js";
 import { handleDashboardRuntimeRoute } from "./web-dashboard-runtime-routes.js";
@@ -76,6 +77,7 @@ if (firstRunSetupToken) {
 class AccessDeniedError extends Error {}
 
 const server = createServer((req, res) => {
+  registerWebResponseRequest(req, res);
   const startedAt = Date.now();
   const pathName = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`).pathname;
   res.on("finish", () => {
@@ -192,12 +194,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   }
 
   if (url.pathname === "/assets/dashboard.css") {
-    sendText(res, 200, dashboardCss(), "text/css; charset=utf-8");
+    sendDashboardBundle(res, "dashboard.css", dashboardCss);
     return;
   }
 
   if (url.pathname === "/assets/dashboard.js") {
-    sendText(res, 200, dashboardJs(), "application/javascript; charset=utf-8");
+    sendDashboardBundle(res, "dashboard.js", dashboardJs);
     return;
   }
 
@@ -232,6 +234,21 @@ function servePublicDashboardAsset(pathname: string, res: ServerResponse): boole
   }
   sendStaticFile(res, asset.filePath, asset.contentType);
   return true;
+}
+
+function sendDashboardBundle(res: ServerResponse, assetName: "dashboard.css" | "dashboard.js", fallback: () => string): void {
+  const asset = dashboardBundleAsset(assetName);
+  const cacheControl = "private, max-age=31536000, immutable";
+  if (asset) {
+    sendStaticFile(res, asset.filePath, asset.contentType, {
+      brotliPath: asset.brotliPath,
+      cacheControl,
+      gzipPath: asset.gzipPath,
+    });
+    return;
+  }
+  const contentType = assetName === "dashboard.css" ? "text/css; charset=utf-8" : "application/javascript; charset=utf-8";
+  sendText(res, 200, fallback(), contentType, { cacheControl });
 }
 
 async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, authUser: AuthenticatedUser): Promise<void> {

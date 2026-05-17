@@ -2,6 +2,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:zlib";
 
 import { transformSync } from "esbuild";
 
@@ -68,8 +69,11 @@ for (const asset of assets) {
 
   if (!checkOnly) {
     const outDir = path.join(root, "dist", "webui-assets");
+    const outPath = path.join(outDir, asset.name);
     mkdirSync(outDir, { recursive: true });
-    writeFileSync(path.join(outDir, asset.name), body, "utf8");
+    writeFileSync(outPath, body, "utf8");
+    writeFileSync(`${outPath}.gz`, gzipSync(body, { level: 9 }));
+    writeFileSync(`${outPath}.br`, brotliCompressSync(body, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 11 } }));
   }
 }
 

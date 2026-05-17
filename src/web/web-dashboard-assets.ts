@@ -50,6 +50,8 @@ export function dashboardAssetVersion(): string {
 export interface DashboardStaticAsset {
   filePath: string;
   contentType: string;
+  brotliPath?: string;
+  gzipPath?: string;
 }
 
 const staticAssetTypes: Record<string, string> = {
@@ -65,6 +67,12 @@ export function dashboardStaticAsset(assetName: string): DashboardStaticAsset | 
   }
   const filePath = dashboardStaticAssetPath(assetName);
   return filePath ? { filePath, contentType } : null;
+}
+
+export function dashboardBundleAsset(assetName: "dashboard.css" | "dashboard.js"): DashboardStaticAsset | null {
+  const contentType = assetName === "dashboard.css" ? "text/css; charset=utf-8" : "application/javascript; charset=utf-8";
+  const builtAsset = path.resolve(moduleDir, "..", "webui-assets", assetName);
+  return existsSync(builtAsset) ? { filePath: builtAsset, contentType, ...compressedAssetPaths(builtAsset) } : null;
 }
 
 function readDashboardAsset(assetName: string, sourceFiles: string[]): string {
@@ -87,4 +95,11 @@ function dashboardStaticAssetPath(assetName: string): string | null {
 
   const sourceAsset = path.join(moduleDir, "ui", "assets", assetName);
   return existsSync(sourceAsset) ? sourceAsset : null;
+}
+
+function compressedAssetPaths(filePath: string): Pick<DashboardStaticAsset, "brotliPath" | "gzipPath"> {
+  return {
+    brotliPath: existsSync(`${filePath}.br`) ? `${filePath}.br` : undefined,
+    gzipPath: existsSync(`${filePath}.gz`) ? `${filePath}.gz` : undefined,
+  };
 }
