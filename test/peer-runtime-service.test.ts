@@ -168,6 +168,50 @@ describe("PeerRuntimeService", () => {
       payload: { method: "GET", path: "/api/workflows" },
     })).resolves.toMatchObject({ workflows: [{ id: "allowed-workflow" }] });
   });
+
+  it("scopes proxied queue planner data by peer agent and workspace limits", async () => {
+    const now = "2026-05-16T10:00:00.000Z";
+    const service = new PeerRuntimeService(config(), runtime({
+      queuePlanner: () => ({
+        plans: [
+          { id: "allowed-plan", title: "Allowed", prompt: "A", status: "draft", effectiveStatus: "draft", labels: [], priority: 0, agentId: "codex", workspace: "/allowed/app", createdAt: now, updatedAt: now, traceEvents: 0 },
+          { id: "denied-plan", title: "Denied", prompt: "B", status: "draft", effectiveStatus: "draft", labels: [], priority: 0, agentId: "pi", workspace: "/other/app", createdAt: now, updatedAt: now, traceEvents: 0 },
+        ],
+        columns: {
+          draft: [],
+          review: [],
+          approved: [],
+          queued: [],
+          in_progress: [],
+          done: [],
+          failed: [],
+          aborted: [],
+          archived: [],
+        },
+        queue: [],
+        paused: false,
+        inProgress: [
+          { id: "allowed-task", title: "Allowed", status: "running", agentId: "codex", workspace: "/allowed/app" },
+          { id: "denied-task", title: "Denied", status: "running", agentId: "pi", workspace: "/other/app" },
+        ],
+        updatedAt: now,
+      }),
+    }));
+
+    await expect(service.handle(peer({
+      scopes: ["queue.plan.read"],
+      allowedAgents: ["codex"],
+      allowedWorkspaceRoots: ["/allowed"],
+    }), {
+      protocolVersion: 1,
+      type: "web.proxy",
+      payload: { method: "GET", path: "/api/queue/plans" },
+    })).resolves.toMatchObject({
+      plans: [{ id: "allowed-plan" }],
+      columns: { draft: [{ id: "allowed-plan" }] },
+      inProgress: [{ id: "allowed-task" }],
+    });
+  });
 });
 
 function peer(patch: Partial<PeerRecord> = {}): PeerRecord {

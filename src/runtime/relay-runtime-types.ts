@@ -21,6 +21,7 @@ import type {
   WebChatMessage,
 } from "../web/web-state.js";
 import type { PromptTemplate, Workflow, WorkflowRun } from "../state/workflow-store.js";
+import type { QueuePlan, QueuePlanStatus } from "../state/queue-plan-store.js";
 
 export type RelayEvent =
   | { type: "snapshot"; data: RelaySnapshot }
@@ -95,6 +96,21 @@ export interface QueueItemDto {
   correlationId?: string;
   notBefore?: string;
   lastError?: string;
+}
+
+export interface QueuePlanDto extends QueuePlan {
+  effectiveStatus: QueuePlanStatus;
+  queuePosition?: number;
+  traceEvents: number;
+}
+
+export interface QueuePlannerSnapshotDto {
+  plans: QueuePlanDto[];
+  columns: Record<QueuePlanStatus, QueuePlanDto[]>;
+  queue: QueueItemDto[];
+  paused: boolean;
+  inProgress: WebTaskDto[];
+  updatedAt: string;
 }
 
 export interface ArtifactReportDto {

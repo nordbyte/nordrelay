@@ -17,6 +17,7 @@ const clientSources = [
   "client/jobs.js",
   "client/metrics.js",
   "client/admin.js",
+  "client/queue-planner.js",
   "client/workflows-page.js",
   "client/users.js",
   "client/settings-wizard.js",

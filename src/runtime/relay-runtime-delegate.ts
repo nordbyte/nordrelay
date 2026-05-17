@@ -20,6 +20,8 @@ import type { PromptEnvelope } from "../state/prompt-store.js";
 import type { PromptStore } from "../state/prompt-store.js";
 import type { RelayWorkflowService } from "./relay-workflow-service.js";
 import type { WorkflowStore } from "../state/workflow-store.js";
+import type { QueuePlanStatus, QueuePlanStore } from "../state/queue-plan-store.js";
+import type { QueuePlanInput } from "./relay-runtime-queue-planner.js";
 import type { ContextMetadata, SessionRegistry } from "../state/session-registry.js";
 import type { FormattedLogTail, SelfUpdateResult } from "../support/operations.js";
 import type { SupportBundleResult } from "../support/support-bundle.js";
@@ -48,6 +50,8 @@ import type {
   CursorPageDto,
   DashboardControlOptions,
   QueueItemDto,
+  QueuePlanDto,
+  QueuePlannerSnapshotDto,
   RelayEvent,
   RelaySnapshot,
   SessionPageDto,
@@ -95,6 +99,7 @@ export interface RelayRuntimeDelegate {
   readonly queueService: RelayQueueService;
   readonly jobStore: UnifiedJobStore;
   readonly workflowStore: WorkflowStore;
+  readonly queuePlanStore: QueuePlanStore;
   readonly workflowService: RelayWorkflowService;
   readonly artifactService: RelayArtifactService;
   readonly mirrorRegistry: ChannelMirrorRegistry;
@@ -186,6 +191,13 @@ export interface RelayRuntimeDelegate {
   queue(): QueueItemDto[];
   queuePaused(): boolean;
   queueAction(action: RelayQueueAction, id?: string, actor?: WebActivityActor): QueueItemDto[];
+  queuePlanner(): QueuePlannerSnapshotDto;
+  createQueuePlan(input: QueuePlanInput, actor?: WebActivityActor): Promise<QueuePlanDto>;
+  updateQueuePlan(id: string, input: Partial<QueuePlanInput>, actor?: WebActivityActor): QueuePlanDto;
+  moveQueuePlan(id: string, status: QueuePlanStatus, actor?: WebActivityActor): Promise<QueuePlanDto>;
+  approveQueuePlan(id: string, actor?: WebActivityActor): QueuePlanDto;
+  enqueueQueuePlan(id: string, actor?: WebActivityActor): Promise<QueuePlanDto>;
+  deleteQueuePlan(id: string, actor?: WebActivityActor): { removed: boolean; snapshot: QueuePlannerSnapshotDto };
   artifacts(limit?: number): Promise<ArtifactReportDto[]>;
   artifact(turnId: string): Promise<ArtifactTurnReport | null>;
   deleteArtifact(turnId: string, actor?: WebActivityActor): Promise<boolean>;

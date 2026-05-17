@@ -13,7 +13,9 @@ import { getPackageVersion } from "../support/operations.js";
 import { checkPeerEndpoint } from "./peer-client.js";
 import type { PeerRecord, PeerRpcRequest, PeerWebProxyPayload } from "./peer-types.js";
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
-import type { ActiveSessionsDto, RelayEvent, RelaySnapshot, SessionPageDto, UnifiedJobDto, UnifiedJobsDto, WebDiagnosticsDto, WebTasksDto } from "../runtime/relay-runtime-types.js";
+import type { ActiveSessionsDto, QueuePlanDto, QueuePlannerSnapshotDto, RelayEvent, RelaySnapshot, SessionPageDto, UnifiedJobDto, UnifiedJobsDto, WebDiagnosticsDto, WebTasksDto } from "../runtime/relay-runtime-types.js";
+import type { QueuePlanInput } from "../runtime/relay-runtime-queue-planner.js";
+import { QUEUE_PLAN_STATUSES, type QueuePlanStatus } from "../state/queue-plan-store.js";
 import type { PromptTemplate, Workflow, WorkflowRun, WorkflowStep } from "../state/workflow-store.js";
 import type { WebActivityActor } from "../web/web-state.js";
 
@@ -351,6 +353,43 @@ export class PeerRuntimeService {
       await this.assertCurrentSessionScope(peer, runtime);
       return { queue: runtime.queueAction(requiredString(body.action, "action") as never, stringValue(body.id) || undefined, remoteActor), paused: runtime.queuePaused() };
     }
+    if (method === "GET" && path === "/api/queue/plans") {
+      return await this.scopedQueuePlanner(peer, runtime);
+    }
+    if (method === "POST" && path === "/api/queue/plans") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      const input = parseQueuePlanInput(body);
+      this.assertQueuePlanInputScope(peer, input);
+      const plan = await runtime.createQueuePlan(input, remoteActor);
+      this.assertQueuePlanScope(peer, plan);
+      return { plan, snapshot: await this.scopedQueuePlanner(peer, runtime) };
+    }
+    const queuePlanMatch = path.match(/^\/api\/queue\/plans\/([^/]+)(?:\/(move|approve|enqueue))?$/);
+    if (queuePlanMatch?.[1]) {
+      const id = decodeURIComponent(queuePlanMatch[1]);
+      const action = queuePlanMatch[2];
+      this.assertQueuePlanIdScope(peer, runtime, id);
+      if (method === "PATCH" && !action) {
+        const input = parseQueuePlanPatchInput(body);
+        this.assertQueuePlanInputScope(peer, input);
+        return { plan: runtime.updateQueuePlan(id, input, remoteActor), snapshot: await this.scopedQueuePlanner(peer, runtime) };
+      }
+      if (method === "DELETE" && !action) {
+        const result = runtime.deleteQueuePlan(id, remoteActor);
+        return { ...result, snapshot: await this.scopedQueuePlanner(peer, runtime) };
+      }
+      if (method === "POST" && action === "move") {
+        const plan = await runtime.moveQueuePlan(id, parseQueuePlanStatus(requiredString(body.status, "status")), remoteActor);
+        return { plan, snapshot: await this.scopedQueuePlanner(peer, runtime) };
+      }
+      if (method === "POST" && action === "approve") {
+        return { plan: runtime.approveQueuePlan(id, remoteActor), snapshot: await this.scopedQueuePlanner(peer, runtime) };
+      }
+      if (method === "POST" && action === "enqueue") {
+        const plan = await runtime.enqueueQueuePlan(id, remoteActor);
+        return { plan, snapshot: await this.scopedQueuePlanner(peer, runtime) };
+      }
+    }
     if (method === "GET" && path === "/api/chat/history") {
       await this.assertCurrentSessionScope(peer, runtime);
       return { messages: await runtime.chatHistory(numberValue(query.limit, 200)) };
@@ -558,6 +597,22 @@ export class PeerRuntimeService {
     };
   }
 
+  private async scopedQueuePlanner(peer: PeerRecord, runtime: RelayRuntime): Promise<QueuePlannerSnapshotDto> {
+    const snapshot = runtime.queuePlanner();
+    const plans = snapshot.plans.filter((plan) => this.canUseQueuePlan(peer, plan));
+    const columns = Object.fromEntries(QUEUE_PLAN_STATUSES.map((status) => [
+      status,
+      plans.filter((plan) => plan.effectiveStatus === status),
+    ])) as QueuePlannerSnapshotDto["columns"];
+    return {
+      ...snapshot,
+      plans,
+      columns,
+      queue: await this.currentSessionAllowed(peer, runtime) ? snapshot.queue : [],
+      inProgress: snapshot.inProgress.filter((task) => this.canUseSession(peer, task)),
+    };
+  }
+
   private scopedJobs(peer: PeerRecord, jobs: UnifiedJobsDto): UnifiedJobsDto {
     return {
       ...jobs,
@@ -619,6 +674,28 @@ export class PeerRuntimeService {
       return !template || this.canUseTemplate(peer, template);
     }
     return true;
+  }
+
+  private assertQueuePlanIdScope(peer: PeerRecord, runtime: RelayRuntime, id: string): void {
+    const plan = runtime.queuePlanStore.get(id);
+    if (plan && !this.canUseQueuePlan(peer, plan)) {
+      throw new Error("Peer is not allowed to use this queue plan.");
+    }
+  }
+
+  private assertQueuePlanScope(peer: PeerRecord, plan: QueuePlanDto): void {
+    if (!this.canUseQueuePlan(peer, plan)) {
+      throw new Error("Peer is not allowed to use this queue plan.");
+    }
+  }
+
+  private canUseQueuePlan(peer: PeerRecord, plan: { agentId?: string; workspace?: string; threadId?: string | null }): boolean {
+    return this.canUseSession(peer, { agentId: plan.agentId, workspace: plan.workspace });
+  }
+
+  private assertQueuePlanInputScope(peer: PeerRecord, input: Partial<QueuePlanInput>): void {
+    if (input.agentId) this.assertAgentScope(peer, input.agentId);
+    this.assertWorkspaceScope(peer, input.workspace);
   }
 
   private assertWorkflowRunScope(peer: PeerRecord, runtime: RelayRuntime, id: string): void {
@@ -764,6 +841,12 @@ function numberValue(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
+function optionalNumberValue(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const parsed = typeof value === "number" ? value : Number(stringValue(value));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function parseUploadFile(value: unknown, index: number): { name: string; mimeType?: string; data: Buffer } {
   const record = objectRecord(value);
   const dataBase64 = requiredString(record.dataBase64, `files[${index}].dataBase64`);
@@ -863,6 +946,41 @@ function parseWorkflowStepInput(value: unknown): WorkflowStep {
     requiresApproval: Boolean(record.requiresApproval),
     continueOnError: Boolean(record.continueOnError),
   };
+}
+
+function parseQueuePlanInput(body: Record<string, unknown>): QueuePlanInput {
+  return {
+    title: stringValue(body.title) || undefined,
+    prompt: requiredString(body.prompt, "prompt"),
+    status: body.status === undefined ? undefined : parseQueuePlanStatus(requiredString(body.status, "status")),
+    labels: stringList(body.labels),
+    priority: optionalNumberValue(body.priority),
+    agentId: parseAgentId(body.agentId),
+    workspace: stringValue(body.workspace) || undefined,
+    threadId: stringValue(body.threadId) || undefined,
+  };
+}
+
+function parseQueuePlanPatchInput(body: Record<string, unknown>): Partial<QueuePlanInput> {
+  const prompt = body.prompt === undefined ? undefined : stringValue(body.prompt);
+  if (prompt !== undefined && !prompt) throw new Error("prompt is required.");
+  return Object.fromEntries(Object.entries({
+    title: body.title === undefined ? undefined : stringValue(body.title),
+    prompt,
+    status: body.status === undefined ? undefined : parseQueuePlanStatus(requiredString(body.status, "status")),
+    labels: body.labels === undefined ? undefined : stringList(body.labels),
+    priority: body.priority === undefined ? undefined : optionalNumberValue(body.priority),
+    agentId: body.agentId === undefined ? undefined : parseAgentId(body.agentId),
+    workspace: body.workspace === undefined ? undefined : stringValue(body.workspace),
+    threadId: body.threadId === undefined ? undefined : stringValue(body.threadId),
+  }).filter(([, value]) => value !== undefined)) as Partial<QueuePlanInput>;
+}
+
+function parseQueuePlanStatus(value: string): QueuePlanStatus {
+  if (!QUEUE_PLAN_STATUSES.includes(value as QueuePlanStatus)) {
+    throw new Error("Unsupported queue plan status.");
+  }
+  return value as QueuePlanStatus;
 }
 
 function variableRecord(value: unknown): Record<string, string> {

@@ -285,8 +285,32 @@ ${faviconLinks}
 
       <section class="page" id="page-queue">
         <div class="panel">
-          <div class="row"><button data-queue="pause">Pause</button><button data-queue="resume">Resume</button><button data-queue="clear" class="danger">Clear</button><span id="queueStatus"></span></div>
-          <div id="queueList" class="list"></div>
+          <div class="section-header">
+            <div id="queueTabs" class="section-tabs queue-tabs" role="tablist" aria-label="Queue sections">
+              <button type="button" role="tab" aria-selected="true" tabindex="0" data-queue-tab="queue" class="active">Queue</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-queue-tab="planner">Planner</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-queue-tab="progress">In Progress</button>
+            </div>
+          </div>
+          <div class="queue-tab active" data-queue-tab-panel="queue">
+            <div class="queue-tab-heading">
+              <div class="row"><button data-queue="pause">Pause</button><button data-queue="resume">Resume</button><button data-queue="clear" class="danger">Clear</button><span id="queueStatus"></span></div>
+            </div>
+            <div id="queueList" class="list"></div>
+          </div>
+          <div class="queue-tab" data-queue-tab-panel="planner">
+            <div class="queue-tab-heading">
+              <div class="row"><button id="createQueuePlanBtn">Create planned prompt</button><button id="reloadQueuePlansBtn" class="secondary">Reload</button></div>
+              <div class="row queue-filter-row"><input id="queuePlanSearch" placeholder="Search planned prompts"></div>
+            </div>
+            <div id="queuePlannerBoard" class="queue-kanban"></div>
+          </div>
+          <div class="queue-tab" data-queue-tab-panel="progress">
+            <div class="queue-tab-heading">
+              <div class="row"><button id="reloadQueueProgressBtn" class="secondary">Reload</button></div>
+            </div>
+            <div id="queueProgressBoard" class="queue-kanban queue-progress-board"></div>
+          </div>
         </div>
       </section>
 

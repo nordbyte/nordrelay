@@ -70,6 +70,26 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function appendQueuedMessage(id,correlationId)");
   });
 
+  it("includes queue planner kanban tabs on the Queue page", () => {
+    const js = dashboardJs();
+    const css = dashboardCss();
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
+
+    expect(pageSource).toContain('data-queue-tab="planner"');
+    expect(pageSource).toContain('id="queuePlannerBoard"');
+    expect(pageSource).toContain('id="queueProgressBoard"');
+    expect(js).toContain("function loadQueue");
+    expect(js).toContain("function renderQueueKanban");
+    expect(js).toContain("/api/queue/plans");
+    expect(js).toContain("data-plan-enqueue");
+    expect(css).toContain(".queue-kanban");
+    expect(css).toContain(".queue-tab-heading");
+    expect(contract).toContain('exact("/api/queue/plans"');
+    expect(contract).toContain('dynamic("/api/queue/plans/:id/enqueue"');
+    expect(readFileSync("scripts/build-web-assets.mjs", "utf8")).toContain("src/web/ui/client/queue-planner.js");
+  });
+
   it("renders Discord setting help icons from setting metadata", () => {
     const js = dashboardJs();
     const css = dashboardCss();

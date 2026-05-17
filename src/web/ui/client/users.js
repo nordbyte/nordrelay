@@ -1,7 +1,7 @@
 const ACCESS_USER_PAGE_SIZE=20;
 const ACCESS_PERMISSION_GROUPS=[
   ['Overview',['inspect']],
-  ['Sessions',['sessions.read','sessions.write','prompt.send','prompt.abort','queue.read','queue.write']],
+  ['Sessions',['sessions.read','sessions.write','prompt.send','prompt.abort','queue.read','queue.write','queue.plan.read','queue.plan.write','queue.plan.approve']],
   ['Files',['files.read','files.write']],
   ['Operations',['settings.read','settings.write','auth.manage','diagnostics.read','logs.read','logs.clear','updates.run','system.restart']],
   ['Users and audit',['users.read','users.write','audit.read']],

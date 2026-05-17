@@ -43,7 +43,7 @@ function connectEvents(){
   events.addEventListener('active_sessions_update', e=>{const d=JSON.parse(e.data);state.activeSessions=d.active||null;if(state.currentPage==='overview')renderActiveSessions(state.activeSessions?.sessions||[]);else renderChatWorkingIndicator()});
   events.addEventListener('session_update', e=>{loadBootstrap();loadChatHistory()});
   events.addEventListener('agent_update', e=>{const d=JSON.parse(e.data);upsertAgentUpdateJob(d.job);if(state.currentPage==='version'){renderAgentUpdateJobs();if(d.job&&d.job.status!=='running')setTimeout(loadVersion,800)}});
-  events.addEventListener('queue_update', e=>{const d=JSON.parse(e.data);renderQueue(d.queue,d.paused)});
+  events.addEventListener('queue_update', e=>{const d=JSON.parse(e.data);renderQueue(d.queue,d.paused);if(state.currentPage==='queue')void loadQueuePlanner().catch(()=>{})});
   events.addEventListener('turn_start', e=>{const d=JSON.parse(e.data);appendMessage('user',d.prompt);currentAgentMessage=appendMessage('agent','');if(state.currentPage==='tasks')loadTasks()});
   events.addEventListener('text_delta', e=>{const d=JSON.parse(e.data);const stick=isChatNearBottom();if(!currentAgentMessage)currentAgentMessage=appendMessage('agent','');setMessageText(currentAgentMessage,(currentAgentMessage.__rawText||'')+d.delta);if(stick)scrollChatToBottom({force:true});if(state.currentPage==='tasks')loadTasks()});
   events.addEventListener('tool_start', e=>{const d=JSON.parse(e.data);tool('tool','Started '+d.toolName);if(state.currentPage==='tasks')loadTasks()});

@@ -16,6 +16,9 @@ export type Permission =
   | "logs.clear"
   | "queue.read"
   | "queue.write"
+  | "queue.plan.read"
+  | "queue.plan.write"
+  | "queue.plan.approve"
   | "workflows.read"
   | "workflows.write"
   | "workflows.run"
@@ -44,6 +47,9 @@ export const ALL_PERMISSIONS: Permission[] = [
   "logs.clear",
   "queue.read",
   "queue.write",
+  "queue.plan.read",
+  "queue.plan.write",
+  "queue.plan.approve",
   "workflows.read",
   "workflows.write",
   "workflows.run",
@@ -93,6 +99,8 @@ export const BUILTIN_GROUPS: GroupDefinition[] = [
       "auth.manage",
       "queue.read",
       "queue.write",
+      "queue.plan.read",
+      "queue.plan.write",
       "workflows.read",
       "workflows.run",
     ],
@@ -107,6 +115,7 @@ export const BUILTIN_GROUPS: GroupDefinition[] = [
       "sessions.read",
       "files.read",
       "settings.read",
+      "queue.plan.read",
       "workflows.read",
     ],
     system: true,

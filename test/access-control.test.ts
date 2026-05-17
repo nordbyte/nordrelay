@@ -57,6 +57,10 @@ describe("access-control", () => {
     expect(permissionForWebRequest("POST", "/api/prompt")).toBe("prompt.send");
     expect(permissionForWebRequest("GET", "/api/queue")).toBe("queue.read");
     expect(permissionForWebRequest("POST", "/api/queue")).toBe("queue.write");
+    expect(permissionForWebRequest("GET", "/api/queue/plans")).toBe("queue.plan.read");
+    expect(permissionForWebRequest("POST", "/api/queue/plans")).toBe("queue.plan.write");
+    expect(permissionForWebRequest("POST", "/api/queue/plans/plan-1/approve")).toBe("queue.plan.approve");
+    expect(permissionForWebRequest("POST", "/api/queue/plans/plan-1/enqueue")).toBe("queue.plan.approve");
     expect(permissionForWebRequest("GET", "/api/jobs")).toBe("inspect");
     expect(permissionForWebRequest("GET", "/api/trace")).toBe("sessions.read");
     expect(permissionForWebRequest("GET", "/api/metrics")).toBe("inspect");
@@ -100,6 +104,8 @@ describe("access-control", () => {
     expect(admin?.permissions).toEqual(ALL_PERMISSIONS);
     expect(user?.permissions).toContain("prompt.send");
     expect(user?.permissions).toContain("queue.write");
+    expect(user?.permissions).toContain("queue.plan.write");
+    expect(user?.permissions).not.toContain("queue.plan.approve");
     expect(user?.permissions).not.toContain("users.write");
     expect(readonly?.permissions).toContain("sessions.read");
     expect(readonly?.permissions).not.toContain("prompt.send");

@@ -38,6 +38,7 @@ import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLo
 import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "../state/prompt-store.js";
 import { UnifiedJobStore } from "../state/job-store.js";
 import { WorkflowStore } from "../state/workflow-store.js";
+import { QueuePlanStore, type QueuePlanStatus } from "../state/queue-plan-store.js";
 import { RelayWorkflowService } from "./relay-workflow-service.js";
 import { buildRuntimeMetrics, type RuntimeMetricsDto } from "./metrics.js";
 import { RelayArtifactService } from "./relay-artifact-service.js";
@@ -98,6 +99,8 @@ import type {
   WebPermissionsDto,
   WorkflowPreviewDto,
   WorkflowRunResultDto,
+  QueuePlanDto,
+  QueuePlannerSnapshotDto,
   WebTaskDto,
   WebTasksDto,
 } from "./relay-runtime-types.js";
@@ -127,6 +130,8 @@ export type {
   WebPermissionsDto,
   WorkflowPreviewDto,
   WorkflowRunResultDto,
+  QueuePlanDto,
+  QueuePlannerSnapshotDto,
   WebTaskDto,
   WebTasksDto,
 } from "./relay-runtime-types.js";
@@ -239,6 +244,16 @@ import {
   relayRuntimeDrainQueue,
   relayRuntimeUpdateSession
 } from "./relay-runtime-prompt-queue-artifacts.js";
+import {
+  relayRuntimeApproveQueuePlan,
+  relayRuntimeCreateQueuePlan,
+  relayRuntimeDeleteQueuePlan,
+  relayRuntimeEnqueueQueuePlan,
+  relayRuntimeMoveQueuePlan,
+  relayRuntimeQueuePlannerSnapshot,
+  relayRuntimeUpdateQueuePlan,
+  type QueuePlanInput
+} from "./relay-runtime-queue-planner.js";
 
 export const WEB_CONTEXT_KEY = "web:dashboard";
 const ACTIVE_CODEX_DISCOVERY_LIMIT = 200;
@@ -265,6 +280,7 @@ export class RelayRuntime {
   readonly queueService: RelayQueueService;
   readonly jobStore: UnifiedJobStore;
   readonly workflowStore: WorkflowStore;
+  readonly queuePlanStore: QueuePlanStore;
   readonly workflowService: RelayWorkflowService;
   readonly artifactService: RelayArtifactService;
   readonly mirrorRegistry: ChannelMirrorRegistry;
@@ -300,6 +316,7 @@ export class RelayRuntime {
     this.queueService = new RelayQueueService(this.promptStore, this.contextKey);
     this.jobStore = new UnifiedJobStore(config.workspace, config.stateBackend, config.unifiedJobMaxItems);
     this.workflowStore = new WorkflowStore(config.workspace, config.stateBackend);
+    this.queuePlanStore = new QueuePlanStore(config.workspace, config.stateBackend);
     this.artifactService = new RelayArtifactService(config);
     this.authService = new RelayAuthService(config);
     this.mirrorRegistry = new ChannelMirrorRegistry(config, this.promptStore);
@@ -660,6 +677,14 @@ export class RelayRuntime {
   queueAction(action: RelayQueueAction, id?: string, actor?: WebActivityActor): QueueItemDto[] {
     return relayRuntimeQueueAction(this, action, id, actor);
   }
+
+  queuePlanner(): QueuePlannerSnapshotDto { return relayRuntimeQueuePlannerSnapshot(this); }
+  async createQueuePlan(input: QueuePlanInput, actor?: WebActivityActor): Promise<QueuePlanDto> { return relayRuntimeCreateQueuePlan(this, input, actor); }
+  updateQueuePlan(id: string, input: Partial<QueuePlanInput>, actor?: WebActivityActor): QueuePlanDto { return relayRuntimeUpdateQueuePlan(this, id, input, actor); }
+  async moveQueuePlan(id: string, status: QueuePlanStatus, actor?: WebActivityActor): Promise<QueuePlanDto> { return relayRuntimeMoveQueuePlan(this, id, status, actor); }
+  approveQueuePlan(id: string, actor?: WebActivityActor): QueuePlanDto { return relayRuntimeApproveQueuePlan(this, id, actor); }
+  async enqueueQueuePlan(id: string, actor?: WebActivityActor): Promise<QueuePlanDto> { return relayRuntimeEnqueueQueuePlan(this, id, actor); }
+  deleteQueuePlan(id: string, actor?: WebActivityActor): { removed: boolean; snapshot: QueuePlannerSnapshotDto } { return relayRuntimeDeleteQueuePlan(this, id, actor); }
 
   async artifacts(limit = 20): Promise<ArtifactReportDto[]> {
     return relayRuntimeArtifacts(this, limit);

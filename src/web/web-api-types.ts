@@ -15,6 +15,8 @@ import type {
   CursorPageDto,
   DashboardControlOptions,
   QueueItemDto,
+  QueuePlanDto,
+  QueuePlannerSnapshotDto,
   RelaySnapshot,
   SessionPageDto,
   TraceDetailDto,
@@ -28,6 +30,7 @@ import type {
   WebTasksDto,
 } from "../runtime/relay-runtime.js";
 import type { PromptTemplate, Workflow, WorkflowRun, WorkflowStep } from "../state/workflow-store.js";
+import type { QueuePlanStatus } from "../state/queue-plan-store.js";
 import type { SessionLock } from "../access/session-locks.js";
 import type { SettingsSnapshot, SettingsUpdateResult } from "../core/settings-service.js";
 import type {
@@ -154,6 +157,9 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/session/fast" ? { enabled: boolean } :
   P extends "/api/session/launch" ? { profileId: string; apply?: boolean } :
   P extends "/api/queue" ? { action: string; id?: string } :
+  P extends "/api/queue/plans" ? { title?: string; prompt: string; status?: QueuePlanStatus; labels?: string[]; priority?: number; agentId?: AgentId; workspace?: string; threadId?: string } :
+  P extends `/api/queue/plans/${string}/move` ? { status: QueuePlanStatus } :
+  P extends `/api/queue/plans/${string}` ? { title?: string; prompt?: string; status?: QueuePlanStatus; labels?: string[]; priority?: number; agentId?: AgentId; workspace?: string; threadId?: string } :
   P extends "/api/artifacts/bulk" ? { action: "delete"; turnIds: string[] } :
   P extends "/api/peers/discovery-jobs" ? { targets?: string[]; timeoutMs?: number; concurrency?: number; maxHosts?: number } :
   P extends "/api/peers/identity/restore" ? { backup: PeerIdentityBackup } :
@@ -245,6 +251,9 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/handback" ? { command?: string } :
   P extends "/api/sync" ? { changed?: boolean; changedFields?: string[] } :
   P extends "/api/queue" ? { queue: QueueItemDto[]; paused: boolean } :
+  P extends "/api/queue/plans" ? QueuePlannerSnapshotDto | { plan: QueuePlanDto; snapshot: QueuePlannerSnapshotDto } :
+  P extends `/api/queue/plans/${string}/approve` | `/api/queue/plans/${string}/enqueue` | `/api/queue/plans/${string}/move` ? { plan: QueuePlanDto; snapshot: QueuePlannerSnapshotDto } :
+  P extends `/api/queue/plans/${string}` ? { plan?: QueuePlanDto; removed?: boolean; snapshot?: QueuePlannerSnapshotDto } :
   P extends "/api/chat/history" ? { messages: WebChatMessage[]; removed?: number } :
   P extends "/api/chat/mirror" ? { mode: string; minInterval: number; response: { plain: string; html: string } } :
   P extends "/api/activity" ? { events: WebActivityEvent[]; pagination?: CursorPageDto<WebActivityEvent>["pagination"] } :

@@ -2,10 +2,13 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { isAgentId, type AgentId } from "../agents/shared/agent.js";
 import type { RelayRuntime, SessionPageDto } from "../runtime/relay-runtime.js";
+import type { QueuePlanInput } from "../runtime/relay-runtime-queue-planner.js";
 import type { AuthenticatedUser } from "../access/user-management.js";
 import type { WebActivityActor, WebActivityCategory } from "./web-state.js";
+import { QUEUE_PLAN_STATUSES, type QueuePlanStatus } from "../state/queue-plan-store.js";
 import {
   numberParam,
+  objectRecord,
   optionalBooleanField,
   optionalStringField,
   parseUploadFiles,
@@ -241,6 +244,59 @@ export async function handleDashboardSessionRoute(
     return true;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/queue/plans") {
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, runtime.queuePlanner());
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/queue/plans") {
+    const body = await readJsonBody(req);
+    const input = parseQueuePlanBody(body, options);
+    options.assertScopedAgent(authUser, input.agentId);
+    options.assertScopedWorkspace(authUser, input.workspace);
+    await options.assertCurrentSessionScope(authUser);
+    const plan = await runtime.createQueuePlan(input, options.activityActor);
+    sendJson(res, 201, { plan, snapshot: runtime.queuePlanner() });
+    return true;
+  }
+
+  const queuePlanMatch = url.pathname.match(/^\/api\/queue\/plans\/([^/]+)(?:\/(move|approve|enqueue))?$/);
+  if (queuePlanMatch?.[1]) {
+    const id = decodeURIComponent(queuePlanMatch[1]);
+    const action = queuePlanMatch[2];
+    await options.assertCurrentSessionScope(authUser);
+    if (req.method === "PATCH" && !action) {
+      const body = await readJsonBody(req);
+      const input = parseQueuePlanPatchBody(body, options);
+      options.assertScopedAgent(authUser, input.agentId);
+      options.assertScopedWorkspace(authUser, input.workspace);
+      const plan = runtime.updateQueuePlan(id, input, options.activityActor);
+      sendJson(res, 200, { plan, snapshot: runtime.queuePlanner() });
+      return true;
+    }
+    if (req.method === "DELETE" && !action) {
+      sendJson(res, 200, runtime.deleteQueuePlan(id, options.activityActor));
+      return true;
+    }
+    if (req.method === "POST" && action === "move") {
+      const body = await readJsonBody(req);
+      const plan = await runtime.moveQueuePlan(id, parseQueuePlanStatus(stringField(body, "status")), options.activityActor);
+      sendJson(res, 200, { plan, snapshot: runtime.queuePlanner() });
+      return true;
+    }
+    if (req.method === "POST" && action === "approve") {
+      const plan = runtime.approveQueuePlan(id, options.activityActor);
+      sendJson(res, 200, { plan, snapshot: runtime.queuePlanner() });
+      return true;
+    }
+    if (req.method === "POST" && action === "enqueue") {
+      const plan = await runtime.enqueueQueuePlan(id, options.activityActor);
+      sendJson(res, 202, { plan, snapshot: runtime.queuePlanner() });
+      return true;
+    }
+  }
+
   if (req.method === "GET" && url.pathname === "/api/queue") {
     await options.assertCurrentSessionScope(authUser);
     sendJson(res, 200, { queue: runtime.queue(), paused: runtime.queuePaused() });
@@ -302,4 +358,55 @@ export async function handleDashboardSessionRoute(
   }
 
   return false;
+}
+
+function parseQueuePlanBody(body: unknown, options: DashboardSessionRouteOptions): QueuePlanInput {
+  const record = objectRecord(body);
+  const prompt = stringField(record, "prompt").trim();
+  if (!prompt) throw new Error("Prompt is empty.");
+  return {
+    title: optionalStringField(record, "title"),
+    prompt,
+    status: record.status ? parseQueuePlanStatus(String(record.status)) : undefined,
+    labels: stringList(record.labels),
+    priority: numberValue(record.priority),
+    agentId: options.parseAgentId(optionalStringField(record, "agentId")),
+    workspace: optionalStringField(record, "workspace"),
+    threadId: optionalStringField(record, "threadId"),
+  };
+}
+
+function parseQueuePlanPatchBody(body: unknown, options: DashboardSessionRouteOptions): Partial<QueuePlanInput> {
+  const record = objectRecord(body);
+  const prompt = optionalStringField(record, "prompt");
+  if (prompt !== undefined && !prompt.trim()) throw new Error("Prompt is empty.");
+  const patch = {
+    title: optionalStringField(record, "title"),
+    prompt: prompt?.trim(),
+    status: record.status ? parseQueuePlanStatus(String(record.status)) : undefined,
+    labels: record.labels === undefined ? undefined : stringList(record.labels),
+    priority: record.priority === undefined ? undefined : numberValue(record.priority),
+    agentId: record.agentId === undefined ? undefined : options.parseAgentId(optionalStringField(record, "agentId")),
+    workspace: optionalStringField(record, "workspace"),
+    threadId: optionalStringField(record, "threadId"),
+  };
+  return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)) as Partial<QueuePlanInput>;
+}
+
+function parseQueuePlanStatus(value: string): QueuePlanStatus {
+  if (!QUEUE_PLAN_STATUSES.includes(value as QueuePlanStatus)) {
+    throw new Error("Unsupported queue plan status.");
+  }
+  return value as QueuePlanStatus;
+}
+
+function stringList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  return String(value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function numberValue(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
 }
