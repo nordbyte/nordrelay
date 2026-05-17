@@ -2,6 +2,10 @@
 
 ## Environment Reference
 
+Dashboard:
+
+- `NORDRELAY_WEBUI_ENABLED`: allows the local WebUI dashboard to start and counts as a valid access surface. Defaults to `true`.
+
 Telegram:
 
 - `TELEGRAM_ENABLED`: starts the Telegram adapter. Defaults to `true`.

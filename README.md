@@ -66,6 +66,7 @@ nordrelay start
 A minimal Telegram + Codex configuration looks like this:
 
 ```dotenv
+NORDRELAY_WEBUI_ENABLED=true
 TELEGRAM_ENABLED=true
 TELEGRAM_BOT_TOKEN=123456789:replace-me
 DISCORD_ENABLED=false
@@ -75,6 +76,8 @@ NORDRELAY_DEFAULT_AGENT=codex
 CODEX_SANDBOX_MODE=workspace-write
 CODEX_APPROVAL_POLICY=never
 ```
+
+For a browser-only setup, keep `NORDRELAY_WEBUI_ENABLED=true` and set all chat adapters to `false`.
 
 For guided setup in the browser, open the WebUI, go to **Settings**, then use **Setup wizard** for Telegram, Discord, or Slack.
 

@@ -62,6 +62,16 @@ const TELEGRAM_SETTING_HELP: Record<string, string> = {
 };
 
 export const SETTING_DEFINITIONS: SettingDefinition[] = [
+  setting(
+    "NORDRELAY_WEBUI_ENABLED",
+    "Enable WebUI",
+    "Dashboard",
+    "boolean",
+    "Allow the local dashboard to start and count as a valid access surface.",
+    true,
+    undefined,
+    "Controls whether the local WebUI dashboard may start. Keep enabled for browser-only setups without chat adapters.",
+  ),
   telegramSetting("TELEGRAM_ENABLED", "Enable Telegram", "boolean", "Start the Telegram bot adapter.", true),
   telegramSetting("TELEGRAM_BOT_TOKEN", "Telegram bot token", "secret", "BotFather token.", true),
   telegramSetting("TELEGRAM_TRANSPORT", "Telegram transport", "string", "polling or webhook.", true, ["polling", "webhook"]),
@@ -220,6 +230,7 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
 ];
 
 const EXAMPLE_VALUES: Record<string, string> = {
+  "NORDRELAY_WEBUI_ENABLED": "true",
   "TELEGRAM_ENABLED": "true",
   "TELEGRAM_BOT_TOKEN": "123456789:replace-me",
   "DISCORD_ENABLED": "false",

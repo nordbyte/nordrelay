@@ -55,6 +55,9 @@ const WEB_API_MUTATION_BLOCK_MS = 60_000;
 
 const options = parseOptions(process.argv.slice(2));
 const config = loadConfig();
+if (!config.webuiEnabled) {
+  throw new Error("WebUI is disabled by NORDRELAY_WEBUI_ENABLED=false.");
+}
 const runtime = new RelayRuntime(config);
 const settings = new SettingsService(resolveDashboardEnvPath(options.home));
 const users = new UserStore(options.home);
@@ -857,6 +860,7 @@ function optionalEnv(key: string): string | undefined {
 
 function activeSettingsValues(current: typeof config): Record<string, string | undefined> {
   return {
+    NORDRELAY_WEBUI_ENABLED: boolValue(current.webuiEnabled),
     TELEGRAM_ENABLED: boolValue(current.telegramEnabled),
     TELEGRAM_BOT_TOKEN: current.telegramBotToken,
     TELEGRAM_TRANSPORT: current.telegramTransport,

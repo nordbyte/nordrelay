@@ -173,7 +173,7 @@
 
 ## Discord Input and Output
 
-- Enable Discord with `DISCORD_ENABLED=true` and `DISCORD_BOT_TOKEN`. If a requested chat adapter is missing its token, NordRelay disables that adapter and keeps running as long as another chat adapter is usable.
+- Enable Discord with `DISCORD_ENABLED=true` and `DISCORD_BOT_TOKEN`. If a requested chat adapter is missing its token, NordRelay disables that adapter and keeps running as long as the WebUI or another chat adapter is usable.
 - Set `DISCORD_CLIENT_ID` to let NordRelay register slash commands automatically.
 - `DISCORD_COMMAND_MODE=both` supports slash commands and `/command` text messages. Set it to `slash` if the bot should not read message commands.
 - `DISCORD_MESSAGE_CONTENT_ENABLED=true` lets regular Discord messages become prompts. The matching privileged intent must also be enabled in the Discord Developer Portal.

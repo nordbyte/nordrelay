@@ -89,6 +89,7 @@ function parseArgs(argv) {
     else if (arg === "--build") options.buildBeforeStart = true;
     else if (arg === "--no-restart") options.restartAfterUpdate = false;
     else if (arg === "--restart") options.restartAfterUpdate = true;
+    else if (arg === "--disable-webui") options.disableWebui = true;
     else if (arg === "--token") options.telegramBotToken = requireValue(copy, ++i, arg);
     else if (arg === "--disable-telegram") options.disableTelegram = true;
     else if (arg === "--enable-discord") options.enableDiscord = true;
@@ -333,6 +334,10 @@ function resolveDashboardEndpoint(options, settings = {}) {
   return { host, port };
 }
 
+function isWebUiEnabled() {
+  return process.env.NORDRELAY_WEBUI_ENABLED !== "false";
+}
+
 function formatDashboardUrl(endpoint) {
   const host = endpoint.host || "127.0.0.1";
   const displayHost = host === "0.0.0.0" || host === "" ? "127.0.0.1" : host === "::" ? "::1" : host;
@@ -341,12 +346,21 @@ function formatDashboardUrl(endpoint) {
   return `http://${formattedHost}:${endpoint.port}/${bindHint}`;
 }
 
+async function webDashboardHint(options, webUiEnabled) {
+  if (!webUiEnabled) {
+    return "(disabled by NORDRELAY_WEBUI_ENABLED=false)";
+  }
+  const webPid = await readWebPid(options);
+  return await isManagedWebPid(options, webPid) ? `(running with PID ${webPid})` : "(run `nordrelay web` to start it)";
+}
+
 async function commandStart(options, settings = {}) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
   warnIfCliPathMissing();
   await prepareRuntimeForLaunch(options);
   const dashboard = resolveDashboardEndpoint(options);
+  const webUiEnabled = isWebUiEnabled();
 
   await withLifecycleLock(pidFileLock(options.pidFile), async () => {
     const currentPid = await readPid(options.pidFile);
@@ -384,9 +398,7 @@ async function commandStart(options, settings = {}) {
       console.log(`Workspace: ${state.workspace || "-"}`);
       console.log(`Mode: ${state.sessionMode || "per Telegram context"}`);
       if (!settings.skipWebHint) {
-        const webPid = await readWebPid(options);
-        const webHint = await isManagedWebPid(options, webPid) ? `(running with PID ${webPid})` : "(run `nordrelay web` to start it)";
-        console.log(`WebUI: ${formatDashboardUrl(dashboard)} ${webHint}`);
+        console.log(`WebUI: ${formatDashboardUrl(dashboard)} ${await webDashboardHint(options, webUiEnabled)}`);
       }
       console.log(`Log: ${options.logFile}`);
       return;
@@ -404,9 +416,7 @@ async function commandStart(options, settings = {}) {
 
     console.log(`Started ${APP_NAME} ${VERSION} with PID ${child.pid}`);
     if (!settings.skipWebHint) {
-      const webPid = await readWebPid(options);
-      const webHint = await isManagedWebPid(options, webPid) ? `(running with PID ${webPid})` : "(run `nordrelay web` to start it)";
-      console.log(`WebUI: ${formatDashboardUrl(dashboard)} ${webHint}`);
+      console.log(`WebUI: ${formatDashboardUrl(dashboard)} ${await webDashboardHint(options, webUiEnabled)}`);
     }
     console.log(`Startup is still in progress. Log: ${options.logFile}`);
   });
@@ -518,6 +528,7 @@ async function commandStatus(options) {
   const webState = await readWebState(options);
   const running = await isManagedConnectorPid(options, pid);
   const webRunning = await isManagedWebPid(options, webPid);
+  const webUiEnabled = isWebUiEnabled();
   const webStatus = webRunning ? "running" : webState.status === "running" || webState.status === "starting" ? "stale" : webState.status || "stopped";
   if (!webRunning && (webState.status === "running" || webState.status === "starting")) {
     await fsp.rm(options.webPidFile, { force: true });
@@ -525,6 +536,7 @@ async function commandStatus(options) {
   }
   console.log(`Status: ${state.status || (running ? "running" : "stopped")}`);
   console.log(`PID: ${pid || "-"} (${running ? "running" : "not running"})`);
+  console.log(`WebUI enabled: ${webUiEnabled ? "yes" : "no"}`);
   console.log(`WebUI PID: ${webPid || "-"} (${webRunning ? "running" : "not running"})`);
   console.log(`Workspace: ${state.workspace || "-"}`);
   console.log(`Mode: ${state.sessionMode || "per Telegram context"}`);
@@ -832,6 +844,7 @@ async function commandInit(options) {
     return;
   }
 
+  const enableWebui = options.disableWebui ? "false" : await askChoice(null, "Enable WebUI", "true");
   const enableTelegram = options.disableTelegram ? "false" : await askChoice(null, "Enable Telegram", "true");
   const telegramBotToken = enableTelegram === "true"
     ? options.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || await ask(null, "Telegram bot token", "")
@@ -870,7 +883,9 @@ async function commandInit(options) {
   if (enableDiscord === "true" && !discordBotToken) throw new Error("Discord bot token is required when Discord is enabled.");
   if (enableSlack === "true" && !slackBotToken) throw new Error("Slack bot token is required when Slack is enabled.");
   if (enableSlack === "true" && !slackAppToken) throw new Error("Slack app-level token is required for default Socket Mode.");
-  if (enableTelegram !== "true" && enableDiscord !== "true" && enableSlack !== "true") throw new Error("At least one chat adapter must be enabled.");
+  if (enableWebui !== "true" && enableTelegram !== "true" && enableDiscord !== "true" && enableSlack !== "true") {
+    throw new Error("At least WebUI or one chat adapter must be enabled.");
+  }
   if (!adminEmail) throw new Error("Admin email is required.");
   if (!adminPassword) throw new Error("Admin password is required.");
   if (enableCodex !== "true" && enablePi !== "true" && enableHermes !== "true" && enableOpenClaw !== "true" && enableClaudeCode !== "true") throw new Error("At least one agent must be enabled.");
@@ -887,6 +902,7 @@ async function commandInit(options) {
   const lines = [
     "# NordRelay local runtime config.",
     "# Keep this file private; it contains bot credentials.",
+    `NORDRELAY_WEBUI_ENABLED=${enableWebui}`,
     `TELEGRAM_ENABLED=${enableTelegram}`,
     `TELEGRAM_BOT_TOKEN=${telegramBotToken}`,
     `DISCORD_ENABLED=${enableDiscord}`,
@@ -1431,6 +1447,7 @@ async function commandDoctor(options) {
   if (cliPath.globalBin) {
     checks.push(check("npm global bin on PATH", cliPath.pathContainsGlobalBin, cliPath.globalBin, "warn"));
   }
+  const webUiEnabled = isWebUiEnabled();
   const telegramRequested = process.env.TELEGRAM_ENABLED !== "false";
   const discordRequested = process.env.DISCORD_ENABLED === "true";
   const slackRequested = process.env.SLACK_ENABLED === "true";
@@ -1439,33 +1456,39 @@ async function commandDoctor(options) {
   const discordUsable = discordRequested && Boolean(process.env.DISCORD_BOT_TOKEN);
   const slackUsable = slackRequested && Boolean(process.env.SLACK_BOT_TOKEN) && (slackSocketMode ? Boolean(process.env.SLACK_APP_TOKEN) : Boolean(process.env.SLACK_SIGNING_SECRET));
   checks.push(check(
+    "WebUI enabled",
+    webUiEnabled,
+    webUiEnabled ? "enabled" : "disabled by NORDRELAY_WEBUI_ENABLED=false",
+    "warn",
+  ));
+  checks.push(check(
     "Telegram bot token",
     !telegramRequested || telegramUsable,
     telegramRequested ? (telegramUsable ? "configured" : "missing; Telegram adapter will be disabled") : "disabled",
-    telegramRequested && !discordUsable && !slackUsable ? "fail" : "warn",
+    "warn",
   ));
   checks.push(check(
     "Discord bot token",
     !discordRequested || discordUsable,
     discordRequested ? (discordUsable ? "configured" : "missing; Discord adapter will be disabled") : "disabled",
-    discordRequested && !telegramUsable && !slackUsable ? "fail" : "warn",
+    "warn",
   ));
   checks.push(check(
     "Slack bot token",
     !slackRequested || Boolean(process.env.SLACK_BOT_TOKEN),
     slackRequested ? (process.env.SLACK_BOT_TOKEN ? "configured" : "missing; Slack adapter will be disabled") : "disabled",
-    slackRequested && !telegramUsable && !discordUsable ? "fail" : "warn",
+    "warn",
   ));
   checks.push(check(
     slackSocketMode ? "Slack app token" : "Slack signing secret",
     !slackRequested || slackUsable,
     slackRequested ? (slackUsable ? "configured" : `missing; ${slackSocketMode ? "Socket Mode requires SLACK_APP_TOKEN" : "HTTP mode requires SLACK_SIGNING_SECRET"}`) : "disabled",
-    slackRequested && !telegramUsable && !discordUsable ? "fail" : "warn",
+    "warn",
   ));
   checks.push(check(
-    "Usable chat adapter",
-    telegramUsable || discordUsable || slackUsable,
-    [telegramUsable ? "Telegram" : "", discordUsable ? "Discord" : "", slackUsable ? "Slack" : ""].filter(Boolean).join(" and ") || "none",
+    "Usable access surface",
+    webUiEnabled || telegramUsable || discordUsable || slackUsable,
+    [webUiEnabled ? "WebUI" : "", telegramUsable ? "Telegram" : "", discordUsable ? "Discord" : "", slackUsable ? "Slack" : ""].filter(Boolean).join(" and ") || "none",
     "fail",
   ));
   checks.push(check("Discord client ID", !discordUsable || Boolean(process.env.DISCORD_CLIENT_ID), discordUsable ? (process.env.DISCORD_CLIENT_ID ? "configured" : "missing; slash command auto-registration disabled") : "disabled", "warn"));
@@ -1584,6 +1607,9 @@ async function checkOpenClawGateway() {
 async function commandWeb(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
+  if (!isWebUiEnabled()) {
+    throw new Error("WebUI is disabled by NORDRELAY_WEBUI_ENABLED=false. Set it to true or rerun `nordrelay init --force` to enable the dashboard.");
+  }
   warnIfCliPathMissing();
   await prepareRuntimeForLaunch(options);
   await ensureConnectorStartedForWeb(options);
@@ -1594,6 +1620,9 @@ async function commandServiceRun(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
   await prepareRuntimeForLaunch(options);
+  if (!isWebUiEnabled()) {
+    return commandForeground(options);
+  }
   await ensureConnectorStartedForWeb(options);
   await startWebDashboard(options, { detached: false, stopConnectorOnExit: true });
 }
@@ -2238,6 +2267,7 @@ function printHelp() {
   console.log("  service install --dry-run [--platform linux|darwin|win32]");
   console.log("  --build              Build source runtime before start/web/restart");
   console.log("  --force              Overwrite existing config during init");
+  console.log("  --disable-webui      Disable the WebUI during init");
   console.log("  --help, -h           Show this help");
   console.log("  --version, -v        Show the installed version");
 }

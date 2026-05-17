@@ -40,6 +40,7 @@ export type ToolVerbosity = "all" | "summary" | "errors-only" | "none";
 
 export interface ConnectorConfig {
   adapterWarnings?: string[];
+  webuiEnabled: boolean;
   telegramEnabled: boolean;
   telegramBotToken: string;
   telegramRateLimitMinIntervalMs: number;
@@ -174,6 +175,7 @@ export function loadConfig(): ConnectorConfig {
   loadEnvFile(path.resolve(process.cwd(), ".env"));
 
   const adapterWarnings: string[] = [];
+  const webuiEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_WEBUI_ENABLED), true);
   const requestedTelegramEnabled = parseBooleanEnv(optionalString(process.env.TELEGRAM_ENABLED), true);
   const telegramBotToken = optionalString(process.env.TELEGRAM_BOT_TOKEN) ?? "";
   const telegramRateLimitMinIntervalMs = parseNonNegativeIntegerEnv(optionalString(process.env.TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS), 80, "TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS");
@@ -360,13 +362,14 @@ export function loadConfig(): ConnectorConfig {
     slackEnabled = false;
     adapterWarnings.push("Slack disabled: SLACK_SOCKET_MODE=false requires SLACK_SIGNING_SECRET.");
   }
-  if (!telegramEnabled && !discordEnabled && !slackEnabled) {
+  if (!webuiEnabled && !telegramEnabled && !discordEnabled && !slackEnabled) {
     const detail = adapterWarnings.length > 0 ? ` ${adapterWarnings.join(" ")}` : "";
-    throw new Error(`At least one usable chat adapter must be enabled.${detail}`);
+    throw new Error(`At least WebUI or one usable chat adapter must be enabled.${detail}`);
   }
 
   return {
     adapterWarnings,
+    webuiEnabled,
     telegramEnabled,
     telegramBotToken,
     telegramRateLimitMinIntervalMs,

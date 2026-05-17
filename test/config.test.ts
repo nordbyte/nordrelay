@@ -13,6 +13,7 @@ describe("loadConfig", () => {
     tempDir = mkdtempSync(path.join(tmpdir(), "nordrelay-config-"));
     process.chdir(tempDir);
     process.env = { ...originalEnv };
+    delete process.env.NORDRELAY_WEBUI_ENABLED;
     delete process.env.TELEGRAM_ENABLED;
     delete process.env.TELEGRAM_BOT_TOKEN;
     delete process.env.TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS;
@@ -141,8 +142,20 @@ describe("loadConfig", () => {
     vi.restoreAllMocks();
   });
 
-  it("throws when no usable chat adapter is configured", () => {
-    expect(() => loadConfig()).toThrow("At least one usable chat adapter must be enabled");
+  it("throws when no usable access surface is configured", () => {
+    process.env.NORDRELAY_WEBUI_ENABLED = "false";
+
+    expect(() => loadConfig()).toThrow("At least WebUI or one usable chat adapter must be enabled");
+  });
+
+  it("allows a WebUI-only setup without chat adapters", () => {
+    const config = loadConfig();
+
+    expect(config.webuiEnabled).toBe(true);
+    expect(config.telegramEnabled).toBe(false);
+    expect(config.discordEnabled).toBe(false);
+    expect(config.slackEnabled).toBe(false);
+    expect(config.adapterWarnings).toContain("Telegram disabled: TELEGRAM_BOT_TOKEN is missing.");
   });
 
   it("parses a valid config correctly", () => {
@@ -157,6 +170,7 @@ describe("loadConfig", () => {
 
     expect(config).toEqual({
       adapterWarnings: [],
+      webuiEnabled: true,
       telegramEnabled: true,
       telegramBotToken: "bot-token",
       telegramRateLimitMinIntervalMs: 80,
@@ -505,7 +519,8 @@ describe("loadConfig", () => {
     expect(config.peerRequireTls).toBe(false);
   });
 
-  it("disables Telegram when webhook transport has no URL and no other chat adapter is usable", () => {
+  it("throws when webhook Telegram has no URL and no other access surface is usable", () => {
+    process.env.NORDRELAY_WEBUI_ENABLED = "false";
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
     process.env.TELEGRAM_TRANSPORT = "webhook";
 

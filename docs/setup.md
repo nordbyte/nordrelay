@@ -277,6 +277,7 @@ Runtime files:
 - Home override: `NORDRELAY_HOME=/custom/path`
 - Local dashboard: `nordrelay web --host 127.0.0.1 --port 31878`
 - `nordrelay start` and `nordrelay status` print the configured WebUI URL.
+- `NORDRELAY_WEBUI_ENABLED=true` allows a WebUI-only setup without Telegram, Discord, or Slack.
 
 
 ## WebUI Dashboard

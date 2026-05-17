@@ -76,7 +76,7 @@ try {
   if (userStore.hasAdminUser()) {
     console.log("User management: admin user configured");
   } else {
-    console.warn("Warning: no NordRelay admin user exists. Run `nordrelay user create-admin` to enable WebUI and Telegram access.");
+    console.warn("Warning: no NordRelay admin user exists. Run `nordrelay user create-admin` to enable WebUI and chat-adapter access.");
   }
   const authStatus = await checkDefaultAgentAuth(config);
   console.log(`Auth (${agentLabel(config.defaultAgent)}): ${authStatus.authenticated ? "authenticated" : "not authenticated"} (${authStatus.method})`);
@@ -117,6 +117,7 @@ try {
     }
   }
   console.log("Session mode: per chat context");
+  console.log(`WebUI: ${config.webuiEnabled ? "enabled" : "disabled"}`);
   console.log(`Telegram: ${config.telegramEnabled ? config.telegramTransport : "disabled"}`);
   console.log(`Discord: ${config.discordEnabled ? "enabled" : "disabled"}`);
   console.log(`Slack: ${config.slackEnabled ? (config.slackSocketMode ? "socket-mode" : `http:${config.slackPort}`) : "disabled"}`);
@@ -139,6 +140,7 @@ try {
     discordEnabled: config.discordEnabled,
     slackEnabled: config.slackEnabled,
     peerEnabled: config.peerEnabled,
+    webuiEnabled: config.webuiEnabled,
     peerUrl: peerServer?.url,
     peerTlsFingerprint: peerServer?.tlsFingerprint,
     adapterWarnings: config.adapterWarnings ?? [],

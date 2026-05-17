@@ -22,6 +22,15 @@ describe("nordrelay CLI script", () => {
     expect(source).toContain("@nordbyte/nordrelay@latest");
   });
 
+  it("treats WebUI as a first-class init access surface", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain('arg === "--disable-webui"');
+    expect(source).toContain('await askChoice(null, "Enable WebUI", "true")');
+    expect(source).toContain("NORDRELAY_WEBUI_ENABLED");
+    expect(source).toContain("At least WebUI or one chat adapter must be enabled.");
+  });
+
   it("supports source builds before launches and restart", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
 
