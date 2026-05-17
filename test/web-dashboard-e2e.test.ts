@@ -177,6 +177,20 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).not.toContain("activeSessionsTimer=setInterval");
   });
 
+  it("renders compact chat lists and copy controls for chat messages", () => {
+    const js = dashboardJs();
+    const css = dashboardCss();
+
+    expect(js).toContain("function normalizeChatListSpacing");
+    expect(js).toContain('replace(/<\\/(ul|ol)>\\n+(?=\\S)/g');
+    expect(js).toContain("function chatMessageCopyButtonHtml");
+    expect(js).toContain("data-message-index");
+    expect(js).toContain("function bindChatMessageCopyButton");
+    expect(js).toContain("Message copied");
+    expect(css).toContain(".message-copy-button");
+    expect(css).toContain(".message:hover .message-copy-button");
+  });
+
   it("allows every dashboard dialog to close from backdrop clicks", () => {
     const js = dashboardJs();
 
