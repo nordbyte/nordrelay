@@ -132,7 +132,12 @@ export class AuditLogStore {
   listPage(options: AuditListOptions = {}): CursorPage<AuditEvent> {
     const limit = normalizeCursorLimit(options.limit, 20, 500);
     const events = this.filteredEvents(options)
-      .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
+      .map((event, index) => ({ event, index }))
+      .sort((left, right) => {
+        const timestampDiff = Date.parse(right.event.timestamp) - Date.parse(left.event.timestamp);
+        return timestampDiff || right.index - left.index;
+      })
+      .map((entry) => entry.event);
     return cursorPage(events, options.cursor, limit, (event) => event.id);
   }
 
