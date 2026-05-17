@@ -117,7 +117,16 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("active_sessions_update");
     expect(js).toContain("function renderChatWorkingIndicator");
     expect(js).toContain("Working...");
+    expect(readFileSync("src/runtime/relay-runtime-active-sessions.ts", "utf8")).toContain("right.durationMs - left.durationMs");
     expect(js).not.toContain("activeSessionsTimer=setInterval");
+  });
+
+  it("allows every dashboard dialog to close from backdrop clicks", () => {
+    const js = dashboardJs();
+
+    expect(js).toContain("function bindDialogBackdropClose");
+    expect(js).toContain("function isDialogBackdropClick");
+    expect(js).toContain("event.target.close()");
   });
 
   it("binds version agent update buttons after rendering version cards", () => {

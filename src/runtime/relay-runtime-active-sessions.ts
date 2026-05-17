@@ -169,7 +169,9 @@ export async function relayRuntimeActiveSessions(runtime: RelayRuntimeDelegate):
     }
 
     return {
-      sessions: [...sessions.values()].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt)),
+      sessions: [...sessions.values()].sort((left, right) =>
+        right.durationMs - left.durationMs || Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
+      ),
       updatedAt: new Date().toISOString(),
     };
   }
