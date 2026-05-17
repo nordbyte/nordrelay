@@ -712,7 +712,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
 
   const commandSession = async (request: SlackRequest): Promise<void> => {
     const session = await getSession(request, { deferThreadStart: true });
-    await reply(request, `Slack session:\n${renderSessionInfoPlain(session.getInfo())}`);
+    await reply(request, `Slack session:\n${renderSessionInfoPlain(session.getInfo({ includeUsage: true }))}`);
   };
 
   const commandSessions = async (request: SlackRequest, query: string): Promise<void> => {
@@ -1330,6 +1330,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
         promptStore,
         isContextKey: isSlackContextKey,
         canSendSystemMessages: (contextKey) => canSendSystemMessagesToSlackContext(userStore, contextKey),
+        shouldMonitorContext: (contextKey) => (preferencesStore.get(contextKey).mirrorMode ?? config.slackMirrorMode) !== "off",
         isAllowed: (contextKey) => {
           const parsed = parseSlackContextKey(contextKey);
           return Boolean(parsed && isSlackTeamAllowed(parsed.teamId) && isSlackChannelAllowedByEnv(parsed.channelId));

@@ -419,7 +419,7 @@ export async function relayRuntimeWebMirrorPreference(runtime: RelayRuntimeDeleg
 export async function relayRuntimeSessionDetail(runtime: RelayRuntimeDelegate, threadId: string): Promise<Record<string, unknown>> {
     const session = await runtime.getSession(true);
     const record = session.getSessionRecord(threadId);
-    const active = runtime.publicInfo(session);
+    const active = runtime.publicInfo(session, { includeUsage: true });
     return {
       record,
       active,

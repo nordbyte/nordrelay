@@ -228,13 +228,21 @@ export class SessionRegistry {
       if (!Array.isArray(data)) {
         return;
       }
+      let pruned = false;
       for (const entry of data) {
+        if (isPrunableMetadata(entry)) {
+          pruned = true;
+          continue;
+        }
         if (entry.contextKey) {
           this.metadata.set(entry.contextKey, {
             ...entry,
             agentId: entry.agentId ?? "codex",
           });
         }
+      }
+      if (pruned) {
+        this.persistMetadata();
       }
     } catch {
       // Silently ignore load errors.
@@ -252,6 +260,14 @@ export class SessionRegistry {
       updatedAt: Date.now(),
     };
   }
+}
+
+function isPrunableMetadata(entry: ContextMetadata): boolean {
+  const pinned = [
+    ...(entry.pinnedThreadIds ?? []),
+    ...Object.values(entry.pinnedThreadIdsByAgent ?? {}).flat(),
+  ];
+  return !entry.threadId && !entry.sessionPath && pinned.length === 0;
 }
 
 function resolveLaunchProfileId(

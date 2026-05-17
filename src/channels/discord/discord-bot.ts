@@ -844,7 +844,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
 
   const commandSession = async (request: DiscordRequest): Promise<void> => {
     const session = await getSession(request, { deferThreadStart: true });
-    await reply(request, `Discord session:\n${renderSessionInfoPlain(session.getInfo())}`);
+    await reply(request, `Discord session:\n${renderSessionInfoPlain(session.getInfo({ includeUsage: true }))}`);
   };
 
   const commandSessions = async (request: DiscordRequest, query: string): Promise<void> => {
@@ -1621,6 +1621,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
         promptStore,
         isContextKey: isDiscordContextKey,
         canSendSystemMessages: (contextKey) => canSendSystemMessagesToDiscordContext(userStore, contextKey),
+        shouldMonitorContext: (contextKey) => (preferencesStore.get(contextKey).mirrorMode ?? config.discordMirrorMode) !== "off",
         isAllowed: (contextKey) => {
           const parsed = parseDiscordContextKey(contextKey);
           if (!parsed) return false;

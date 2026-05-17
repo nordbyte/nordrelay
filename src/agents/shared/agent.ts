@@ -209,6 +209,10 @@ export interface AgentSessionInfo {
   capabilities: AgentCapabilities;
 }
 
+export interface AgentSessionInfoOptions {
+  includeUsage?: boolean;
+}
+
 export interface AgentPromptObject {
   text?: string;
   imagePaths?: string[];
@@ -345,7 +349,7 @@ export interface AgentCreateOptions {
 }
 
 export interface AgentSessionService {
-  getInfo(): AgentSessionInfo;
+  getInfo(options?: AgentSessionInfoOptions): AgentSessionInfo;
   isProcessing(): boolean;
   getActiveThreadId(): string | null;
   hasActiveThread(): boolean;

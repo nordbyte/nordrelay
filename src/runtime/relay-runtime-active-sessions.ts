@@ -17,6 +17,7 @@ import {
   type AgentId,
   type AgentPromptObject,
   type AgentSessionInfo,
+  type AgentSessionInfoOptions,
   type AgentSessionService,
   type AgentThreadRecord,
 } from "../agents/shared/agent.js";
@@ -501,8 +502,8 @@ export function relayRuntimeScheduleActiveSessionsBroadcast(runtime: RelayRuntim
     runtime.activeSessionsBroadcastTimer.unref?.();
   }
 
-export function relayRuntimePublicInfo(runtime: RelayRuntimeDelegate, session: AgentSessionService): AgentSessionInfo {
-    const info = session.getInfo();
+export function relayRuntimePublicInfo(runtime: RelayRuntimeDelegate, session: AgentSessionService, options?: AgentSessionInfoOptions): AgentSessionInfo {
+    const info = session.getInfo(options);
     const agentId = info.agentId ?? "codex";
     return {
       ...info,

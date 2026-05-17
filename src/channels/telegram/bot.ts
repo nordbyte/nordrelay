@@ -625,6 +625,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         promptStore,
         isContextKey: isTelegramContextKey,
         canSendSystemMessages: canSendSystemMessagesToContext,
+        shouldMonitorContext: (contextKey) => getEffectiveMirrorMode(contextKey as TelegramContextKey) !== "off",
         contextForKey: channelContextFromTelegramKey,
         previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
         mirrorSnapshot: async (contextKey, _context, session, snapshot) => {
@@ -2488,7 +2489,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const { contextKey, session } = contextSession;
-    const info = session.getInfo();
+    const info = session.getInfo({ includeUsage: true });
     const contextLabel = isTopicContext(contextKey) ? "Topic session" : "Chat session";
     const policyLine = renderWorkspacePolicyLine(info.workspace, config);
 

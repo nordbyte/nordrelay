@@ -94,13 +94,22 @@ export interface CodexRolloutSnapshot {
 }
 
 const ROLLOUT_CACHE_MAX_EVENTS = 200;
+const USAGE_TAIL_INITIAL_BYTES = 1024 * 1024;
+const USAGE_TAIL_MAX_BYTES = 16 * 1024 * 1024;
 
 type CachedRolloutSnapshot = {
   byteOffset: number;
   parsed: CodexRolloutSnapshot;
 };
 
+type CachedSessionUsage = {
+  size: number;
+  modifiedAtMs: number;
+  parsed: CodexSessionUsage | null;
+};
+
 const rolloutSnapshotCache = new Map<string, CachedRolloutSnapshot>();
+const sessionUsageCache = new Map<string, CachedSessionUsage>();
 
 export const FALLBACK_MODELS: CodexModelRecord[] = [
   { slug: "gpt-5.5", displayName: "GPT-5.5" },
@@ -213,7 +222,18 @@ export function getThreadUsage(id: string): CodexSessionUsage | null {
   }
 
   try {
-    return parseUsageFromRollout(readFileSync(rolloutPath, "utf8"));
+    const stat = statSync(rolloutPath);
+    const cached = sessionUsageCache.get(rolloutPath);
+    if (cached && cached.size === stat.size && cached.modifiedAtMs === stat.mtimeMs) {
+      return cached.parsed;
+    }
+    const parsed = parseUsageFromRolloutTail(rolloutPath, stat.size);
+    sessionUsageCache.set(rolloutPath, {
+      size: stat.size,
+      modifiedAtMs: stat.mtimeMs,
+      parsed,
+    });
+    return parsed;
   } catch {
     return null;
   }
@@ -364,6 +384,27 @@ function parseUsageFromRollout(contents: string): CodexSessionUsage | null {
   }
 
   return null;
+}
+
+function parseUsageFromRolloutTail(rolloutPath: string, size: number): CodexSessionUsage | null {
+  if (size <= USAGE_TAIL_INITIAL_BYTES) {
+    return parseUsageFromRollout(readFileSync(rolloutPath, "utf8"));
+  }
+
+  let length = Math.min(size, USAGE_TAIL_INITIAL_BYTES);
+  while (length < size && length <= USAGE_TAIL_MAX_BYTES) {
+    const parsed = parseUsageFromRollout(readFileRangeUtf8(rolloutPath, size - length, length));
+    if (parsed) {
+      return parsed;
+    }
+    length = Math.min(size, length * 2);
+  }
+
+  if (length >= size) {
+    return parseUsageFromRollout(readFileSync(rolloutPath, "utf8"));
+  }
+
+  return parseUsageFromRollout(readFileRangeUtf8(rolloutPath, size - USAGE_TAIL_MAX_BYTES, USAGE_TAIL_MAX_BYTES));
 }
 
 function readCachedRolloutSnapshot(threadId: string, rolloutPath: string): CodexRolloutSnapshot {

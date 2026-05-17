@@ -36,6 +36,7 @@ import {
   type AgentPromptInput,
   type AgentSessionCallbacks,
   type AgentSessionInfo,
+  type AgentSessionInfoOptions,
   type AgentSettingResult,
   type AgentSyncResult,
   type AgentThreadRecord,
@@ -134,7 +135,7 @@ export class CodexSessionService {
     return service;
   }
 
-  getInfo(): CodexSessionInfo {
+  getInfo(options: AgentSessionInfoOptions = {}): CodexSessionInfo {
     const activeThreadId = this.thread?.id ?? this.currentThreadId;
     if (activeThreadId && !this.abortController) {
       this.refreshActiveThreadMetadata(activeThreadId);
@@ -183,7 +184,7 @@ export class CodexSessionService {
     }
 
     const threadId = info.threadId;
-    if (threadId) {
+    if (options.includeUsage && threadId) {
       const codexUsage = getThreadUsage(threadId);
       if (codexUsage) {
         info.codexUsage = codexUsage;

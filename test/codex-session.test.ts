@@ -284,7 +284,7 @@ describe("CodexSessionService", () => {
     });
   });
 
-  it("includes persisted Codex usage when a thread id is available", async () => {
+  it("includes persisted Codex usage only when requested", async () => {
     mockCodexState.getThreadUsage.mockReturnValue({
       contextWindow: 1000,
       contextUsedPercent: 30,
@@ -310,7 +310,10 @@ describe("CodexSessionService", () => {
       resumeThreadId: "thread-usage",
     });
 
-    expect(service.getInfo().codexUsage).toEqual(expect.objectContaining({
+    expect(service.getInfo().codexUsage).toBeUndefined();
+    expect(mockCodexState.getThreadUsage).not.toHaveBeenCalled();
+
+    expect(service.getInfo({ includeUsage: true }).codexUsage).toEqual(expect.objectContaining({
       contextUsedPercent: 30,
       contextWindow: 1000,
     }));

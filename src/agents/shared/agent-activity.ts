@@ -39,6 +39,15 @@ import {
   getPiSessionSnapshot,
 } from "../pi/pi-state.js";
 
+const EXTERNAL_SNAPSHOT_CACHE_TTL_MS = 1_000;
+
+type CachedExternalSnapshot = {
+  expiresAt: number;
+  snapshot: AgentExternalSnapshot | null;
+};
+
+const externalSnapshotCache = new Map<string, CachedExternalSnapshot>();
+
 export function getExternalActivityForSession(
   session: AgentSessionService | undefined,
   config: ConnectorConfig,
@@ -115,6 +124,27 @@ export function getExternalSnapshotForSession(
     return null;
   }
 
+  const cacheKey = externalSnapshotCacheKey(info.agentId, threadId, info.workspace, info.sessionPath, config.codexExternalBusyStaleMs, options);
+  const now = Date.now();
+  const cached = externalSnapshotCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.snapshot;
+  }
+
+  const snapshot = readExternalSnapshot(info, threadId, config, options);
+  externalSnapshotCache.set(cacheKey, { expiresAt: now + EXTERNAL_SNAPSHOT_CACHE_TTL_MS, snapshot });
+  if (externalSnapshotCache.size > 500) {
+    pruneExternalSnapshotCache(now);
+  }
+  return snapshot;
+}
+
+function readExternalSnapshot(
+  info: ReturnType<AgentSessionService["getInfo"]>,
+  threadId: string,
+  config: ConnectorConfig,
+  options: { afterLine?: number; maxEvents?: number },
+): AgentExternalSnapshot | null {
   if (info.agentId === "pi") {
     return getPiSessionSnapshot(info.sessionPath ?? threadId, {
       sessionDir: config.piSessionDir,
@@ -161,6 +191,33 @@ export function getExternalSnapshotForSession(
     staleAfterMs: config.codexExternalBusyStaleMs,
   });
   return snapshot ? codexSnapshotToAgentSnapshot(snapshot) : null;
+}
+
+function externalSnapshotCacheKey(
+  agentId: string,
+  threadId: string,
+  workspace: string,
+  sessionPath: string | undefined,
+  staleAfterMs: number,
+  options: { afterLine?: number; maxEvents?: number },
+): string {
+  return [
+    agentId,
+    threadId,
+    workspace,
+    sessionPath ?? "",
+    String(staleAfterMs),
+    String(options.afterLine ?? ""),
+    String(options.maxEvents ?? ""),
+  ].join("\0");
+}
+
+function pruneExternalSnapshotCache(now: number): void {
+  for (const [key, value] of externalSnapshotCache.entries()) {
+    if (value.expiresAt <= now) {
+      externalSnapshotCache.delete(key);
+    }
+  }
 }
 
 export function getAgentActivityLog(

@@ -14,6 +14,7 @@ export interface ChannelExternalMonitorOptions<Key extends ChannelContextKey> {
   isContextKey(value: string): boolean;
   canSendSystemMessages(contextKey: Key): boolean;
   isAllowed?(contextKey: Key): boolean;
+  shouldMonitorContext?(contextKey: Key): boolean;
   contextForKey(contextKey: Key): ChannelContext | null;
   previousLastLine(contextKey: Key): number | undefined;
   mirrorSnapshot(
@@ -47,14 +48,18 @@ async function monitorChannelExternalContext<Key extends ChannelContextKey>(
     return;
   }
 
+  const queueLength = options.promptStore.list(contextKey).length;
+  const paused = options.promptStore.isPaused(contextKey);
+  if (queueLength === 0 && options.shouldMonitorContext?.(contextKey) === false) {
+    return;
+  }
+
   const session = await options.registry.getOrCreate(contextKey, { deferThreadStart: true }).catch(() => null);
   const context = options.contextForKey(contextKey);
   if (!session || !context) {
     return;
   }
 
-  const queueLength = options.promptStore.list(contextKey).length;
-  const paused = options.promptStore.isPaused(contextKey);
   const shouldDrain = queueLength > 0 && !paused && !session.isProcessing();
   if (!capabilitiesOf(session.getInfo()).externalActivity || !session.getActiveThreadId()) {
     if (shouldDrain) {

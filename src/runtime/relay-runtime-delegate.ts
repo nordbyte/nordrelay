@@ -5,6 +5,7 @@ import type { LoginResult } from "../agents/codex/codex-auth.js";
 import type {
   AgentCapabilities,
   AgentId,
+  AgentSessionInfoOptions,
   AgentSessionInfo,
   AgentSessionService,
   AgentThreadRecord,
@@ -237,5 +238,5 @@ export interface RelayRuntimeDelegate {
   broadcastStatus(message: string, level?: "info" | "warn" | "error"): void;
   broadcast(event: RelayEvent): void;
   scheduleActiveSessionsBroadcast(): void;
-  publicInfo(session: AgentSessionService): AgentSessionInfo;
+  publicInfo(session: AgentSessionService, options?: AgentSessionInfoOptions): AgentSessionInfo;
 }

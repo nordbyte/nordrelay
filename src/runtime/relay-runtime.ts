@@ -17,6 +17,7 @@ import {
   type AgentId,
   type AgentPromptObject,
   type AgentSessionInfo,
+  type AgentSessionInfoOptions,
   type AgentSessionService,
   type AgentThreadRecord,
 } from "../agents/shared/agent.js";
@@ -838,8 +839,8 @@ export class RelayRuntime {
     return relayRuntimeScheduleActiveSessionsBroadcast(this);
   }
 
-  publicInfo(session: AgentSessionService): AgentSessionInfo {
-    return relayRuntimePublicInfo(this, session);
+  publicInfo(session: AgentSessionService, options?: AgentSessionInfoOptions): AgentSessionInfo {
+    return relayRuntimePublicInfo(this, session, options);
   }
 
 }
