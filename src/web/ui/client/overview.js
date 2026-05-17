@@ -64,9 +64,25 @@ async function loadBootstrap(){
   populateNewSessionForm(data.enabledAgents);
   renderAdapters(data.channels, data.agentAdapters);
   document.getElementById('footerVersion').textContent='NordRelay '+(data.status.health?.version || '');
-  document.getElementById('footerHealth').textContent='Health: '+(data.status.health?.state?.status || 'unknown');
-  document.getElementById('footerUser').textContent='User: '+(local.auth?.user?.email || '-')+(state.selectedPeer&&state.selectedPeer!=='local'?' / target peer':'');
+  document.getElementById('footerHealth').textContent='Health: '+footerHealthLabel(data.status.health?.state?.status);
+  renderFooterUser(local.auth);
   applyPermissions();
+}
+function footerHealthLabel(status){
+  if(status==='ready')return'healthy';
+  if(status==='starting')return'starting';
+  if(status==='stopped')return'stopped';
+  if(status==='error')return'error';
+  return status||'unknown';
+}
+function renderFooterUser(auth){
+  const el=document.getElementById('footerUser');
+  if(!el)return;
+  const email=auth?.user?.email||'-';
+  const remoteSuffix=state.selectedPeer&&state.selectedPeer!=='local'?' / target peer':'';
+  el.innerHTML='User: '+(email&&email!=='-'?'<a href="#profile" class="footer-profile-link" id="footerProfileLink" title="Open profile">'+esc(email)+'</a>':esc(email))+esc(remoteSuffix);
+  const link=document.getElementById('footerProfileLink');
+  if(link)link.onclick=event=>safe(openProfileDialog,event);
 }
 function localHeaderTarget(local){
   return {id:'local',name:'Local node',agents:local.enabledAgents||[],snapshot:local.status?.snapshot||null,loading:false,error:''};
@@ -136,9 +152,12 @@ function renderHeaderTargetMenu(s=state.snapshot){
   const summary=[session.agentLabel||session.agentId||'Agent',session.model||'default',thread?shortMiddle(thread):'not started'].join(' / ');
   const targets=state.peerTargets&&state.peerTargets.length?state.peerTargets:[{id:state.selectedPeer||'local',name:headerTargetName(state.selectedPeer||'local'),agents:state.enabledAgents||[],snapshot:s,loading:false,error:''}];
   const groups=targets.map(target=>headerTargetGroupHtml(target,session)).join('');
-  line.innerHTML='<div class="compact-control header-target-menu" data-header-target-menu><button type="button" id="headerTargetBtn" class="control-menu-button header-target-button" aria-haspopup="menu" aria-expanded="false" title="'+attr('Target: '+headerTargetName(state.selectedPeer||'local'))+'">'+esc(summary)+'</button><div class="control-menu-list header-target-list" role="menu" hidden>'+groups+'</div></div>'+(thread?uiCopyButton(thread,'Thread ID copied','copy-id header-thread-copy'):'');
+  line.innerHTML='<div class="compact-control header-target-menu" data-header-target-menu><button type="button" id="headerTargetBtn" class="control-menu-button header-target-button" aria-haspopup="menu" aria-expanded="false" title="'+attr('Target: '+headerTargetName(state.selectedPeer||'local'))+'">'+esc(summary)+'</button><div class="control-menu-list header-target-list" role="menu" hidden>'+groups+'</div></div>'+(thread?headerThreadCopyButton(thread):'');
   bindHeaderTargetMenu(line);
   bindUiCopyButtons(line);
+}
+function headerThreadCopyButton(thread){
+  return '<button type="button" class="copy-id header-thread-copy" data-copy-value="'+attr(thread)+'" data-copy-label="Thread ID copied" title="Copy thread ID" aria-label="Copy thread ID"><span class="copy-icon" aria-hidden="true"></span></button>';
 }
 function headerTargetGroupHtml(target,currentSession){
   const selectedPeer=(state.selectedPeer||'local')===target.id;
@@ -334,12 +353,21 @@ function bindCompactControlMenus(){
   }
 }
 function renderAdapters(channels, agents){
-  const channelCards=(channels||[]).map(c=>{const status=c.status==='available'?(c.enabled===false?'disabled':'enabled'):(c.status||'planned');return adapterCard(c.label,status,'',c.capabilities.join(', ')+(c.notes?' - '+c.notes:''))});
-  const agentCards=(agents||[]).map(a=>{const available=a.status==='available';const status=available?(state.enabledAgents.includes(a.id)?'enabled':'disabled'):(a.status||'planned');return adapterCard(a.label,status,'',a.notes||'')});
+  const channelCards=(channels||[]).map(c=>{const status=c.status==='available'?(c.enabled===false?'disabled':'enabled'):(c.status||'planned');return adapterCard(c.label,status,'',c.capabilities.join(', ')+(c.notes?' - '+c.notes:''),channelSettingsGroup(c))});
+  const agentCards=(agents||[]).map(a=>{const available=a.status==='available';const status=available?(state.enabledAgents.includes(a.id)?'enabled':'disabled'):(a.status||'planned');return adapterCard(a.label,status,'',a.notes||'',agentSettingsGroup(a))});
   document.getElementById('agentAdapters').innerHTML='<div class="list">'+(agentCards.join('')||'<div class="item">No agent adapters.</div>')+'</div>';
   document.getElementById('chatAdapters').innerHTML='<div class="list">'+(channelCards.join('')||'<div class="item">No chat adapters.</div>')+'</div>';
+  bindAdapterSettingsLinks();
 }
-function adapterCard(label,status,detail,tooltip=''){return '<div class="item"><strong title="'+attr(tooltip)+'">'+esc(label)+' <span class="adapter-status '+esc(status)+'">'+esc(status)+'</span></strong>'+(detail?'<small>'+esc(detail)+'</small>':'')+'</div>'}
+function adapterCard(label,status,detail,tooltip='',settingsGroup=''){
+  const settingsButton=(status==='enabled'||status==='disabled')&&settingsGroup?'<button type="button" class="adapter-settings-link" data-settings-group="'+attr(settingsGroup)+'" title="Open '+attr(settingsGroup)+' settings" aria-label="Open '+attr(settingsGroup)+' settings"><span class="adapter-settings-icon" aria-hidden="true">&#9881;</span></button>':'';
+  return '<div class="item adapter-overview-card"><div class="adapter-overview-header"><strong title="'+attr(tooltip)+'">'+esc(label)+' <span class="adapter-status '+esc(status)+'">'+esc(status)+'</span></strong>'+settingsButton+'</div>'+(detail?'<small>'+esc(detail)+'</small>':'')+'</div>';
+}
+function agentSettingsGroup(adapter){return ({codex:'Codex',pi:'Pi',hermes:'Hermes',openclaw:'OpenClaw','claude-code':'Claude Code'}[adapter?.id]||adapter?.label||'Agents')}
+function channelSettingsGroup(adapter){return ({telegram:'Telegram',discord:'Discord',slack:'Slack'}[adapter?.id]||adapter?.label||'Chat')}
+function bindAdapterSettingsLinks(root=document){
+  root.querySelectorAll?.('[data-settings-group]').forEach(button=>button.onclick=()=>{state.settingsGroup=button.dataset.settingsGroup||null;page('settings')});
+}
 const agentFeatureDefs=[
   ['modelSelection','Model','Model selection'],
   ['reasoningSelection','Reasoning','Reasoning/thinking level selection'],

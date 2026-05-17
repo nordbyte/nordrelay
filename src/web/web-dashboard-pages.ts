@@ -520,7 +520,7 @@ ${faviconLinks}
       <footer>
         <span id="footerVersion">NordRelay</span>
         <span id="footerHealth">Health: loading</span>
-        <span id="connectionStatus" class="footer-connection connection-warn">Connection: Connecting</span>
+        <span id="connectionStatus" class="footer-connection"><span class="footer-label">Connection:</span> <span class="footer-connection-value connection-warn">Connecting</span></span>
         <span id="footerUser">User: loading</span>
       </footer>
     </main>

@@ -334,7 +334,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('src="/assets/logo.png"');
     expect(pageSource).toContain('id="brandHomeBtn"');
     expect(pageSource).toContain('aria-label="Open overview"');
-    expect(pageSource).toContain('Connection: Connecting');
+    expect(pageSource).toContain('class="footer-label">Connection:</span>');
     expect(pageSource).toContain('width="44" height="44"');
     expect(pageSource).toContain('class="brand-separator"');
     expect(pageSource).toContain('src="/assets/dashboard.js?v=');
@@ -347,8 +347,11 @@ describe("web dashboard browser-flow assets", () => {
     expect(dashboardCss()).toContain(".brand-separator{height:1px;background:var(--sidebar-border)");
     expect(dashboardCss()).toContain("button.brand-home{width:100%;min-height:calc(var(--dashboard-header-height) - 1px)");
     expect(dashboardCss()).toContain(".footer-connection{font-weight:650}");
+    expect(dashboardCss()).toContain(".footer-label{color:var(--muted);font-weight:400}");
     expect(dashboardJs()).toContain("document.getElementById('brandHomeBtn').onclick=()=>page('overview')");
-    expect(dashboardJs()).toContain("el.textContent='Connection: '+text");
+    expect(dashboardJs()).toContain("footerHealthLabel");
+    expect(dashboardJs()).toContain("footer-profile-link");
+    expect(dashboardJs()).toContain("el.innerHTML='<span class=\"footer-label\">Connection:</span>");
     expect(dashboardCss()).toContain(".sidebar{position:sticky;top:0;height:100vh");
     expect(dashboardCss()).toContain("height:calc(var(--dashboard-header-height) - 1px);padding:0 18px");
     expect(dashboardCss()).toContain("input,select,textarea{font-size:15px}");
@@ -411,7 +414,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(readFileSync("src/web/ui/client/profile.js", "utf8")).toContain("function openProfileDialog");
     const overview = readFileSync("src/web/ui/client/overview.js", "utf8");
     expect(overview).toContain("function renderSnapshot");
-    expect(overview).toContain("uiCopyButton(thread,'Thread ID copied','copy-id header-thread-copy')");
+    expect(overview).toContain("function headerThreadCopyButton");
+    expect(overview).toContain('title="Copy thread ID"');
     expect(overview).toContain("bindUiCopyButtons(line)");
     expect(readFileSync("src/web/ui/client/workflows.js", "utf8")).toContain("function loadSessions");
     expect(readFileSync("src/web/ui/client/jobs.js", "utf8")).toContain("function renderUnifiedJobs");

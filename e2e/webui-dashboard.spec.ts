@@ -90,7 +90,7 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#activeSessions")).toContainText("Mirroring: Telegram full, Discord final, Slack final");
     await expect(page.locator("#agentAdapters")).toContainText("Codex");
     await expect(page.locator("#chatAdapters")).toContainText("Telegram");
-    await expect(page.locator("#footerHealth")).toContainText("Health: ready");
+    await expect(page.locator("#footerHealth")).toContainText("Health: healthy");
     await expect(page.getByRole("button", { name: "Refresh" })).toHaveCount(0);
 
     await navigateDashboard(page, "Chat");
