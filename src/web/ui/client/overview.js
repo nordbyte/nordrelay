@@ -148,8 +148,10 @@ function headerTargetAgentHtml(target,agent,selected){
   const model=snapshot&&snapshot.agentId===agent?(snapshot.model||'default'):'';
   const thread=snapshot&&snapshot.agentId===agent&&snapshot.threadId?shortMiddle(snapshot.threadId):'';
   const meta=[model,thread].filter(Boolean).join(' / ');
-  return '<button type="button" role="menuitemradio" class="header-target-agent" data-target-peer="'+attr(target.id)+'" data-target-agent="'+attr(agent)+'" aria-selected="'+(selected?'true':'false')+'"'+disabledAttr('sessions.write')+'><span>'+esc(agent)+'</span>'+(meta?'<small>'+esc(meta)+'</small>':'')+'</button>';
+  const key=headerTargetSessionKey(target.id,agent);
+  return '<div class="header-target-agent-block" data-target-agent-block="'+attr(key)+'"><div class="header-target-agent-row"><button type="button" role="menuitemradio" class="header-target-agent" data-target-peer="'+attr(target.id)+'" data-target-agent="'+attr(agent)+'" aria-selected="'+(selected?'true':'false')+'"'+disabledAttr('sessions.write')+'><span>'+esc(agent)+'</span>'+(meta?'<small>'+esc(meta)+'</small>':'')+'</button><button type="button" class="header-target-session-toggle" data-target-sessions-toggle="'+attr(key)+'" data-target-peer="'+attr(target.id)+'" data-target-agent="'+attr(agent)+'" aria-expanded="false" title="Show recent sessions"'+disabledAttr('sessions.read')+'><span aria-hidden="true"></span></button></div><div class="header-target-sessions" data-target-sessions="'+attr(key)+'" hidden></div></div>';
 }
+function headerTargetSessionKey(peerId,agentId){return String(peerId||'local')+'::'+String(agentId||'')}
 function bindHeaderTargetMenu(root=document){
   const menu=root.querySelector?.('[data-header-target-menu]');
   const button=menu?.querySelector('#headerTargetBtn');
@@ -160,6 +162,19 @@ function bindHeaderTargetMenu(root=document){
     if(!can('sessions.write')){toast('Permission required: sessions.write');return}
     await selectHeaderTarget(option.dataset.targetPeer||'local',option.dataset.targetAgent||'');
   },event));
+  root.querySelectorAll?.('[data-target-sessions-toggle]').forEach(toggle=>toggle.onclick=event=>safe(async()=>{
+    event.preventDefault();event.stopPropagation();
+    if(!can('sessions.read')){toast('Permission required: sessions.read');return}
+    await toggleHeaderTargetSessions(toggle);
+  },event));
+  root.querySelectorAll?.('[data-target-session-switch]').forEach(option=>option.onclick=event=>safe(async()=>{
+    event.preventDefault();event.stopPropagation();
+    if(!can('sessions.write')){toast('Permission required: sessions.write');return}
+    await selectHeaderTargetSession(option.dataset.targetPeer||'local',option.dataset.targetAgent||'',option.dataset.targetSessionSwitch||'');
+  },event));
+}
+async function headerTargetRequest(peerId,path,options={}){
+  return peerId==='local'?api(path,{...options,local:true}):apiPeer(peerId,path,options);
 }
 async function selectHeaderTarget(peerId,agentId){
   const previousPeer=state.selectedPeer||'local';
@@ -168,10 +183,52 @@ async function selectHeaderTarget(peerId,agentId){
   localStorage.setItem('nordrelayPeerTarget',state.selectedPeer);
   if(changedPeer)connectEvents();
   const selected=agentId;
-  const r=await api('/api/agent',{method:'POST',body:JSON.stringify({agentId:selected})});
+  const r=await headerTargetRequest(state.selectedPeer,'/api/agent',{method:'POST',body:JSON.stringify({agentId:selected})});
   if(state.snapshot&&r.session){state.snapshot.session=r.session;renderSnapshot(state.snapshot)}
   toast('Target switched to '+headerTargetName(state.selectedPeer)+' / '+selected);
   await loadBootstrap();await reloadCurrentPage({agentId:selected});
+}
+async function selectHeaderTargetSession(peerId,agentId,threadId){
+  if(!threadId)return;
+  const previousPeer=state.selectedPeer||'local';
+  const changedPeer=previousPeer!==peerId;
+  state.selectedPeer=peerId||'local';
+  localStorage.setItem('nordrelayPeerTarget',state.selectedPeer);
+  if(changedPeer)connectEvents();
+  if(agentId)await headerTargetRequest(state.selectedPeer,'/api/agent',{method:'POST',body:JSON.stringify({agentId})});
+  const r=await headerTargetRequest(state.selectedPeer,'/api/sessions/switch',{method:'POST',body:JSON.stringify({threadId})});
+  if(state.snapshot&&r.session){state.snapshot.session=r.session;renderSnapshot(state.snapshot)}
+  toast('Session switched');
+  await loadBootstrap();await reloadCurrentPage({agentId});
+}
+async function toggleHeaderTargetSessions(toggle){
+  const key=toggle.dataset.targetSessionsToggle;
+  const panel=document.querySelector('[data-target-sessions="'+cssEscape(key)+'"]');
+  if(!panel)return;
+  const opening=panel.hidden;
+  toggle.setAttribute('aria-expanded',opening?'true':'false');
+  panel.hidden=!opening;
+  if(!opening)return;
+  if(panel.dataset.loaded==='true')return;
+  const peerId=toggle.dataset.targetPeer||'local';
+  const agentId=toggle.dataset.targetAgent||'';
+  panel.innerHTML='<div class="header-target-session-state">Loading sessions...</div>';
+  try{
+    const data=await headerTargetRequest(peerId,'/api/sessions',{query:{agent:agentId,page:1,limit:5}});
+    panel.dataset.loaded='true';
+    panel.innerHTML=renderHeaderTargetSessions(peerId,agentId,data.sessions||[]);
+    bindHeaderTargetMenu(panel);
+  }catch(error){
+    panel.innerHTML='<div class="header-target-session-state error">'+esc(error instanceof Error?error.message:String(error))+'</div>';
+  }
+}
+function renderHeaderTargetSessions(peerId,agentId,sessions){
+  if(!sessions.length)return'<div class="header-target-session-state">No recent sessions.</div>';
+  return sessions.slice(0,5).map(session=>{
+    const title=session.title||session.firstUserMessage||session.id;
+    const meta=[session.model||'',session.cwd||'',session.updatedAt?fmtSessionAge(session.updatedAt)+' ago':''].filter(Boolean).join(' / ');
+    return '<button type="button" class="header-target-session" data-target-session-switch="'+attr(session.id)+'" data-target-peer="'+attr(peerId)+'" data-target-agent="'+attr(agentId)+'" title="'+attr([title,session.id,session.cwd||'',fmtDate(session.updatedAt)].filter(Boolean).join(' | '))+'"'+disabledAttr('sessions.write')+'><span>'+esc(short(title,92))+'</span><small>'+esc(shortMiddle(session.id))+(meta?' · '+esc(short(meta,120)):'')+'</small></button>';
+  }).join('');
 }
 async function loadActiveSessions(){
   const box=document.getElementById('activeSessions');

@@ -168,6 +168,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("await loadBootstrap();await reloadCurrentPage({agentId:selected})");
     expect(js).toContain("data-target-peer");
     expect(js).toContain("data-target-agent");
+    expect(js).toContain("data-target-sessions-toggle");
+    expect(js).toContain("function toggleHeaderTargetSessions");
+    expect(js).toContain("function selectHeaderTargetSession");
+    expect(js).toContain("limit:5");
     expect(js).toContain("async function apiPeer");
     expect(pageSource).not.toContain('id="peerSelect"');
     expect(pageSource).not.toContain('id="agentSelect"');
