@@ -1,5 +1,5 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 
 import { loadConfig } from "../src/core/config.js";
@@ -115,6 +115,8 @@ describe("loadConfig", () => {
     delete process.env.OPENCLAW_DEFAULT_PROFILE;
     delete process.env.WORKSPACE_ALLOWED_ROOTS;
     delete process.env.WORKSPACE_WARN_ROOTS;
+    delete process.env.NORDRELAY_WORKSPACE;
+    delete process.env.NORDRELAY_SOURCE_ROOT;
     delete process.env.NORDRELAY_STATE_BACKEND;
     delete process.env.NORDRELAY_AUDIT_MAX_EVENTS;
     delete process.env.NORDRELAY_SESSION_LOCK_TTL_MS;
@@ -702,6 +704,26 @@ describe("loadConfig", () => {
     const config = loadConfig();
 
     expect(config.workspace).toBe("/workspace");
+  });
+
+  it("honors NORDRELAY_WORKSPACE even when the runtime source root is the cwd", () => {
+    const workspace = path.join(tempDir, "selected-workspace");
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.NORDRELAY_WORKSPACE = workspace;
+    process.env.NORDRELAY_SOURCE_ROOT = tempDir;
+
+    const config = loadConfig();
+
+    expect(config.workspace).toBe(workspace);
+  });
+
+  it("does not use the runtime source root as workspace when launched from a package directory", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.NORDRELAY_SOURCE_ROOT = tempDir;
+
+    const config = loadConfig();
+
+    expect(config.workspace).toBe(homedir());
   });
 
   it("parses MAX_FILE_SIZE when configured", () => {

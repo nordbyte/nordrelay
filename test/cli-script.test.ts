@@ -42,6 +42,15 @@ describe("nordrelay CLI script", () => {
     expect(source).toContain('console.log("  --build');
   });
 
+  it("passes the launch workspace into detached runtime and WebUI processes", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain("function resolveLaunchWorkspace()");
+    expect(source).toContain("NORDRELAY_WORKSPACE: resolveLaunchWorkspace()");
+    expect(source).toContain("const launchWorkspace = resolveLaunchWorkspace()");
+    expect(source).toContain("NORDRELAY_WORKSPACE: launchWorkspace");
+  });
+
   it("handles --help before the foreground default", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
 

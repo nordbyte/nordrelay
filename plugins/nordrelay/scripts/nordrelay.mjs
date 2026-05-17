@@ -149,6 +149,11 @@ function loadEnvFiles(home) {
   normalizeEnvAliases();
 }
 
+function resolveLaunchWorkspace() {
+  const configured = process.env.NORDRELAY_WORKSPACE?.trim();
+  return path.resolve(configured || process.cwd());
+}
+
 function loadEnvFile(envPath) {
   if (!fs.existsSync(envPath)) return;
   const text = fs.readFileSync(envPath, "utf8");
@@ -384,7 +389,10 @@ async function commandStart(options, settings = {}) {
     const child = spawn(process.execPath, [SCRIPT_PATH, "foreground", ...runtimeForwardFlags(options.rawFlags)], {
       cwd: RUNTIME_ROOT,
       detached: true,
-      env: process.env,
+      env: {
+        ...process.env,
+        NORDRELAY_WORKSPACE: resolveLaunchWorkspace(),
+      },
       stdio: ["ignore", logFd, logFd],
     });
     child.unref();
@@ -1640,6 +1648,7 @@ async function startWebDashboard(options, settings = {}) {
     ...process.env,
     NORDRELAY_HOME: options.home,
     NORDRELAY_SOURCE_ROOT: RUNTIME_ROOT,
+    NORDRELAY_WORKSPACE: resolveLaunchWorkspace(),
     NORDRELAY_DASHBOARD_HOST: host,
     NORDRELAY_DASHBOARD_PORT: String(port),
   };
@@ -1739,6 +1748,7 @@ async function commandForeground(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
   await prepareRuntimeForLaunch(options);
+  const launchWorkspace = resolveLaunchWorkspace();
   process.chdir(RUNTIME_ROOT);
 
   await writeJsonAtomic(options.stateFile, {
@@ -1765,6 +1775,7 @@ async function commandForeground(options) {
     ...process.env,
     NORDRELAY_HOME: options.home,
     NORDRELAY_SOURCE_ROOT: RUNTIME_ROOT,
+    NORDRELAY_WORKSPACE: launchWorkspace,
     NORDRELAY_STATE_FILE: options.stateFile,
     NORDRELAY_WRAPPER_PID: String(process.pid),
     NORDRELAY_DROP_PENDING_UPDATES: options.dropPendingUpdates ? "1" : "0",

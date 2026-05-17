@@ -195,6 +195,7 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
 
   setting("WORKSPACE_ALLOWED_ROOTS", "Workspace allowed roots", "Workspace", "list", "Restrict selectable workspaces.", true),
   setting("WORKSPACE_WARN_ROOTS", "Workspace warn roots", "Workspace", "list", "Warn for broad workspace roots.", true),
+  setting("NORDRELAY_WORKSPACE", "Default workspace", "Workspace", "string", "Default workspace for state, queues, artifacts, and new sessions.", true),
   setting("NORDRELAY_STATE_BACKEND", "State backend", "Workspace", "string", "json or sqlite.", true, ["json", "sqlite"]),
   setting("NORDRELAY_AUDIT_MAX_EVENTS", "Audit max events", "Workspace", "number", "Retained audit events.", true),
   setting("NORDRELAY_SESSION_LOCK_TTL_MS", "Session lock TTL", "Workspace", "number", "Write-lock TTL.", true),

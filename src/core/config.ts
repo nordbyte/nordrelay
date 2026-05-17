@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import {
@@ -501,16 +502,35 @@ export function loadConfig(): ConnectorConfig {
   };
 }
 
-/**
- * Workspace is derived automatically:
- * - In Docker: /workspace (the mount point)
- * - Outside Docker: process.cwd()
- */
 function resolveWorkspace(): string {
+  const explicitWorkspace = optionalString(process.env.NORDRELAY_WORKSPACE);
+  if (explicitWorkspace) {
+    return path.resolve(explicitWorkspace);
+  }
   if (isRunningInDocker()) {
     return "/workspace";
   }
+  if (isRuntimeSourceRoot(process.cwd())) {
+    return os.homedir();
+  }
   return process.cwd();
+}
+
+function isRuntimeSourceRoot(candidate: string): boolean {
+  const sourceRoot = optionalString(process.env.NORDRELAY_SOURCE_ROOT);
+  return Boolean(sourceRoot && samePath(candidate, sourceRoot));
+}
+
+function samePath(left: string, right: string): boolean {
+  return canonicalPath(left) === canonicalPath(right);
+}
+
+function canonicalPath(filePath: string): string {
+  try {
+    return realpathSync.native(path.resolve(filePath));
+  } catch {
+    return path.resolve(filePath);
+  }
 }
 
 function isRunningInDocker(): boolean {
