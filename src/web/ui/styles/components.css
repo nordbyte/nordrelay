@@ -93,6 +93,7 @@
 .data-table .primary-cell{font-weight:650}
 .truncate-cell{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .data-table-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:nowrap}
+.data-table-actions button{min-height:28px;height:28px;padding:0 8px;font-size:12px;line-height:1}
 .actions-heading{text-align:right!important}
 .sessions-table th:nth-child(1),.sessions-table td:nth-child(1){width:24%}
 .sessions-table th:nth-child(2),.sessions-table td:nth-child(2){width:20%}
