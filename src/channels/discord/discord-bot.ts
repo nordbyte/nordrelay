@@ -25,7 +25,7 @@ import { buildFileInstructions, outboxPath, stageFile, type StagedFile } from ".
 import { AuditLogStore } from "../../access/audit-log.js";
 import { BotPreferencesStore } from "../../state/bot-preferences.js";
 import { capabilitiesOf, filterActivityEvents, formatLocalDateTime, parseActivityOptions, renderPromptFailure, trimLine, type TurnProgress } from "../shared/bot-rendering.js";
-import { renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction } from "../shared/channel-actions.js";
+import { renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction, type ChannelActionButton } from "../shared/channel-actions.js";
 import {
   createChannelActivityRecorder,
   createChannelAuditRecorder,
@@ -68,6 +68,7 @@ import { transcribeAudio, type TranscriptionBackend } from "../../artifacts/voic
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "../../core/workspace-policy.js";
 import { UserStore, type AuthenticatedUser } from "../../access/user-management.js";
 import { WebActivityStore, type WebActivityActor } from "../../web/web-state.js";
+import { capDiscordCommandReplyChunks, DISCORD_SESSION_PAGE_SIZE, renderDiscordSessionPageAction, type DiscordSessionListRecord, type DiscordSessionPageSource, type DiscordSessionPageState } from "./discord-sessions.js";
 
 export { isUnauthenticatedDiscordCommandAllowed, permissionForDiscordAction, requiredPermissionForDiscordCommand } from "./discord-command-surface.js";
 
@@ -75,36 +76,6 @@ const EDIT_DEBOUNCE_MS = 1500;
 const TYPING_INTERVAL_MS = 4500;
 const MAX_SLASH_CHOICES = 25;
 const MAX_ATTACHMENT_DOWNLOAD = 25 * 1024 * 1024;
-const MAX_DISCORD_COMMAND_REPLY_CHUNKS = 5;
-const DISCORD_SESSION_TITLE_LIMIT = 120;
-const DISCORD_SESSION_ID_LIMIT = 96;
-const DISCORD_SESSION_WORKSPACE_LIMIT = 140;
-
-type DiscordSessionListRecord = Pick<AgentThreadRecord, "id" | "title" | "cwd" | "firstUserMessage">;
-
-export function renderDiscordSessionList(title: string, records: DiscordSessionListRecord[]): string {
-  return [
-    `${title}:`,
-    ...records.map((record, index) => {
-      const label = trimLine(record.title || record.firstUserMessage || record.id, DISCORD_SESSION_TITLE_LIMIT) || trimLine(record.id, DISCORD_SESSION_TITLE_LIMIT);
-      const id = trimLine(record.id, DISCORD_SESSION_ID_LIMIT);
-      const workspace = trimLine(record.cwd || "-", DISCORD_SESSION_WORKSPACE_LIMIT);
-      return `${index + 1}. ${label}\n   ${id}\n   ${workspace}`;
-    }),
-  ].join("\n");
-}
-
-export function capDiscordCommandReplyChunks(chunks: string[], maxChunks = MAX_DISCORD_COMMAND_REPLY_CHUNKS): string[] {
-  const effectiveMax = Math.max(1, maxChunks);
-  if (chunks.length <= effectiveMax) {
-    return chunks;
-  }
-  const capped = chunks.slice(0, effectiveMax);
-  const omitted = chunks.length - effectiveMax;
-  capped[capped.length - 1] = trimDiscordMessage(`${capped[capped.length - 1]}\n\n[Output truncated: ${omitted} additional Discord message${omitted === 1 ? "" : "s"} omitted.]`);
-  return capped;
-}
-
 interface DiscordBridge {
   client: Client;
   start(): Promise<void>;
@@ -172,6 +143,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
   const turnProgress = new Map<ChannelContextKey, TurnProgress>();
   const draining = new Set<ChannelContextKey>();
   const picks = new Map<string, PickState>();
+  const sessionPages = new Map<string, DiscordSessionPageState>();
   const responseOwners = new Map<string, ChannelContextKey>();
   const externalMirrors = new Map<ChannelContextKey, DiscordExternalMirrorState>();
   const queueStatusMessages = createChannelQueueStatusController<ChannelContextKey, string>({
@@ -876,15 +848,10 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
 
   const commandSessions = async (request: DiscordRequest, query: string): Promise<void> => {
     const session = await getSession(request, { deferThreadStart: true });
-    const records = session.listAllSessions(50).filter((record) => !query.trim() || [record.id, record.title, record.cwd, record.firstUserMessage].some((value) => value?.toLowerCase().includes(query.toLowerCase()))).slice(0, 10);
-    if (records.length === 0) {
-      await reply(request, "No sessions found.");
-      return;
-    }
-    const pickId = createPick("session", records.map((record) => record.id));
-    await reply(request, renderDiscordSessionList("Sessions", records), {
-      buttons: records.map((record, index) => [{ label: trimLine(record.title || record.id, 70), action: `discord_pick:${pickId}:${index}` }]),
-    });
+    const records = listDiscordSessionRecords(session, query);
+    if (records.length === 0) { await reply(request, "No sessions found."); return; }
+    const rendered = renderDiscordSessionPageAction("Sessions", records, createSessionPage("sessions", request.contextKey, query, records));
+    await reply(request, rendered.text, { buttons: rendered.buttons });
   };
 
   const commandNew = async (request: DiscordRequest, workspace: string): Promise<void> => {
@@ -1342,14 +1309,22 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     const records = pinned
       .map((threadId) => session.getSessionRecord(threadId))
       .filter((record): record is NonNullable<ReturnType<AgentSessionService["getSessionRecord"]>> => Boolean(record));
-    if (records.length === 0) {
-      await reply(request, "No pinned threads.");
-      return;
-    }
-    const pickId = createPick("session", records.map((record) => record.id));
-    await reply(request, renderDiscordSessionList(`Pinned threads (${records.length})`, records), {
-      buttons: records.map((record, index) => [{ label: trimLine(record.title || record.id, 70), action: `discord_pick:${pickId}:${index}` }]),
-    });
+    if (records.length === 0) { await reply(request, "No pinned threads."); return; }
+    const rendered = renderDiscordSessionPageAction("Pinned threads", records, createSessionPage("pinned", request.contextKey, "", records));
+    await reply(request, rendered.text, { buttons: rendered.buttons });
+  };
+
+  const commandSessionPage = async (request: DiscordRequest, pickId: string, action: "prev" | "next" | "refresh"): Promise<void> => {
+    const state = sessionPages.get(pickId);
+    if (!state || state.contextKey !== request.contextKey) { await reply(request, "Selection expired. Run `/sessions` again.", { ephemeral: true }); return; }
+    if (action === "refresh") {
+      const refreshed = await refreshSessionPageRecords(request, state);
+      state.records = refreshed;
+      const pick = picks.get(pickId); if (pick) pick.values = refreshed.map((record) => record.id);
+    } else state.page += action === "next" ? 1 : -1;
+    const rendered = renderDiscordSessionPageAction(state.source === "pinned" ? "Pinned threads" : "Sessions", state.records, pickId, state.page, state.pageSize);
+    state.page = rendered.page;
+    await editSessionPageReply(request, rendered.text, rendered.buttons);
   };
 
   const commandHandback = async (request: DiscordRequest): Promise<void> => {
@@ -1535,6 +1510,11 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     if (request.interaction?.isButton()) {
       await request.interaction.deferUpdate().catch(() => {});
     }
+    const sessionPageMatch = action.match(/^discord_sessions_page:([^:]+):(prev|next|refresh)$/);
+    if (sessionPageMatch?.[1] && sessionPageMatch[2]) {
+      await commandSessionPage(request, sessionPageMatch[1], sessionPageMatch[2] as "prev" | "next" | "refresh");
+      return;
+    }
     const pickMatch = action.match(/^discord_pick:([^:]+):(\d+)$/);
     if (pickMatch?.[1]) {
       const pick = picks.get(pickMatch[1]);
@@ -1589,6 +1569,38 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       await commandAbort(request);
       return;
     }
+  };
+
+  const listDiscordSessionRecords = (session: AgentSessionService, query: string): DiscordSessionListRecord[] => {
+    const normalized = query.trim().toLowerCase();
+    return session.listAllSessions(50).filter((record) => !normalized || [record.id, record.title, record.cwd, record.firstUserMessage].some((value) => value?.toLowerCase().includes(normalized)));
+  };
+
+  const listPinnedSessionRecords = (request: DiscordRequest, session: AgentSessionService): DiscordSessionListRecord[] =>
+    registry.listPinnedThreadIds(request.contextKey).map((threadId) => session.getSessionRecord(threadId)).filter((record): record is AgentThreadRecord => Boolean(record));
+
+  const refreshSessionPageRecords = async (request: DiscordRequest, state: DiscordSessionPageState): Promise<DiscordSessionListRecord[]> => {
+    const session = await getSession(request, { deferThreadStart: true });
+    return state.source === "pinned" ? listPinnedSessionRecords(request, session) : listDiscordSessionRecords(session, state.query);
+  };
+
+  const editSessionPageReply = async (request: DiscordRequest, content: string, buttons: ChannelActionButton[][]): Promise<void> => {
+    const interaction = request.interaction;
+    if (!interaction?.isButton()) {
+      await reply(request, content, { buttons });
+      return;
+    }
+    const bucket = request.context.topicId ?? request.context.chatId;
+    await discordRateLimiter.run(bucket, "editMessage", () => interaction.editReply({ content: trimDiscordMessage(content), components: discordActionRows(buttons), allowedMentions: { parse: [] } })).catch(async () => {
+      await reply(request, content, { buttons, ephemeral: true });
+    });
+  };
+
+  const createSessionPage = (source: DiscordSessionPageSource, contextKey: ChannelContextKey, query: string, records: DiscordSessionListRecord[]): string => {
+    const id = createPick("session", records.map((record) => record.id));
+    sessionPages.set(id, { contextKey, source, query, records, page: 0, pageSize: DISCORD_SESSION_PAGE_SIZE, createdAt: Date.now() });
+    setTimeout(() => sessionPages.delete(id), 10 * 60 * 1000).unref?.();
+    return id;
   };
 
   const createPick = (kind: PickState["kind"], values: string[]): string => {

@@ -35,6 +35,7 @@ export function isUnauthenticatedDiscordCommandAllowed(command: string): boolean
 export function permissionForDiscordAction(action: string): Permission | null {
   if (action.startsWith("discord_queue_") || action.startsWith("discord_peer_queue_")) return "queue.write";
   if (action.startsWith("discord_abort:")) return "prompt.abort";
+  if (action.startsWith("discord_sessions_page:")) return "sessions.read";
   if (action.startsWith("discord_pick:")) return "sessions.write";
   if (action.startsWith("discord_artifact_delete:")) return "files.write";
   if (action.startsWith("discord_artifact_")) return "files.read";
