@@ -159,7 +159,12 @@ describe("web dashboard browser-flow assets", () => {
     const js = dashboardJs();
 
     expect(js).toContain("selectedLaunch=s.launchProfileId||s.nextLaunchProfileId");
-    expect(js).toContain("<label>Launch<select id=\"controlLaunch\"");
+    expect(js).toContain("compactControlMenu('controlLaunch','Launch'");
+    expect(js).toContain("function bindCompactControlMenus");
+    expect(js).toContain("selectedCompactControlValue('controlLaunch')");
+    expect(js).toContain(">Apply</button>");
+    expect(js).not.toContain("Apply to Current");
+    expect(js).not.toContain("<label>Launch<select id=\"controlLaunch\"");
     expect(js).not.toContain("Active launch");
     expect(js).not.toContain("Next launch");
   });
@@ -345,8 +350,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(layout).toContain("line-height:1.4");
     expect(layout).toContain("button{appearance:none");
     expect(layout).toContain("display:inline-flex");
-    expect(layout).toContain(".control-grid{display:grid");
-    expect(layout).toContain("align-items:end");
+    expect(layout).toContain(".control-grid{display:flex");
+    expect(layout).toContain("align-items:flex-end");
+    expect(layout).toContain(".control-menu-button");
+    expect(layout).toContain(".control-menu-list");
     expect(layout).toContain("nav button{display:flex");
     expect(layout).toContain(".badge,.adapter-status{display:inline-flex");
     expect(components).toContain(".chip{display:inline-flex");

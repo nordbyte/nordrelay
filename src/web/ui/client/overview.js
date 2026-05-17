@@ -140,21 +140,64 @@ function activeSourceLabel(source){
 }
 function renderSessionControls(){
   const c=state.controls||{};const s=state.snapshot?.session||{};const caps=c.capabilities||{};
-  const modelOptions=['<option value="">Default</option>'].concat((c.models||[]).map(m=>'<option value="'+attr(m.slug)+'" '+(m.slug===s.model?'selected':'')+'>'+esc(modelLabel(m))+'</option>')).join('');
-  const reasoningOptions=(c.reasoningOptions||[]).map(v=>'<option value="'+attr(v)+'" '+(v===s.reasoningEffort?'selected':'')+'>'+esc(v)+'</option>').join('');
+  const modelItems=[{value:'',label:'Default'}].concat((c.models||[]).map(m=>({value:m.slug,label:modelLabel(m)})));
+  const selectedModel=modelItems.find(item=>item.value===s.model)||(s.model?{value:s.model,label:s.model}:modelItems[0]);
+  const reasoningItems=(c.reasoningOptions||[]).map(v=>({value:v,label:v}));
+  const selectedReasoning=reasoningItems.find(item=>item.value===s.reasoningEffort)||(s.reasoningEffort?{value:s.reasoningEffort,label:s.reasoningEffort}:reasoningItems[0]);
   const selectedLaunch=s.launchProfileId||s.nextLaunchProfileId;
-  const launchOptions=(c.launchProfiles||[]).map(p=>'<option value="'+attr(p.id)+'" '+(p.id===selectedLaunch?'selected':'')+'>'+esc(p.label+' - '+p.behavior+(p.unsafe?' - unsafe':''))+'</option>').join('');
+  const launchItems=(c.launchProfiles||[]).map(p=>({value:p.id,label:p.label+' - '+p.behavior+(p.unsafe?' - unsafe':'')}));
+  const selectedLaunchItem=launchItems.find(item=>item.value===selectedLaunch)||launchItems[0];
   document.getElementById('sessionControls').innerHTML=[
-    caps.modelSelection?'<label>Model<select id="controlModel"'+disabledAttr('settings.write')+'>'+modelOptions+'</select></label>':'',
-    caps.reasoningSelection?'<label>'+esc(c.reasoningLabel||'Reasoning')+'<select id="controlReasoning"'+disabledAttr('settings.write')+'>'+reasoningOptions+'</select></label>':'',
-    caps.launchProfiles?'<label>Launch<select id="controlLaunch"'+disabledAttr('settings.write')+'>'+launchOptions+'</select></label><button id="applyLaunchBtn" class="secondary" title="Apply selected launch profile to the current idle session"'+disabledAttr('settings.write')+'>Apply to Current</button>':'',
+    caps.modelSelection?compactControlMenu('controlModel','Model',selectedModel?.value||'',selectedModel?.label||'Default',modelItems):'',
+    caps.reasoningSelection?compactControlMenu('controlReasoning',c.reasoningLabel||'Reasoning',selectedReasoning?.value||'',selectedReasoning?.label||'Default',reasoningItems):'',
+    caps.launchProfiles?compactControlMenu('controlLaunch','Launch',selectedLaunchItem?.value||'',selectedLaunchItem?.label||'Default',launchItems)+'<button id="applyLaunchBtn" class="secondary compact-apply-button" title="Apply selected launch profile to the current idle session"'+disabledAttr('settings.write')+'>Apply</button>':'',
     caps.fastMode?'<label class="checkbox"><input id="controlFast" type="checkbox" '+(s.fastMode?'checked':'')+disabledAttr('settings.write')+'> Fast mode</label>':''
   ].join('');
-  const model=document.getElementById('controlModel'); if(model) model.onchange=()=>safe(async()=>{if(model.value){await api('/api/session/model',{method:'POST',body:JSON.stringify({model:model.value})});toast('Model updated');loadBootstrap()}});
-  const reasoning=document.getElementById('controlReasoning'); if(reasoning) reasoning.onchange=()=>safe(async()=>{await api('/api/session/reasoning',{method:'POST',body:JSON.stringify({reasoning:reasoning.value})});toast((c.reasoningLabel||'Reasoning')+' updated');loadBootstrap()});
-  const launch=document.getElementById('controlLaunch'); if(launch) launch.onchange=()=>safe(async()=>{await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId:launch.value})});toast('Launch profile updated');loadBootstrap()});
-  const applyLaunch=document.getElementById('applyLaunchBtn'); if(applyLaunch&&launch) applyLaunch.onclick=()=>safe(async()=>{await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId:launch.value,apply:true})});toast('Launch profile applied to current session');loadBootstrap()});
+  bindCompactControlMenus();
+  const applyLaunch=document.getElementById('applyLaunchBtn'); if(applyLaunch) applyLaunch.onclick=()=>safe(async()=>{const profileId=selectedCompactControlValue('controlLaunch');await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId,apply:true})});toast('Launch profile applied to current session');loadBootstrap()});
   const fast=document.getElementById('controlFast'); if(fast) fast.onchange=()=>safe(async()=>{await api('/api/session/fast',{method:'POST',body:JSON.stringify({enabled:fast.checked})});toast('Fast mode updated');loadBootstrap()});
+}
+function compactControlMenu(id,label,value,display,items){
+  const options=(items||[]).map(item=>'<button type="button" role="option" data-control-option="'+attr(id)+'" data-control-value="'+attr(item.value)+'" aria-selected="'+(item.value===value?'true':'false')+'">'+esc(item.label)+'</button>').join('');
+  return '<div class="compact-control" data-control-menu="'+attr(id)+'"><span class="compact-control-label">'+esc(label)+'</span><button type="button" id="'+attr(id)+'" class="control-menu-button" data-control-value="'+attr(value)+'" aria-haspopup="listbox" aria-expanded="false"'+disabledAttr('settings.write')+'>'+esc(display||'Default')+'</button><div class="control-menu-list" role="listbox" hidden>'+options+'</div></div>';
+}
+function selectedCompactControlValue(id){return document.getElementById(id)?.dataset.controlValue||''}
+function closeCompactControlMenus(except){
+  document.querySelectorAll('.compact-control').forEach(menu=>{
+    if(except&&menu===except)return;
+    menu.querySelector('.control-menu-list')?.setAttribute('hidden','');
+    menu.querySelector('.control-menu-button')?.setAttribute('aria-expanded','false');
+  });
+}
+function bindCompactControlMenus(){
+  document.querySelectorAll('.compact-control').forEach(menu=>{
+    const button=menu.querySelector('.control-menu-button');
+    const list=menu.querySelector('.control-menu-list');
+    if(!button||!list)return;
+    button.onclick=event=>{event.preventDefault();event.stopPropagation();if(button.disabled)return;const open=list.hidden;closeCompactControlMenus(menu);list.hidden=!open;button.setAttribute('aria-expanded',open?'true':'false')};
+  });
+  document.querySelectorAll('[data-control-option]').forEach(option=>option.onclick=event=>safe(async()=>{
+    event.preventDefault();event.stopPropagation();
+    const id=option.dataset.controlOption;
+    const button=document.getElementById(id);
+    if(!button||button.disabled)return;
+    button.dataset.controlValue=option.dataset.controlValue||'';
+    button.textContent=option.textContent||'Default';
+    option.closest('.control-menu-list')?.querySelectorAll('[data-control-option]').forEach(item=>item.setAttribute('aria-selected',item===option?'true':'false'));
+    closeCompactControlMenus();
+    if(id==='controlModel'){
+      if(button.dataset.controlValue){await api('/api/session/model',{method:'POST',body:JSON.stringify({model:button.dataset.controlValue})});toast('Model updated');loadBootstrap()}
+    }else if(id==='controlReasoning'){
+      await api('/api/session/reasoning',{method:'POST',body:JSON.stringify({reasoning:button.dataset.controlValue})});toast(((state.controls||{}).reasoningLabel||'Reasoning')+' updated');loadBootstrap();
+    }else if(id==='controlLaunch'){
+      await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId:button.dataset.controlValue})});toast('Launch profile updated');loadBootstrap();
+    }
+  },event));
+  if(!state.compactControlOutsideBound){
+    state.compactControlOutsideBound=true;
+    document.addEventListener('click',event=>{if(!event.target.closest?.('.compact-control'))closeCompactControlMenus()});
+    document.addEventListener('keydown',event=>{if(event.key==='Escape')closeCompactControlMenus()});
+  }
 }
 function renderAdapters(channels, agents){
   const channelCards=(channels||[]).map(c=>{const status=c.status==='available'?(c.enabled===false?'disabled':'enabled'):(c.status||'planned');return adapterCard(c.label,status,'',c.capabilities.join(', ')+(c.notes?' - '+c.notes:''))});
