@@ -260,6 +260,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('id="activeSessions"');
     expect(pageSource).not.toContain("Current Session");
     expect(js).toContain("function renderActiveSessions");
+    expect(js).toContain("metricHtml('Workspace'");
+    expect(js).toContain("metricHtml('Agent / Model'");
+    expect(js).toContain("function sessionAgentModelText");
     expect(js).toContain("/api/active-sessions");
     expect(js).toContain("active_sessions_update");
     expect(js).toContain("function renderChatWorkingIndicator");

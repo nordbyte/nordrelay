@@ -143,9 +143,9 @@ function renderSnapshot(s){
   const metrics=document.getElementById('metrics');
   metrics.innerHTML=[
     metricHtml('Current Session',esc(s.processing?'working':'idle')+metricThreadCopyHtml(s.session.threadId)),
-    metricHtml('Agent',esc(s.session.agentLabel)),
     metricHtml('Queue',esc(s.queue.length)),
     metricHtml('Workspace',esc(s.session.workspace)),
+    metricHtml('Agent / Model',esc(sessionAgentModelText(s.session))),
     metricHtml('Reasoning / Fast',esc((s.session.reasoningEffort||'default')+' / '+fastValue)),
     metricHtml('Permissions',esc(launchPermissionsText(s.session)))
   ].join('');
@@ -153,6 +153,7 @@ function renderSnapshot(s){
   renderQueue(s.queue,s.queuePaused);
 }
 function metricHtml(label,valueHtml){return '<div class="metric"><div class="label">'+esc(label)+'</div><div class="value">'+valueHtml+'</div></div>'}
+function sessionAgentModelText(session){return [(session.agentLabel||session.agentId||'Agent'),(session.model||'default')].filter(Boolean).join(' / ')}
 function metricThreadCopyHtml(thread){
   return thread?' <button type="button" class="copy-id metric-thread-copy" data-copy-value="'+attr(thread)+'" data-copy-label="Thread ID copied" title="Copy thread ID" aria-label="Copy thread ID"><span class="copy-icon" aria-hidden="true"></span></button>':'';
 }

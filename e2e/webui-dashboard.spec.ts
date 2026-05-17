@@ -92,6 +92,15 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#chatAdapters")).toContainText("Telegram");
     await expect(page.locator("#footerHealth")).toContainText("Health: healthy");
     await expect(page.locator("#metrics")).toContainText("Current Session");
+    await expect(page.locator("#metrics .metric .label")).toHaveText([
+      "Current Session",
+      "Queue",
+      "Workspace",
+      "Agent / Model",
+      "Reasoning / Fast",
+      "Permissions",
+    ]);
+    await expect(page.locator("#metrics .metric").nth(3)).toContainText("Codex / gpt-5.5");
     await expect(page.locator("#metrics")).toContainText("Reasoning / Fast");
     await expect(page.locator("#metrics")).toContainText("high / on");
     await expect(page.locator("#metrics")).toContainText("Permissions");
