@@ -84,9 +84,9 @@
 .artifact-card img{width:100%;aspect-ratio:1.4;object-fit:cover;border:1px solid var(--border);border-radius:6px;background:var(--surface)}
 .artifact-card small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .data-table-wrap{margin-top:12px;overflow:auto;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface-soft)}
-.data-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px;line-height:1.35}
+.data-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px;line-height:1.35}
 .data-table th,.data-table td{padding:10px 12px;border-bottom:1px solid var(--border-soft);text-align:left;vertical-align:middle}
-.data-table th{background:var(--surface);color:var(--muted);font-size:12px;font-weight:750;line-height:1;text-transform:none;white-space:nowrap}
+.data-table th{background:var(--surface);color:var(--muted);font-size:13px;font-weight:750;line-height:1;text-transform:none;white-space:nowrap}
 .data-table tbody tr:last-child td{border-bottom:0}
 .data-table tbody tr:hover{background:color-mix(in srgb,var(--accent) 5%,transparent)}
 .data-table td{min-width:0;color:var(--text)}
@@ -103,6 +103,13 @@
 .sessions-table th:nth-child(6),.sessions-table td:nth-child(6){width:8%}
 .sessions-table th:nth-child(7),.sessions-table td:nth-child(7){width:7%;white-space:nowrap}
 .sessions-table th:nth-child(8),.sessions-table td:nth-child(8){width:120px}
+.templates-table th:nth-child(1),.templates-table td:nth-child(1){width:9%;white-space:nowrap}
+.templates-table th:nth-child(2),.templates-table td:nth-child(2){width:19%}
+.templates-table th:nth-child(3),.templates-table td:nth-child(3){width:8%}
+.templates-table th:nth-child(4),.templates-table td:nth-child(4){width:14%}
+.templates-table th:nth-child(5),.templates-table td:nth-child(5){width:9%;white-space:nowrap}
+.templates-table th:nth-child(6),.templates-table td:nth-child(6){width:24%}
+.templates-table th:nth-child(7),.templates-table td:nth-child(7){width:250px}
 #activeSessions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 @media(min-width:1320px){#activeSessions{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .overview-adapter-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}

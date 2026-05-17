@@ -68,6 +68,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function loadWorkflows");
     expect(js).toContain("document.addEventListener('click'");
     expect(js).toContain("[data-workflow-tab]");
+    expect(js).toContain("function renderTemplatesTable");
+    expect(js).toContain('class="data-table templates-table"');
     expect(js).toContain("function workflowBuilderState");
     expect(js).toContain("function openWorkflowVariableDialog");
     expect(js).toContain("Advanced JSON import/export");
@@ -81,6 +83,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".workflow-tab-heading");
     expect(css).toContain(".workflow-builder-step");
     expect(css).toContain(".workflow-builder-json");
+    expect(css).toContain(".templates-table th:nth-child(7)");
     expect(contract).toContain('exact("/api/templates"');
     expect(contract).toContain('exact("/api/workflows"');
     expect(contract).toContain('dynamic("/api/workflow-runs/:id/cancel"');
@@ -179,6 +182,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("startSessionAgeCounter()");
     expect(js).not.toContain("short((s.cwd||'')+' / '+fmtDate(s.updatedAt))");
     expect(css).toContain(".data-table-wrap");
+    expect(css).toContain(".data-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px");
+    expect(css).toContain(".data-table th{background:var(--surface);color:var(--muted);font-size:13px");
     expect(css).toContain(".sessions-table");
     expect(css).toContain(".sessions-table th:nth-child(8)");
     expect(css).toContain("@media(max-width:760px){.data-table-wrap");
