@@ -184,6 +184,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(readFileSync("src/runtime/relay-runtime-active-sessions.ts", "utf8")).toContain("right.durationMs - left.durationMs");
     expect(readFileSync("src/runtime/relay-runtime-active-sessions.ts", "utf8")).toContain("function safeActiveSessionList");
     expect(readFileSync("src/agents/shared/agent-activity.ts", "utf8")).toContain("snapshot = null");
+    expect(readFileSync("src/runtime/relay-external-activity-monitor.ts", "utf8")).toContain("shouldIgnoreExternalTurn");
+    expect(readFileSync("src/runtime/relay-external-activity-monitor.ts", "utf8")).toContain("message.source === \"cli\"");
     expect(js).not.toContain("activeSessionsTimer=setInterval");
   });
 
@@ -193,12 +195,15 @@ describe("web dashboard browser-flow assets", () => {
 
     expect(js).toContain("function normalizeChatListSpacing");
     expect(js).toContain('replace(/<\\/(ul|ol)>\\n+(?=\\S)/g');
+    expect(js).toContain("chat-list-continuation");
+    expect(js).toContain("start=\"'+start+'\"");
     expect(js).toContain("function chatMessageCopyButtonHtml");
     expect(js).toContain("data-message-index");
     expect(js).toContain("function bindChatMessageCopyButton");
     expect(js).toContain("Message copied");
     expect(css).toContain(".message-copy-button");
     expect(css).toContain(".message:hover .message-copy-button");
+    expect(css).toContain(".message .chat-list-continuation");
   });
 
   it("uses a friendly dashboard API network failure message", () => {

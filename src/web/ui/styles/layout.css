@@ -106,6 +106,7 @@ nav button{display:flex;align-items:center;justify-content:flex-start;width:100%
 .message .chat-blockquote{margin:6px 0;padding:4px 0 4px 10px;border-left:3px solid var(--border);color:var(--muted)}
 .message .chat-list{margin:6px 0;padding-left:22px;white-space:normal}
 .message .chat-list li{margin:3px 0;white-space:pre-wrap}
+.message .chat-list-continuation{display:block;margin-top:3px}
 .message .chat-task-list{list-style:none;padding-left:10px}
 .message .chat-task-mark{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted)}
 .message .chat-heading{display:block;margin:6px 0 2px;font-size:1.05em;font-weight:750}

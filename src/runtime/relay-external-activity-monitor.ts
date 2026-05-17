@@ -49,6 +49,7 @@ export interface RelayExternalActivityMonitorOptions {
 export class RelayExternalActivityMonitor {
   private mirror: ExternalMirrorState | null = null;
   private running = false;
+  private readonly ignoredTurns = new Set<string>();
 
   constructor(private readonly options: RelayExternalActivityMonitorOptions) {}
 
@@ -127,6 +128,11 @@ export class RelayExternalActivityMonitor {
         startedAt: snapshot.activity.startedAt?.toISOString() ?? null,
       };
       if (snapshot.activity.active) {
+        if (await this.shouldIgnoreExternalTurn(snapshot)) {
+          this.ignoredTurns.add(externalTurnKey(snapshot));
+          this.mirror.lastLine = Math.max(this.mirror.lastLine, snapshot.lineCount);
+          return;
+        }
         await this.startExternalTurn(snapshot, info);
       }
       return;
@@ -140,7 +146,16 @@ export class RelayExternalActivityMonitor {
         mirror.latestAgentLine = undefined;
         mirror.latestStatusAt = undefined;
         mirror.latestMirroredEventLine = undefined;
+        if (await this.shouldIgnoreExternalTurn(snapshot)) {
+          this.ignoredTurns.add(externalTurnKey(snapshot));
+          mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);
+          return;
+        }
         await this.startExternalTurn(snapshot, info);
+      }
+      if (this.ignoredTurns.has(externalTurnKey(snapshot))) {
+        mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);
+        return;
       }
       const mirrorMode = this.options.mirrorMode();
       const newEvents = snapshot.events.filter((event) => event.lineNumber > mirror.lastLine);
@@ -161,6 +176,15 @@ export class RelayExternalActivityMonitor {
     }
 
     const terminalEvent = [...snapshot.events].reverse().find((event) => event.kind === "task" && event.status && event.status !== "started");
+    if (this.ignoredTurns.has(externalTurnKey(snapshot))) {
+      if (terminalEvent && terminalEvent.lineNumber > mirror.lastLine) {
+        this.ignoredTurns.delete(externalTurnKey(snapshot));
+        this.options.scheduleActiveSessionsBroadcast();
+        await this.options.drainQueue();
+      }
+      mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);
+      return;
+    }
     if (terminalEvent && terminalEvent.lineNumber > mirror.lastLine) {
       const mirrorMode = this.options.mirrorMode();
       const finalAgent = snapshot.events.filter((event) => event.kind === "agent" && event.text).at(-1);
@@ -251,6 +275,24 @@ export class RelayExternalActivityMonitor {
       prompt,
       detail: `${snapshot.sourceLabel}: ${snapshot.sourcePath}`,
     });
+  }
+
+  private async shouldIgnoreExternalTurn(snapshot: AgentExternalSnapshot): Promise<boolean> {
+    if (this.ignoredTurns.has(externalTurnKey(snapshot))) {
+      return true;
+    }
+    const startedAtMs = snapshot.activity.startedAt?.getTime();
+    if (!Number.isFinite(startedAtMs)) {
+      return false;
+    }
+    const recentChannelUserMessage = (await this.options.chatHistory()).some((message) => {
+      if (message.threadId !== snapshot.threadId || message.role !== "user" || message.source === "cli") {
+        return false;
+      }
+      const messageAtMs = Date.parse(message.timestamp);
+      return Number.isFinite(messageAtMs) && Math.abs(messageAtMs - startedAtMs!) <= 45_000;
+    });
+    return recentChannelUserMessage;
   }
 
   private broadcastExternalEvents(snapshot: AgentExternalSnapshot, events: AgentExternalSnapshot["events"], info: AgentSessionInfo, broadcastTools: boolean): void {
@@ -383,6 +425,14 @@ function externalMessageKey(kind: string, snapshot: AgentExternalSnapshot, lineN
     snapshot.threadId,
     snapshot.activity.turnId ?? "turn",
     lineNumber ?? "",
+  ].join(":");
+}
+
+function externalTurnKey(snapshot: AgentExternalSnapshot): string {
+  return [
+    snapshot.agentId,
+    snapshot.threadId,
+    snapshot.activity.turnId ?? "turn",
   ].join(":");
 }
 

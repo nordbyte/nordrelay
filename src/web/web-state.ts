@@ -56,6 +56,8 @@ interface PersistedWebActivity {
 
 const DEFAULT_CHAT_LIMIT = 300;
 const DEFAULT_ACTIVITY_LIMIT = 1000;
+const CROSS_SOURCE_AGENT_DEDUPE_MS = 10 * 60 * 1000;
+const CROSS_SOURCE_AGENT_DEDUPE_MIN_CHARS = 120;
 
 export class WebChatStore {
   private readonly store: DocumentStore<PersistedWebChat>;
@@ -337,17 +339,28 @@ function randomId(): string {
 
 function dedupeWebChatMessages(messages: WebChatMessage[]): WebChatMessage[] {
   const seen = new Set<string>();
-  return messages.filter((message) => {
+  const deduped: WebChatMessage[] = [];
+  for (const message of messages) {
     const key = webChatDedupKey(message);
-    if (!key) {
-      return true;
+    if (key && seen.has(key)) {
+      continue;
     }
-    if (seen.has(key)) {
-      return false;
+    const duplicate = findCrossSourceAgentDuplicate(deduped, message);
+    if (duplicate) {
+      if (shouldPreferWebChatMessage(message, duplicate)) {
+        const index = deduped.indexOf(duplicate);
+        if (index >= 0) {
+          deduped[index] = message;
+        }
+      }
+      continue;
     }
-    seen.add(key);
-    return true;
-  });
+    if (key) {
+      seen.add(key);
+    }
+    deduped.push(message);
+  }
+  return deduped;
 }
 
 function findDuplicateWebChatMessage(
@@ -355,7 +368,52 @@ function findDuplicateWebChatMessage(
   input: Omit<WebChatMessage, "id" | "timestamp"> & { timestamp?: string },
 ): WebChatMessage | undefined {
   const key = webChatDedupKey(input);
-  return key ? messages.find((message) => webChatDedupKey(message) === key) : undefined;
+  const exact = key ? messages.find((message) => webChatDedupKey(message) === key) : undefined;
+  return exact ?? findCrossSourceAgentDuplicate(messages, input);
+}
+
+function findCrossSourceAgentDuplicate(
+  messages: WebChatMessage[],
+  input: Omit<WebChatMessage, "id" | "timestamp"> & { timestamp?: string },
+): WebChatMessage | undefined {
+  if (input.role !== "agent") {
+    return undefined;
+  }
+  return [...messages].reverse().find((message) =>
+    message.role === "agent" &&
+    message.threadId === (input.threadId || "pending") &&
+    message.source !== input.source &&
+    isRecentWebChatDuplicate(message.timestamp, input.timestamp) &&
+    hasOverlappingAgentText(message.text, input.text),
+  );
+}
+
+function isRecentWebChatDuplicate(leftTimestamp: string | undefined, rightTimestamp: string | undefined): boolean {
+  const left = leftTimestamp ? Date.parse(leftTimestamp) : Number.NaN;
+  const right = rightTimestamp ? Date.parse(rightTimestamp) : Date.now();
+  return !Number.isFinite(left) || !Number.isFinite(right) || Math.abs(left - right) <= CROSS_SOURCE_AGENT_DEDUPE_MS;
+}
+
+function hasOverlappingAgentText(left: string, right: string): boolean {
+  const normalizedLeft = normalizeAgentChatText(left);
+  const normalizedRight = normalizeAgentChatText(right);
+  const shorter = normalizedLeft.length <= normalizedRight.length ? normalizedLeft : normalizedRight;
+  const longer = normalizedLeft.length > normalizedRight.length ? normalizedLeft : normalizedRight;
+  return shorter.length >= CROSS_SOURCE_AGENT_DEDUPE_MIN_CHARS && (shorter === longer || longer.includes(shorter));
+}
+
+function normalizeAgentChatText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function shouldPreferWebChatMessage(candidate: WebChatMessage, existing: WebChatMessage): boolean {
+  if (existing.source === "cli" && candidate.source !== "cli") {
+    return true;
+  }
+  if (candidate.source === existing.source) {
+    return candidate.text.length > existing.text.length;
+  }
+  return false;
 }
 
 function webChatDedupKey(message: Omit<WebChatMessage, "id" | "timestamp"> & { timestamp?: string }): string | null {

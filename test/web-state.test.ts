@@ -64,6 +64,41 @@ describe("web dashboard state stores", () => {
     }
   });
 
+  it("deduplicates CLI mirror finals already included in a channel response", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-web-chat-mirror-dedupe-"));
+    try {
+      const store = new WebChatStore(workspace, "json", 10);
+      const finalText = [
+        "Empfohlene Prioritaeten",
+        "1. Command Palette fuer schnelle Navigation.",
+        "2. Workflow Engine mit Approval Steps.",
+        "3. Peer Scheduler fuer entfernte Hosts.",
+      ].join("\n");
+      store.append({
+        threadId: "thread-a",
+        role: "agent",
+        text: `Ich pruefe die Codebase.\n${finalText}`,
+        source: "web",
+        turnId: "web-turn",
+        timestamp: "2026-05-17T10:17:32.000Z",
+      });
+      const mirrored = store.appendWithResult({
+        threadId: "thread-a",
+        role: "agent",
+        text: finalText,
+        source: "cli",
+        turnId: "cli-turn",
+        timestamp: "2026-05-17T10:17:35.000Z",
+      });
+
+      expect(mirrored.inserted).toBe(false);
+      expect(store.list("thread-a")).toHaveLength(1);
+      expect(store.list("thread-a")[0]).toMatchObject({ source: "web" });
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("upserts keyed chat messages for live status rows", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-web-chat-upsert-"));
     try {
