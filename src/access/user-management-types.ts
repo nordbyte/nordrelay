@@ -10,6 +10,13 @@ export interface UserRecord {
   createdAt: string;
   updatedAt: string;
   lastLoginAt?: string;
+  preferences?: UserPreferences;
+}
+
+export type UserThemePreference = "light" | "dark" | "system";
+
+export interface UserPreferences {
+  theme?: UserThemePreference;
 }
 
 export interface GroupRecord extends GroupDefinition {
@@ -166,4 +173,3 @@ export interface PersistedUsers {
   discordLinkCodes: DiscordLinkCodeRecord[];
   slackLinkCodes: SlackLinkCodeRecord[];
 }
-

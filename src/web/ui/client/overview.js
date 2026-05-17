@@ -48,6 +48,7 @@ async function loadBootstrap(){
   state.auth = local.auth || null;
   state.csrfToken = local.auth?.csrfToken || state.csrfToken || null;
   state.permissions = local.auth?.permissions || [];
+  applyAccountChrome(local.auth);
   await loadPeerSelector();
   const data = state.selectedPeer && state.selectedPeer !== 'local' ? await api('/api/bootstrap') : local;
   state.snapshot = data.status.snapshot;

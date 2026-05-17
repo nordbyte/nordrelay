@@ -20,6 +20,7 @@ import {
   normalizePermissions,
   normalizeSlackId,
   normalizeStringList,
+  normalizeUserPreferences,
   normalizeWorkspacePath,
   slugify,
 } from "./user-management-normalize.js";
@@ -49,6 +50,7 @@ import type {
   TelegramLinkCodeRecord,
   UserGroupRecord,
   UserManagementSnapshot,
+  UserPreferences,
   UserRecord,
   WebSessionRecord,
 } from "./user-management-types.js";
@@ -69,6 +71,7 @@ export type {
   TelegramLinkCodeRecord,
   UserGroupRecord,
   UserManagementSnapshot,
+  UserPreferences,
   UserRecord,
   WebSessionRecord,
 } from "./user-management-types.js";
@@ -247,6 +250,26 @@ export class UserStore {
     });
   }
 
+  updateProfile(id: string, patch: {
+    displayName?: string;
+    preferences?: UserPreferences;
+  }): AuthenticatedUser {
+    return this.mutatePayload((payload) => {
+      const user = payload.users.find((candidate) => candidate.id === id);
+      if (!user) {
+        throw new Error("User not found.");
+      }
+      if (patch.displayName !== undefined) {
+        user.displayName = patch.displayName.trim() || user.email;
+      }
+      if (patch.preferences !== undefined) {
+        user.preferences = normalizeUserPreferences(patch.preferences);
+      }
+      user.updatedAt = new Date().toISOString();
+      return this.authenticatedUser(payload, user);
+    });
+  }
+
   setPassword(id: string, password: string): void {
     this.mutatePayload((payload) => {
       const user = payload.users.find((candidate) => candidate.id === id);
@@ -258,6 +281,23 @@ export class UserStore {
       user.passwordSalt = next.salt;
       user.updatedAt = new Date().toISOString();
       this.revokeUserSessionsInPayload(payload, id);
+    });
+  }
+
+  changePassword(id: string, currentPassword: string, nextPassword: string, keepSessionId?: string): void {
+    this.mutatePayload((payload) => {
+      const user = payload.users.find((candidate) => candidate.id === id && candidate.active);
+      if (!user) {
+        throw new Error("User not found.");
+      }
+      if (!verifyPasswordHash(currentPassword, user.passwordSalt, user.passwordHash)) {
+        throw new Error("Current password is incorrect.");
+      }
+      const next = hashPassword(nextPassword);
+      user.passwordHash = next.hash;
+      user.passwordSalt = next.salt;
+      user.updatedAt = new Date().toISOString();
+      this.revokeUserSessionsInPayload(payload, id, keepSessionId);
     });
   }
 
@@ -340,6 +380,27 @@ export class UserStore {
       this.revokeUserSessionsInPayload(payload, userId);
       return before - payload.webSessions.length;
     });
+  }
+
+  revokeOtherUserSessions(userId: string, keepSessionId?: string): number {
+    return this.mutatePayload((payload) => {
+      const before = payload.webSessions.length;
+      this.revokeUserSessionsInPayload(payload, userId, keepSessionId);
+      return before - payload.webSessions.length;
+    });
+  }
+
+  webSessionForToken(token: string | undefined): PublicWebSessionRecord | null {
+    if (!token) {
+      return null;
+    }
+    const payload = this.readPayload();
+    const tokenHash = hashToken(token);
+    const session = payload.webSessions.find((candidate) =>
+      constantTimeStringEqual(candidate.tokenHash, tokenHash) &&
+      new Date(candidate.expiresAt).getTime() > Date.now()
+    );
+    return session ? publicWebSession(session) : null;
   }
 
   resolveTelegramUser(telegramUserId: number | undefined): AuthenticatedUser | null {
@@ -1050,8 +1111,8 @@ export class UserStore {
     payload.webSessions = payload.webSessions.filter((session) => new Date(session.expiresAt).getTime() > now);
   }
 
-  private revokeUserSessionsInPayload(payload: PersistedUsers, userId: string): void {
-    payload.webSessions = payload.webSessions.filter((session) => session.userId !== userId);
+  private revokeUserSessionsInPayload(payload: PersistedUsers, userId: string, keepSessionId?: string): void {
+    payload.webSessions = payload.webSessions.filter((session) => session.userId !== userId || session.id === keepSessionId);
   }
 
   private mutatePayload<T>(updater: (payload: PersistedUsers) => T): T {

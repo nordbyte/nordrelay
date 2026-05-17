@@ -8,6 +8,7 @@ describe("peer web proxy contract", () => {
     expect(coverage.missing).toEqual([]);
     expect(coverage.implemented.map((route) => `${route.method} ${route.path}`)).toContain("GET /api/adapters/conformance");
     expect(coverage.implemented.map((route) => `${route.method} ${route.path}`)).toContain("POST /api/locks");
+    expect(coverage.localOnly.map((route) => `${route.method} ${route.path}`)).toContain("GET /api/profile");
     expect(coverage.localOnly.map((route) => `${route.method} ${route.path}`)).toContain("POST /api/settings/wizard/test");
     expect(coverage.localOnly.map((route) => `${route.method} ${route.path}`)).toContain("GET /api/peers/global-sessions");
   });

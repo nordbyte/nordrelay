@@ -123,7 +123,13 @@ export function renderDashboardApp(options: DashboardAppOptions = {}): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NordRelay Dashboard</title>
 ${faviconLinks}
-  <script${nonce}>document.documentElement.dataset.theme = localStorage.getItem('nordrelayTheme') || 'light';</script>
+  <script${nonce}>
+    (() => {
+      const preference = localStorage.getItem('nordrelayThemePreference') || localStorage.getItem('nordrelayTheme') || 'light';
+      const resolved = preference === 'system' && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : preference === 'dark' ? 'dark' : 'light';
+      document.documentElement.dataset.theme = resolved;
+    })();
+  </script>
   <link rel="stylesheet" href="/assets/dashboard.css?v=${assetVersion}">
 </head>
 <body>
@@ -146,8 +152,21 @@ ${faviconLinks}
           <span id="connectionStatus" class="badge">Connecting</span>
           <select id="peerSelect" title="NordRelay target"></select>
           <select id="agentSelect"></select>
-          <button id="themeBtn" class="secondary" title="Toggle dark theme">Dark</button>
-          <button id="logoutBtn" class="secondary">Logout</button>
+          <div class="account-menu" id="accountMenu">
+            <button id="userMenuBtn" class="secondary account-menu-button" type="button" aria-haspopup="menu" aria-expanded="false" title="Account">
+              <span id="userMenuInitials" class="account-avatar">?</span>
+              <span id="userMenuName">Account</span>
+            </button>
+            <div id="userMenuPanel" class="account-menu-panel" role="menu" hidden>
+              <button id="profileBtn" class="secondary" type="button" role="menuitem">Profile</button>
+              <div class="account-menu-group" role="group" aria-label="Theme">
+                <button class="secondary" type="button" role="menuitemradio" data-theme-choice="light" aria-checked="false">Theme: Light</button>
+                <button class="secondary" type="button" role="menuitemradio" data-theme-choice="dark" aria-checked="false">Theme: Dark</button>
+                <button class="secondary" type="button" role="menuitemradio" data-theme-choice="system" aria-checked="false">Theme: System</button>
+              </div>
+              <button id="logoutBtn" class="secondary" type="button" role="menuitem">Logout</button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -501,6 +520,42 @@ ${faviconLinks}
       <h2 id="adminDialogTitle">Edit</h2>
       <div id="adminDialogBody" class="form-grid"></div>
       <div class="row dialog-actions"><button type="button" id="adminDialogCancel" class="secondary">Cancel</button><button id="adminDialogSubmit" value="default">Save</button></div>
+    </form>
+  </dialog>
+  <dialog id="profileDialog">
+    <form method="dialog" id="profileForm">
+      <h2>Profile</h2>
+      <div class="profile-grid">
+        <section class="profile-section">
+          <h3>Account</h3>
+          <div class="form-grid">
+            <label>Email<input id="profileEmail" type="email" disabled></label>
+            <label>Name<input id="profileNameInput" autocomplete="name"></label>
+            <label>Theme<select id="profileThemeSelect"><option value="light">Light</option><option value="dark">Dark</option><option value="system">System</option></select></label>
+          </div>
+          <div id="profileStatus" class="profile-status"></div>
+          <div class="row dialog-actions"><button type="button" id="saveProfileBtn">Save profile</button></div>
+        </section>
+        <section class="profile-section">
+          <h3>Change password</h3>
+          <div class="form-grid">
+            <label>Current password<input id="profileCurrentPassword" type="password" autocomplete="current-password"></label>
+            <label>New password<input id="profileNewPassword" type="password" autocomplete="new-password"></label>
+            <label>Confirm password<input id="profileConfirmPassword" type="password" autocomplete="new-password"></label>
+          </div>
+          <div id="profilePasswordStatus" class="profile-status"></div>
+          <div class="row dialog-actions"><button type="button" id="changeProfilePasswordBtn" class="secondary">Change password</button></div>
+        </section>
+        <section class="profile-section full-span">
+          <h3>Linked accounts</h3>
+          <div id="profileLinkedAccounts" class="profile-list"></div>
+        </section>
+        <section class="profile-section full-span">
+          <div class="profile-section-title"><h3>Web sessions</h3><button type="button" id="logoutOtherSessionsBtn" class="danger">Logout other sessions</button></div>
+          <div id="profileWebSessions" class="profile-list"></div>
+        </section>
+      </div>
+      <div class="row dialog-actions"><button type="button" id="closeProfileBtn" class="secondary">Close</button></div>
     </form>
   </dialog>
   <div id="toolTooltip" class="tool-tooltip"></div>

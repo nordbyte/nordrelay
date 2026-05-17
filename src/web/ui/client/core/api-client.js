@@ -64,6 +64,9 @@ function shouldProxyApi(path) {
   return !(
     path === '/api/auth/me' ||
     path === '/api/dashboard/logout' ||
+    path === '/api/profile' ||
+    path === '/api/profile/password' ||
+    path === '/api/profile/logout-other-sessions' ||
     path === '/api/peers' ||
     path === '/api/peers/invite' ||
     path === '/api/peers/pair' ||

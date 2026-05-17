@@ -10,6 +10,7 @@ const clientSources = [
   "client/core/api-client.js",
   "client/core/runtime.js",
   "client/core/components.js",
+  "client/profile.js",
   "client/overview.js",
   "client/events.js",
   "client/workflows.js",

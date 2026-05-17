@@ -185,10 +185,31 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain("setupToken");
   });
 
+  it("includes account profile APIs and header profile controls", () => {
+    const js = dashboardJs();
+    const css = dashboardCss();
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
+
+    expect(contract).toContain('exact("/api/profile"');
+    expect(contract).toContain('exact("/api/profile/password"');
+    expect(contract).toContain('exact("/api/profile/logout-other-sessions"');
+    expect(pageSource).toContain('id="userMenuBtn"');
+    expect(pageSource).toContain('id="profileDialog"');
+    expect(pageSource).toContain('id="profileThemeSelect"');
+    expect(js).toContain("function applyAccountChrome");
+    expect(js).toContain("/api/profile/logout-other-sessions");
+    expect(js).toContain("applyThemePreference(accountTheme||savedThemePreference()");
+    expect(js).toContain("local:true");
+    expect(css).toContain(".account-menu-panel");
+    expect(css).toContain(".profile-grid");
+  });
+
   it("composes dashboard assets from focused WebUI modules", () => {
     expect(readFileSync("src/web/ui/client/core/api-client.js", "utf8")).toContain("async function api");
     expect(readFileSync("src/web/ui/client/core/runtime.js", "utf8")).toContain("const state");
     expect(readFileSync("src/web/ui/client/core/components.js", "utf8")).toContain("function uiItem");
+    expect(readFileSync("src/web/ui/client/profile.js", "utf8")).toContain("function openProfileDialog");
     expect(readFileSync("src/web/ui/client/overview.js", "utf8")).toContain("function renderSnapshot");
     expect(readFileSync("src/web/ui/client/workflows.js", "utf8")).toContain("function loadSessions");
     expect(readFileSync("src/web/ui/client/jobs.js", "utf8")).toContain("function renderUnifiedJobs");

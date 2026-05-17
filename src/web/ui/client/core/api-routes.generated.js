@@ -8,6 +8,9 @@
 const WEB_API_CLIENT_ROUTE_RULES = [
   { path: "/api/auth/me", methods: ['GET'] },
   { path: "/api/dashboard/logout", methods: ['POST'] },
+  { path: "/api/profile", methods: ['GET', 'PATCH'] },
+  { path: "/api/profile/password", methods: ['POST'] },
+  { path: "/api/profile/logout-other-sessions", methods: ['POST'] },
   { path: "/api/bootstrap", methods: ['GET'] },
   { path: "/api/health", methods: ['GET'] },
   { path: "/api/snapshot", methods: ['GET'] },

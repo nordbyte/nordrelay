@@ -25,6 +25,9 @@ const stringToken = "${string}";
 export const WEB_API_ROUTE_DEFINITIONS = [
   exact("/api/auth/me", ["GET"], "inspect"),
   exact("/api/dashboard/logout", ["POST"], "inspect"),
+  exact("/api/profile", ["GET", "PATCH"], "inspect"),
+  exact("/api/profile/password", ["POST"], "inspect"),
+  exact("/api/profile/logout-other-sessions", ["POST"], "inspect"),
   exact("/api/bootstrap", ["GET"], "inspect"),
   exact("/api/health", ["GET"], "inspect"),
   exact("/api/snapshot", ["GET"], "inspect"),

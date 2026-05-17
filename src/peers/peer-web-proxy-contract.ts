@@ -8,6 +8,9 @@ export interface PeerProxyRouteKey {
 const LOCAL_ONLY_ROUTE_PATHS = new Set([
   "/api/auth/me",
   "/api/dashboard/logout",
+  "/api/profile",
+  "/api/profile/password",
+  "/api/profile/logout-other-sessions",
   "/api/permissions",
   "/api/settings",
   "/api/settings/wizard/test",

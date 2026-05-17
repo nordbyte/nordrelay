@@ -62,6 +62,17 @@ export interface WebCurrentUserDto {
   csrfToken?: string;
 }
 
+export interface WebProfileResponse {
+  user: PublicUser;
+  groups: GroupRecord[];
+  permissions: Permission[];
+  telegramIdentities: TelegramIdentityRecord[];
+  discordIdentities: DiscordIdentityRecord[];
+  slackIdentities: SlackIdentityRecord[];
+  webSessions: PublicWebSession[];
+  currentSessionId?: string;
+}
+
 export interface WebBootstrapResponse {
   auth: WebCurrentUserDto;
   channels: ChannelDescriptor[];
@@ -131,6 +142,9 @@ export interface WebApiClientOptions<P extends WebApiPath = WebApiPath> {
 export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/prompt" ? { text: string; correlationId?: string } :
   P extends "/api/prompt/upload" ? { text?: string; correlationId?: string; files: Array<{ name: string; mimeType?: string; dataBase64: string }> } :
+  P extends "/api/profile" ? { displayName?: string; theme?: "light" | "dark" | "system"; preferences?: { theme?: "light" | "dark" | "system" } } :
+  P extends "/api/profile/password" ? { currentPassword: string; newPassword?: string; password?: string } :
+  P extends "/api/profile/logout-other-sessions" ? Record<string, never> :
   P extends "/api/agent" ? { agentId: AgentId } :
   P extends "/api/agent-update" ? { agentId: AgentId; operation?: "update" | "install" } :
   P extends "/api/sessions/new" ? { agentId?: AgentId; workspace?: string; model?: string; reasoningEffort?: string; launchProfileId?: string; fastMode?: boolean } :
@@ -174,6 +188,9 @@ export type WebApiRequestBody<P extends WebApiPath> =
 export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/auth/me" ? WebCurrentUserDto :
   P extends "/api/dashboard/logout" ? { ok: boolean } :
+  P extends "/api/profile" ? WebProfileResponse :
+  P extends "/api/profile/password" ? { ok: boolean; profile?: WebProfileResponse } :
+  P extends "/api/profile/logout-other-sessions" ? { revoked: number; profile?: WebProfileResponse } :
   P extends "/api/bootstrap" ? WebBootstrapResponse :
   P extends "/api/health" ? WebStatusResponse :
   P extends "/api/snapshot" ? RelaySnapshot :

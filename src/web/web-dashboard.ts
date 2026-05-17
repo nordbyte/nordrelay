@@ -35,6 +35,7 @@ import { renderDashboardApp, renderFirstRunSetupPage, renderLoginPage } from "./
 import { handleDashboardRuntimeRoute } from "./web-dashboard-runtime-routes.js";
 import { handleDashboardSessionRoute } from "./web-dashboard-session-routes.js";
 import { handleDashboardPeerRoute } from "./web-dashboard-peer-routes.js";
+import { handleDashboardProfileRoute } from "./web-dashboard-profile-routes.js";
 import { handleDashboardWorkflowRoute } from "./web-dashboard-workflow-routes.js";
 import { PeerDiscoveryJobManager } from "../peers/peer-discovery-jobs.js";
 import { recordWebApiMetric } from "./web-performance.js";
@@ -258,6 +259,15 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
       description: `${permission} required for ${req.method ?? "GET"} ${url.pathname}`,
     });
     sendJson(res, 403, { error: `Access denied: ${permission} permission required.` });
+    return;
+  }
+
+  if (await handleDashboardProfileRoute(req, res, url, {
+    users,
+    authUser,
+    sessionToken: parseCookies(req.headers.cookie ?? "").nr_session,
+    auditUserAction,
+  })) {
     return;
   }
 

@@ -17,6 +17,7 @@ const assets = [
       "src/web/ui/client/core/api-client.js",
       "src/web/ui/client/core/runtime.js",
       "src/web/ui/client/core/components.js",
+      "src/web/ui/client/profile.js",
       "src/web/ui/client/overview.js",
       "src/web/ui/client/events.js",
       "src/web/ui/client/workflows.js",

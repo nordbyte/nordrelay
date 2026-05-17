@@ -160,6 +160,46 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator(`#messages [data-trace-id="${promptBody?.correlationId}"]`)).toBeVisible();
   });
 
+  test("opens the account menu, updates profile preferences, and changes password", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
+    await page.goto(mock.baseUrl);
+
+    await expect(page.locator("#userMenuName")).toHaveText("Admin");
+    await page.locator("#userMenuBtn").click();
+    await expect(page.locator("#userMenuPanel")).toBeVisible();
+    await expect(page.locator('[data-theme-choice="dark"]')).toHaveAttribute("aria-checked", "true");
+    await page.locator('[data-theme-choice="light"]').click();
+    await expect.poll(() => mock.requests.some((request) => request.path === "/api/profile" && request.method === "PATCH")).toBe(true);
+    expect(mock.requests.find((request) => request.path === "/api/profile" && request.method === "PATCH")?.body).toMatchObject({ preferences: { theme: "light" } });
+
+    await page.locator("#userMenuBtn").click();
+    await page.locator("#profileBtn").click();
+    await expect(page.locator("#profileDialog")).toBeVisible();
+    await expect(page.locator("#profileLinkedAccounts")).toContainText("Telegram");
+    await expect(page.locator("#profileWebSessions")).toContainText("Current session");
+    await page.locator("#profileNameInput").fill("Admin Profile");
+    await page.locator("#profileThemeSelect").selectOption("system");
+    await page.locator("#saveProfileBtn").click();
+    await expect(page.locator("#profileStatus")).toContainText("Saved");
+    expect(mock.requests.filter((request) => request.path === "/api/profile" && request.method === "PATCH").at(-1)?.body).toMatchObject({
+      displayName: "Admin Profile",
+      preferences: { theme: "system" },
+    });
+
+    await page.locator("#profileCurrentPassword").fill("current-password");
+    await page.locator("#profileNewPassword").fill("new-password-123");
+    await page.locator("#profileConfirmPassword").fill("new-password-123");
+    await page.locator("#changeProfilePasswordBtn").click();
+    await expect.poll(() => mock.requests.some((request) => request.path === "/api/profile/password" && request.method === "POST")).toBe(true);
+    expect(mock.requests.find((request) => request.path === "/api/profile/password" && request.method === "POST")?.body).toMatchObject({
+      currentPassword: "current-password",
+      newPassword: "new-password-123",
+    });
+
+    await page.locator("#logoutOtherSessionsBtn").click();
+    await expect.poll(() => mock.requests.some((request) => request.path === "/api/profile/logout-other-sessions" && request.method === "POST")).toBe(true);
+  });
+
   test("builds workflows with step cards and variable forms", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
@@ -761,6 +801,9 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   if (url.pathname === "/api/prompt") return { queued: true, queueId: "queue-web-1", correlationId: (body as { correlationId?: string } | null)?.correlationId, files: [] };
   if (url.pathname === "/api/settings") return method === "PATCH" ? settingsPatchResponse(body) : settings();
   if (url.pathname === "/api/settings/wizard/test") return wizardTestResponse(body);
+  if (url.pathname === "/api/profile") return method === "PATCH" ? profile(body as Record<string, unknown>) : profile();
+  if (url.pathname === "/api/profile/password") return { ok: true, profile: profile() };
+  if (url.pathname === "/api/profile/logout-other-sessions") return { revoked: 1, profile: profile() };
   if (url.pathname === "/api/active-sessions") return activeSessions();
   if (url.pathname === "/api/templates") {
     if (method === "POST") return { template: savedTemplate(body) };
@@ -919,9 +962,30 @@ function controls(agentId = "codex") {
 
 function currentUser() {
   return {
-    user: { id: "user-1", email: "admin@example.com", displayName: "Admin", active: true, createdAt: now(), updatedAt: now() },
+    user: { id: "user-1", email: "admin@example.com", displayName: "Admin", active: true, preferences: { theme: "dark" }, createdAt: now(), updatedAt: now() },
     groups: [{ id: "admin", name: "Admin", description: "Full access", permissions: permissions(), system: true, agentIds: [], workspaceRoots: [], telegramChatIds: [], discordChannelIds: [], slackChannelIds: [], createdAt: now(), updatedAt: now() }],
     permissions: permissions(),
+  };
+}
+
+function profile(patch: Record<string, unknown> = {}) {
+  const auth = currentUser();
+  const preferences = patch.preferences && typeof patch.preferences === "object" ? patch.preferences as Record<string, unknown> : auth.user.preferences;
+  return {
+    ...auth,
+    user: {
+      ...auth.user,
+      displayName: typeof patch.displayName === "string" && patch.displayName.trim() ? patch.displayName.trim() : auth.user.displayName,
+      preferences,
+    },
+    telegramIdentities: [{ id: "telegram-identity-1", userId: "user-1", telegramUserId: 296626516, username: "nordbyte", active: true, linkedAt: now(), updatedAt: now() }],
+    discordIdentities: [{ id: "discord-identity-1", userId: "user-1", discordUserId: "112233445566778899", username: "admin", active: true, linkedAt: now(), updatedAt: now() }],
+    slackIdentities: [{ id: "slack-identity-1", userId: "user-1", slackUserId: "U123", teamId: "T123", username: "admin", active: true, linkedAt: now(), updatedAt: now() }],
+    webSessions: [
+      { id: "web-current", userId: "user-1", createdAt: now(), expiresAt: "2099-05-14T10:20:00.000Z", lastSeenAt: now() },
+      { id: "web-other", userId: "user-1", createdAt: now(), expiresAt: "2099-05-14T10:20:00.000Z", lastSeenAt: now() },
+    ],
+    currentSessionId: "web-current",
   };
 }
 

@@ -20,6 +20,7 @@ import type {
   TelegramIdentityRecord,
   TelegramLinkCodeRecord,
   UserGroupRecord,
+  UserPreferences,
   UserRecord,
   WebSessionRecord,
 } from "./user-management-types.js";
@@ -55,7 +56,10 @@ export function normalizePayload(payload: PersistedUsers | undefined): Persisted
   }
   const groups = Array.from(groupsById.values());
   const groupIds = new Set(groups.map((group) => group.id));
-  const users = (payload?.users ?? []).filter(isUserRecord);
+  const users = (payload?.users ?? []).filter(isUserRecord).map((user) => ({
+    ...user,
+    preferences: normalizeUserPreferences(user.preferences),
+  }));
   const userIds = new Set(users.map((user) => user.id));
   return {
     version: 1,
@@ -157,6 +161,17 @@ export function allPermissionsSafe(): Permission[] {
   return [...BUILTIN_GROUPS.find((group) => group.id === ADMIN_GROUP_ID)!.permissions];
 }
 
+export function normalizeUserPreferences(value: unknown): UserPreferences | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const candidate = value as UserPreferences;
+  const theme = candidate.theme === "light" || candidate.theme === "dark" || candidate.theme === "system"
+    ? candidate.theme
+    : undefined;
+  return theme ? { theme } : undefined;
+}
+
 function isUserRecord(value: unknown): value is UserRecord {
   const candidate = value as UserRecord;
   return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.email === "string" &&
@@ -234,4 +249,3 @@ function isSlackLinkCodeRecord(value: unknown): value is SlackLinkCodeRecord {
   return Boolean(candidate) && typeof candidate.code === "string" && typeof candidate.userId === "string" &&
     typeof candidate.expiresAt === "string";
 }
-

@@ -34,6 +34,15 @@ h2{font-size:16px;margin:0 0 12px}
 p{margin:4px 0 0;color:var(--muted)}
 a{color:var(--link)}
 .header-actions,.row,.toolbar,.ui-actions,.chat-toolbar,.attachment-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.account-menu{position:relative}
+.account-menu-button{gap:8px;max-width:220px}
+.account-avatar{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:800;line-height:1;flex:0 0 auto}
+#userMenuName{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.account-menu-panel{position:absolute;right:0;top:calc(100% + 8px);z-index:20;display:grid;gap:6px;min-width:220px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);box-shadow:var(--shadow)}
+.account-menu-panel[hidden]{display:none}
+.account-menu-panel button{width:100%;justify-content:flex-start;background:var(--surface);color:var(--text);border-color:transparent}
+.account-menu-panel button:hover,.account-menu-panel button.active{background:var(--accent);border-color:var(--accent);color:white}
+.account-menu-group{display:grid;gap:4px;padding:6px 0;border-top:1px solid var(--border-soft);border-bottom:1px solid var(--border-soft)}
 .mirror-control{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;line-height:1}
 .mirror-control select{min-width:86px}
 .menu{display:none;background:var(--surface-soft);color:var(--text)}
@@ -130,6 +139,14 @@ dialog{border:1px solid var(--border);border-radius:8px;background:var(--surface
 dialog::backdrop{background:rgba(0,0,0,.35)}
 .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
 .dialog-actions{justify-content:flex-end;margin-top:16px}
+.profile-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.profile-grid .full-span{grid-column:1/-1}
+.profile-section{border:1px solid var(--border-soft);border-radius:8px;padding:12px;background:var(--surface-soft)}
+.profile-section h3{margin:0 0 10px;font-size:15px}
+.profile-section-title{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.profile-section-title h3{margin:0}
+.profile-status{min-height:20px;margin-top:8px;color:var(--muted);font-size:13px}
+.profile-list{display:grid;gap:8px}
 #toast{position:fixed;right:18px;bottom:18px;display:none;background:var(--accent);color:white;border-radius:8px;padding:12px 14px;max-width:360px}
 .danger{background:var(--danger);border-color:var(--danger);color:white}
 button.danger:hover:not(:disabled),.danger:hover:not(:disabled){background:color-mix(in srgb,var(--danger) 82%,#000);border-color:color-mix(in srgb,var(--danger) 82%,#000);color:white}
