@@ -12,7 +12,7 @@ function short(s,max=250){const text=String(s??'');return text.length>max?text.s
 async function copyText(text,label='Copied'){if(!text)return;try{await navigator.clipboard.writeText(text)}catch{const area=document.createElement('textarea');area.value=text;area.style.position='fixed';area.style.opacity='0';document.body.appendChild(area);area.select();document.execCommand('copy');area.remove()}toast(label)}
 function fmtDate(s){return s?new Date(s).toLocaleString(): '-'}
 function fmtSessionAge(s){if(!s)return'-';const time=new Date(s).getTime();if(!Number.isFinite(time))return'-';const sec=Math.max(0,Math.floor((Date.now()-time)/1000));if(sec<60)return sec+'s';const min=Math.floor(sec/60);if(min<60)return min+'m '+(sec%60)+'s';const hours=Math.floor(min/60);if(hours<24)return hours+'h '+(min%60)+'m';const days=Math.floor(hours/24);return days+'d '+(hours%24)+'h'}
-function updateSessionAgeCounters(){document.querySelectorAll('[data-session-updated-at]').forEach(el=>{el.textContent=fmtSessionAge(el.dataset.sessionUpdatedAt)})}
+function updateSessionAgeCounters(){document.querySelectorAll('[data-session-age-at]').forEach(el=>{el.textContent=fmtSessionAge(el.dataset.sessionAgeAt)})}
 function stopSessionAgeCounter(){if(state.sessionAgeTimer)clearInterval(state.sessionAgeTimer);state.sessionAgeTimer=null}
 function startSessionAgeCounter(){updateSessionAgeCounters();if(state.sessionAgeTimer)return;state.sessionAgeTimer=setInterval(()=>{if(state.currentPage!=='sessions'){stopSessionAgeCounter();return}updateSessionAgeCounters()},1000)}
 function fmtDuration(ms){if(!ms&&ms!==0)return '-';const sec=Math.round(ms/1000);if(sec<60)return sec+'s';return Math.floor(sec/60)+'m '+(sec%60)+'s'}

@@ -270,7 +270,7 @@ ${faviconLinks}
             <div class="row search-row"><input id="sessionSearch" placeholder="Search sessions"><button id="sessionSearchBtn">Search</button></div>
             <div class="row attach-row"><input id="attachInput" placeholder="Thread ID to attach/switch"><button id="attachBtn">Attach</button></div>
           </div>
-          <div id="sessionsList" class="list"></div>
+          <div id="sessionsList" class="sessions-table-host"></div>
           <div id="sessionsPager" class="pager"></div>
         </div>
       </section>

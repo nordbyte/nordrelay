@@ -157,17 +157,25 @@ describe("web dashboard browser-flow assets", () => {
 
   it("shows compact relative age for sessions and keeps absolute time in the tooltip", () => {
     const js = dashboardJs();
+    const css = dashboardCss();
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
 
     expect(js).toContain("function fmtSessionAge");
     expect(js).toContain("function updateSessionAgeCounters");
     expect(js).toContain("function startSessionAgeCounter");
     expect(js).toContain("state.sessionAgeTimer=setInterval");
-    expect(js).toContain("const updatedTitle=fmtDate(s.updatedAt)");
+    expect(js).toContain("function renderSessionsTable");
+    expect(js).toContain("class=\"data-table sessions-table\"");
+    expect(js).toContain("data-label=\"'+attr(label)+'\"");
     expect(js).toContain('class="session-age"');
-    expect(js).toContain("data-session-updated-at");
-    expect(js).toContain("esc(fmtSessionAge(s.updatedAt))");
+    expect(js).toContain("data-session-age-at");
     expect(js).toContain("startSessionAgeCounter()");
     expect(js).not.toContain("short((s.cwd||'')+' / '+fmtDate(s.updatedAt))");
+    expect(css).toContain(".data-table-wrap");
+    expect(css).toContain(".sessions-table");
+    expect(css).toContain("@media(max-width:760px){.data-table-wrap");
+    expect(css).toContain("content:attr(data-label)");
+    expect(pageSource).toContain('id="sessionsList" class="sessions-table-host"');
   });
 
   it("selects the current launch mode in the launch dropdown", () => {
