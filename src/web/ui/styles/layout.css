@@ -95,9 +95,9 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .message-body{white-space:pre-wrap}
 .message-copy-button{position:absolute;top:6px;right:6px;width:26px;height:26px;min-width:26px;min-height:26px;padding:0;border:1px solid var(--border-soft);border-radius:6px;background:var(--surface);color:var(--muted);opacity:0;pointer-events:none;transition:opacity .12s ease,background .12s ease,border-color .12s ease,color .12s ease}
 .message:hover .message-copy-button,.message:focus-within .message-copy-button{opacity:1;pointer-events:auto}
-.message-copy-button::before,.message-copy-button::after{content:"";position:absolute;width:10px;height:12px;border:1.5px solid currentColor;border-radius:2px;background:var(--surface)}
-.message-copy-button::before{left:8px;top:6px}
-.message-copy-button::after{left:6px;top:8px}
+.message-copy-button::before,.message-copy-button::after{content:"";position:absolute;box-sizing:border-box;width:10px;height:12px;border:1.5px solid currentColor;border-radius:2px;background:var(--surface)}
+.message-copy-button::before{left:9px;top:6px}
+.message-copy-button::after{left:7px;top:8px}
 .message-copy-button:hover,.message-copy-button:focus{background:var(--accent);border-color:var(--accent);color:white;outline:none}
 .message-copy-button:hover::before,.message-copy-button:hover::after,.message-copy-button:focus::before,.message-copy-button:focus::after{background:var(--accent)}
 .message .chat-inline-code{appearance:none;-webkit-appearance:none;display:inline;min-height:0;height:auto;margin:0;padding:0;border:0;background:transparent;color:var(--link);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:1em;line-height:inherit;white-space:normal;vertical-align:baseline;cursor:pointer}
