@@ -155,6 +155,16 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("if(name==='sessions') await loadSessions(true,options.agentId)");
   });
 
+  it("shows compact relative age for sessions and keeps absolute time in the tooltip", () => {
+    const js = dashboardJs();
+
+    expect(js).toContain("function fmtSessionAge");
+    expect(js).toContain("const updatedTitle=fmtDate(s.updatedAt)");
+    expect(js).toContain('class="session-age" title="');
+    expect(js).toContain("esc(fmtSessionAge(s.updatedAt))");
+    expect(js).not.toContain("short((s.cwd||'')+' / '+fmtDate(s.updatedAt))");
+  });
+
   it("selects the current launch mode in the launch dropdown", () => {
     const js = dashboardJs();
 

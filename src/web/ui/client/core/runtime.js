@@ -11,6 +11,7 @@ function cssEscape(s){return window.CSS&&CSS.escape?CSS.escape(s):String(s).repl
 function short(s,max=250){const text=String(s??'');return text.length>max?text.slice(0,max-1)+'...':text}
 async function copyText(text,label='Copied'){if(!text)return;try{await navigator.clipboard.writeText(text)}catch{const area=document.createElement('textarea');area.value=text;area.style.position='fixed';area.style.opacity='0';document.body.appendChild(area);area.select();document.execCommand('copy');area.remove()}toast(label)}
 function fmtDate(s){return s?new Date(s).toLocaleString(): '-'}
+function fmtSessionAge(s){if(!s)return'-';const time=new Date(s).getTime();if(!Number.isFinite(time))return'-';const sec=Math.max(0,Math.floor((Date.now()-time)/1000));if(sec<60)return sec+'s';const min=Math.floor(sec/60);if(min<60)return min+'m '+(sec%60)+'s';const hours=Math.floor(min/60);if(hours<24)return hours+'h '+(min%60)+'m';const days=Math.floor(hours/24);return days+'d '+(hours%24)+'h'}
 function fmtDuration(ms){if(!ms&&ms!==0)return '-';const sec=Math.round(ms/1000);if(sec<60)return sec+'s';return Math.floor(sec/60)+'m '+(sec%60)+'s'}
 function fmtBytes(n){if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixed(1).replace(/\\.0$/,'')+' KB';return (n/1048576).toFixed(1).replace(/\\.0$/,'')+' MB'}
 function compactNum(n){if(!n)return'';if(n>=1000000000)return Math.round(n/100000000)/10+'B';if(n>=1000000)return Math.round(n/100000)/10+'M';if(n>=1000)return Math.round(n/100)/10+'K';return String(n)}
