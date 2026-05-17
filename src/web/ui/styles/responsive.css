@@ -1,5 +1,6 @@
 @media(max-width:860px){.app{display:block}
-.sidebar{position:fixed;inset:0 auto 0 0;width:270px;transform:translateX(-100%);transition:.18s transform;z-index:20}
+header{z-index:30}
+.sidebar{position:fixed;inset:var(--dashboard-header-height) auto 0 0;width:270px;height:calc(100vh - var(--dashboard-header-height));transform:translateX(-100%);transition:.18s transform;z-index:20}
 .sidebar.open{transform:translateX(0)}
 .menu{display:inline-flex}
 .header-actions{justify-content:flex-end}

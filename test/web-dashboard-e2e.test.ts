@@ -180,8 +180,22 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".sessions-table th:nth-child(8)");
     expect(css).toContain("@media(max-width:760px){.data-table-wrap");
     expect(css).toContain("content:attr(data-label)");
+    expect(css).toContain("justify-content:flex-start;text-align:left");
     expect(pageSource).toContain('id="sessionsList" class="sessions-table-host"');
     expect(runtimeSessions).toContain("sessionUpdatedAtMs(right) - sessionUpdatedAtMs(left)");
+  });
+
+  it("keeps the mobile menu closable and readable in light theme", () => {
+    const js = dashboardJs();
+    const css = dashboardCss();
+
+    expect(js).toContain("function setMobileMenuOpen");
+    expect(js).toContain("function toggleMobileMenu");
+    expect(js).toContain("aria-expanded");
+    expect(js).toContain("event.key==='Escape'");
+    expect(css).toContain(".menu:hover,.menu:focus{background:var(--accent-strong);border-color:var(--accent-strong);color:white");
+    expect(css).toContain("header{z-index:30}");
+    expect(css).toContain(".sidebar{position:fixed;inset:var(--dashboard-header-height) auto 0 0;width:270px;height:calc(100vh - var(--dashboard-header-height))");
   });
 
   it("selects the current launch mode in the launch dropdown", () => {

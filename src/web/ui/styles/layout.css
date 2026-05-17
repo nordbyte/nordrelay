@@ -46,6 +46,7 @@ a{color:var(--link)}
 .mirror-control{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;line-height:1}
 .mirror-control select{min-width:86px}
 .menu{display:none;background:var(--surface-soft);color:var(--text)}
+.menu:hover,.menu:focus{background:var(--accent-strong);border-color:var(--accent-strong);color:white;outline:none}
 .page{display:none;padding:22px}
 .page.active{display:block}
 .stack{display:flex;flex-direction:column;gap:16px}
@@ -124,7 +125,7 @@ input[type=file]{display:none}
 .sessions-toolbar .search-row{flex:1 1 320px}
 .sessions-toolbar .attach-row{flex:1 1 360px;justify-content:flex-end;margin-left:auto}
 .sessions-toolbar input{min-width:220px}
-.copy-id{height:auto;min-height:0;padding:0;border:0;background:transparent;color:var(--link);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.25;white-space:normal}
+.copy-id{height:auto;min-height:0;padding:0;border:0;background:transparent;color:var(--link);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.25;white-space:normal;justify-content:flex-start;text-align:left}
 .copy-id:hover{background:transparent;text-decoration:underline}
 .side-panel{max-height:calc(100vh - 126px);display:flex;flex-direction:column}
 .tool-stream{display:flex;flex-direction:column;gap:8px;overflow:auto;max-height:calc(100vh - 190px);padding-right:4px}
