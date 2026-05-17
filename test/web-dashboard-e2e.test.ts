@@ -209,6 +209,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".data-table-wrap");
     expect(css).toContain(".data-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px");
     expect(css).toContain(".data-table th{background:var(--surface);color:var(--muted);font-size:13px");
+    expect(css).toContain(".data-table tbody tr:nth-child(even){background:color-mix(in srgb,var(--surface) 55%,var(--surface-soft))}");
     expect(css).toContain(".data-table-actions button{min-height:28px;height:28px;padding:0 8px;font-size:13px");
     expect(css).toContain(".sessions-table");
     expect(css).toContain(".sessions-table th:nth-child(8)");

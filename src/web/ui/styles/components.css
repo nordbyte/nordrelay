@@ -88,6 +88,7 @@
 .data-table th,.data-table td{padding:10px 12px;border-bottom:1px solid var(--border-soft);text-align:left;vertical-align:middle}
 .data-table th{background:var(--surface);color:var(--muted);font-size:13px;font-weight:750;line-height:1;text-transform:none;white-space:nowrap}
 .data-table tbody tr:last-child td{border-bottom:0}
+.data-table tbody tr:nth-child(even){background:color-mix(in srgb,var(--surface) 55%,var(--surface-soft))}
 .data-table tbody tr:hover{background:color-mix(in srgb,var(--accent) 5%,transparent)}
 .data-table td{min-width:0;color:var(--text)}
 .data-table .primary-cell{font-weight:650}
