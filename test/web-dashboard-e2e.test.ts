@@ -152,16 +152,13 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("if(name==='sessions') await loadSessions(true,options.agentId)");
   });
 
-  it("distinguishes active launch mode from the next launch selection", () => {
+  it("selects the current launch mode in the launch dropdown", () => {
     const js = dashboardJs();
-    const css = dashboardCss();
 
-    expect(js).toContain("Active launch");
-    expect(js).toContain("Next launch");
-    expect(js).toContain("selectedNextLaunch=s.nextLaunchProfileId||s.launchProfileId");
-    expect(js).toContain("launch-next-note");
-    expect(css).toContain(".launch-current");
-    expect(css).toContain(".launch-next-note");
+    expect(js).toContain("selectedLaunch=s.launchProfileId||s.nextLaunchProfileId");
+    expect(js).toContain("<label>Launch<select id=\"controlLaunch\"");
+    expect(js).not.toContain("Active launch");
+    expect(js).not.toContain("Next launch");
   });
 
   it("renders active sessions on the overview instead of the single current session panel", () => {

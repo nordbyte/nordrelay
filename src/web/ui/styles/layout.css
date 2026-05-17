@@ -71,10 +71,6 @@ nav button{display:flex;align-items:center;justify-content:flex-start;width:100%
 .control-grid label,.form-grid label{display:grid;gap:5px;font-size:12px;color:var(--muted)}
 .control-grid>button,.control-grid>.checkbox{align-self:end}
 .control-grid>.checkbox{min-height:36px;height:36px;margin:0}
-.launch-current{display:grid;gap:3px;align-self:end;min-height:36px;color:var(--muted);font-size:12px;line-height:1.2}
-.launch-current strong{color:var(--text);font-size:13px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.launch-current small,.launch-next-note{color:var(--muted);font-size:12px;line-height:1.25}
-.launch-next-note{display:block;margin-top:2px}
 .messages{flex:1;min-height:0;overflow:auto;border:1px solid var(--border-soft);border-radius:8px;padding:12px;background:var(--surface-soft)}
 .message{margin:0 0 12px;padding:10px 12px;border-radius:8px;max-width:92%;white-space:pre-wrap;word-break:break-word}
 .message.user{margin-left:auto;background:var(--accent-soft)}

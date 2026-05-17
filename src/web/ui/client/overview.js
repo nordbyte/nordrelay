@@ -142,16 +142,12 @@ function renderSessionControls(){
   const c=state.controls||{};const s=state.snapshot?.session||{};const caps=c.capabilities||{};
   const modelOptions=['<option value="">Default</option>'].concat((c.models||[]).map(m=>'<option value="'+attr(m.slug)+'" '+(m.slug===s.model?'selected':'')+'>'+esc(modelLabel(m))+'</option>')).join('');
   const reasoningOptions=(c.reasoningOptions||[]).map(v=>'<option value="'+attr(v)+'" '+(v===s.reasoningEffort?'selected':'')+'>'+esc(v)+'</option>').join('');
-  const selectedNextLaunch=s.nextLaunchProfileId||s.launchProfileId;
-  const activeLaunchBehavior=s.launchProfileBehavior||[s.sandboxMode,s.approvalPolicy].filter(Boolean).join(' / ');
-  const activeLaunch='<div class="launch-current"><span>Active launch</span><strong>'+esc(s.launchProfileLabel||s.launchProfileId||'-')+'</strong>'+(activeLaunchBehavior?'<small>'+esc(activeLaunchBehavior)+'</small>':'')+'</div>';
-  const nextLaunchProfile=(c.launchProfiles||[]).find(p=>p.id===s.nextLaunchProfileId);
-  const nextLaunchNote=s.nextLaunchProfileId&&s.nextLaunchProfileId!==s.launchProfileId?'<small class="launch-next-note">Next launch: '+esc((nextLaunchProfile?.label||s.nextLaunchProfileLabel||s.nextLaunchProfileId)+' - '+(nextLaunchProfile?.behavior||s.nextLaunchProfileBehavior||''))+'</small>':'';
-  const launchOptions=(c.launchProfiles||[]).map(p=>'<option value="'+attr(p.id)+'" '+(p.id===selectedNextLaunch?'selected':'')+'>'+esc(p.label+' - '+p.behavior+(p.unsafe?' - unsafe':''))+'</option>').join('');
+  const selectedLaunch=s.launchProfileId||s.nextLaunchProfileId;
+  const launchOptions=(c.launchProfiles||[]).map(p=>'<option value="'+attr(p.id)+'" '+(p.id===selectedLaunch?'selected':'')+'>'+esc(p.label+' - '+p.behavior+(p.unsafe?' - unsafe':''))+'</option>').join('');
   document.getElementById('sessionControls').innerHTML=[
     caps.modelSelection?'<label>Model<select id="controlModel"'+disabledAttr('settings.write')+'>'+modelOptions+'</select></label>':'',
     caps.reasoningSelection?'<label>'+esc(c.reasoningLabel||'Reasoning')+'<select id="controlReasoning"'+disabledAttr('settings.write')+'>'+reasoningOptions+'</select></label>':'',
-    caps.launchProfiles?activeLaunch+'<label>Next launch<select id="controlLaunch"'+disabledAttr('settings.write')+'>'+launchOptions+'</select>'+nextLaunchNote+'</label><button id="applyLaunchBtn" class="secondary" title="Apply selected next launch profile to the current idle session"'+disabledAttr('settings.write')+'>Apply to Current</button>':'',
+    caps.launchProfiles?'<label>Launch<select id="controlLaunch"'+disabledAttr('settings.write')+'>'+launchOptions+'</select></label><button id="applyLaunchBtn" class="secondary" title="Apply selected launch profile to the current idle session"'+disabledAttr('settings.write')+'>Apply to Current</button>':'',
     caps.fastMode?'<label class="checkbox"><input id="controlFast" type="checkbox" '+(s.fastMode?'checked':'')+disabledAttr('settings.write')+'> Fast mode</label>':''
   ].join('');
   const model=document.getElementById('controlModel'); if(model) model.onchange=()=>safe(async()=>{if(model.value){await api('/api/session/model',{method:'POST',body:JSON.stringify({model:model.value})});toast('Model updated');loadBootstrap()}});
