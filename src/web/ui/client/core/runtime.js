@@ -18,7 +18,8 @@ function stopSessionAgeCounter(){if(state.sessionAgeTimer)clearInterval(state.se
 function startSessionAgeCounter(){updateSessionAgeCounters();if(state.sessionAgeTimer)return;state.sessionAgeTimer=setInterval(()=>{if(state.currentPage!=='sessions'){stopSessionAgeCounter();return}updateSessionAgeCounters()},1000)}
 function updateActivityAgeCounters(){document.querySelectorAll('[data-activity-age-at]').forEach(el=>{el.textContent=fmtRelativeAgo(el.dataset.activityAgeAt)})}
 function stopActivityAgeCounter(){if(state.activityAgeTimer)clearInterval(state.activityAgeTimer);state.activityAgeTimer=null}
-function startActivityAgeCounter(){updateActivityAgeCounters();if(state.activityAgeTimer)return;state.activityAgeTimer=setInterval(()=>{if(state.currentPage!=='monitor'||state.monitorTab!=='activity'){stopActivityAgeCounter();return}updateActivityAgeCounters()},1000)}
+function monitorTabHasAgeCounters(){return state.currentPage==='monitor'&&(state.monitorTab==='activity'||state.monitorTab==='tasks')}
+function startActivityAgeCounter(){updateActivityAgeCounters();if(state.activityAgeTimer)return;state.activityAgeTimer=setInterval(()=>{if(!monitorTabHasAgeCounters()){stopActivityAgeCounter();return}updateActivityAgeCounters()},1000)}
 function fmtDuration(ms){if(!ms&&ms!==0)return '-';const sec=Math.round(ms/1000);if(sec<60)return sec+'s';return Math.floor(sec/60)+'m '+(sec%60)+'s'}
 function fmtBytes(n){if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixed(1).replace(/\\.0$/,'')+' KB';return (n/1048576).toFixed(1).replace(/\\.0$/,'')+' MB'}
 function compactNum(n){if(!n)return'';if(n>=1000000000)return Math.round(n/100000000)/10+'B';if(n>=1000000)return Math.round(n/100000)/10+'M';if(n>=1000)return Math.round(n/100)/10+'K';return String(n)}

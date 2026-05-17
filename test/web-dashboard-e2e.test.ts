@@ -21,11 +21,16 @@ describe("web dashboard browser-flow assets", () => {
     const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
 
     expect(js).toContain("function renderUnifiedJobs");
+    expect(js).toContain("function renderRecentTurnsTable");
+    expect(js).toContain('class="data-table activity-table recent-turns-table"');
+    expect(js).toContain("renderRecentTurnsTable(d.recent||[])");
     expect(js).toContain("function uiTraceControls");
     expect(js).toContain("bindUiCopyButtons(target)");
     expect(js).toContain("bindUiTraceButtons(target)");
+    expect(js).toContain("startActivityAgeCounter()");
     expect(js).toContain("/api/jobs");
     expect(js).toContain("data-job-action");
+    expect(js).toContain("state.monitorTab==='activity'||state.monitorTab==='tasks'");
     expect(contract).toContain('exact("/api/jobs"');
     expect(contract).toContain('dynamic("/api/jobs/:id/action"');
   });
