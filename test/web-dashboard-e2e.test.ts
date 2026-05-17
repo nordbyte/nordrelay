@@ -159,9 +159,14 @@ describe("web dashboard browser-flow assets", () => {
     const js = dashboardJs();
 
     expect(js).toContain("function fmtSessionAge");
+    expect(js).toContain("function updateSessionAgeCounters");
+    expect(js).toContain("function startSessionAgeCounter");
+    expect(js).toContain("state.sessionAgeTimer=setInterval");
     expect(js).toContain("const updatedTitle=fmtDate(s.updatedAt)");
-    expect(js).toContain('class="session-age" title="');
+    expect(js).toContain('class="session-age"');
+    expect(js).toContain("data-session-updated-at");
     expect(js).toContain("esc(fmtSessionAge(s.updatedAt))");
+    expect(js).toContain("startSessionAgeCounter()");
     expect(js).not.toContain("short((s.cwd||'')+' / '+fmtDate(s.updatedAt))");
   });
 
