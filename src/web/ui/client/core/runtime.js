@@ -113,6 +113,7 @@ async function reloadCurrentPage(options={}){const name=state.currentPage;if(nam
 document.querySelectorAll('nav button[data-page]').forEach(b=>b.onclick=()=>page(b.dataset.page));
 document.querySelectorAll('[data-nav-toggle]').forEach(b=>b.onclick=()=>{const sectionId=b.dataset.navToggle;const section=document.querySelector('[data-nav-section="'+cssEscape(sectionId)+'"]');setNavSectionOpen(sectionId,section?.dataset.navOpen!=='true');syncNavSections()});
 initNavSections();
+document.getElementById('brandHomeBtn').onclick=()=>page('overview');
 document.getElementById('menuBtn').onclick=toggleMobileMenu;
 document.addEventListener('click',event=>{const sidebar=document.getElementById('sidebar');const menu=document.getElementById('menuBtn');if(!sidebar?.classList.contains('open'))return;if(sidebar.contains(event.target)||menu.contains(event.target))return;setMobileMenuOpen(false)});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')setMobileMenuOpen(false)});

@@ -135,7 +135,7 @@ ${faviconLinks}
 <body>
   <div class="app">
     <aside class="sidebar" id="sidebar">
-      <div class="brand"><img class="brand-mark" src="/assets/logo.png" alt="" width="44" height="44" aria-hidden="true"><div><strong>NordRelay</strong><small>Remote control</small></div></div>
+      <button id="brandHomeBtn" class="brand brand-home" type="button" aria-label="Open overview"><img class="brand-mark" src="/assets/logo.png" alt="" width="44" height="44" aria-hidden="true"><span class="brand-copy"><strong>NordRelay</strong><small>Remote control</small></span></button>
       <div class="brand-separator" aria-hidden="true"></div>
       <nav>
         ${renderDashboardNav()}
