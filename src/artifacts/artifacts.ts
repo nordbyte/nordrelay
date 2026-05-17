@@ -111,7 +111,8 @@ export async function collectRecentWorkspaceArtifacts(
   workspace: string,
   options: WorkspaceArtifactScanOptions,
 ): Promise<ArtifactReport> {
-  if (!existsSync(workspace)) {
+  const workspaceStat = await stat(workspace).catch(() => null);
+  if (!workspaceStat?.isDirectory()) {
     return { artifacts: [], skippedCount: 0 };
   }
 

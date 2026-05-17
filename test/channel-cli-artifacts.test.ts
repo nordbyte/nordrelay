@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -18,7 +18,7 @@ afterEach(async () => {
 describe("channel CLI artifact delivery", () => {
   it("deduplicates concurrent delivery for the same external turn", async () => {
     const workspace = await makeWorkspace();
-    await writeFile(path.join(workspace, "result.txt"), "hello");
+    const startedAt = await writeRecentArtifact(workspace);
     const state = mirrorState();
     const summaries: string[] = [];
 
@@ -26,7 +26,7 @@ describe("channel CLI artifact delivery", () => {
       config: config(workspace),
       contextKey: "discord:guild:channel",
       session: session(workspace),
-      startedAt: new Date(Date.now() - 10_000),
+      startedAt,
       turnId: "turn-1",
       state,
       autoSend: false,
@@ -42,7 +42,7 @@ describe("channel CLI artifact delivery", () => {
       config: config(workspace),
       contextKey: "discord:guild:channel",
       session: session(workspace),
-      startedAt: new Date(Date.now() - 10_000),
+      startedAt,
       turnId: "turn-1",
       state,
       autoSend: false,
@@ -64,7 +64,7 @@ describe("channel CLI artifact delivery", () => {
 
   it("retries if the in-flight delivery fails before being marked delivered", async () => {
     const workspace = await makeWorkspace();
-    await writeFile(path.join(workspace, "result.txt"), "hello");
+    const startedAt = await writeRecentArtifact(workspace);
     const state = mirrorState();
     let attempts = 0;
 
@@ -72,7 +72,7 @@ describe("channel CLI artifact delivery", () => {
       config: config(workspace),
       contextKey: "discord:guild:channel",
       session: session(workspace),
-      startedAt: new Date(Date.now() - 10_000),
+      startedAt,
       turnId: "turn-1",
       state,
       autoSend: false,
@@ -90,7 +90,7 @@ describe("channel CLI artifact delivery", () => {
       config: config(workspace),
       contextKey: "discord:guild:channel",
       session: session(workspace),
-      startedAt: new Date(Date.now() - 10_000),
+      startedAt,
       turnId: "turn-1",
       state,
       autoSend: false,
@@ -113,6 +113,15 @@ async function makeWorkspace(): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), "nordrelay-artifacts-"));
   tmpDirs.push(dir);
   return dir;
+}
+
+async function writeRecentArtifact(workspace: string): Promise<Date> {
+  const startedAt = new Date(Date.now() - 60_000);
+  const modifiedAt = new Date(Date.now() - 1_000);
+  const filePath = path.join(workspace, "result.txt");
+  await writeFile(filePath, "hello");
+  await utimes(filePath, modifiedAt, modifiedAt);
+  return startedAt;
 }
 
 function config(workspace: string): ConnectorConfig {
