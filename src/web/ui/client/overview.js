@@ -140,10 +140,27 @@ async function refreshRemoteHeaderTargets(local,selectedData){
 function renderSnapshot(s){
   renderHeaderTargetMenu(s);
   const fastValue=s.session.capabilities&&s.session.capabilities.fastMode?(s.session.fastMode?'on':'off'):'n/a';
-  document.getElementById('metrics').innerHTML=[
-    ['Current Session',s.processing?'working':'idle'],['Agent',s.session.agentLabel],['Queue',s.queue.length],['Workspace',s.session.workspace],['Thread',s.session.threadId||'not started'],['Reasoning / Fast',(s.session.reasoningEffort||'default')+' / '+fastValue]
-  ].map(([k,v])=>'<div class="metric"><div class="label">'+esc(k)+'</div><div class="value">'+esc(v)+'</div></div>').join('');
+  const metrics=document.getElementById('metrics');
+  metrics.innerHTML=[
+    metricHtml('Current Session',esc(s.processing?'working':'idle')+metricThreadCopyHtml(s.session.threadId)),
+    metricHtml('Agent',esc(s.session.agentLabel)),
+    metricHtml('Queue',esc(s.queue.length)),
+    metricHtml('Workspace',esc(s.session.workspace)),
+    metricHtml('Reasoning / Fast',esc((s.session.reasoningEffort||'default')+' / '+fastValue)),
+    metricHtml('Permissions',esc(launchPermissionsText(s.session)))
+  ].join('');
+  bindUiCopyButtons(metrics);
   renderQueue(s.queue,s.queuePaused);
+}
+function metricHtml(label,valueHtml){return '<div class="metric"><div class="label">'+esc(label)+'</div><div class="value">'+valueHtml+'</div></div>'}
+function metricThreadCopyHtml(thread){
+  return thread?' <button type="button" class="copy-id metric-thread-copy" data-copy-value="'+attr(thread)+'" data-copy-label="Thread ID copied" title="Copy thread ID" aria-label="Copy thread ID"><span class="copy-icon" aria-hidden="true"></span></button>':'';
+}
+function launchPermissionsText(session){
+  if(!session?.capabilities?.launchProfiles)return'n/a';
+  const selectedLaunch=session.launchProfileId||session.nextLaunchProfileId;
+  const profile=(state.controls?.launchProfiles||[]).find(p=>p.id===selectedLaunch);
+  return profile?.behavior||session.launchProfileBehavior||session.nextLaunchProfileBehavior||'-';
 }
 function renderHeaderTargetMenu(s=state.snapshot){
   const line=document.getElementById('sessionLine');

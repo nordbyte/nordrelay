@@ -94,7 +94,11 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#metrics")).toContainText("Current Session");
     await expect(page.locator("#metrics")).toContainText("Reasoning / Fast");
     await expect(page.locator("#metrics")).toContainText("high / on");
+    await expect(page.locator("#metrics")).toContainText("Permissions");
+    await expect(page.locator("#metrics")).toContainText("workspace-write / never");
+    await expect(page.locator("#metrics .metric-thread-copy")).toHaveAttribute("title", "Copy thread ID");
     await expect(page.locator("#metrics .metric .label").filter({ hasText: /^Fast$/ })).toHaveCount(0);
+    await expect(page.locator("#metrics .metric .label").filter({ hasText: /^Thread$/ })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Refresh" })).toHaveCount(0);
     await page.locator("#headerTargetBtn").click();
     await page.getByRole("button", { name: "Show recent codex sessions" }).click();
@@ -968,6 +972,10 @@ function sessionInfo(agentId = "codex") {
     model: pi ? "pi-default" : "gpt-5.5",
     reasoningEffort: "high",
     fastMode: !pi,
+    launchProfileId: "default",
+    launchProfileLabel: "Default",
+    launchProfileBehavior: "workspace-write / never",
+    unsafeLaunch: false,
     capabilities: pi ? PI_AGENT_CAPABILITIES : CODEX_AGENT_CAPABILITIES,
   };
 }

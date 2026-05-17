@@ -94,7 +94,7 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .control-menu-list button[aria-selected="true"]{background:var(--accent);color:white}
 .header-target-line{display:flex;align-items:center;gap:8px;margin-top:4px;min-width:0;color:var(--muted)}
 .header-target-menu{font-size:13px;max-width:100%}
-.header-target-button{max-width:min(760px,calc(100vw - 210px));font-size:13px}
+.header-target-button{max-width:min(760px,calc(100vw - 210px));font-size:14px}
 .header-thread-copy{white-space:nowrap}
 .header-target-list{min-width:min(420px,calc(100vw - 44px));width:min(460px,calc(100vw - 44px));gap:8px;padding:8px}
 .header-target-peer{display:grid;gap:4px;padding:4px 0 8px;border-bottom:1px solid var(--border-soft)}
@@ -170,6 +170,12 @@ input[type=file]{display:none}
 .data-table .copy-id[data-copy-id],.data-table .copy-id[data-copy-label="Thread ID copied"]{font-size:13px}
 .copy-id.header-thread-copy{display:inline-flex;align-items:center;justify-content:center;width:30px;min-width:30px;height:30px;min-height:30px;padding:0;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--muted);font-family:inherit}
 .copy-id.header-thread-copy:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--link);text-decoration:none}
+.copy-id.metric-thread-copy{display:inline-flex;align-items:center;justify-content:center;width:25px;min-width:25px;height:25px;min-height:25px;margin-left:5px;padding:0;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--muted);font-family:inherit;vertical-align:middle}
+.copy-id.metric-thread-copy:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--link);text-decoration:none}
+.copy-id.metric-thread-copy .copy-icon{width:13px;height:13px}
+.copy-id.metric-thread-copy .copy-icon::before,.copy-id.metric-thread-copy .copy-icon::after{width:8px;height:9px}
+.copy-id.metric-thread-copy .copy-icon::after{left:4px}
+.copy-id.metric-thread-copy:hover .copy-icon::before,.copy-id.metric-thread-copy:hover .copy-icon::after{background:var(--accent-soft)}
 .copy-icon{position:relative;display:block;width:15px;height:15px}
 .copy-icon::before,.copy-icon::after{content:"";position:absolute;width:9px;height:10px;border:1.5px solid currentColor;border-radius:2px;background:var(--surface)}
 .copy-icon::before{left:1px;top:4px;opacity:.72}
