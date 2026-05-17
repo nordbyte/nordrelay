@@ -38,7 +38,7 @@
 .workflow-builder-error{border:1px solid var(--danger);border-radius:6px;padding:7px 9px;color:var(--danger);background:color-mix(in srgb,var(--danger) 8%,transparent);font-size:13px;line-height:1.35}
 .workflow-builder-json{border:1px solid var(--border-soft);border-radius:8px;padding:10px;background:var(--surface)}
 .workflow-builder-json summary{cursor:pointer;font-weight:700;color:var(--muted)}
-.workflow-builder-json textarea{width:100%;min-width:0;margin-top:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+.workflow-builder-json textarea{width:100%;min-width:0;margin-top:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px}
 .workflow-builder-preview{border:1px solid var(--border-soft);border-radius:8px;padding:10px;background:var(--surface)}
 .workflow-builder-preview pre{max-height:260px;min-height:90px;margin:8px 0;overflow:auto}
 .workflow-variable-dialog p{margin:0 0 12px;color:var(--muted);line-height:1.4}

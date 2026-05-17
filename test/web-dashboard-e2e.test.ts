@@ -235,6 +235,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(dashboardCss()).toContain(".brand-separator{height:1px;background:var(--sidebar-border)");
     expect(dashboardCss()).toContain(".sidebar{position:sticky;top:0;height:100vh");
     expect(dashboardCss()).toContain("height:calc(var(--dashboard-header-height) - 1px);padding:0 18px");
+    expect(dashboardCss()).toContain("input,select,textarea{font-size:15px}");
+    expect(dashboardCss()).toContain(".workflow-builder-json textarea{width:100%;min-width:0;margin-top:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px}");
   });
 
   it("resolves WebUI logo and favicon assets from source files", () => {
