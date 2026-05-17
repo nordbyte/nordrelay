@@ -34,15 +34,7 @@ jobs:
           gitleaks version
 
       - name: Run Gitleaks
-        run: gitleaks git . --redact=100 --verbose --report-format=sarif --report-path=gitleaks-results.sarif
-
-      - name: Upload Gitleaks report
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: gitleaks-results.sarif
-          path: gitleaks-results.sarif
-          if-no-files-found: ignore
+        run: gitleaks git . --redact=100 --verbose
 
   trufflehog:
     name: TruffleHog
