@@ -167,6 +167,7 @@ input[type=file]{display:none}
 .sessions-toolbar input{min-width:220px}
 .copy-id{height:auto;min-height:0;padding:0;border:0;background:transparent;color:var(--link);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.25;white-space:normal;justify-content:flex-start;text-align:left}
 .copy-id:hover{background:transparent;text-decoration:underline}
+.data-table .copy-id[data-copy-id],.data-table .copy-id[data-copy-label="Thread ID copied"]{font-size:13px}
 .copy-id.header-thread-copy{display:inline-flex;align-items:center;justify-content:center;width:30px;min-width:30px;height:30px;min-height:30px;padding:0;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--muted);font-family:inherit}
 .copy-id.header-thread-copy:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--link);text-decoration:none}
 .copy-icon{position:relative;display:block;width:15px;height:15px}
