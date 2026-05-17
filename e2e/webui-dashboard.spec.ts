@@ -174,6 +174,22 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#tasksList")).toContainText("CID:");
     await expect(page.locator('#tasksList [data-trace-id="cid-job-1"]')).toBeVisible();
 
+    await navigateDashboard(page, "Trace");
+    await page.locator("#traceCorrelationId").fill("cid-job-1");
+    await page.locator("#loadTraceBtn").click();
+    await expect(page.locator("#traceDetail .trace-table")).toBeVisible();
+    await expect(page.locator("#traceDetail .trace-table th")).toHaveText([
+      "Time",
+      "Source",
+      "Status",
+      "Type",
+      "Title",
+      "Context",
+      "Detail",
+      "Actions",
+    ]);
+    await expect(page.locator("#traceDetail .trace-table tbody tr")).toHaveCount(2);
+
     await navigateDashboard(page, "Metrics");
     await expect(page.locator("#metricsPanel")).toContainText("Runtime");
     await expect(page.locator("#metricsPanel")).toContainText("Telegram rate limits");
@@ -881,6 +897,7 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   if (url.pathname === "/api/jobs") return jobsList();
   if (url.pathname.match(/^\/api\/jobs\/[^/]+\/log$/)) return { job: jobsList().jobs[0], plain: "Queued prompt log" };
   if (url.pathname.match(/^\/api\/jobs\/[^/]+\/action$/)) return jobsList();
+  if (url.pathname === "/api/trace") return traceDetail(url.searchParams.get("correlationId") || "cid-job-1");
   if (url.pathname === "/api/sessions") return sessions(url);
   if (url.pathname === "/api/sessions/detail") return sessionDetail();
   if (url.pathname === "/api/control-options") return controls(url.searchParams.get("agent") || "codex");
@@ -1212,6 +1229,52 @@ function jobsList() {
         canCancel: true,
         canRetry: true,
         canReadLog: true,
+      },
+    ],
+  };
+}
+
+function traceDetail(correlationId: string) {
+  return {
+    correlationId,
+    summary: {
+      startedAt: now(),
+      updatedAt: now(),
+      status: "completed",
+      sources: ["activity", "job"],
+      agentId: "codex",
+      threadId: "codex-thread-1",
+      workspace: "/tmp/project",
+    },
+    activity: [],
+    audit: [],
+    chat: [],
+    queue: [],
+    jobs: [],
+    timeline: [
+      {
+        id: "trace-activity-1",
+        at: now(),
+        source: "activity",
+        status: "running",
+        type: "prompt",
+        title: "web prompt",
+        detail: "Queued prompt from WebUI",
+        agentId: "codex",
+        threadId: "codex-thread-1",
+        workspace: "/tmp/project",
+      },
+      {
+        id: "trace-job-1",
+        at: now(),
+        source: "job",
+        status: "completed",
+        type: "queued_prompt",
+        title: "Queued prompt job",
+        detail: "Prompt completed",
+        agentId: "codex",
+        threadId: "codex-thread-1",
+        workspace: "/tmp/project",
       },
     ],
   };

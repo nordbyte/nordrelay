@@ -54,7 +54,7 @@ a{color:var(--link)}
 .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
 .metric,.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;box-shadow:var(--shadow)}
 .metric .label{font-size:12px;text-transform:uppercase;color:var(--muted)}
-.metric .value{font-size:19px;font-weight:750;margin-top:4px;overflow:hidden;text-overflow:ellipsis}
+.metric .value{font-size:18px;font-weight:750;margin-top:4px;overflow:hidden;text-overflow:ellipsis}
 button,select,input,textarea{border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font:inherit;line-height:1.2;vertical-align:middle}
 input,select,textarea{font-size:15px}
 button{appearance:none;-webkit-appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;height:36px;padding:0 12px;background:var(--accent);color:white;border-color:var(--accent);cursor:pointer;line-height:1;text-align:center;white-space:nowrap}

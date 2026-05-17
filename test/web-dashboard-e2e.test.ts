@@ -30,7 +30,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("startActivityAgeCounter()");
     expect(js).toContain("/api/jobs");
     expect(js).toContain("data-job-action");
-    expect(js).toContain("state.monitorTab==='activity'||state.monitorTab==='tasks'");
+    expect(js).toContain("state.monitorTab==='activity'||state.monitorTab==='tasks'||state.monitorTab==='trace'");
     expect(contract).toContain('exact("/api/jobs"');
     expect(contract).toContain('dynamic("/api/jobs/:id/action"');
   });
@@ -58,9 +58,12 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function loadMonitor");
     expect(js).toContain("function switchMonitorTab");
     expect(js).toContain("function renderActivityTable");
+    expect(js).toContain("function renderTraceTimelineTable");
     expect(js).toContain('class="data-table activity-table"');
+    expect(js).toContain('class="data-table activity-table trace-table"');
     expect(js).toContain("data-activity-age-at");
     expect(js).toContain("fmtRelativeAgo(e.timestamp)");
+    expect(js).toContain("fmtRelativeAgo(item.at)");
     expect(js).toContain("page('monitor')");
     expect(css).toContain(".monitor-tab-heading");
     expect(css).toContain(".activity-table th:nth-child(8)");
@@ -484,6 +487,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(layout).toContain(".badge,.adapter-status{display:inline-flex");
     expect(components).toContain(".chip{display:inline-flex");
     expect(components).toContain(".mini-button{min-height:26px");
+    expect(layout).toContain(".metric .value{font-size:18px");
   });
 
   it("renders parseable permission-aware dashboard JavaScript", () => {
