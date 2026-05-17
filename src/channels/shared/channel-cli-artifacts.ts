@@ -32,51 +32,63 @@ export async function deliverChannelCliArtifacts<MessageId extends string | numb
   if (!options.startedAt || !options.turnId) {
     return;
   }
-  if (options.state?.artifactsDeliveredForTurnId === options.turnId) {
+  if (
+    options.state?.artifactsDeliveredForTurnId === options.turnId ||
+    options.state?.artifactsDeliveryInFlightForTurnId === options.turnId
+  ) {
     return;
   }
+  if (options.state) {
+    options.state.artifactsDeliveryInFlightForTurnId = options.turnId;
+  }
 
-  const workspace = options.session.getInfo().workspace;
-  const report = await collectRecentWorkspaceArtifacts(workspace, {
-    since: options.startedAt,
-    until: new Date(),
-    maxFileSize: options.config.maxFileSize,
-    limit: 5,
-    ignoreDirs: options.config.artifactIgnoreDirs,
-    ignoreGlobs: options.config.artifactIgnoreGlobs,
-  });
-  if (isEmptyArtifactReport(report)) {
+  try {
+    const workspace = options.session.getInfo().workspace;
+    const report = await collectRecentWorkspaceArtifacts(workspace, {
+      since: options.startedAt,
+      until: new Date(),
+      maxFileSize: options.config.maxFileSize,
+      limit: 5,
+      ignoreDirs: options.config.artifactIgnoreDirs,
+      ignoreGlobs: options.config.artifactIgnoreGlobs,
+    });
+    if (isEmptyArtifactReport(report)) {
+      if (options.state) options.state.artifactsDeliveredForTurnId = options.turnId;
+      return;
+    }
+
+    const persistedReport = await persistWorkspaceArtifactReport(workspace, options.turnId, report).catch((error) => {
+      console.error(`Failed to persist ${options.logPrefix} CLI artifact report:`, error);
+      return null;
+    });
+
+    const summary = formatArtifactSummary(report.artifacts, report.skippedCount, report.omittedCount);
+    if (options.autoSend || options.sendSummaryWhenAutoSendDisabled) {
+      await options.sendSummary(summary);
+    }
+
+    if (options.autoSend) {
+      for (const artifact of (persistedReport?.artifacts ?? report.artifacts).slice(0, 5)) {
+        await options.sendArtifact(artifact);
+      }
+    }
+
+    const info = options.session.getInfo();
+    options.appendActivity({
+      source: "cli",
+      status: "info",
+      type: options.autoSend ? "artifacts_sent" : "artifacts_detected",
+      contextKey: options.contextKey,
+      threadId: info.threadId,
+      workspace: info.workspace,
+      agentId: info.agentId,
+      actor: { channel: "cli", label: `${info.agentLabel} CLI` },
+      detail: summary,
+    });
     if (options.state) options.state.artifactsDeliveredForTurnId = options.turnId;
-    return;
-  }
-
-  const persistedReport = await persistWorkspaceArtifactReport(workspace, options.turnId, report).catch((error) => {
-    console.error(`Failed to persist ${options.logPrefix} CLI artifact report:`, error);
-    return null;
-  });
-
-  const summary = formatArtifactSummary(report.artifacts, report.skippedCount, report.omittedCount);
-  if (options.autoSend || options.sendSummaryWhenAutoSendDisabled) {
-    await options.sendSummary(summary);
-  }
-
-  if (options.autoSend) {
-    for (const artifact of (persistedReport?.artifacts ?? report.artifacts).slice(0, 5)) {
-      await options.sendArtifact(artifact);
+  } finally {
+    if (options.state?.artifactsDeliveryInFlightForTurnId === options.turnId) {
+      options.state.artifactsDeliveryInFlightForTurnId = null;
     }
   }
-
-  const info = options.session.getInfo();
-  options.appendActivity({
-    source: "cli",
-    status: "info",
-    type: options.autoSend ? "artifacts_sent" : "artifacts_detected",
-    contextKey: options.contextKey,
-    threadId: info.threadId,
-    workspace: info.workspace,
-    agentId: info.agentId,
-    actor: { channel: "cli", label: `${info.agentLabel} CLI` },
-    detail: summary,
-  });
-  if (options.state) options.state.artifactsDeliveredForTurnId = options.turnId;
 }

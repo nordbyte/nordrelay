@@ -296,6 +296,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const externalQueueTimers = new Map<TelegramContextKey, NodeJS.Timeout>();
   const externalMirrors = new Map<TelegramContextKey, ExternalMirrorState>();
   const queueStatusMessages = new Map<TelegramContextKey, QueueStatusState>();
+  let externalMonitorRunning = false;
   const syncInterval = config.codexSyncIntervalMs > 0
     ? setInterval(() => {
         try {
@@ -613,24 +614,32 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   };
 
   const monitorExternalContexts = async (): Promise<void> => {
-    await monitorChannelExternalContexts({
-      config,
-      registry,
-      promptStore,
-      isContextKey: isTelegramContextKey,
-      canSendSystemMessages: canSendSystemMessagesToContext,
-      contextForKey: channelContextFromTelegramKey,
-      previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
-      mirrorSnapshot: async (contextKey, _context, session, snapshot) => {
-        const parsed = parseContextKey(contextKey);
-        await mirrorExternalSnapshot(contextKey, parsed.chatId, session, snapshot);
-      },
-      updateQueueStatus: (contextKey, _context, text) => updateQueueStatusMessage(contextKey, text),
-      drainQueue: async (contextKey, _context, session) => {
-        const parsed = parseContextKey(contextKey);
-        await drainQueuedPrompts(createSystemContext(contextKey), contextKey, parsed.chatId, session);
-      },
-    });
+    if (externalMonitorRunning) {
+      return;
+    }
+    externalMonitorRunning = true;
+    try {
+      await monitorChannelExternalContexts({
+        config,
+        registry,
+        promptStore,
+        isContextKey: isTelegramContextKey,
+        canSendSystemMessages: canSendSystemMessagesToContext,
+        contextForKey: channelContextFromTelegramKey,
+        previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
+        mirrorSnapshot: async (contextKey, _context, session, snapshot) => {
+          const parsed = parseContextKey(contextKey);
+          await mirrorExternalSnapshot(contextKey, parsed.chatId, session, snapshot);
+        },
+        updateQueueStatus: (contextKey, _context, text) => updateQueueStatusMessage(contextKey, text),
+        drainQueue: async (contextKey, _context, session) => {
+          const parsed = parseContextKey(contextKey);
+          await drainQueuedPrompts(createSystemContext(contextKey), contextKey, parsed.chatId, session);
+        },
+      });
+    } finally {
+      externalMonitorRunning = false;
+    }
   };
 
   const canSendSystemMessagesToContext = (contextKey: TelegramContextKey): boolean => {

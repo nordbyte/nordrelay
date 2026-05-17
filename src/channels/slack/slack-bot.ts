@@ -135,6 +135,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
   });
   const remoteClient = new RemoteRelayClient();
   let externalMonitor: NodeJS.Timeout | undefined;
+  let externalMonitorRunning = false;
 
   const getBusyState = (contextKey: ChannelContextKey): BusyState => busyStates.get(contextKey);
 
@@ -1318,29 +1319,37 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
   };
 
   const monitorExternalContexts = async (): Promise<void> => {
-    await monitorChannelExternalContexts({
-      config,
-      registry,
-      promptStore,
-      isContextKey: isSlackContextKey,
-      canSendSystemMessages: (contextKey) => canSendSystemMessagesToSlackContext(userStore, contextKey),
-      isAllowed: (contextKey) => {
-        const parsed = parseSlackContextKey(contextKey);
-        return Boolean(parsed && isSlackTeamAllowed(parsed.teamId) && isSlackChannelAllowedByEnv(parsed.channelId));
-      },
-      contextForKey: (contextKey) => {
-        const parsed = parseSlackContextKey(contextKey);
-        return parsed ? { channelId: "slack", chatId: parsed.channelId, ...(parsed.threadTs ? { topicId: parsed.threadTs } : {}) } : null;
-      },
-      previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
-      mirrorSnapshot: mirrorExternalSnapshot,
-      updateQueueStatus: updateQueueStatusMessage,
-      drainQueue: async (contextKey, context) => {
-        const parsed = parseSlackContextKey(contextKey);
-        if (!parsed) return;
-        await drainQueue({ contextKey, context, userId: "system", channelId: parsed.channelId, teamId: parsed.teamId, isDirectMessage: false, source: "system" });
-      },
-    });
+    if (externalMonitorRunning) {
+      return;
+    }
+    externalMonitorRunning = true;
+    try {
+      await monitorChannelExternalContexts({
+        config,
+        registry,
+        promptStore,
+        isContextKey: isSlackContextKey,
+        canSendSystemMessages: (contextKey) => canSendSystemMessagesToSlackContext(userStore, contextKey),
+        isAllowed: (contextKey) => {
+          const parsed = parseSlackContextKey(contextKey);
+          return Boolean(parsed && isSlackTeamAllowed(parsed.teamId) && isSlackChannelAllowedByEnv(parsed.channelId));
+        },
+        contextForKey: (contextKey) => {
+          const parsed = parseSlackContextKey(contextKey);
+          return parsed ? { channelId: "slack", chatId: parsed.channelId, ...(parsed.threadTs ? { topicId: parsed.threadTs } : {}) } : null;
+        },
+        previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
+        mirrorSnapshot: mirrorExternalSnapshot,
+        updateQueueStatus: updateQueueStatusMessage,
+        drainQueue: async (contextKey, context) => {
+          const parsed = parseSlackContextKey(contextKey);
+          if (!parsed) return;
+          await drainQueue({ contextKey, context, userId: "system", channelId: parsed.channelId, teamId: parsed.teamId, isDirectMessage: false, source: "system" });
+        },
+      });
+    } finally {
+      externalMonitorRunning = false;
+    }
   };
 
   (app as unknown as SlackBoltApp).event("message", async ({ event }) => {

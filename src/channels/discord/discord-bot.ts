@@ -153,6 +153,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     },
   });
   let externalMonitor: NodeJS.Timeout | undefined;
+  let externalMonitorRunning = false;
 
   const getBusyState = (contextKey: ChannelContextKey): BusyState => busyStates.get(contextKey);
 
@@ -1611,45 +1612,46 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
   };
 
   const monitorExternalContexts = async (): Promise<void> => {
-    await monitorChannelExternalContexts({
-      config,
-      registry,
-      promptStore,
-      isContextKey: isDiscordContextKey,
-      canSendSystemMessages: (contextKey) => canSendSystemMessagesToDiscordContext(userStore, contextKey),
-      isAllowed: (contextKey) => {
-        const parsed = parseDiscordContextKey(contextKey);
-        if (!parsed) return false;
-        const guildId = parsed.guildId?.startsWith("dm-") ? undefined : parsed.guildId;
-        return isDiscordGuildAllowed(guildId) && isDiscordChannelAllowedByEnv(parsed.channelId);
-      },
-      contextForKey: (contextKey) => {
-        const parsed = parseDiscordContextKey(contextKey);
-        if (!parsed) return null;
-        return {
-          channelId: "discord",
-          chatId: parsed.threadId ?? parsed.channelId,
-          ...(parsed.threadId ? { topicId: parsed.threadId } : {}),
-        };
-      },
-      previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
-      mirrorSnapshot: mirrorExternalSnapshot,
-      updateQueueStatus: updateQueueStatusMessage,
-      drainQueue: async (contextKey, context) => {
-        const parsed = parseDiscordContextKey(contextKey);
-        if (!parsed) return;
-        const systemRequest: DiscordRequest = {
-          contextKey,
-          context,
-          user: { id: "system", username: "system", bot: true } as User,
-          channelId: parsed.threadId ?? parsed.channelId,
-          guildId: parsed.guildId,
-          isDirectMessage: !parsed.guildId || parsed.guildId.startsWith("dm-"),
-          source: "message",
-        };
-        await drainQueue(systemRequest);
-      },
-    });
+    if (externalMonitorRunning) return;
+    externalMonitorRunning = true;
+    try {
+      await monitorChannelExternalContexts({
+        config,
+        registry,
+        promptStore,
+        isContextKey: isDiscordContextKey,
+        canSendSystemMessages: (contextKey) => canSendSystemMessagesToDiscordContext(userStore, contextKey),
+        isAllowed: (contextKey) => {
+          const parsed = parseDiscordContextKey(contextKey);
+          if (!parsed) return false;
+          return isDiscordGuildAllowed(parsed.guildId?.startsWith("dm-") ? undefined : parsed.guildId) && isDiscordChannelAllowedByEnv(parsed.channelId);
+        },
+        contextForKey: (contextKey) => {
+          const parsed = parseDiscordContextKey(contextKey);
+          if (!parsed) return null;
+          return { channelId: "discord", chatId: parsed.threadId ?? parsed.channelId, ...(parsed.threadId ? { topicId: parsed.threadId } : {}) };
+        },
+        previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
+        mirrorSnapshot: mirrorExternalSnapshot,
+        updateQueueStatus: updateQueueStatusMessage,
+        drainQueue: async (contextKey, context) => {
+          const parsed = parseDiscordContextKey(contextKey);
+          if (!parsed) return;
+          const systemRequest: DiscordRequest = {
+            contextKey,
+            context,
+            user: { id: "system", username: "system", bot: true } as User,
+            channelId: parsed.threadId ?? parsed.channelId,
+            guildId: parsed.guildId,
+            isDirectMessage: !parsed.guildId || parsed.guildId.startsWith("dm-"),
+            source: "message",
+          };
+          await drainQueue(systemRequest);
+        },
+      });
+    } finally {
+      externalMonitorRunning = false;
+    }
   };
 
   const registerSlashCommands = async (): Promise<void> => {

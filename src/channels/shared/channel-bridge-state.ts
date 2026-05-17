@@ -29,6 +29,7 @@ export interface ChannelExternalMirrorState<MessageId extends string | number = 
   latestAgentLine?: number;
   latestMirroredEventLine?: number;
   artifactsDeliveredForTurnId?: string | null;
+  artifactsDeliveryInFlightForTurnId?: string | null;
   activityStartedTurnKey?: string;
   activityFinishedTurnKey?: string;
   activityToolStartLines?: number[];
