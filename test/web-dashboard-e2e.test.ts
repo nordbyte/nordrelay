@@ -200,10 +200,13 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function setMobileMenuOpen");
     expect(js).toContain("function toggleMobileMenu");
     expect(js).toContain("aria-expanded");
+    expect(js).toContain("event.stopPropagation();toggleMobileMenu()");
+    expect(js).toContain("if(sidebar.contains(event.target))return;setMobileMenuOpen(false)");
     expect(js).toContain("event.key==='Escape'");
     expect(css).toContain(".menu:hover,.menu:focus{background:var(--accent-strong);border-color:var(--accent-strong);color:white");
     expect(css).toContain("header{z-index:30}");
-    expect(css).toContain(".sidebar{position:fixed;inset:var(--dashboard-header-height) auto 0 0;width:270px;height:calc(100vh - var(--dashboard-header-height))");
+    expect(css).toContain(".sidebar{position:fixed;inset:0 auto 0 0;width:270px;height:100vh");
+    expect(css).toContain("z-index:40");
   });
 
   it("selects the current launch mode in the launch dropdown", () => {
