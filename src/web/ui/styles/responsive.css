@@ -30,7 +30,7 @@ header{align-items:flex-start}
 .data-table .actions-cell{display:block;padding-top:8px}
 .data-table .actions-cell::before{display:none}
 .data-table-actions{justify-content:flex-start}
-.sessions-table th,.sessions-table td,.templates-table th,.templates-table td{width:100%!important}
+.sessions-table th,.sessions-table td,.templates-table th,.templates-table td,.activity-table th,.activity-table td{width:100%!important}
 }
 @media(max-width:560px){.metrics{grid-template-columns:1fr}
 .row{align-items:stretch}

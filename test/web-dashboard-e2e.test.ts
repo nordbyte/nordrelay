@@ -52,8 +52,13 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).not.toContain('id="page-artifacts"');
     expect(js).toContain("function loadMonitor");
     expect(js).toContain("function switchMonitorTab");
+    expect(js).toContain("function renderActivityTable");
+    expect(js).toContain('class="data-table activity-table"');
+    expect(js).toContain("data-activity-age-at");
+    expect(js).toContain("fmtRelativeAgo(e.timestamp)");
     expect(js).toContain("page('monitor')");
     expect(css).toContain(".monitor-tab-heading");
+    expect(css).toContain(".activity-table th:nth-child(8)");
   });
 
   it("includes workflow templates and workflow runs in the WebUI", () => {
@@ -184,6 +189,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".data-table-wrap");
     expect(css).toContain(".data-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px");
     expect(css).toContain(".data-table th{background:var(--surface);color:var(--muted);font-size:13px");
+    expect(css).toContain(".data-table-actions button{min-height:28px;height:28px;padding:0 8px;font-size:13px");
     expect(css).toContain(".sessions-table");
     expect(css).toContain(".sessions-table th:nth-child(8)");
     expect(css).toContain("@media(max-width:760px){.data-table-wrap");

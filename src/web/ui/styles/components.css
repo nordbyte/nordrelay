@@ -93,7 +93,7 @@
 .data-table .primary-cell{font-weight:650}
 .truncate-cell{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .data-table-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:nowrap}
-.data-table-actions button{min-height:28px;height:28px;padding:0 8px;font-size:12px;line-height:1}
+.data-table-actions button{min-height:28px;height:28px;padding:0 8px;font-size:13px;line-height:1}
 .actions-heading{text-align:right!important}
 .sessions-table th:nth-child(1),.sessions-table td:nth-child(1){width:8%;white-space:nowrap}
 .sessions-table th:nth-child(2),.sessions-table td:nth-child(2){width:21%}
@@ -110,6 +110,15 @@
 .templates-table th:nth-child(5),.templates-table td:nth-child(5){width:9%;white-space:nowrap}
 .templates-table th:nth-child(6),.templates-table td:nth-child(6){width:24%}
 .templates-table th:nth-child(7),.templates-table td:nth-child(7){width:250px}
+.activity-table th:nth-child(1),.activity-table td:nth-child(1){width:8%;white-space:nowrap}
+.activity-table th:nth-child(2),.activity-table td:nth-child(2){width:8%}
+.activity-table th:nth-child(3),.activity-table td:nth-child(3){width:9%}
+.activity-table th:nth-child(4),.activity-table td:nth-child(4){width:13%}
+.activity-table th:nth-child(5),.activity-table td:nth-child(5){width:12%}
+.activity-table th:nth-child(6),.activity-table td:nth-child(6){width:20%}
+.activity-table th:nth-child(7),.activity-table td:nth-child(7){width:22%}
+.activity-table th:nth-child(8),.activity-table td:nth-child(8){width:100px}
+.activity-context{display:grid;gap:2px;min-width:0}
 #activeSessions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 @media(min-width:1320px){#activeSessions{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .overview-adapter-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
