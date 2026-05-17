@@ -159,13 +159,17 @@ describe("web dashboard browser-flow assets", () => {
     const js = dashboardJs();
     const css = dashboardCss();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    const runtimeSessions = readFileSync("src/runtime/relay-runtime-sessions.ts", "utf8");
 
     expect(js).toContain("function fmtSessionAge");
     expect(js).toContain("function updateSessionAgeCounters");
     expect(js).toContain("function startSessionAgeCounter");
     expect(js).toContain("state.sessionAgeTimer=setInterval");
+    expect(js).toContain("function sessionRelativeTimeHtml");
     expect(js).toContain("function renderSessionsTable");
     expect(js).toContain("class=\"data-table sessions-table\"");
+    expect(js).toContain("<th>Updated</th><th>Title");
+    expect(js).toContain("sessionCell('Updated',sessionRelativeTimeHtml(s.updatedAt)");
     expect(js).toContain("data-label=\"'+attr(label)+'\"");
     expect(js).toContain('class="session-age"');
     expect(js).toContain("data-session-age-at");
@@ -173,9 +177,11 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).not.toContain("short((s.cwd||'')+' / '+fmtDate(s.updatedAt))");
     expect(css).toContain(".data-table-wrap");
     expect(css).toContain(".sessions-table");
+    expect(css).toContain(".sessions-table th:nth-child(8)");
     expect(css).toContain("@media(max-width:760px){.data-table-wrap");
     expect(css).toContain("content:attr(data-label)");
     expect(pageSource).toContain('id="sessionsList" class="sessions-table-host"');
+    expect(runtimeSessions).toContain("sessionUpdatedAtMs(right) - sessionUpdatedAtMs(left)");
   });
 
   it("selects the current launch mode in the launch dropdown", () => {

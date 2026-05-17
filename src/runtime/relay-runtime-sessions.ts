@@ -586,7 +586,13 @@ export function relayRuntimeFilteredSessions(runtime: RelayRuntimeDelegate, sess
           record.reasoningEffort,
           record.firstUserMessage,
         ].some((value) => value?.toLowerCase().includes(normalized));
-      });
+      })
+      .sort((left, right) => sessionUpdatedAtMs(right) - sessionUpdatedAtMs(left));
+  }
+
+function sessionUpdatedAtMs(record: AgentThreadRecord): number {
+    const value = record.updatedAt instanceof Date ? record.updatedAt.getTime() : Date.parse(String(record.updatedAt));
+    return Number.isFinite(value) ? value : 0;
   }
 
 export async function relayRuntimeListModels(runtime: RelayRuntimeDelegate): Promise<ReturnType<AgentSessionService["listModels"]>> {
