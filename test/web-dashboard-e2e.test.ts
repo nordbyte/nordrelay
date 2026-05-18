@@ -332,7 +332,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("data-update-delete-log");
     expect(js).toContain("Delete Log");
     expect(js).not.toContain("data-update-log");
-    expect(js).toContain("card('Runtime'");
+    expect(js).toContain("function renderVersionTable");
+    expect(js).toContain('class="data-table version-table"');
+    expect(js).not.toContain("versionPanel').innerHTML='<div class=\"version-grid\"");
     expect(js).toContain("bindAgentUpdateButtons();applyPermissions()");
   });
 
@@ -503,8 +505,11 @@ describe("web dashboard browser-flow assets", () => {
     expect(layout).toContain(".control-menu-list");
     expect(layout).toContain("nav button{display:flex");
     expect(layout).toContain(".badge,.adapter-status{display:inline-flex");
+    expect(layout).toContain(".adapter-status{margin-left:0");
     expect(components).toContain(".chip{display:inline-flex");
     expect(components).toContain(".mini-button{min-height:26px");
+    expect(components).toContain(".log-view{max-height:min(64vh,720px);min-height:320px;font-size:14px");
+    expect(components).toContain(".version-table th:nth-child(7)");
     expect(layout).toContain(".metric .value{font-size:18px");
   });
 

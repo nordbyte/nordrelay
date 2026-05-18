@@ -191,7 +191,7 @@ input[type=file]{display:none}
 .queue-item{cursor:grab}
 .queue-item.dragging{opacity:.55}
 .badge,.adapter-status{display:inline-flex;align-items:center;justify-content:center;min-height:20px;border:1px solid var(--border);border-radius:999px;padding:0 8px;color:var(--muted);font-size:12px;line-height:1}
-.adapter-status{margin-left:6px;text-transform:capitalize}
+.adapter-status{margin-left:0;text-transform:capitalize}
 .adapter-status.enabled,.adapter-status.available{color:#1e754e;border-color:#8ed0aa;background:color-mix(in srgb,var(--accent-soft) 55%,transparent)}
 .adapter-status.disabled{color:var(--muted)}
 .adapter-status.planned{color:#8a6a12;border-color:#d9c27a;background:var(--warn)}

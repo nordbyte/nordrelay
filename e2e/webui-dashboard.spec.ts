@@ -162,10 +162,17 @@ test.describe("NordRelay WebUI", () => {
 
     await navigateDashboard(page, "Version");
     await expect(page.locator("#versionPanel")).toContainText("NordRelay");
-    await expect(page.locator("#versionPanel .version-grid")).toBeVisible();
-    await expect
-      .poll(async () => page.locator("#versionPanel .version-grid").evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length))
-      .toBe(2);
+    await expect(page.locator("#versionPanel .version-table")).toBeVisible();
+    await expect(page.locator("#versionPanel .version-table thead th")).toHaveText([
+      "Name",
+      "Status",
+      "Installed",
+      "Latest",
+      "Package",
+      "Detail",
+      "Actions",
+    ]);
+    await expect(page.locator("#versionPanel")).not.toContainText("Runtime");
     await expect(page.locator("#agentUpdateJobs")).toContainText("No agent update jobs");
 
     await navigateDashboard(page, "Tasks");
@@ -772,6 +779,7 @@ test.describe("NordRelay WebUI", () => {
 
     await expect(page.getByRole("heading", { name: "Logs" })).toBeVisible();
     await expect(page.locator("#logs")).toHaveCSS("overflow-y", "auto");
+    await expect(page.locator("#logs")).toHaveCSS("font-size", "14px");
   });
 
   test("colors log levels and multiline entries consistently", async ({ page }) => {

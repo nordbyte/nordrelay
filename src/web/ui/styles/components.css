@@ -132,6 +132,13 @@
 .metrics-rate-table th:nth-child(1),.metrics-rate-table td:nth-child(1){width:12%}
 .metrics-rate-table th:nth-child(2),.metrics-rate-table td:nth-child(2),.metrics-rate-table th:nth-child(3),.metrics-rate-table td:nth-child(3),.metrics-rate-table th:nth-child(4),.metrics-rate-table td:nth-child(4),.metrics-rate-table th:nth-child(5),.metrics-rate-table td:nth-child(5),.metrics-rate-table th:nth-child(6),.metrics-rate-table td:nth-child(6),.metrics-rate-table th:nth-child(7),.metrics-rate-table td:nth-child(7),.metrics-rate-table th:nth-child(8),.metrics-rate-table td:nth-child(8),.metrics-rate-table th:nth-child(10),.metrics-rate-table td:nth-child(10){width:8%}
 .metrics-rate-table th:nth-child(9),.metrics-rate-table td:nth-child(9){width:16%}
+.version-table th:nth-child(1),.version-table td:nth-child(1){width:16%}
+.version-table th:nth-child(2),.version-table td:nth-child(2){width:10%;white-space:nowrap}
+.version-table th:nth-child(3),.version-table td:nth-child(3){width:12%}
+.version-table th:nth-child(4),.version-table td:nth-child(4){width:12%}
+.version-table th:nth-child(5),.version-table td:nth-child(5){width:20%}
+.version-table th:nth-child(6),.version-table td:nth-child(6){width:20%}
+.version-table th:nth-child(7),.version-table td:nth-child(7){width:120px}
 .activity-table th:nth-child(1),.activity-table td:nth-child(1){width:8%;white-space:nowrap}
 .activity-table th:nth-child(2),.activity-table td:nth-child(2){width:8%}
 .activity-table th:nth-child(3),.activity-table td:nth-child(3){width:9%}
@@ -203,7 +210,7 @@
 @keyframes spin{
   to{transform:rotate(360deg)}
 }
-.log-view{max-height:min(64vh,720px);min-height:320px}
+.log-view{max-height:min(64vh,720px);min-height:320px;font-size:14px;line-height:1.35}
 .log-line{display:block}
 .log-line.INFO{color:var(--pre-text);font-weight:400}
 .log-line.ERROR{color:var(--danger);font-weight:700}
@@ -219,8 +226,6 @@
 .adapter-settings-link:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--link)}
 .adapter-settings-icon{display:block;font-size:15px;line-height:1}
 .version-actions{margin-bottom:12px}
-.version-grid{display:grid;grid-template-columns:1fr;gap:8px}
-@media(min-width:1180px){.version-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .version-update-title{margin-top:22px}
 .mini-button{min-height:26px;height:26px;padding:0 8px;font-size:12px;line-height:1}
 .update-log{max-height:280px;min-height:90px;margin-top:10px}
