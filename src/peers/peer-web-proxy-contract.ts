@@ -23,6 +23,7 @@ const LOCAL_ONLY_ROUTE_PATHS = new Set([
   "/api/peers/discovery-jobs/:id",
   "/api/peers/discovery-jobs/:id/cancel",
   "/api/peers/discovery-jobs/:id/log",
+  "/api/peers/relay",
   "/api/peers/identity/backup",
   "/api/peers/identity/restore",
   "/api/peers/invitations/:id",

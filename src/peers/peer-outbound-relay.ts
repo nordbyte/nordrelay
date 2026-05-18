@@ -1,5 +1,7 @@
 import http from "node:http";
 import https from "node:https";
+import os from "node:os";
+import path from "node:path";
 import type { TLSSocket } from "node:tls";
 
 import type { ConnectorConfig } from "../core/config.js";
@@ -13,6 +15,31 @@ export interface PeerOutboundRelayHandle {
   close(): void;
 }
 
+export interface PeerOutboundRelayPeerSnapshot {
+  peerId: string;
+  peerName?: string;
+  enabled: boolean;
+  allowed: boolean;
+  failures: number;
+  idlePolls: number;
+  nextPollAt?: string;
+  lastPollAt?: string;
+  lastRequestAt?: string;
+  lastCompletedAt?: string;
+  lastError?: string;
+  completedRequests: number;
+}
+
+export interface PeerOutboundRelaySnapshot {
+  enabled: boolean;
+  allowedPeerIds: string[];
+  peers: PeerOutboundRelayPeerSnapshot[];
+  updatedAt: string;
+}
+
+const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
+const outboundRelaySnapshots = new Map<string, PeerOutboundRelaySnapshot>();
+
 export function startPeerOutboundRelay(options: {
   config: ConnectorConfig;
   runtime: RelayRuntime;
@@ -24,9 +51,10 @@ export function startPeerOutboundRelay(options: {
   }
   const store = new PeerStore(home);
   const service = new PeerRuntimeService(config, runtime);
+  const homeKey = path.resolve(home || process.env.NORDRELAY_HOME || DEFAULT_HOME);
   let closed = false;
   const timers = new Map<string, NodeJS.Timeout>();
-  const peerState = new Map<string, { failures: number; idle: number }>();
+  const peerState = new Map<string, PeerOutboundRelayPeerSnapshot>();
   const allowedPeerIds = new Set(config.peerOutboundRelayPeerIds);
 
   const loop = async (peerId: string): Promise<void> => {
@@ -36,34 +64,46 @@ export function startPeerOutboundRelay(options: {
       return;
     }
     const state = relayPeerState(peerState, peer.id);
+    Object.assign(state, { peerName: peer.name, enabled: peer.enabled, allowed: true, lastPollAt: new Date().toISOString() });
+    writeOutboundSnapshot(homeKey, config, peerState);
     try {
       const polled = await signedPeerPost<PeerRelayPollResponse>(peer, "/peer/relay/poll", { timeoutMs: config.peerOutboundRelayPollMs });
       const request = polled.request;
       if (request?.request) {
+        state.lastRequestAt = new Date().toISOString();
         const result = await executeRelayRequest(service, peer, request.request).catch((error): PeerRpcResult => ({
           ok: false,
           error: peerError(error),
         }));
         await signedPeerPost(peer, "/peer/relay/result", { id: request.id, result });
-        state.idle = 0;
+        state.idlePolls = 0;
         state.failures = 0;
+        state.lastCompletedAt = new Date().toISOString();
+        state.completedRequests += 1;
+        state.lastError = result.ok ? undefined : result.error;
       } else {
-        state.idle = Math.min(state.idle + 1, 8);
+        state.idlePolls = Math.min(state.idlePolls + 1, 8);
         state.failures = 0;
+        state.lastError = undefined;
       }
       store.markSeen(peer.id, { remoteStatus: "relay-polling" });
     } catch (error) {
       state.failures = Math.min(state.failures + 1, 8);
-      state.idle = 0;
-      store.markError(peer.id, `Outbound relay poll failed: ${peerError(error)}`);
+      state.idlePolls = 0;
+      state.lastError = peerError(error);
+      store.markError(peer.id, `Outbound relay poll failed: ${state.lastError}`);
     } finally {
       schedule(peer.id, nextDelayMs(config.peerOutboundRelayPollMs, state));
+      writeOutboundSnapshot(homeKey, config, peerState);
     }
   };
 
   const schedule = (peerId: string, delayMs = config.peerOutboundRelayPollMs): void => {
     if (closed) return;
     if (timers.has(peerId)) return;
+    const state = relayPeerState(peerState, peerId);
+    state.nextPollAt = new Date(Date.now() + Math.max(250, delayMs)).toISOString();
+    writeOutboundSnapshot(homeKey, config, peerState);
     const timer = setTimeout(() => {
       timers.delete(peerId);
       void loop(peerId);
@@ -89,6 +129,12 @@ export function startPeerOutboundRelay(options: {
       clearInterval(refreshTimer);
       for (const timer of timers.values()) clearTimeout(timer);
       timers.clear();
+      outboundRelaySnapshots.set(homeKey, {
+        enabled: false,
+        allowedPeerIds: [...allowedPeerIds],
+        peers: [...peerState.values()].map((peer) => ({ ...peer, enabled: false })),
+        updatedAt: new Date().toISOString(),
+      });
     },
   };
 }
@@ -98,21 +144,39 @@ function isRelayPeerAllowed(peer: PeerRecord, allowedPeerIds: Set<string>): bool
   return allowedPeerIds.size === 0 || allowedPeerIds.has(peer.id) || allowedPeerIds.has(peer.nodeId);
 }
 
-function relayPeerState(states: Map<string, { failures: number; idle: number }>, peerId: string): { failures: number; idle: number } {
-  const state = states.get(peerId) ?? { failures: 0, idle: 0 };
+export function getPeerOutboundRelaySnapshot(home = process.env.NORDRELAY_HOME || DEFAULT_HOME): PeerOutboundRelaySnapshot {
+  return outboundRelaySnapshots.get(path.resolve(home)) ?? {
+    enabled: false,
+    allowedPeerIds: [],
+    peers: [],
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function relayPeerState(states: Map<string, PeerOutboundRelayPeerSnapshot>, peerId: string): PeerOutboundRelayPeerSnapshot {
+  const state = states.get(peerId) ?? { peerId, enabled: true, allowed: true, failures: 0, idlePolls: 0, completedRequests: 0 };
   states.set(peerId, state);
   return state;
 }
 
-function nextDelayMs(baseMs: number, state: { failures: number; idle: number }): number {
+function nextDelayMs(baseMs: number, state: { failures: number; idlePolls: number }): number {
   const base = Math.max(250, baseMs);
   if (state.failures > 0) {
     return withJitter(Math.min(base * 2 ** state.failures, 5 * 60_000));
   }
-  if (state.idle > 0) {
-    return withJitter(Math.min(base * (state.idle + 1), 60_000));
+  if (state.idlePolls > 0) {
+    return withJitter(Math.min(base * (state.idlePolls + 1), 60_000));
   }
   return 250;
+}
+
+function writeOutboundSnapshot(homeKey: string, config: ConnectorConfig, states: Map<string, PeerOutboundRelayPeerSnapshot>): void {
+  outboundRelaySnapshots.set(homeKey, {
+    enabled: config.peerOutboundRelayEnabled,
+    allowedPeerIds: [...config.peerOutboundRelayPeerIds],
+    peers: [...states.values()].map((peer) => ({ ...peer })),
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 function withJitter(ms: number): number {

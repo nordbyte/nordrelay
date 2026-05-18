@@ -258,6 +258,34 @@ export interface PeerRelayRequestEnvelope {
   request: PeerRpcRequest;
 }
 
+export interface PublicPeerRelayRequest {
+  id: string;
+  peerId: string;
+  state: "pending" | "in-flight";
+  createdAt: string;
+  expiresAt: string;
+  ageMs: number;
+  expiresInMs: number;
+  requestType: string;
+  path?: string;
+  contextKey?: string;
+  actorLabel?: string;
+}
+
+export interface PublicPeerRelayResult {
+  id: string;
+  peerId: string;
+  resolvedAt: string;
+  ok: boolean;
+  error?: string;
+}
+
+export interface PeerRelayQueueSnapshot {
+  pending: PublicPeerRelayRequest[];
+  inFlight: PublicPeerRelayRequest[];
+  completed: PublicPeerRelayResult[];
+}
+
 export interface PeerRelayPollRequest {
   timeoutMs?: number;
 }

@@ -40,12 +40,6 @@ import { renderAgentUpdateJobAction, type ChannelActionResponse } from "../share
 import { buildArtifactActionsKeyboard } from "../shared/bot-rendering.js";
 import type { ChannelContext } from "../shared/channel-adapter.js";
 import { createChannelActivityRecorder, createChannelBusyStore } from "../shared/channel-bridge-controller.js";
-import type {
-  ChannelBusyReason,
-  ChannelBusyState,
-  ChannelExternalMirrorState,
-  ChannelQueueStatusState,
-} from "../shared/channel-bridge-state.js";
 import { ChannelCommandService } from "../shared/channel-command-service.js";
 import { runChannelPeerPrompt } from "../shared/channel-peer-prompt.js";
 import { deliverChannelAction } from "../shared/channel-runtime.js";
@@ -173,73 +167,35 @@ import {
   filterAllowedWorkspaces,
   renderWorkspacePolicyLine,
 } from "../../core/workspace-policy.js";
+import {
+  EDIT_DEBOUNCE_MS,
+  LAUNCH_PROFILES_COMMAND,
+  MAX_AUDIO_FILE_SIZE,
+  MEDIA_GROUP_FLUSH_MS,
+  TOOL_OUTPUT_PREVIEW_LIMIT,
+  TYPING_INTERVAL_MS,
+  type MediaGroupPart,
+  type PendingMediaGroup,
+  type RateLimitBucket,
+  type TelegramBusyReason,
+  type TelegramBusyState,
+  type TelegramExternalMirrorState,
+  type TelegramQueueStatusState,
+  type ToolState,
+} from "./telegram-runtime-types.js";
 
 export { formatToolSummaryLine, formatTurnUsageLine, summarizeToolName } from "../shared/bot-rendering.js";
 export { registerCommands } from "./telegram-command-menu.js";
-
-const EDIT_DEBOUNCE_MS = 1500;
-const TYPING_INTERVAL_MS = 4500;
-const TOOL_OUTPUT_PREVIEW_LIMIT = 500;
-const MAX_AUDIO_FILE_SIZE = 25 * 1024 * 1024;
-const MEDIA_GROUP_FLUSH_MS = 1200;
-const LAUNCH_PROFILES_COMMAND = "/launch_profiles";
-
-interface RateLimitBucket {
-  count: number;
-  resetAt: number;
-  blockedUntil?: number;
-}
-
-type ToolState = {
-  toolName: string;
-  partialResult: string;
-  messageId?: number;
-  finalStatus?: RenderedText;
-};
 
 const CLI_ACTIVITY_ACTOR: WebActivityActor = {
   channel: "cli",
   label: "CLI",
 };
 
-type MediaGroupPart =
-  | {
-      kind: "photo";
-      fileId: string;
-      fileName: string;
-      mimeType: string;
-      caption?: string;
-    }
-  | {
-      kind: "document";
-      fileId: string;
-      fileName: string;
-      mimeType: string;
-      fileSize?: number;
-      caption?: string;
-    };
-
-type PendingMediaGroup = {
-  ctx: Context;
-  contextKey: TelegramContextKey;
-  chatId: TelegramChatId;
-  session: AgentSessionService;
-  messageThreadId?: number;
-  parts: MediaGroupPart[];
-  timer: NodeJS.Timeout;
-};
-
-type BusyState = ChannelBusyState & {
-  transcribing: boolean;
-  approving: boolean;
-  external?: boolean;
-};
-
-type BusyReason = ChannelBusyReason<{ activity: AgentExternalActivity }>;
-
-type ExternalMirrorState = ChannelExternalMirrorState<number>;
-
-type QueueStatusState = ChannelQueueStatusState<number>;
+type BusyState = TelegramBusyState;
+type BusyReason = TelegramBusyReason;
+type ExternalMirrorState = TelegramExternalMirrorState;
+type QueueStatusState = TelegramQueueStatusState;
 
 export function createBot(config: ConnectorConfig, registry: SessionRegistry): Bot<Context> {
   configureRedaction(config.telegramRedactPatterns);

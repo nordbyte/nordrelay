@@ -33,13 +33,13 @@ import {
   createChannelPermissionChecker,
   createChannelQueueStatusController,
 } from "../shared/channel-bridge-controller.js";
-import type { ChannelBusyReason, ChannelBusyState, ChannelExternalMirrorState, ChannelPickState } from "../shared/channel-bridge-state.js";
 import { createSharedChannelCommandDispatcher } from "../shared/channel-command-core.js";
 import { ChannelCommandService } from "../shared/channel-command-service.js";
 import { discordHelpCommandList } from "../shared/channel-command-catalog.js";
 import { createChannelPromptEngine } from "../shared/channel-prompt-engine.js";
 import { queueChannelPromptIfBusy } from "../shared/channel-prompt-queue.js";
 import { runChannelPeerPrompt } from "../shared/channel-peer-prompt.js";
+import { inferChannelMimeType } from "../shared/channel-attachments.js";
 import { deliverChannelAction } from "../shared/channel-runtime.js";
 import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
 import { createChannelExternalMirrorController } from "../shared/channel-external-mirror-controller.js";
@@ -51,6 +51,7 @@ import type { LoginResult } from "../../agents/codex/codex-auth.js";
 import type { ConnectorConfig } from "../../core/config.js";
 import { discordContextKey, isDiscordContextKey, parseDiscordContextKey, type ChannelContextKey } from "../shared/context-key.js";
 import { DiscordBotChannelRuntime, actionFromDiscordCustomId, discordActionRows, splitDiscordMessage, trimDiscordMessage } from "./discord-channel-runtime.js";
+import type { DiscordBridge, DiscordBusyReason, DiscordBusyState, DiscordExternalMirrorState, DiscordPickState, DiscordRequest } from "./discord-types.js";
 import { createDiscordArtifactCommandHandler, sendRecentDiscordArtifacts } from "./discord-artifacts.js";
 import { argumentFromDiscordInteraction, discordCommands, isUnauthenticatedDiscordCommandAllowed, parseDiscordMessageCommand, permissionForDiscordAction, requiredPermissionForDiscordCommand } from "./discord-command-surface.js";
 import { discordRateLimiter, getDiscordRateLimitMetrics } from "./discord-rate-limit.js";
@@ -77,33 +78,9 @@ const EDIT_DEBOUNCE_MS = 1500;
 const TYPING_INTERVAL_MS = 4500;
 const MAX_SLASH_CHOICES = 25;
 const MAX_ATTACHMENT_DOWNLOAD = 25 * 1024 * 1024;
-interface DiscordBridge {
-  client: Client;
-  start(): Promise<void>;
-  stop(): Promise<void>;
-}
-
-interface DiscordRequest {
-  contextKey: ChannelContextKey;
-  context: ChannelContext;
-  user: User;
-  username?: string;
-  guildId?: string;
-  channelId: string;
-  channelName?: string;
-  isDirectMessage: boolean;
-  source: "message" | "interaction";
-  message?: Message;
-  interaction?: ChatInputCommandInteraction | MessageComponentInteraction;
-  authUser?: AuthenticatedUser;
-}
-
-type BusyState = ChannelBusyState;
-type BusyReason = ChannelBusyReason<{ agentLabel: string }>;
-
-type PickState = ChannelPickState<"agent" | "session" | "model" | "reasoning" | "launch" | "queue" | "artifact" | "update">;
-
-type DiscordExternalMirrorState = ChannelExternalMirrorState<string>;
+type BusyState = DiscordBusyState;
+type BusyReason = DiscordBusyReason;
+type PickState = DiscordPickState;
 
 export function createDiscordBridge(config: ConnectorConfig, registry: SessionRegistry): DiscordBridge | null {
   if (!config.discordEnabled) {
@@ -1431,7 +1408,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
         throw new Error(`Failed to download ${attachment.name || attachment.id}: ${response.status}`);
       }
       const buffer = Buffer.from(await response.arrayBuffer());
-      const mimeType = attachment.contentType || inferMimeType(attachment.name || "attachment");
+      const mimeType = attachment.contentType || inferChannelMimeType(attachment.name || "attachment");
       const staged = await stageFile(buffer, attachment.name || `discord-${attachment.id}`, mimeType, {
         workspace,
         turnId,
@@ -1780,18 +1757,4 @@ export function canSendSystemMessagesToDiscordContext(userStore: UserStore, cont
     channel.channelId === parsed.channelId &&
     (channel.guildId ?? "") === (parsed.guildId ?? "")
   );
-}
-
-function inferMimeType(name: string): string {
-  const lower = name.toLowerCase();
-  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-  if (lower.endsWith(".png")) return "image/png";
-  if (lower.endsWith(".gif")) return "image/gif";
-  if (lower.endsWith(".webp")) return "image/webp";
-  if (lower.endsWith(".mp3")) return "audio/mpeg";
-  if (lower.endsWith(".wav")) return "audio/wav";
-  if (lower.endsWith(".ogg") || lower.endsWith(".oga")) return "audio/ogg";
-  if (lower.endsWith(".m4a")) return "audio/mp4";
-  if (lower.endsWith(".webm")) return "audio/webm";
-  return "application/octet-stream";
 }

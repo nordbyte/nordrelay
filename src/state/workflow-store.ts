@@ -97,12 +97,33 @@ export interface WorkflowStepRun {
   status: WorkflowStepRunStatus;
   prompt?: string;
   correlationId?: string;
+  target?: WorkflowTarget;
+  sessionMode?: WorkflowSessionMode;
+  agentId?: AgentId;
+  workspace?: string;
+  workspaceMode?: SessionWorkspaceMode;
+  model?: string;
+  reasoningEffort?: string;
+  launchProfileId?: string;
+  requiresApproval?: boolean;
+  continueOnError?: boolean;
+  retryPolicy?: WorkflowRetryPolicy;
   startedAt?: string;
   finishedAt?: string;
   error?: string;
   attempts?: number;
+  attemptHistory?: WorkflowStepAttempt[];
   approvedAt?: string;
   skippedReason?: string;
+}
+
+export interface WorkflowStepAttempt {
+  attempt: number;
+  status: "running" | "completed" | "failed";
+  startedAt: string;
+  finishedAt?: string;
+  correlationId?: string;
+  error?: string;
 }
 
 export interface WorkflowRun {
@@ -351,13 +372,46 @@ function normalizeStepRun(input: WorkflowStepRun): WorkflowStepRun {
     status: normalizeStepRunStatus(input.status),
     prompt: cleanOptional(input.prompt),
     correlationId: cleanOptional(input.correlationId),
+    target: normalizeTarget(input.target),
+    sessionMode: input.sessionMode === "new" || input.sessionMode === "attach" ? input.sessionMode : input.sessionMode === "current" ? "current" : undefined,
+    agentId: input.agentId,
+    workspace: cleanOptional(input.workspace),
+    workspaceMode: normalizeWorkspaceMode(input.workspaceMode),
+    model: cleanOptional(input.model),
+    reasoningEffort: cleanOptional(input.reasoningEffort),
+    launchProfileId: cleanOptional(input.launchProfileId),
+    requiresApproval: input.requiresApproval === undefined ? undefined : Boolean(input.requiresApproval),
+    continueOnError: input.continueOnError === undefined ? undefined : Boolean(input.continueOnError),
+    retryPolicy: normalizeRetryPolicy(input.retryPolicy),
     startedAt: validDate(input.startedAt),
     finishedAt: validDate(input.finishedAt),
     error: cleanOptional(input.error),
     attempts: Math.max(0, Number.isFinite(input.attempts) ? input.attempts! : 0) || undefined,
+    attemptHistory: normalizeAttemptHistory(input.attemptHistory),
     approvedAt: validDate(input.approvedAt),
     skippedReason: cleanOptional(input.skippedReason),
   };
+}
+
+function normalizeAttemptHistory(input: unknown): WorkflowStepAttempt[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const attempts = input.map((item): WorkflowStepAttempt | null => {
+    if (!item || typeof item !== "object") return null;
+    const record = item as Record<string, unknown>;
+    const attempt = Math.max(1, Math.floor(Number(record.attempt) || 1));
+    const startedAt = validDate(record.startedAt);
+    if (!startedAt) return null;
+    const status = record.status === "completed" || record.status === "failed" ? record.status : "running";
+    return {
+      attempt,
+      status,
+      startedAt,
+      finishedAt: validDate(record.finishedAt),
+      correlationId: cleanOptional(record.correlationId),
+      error: cleanOptional(record.error),
+    };
+  }).filter((item): item is WorkflowStepAttempt => Boolean(item));
+  return attempts.length ? attempts.slice(-20) : undefined;
 }
 
 function normalizeVariable(input: PromptTemplateVariable): PromptTemplateVariable {

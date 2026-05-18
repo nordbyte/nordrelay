@@ -14,9 +14,13 @@ const budgets = [
   { file: "src/web/web-dashboard.ts", maxLines: 1100 },
   { file: "src/channels/shared/channel-cli-artifacts.ts", maxLines: 120 },
   { file: "src/channels/shared/channel-external-mirror-controller.ts", maxLines: 360 },
-  { file: "src/channels/discord/discord-bot.ts", maxLines: 1800 },
-  { file: "src/channels/slack/slack-bot.ts", maxLines: 1550 },
-  { file: "src/channels/telegram/bot.ts", maxLines: 4100 },
+  { file: "src/channels/shared/channel-attachments.ts", maxLines: 80 },
+  { file: "src/channels/discord/discord-bot.ts", maxLines: 1780 },
+  { file: "src/channels/discord/discord-types.ts", maxLines: 120 },
+  { file: "src/channels/slack/slack-bot.ts", maxLines: 1500 },
+  { file: "src/channels/slack/slack-types.ts", maxLines: 140 },
+  { file: "src/channels/telegram/bot.ts", maxLines: 4060 },
+  { file: "src/channels/telegram/telegram-runtime-types.ts", maxLines: 140 },
 ];
 
 const failures = [];

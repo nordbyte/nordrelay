@@ -14,11 +14,13 @@ import type {
   SessionWorktreeStatusSnapshot,
   SessionWorktreeUpdateResult,
   WorktreeChangedFile,
+  WorktreeConflictReviewItem,
   WorktreeConflictWarning,
   WorktreeCleanupResult,
   WorktreeDashboardSnapshot,
   WorktreeIntegrationRun,
   WorktreeIntegrationPreview,
+  WorktreeIntegrationPreviewSource,
 } from "./worktree-types.js";
 
 const MAX_GIT_BUFFER = 10 * 1024 * 1024;
@@ -200,7 +202,7 @@ export class SessionWorktreeService {
     const records = ids.map((id) => this.requireRecord(id));
     const warnings: string[] = [];
     if (records.length === 0) {
-      return { ids, canIntegrate: false, files: [], conflictCandidates: [], warnings: ["Select at least one worktree."], generatedAt };
+      return { ids, canIntegrate: false, sourceWorktrees: [], files: [], conflictCandidates: [], conflictReview: [], warnings: ["Select at least one worktree."], generatedAt };
     }
     const repoRoot = records[0]!.repoRoot;
     const repoName = records[0]!.repoName;
@@ -234,14 +236,17 @@ export class SessionWorktreeService {
     if (conflictCandidates.length) {
       warnings.push(`${conflictCandidates.length} file(s) are changed by more than one selected worktree.`);
     }
+    const sourceWorktrees = records.map(previewSource);
     return {
       ids,
       canIntegrate: warnings.length === 0,
       repoRoot,
       repoName,
       baseSha,
+      sourceWorktrees,
       files,
       conflictCandidates,
+      conflictReview: files.map((file) => conflictReviewItem(file, sourceWorktrees)),
       warnings,
       generatedAt,
     };
@@ -536,6 +541,36 @@ export class SessionWorktreeService {
     }
     return [...byRepo.values()].filter((warning) => warning.sessions.length > 1);
   }
+}
+
+function previewSource(record: SessionWorktreeRecord): WorktreeIntegrationPreviewSource {
+  return {
+    id: record.id,
+    branchName: record.branchName,
+    status: record.status,
+    threadId: record.threadId,
+    agentId: record.agentId,
+    worktreePath: record.worktreePath,
+    commitSha: record.commitSha,
+  };
+}
+
+function conflictReviewItem(file: WorktreeChangedFile, sources: WorktreeIntegrationPreviewSource[]): WorktreeConflictReviewItem {
+  const sourceWorktrees = sources.filter((source) => file.sourceWorktreeIds.includes(source.id));
+  const sameFile = sourceWorktrees.length > 1;
+  const risk = file.status === "conflict" ? "status-mismatch" : sameFile ? "same-file" : "none";
+  const recommendation = risk === "none"
+    ? "No conflict candidate detected for this file."
+    : risk === "status-mismatch"
+      ? "Review the file before merging because selected worktrees report different change types."
+      : "Review side-by-side diffs before merging because multiple worktrees changed this file.";
+  return {
+    path: file.path,
+    status: file.status,
+    sourceWorktrees,
+    risk,
+    recommendation,
+  };
 }
 
 export function createSessionWorktreeStore(config: ConnectorConfig): SessionWorktreeStore {

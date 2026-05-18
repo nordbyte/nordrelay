@@ -6,7 +6,8 @@ import type { AgentUpdateJobSnapshot } from "../agents/shared/agent-updates.js";
 import type { AuditEvent } from "../access/audit-log.js";
 import type { ChannelDescriptor } from "../channels/shared/channel-adapter.js";
 import type { ClearLogResult, ConnectorHealth, ConnectorRuntimeState, FormattedLogTail, SelfUpdateResult, VersionChecks } from "../support/operations.js";
-import type { PeerDiscoveryJobSnapshot, PeerDiscoveryResult, PeerIdentityBackup, PeerSnapshot, PublicPeerRecord } from "../peers/peer-types.js";
+import type { PeerDiscoveryJobSnapshot, PeerDiscoveryResult, PeerIdentityBackup, PeerRelayQueueSnapshot, PeerSnapshot, PublicPeerRecord } from "../peers/peer-types.js";
+import type { PeerOutboundRelaySnapshot } from "../peers/peer-outbound-relay.js";
 import type { WebApiDynamicPathFromContract, WebApiStaticPathFromContract } from "./web-api-contract.js";
 import type {
   ActiveSessionsDto,
@@ -183,6 +184,7 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/artifacts/bulk" ? { action: "delete"; turnIds: string[] } :
   P extends "/api/artifacts/cleanup/preview" | "/api/artifacts/cleanup/run" ? Record<string, never> :
   P extends "/api/peers/discovery-jobs" ? { targets?: string[]; timeoutMs?: number; concurrency?: number; maxHosts?: number } :
+  P extends "/api/peers/relay" ? { action: "cancel"; peerId: string; id: string } | { action: "retry"; peerId?: string; id?: string } | { action: "drain-expired" } :
   P extends "/api/peers/identity/restore" ? { backup: PeerIdentityBackup } :
   P extends `/api/peers/${string}/rotate` ? { expiresMinutes?: number } :
   P extends "/api/logs/clear" ? { target?: "connector" | "update" | "agent-updates" } :
@@ -238,6 +240,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/peers/identity/restore" ? { identity: PeerIdentityBackup["identity"] } :
   P extends "/api/peers/discover" ? PeerDiscoveryResult :
   P extends "/api/peers/discovery-jobs" ? { jobs: PeerDiscoveryJobSnapshot[] } | { job: PeerDiscoveryJobSnapshot } :
+  P extends "/api/peers/relay" ? { enabled: boolean; allowedPeerIds: string[]; queue: PeerRelayQueueSnapshot; outbound: PeerOutboundRelaySnapshot; updatedAt: string; result?: unknown } :
   P extends `/api/peers/discovery-jobs/${string}/log` ? { id: string; plain: string } :
   P extends `/api/peers/discovery-jobs/${string}/cancel` | `/api/peers/discovery-jobs/${string}` ? { job: PeerDiscoveryJobSnapshot | null } :
   P extends `/api/peers/${string}/repin` ? { peer: PublicPeerRecord; probe: unknown } :

@@ -24,13 +24,13 @@ import {
   createChannelPermissionChecker,
   createChannelQueueStatusController,
 } from "../shared/channel-bridge-controller.js";
-import type { ChannelBusyReason, ChannelBusyState, ChannelExternalMirrorState, ChannelPickState } from "../shared/channel-bridge-state.js";
 import { createSharedChannelCommandDispatcher } from "../shared/channel-command-core.js";
 import { slackHelpCommandList } from "../shared/channel-command-catalog.js";
 import { ChannelCommandService } from "../shared/channel-command-service.js";
 import { createChannelPromptEngine } from "../shared/channel-prompt-engine.js";
 import { queueChannelPromptIfBusy } from "../shared/channel-prompt-queue.js";
 import { runChannelPeerPrompt } from "../shared/channel-peer-prompt.js";
+import { inferChannelMimeType } from "../shared/channel-attachments.js";
 import { deliverChannelAction } from "../shared/channel-runtime.js";
 import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
 import { createChannelExternalMirrorController } from "../shared/channel-external-mirror-controller.js";
@@ -53,6 +53,7 @@ import { canWriteWithLock, SessionLockStore } from "../../access/session-locks.j
 import { SessionRegistry } from "../../state/session-registry.js";
 import { createSlackArtifactCommandHandler, sendRecentSlackArtifacts } from "./slack-artifacts.js";
 import { SlackBotChannelRuntime, actionFromSlackActionId, splitSlackMessage, trimSlackMessage } from "./slack-channel-runtime.js";
+import type { SlackActionBody, SlackBoltApp, SlackBridge, SlackBusyReason, SlackBusyState, SlackExternalMirrorState, SlackPickState, SlackRequest, SlackSlashCommandPayload } from "./slack-types.js";
 import { isUnauthenticatedSlackCommandAllowed, parseSlackMessageCommand, parseSlackSlashCommand, permissionForSlackAction, requiredPermissionForSlackCommand } from "./slack-command-surface.js";
 import { collectSlackDiagnostics } from "./slack-diagnostics.js";
 import { getSlackRateLimitMetrics } from "./slack-rate-limit.js";
@@ -68,32 +69,9 @@ const TYPING_INTERVAL_MS = 4500;
 const MAX_CHOICES = 25;
 const MAX_ATTACHMENT_DOWNLOAD = 25 * 1024 * 1024;
 
-interface SlackBridge {
-  app: App;
-  start(): Promise<void>;
-  stop(): Promise<void>;
-}
-
-interface SlackRequest {
-  contextKey: ChannelContextKey;
-  context: ChannelContext;
-  userId: string;
-  username?: string;
-  teamId?: string;
-  channelId: string;
-  channelName?: string;
-  isDirectMessage: boolean;
-  source: "message" | "slash" | "action" | "system";
-  respond?: (message: unknown) => Promise<unknown>;
-  authUser?: AuthenticatedUser;
-}
-
-type BusyState = ChannelBusyState;
-type BusyReason = ChannelBusyReason<{ agentLabel: string }>;
-
-type PickState = ChannelPickState<"agent" | "session" | "model" | "reasoning" | "launch">;
-
-type SlackExternalMirrorState = ChannelExternalMirrorState<string>;
+type BusyState = SlackBusyState;
+type BusyReason = SlackBusyReason;
+type PickState = SlackPickState;
 
 export function createSlackBridge(config: ConnectorConfig, registry: SessionRegistry): SlackBridge | null {
   if (!config.slackEnabled) {
@@ -1203,7 +1181,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
         throw new Error(`Failed to download ${file.name || file.id}: ${response.status}`);
       }
       const buffer = Buffer.from(await response.arrayBuffer());
-      const mimeType = file.mimetype || inferMimeType(file.name || "attachment");
+      const mimeType = file.mimetype || inferChannelMimeType(file.name || "attachment");
       const staged = await stageFile(buffer, file.name || `slack-${file.id}`, mimeType, { workspace, turnId, maxFileSize: config.maxFileSize });
       stagedFiles.push(staged);
       if (mimeType.startsWith("image/")) imagePaths.push(staged.localPath);
@@ -1497,42 +1475,6 @@ interface SlackMessageEvent {
   files?: SlackFile[];
 }
 
-interface SlackSlashCommandPayload {
-  team_id?: string;
-  channel_id: string;
-  channel_name?: string;
-  user_id: string;
-  user_name?: string;
-  text?: string;
-}
-
-interface SlackActionBody {
-  team?: { id?: string };
-  user?: { id?: string; username?: string };
-  channel?: { id?: string; name?: string };
-  message?: { ts?: string; thread_ts?: string };
-}
-
-interface SlackBoltApp {
-  event(name: string, handler: (args: { event: unknown }) => Promise<void>): void;
-  command(name: string, handler: (args: { command: unknown; ack: () => Promise<void>; respond: (message: unknown) => Promise<unknown> }) => Promise<void>): void;
-  action(pattern: RegExp, handler: (args: { action: { action_id?: string }; body: unknown; ack: () => Promise<void>; respond: (message: unknown) => Promise<unknown> }) => Promise<void>): void;
-}
-
 function stripSlackMention(text: string): string {
   return text.replace(/^<@[^>]+>\s*/, "");
-}
-
-function inferMimeType(name: string): string {
-  const lower = name.toLowerCase();
-  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-  if (lower.endsWith(".png")) return "image/png";
-  if (lower.endsWith(".gif")) return "image/gif";
-  if (lower.endsWith(".webp")) return "image/webp";
-  if (lower.endsWith(".mp3")) return "audio/mpeg";
-  if (lower.endsWith(".wav")) return "audio/wav";
-  if (lower.endsWith(".ogg") || lower.endsWith(".oga")) return "audio/ogg";
-  if (lower.endsWith(".m4a")) return "audio/mp4";
-  if (lower.endsWith(".webm")) return "audio/webm";
-  return "application/octet-stream";
 }

@@ -408,6 +408,7 @@ ${faviconLinks}
             <div id="peerTabs" class="section-tabs peer-tabs" role="tablist" aria-label="Peer sections">
               <button type="button" role="tab" aria-selected="true" tabindex="0" data-peer-tab="status" class="active">Status</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-peer-tab="topology">Topology</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-peer-tab="relay">Relay</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-peer-tab="peers">Peers</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-peer-tab="invitations">Invitations</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-peer-tab="discovery">Discovery</button>
@@ -425,6 +426,12 @@ ${faviconLinks}
               <div class="row peer-heading-actions"><button id="reloadPeerTopologyBtn" class="secondary">Reload topology</button></div>
             </div>
             <div id="peerTopology" class="list"></div>
+          </div>
+          <div class="peer-tab" data-peer-tab-panel="relay">
+            <div class="peer-tab-heading">
+              <div class="row peer-heading-actions"><button id="reloadPeerRelayBtn" class="secondary">Reload relay</button><button id="retryPeerRelayBtn" class="secondary">Retry stale</button><button id="drainPeerRelayBtn" class="secondary">Drain expired</button></div>
+            </div>
+            <div id="peerRelay" class="list"></div>
           </div>
           <div class="peer-tab" data-peer-tab-panel="peers">
             <div class="peer-tab-heading">

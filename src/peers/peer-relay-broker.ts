@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
-import type { PeerRelayRequestEnvelope, PeerRpcRequest, PeerRpcResult } from "./peer-types.js";
+import type { PeerRelayQueueSnapshot, PeerRelayRequestEnvelope, PeerRpcRequest, PeerRpcResult } from "./peer-types.js";
 import { PeerRelayStore } from "./peer-relay-store.js";
 
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
@@ -83,6 +83,47 @@ export class PeerRelayBroker {
     let pending = 0;
     for (const queue of this.pending.values()) pending += queue.length;
     return { ...stored, pending: pending || stored.pending, inFlight: this.inFlight.size || stored.inFlight };
+  }
+
+  snapshot(peerId?: string): PeerRelayQueueSnapshot {
+    return this.store.snapshot(peerId);
+  }
+
+  cancel(peerId: string, id: string): boolean {
+    const key = relayKey(peerId, id);
+    const active = this.inFlight.get(key);
+    if (active) {
+      this.inFlight.delete(key);
+      this.store.remove(peerId, id);
+      active.reject(new Error("Peer relay request cancelled."));
+      return true;
+    }
+    const queue = this.pending.get(peerId) ?? [];
+    const removed = queue.filter((item) => item.envelope.id === id);
+    const next = queue.filter((item) => item.envelope.id !== id);
+    if (next.length) this.pending.set(peerId, next);
+    else this.pending.delete(peerId);
+    for (const item of removed) item.reject(new Error("Peer relay request cancelled."));
+    return this.store.remove(peerId, id) || removed.length > 0;
+  }
+
+  retry(peerId?: string, id?: string): number {
+    let moved = 0;
+    for (const envelope of this.store.listInFlight(peerId, id)) {
+      if (this.inFlight.has(relayKey(envelope.peerId, envelope.id))) continue;
+      const queue = this.pending.get(envelope.peerId) ?? [];
+      if (!queue.some((item) => item.envelope.id === envelope.id)) {
+        queue.push({ envelope, restored: true, resolve: () => {}, reject: () => {} });
+        this.pending.set(envelope.peerId, queue);
+      }
+      this.store.addPending(envelope);
+      moved += 1;
+    }
+    return moved;
+  }
+
+  drainExpired(): { pending: number; inFlight: number } {
+    return this.store.cleanupExpired();
   }
 
   private shift(peerId: string): PendingRelayRequest | null {

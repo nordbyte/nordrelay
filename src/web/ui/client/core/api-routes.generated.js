@@ -37,6 +37,7 @@ const WEB_API_CLIENT_ROUTE_RULES = [
   { path: "/api/peers/probe", methods: ['POST'] },
   { path: "/api/peers/discover", methods: ['GET'] },
   { path: "/api/peers/discovery-jobs", methods: ['GET', 'POST'] },
+  { path: "/api/peers/relay", methods: ['GET', 'POST'] },
   { re: /^\/api\/peers\/discovery-jobs\/[^\/]+$/, methods: ['GET'] },
   { re: /^\/api\/peers\/discovery-jobs\/[^\/]+\/cancel$/, methods: ['POST'] },
   { re: /^\/api\/peers\/discovery-jobs\/[^\/]+\/log$/, methods: ['GET'] },

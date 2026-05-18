@@ -10,6 +10,8 @@ import {
   loadOrCreatePeerIdentity,
   restorePeerIdentityBackup,
 } from "../peers/peer-identity.js";
+import { getPeerOutboundRelaySnapshot } from "../peers/peer-outbound-relay.js";
+import { getPeerRelayBroker } from "../peers/peer-relay-broker.js";
 import { checkPeerEndpoint, checkPeerIdentityEndpoint, pairPeer, RemoteRelayClient } from "../peers/peer-client.js";
 import type { PeerDiscoveryJobManager } from "../peers/peer-discovery-jobs.js";
 import { buildPeerReadiness, peerListenUrl } from "../peers/peer-readiness.js";
@@ -113,6 +115,37 @@ export async function handleDashboardPeerRoute(
   if (req.method === "GET" && url.pathname === "/api/peers/discovery-jobs") {
     sendJson(res, 200, { jobs: options.discoveryJobs?.list() ?? [] });
     return true;
+  }
+
+  if (url.pathname === "/api/peers/relay") {
+    const broker = getPeerRelayBroker(options.home);
+    if (req.method === "GET") {
+      sendJson(res, 200, peerRelayStatus(options, broker));
+      return true;
+    }
+    if (req.method === "POST") {
+      const body = await readJsonBody(req);
+      const action = requiredString(body, "action");
+      let result: unknown = {};
+      if (action === "cancel") {
+        const peerId = requiredString(body, "peerId");
+        const id = requiredString(body, "id");
+        result = { removed: broker.cancel(peerId, id) };
+        options.auditPeerAction?.("peer_relay_cancelled", `${peerId}/${id}`);
+      } else if (action === "retry") {
+        const peerId = optionalStringField(body, "peerId");
+        const id = optionalStringField(body, "id");
+        result = { moved: broker.retry(peerId, id) };
+        options.auditPeerAction?.("peer_relay_retried", [peerId, id].filter(Boolean).join("/") || "all stale requests");
+      } else if (action === "drain-expired") {
+        result = broker.drainExpired();
+        options.auditPeerAction?.("peer_relay_expired_drained", "Expired relay requests removed");
+      } else {
+        throw new Error(`Unsupported peer relay action: ${action}`);
+      }
+      sendJson(res, 200, { ...peerRelayStatus(options, broker), result });
+      return true;
+    }
   }
 
   if (req.method === "POST" && url.pathname === "/api/peers/discovery-jobs") {
@@ -343,6 +376,16 @@ export async function handleDashboardPeerRoute(
   }
 
   return false;
+}
+
+function peerRelayStatus(options: DashboardPeerRouteOptions, broker: ReturnType<typeof getPeerRelayBroker>) {
+  return {
+    enabled: options.config.peerOutboundRelayEnabled,
+    allowedPeerIds: [...options.config.peerOutboundRelayPeerIds],
+    queue: broker.snapshot(),
+    outbound: getPeerOutboundRelaySnapshot(options.home),
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 function parseScopes(values: string[]): Permission[] {

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { readJsonFileWithBackup, writeJsonFileAtomic } from "../state/persistence.js";
-import type { PeerRelayRequestEnvelope, PeerRpcResult } from "./peer-types.js";
+import type { PeerRelayQueueSnapshot, PeerRelayRequestEnvelope, PeerRpcResult, PublicPeerRelayRequest } from "./peer-types.js";
 
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 const MAX_COMPLETED_RESULTS = 200;
@@ -32,6 +32,27 @@ export class PeerRelayStore {
   listPending(): PeerRelayRequestEnvelope[] {
     const payload = this.readPayload();
     return [...payload.pending, ...payload.inFlight].filter((item) => Date.parse(item.expiresAt) > Date.now());
+  }
+
+  listInFlight(peerId?: string, id?: string): PeerRelayRequestEnvelope[] {
+    const payload = this.readPayload();
+    return payload.inFlight.filter((item) => matchesRelay(item, peerId, id));
+  }
+
+  snapshot(peerId?: string): PeerRelayQueueSnapshot {
+    const payload = this.readPayload();
+    const matches = (item: { peerId: string }) => !peerId || item.peerId === peerId;
+    return {
+      pending: payload.pending.filter(matches).map((item) => publicRelayRequest(item, "pending")),
+      inFlight: payload.inFlight.filter(matches).map((item) => publicRelayRequest(item, "in-flight")),
+      completed: payload.completed.filter(matches).map((item) => ({
+        id: item.id,
+        peerId: item.peerId,
+        resolvedAt: item.resolvedAt,
+        ok: item.result.ok,
+        error: item.result.ok ? undefined : item.result.error,
+      })),
+    };
   }
 
   addPending(envelope: PeerRelayRequestEnvelope): void {
@@ -75,13 +96,21 @@ export class PeerRelayStore {
     return found;
   }
 
-  cleanupExpired(): void {
+  cleanupExpired(): { pending: number; inFlight: number } {
     const now = Date.now();
+    let removed = { pending: 0, inFlight: 0 };
     this.mutate((payload) => {
+      const pendingBefore = payload.pending.length;
+      const inFlightBefore = payload.inFlight.length;
       payload.pending = payload.pending.filter((item) => Date.parse(item.expiresAt) > now);
       payload.inFlight = payload.inFlight.filter((item) => Date.parse(item.expiresAt) > now);
       payload.completed = payload.completed.slice(0, MAX_COMPLETED_RESULTS);
+      removed = {
+        pending: pendingBefore - payload.pending.length,
+        inFlight: inFlightBefore - payload.inFlight.length,
+      };
     });
+    return removed;
   }
 
   stats(peerId?: string): { pending: number; inFlight: number; completed: number } {
@@ -113,6 +142,29 @@ export class PeerRelayStore {
       completed: payload.completed.filter(isStoredResult),
     };
   }
+}
+
+function matchesRelay(item: PeerRelayRequestEnvelope, peerId?: string, id?: string): boolean {
+  return (!peerId || item.peerId === peerId) && (!id || item.id === id);
+}
+
+function publicRelayRequest(envelope: PeerRelayRequestEnvelope, state: PublicPeerRelayRequest["state"]): PublicPeerRelayRequest {
+  const request = envelope.request;
+  const payload = request.payload && typeof request.payload === "object" ? request.payload as Record<string, unknown> : {};
+  const now = Date.now();
+  return {
+    id: envelope.id,
+    peerId: envelope.peerId,
+    state,
+    createdAt: envelope.createdAt,
+    expiresAt: envelope.expiresAt,
+    ageMs: Math.max(0, now - Date.parse(envelope.createdAt)),
+    expiresInMs: Date.parse(envelope.expiresAt) - now,
+    requestType: request.type,
+    path: typeof payload.path === "string" ? payload.path : undefined,
+    contextKey: typeof payload.contextKey === "string" ? payload.contextKey : undefined,
+    actorLabel: request.actor?.label ?? request.actor?.username ?? request.actor?.id,
+  };
 }
 
 function upsertEnvelope(items: PeerRelayRequestEnvelope[], envelope: PeerRelayRequestEnvelope): PeerRelayRequestEnvelope[] {

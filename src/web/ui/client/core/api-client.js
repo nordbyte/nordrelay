@@ -1,8 +1,8 @@
 // @ts-check
 
-/** @typedef {import("../../../web-api-types.js").WebApiPath} WebApiPath */
-/** @typedef {import("../../../web-api-types.js").WebApiQuery} WebApiQuery */
-/** @typedef {import("../../../web-api-types.js").WebApiMethod} WebApiMethod */
+/** @typedef {import("./api-client-types.js").WebApiPath} WebApiPath */
+/** @typedef {import("./api-client-types.js").WebApiQuery} WebApiQuery */
+/** @typedef {import("./api-client-types.js").WebApiMethod} WebApiMethod */
 /** @typedef {{ path: string; methods: WebApiMethod[] } | { re: RegExp; methods: WebApiMethod[] }} ApiRouteRule */
 
 /** @type {ApiRouteRule[]} */
@@ -11,8 +11,8 @@ const API_ROUTE_RULES = /** @type {{ NORDRELAY_WEB_API_CLIENT_ROUTE_RULES?: ApiR
 /**
  * @template {WebApiPath} P
  * @param {P} path
- * @param {import("../../../web-api-types.js").WebApiClientOptions<P> & { local?: boolean }} [options]
- * @returns {Promise<import("../../../web-api-types.js").WebApiClientResponse<P>>}
+ * @param {import("./api-client-types.js").WebApiClientOptions<P> & { local?: boolean }} [options]
+ * @returns {Promise<import("./api-client-types.js").WebApiClientResponse<P>>}
  */
 async function api(path, options = {}) {
   const method = normalizeMethod(options.method, options.body);
@@ -58,8 +58,8 @@ async function api(path, options = {}) {
  * @template {WebApiPath} P
  * @param {string} peerId
  * @param {P} path
- * @param {import("../../../web-api-types.js").WebApiClientOptions<P>} [options]
- * @returns {Promise<import("../../../web-api-types.js").WebApiClientResponse<P>>}
+ * @param {import("./api-client-types.js").WebApiClientOptions<P>} [options]
+ * @returns {Promise<import("./api-client-types.js").WebApiClientResponse<P>>}
  */
 async function apiPeer(peerId, path, options = {}) {
   const method = normalizeMethod(options.method, options.body);
@@ -115,6 +115,7 @@ function shouldProxyApi(path) {
     path === '/api/peers/probe' ||
     path === '/api/peers/discover' ||
     path === '/api/peers/discovery-jobs' ||
+    path === '/api/peers/relay' ||
     path === '/api/peers/global-sessions' ||
     path === '/api/peers/identity/backup' ||
     path === '/api/peers/identity/restore' ||

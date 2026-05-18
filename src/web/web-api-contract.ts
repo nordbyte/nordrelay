@@ -54,6 +54,7 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   exact("/api/peers/probe", ["POST"], "peers.connect"),
   exact("/api/peers/discover", ["GET"], "peers.connect"),
   exact("/api/peers/discovery-jobs", ["GET", "POST"], readWrite("peers.connect", "peers.connect")),
+  exact("/api/peers/relay", ["GET", "POST"], readWrite("peers.read", "peers.write")),
   dynamic("/api/peers/discovery-jobs/:id", "^/api/peers/discovery-jobs/[^/]+$", ["GET"], "peers.connect", `/api/peers/discovery-jobs/${stringToken}`),
   dynamic("/api/peers/discovery-jobs/:id/cancel", "^/api/peers/discovery-jobs/[^/]+/cancel$", ["POST"], "peers.connect", `/api/peers/discovery-jobs/${stringToken}/cancel`),
   dynamic("/api/peers/discovery-jobs/:id/log", "^/api/peers/discovery-jobs/[^/]+/log$", ["GET"], "peers.connect", `/api/peers/discovery-jobs/${stringToken}/log`),

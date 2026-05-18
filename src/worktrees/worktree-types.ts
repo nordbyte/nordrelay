@@ -93,10 +93,30 @@ export interface WorktreeIntegrationPreview {
   repoRoot?: string;
   repoName?: string;
   baseSha?: string;
+  sourceWorktrees: WorktreeIntegrationPreviewSource[];
   files: WorktreeChangedFile[];
   conflictCandidates: WorktreeChangedFile[];
+  conflictReview: WorktreeConflictReviewItem[];
   warnings: string[];
   generatedAt: string;
+}
+
+export interface WorktreeIntegrationPreviewSource {
+  id: string;
+  branchName: string;
+  status: SessionWorktreeStatus;
+  threadId?: string | null;
+  agentId?: AgentId;
+  worktreePath: string;
+  commitSha?: string;
+}
+
+export interface WorktreeConflictReviewItem {
+  path: string;
+  status: WorktreeChangedFileStatus;
+  sourceWorktrees: WorktreeIntegrationPreviewSource[];
+  risk: "none" | "same-file" | "status-mismatch";
+  recommendation: string;
 }
 
 export interface SessionWorktreeUpdateResult {

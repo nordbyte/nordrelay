@@ -8,6 +8,8 @@ import {
   type Workflow,
   type WorkflowRun,
   type WorkflowStep,
+  type WorkflowStepAttempt,
+  type WorkflowStepRun,
   type WorkflowStore,
 } from "../state/workflow-store.js";
 import type { WebActivityActor, WebActivityEvent } from "../web/web-state.js";
@@ -123,6 +125,8 @@ export class RelayWorkflowService {
         name: template.name,
         status: "pending",
         prompt,
+        target: "local",
+        sessionMode: "current",
       }],
       currentStepIndex: 0,
       createdAt: now,
@@ -213,12 +217,7 @@ export class RelayWorkflowService {
       status: "queued",
       ownerUserId: actor?.id,
       variables,
-      steps: workflow.steps.map((step) => ({
-        stepId: step.id,
-        name: step.name,
-        status: "pending",
-        prompt: this.renderWorkflowStepPrompt(step, variables),
-      })),
+      steps: workflow.steps.map((step) => this.initialStepRun(step, variables)),
       currentStepIndex: 0,
       createdAt: now,
       updatedAt: now,
@@ -286,9 +285,10 @@ export class RelayWorkflowService {
         const step = workflow.steps[index]!;
         const stepRun = run.steps.find((candidate) => candidate.stepId === step.id);
         if (!conditionMatches(step, run.variables)) {
+          const finishedAt = new Date().toISOString();
           run = this.options.store.patchRun(id, {
             currentStepIndex: index + 1,
-            steps: patchStep(run.steps, step.id, { status: "skipped", skippedReason: "Condition did not match.", finishedAt: new Date().toISOString() }),
+            steps: patchStep(run.steps, step.id, { status: "skipped", skippedReason: conditionDetail(step), finishedAt }),
           }) ?? run;
           this.upsertRunJob(run, actor);
           continue;
@@ -346,6 +346,13 @@ export class RelayWorkflowService {
         startedAt,
         error: undefined,
         attempts: attempt,
+        ...stepRunMetadata(step),
+        attemptHistory: appendAttemptHistory(run.steps.find((candidate) => candidate.stepId === step.id)?.attemptHistory, {
+          attempt,
+          status: "running",
+          startedAt,
+          correlationId,
+        }),
       }),
     }) ?? run;
     this.upsertRunJob(run, actor);
@@ -364,17 +371,27 @@ export class RelayWorkflowService {
       const latest = this.options.store.getRun(id) ?? run;
       const finishedAt = new Date().toISOString();
       const next = this.options.store.patchRun(id, {
-        steps: patchStep(latest.steps, step.id, { status: "completed", finishedAt }),
+        steps: patchStep(latest.steps, step.id, {
+          status: "completed",
+          finishedAt,
+          attemptHistory: finishAttemptHistory(latest.steps.find((candidate) => candidate.stepId === step.id)?.attemptHistory, attempt, "completed", finishedAt),
+        }),
       });
       if (next) this.upsertRunJob(next, actor);
     } catch (error) {
       const latest = this.options.store.getRun(id) ?? run;
       const errorText = error instanceof Error ? error.message : String(error);
+      const finishedAt = new Date().toISOString();
       const next = this.options.store.patchRun(id, {
         status: step.continueOnError ? "running" : "failed",
         error: step.continueOnError ? undefined : errorText,
-        finishedAt: step.continueOnError ? undefined : new Date().toISOString(),
-        steps: patchStep(latest.steps, step.id, { status: "failed", finishedAt: new Date().toISOString(), error: errorText }),
+        finishedAt: step.continueOnError ? undefined : finishedAt,
+        steps: patchStep(latest.steps, step.id, {
+          status: "failed",
+          finishedAt,
+          error: errorText,
+          attemptHistory: finishAttemptHistory(latest.steps.find((candidate) => candidate.stepId === step.id)?.attemptHistory, attempt, "failed", finishedAt, errorText),
+        }),
       });
       if (next) this.upsertRunJob(next, actor);
       this.options.appendActivity({
@@ -480,6 +497,7 @@ export class RelayWorkflowService {
         name: subStep.name,
         status: "pending",
         prompt: this.renderWorkflowStepPrompt(subStep, variables),
+        ...stepRunMetadata(subStep),
       })),
       currentStepIndex: 0,
       createdAt: now,
@@ -503,6 +521,16 @@ export class RelayWorkflowService {
     const workflow = this.options.store.getWorkflow(id);
     if (!workflow) throw new Error(`Workflow not found: ${id}`);
     return workflow;
+  }
+
+  private initialStepRun(step: WorkflowStep, variables: Record<string, string>): WorkflowStepRun {
+    return {
+      stepId: step.id,
+      name: step.name,
+      status: "pending",
+      prompt: this.renderWorkflowStepPrompt(step, variables),
+      ...stepRunMetadata(step),
+    };
   }
 
   private failRun(run: WorkflowRun, error: unknown, actor?: WebActivityActor): WorkflowRun {
@@ -576,6 +604,43 @@ export function renderPromptTemplate(template: PromptTemplate, variables: Record
 
 function patchStep<T extends { stepId: string }>(steps: T[], stepId: string, patch: Partial<T>): T[] {
   return steps.map((step) => step.stepId === stepId ? { ...step, ...patch } : step);
+}
+
+function stepRunMetadata(step: WorkflowStep): Partial<WorkflowStepRun> {
+  return {
+    target: step.target,
+    sessionMode: step.sessionMode,
+    agentId: step.agentId,
+    workspace: step.workspace,
+    workspaceMode: step.workspaceMode,
+    model: step.model,
+    reasoningEffort: step.reasoningEffort,
+    launchProfileId: step.launchProfileId,
+    requiresApproval: step.requiresApproval,
+    continueOnError: step.continueOnError,
+    retryPolicy: step.retryPolicy,
+  };
+}
+
+function appendAttemptHistory(existing: WorkflowStepAttempt[] | undefined, attempt: WorkflowStepAttempt): WorkflowStepAttempt[] {
+  return [...(existing ?? []).filter((item) => item.attempt !== attempt.attempt), attempt].slice(-20);
+}
+
+function finishAttemptHistory(
+  existing: WorkflowStepAttempt[] | undefined,
+  attempt: number,
+  status: "completed" | "failed",
+  finishedAt: string,
+  error?: string,
+): WorkflowStepAttempt[] {
+  const history = existing?.length ? existing : [{ attempt, status: "running" as const, startedAt: finishedAt }];
+  return history.map((item) => item.attempt === attempt ? { ...item, status, finishedAt, error } : item).slice(-20);
+}
+
+function conditionDetail(step: WorkflowStep): string {
+  const condition = step.condition;
+  if (!condition) return "Condition did not match.";
+  return `Condition did not match: ${condition.variable} ${condition.operator}${condition.value ? ` ${condition.value}` : ""}.`;
 }
 
 function createRunId(): string {
