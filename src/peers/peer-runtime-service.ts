@@ -827,6 +827,11 @@ function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+function nonEmptyRecord(value: unknown): Record<string, unknown> | undefined {
+  const record = objectRecord(value);
+  return Object.keys(record).length ? record : undefined;
+}
+
 function parseAgentId(value: unknown): AgentId | undefined {
   const text = stringValue(value);
   return isAgentId(text) ? text : undefined;
@@ -938,6 +943,7 @@ function parseWorkflowInput(body: Record<string, unknown>): Partial<Workflow> & 
     description: stringValue(body.description) || undefined,
     tags: stringList(body.tags),
     steps: Array.isArray(body.steps) ? body.steps.map(parseWorkflowStepInput) : [],
+    schedule: nonEmptyRecord(body.schedule) as Workflow["schedule"],
     scope: body.scope === "shared" ? "shared" : "private",
   };
 }
@@ -948,9 +954,12 @@ function parseWorkflowStepInput(value: unknown): WorkflowStep {
   return {
     id: stringValue(record.id) || "",
     name: stringValue(record.name) || "Step",
-    type: "prompt",
+    type: record.type === "workflow" ? "workflow" : "prompt",
     prompt: stringValue(record.prompt) || undefined,
     templateId: stringValue(record.templateId) || undefined,
+    workflowId: stringValue(record.workflowId) || undefined,
+    condition: nonEmptyRecord(record.condition) as WorkflowStep["condition"],
+    retryPolicy: nonEmptyRecord(record.retryPolicy) as WorkflowStep["retryPolicy"],
     agentId: parseAgentId(record.agentId),
     workspace: stringValue(record.workspace) || undefined,
     model: stringValue(record.model) || undefined,

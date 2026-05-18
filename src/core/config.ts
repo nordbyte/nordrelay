@@ -43,6 +43,7 @@ import {
 } from "../artifacts/artifact-delivery.js";
 
 export type ToolVerbosity = "all" | "summary" | "errors-only" | "none";
+export type ArtifactSafeFilePolicy = "off" | "warn" | "block";
 
 export interface ConnectorConfig {
   adapterWarnings?: string[];
@@ -115,6 +116,7 @@ export interface ConnectorConfig {
   telegramArtifactDeliveryMode: ArtifactDeliveryMode;
   artifactMaxTotalBytes: number;
   artifactWarnPercent: number;
+  artifactSafeFilePolicy: ArtifactSafeFilePolicy;
   codexEnabled: boolean;
   codexApiKey?: string;
   codexModel?: string;
@@ -181,6 +183,9 @@ export interface ConnectorConfig {
   peerRequireTls: boolean;
   peerHealthCheckMs: number;
   peerDiscoveryTimeoutMs: number;
+  peerOutboundRelayEnabled: boolean;
+  peerOutboundRelayPeerIds: string[];
+  peerOutboundRelayPollMs: number;
 }
 
 export function loadConfig(): ConnectorConfig {
@@ -257,6 +262,7 @@ export function loadConfig(): ConnectorConfig {
   const artifactIgnoreGlobs = parseOptionalStringList(optionalString(process.env.ARTIFACT_IGNORE_GLOBS));
   const artifactMaxTotalBytes = parseNonNegativeIntegerEnv(optionalString(process.env.ARTIFACT_MAX_TOTAL_BYTES), 0, "ARTIFACT_MAX_TOTAL_BYTES");
   const artifactWarnPercent = parsePercentEnv(optionalString(process.env.ARTIFACT_WARN_PERCENT), 80, "ARTIFACT_WARN_PERCENT");
+  const artifactSafeFilePolicy = parseArtifactSafeFilePolicy(optionalString(process.env.ARTIFACT_SAFE_FILE_POLICY));
   const telegramAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.TELEGRAM_AUTO_SEND_ARTIFACTS), autoSendArtifacts);
   const discordAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.DISCORD_AUTO_SEND_ARTIFACTS), autoSendArtifacts);
   const slackAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.SLACK_AUTO_SEND_ARTIFACTS), autoSendArtifacts);
@@ -368,6 +374,9 @@ export function loadConfig(): ConnectorConfig {
   const peerRequireTls = parseBooleanEnv(optionalString(process.env.NORDRELAY_PEER_REQUIRE_TLS), true);
   const peerHealthCheckMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_PEER_HEALTH_CHECK_MS), 60_000, "NORDRELAY_PEER_HEALTH_CHECK_MS");
   const peerDiscoveryTimeoutMs = parsePositiveIntegerEnv(optionalString(process.env.NORDRELAY_PEER_DISCOVERY_TIMEOUT_MS), 650, "NORDRELAY_PEER_DISCOVERY_TIMEOUT_MS");
+  const peerOutboundRelayEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_PEER_OUTBOUND_RELAY_ENABLED), false);
+  const peerOutboundRelayPeerIds = parseOptionalStringList(optionalString(process.env.NORDRELAY_PEER_OUTBOUND_RELAY_PEERS));
+  const peerOutboundRelayPollMs = parsePositiveIntegerEnv(optionalString(process.env.NORDRELAY_PEER_OUTBOUND_RELAY_POLL_MS), 1_000, "NORDRELAY_PEER_OUTBOUND_RELAY_POLL_MS");
 
   let telegramEnabled = requestedTelegramEnabled;
   if (telegramEnabled && telegramTransport === "webhook" && !telegramWebhookUrl) {
@@ -472,6 +481,7 @@ export function loadConfig(): ConnectorConfig {
     telegramArtifactDeliveryMode,
     artifactMaxTotalBytes,
     artifactWarnPercent,
+    artifactSafeFilePolicy,
     codexEnabled,
     codexApiKey,
     codexModel,
@@ -538,6 +548,9 @@ export function loadConfig(): ConnectorConfig {
     peerRequireTls,
     peerHealthCheckMs,
     peerDiscoveryTimeoutMs,
+    peerOutboundRelayEnabled,
+    peerOutboundRelayPeerIds,
+    peerOutboundRelayPollMs,
   };
 }
 
@@ -724,6 +737,13 @@ function parsePercentEnv(raw: string | undefined, defaultValue: number, envName:
     return defaultValue;
   }
   return parsed;
+}
+
+function parseArtifactSafeFilePolicy(raw: string | undefined): ArtifactSafeFilePolicy {
+  if (!raw) return "warn";
+  if (raw === "off" || raw === "warn" || raw === "block") return raw;
+  console.warn(`Invalid ARTIFACT_SAFE_FILE_POLICY value: "${raw}". Expected off, warn, or block. Falling back to "warn".`);
+  return "warn";
 }
 
 function parseSandboxMode(raw: string | undefined): CodexSandboxMode {

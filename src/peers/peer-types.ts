@@ -250,6 +250,27 @@ export interface PeerRpcError {
 
 export type PeerRpcResult = PeerRpcResponse | PeerRpcError;
 
+export interface PeerRelayRequestEnvelope {
+  id: string;
+  peerId: string;
+  createdAt: string;
+  expiresAt: string;
+  request: PeerRpcRequest;
+}
+
+export interface PeerRelayPollRequest {
+  timeoutMs?: number;
+}
+
+export interface PeerRelayPollResponse {
+  request: PeerRelayRequestEnvelope | null;
+}
+
+export interface PeerRelayResultRequest {
+  id: string;
+  result: PeerRpcResult;
+}
+
 export interface PeerWebProxyPayload {
   method: string;
   path: string;

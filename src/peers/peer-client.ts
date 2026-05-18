@@ -9,6 +9,7 @@ import {
   fingerprintForPublicKey,
 } from "./peer-identity.js";
 import { signPeerRequest } from "./peer-auth.js";
+import { getPeerRelayBroker } from "./peer-relay-broker.js";
 import { PeerStore } from "./peer-store.js";
 import {
   PEER_PROTOCOL_VERSION,
@@ -150,7 +151,7 @@ export async function pairPeer(options: PairPeerOptions, identity: LoadedPeerIde
 }
 
 export class RemoteRelayClient {
-  constructor(private readonly store = new PeerStore()) {}
+  constructor(private readonly store = new PeerStore(), private readonly home?: string) {}
 
   async rpc(peerId: string, type: string, payload?: unknown, actor?: WebActivityActor): Promise<unknown> {
     const peer = this.requiredPeer(peerId);
@@ -164,6 +165,14 @@ export class RemoteRelayClient {
     const signed = signPeerRequest(peer, "POST", "/peer/rpc", bodyText);
     try {
       const startedAt = Date.now();
+      if (!peer.url) {
+        const result = await getPeerRelayBroker(this.home).enqueue(peer.id, body);
+        this.store.markSeen(peer.id, healthPatchFromRpc(type, result.ok ? result.data : null, Date.now() - startedAt));
+        if (!result.ok) {
+          throw new Error(result.error);
+        }
+        return result.data;
+      }
       const result = await requestJson<PeerRpcResult>({
         url: joinPeerUrl(requiredPeerUrl(peer), "/peer/rpc"),
         method: "POST",

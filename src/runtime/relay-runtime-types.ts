@@ -125,7 +125,15 @@ export interface ArtifactReportDto {
     name: string;
     relativePath: string;
     sizeBytes: number;
+    safeStatus?: "ok" | "warn" | "blocked";
+    safeWarnings?: string[];
   }>;
+  provenance?: {
+    agentId?: AgentId;
+    threadId?: string;
+    workspace?: string;
+    source?: string;
+  };
 }
 
 export interface ArtifactUsageDto {
@@ -226,6 +234,8 @@ export interface ArtifactPreviewDto {
   text?: string;
   truncated?: boolean;
   detail?: string;
+  safeStatus?: "ok" | "warn" | "blocked";
+  safeWarnings?: string[];
 }
 
 export interface ArtifactDiffDto {

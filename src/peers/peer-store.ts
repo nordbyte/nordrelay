@@ -22,7 +22,7 @@ import {
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 const INVITE_CODE_BYTES = 18;
 const MAX_INVITATION_TTL_MS = 24 * 60 * 60 * 1000;
-const MAX_HEALTH_HISTORY = 20;
+const MAX_HEALTH_HISTORY = 100;
 
 export interface PeerInviteOptions {
   name?: string;

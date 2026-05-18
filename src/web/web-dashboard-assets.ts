@@ -58,6 +58,8 @@ const staticAssetTypes: Record<string, string> = {
   "favicon.ico": "image/x-icon",
   "favicon.png": "image/png",
   "logo.png": "image/png",
+  "manifest.webmanifest": "application/manifest+json; charset=utf-8",
+  "service-worker.js": "application/javascript; charset=utf-8",
 };
 
 export function dashboardStaticAsset(assetName: string): DashboardStaticAsset | null {

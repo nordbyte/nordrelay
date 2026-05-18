@@ -82,6 +82,9 @@ describe("loadConfig", () => {
     delete process.env.ARTIFACT_RETENTION_DAYS;
     delete process.env.ARTIFACT_MAX_TURNS;
     delete process.env.ARTIFACT_MAX_INBOX_DIRS;
+    delete process.env.ARTIFACT_MAX_TOTAL_BYTES;
+    delete process.env.ARTIFACT_WARN_PERCENT;
+    delete process.env.ARTIFACT_SAFE_FILE_POLICY;
     delete process.env.ARTIFACT_IGNORE_DIRS;
     delete process.env.ARTIFACT_IGNORE_GLOBS;
     delete process.env.TELEGRAM_AUTO_SEND_ARTIFACTS;
@@ -129,6 +132,9 @@ describe("loadConfig", () => {
     delete process.env.NORDRELAY_PEER_REQUIRE_TLS;
     delete process.env.NORDRELAY_PEER_DISCOVERY_TIMEOUT_MS;
     delete process.env.NORDRELAY_PEER_HEALTH_CHECK_MS;
+    delete process.env.NORDRELAY_PEER_OUTBOUND_RELAY_ENABLED;
+    delete process.env.NORDRELAY_PEER_OUTBOUND_RELAY_PEERS;
+    delete process.env.NORDRELAY_PEER_OUTBOUND_RELAY_POLL_MS;
     delete process.env.ENABLE_TELEGRAM_LOGIN;
     delete process.env.ENABLE_TELEGRAM_REACTIONS;
     delete process.env.VOICE_PREFERRED_BACKEND;
@@ -237,6 +243,7 @@ describe("loadConfig", () => {
       artifactMaxInboxDirs: 30,
       artifactMaxTotalBytes: 0,
       artifactWarnPercent: 80,
+      artifactSafeFilePolicy: "warn",
       artifactIgnoreDirs: [],
       artifactIgnoreGlobs: [],
       telegramAutoSendArtifacts: false,
@@ -316,6 +323,9 @@ describe("loadConfig", () => {
       peerPublicUrl: undefined,
       peerTlsEnabled: true,
       peerRequireTls: true,
+      peerOutboundRelayEnabled: false,
+      peerOutboundRelayPeerIds: [],
+      peerOutboundRelayPollMs: 1000,
       defaultAgent: "codex",
       toolVerbosity: "all",
       logFormat: "text",
@@ -380,6 +390,9 @@ describe("loadConfig", () => {
     expect(config.peerPublicUrl).toBeUndefined();
     expect(config.peerTlsEnabled).toBe(true);
     expect(config.peerRequireTls).toBe(true);
+    expect(config.peerOutboundRelayEnabled).toBe(false);
+    expect(config.peerOutboundRelayPeerIds).toEqual([]);
+    expect(config.peerOutboundRelayPollMs).toBe(1000);
     expect(config.codexModel).toBeUndefined();
     expect(config.codexSyncIntervalMs).toBe(10_000);
     expect(config.codexExternalBusyCheckMs).toBe(5_000);
@@ -437,6 +450,9 @@ describe("loadConfig", () => {
     expect(config.artifactRetentionDays).toBe(7);
     expect(config.artifactMaxTurnDirs).toBe(30);
     expect(config.artifactMaxInboxDirs).toBe(30);
+    expect(config.artifactMaxTotalBytes).toBe(0);
+    expect(config.artifactWarnPercent).toBe(80);
+    expect(config.artifactSafeFilePolicy).toBe("warn");
     expect(config.artifactIgnoreDirs).toEqual([]);
     expect(config.artifactIgnoreGlobs).toEqual([]);
     expect(config.telegramAutoSendArtifacts).toBe(false);
@@ -515,6 +531,9 @@ describe("loadConfig", () => {
     process.env.NORDRELAY_PEER_PUBLIC_URL = "https://workstation.example:31980";
     process.env.NORDRELAY_PEER_TLS_ENABLED = "false";
     process.env.NORDRELAY_PEER_REQUIRE_TLS = "false";
+    process.env.NORDRELAY_PEER_OUTBOUND_RELAY_ENABLED = "true";
+    process.env.NORDRELAY_PEER_OUTBOUND_RELAY_PEERS = "peer-a,node-b";
+    process.env.NORDRELAY_PEER_OUTBOUND_RELAY_POLL_MS = "1500";
 
     const config = loadConfig();
 
@@ -525,6 +544,9 @@ describe("loadConfig", () => {
     expect(config.peerPublicUrl).toBe("https://workstation.example:31980");
     expect(config.peerTlsEnabled).toBe(false);
     expect(config.peerRequireTls).toBe(false);
+    expect(config.peerOutboundRelayEnabled).toBe(true);
+    expect(config.peerOutboundRelayPeerIds).toEqual(["peer-a", "node-b"]);
+    expect(config.peerOutboundRelayPollMs).toBe(1500);
   });
 
   it("throws when webhook Telegram has no URL and no other access surface is usable", () => {

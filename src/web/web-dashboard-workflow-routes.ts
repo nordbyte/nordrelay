@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
-import type { PromptTemplate, Workflow, WorkflowStep } from "../state/workflow-store.js";
+import type { PromptTemplate, Workflow, WorkflowStep, WorkflowStepCondition, WorkflowRetryPolicy, WorkflowSchedule } from "../state/workflow-store.js";
 import type { AuthenticatedUser } from "../access/user-management.js";
 import type { WebActivityActor } from "./web-state.js";
 import {
@@ -149,6 +149,7 @@ function parseWorkflowBody(body: unknown, ownerUserId: string): Partial<Workflow
     description: optionalStringField(record, "description"),
     tags: stringList(record.tags),
     steps: Array.isArray(record.steps) ? record.steps.map(parseWorkflowStep) : [],
+    schedule: parseWorkflowSchedule(record.schedule),
     scope: record.scope === "shared" ? "shared" : "private",
     ownerUserId,
   };
@@ -159,9 +160,12 @@ function parseWorkflowStep(value: unknown): WorkflowStep {
   return {
     id: optionalStringField(record, "id") ?? "",
     name: optionalStringField(record, "name") ?? "Step",
-    type: "prompt",
+    type: record.type === "workflow" ? "workflow" : "prompt",
     prompt: optionalStringField(record, "prompt"),
     templateId: optionalStringField(record, "templateId"),
+    workflowId: optionalStringField(record, "workflowId"),
+    condition: parseWorkflowCondition(record.condition),
+    retryPolicy: parseRetryPolicy(record.retryPolicy),
     agentId: optionalStringField(record, "agentId") as WorkflowStep["agentId"],
     workspace: optionalStringField(record, "workspace"),
     model: optionalStringField(record, "model"),
@@ -172,6 +176,39 @@ function parseWorkflowStep(value: unknown): WorkflowStep {
     target: optionalStringField(record, "target") as WorkflowStep["target"] ?? "local",
     requiresApproval: Boolean(record.requiresApproval),
     continueOnError: Boolean(record.continueOnError),
+  };
+}
+
+function parseWorkflowCondition(value: unknown): WorkflowStepCondition | undefined {
+  const record = objectRecord(value);
+  const variable = optionalStringField(record, "variable");
+  if (!variable) return undefined;
+  const operator = ["exists", "equals", "not_equals", "contains", "not_contains"].includes(String(record.operator))
+    ? String(record.operator) as WorkflowStepCondition["operator"]
+    : "exists";
+  return { variable, operator, value: optionalStringField(record, "value") };
+}
+
+function parseRetryPolicy(value: unknown): WorkflowRetryPolicy | undefined {
+  const record = objectRecord(value);
+  const maxAttempts = Number(record.maxAttempts);
+  const delayMs = Number(record.delayMs);
+  if (!Number.isFinite(maxAttempts) && !Number.isFinite(delayMs)) return undefined;
+  return {
+    maxAttempts: Number.isFinite(maxAttempts) ? Math.max(1, Math.min(10, Math.floor(maxAttempts))) : 1,
+    delayMs: Number.isFinite(delayMs) ? Math.max(0, Math.floor(delayMs)) : 0,
+  };
+}
+
+function parseWorkflowSchedule(value: unknown): WorkflowSchedule | undefined {
+  const record = objectRecord(value);
+  if (!Object.keys(record).length) return undefined;
+  return {
+    enabled: Boolean(record.enabled),
+    runAt: optionalStringField(record, "runAt"),
+    intervalMinutes: Number.isFinite(Number(record.intervalMinutes)) ? Math.max(0, Math.floor(Number(record.intervalMinutes))) : undefined,
+    nextRunAt: optionalStringField(record, "nextRunAt"),
+    lastRunAt: optionalStringField(record, "lastRunAt"),
   };
 }
 

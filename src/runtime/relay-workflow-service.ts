@@ -35,11 +35,17 @@ export interface RelayWorkflowServiceOptions {
 }
 
 const WORKFLOW_WAIT_MS = 1_000;
+const WORKFLOW_SCHEDULE_POLL_MS = 30_000;
+const MAX_SUBFLOW_DEPTH = 5;
 
 export class RelayWorkflowService {
   private readonly activeRuns = new Set<string>();
+  private readonly scheduleTimer: NodeJS.Timeout;
 
-  constructor(private readonly options: RelayWorkflowServiceOptions) {}
+  constructor(private readonly options: RelayWorkflowServiceOptions) {
+    this.scheduleTimer = setInterval(() => this.runDueSchedules(), WORKFLOW_SCHEDULE_POLL_MS);
+    this.scheduleTimer.unref?.();
+  }
 
   list(): { templates: PromptTemplate[]; workflows: Workflow[]; runs: WorkflowRun[] } {
     return {
@@ -243,10 +249,12 @@ export class RelayWorkflowService {
     const run = this.options.store.getRun(id);
     if (!run?.workflowId) return null;
     if (run.status !== "paused") return run;
+    const currentStep = run.steps[run.currentStepIndex];
     const resumed = this.options.store.patchRun(id, {
       status: "queued",
       error: undefined,
       finishedAt: undefined,
+      steps: currentStep ? patchStep(run.steps, currentStep.stepId, { approvedAt: new Date().toISOString() }) : run.steps,
     }) ?? run;
     this.upsertRunJob(resumed, actor);
     this.record("workflow_run_resumed", "queued", resumed.name, actor);
@@ -257,7 +265,7 @@ export class RelayWorkflowService {
     return resumed;
   }
 
-  private async executeWorkflowRun(id: string, actor?: WebActivityActor): Promise<void> {
+  private async executeWorkflowRun(id: string, actor?: WebActivityActor, depth = 0): Promise<void> {
     const initial = this.options.store.getRun(id);
     if (!initial?.workflowId) return;
     const workflow = this.requireWorkflow(initial.workflowId);
@@ -274,13 +282,22 @@ export class RelayWorkflowService {
         run = this.options.store.getRun(id) ?? run;
         if (run.status === "aborted") return;
         const step = workflow.steps[index]!;
-        if (step.requiresApproval) {
+        const stepRun = run.steps.find((candidate) => candidate.stepId === step.id);
+        if (!conditionMatches(step, run.variables)) {
+          run = this.options.store.patchRun(id, {
+            currentStepIndex: index + 1,
+            steps: patchStep(run.steps, step.id, { status: "skipped", skippedReason: "Condition did not match.", finishedAt: new Date().toISOString() }),
+          }) ?? run;
+          this.upsertRunJob(run, actor);
+          continue;
+        }
+        if (step.requiresApproval && !stepRun?.approvedAt) {
           run = this.options.store.patchRun(id, { status: "paused", currentStepIndex: index }) ?? run;
           this.upsertRunJob(run, actor);
           this.options.broadcastStatus(`Workflow ${run.name} paused before ${step.name}.`, "info");
           return;
         }
-        await this.runStep(id, workflow, step, index, actor);
+        await this.runStepWithRetry(id, workflow, step, index, actor, depth);
       }
       const completed = this.options.store.patchRun(id, {
         status: "completed",
@@ -296,7 +313,23 @@ export class RelayWorkflowService {
     }
   }
 
-  private async runStep(id: string, workflow: Workflow, step: WorkflowStep, index: number, actor?: WebActivityActor): Promise<void> {
+  private async runStepWithRetry(id: string, workflow: Workflow, step: WorkflowStep, index: number, actor: WebActivityActor | undefined, depth: number): Promise<void> {
+    const policy = step.retryPolicy ?? { maxAttempts: 1, delayMs: 0 };
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= policy.maxAttempts; attempt += 1) {
+      try {
+        await this.runStep(id, workflow, step, index, actor, attempt, depth);
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt >= policy.maxAttempts || step.continueOnError) throw error;
+        await new Promise((resolve) => setTimeout(resolve, policy.delayMs));
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  }
+
+  private async runStep(id: string, workflow: Workflow, step: WorkflowStep, index: number, actor: WebActivityActor | undefined, attempt: number, depth: number): Promise<void> {
     let run = this.options.store.getRun(id);
     if (!run) return;
     const correlationId = createCorrelationId();
@@ -310,15 +343,20 @@ export class RelayWorkflowService {
         correlationId,
         startedAt,
         error: undefined,
+        attempts: attempt,
       }),
     }) ?? run;
     this.upsertRunJob(run, actor);
 
     try {
-      await this.prepareStepSession(step, actor);
-      await this.waitForIdle(id);
-      const session = await this.options.getSession(false);
-      await this.options.runPrompt(session, { ...toPromptEnvelope(prompt), correlationId, activityActor: actor });
+      if (step.type === "workflow") {
+        await this.runSubflow(id, step, run.variables, actor, depth);
+      } else {
+        await this.prepareStepSession(step, actor);
+        await this.waitForIdle(id);
+        const session = await this.options.getSession(false);
+        await this.options.runPrompt(session, { ...toPromptEnvelope(prompt), correlationId, activityActor: actor });
+      }
       const latest = this.options.store.getRun(id) ?? run;
       const finishedAt = new Date().toISOString();
       const next = this.options.store.patchRun(id, {
@@ -387,6 +425,11 @@ export class RelayWorkflowService {
   }
 
   private renderWorkflowStepPrompt(step: WorkflowStep, variables: Record<string, string>): string {
+    if (step.type === "workflow") {
+      const workflow = step.workflowId ? this.requireWorkflow(step.workflowId) : null;
+      if (!workflow) throw new Error(`Workflow step ${step.name} has no subflow.`);
+      return `Run subflow: ${workflow.name}`;
+    }
     if (step.templateId) {
       return renderPromptTemplate(this.requireTemplate(step.templateId), variables);
     }
@@ -395,6 +438,36 @@ export class RelayWorkflowService {
       throw new Error(`Workflow step ${step.name} has no prompt.`);
     }
     return prompt;
+  }
+
+  private async runSubflow(parentRunId: string, step: WorkflowStep, variables: Record<string, string>, actor: WebActivityActor | undefined, depth: number): Promise<void> {
+    if (depth >= MAX_SUBFLOW_DEPTH) throw new Error("Workflow subflow depth limit reached.");
+    if (!step.workflowId) throw new Error(`Workflow step ${step.name} has no subflow.`);
+    const workflow = this.requireWorkflow(step.workflowId);
+    const now = new Date().toISOString();
+    const run = this.options.store.saveRun({
+      id: createRunId(),
+      workflowId: workflow.id,
+      name: `${workflow.name} (subflow)`,
+      status: "queued",
+      ownerUserId: actor?.id,
+      variables,
+      steps: workflow.steps.map((subStep) => ({
+        stepId: subStep.id,
+        name: subStep.name,
+        status: "pending",
+        prompt: this.renderWorkflowStepPrompt(subStep, variables),
+      })),
+      currentStepIndex: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+    this.record("workflow_subflow_queued", "queued", `${parentRunId}: ${workflow.name}`, actor);
+    await this.executeWorkflowRun(run.id, actor, depth + 1);
+    const finished = this.options.store.getRun(run.id);
+    if (!finished || finished.status !== "completed") {
+      throw new Error(`Subflow ${workflow.name} finished with status ${finished?.status ?? "unknown"}.`);
+    }
   }
 
   private requireTemplate(id: string): PromptTemplate {
@@ -458,6 +531,19 @@ export class RelayWorkflowService {
       description: `${type}: ${detail}`,
     });
   }
+
+  private runDueSchedules(): void {
+    const now = Date.now();
+    for (const workflow of this.options.store.listWorkflows()) {
+      const schedule = workflow.schedule;
+      if (!schedule?.enabled || !schedule.nextRunAt || Date.parse(schedule.nextRunAt) > now) continue;
+      if (this.activeRuns.has(`scheduled:${workflow.id}`)) continue;
+      const nextSchedule = nextWorkflowSchedule(schedule, now);
+      this.options.store.saveWorkflow({ ...workflow, schedule: nextSchedule });
+      const scheduledActor: WebActivityActor = { channel: "system", id: "workflow-scheduler", label: "Workflow scheduler" };
+      this.runWorkflow(workflow.id, {}, scheduledActor);
+    }
+  }
 }
 
 export function renderPromptTemplate(template: PromptTemplate, variables: Record<string, string>): string {
@@ -471,4 +557,28 @@ function patchStep<T extends { stepId: string }>(steps: T[], stepId: string, pat
 
 function createRunId(): string {
   return `run_${createCorrelationId()}`;
+}
+
+function conditionMatches(step: WorkflowStep, variables: Record<string, string>): boolean {
+  const condition = step.condition;
+  if (!condition) return true;
+  const value = variables[condition.variable] ?? "";
+  const expected = condition.value ?? "";
+  if (condition.operator === "exists") return value.trim().length > 0;
+  if (condition.operator === "equals") return value === expected;
+  if (condition.operator === "not_equals") return value !== expected;
+  if (condition.operator === "contains") return value.includes(expected);
+  if (condition.operator === "not_contains") return !value.includes(expected);
+  return true;
+}
+
+function nextWorkflowSchedule(schedule: NonNullable<Workflow["schedule"]>, now: number): NonNullable<Workflow["schedule"]> {
+  const lastRunAt = new Date(now).toISOString();
+  const intervalMs = (schedule.intervalMinutes ?? 0) * 60 * 1000;
+  return {
+    ...schedule,
+    lastRunAt,
+    nextRunAt: intervalMs > 0 ? new Date(now + intervalMs).toISOString() : undefined,
+    enabled: intervalMs > 0 ? schedule.enabled : false,
+  };
 }

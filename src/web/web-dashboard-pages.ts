@@ -8,7 +8,9 @@ export interface DashboardAppOptions {
 const faviconLinks = `
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" href="/assets/favicon.png">
-  <link rel="apple-touch-icon" href="/assets/logo.png">`;
+  <link rel="apple-touch-icon" href="/assets/logo.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#205c43">`;
 
 export function renderLoginPage(options: { adminConfigured: boolean; cspNonce?: string }): string {
   const nonce = nonceAttr(options.cspNonce);
@@ -388,6 +390,7 @@ ${faviconLinks}
           <div class="section-header peer-section-header">
             <div id="peerTabs" class="section-tabs peer-tabs" role="tablist" aria-label="Peer sections">
               <button type="button" role="tab" aria-selected="true" tabindex="0" data-peer-tab="status" class="active">Status</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-peer-tab="topology">Topology</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-peer-tab="peers">Peers</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-peer-tab="invitations">Invitations</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-peer-tab="discovery">Discovery</button>
@@ -399,6 +402,12 @@ ${faviconLinks}
               <div class="row peer-heading-actions"><button id="loadPeersBtn">Reload status</button><button id="exportPeerIdentityBtn" class="secondary">Export identity</button><button id="restorePeerIdentityBtn" class="secondary">Restore identity</button></div>
             </div>
             <div id="peerStatus" class="list"></div>
+          </div>
+          <div class="peer-tab" data-peer-tab-panel="topology">
+            <div class="peer-tab-heading">
+              <div class="row peer-heading-actions"><button id="reloadPeerTopologyBtn" class="secondary">Reload topology</button></div>
+            </div>
+            <div id="peerTopology" class="list"></div>
           </div>
           <div class="peer-tab" data-peer-tab-panel="peers">
             <div class="peer-tab-heading">

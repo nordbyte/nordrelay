@@ -91,7 +91,7 @@ export async function handleDashboardPeerRoute(
     const readiness = await buildPeerReadiness(options.config);
     const peerId = optionalStringField(body, "peerId");
     if (peerId) {
-      const probe = await new RemoteRelayClient(store).rpc(peerId, "peer.probe", {}, options.activityActor);
+      const probe = await new RemoteRelayClient(store, options.home).rpc(peerId, "peer.probe", {}, options.activityActor);
       sendJson(res, 200, { type: "remote", peerId, readiness, probe });
       options.auditPeerAction?.("peer_probe", peerId);
       return true;
@@ -244,7 +244,7 @@ export async function handleDashboardPeerRoute(
     const query = optionalStringField(Object.fromEntries(url.searchParams), "query") ?? "";
     const agent = parseAgent(optionalStringField(Object.fromEntries(url.searchParams), "agent"));
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 50), 1), 50);
-    const client = new RemoteRelayClient(store);
+    const client = new RemoteRelayClient(store, options.home);
     const targets = [];
     if (options.runtime) {
       targets.push({
@@ -254,7 +254,7 @@ export async function handleDashboardPeerRoute(
         data: await options.runtime.listSessionsPage(1, limit, query, agent),
       });
     }
-    const peers = store.listPublic().filter((peer) => peer.enabled && peer.url);
+    const peers = store.listPublic().filter((peer) => peer.enabled && (peer.url || peer.direction === "inbound"));
     const remoteTargets = await Promise.all(peers.map(async (peer) => {
       try {
         const data = await client.webProxy(peer.id, {
@@ -287,7 +287,7 @@ export async function handleDashboardPeerRoute(
   if (proxyMatch?.[1] && req.method === "POST") {
     const body = await readJsonBody(req);
     const payload = parseProxyPayload(body);
-    const data = await new RemoteRelayClient(store).webProxy(decodeURIComponent(proxyMatch[1]), payload, options.activityActor, payload.contextKey);
+    const data = await new RemoteRelayClient(store, options.home).webProxy(decodeURIComponent(proxyMatch[1]), payload, options.activityActor, payload.contextKey);
     sendJson(res, 200, data);
     return true;
   }
@@ -295,7 +295,7 @@ export async function handleDashboardPeerRoute(
   const healthMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/health$/);
   if (healthMatch?.[1] && req.method === "GET") {
     const peerId = decodeURIComponent(healthMatch[1]);
-    const data = await new RemoteRelayClient(store).rpc(peerId, "peer.ping", undefined, options.activityActor);
+    const data = await new RemoteRelayClient(store, options.home).rpc(peerId, "peer.ping", undefined, options.activityActor);
     sendJson(res, 200, { data, peer: publicPeer(store.get(peerId)!) });
     options.auditPeerAction?.("peer_health_checked", peerId);
     return true;
@@ -303,13 +303,25 @@ export async function handleDashboardPeerRoute(
 
   const eventsMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/events$/);
   if (eventsMatch?.[1] && req.method === "GET") {
+    const peerId = decodeURIComponent(eventsMatch[1]);
+    const peer = store.get(peerId);
     res.writeHead(200, {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache, no-transform",
       connection: "keep-alive",
     });
+    if (!peer?.url) {
+      res.write("event: status\n");
+      res.write(`data: ${JSON.stringify({ type: "status", level: "warn", message: "Peer uses outbound relay mode. Live event streaming needs a direct peer URL; commands still use relay polling.", at: new Date().toISOString() })}\n\n`);
+      const heartbeat = setInterval(() => {
+        if (!res.destroyed && !res.writableEnded) res.write(": heartbeat\n\n");
+      }, 25_000);
+      heartbeat.unref?.();
+      req.on("close", () => clearInterval(heartbeat));
+      return true;
+    }
     const sourceContextKey = url.searchParams.get("contextKey") || undefined;
-    const subscription = new RemoteRelayClient(store).subscribe(decodeURIComponent(eventsMatch[1]), (event) => {
+    const subscription = new RemoteRelayClient(store, options.home).subscribe(peerId, (event) => {
       if (res.destroyed || res.writableEnded) return;
       res.write(`event: ${event.type}\n`);
       res.write(`data: ${JSON.stringify(event)}\n\n`);

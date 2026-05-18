@@ -94,6 +94,11 @@ export async function handleDashboardArtifactRoute(
     await options.assertCurrentSessionScope(authUser);
     const turnId = requiredSearch(url, "turnId");
     const relativePath = requiredSearch(url, "path");
+    const preview = await runtime.artifactPreview(turnId, relativePath);
+    if (preview?.safeStatus === "blocked") {
+      sendJson(res, 403, { error: "Artifact blocked by safe-file policy", warnings: preview.safeWarnings ?? [] });
+      return true;
+    }
     const report = await runtime.artifact(turnId);
     const artifact = report?.artifacts.find((candidate) => candidate.relativePath === relativePath);
     if (!artifact) {

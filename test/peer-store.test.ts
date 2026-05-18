@@ -161,7 +161,7 @@ describe("PeerStore", () => {
     const snapshot = store.snapshot(localIdentity(), { enabled: true, listenUrl: "https://local", requireTls: true });
 
     expect(snapshot.groups).toEqual(["Servers"]);
-    expect(snapshot.peers[0].healthHistory).toHaveLength(20);
+    expect(snapshot.peers[0].healthHistory).toHaveLength(25);
     expect(snapshot.peers[0].healthHistory?.at(-1)).toMatchObject({ status: "offline", error: "offline 24" });
   });
 

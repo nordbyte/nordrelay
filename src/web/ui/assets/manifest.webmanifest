@@ -1,0 +1,14 @@
+{
+  "name": "NordRelay Dashboard",
+  "short_name": "NordRelay",
+  "description": "Remote control dashboard for coding agents and messaging channels.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f5f2",
+  "theme_color": "#205c43",
+  "icons": [
+    { "src": "/assets/logo.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/assets/logo.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

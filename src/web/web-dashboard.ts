@@ -219,6 +219,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 function servePublicDashboardAsset(pathname: string, res: ServerResponse): boolean {
   const assetName = pathname === "/favicon.ico"
     ? "favicon.ico"
+    : pathname === "/manifest.webmanifest"
+      ? "manifest.webmanifest"
+      : pathname === "/service-worker.js"
+        ? "service-worker.js"
     : pathname === "/assets/favicon.png"
       ? "favicon.png"
       : pathname === "/assets/logo.png"

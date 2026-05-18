@@ -143,7 +143,7 @@ function openTemplateDialog(t){
 }
 
 function workflowBuilderUid(){return 'step_'+Math.random().toString(36).slice(2,9)}
-function workflowStepSource(step){return step.templateId?'template':'prompt'}
+function workflowStepSource(step){return step.type==='workflow'||step.workflowId?'workflow':step.templateId?'template':'prompt'}
 function workflowBuilderStep(step={},index=0){
   return {
     _uid: step._uid||workflowBuilderUid(),
@@ -152,6 +152,12 @@ function workflowBuilderStep(step={},index=0){
     source: step.source||workflowStepSource(step),
     prompt: step.prompt||'',
     templateId: step.templateId||'',
+    workflowId: step.workflowId||'',
+    conditionVariable: step.condition?.variable||'',
+    conditionOperator: step.condition?.operator||'exists',
+    conditionValue: step.condition?.value||'',
+    retryAttempts: step.retryPolicy?.maxAttempts||1,
+    retryDelayMs: step.retryPolicy?.delayMs||0,
     agentId: step.agentId||'',
     workspace: step.workspace||'',
     model: step.model||'',
@@ -165,8 +171,9 @@ function workflowBuilderStep(step={},index=0){
   };
 }
 
-function workflowBuilderState(w){return {steps:(w?.steps?.length?w.steps:[{name:'Step 1',type:'prompt',prompt:'',sessionMode:'current',target:'local'}]).map(workflowBuilderStep)}}
+function workflowBuilderState(w){return {workflowId:w?.id||'',steps:(w?.steps?.length?w.steps:[{name:'Step 1',type:'prompt',prompt:'',sessionMode:'current',target:'local'}]).map(workflowBuilderStep)}}
 function workflowTemplateOptions(selected){return '<option value="">Select template...</option>'+(state.workflowTemplates||[]).map(t=>'<option value="'+attr(t.id)+'" '+(t.id===selected?'selected':'')+'>'+esc(t.name)+'</option>').join('')}
+function workflowOptions(selected,currentId){return '<option value="">Select workflow...</option>'+(state.workflows||[]).filter(w=>w.id!==currentId).map(w=>'<option value="'+attr(w.id)+'" '+(w.id===selected?'selected':'')+'>'+esc(w.name)+'</option>').join('')}
 function workflowAgentOptions(selected){return '<option value="">Active agent</option>'+(state.enabledAgents||[]).map(id=>'<option value="'+attr(id)+'" '+(id===selected?'selected':'')+'>'+esc(id)+'</option>').join('')}
 function workflowReasoningOptions(selected){return '<option value="">Default</option>'+((state.controls?.reasoningOptions||[]).map(v=>'<option value="'+attr(v)+'" '+(v===selected?'selected':'')+'>'+esc(v)+'</option>').join(''))}
 function workflowLaunchOptions(selected){return '<option value="">Default</option>'+((state.controls?.launchProfiles||[]).map(p=>'<option value="'+attr(p.id)+'" '+(p.id===selected?'selected':'')+'>'+esc(p.label+' - '+p.behavior+(p.unsafe?' - unsafe':''))+'</option>').join(''))}
@@ -187,15 +194,22 @@ function workflowBuilderStepHtml(step,index){
     '</div></div>'+
     '<div class="workflow-builder-grid">'+
     '<label>Step name<input data-builder-field="name" value="'+attr(step.name)+'"></label>'+
-    '<label>Source<select data-builder-field="source"><option value="prompt" '+(source==='prompt'?'selected':'')+'>Prompt text</option><option value="template" '+(source==='template'?'selected':'')+'>Template</option></select></label>'+
+    '<label>Source<select data-builder-field="source"><option value="prompt" '+(source==='prompt'?'selected':'')+'>Prompt text</option><option value="template" '+(source==='template'?'selected':'')+'>Template</option><option value="workflow" '+(source==='workflow'?'selected':'')+'>Subflow</option></select></label>'+
     (source==='template'
       ? '<label class="full-span">Template<select data-builder-field="templateId">'+workflowTemplateOptions(step.templateId)+'</select></label>'+(template?'<div class="workflow-template-preview full-span"><strong>'+esc(template.name)+'</strong><small>'+esc(short(template.description||template.prompt,320))+'</small></div>':'<div class="workflow-template-preview full-span">Select a template for this step.</div>')
-      : '<label class="full-span">Prompt<textarea data-builder-field="prompt" rows="6" placeholder="Write the prompt for this workflow step...">'+esc(step.prompt||'')+'</textarea></label>')+
+      : source==='workflow'
+        ? '<label class="full-span">Subflow<select data-builder-field="workflowId">'+workflowOptions(step.workflowId,state.workflowBuilder.workflowId)+'</select></label>'
+        : '<label class="full-span">Prompt<textarea data-builder-field="prompt" rows="6" placeholder="Write the prompt for this workflow step...">'+esc(step.prompt||'')+'</textarea></label>')+
     '<label>Session<select data-builder-field="sessionMode"><option value="current" '+(step.sessionMode==='current'?'selected':'')+'>Current session</option><option value="new" '+(step.sessionMode==='new'?'selected':'')+'>New session</option><option value="attach" '+(step.sessionMode==='attach'?'selected':'')+'>Attach to thread</option></select></label>'+
     '<label>Agent<select data-builder-field="agentId">'+workflowAgentOptions(step.agentId)+'</select></label>'+
     (showAttach?'<label class="full-span">Thread ID<input data-builder-field="threadId" value="'+attr(step.threadId)+'" placeholder="Thread ID to attach"></label>':'')+
     (showNew?'<label>Workspace<input data-builder-field="workspace" value="'+attr(step.workspace)+'" list="workflowWorkspaceOptions" placeholder="Default workspace"></label><label>Model<input data-builder-field="model" value="'+attr(step.model)+'" list="workflowModelOptions" placeholder="Default model"></label><label>Reasoning<select data-builder-field="reasoningEffort">'+workflowReasoningOptions(step.reasoningEffort)+'</select></label><label>Launch profile<select data-builder-field="launchProfileId">'+workflowLaunchOptions(step.launchProfileId)+'</select></label>':'')+
     '<label>Target<select data-builder-field="target"><option value="local" '+(step.target==='local'?'selected':'')+'>Local node</option></select></label>'+
+    '<label>Condition variable<input data-builder-field="conditionVariable" value="'+attr(step.conditionVariable)+'" placeholder="optional variable"></label>'+
+    '<label>Condition<select data-builder-field="conditionOperator"><option value="exists" '+(step.conditionOperator==='exists'?'selected':'')+'>exists</option><option value="equals" '+(step.conditionOperator==='equals'?'selected':'')+'>equals</option><option value="not_equals" '+(step.conditionOperator==='not_equals'?'selected':'')+'>not equals</option><option value="contains" '+(step.conditionOperator==='contains'?'selected':'')+'>contains</option><option value="not_contains" '+(step.conditionOperator==='not_contains'?'selected':'')+'>not contains</option></select></label>'+
+    '<label>Condition value<input data-builder-field="conditionValue" value="'+attr(step.conditionValue)+'"></label>'+
+    '<label>Retry attempts<input type="number" min="1" max="10" data-builder-field="retryAttempts" value="'+attr(step.retryAttempts)+'"></label>'+
+    '<label>Retry delay ms<input type="number" min="0" data-builder-field="retryDelayMs" value="'+attr(step.retryDelayMs)+'"></label>'+
     '<label class="checkbox workflow-builder-check"><input type="checkbox" data-builder-field="requiresApproval" '+(step.requiresApproval?'checked':'')+'> Require approval</label>'+
     '<label class="checkbox workflow-builder-check"><input type="checkbox" data-builder-field="continueOnError" '+(step.continueOnError?'checked':'')+'> Continue on error</label>'+
     '</div></div>';
@@ -205,7 +219,8 @@ function workflowBuilderJsonFromState(){return JSON.stringify(workflowBuilderSte
 function workflowBuilderPreviewText(){
   return workflowBuilderStepsPayload(false).map((step,index)=>{
     const template=step.templateId?state.workflowTemplates.find(t=>t.id===step.templateId):null;
-    const prompt=template?.prompt||step.prompt||'';
+    const subflow=step.workflowId?state.workflows.find(w=>w.id===step.workflowId):null;
+    const prompt=subflow?('Run subflow: '+subflow.name):template?.prompt||step.prompt||'';
     return (index+1)+'. '+(step.name||'Step '+(index+1))+'\n'+prompt;
   }).join('\n\n---\n\n');
 }
@@ -239,6 +254,12 @@ function collectWorkflowBuilderFromDom(){
       source:field('source')?.value||step.source||'prompt',
       prompt:field('prompt')?.value||'',
       templateId:field('templateId')?.value||'',
+      workflowId:field('workflowId')?.value||'',
+      conditionVariable:field('conditionVariable')?.value||'',
+      conditionOperator:field('conditionOperator')?.value||'exists',
+      conditionValue:field('conditionValue')?.value||'',
+      retryAttempts:Number(field('retryAttempts')?.value||1),
+      retryDelayMs:Number(field('retryDelayMs')?.value||0),
       agentId:field('agentId')?.value||'',
       workspace:field('workspace')?.value||'',
       model:field('model')?.value||'',
@@ -260,9 +281,12 @@ function workflowBuilderStepsPayload(collect=true){
     return {
       id:step.id||undefined,
       name:step.name||'Step '+(index+1),
-      type:'prompt',
+      type:source==='workflow'?'workflow':'prompt',
       prompt:source==='prompt'?(step.prompt||''):undefined,
       templateId:source==='template'?(step.templateId||undefined):undefined,
+      workflowId:source==='workflow'?(step.workflowId||undefined):undefined,
+      condition:step.conditionVariable?{variable:step.conditionVariable,operator:step.conditionOperator||'exists',value:step.conditionValue||undefined}:undefined,
+      retryPolicy:(Number(step.retryAttempts)>1||Number(step.retryDelayMs)>0)?{maxAttempts:Number(step.retryAttempts)||1,delayMs:Number(step.retryDelayMs)||0}:undefined,
       agentId:step.agentId||undefined,
       workspace:step.sessionMode==='new'?(step.workspace||undefined):undefined,
       model:step.sessionMode==='new'?(step.model||undefined):undefined,
@@ -288,6 +312,8 @@ function validateWorkflowBuilder(){
     const label=step.name||'Step '+(index+1);
     if((rawStep.source||workflowStepSource(rawStep))==='template'&&!step.templateId)errors.push(label+': template is required.');
     if(step.templateId&&!state.workflowTemplates.some(t=>t.id===step.templateId))errors.push(label+': selected template was not found.');
+    if((rawStep.source||workflowStepSource(rawStep))==='workflow'&&!step.workflowId)errors.push(label+': subflow is required.');
+    if(step.workflowId&&!state.workflows.some(w=>w.id===step.workflowId))errors.push(label+': selected subflow was not found.');
     if((rawStep.source||workflowStepSource(rawStep))==='prompt'&&!String(step.prompt||'').trim())errors.push(label+': prompt text is required.');
     if(step.sessionMode==='attach'&&!step.threadId)errors.push(label+': thread ID is required for attach mode.');
   });
@@ -328,6 +354,9 @@ function workflowDialogBody(w){
     '<label>Scope<select id="dlgWorkflowScope"><option value="private">Private</option><option value="shared">Shared</option></select></label>'+
     '<label class="full-span">Description<input id="dlgWorkflowDescription" value="'+attr(w?.description||'')+'"></label>'+
     '<label class="full-span">Tags<input id="dlgWorkflowTags" value="'+attr((w?.tags||[]).join(', '))+'"></label>'+
+    '<label class="checkbox"><input id="dlgWorkflowScheduleEnabled" type="checkbox" '+(w?.schedule?.enabled?'checked':'')+'> Schedule enabled</label>'+
+    '<label>Run at<input id="dlgWorkflowScheduleRunAt" type="datetime-local" value="'+attr(datetimeLocalValue(w?.schedule?.nextRunAt||w?.schedule?.runAt||''))+'"></label>'+
+    '<label>Repeat minutes<input id="dlgWorkflowScheduleInterval" type="number" min="0" value="'+attr(w?.schedule?.intervalMinutes||0)+'"></label>'+
     '<div class="workflow-builder full-span">'+
     '<div class="workflow-builder-toolbar"><strong>Workflow builder</strong><div class="row"><button type="button" data-workflow-builder-add>Add step</button><button type="button" id="workflowBuilderPreviewBtn" class="secondary">Preview workflow</button></div></div>'+
     '<div id="workflowBuilderSteps" class="workflow-builder-steps"></div>'+
@@ -344,13 +373,16 @@ function openWorkflowDialog(w){
   adminDialog(w?'Edit workflow':'Create workflow',workflowDialogBody(w),async()=>{
     const errors=validateWorkflowBuilder();
     if(errors.length)throw new Error(errors[0]);
-    const body={name:val('dlgWorkflowName'),description:val('dlgWorkflowDescription'),tags:csvToList(val('dlgWorkflowTags')),steps:workflowBuilderStepsPayload(),scope:val('dlgWorkflowScope')};
+    const body={name:val('dlgWorkflowName'),description:val('dlgWorkflowDescription'),tags:csvToList(val('dlgWorkflowTags')),steps:workflowBuilderStepsPayload(),schedule:workflowSchedulePayload(),scope:val('dlgWorkflowScope')};
     if(w)await api('/api/workflows/'+encodeURIComponent(w.id),{method:'PUT',body:JSON.stringify(body)});
     else await api('/api/workflows',{method:'POST',body:JSON.stringify(body)});
   },{afterSubmit:loadWorkflows});
   document.getElementById('dlgWorkflowScope').value=w?.scope||'private';
   renderWorkflowBuilder();
 }
+
+function datetimeLocalValue(value){if(!value)return'';const d=new Date(value);if(!Number.isFinite(d.getTime()))return'';return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16)}
+function workflowSchedulePayload(){const enabled=Boolean(document.getElementById('dlgWorkflowScheduleEnabled')?.checked);const runAtLocal=val('dlgWorkflowScheduleRunAt');const intervalMinutes=Number(val('dlgWorkflowScheduleInterval')||0);const runAt=runAtLocal?new Date(runAtLocal).toISOString():undefined;return enabled||runAt||intervalMinutes?{enabled,runAt,nextRunAt:runAt,intervalMinutes}:undefined}
 
 function bindWorkflowPageControls(){
   const templateSearch=document.getElementById('templateSearch');if(templateSearch&&!templateSearch.dataset.bound){templateSearch.dataset.bound='true';templateSearch.oninput=renderTemplates}

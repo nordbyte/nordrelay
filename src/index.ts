@@ -27,6 +27,7 @@ import { resolveDashboardEnvPath, SettingsService } from "./core/settings-servic
 import { checkPiAuthStatus } from "./agents/pi/pi-auth.js";
 import { describePiCli, resolvePiCli } from "./agents/pi/pi-cli.js";
 import { startPeerHealthMonitor, type PeerHealthMonitorHandle } from "./peers/peer-health-monitor.js";
+import { startPeerOutboundRelay, type PeerOutboundRelayHandle } from "./peers/peer-outbound-relay.js";
 import { startPeerServer, type PeerServerHandle } from "./peers/peer-server.js";
 import { RelayRuntime } from "./runtime/relay-runtime.js";
 import { configureRedaction } from "./core/redaction.js";
@@ -40,6 +41,7 @@ let slackBridge: ReturnType<typeof createSlackBridge> | undefined;
 let webhookServer: Server | undefined;
 let peerServer: PeerServerHandle | null | undefined;
 let peerHealthMonitor: PeerHealthMonitorHandle | undefined;
+let peerOutboundRelay: PeerOutboundRelayHandle | null | undefined;
 let peerRuntime: RelayRuntime | undefined;
 let runtimeConfig: ConnectorConfig | undefined;
 
@@ -68,6 +70,10 @@ try {
   if (config.peerEnabled) {
     peerRuntime = new RelayRuntime(config);
     peerServer = await startPeerServer({ config, runtime: peerRuntime });
+  }
+  if (config.peerOutboundRelayEnabled) {
+    peerRuntime ??= new RelayRuntime(config);
+    peerOutboundRelay = startPeerOutboundRelay({ config, runtime: peerRuntime });
   }
   peerHealthMonitor = startPeerHealthMonitor({ config });
 
@@ -122,6 +128,7 @@ try {
   console.log(`Discord: ${config.discordEnabled ? "enabled" : "disabled"}`);
   console.log(`Slack: ${config.slackEnabled ? (config.slackSocketMode ? "socket-mode" : `http:${config.slackPort}`) : "disabled"}`);
   console.log(`Peers: ${peerServer ? peerServer.url : "disabled"}`);
+  console.log(`Peer outbound relay: ${peerOutboundRelay ? "enabled" : "disabled"}`);
   await writeConnectorState({
     status: "ready",
     pid: Number(process.env.NORDRELAY_WRAPPER_PID) || process.pid,
@@ -140,6 +147,7 @@ try {
     discordEnabled: config.discordEnabled,
     slackEnabled: config.slackEnabled,
     peerEnabled: config.peerEnabled,
+    peerOutboundRelayEnabled: config.peerOutboundRelayEnabled,
     webuiEnabled: config.webuiEnabled,
     peerUrl: peerServer?.url,
     peerTlsFingerprint: peerServer?.tlsFingerprint,
@@ -214,6 +222,7 @@ const shutdown = (signal: NodeJS.Signals) => {
     console.warn("Failed to stop peer server:", error instanceof Error ? error.message : String(error));
   });
   peerHealthMonitor?.close();
+  peerOutboundRelay?.close();
 
   setTimeout(() => {
     registry?.disposeAll();

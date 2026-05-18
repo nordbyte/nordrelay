@@ -27,7 +27,7 @@ export class RelayArtifactService {
   constructor(private readonly config: ConnectorConfig) {}
 
   async list(workspace: string, limit = 20): Promise<ArtifactReportDto[]> {
-    return (await listRecentArtifactReports(workspace, limit, this.config.maxFileSize)).map(artifactDto);
+    return (await listRecentArtifactReports(workspace, limit, this.config.maxFileSize)).map((report) => artifactDto(report, this.config));
   }
 
   async get(workspace: string, turnId: string): Promise<ArtifactTurnReport | null> {
@@ -43,7 +43,11 @@ export class RelayArtifactService {
     if (!report) {
       return null;
     }
-    const bundle = await createArtifactZipBundle(report.artifacts, report.outDir, {
+    const artifacts = report.artifacts.filter((artifact) => safeAssessment(artifact.relativePath, this.config.artifactSafeFilePolicy).safeStatus !== "blocked");
+    if (artifacts.length === 0) {
+      return null;
+    }
+    const bundle = await createArtifactZipBundle(artifacts, report.outDir, {
       maxFileSize: this.config.maxFileSize,
       bundleName: `nordrelay-artifacts-${turnId}.zip`,
     });
@@ -56,6 +60,17 @@ export class RelayArtifactService {
     if (!artifact) {
       return null;
     }
+    const safe = safeAssessment(artifact.relativePath, this.config.artifactSafeFilePolicy);
+    if (safe.safeStatus === "blocked") {
+      return {
+        kind: "unsupported",
+        name: artifact.name,
+        sizeBytes: artifact.sizeBytes,
+        language: languageForExtension(path.extname(artifact.name).toLowerCase()),
+        detail: "Safe-file policy blocks inline preview for this artifact.",
+        ...safe,
+      };
+    }
     const extension = path.extname(artifact.name).toLowerCase();
     if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(extension)) {
       return {
@@ -63,6 +78,7 @@ export class RelayArtifactService {
         name: artifact.name,
         sizeBytes: artifact.sizeBytes,
         language: languageForExtension(extension),
+        ...safe,
       };
     }
     if (!isPreviewableTextFile(extension, artifact.sizeBytes)) {
@@ -71,6 +87,7 @@ export class RelayArtifactService {
         name: artifact.name,
         sizeBytes: artifact.sizeBytes,
         language: languageForExtension(extension),
+        ...safe,
         detail: artifact.sizeBytes > MAX_TEXT_PREVIEW_BYTES ? "File is too large for inline preview." : "File type is not previewable.",
       };
     }
@@ -85,6 +102,7 @@ export class RelayArtifactService {
       lineCount: text.split("\n").length,
       truncated,
       text,
+      ...safe,
     };
   }
 
@@ -164,7 +182,7 @@ export class RelayArtifactService {
   }
 }
 
-function artifactDto(report: ArtifactTurnReport): ArtifactReportDto {
+function artifactDto(report: ArtifactTurnReport, config: ConnectorConfig): ArtifactReportDto {
   return {
     turnId: report.turnId,
     updatedAt: report.updatedAt.toISOString(),
@@ -173,12 +191,32 @@ function artifactDto(report: ArtifactTurnReport): ArtifactReportDto {
     totalSizeBytes: totalArtifactSize(report.artifacts),
     skippedCount: report.skippedCount,
     omittedCount: report.omittedCount,
-    artifacts: report.artifacts.map((artifact) => ({
-      name: artifact.name,
-      relativePath: artifact.relativePath.split(path.sep).join("/"),
-      sizeBytes: artifact.sizeBytes,
-    })),
+    artifacts: report.artifacts.map((artifact) => {
+      const relativePath = artifact.relativePath.split(path.sep).join("/");
+      return {
+        name: artifact.name,
+        relativePath,
+        sizeBytes: artifact.sizeBytes,
+        ...safeAssessment(relativePath, config.artifactSafeFilePolicy),
+      };
+    }),
+    provenance: {
+      source: report.source,
+      threadId: report.turnId,
+    },
   };
+}
+
+function safeAssessment(relativePath: string, policy: ConnectorConfig["artifactSafeFilePolicy"]): { safeStatus: "ok" | "warn" | "blocked"; safeWarnings?: string[] } {
+  if (policy === "off") return { safeStatus: "ok" };
+  const normalized = relativePath.replace(/\\/g, "/").toLowerCase();
+  const warnings = [];
+  if (/(^|\/)\.env(\.|$|\/)/.test(normalized) || normalized.endsWith("/.env")) warnings.push("environment file");
+  if (/(^|\/)(id_rsa|id_dsa|id_ed25519|known_hosts)$/.test(normalized)) warnings.push("SSH credential path");
+  if (/\.(pem|key|p12|pfx|kdbx)$/.test(normalized)) warnings.push("key or certificate file");
+  if (/(secret|secrets|credential|credentials|token|tokens)/.test(normalized)) warnings.push("secret-like path");
+  if (warnings.length === 0) return { safeStatus: "ok" };
+  return { safeStatus: policy === "block" ? "blocked" : "warn", safeWarnings: warnings };
 }
 
 function isPreviewableTextFile(extension: string, sizeBytes: number): boolean {

@@ -48,6 +48,8 @@ const staticAssets = [
   "favicon.ico",
   "favicon.png",
   "logo.png",
+  "manifest.webmanifest",
+  "service-worker.js",
 ];
 
 for (const asset of assets) {

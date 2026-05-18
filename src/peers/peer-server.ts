@@ -15,12 +15,15 @@ import {
 import { header, PeerNonceCache, verifyPeerRequest } from "./peer-auth.js";
 import { checkPeerIdentityEndpoint } from "./peer-client.js";
 import { peerRuntimeContextKey } from "./peer-context.js";
+import { getPeerRelayBroker } from "./peer-relay-broker.js";
 import { PeerStore } from "./peer-store.js";
 import { PeerRuntimeService, peerError } from "./peer-runtime-service.js";
 import {
   PEER_PROTOCOL_VERSION,
   type PeerPairRequest,
   type PeerPairResponse,
+  type PeerRelayPollRequest,
+  type PeerRelayResultRequest,
   type PeerRpcRequest,
   type PeerRpcResult,
 } from "./peer-types.js";
@@ -44,6 +47,7 @@ export async function startPeerServer(options: {
   const home = options.home ?? process.env.NORDRELAY_HOME;
   const identity = loadOrCreatePeerIdentity(home, config.peerName);
   const store = new PeerStore(home);
+  const relayBroker = getPeerRelayBroker(home);
   const nonces = new PeerNonceCache();
   const contextRuntimes = new Map<string, RelayRuntime>();
   const service = new PeerRuntimeService(config, runtime, {
@@ -120,6 +124,24 @@ export async function startPeerServer(options: {
         const data = await service.handle(peer, body);
         const result: PeerRpcResult = { ok: true, data };
         sendJson(res, 200, result);
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/peer/relay/poll") {
+        const bodyText = await readBody(req, 256 * 1024);
+        const peer = authenticate(req, "POST", "/peer/relay/poll", bodyText);
+        const body = parseJson<PeerRelayPollRequest>(bodyText);
+        const request = await relayBroker.poll(peer.id, numberValue(body.timeoutMs, 15_000));
+        sendJson(res, 200, { request });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/peer/relay/result") {
+        const bodyText = await readBody(req, 64 * 1024 * 1024);
+        const peer = authenticate(req, "POST", "/peer/relay/result", bodyText);
+        const body = parseJson<PeerRelayResultRequest>(bodyText);
+        if (!body.id || !body.result) {
+          throw new Error("Invalid peer relay result.");
+        }
+        sendJson(res, relayBroker.resolve(peer.id, body.id, body.result) ? 200 : 404, { ok: true });
         return;
       }
       if (req.method === "GET" && url.pathname === "/peer/events") {
@@ -265,6 +287,11 @@ function isLoopbackHost(host: string): boolean {
 function isAuthError(error: unknown): boolean {
   const message = peerError(error).toLowerCase();
   return /peer|signature|timestamp|replay|permission|denied|auth|disabled/.test(message);
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function closeServer(server: Server): Promise<void> {

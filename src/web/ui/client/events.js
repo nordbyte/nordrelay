@@ -60,6 +60,8 @@ function connectEvents(){
   events.onerror=()=>{setConnection('Reconnecting','error');if(!state.reconnectTimer)state.reconnectTimer=setTimeout(()=>{state.reconnectTimer=null;connectEvents()},5000)};
 }
 function setConnection(text,kind){const el=document.getElementById('connectionStatus');el.className='footer-connection';el.innerHTML='<span class="footer-label">Connection:</span> <span class="footer-connection-value connection-'+attr(kind)+'">'+esc(text)+'</span>'}
+window.addEventListener('offline',()=>setConnection('Offline','error'));
+window.addEventListener('online',()=>{setConnection('Reconnecting','warn');connectEvents()});
 async function enableNotifications(){if(!('Notification' in window)){toast('Browser notifications are not supported');return}const permission=Notification.permission==='granted'?'granted':await Notification.requestPermission();state.notifications=permission==='granted';toast(state.notifications?'Browser notifications enabled':'Browser notifications denied')}
 function notify(title,body){if(state.notifications&&'Notification' in window&&Notification.permission==='granted')new Notification(title,{body})}
 function toolAgeText(el){const created=Number(el.dataset.createdAt||Date.now());return 'Updated '+fmtAge(Date.now()-created)}
