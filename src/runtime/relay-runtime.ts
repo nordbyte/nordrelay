@@ -35,7 +35,7 @@ import { listThreads as listCodexThreads } from "../agents/codex/codex-state.js"
 import type { ConnectorConfig } from "../core/config.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import { friendlyErrorText } from "../core/error-messages.js";
-import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate, type FormattedLogTail } from "../support/operations.js";
+import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate, type FormattedLogReadOptions, type FormattedLogTail } from "../support/operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "../state/prompt-store.js";
 import { UnifiedJobStore } from "../state/job-store.js";
 import { WorkflowStore } from "../state/workflow-store.js";
@@ -669,7 +669,7 @@ export class RelayRuntime {
   async artifactCleanupPreview(): Promise<ArtifactCleanupDto> { return relayRuntimeArtifactCleanupPreview(this); }
   async artifactCleanupRun(actor?: WebActivityActor): Promise<ArtifactCleanupDto> { return relayRuntimeArtifactCleanupRun(this, actor); }
 
-  async logs(target: "connector" | "update" | "agent-updates" = "connector", lines = 100): Promise<FormattedLogTail> { return relayRuntimeLogs(this, target, lines); }
+  async logs(target: "connector" | "update" | "agent-updates" = "connector", options: number | FormattedLogReadOptions = 100): Promise<FormattedLogTail> { return relayRuntimeLogs(this, target, options); }
   clearLogs(target: "connector" | "update" | "agent-updates" = "connector", actor?: WebActivityActor): { ok: true; filePath: string; clearedAt: string } { return relayRuntimeClearLogs(this, target, actor); }
   restartConnector(actor?: WebActivityActor): { ok: true; message: string } { return relayRuntimeRestartConnector(this, actor); }
   dispose(): void { return relayRuntimeDispose(this); }

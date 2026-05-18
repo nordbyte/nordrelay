@@ -979,7 +979,7 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   if (url.pathname === "/api/artifacts/preview") return artifactPreview(url.searchParams.get("path") || "report.txt");
   if (url.pathname === "/api/artifacts/file") return { name: "report.txt", mimeType: "text/plain", dataBase64: Buffer.from("Artifact preview smoke\n").toString("base64") };
   if (url.pathname === "/api/artifacts/zip") return { name: "turn-web-1.zip", mimeType: "application/zip", dataBase64: Buffer.from("zip").toString("base64") };
-  if (url.pathname === "/api/logs") return { filePath: "/tmp/nordrelay.log", requestedLines: 120, lineCount: 6, updatedAt: new Date().toISOString(), plain: "2026-05-14 10:00:00 INFO Started\ninfo detail\n2026-05-14 10:01:00 WARN Slow check\nwarn detail\n2026-05-14 10:02:00 ERROR Failed\nstack detail" };
+  if (url.pathname === "/api/logs") return logs(url);
   if (url.pathname === "/api/logs/clear") return { filePath: "/tmp/nordrelay.log", clearedAt: new Date().toISOString() };
   if (url.pathname === "/api/diagnostics") return { health: health(), versionChecks: version().versionChecks, snapshot: bootstrap(session).status.snapshot, runtime: { stateBackend: "json", sourceWorkspace: "/tmp/project", queuePaused: false, externalMirror: null, agentDiagnostics: { lines: [] } } };
   if (url.pathname === "/api/users") return users();
@@ -1358,6 +1358,29 @@ function traceDetail(correlationId: string) {
         workspace: "/tmp/project",
       },
     ],
+  };
+}
+
+function logs(url: URL) {
+  const allEntries = [
+    { line: "2026-05-14 10:00:00 INFO Started", level: "INFO", time: new Date("2026-05-14T10:00:00").getTime() },
+    { line: "info detail", level: "INFO", time: new Date("2026-05-14T10:00:00").getTime() },
+    { line: "2026-05-14 10:01:00 WARN Slow check", level: "WARN", time: new Date("2026-05-14T10:01:00").getTime() },
+    { line: "warn detail", level: "WARN", time: new Date("2026-05-14T10:01:00").getTime() },
+    { line: "2026-05-14 10:02:00 ERROR Failed", level: "ERROR", time: new Date("2026-05-14T10:02:00").getTime() },
+    { line: "stack detail", level: "ERROR", time: new Date("2026-05-14T10:02:00").getTime() },
+  ];
+  const level = (url.searchParams.get("level") || "all").toUpperCase();
+  const entries = level === "ALL" ? allEntries : allEntries.filter((entry) => entry.level === level);
+  return {
+    filePath: "/tmp/nordrelay.log",
+    requestedLines: Number(url.searchParams.get("limit") || url.searchParams.get("lines") || 120),
+    lineCount: entries.length,
+    totalLineCount: entries.length,
+    updatedAt: new Date().toISOString(),
+    entries,
+    pagination: { limit: entries.length || 120, nextCursor: null, hasNext: false, total: entries.length },
+    plain: entries.map((entry) => entry.line).join("\n"),
   };
 }
 

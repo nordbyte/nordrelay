@@ -98,6 +98,7 @@ function modelLabel(m){const meta=[m.contextWindow?compactNum(m.contextWindow):'
 function fmtAge(ms){const sec=Math.max(0,Math.floor(ms/1000));if(sec<60)return sec+'s ago';const min=Math.floor(sec/60);if(min<60)return min+'m ago';return Math.floor(min/60)+'h ago'}
 function isCliRunningStatus(msg){return / CLI running\b/.test(String(msg||''))}
 function isCliDoneStatus(msg){return / CLI task (?:finished|completed|failed|aborted)\b/i.test(String(msg||''))}
+Object.assign(window,{clearStickyToast,isCliDoneStatus,toast});
 function normalizeThemePreference(value){return value==='dark'||value==='light'||value==='system'?value:'light'}
 function savedThemePreference(){return normalizeThemePreference(localStorage.getItem('nordrelayThemePreference')||localStorage.getItem('nordrelayTheme')||'light')}
 function resolveThemePreference(preference){const pref=normalizeThemePreference(preference);if(pref==='system')return window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light';return pref}

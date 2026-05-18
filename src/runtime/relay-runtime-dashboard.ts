@@ -34,7 +34,7 @@ import { listThreads as listCodexThreads } from "../agents/codex/codex-state.js"
 import type { ConnectorConfig } from "../core/config.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import { friendlyErrorText } from "../core/error-messages.js";
-import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "../support/operations.js";
+import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate, type FormattedLogReadOptions } from "../support/operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "../state/prompt-store.js";
 import { UnifiedJobStore } from "../state/job-store.js";
 import { buildRuntimeMetrics, type RuntimeMetricsDto } from "./metrics.js";
@@ -245,14 +245,14 @@ export async function relayRuntimeSupportBundle(runtime: RelayRuntimeDelegate, a
     return bundle;
   }
 
-export async function relayRuntimeLogs(runtime: RelayRuntimeDelegate, target: "connector" | "update" | "agent-updates" = "connector", lines = 100): Promise<ReturnType<typeof readFormattedLogTail>> {
+export async function relayRuntimeLogs(runtime: RelayRuntimeDelegate, target: "connector" | "update" | "agent-updates" = "connector", options: number | FormattedLogReadOptions = 100): Promise<ReturnType<typeof readFormattedLogTail>> {
     if (target === "update") {
-      return readFormattedLogTail(lines, getUpdateLogPath());
+      return readFormattedLogTail(options, getUpdateLogPath());
     }
     if (target === "agent-updates") {
-      return readFormattedLogTail(lines, getAgentUpdateLogPath());
+      return readFormattedLogTail(options, getAgentUpdateLogPath());
     }
-    return readFormattedLogTail(lines);
+    return readFormattedLogTail(options);
   }
 
 export function relayRuntimeClearLogs(runtime: RelayRuntimeDelegate, target: "connector" | "update" | "agent-updates" = "connector", actor?: WebActivityActor): { ok: true; filePath: string; clearedAt: string } {

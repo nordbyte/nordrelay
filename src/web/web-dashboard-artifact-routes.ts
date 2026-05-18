@@ -31,8 +31,11 @@ export async function handleDashboardArtifactRoute(
   if (req.method === "GET" && url.pathname === "/api/artifacts") {
     await options.assertCurrentSessionScope(authUser);
     const limit = normalizeCursorLimit(numberParam(url, "limit", 50), 50, 200);
+    const search = (url.searchParams.get("search") || "").trim().toLowerCase();
+    const kind = url.searchParams.get("kind") || "all";
     const reports = await runtime.artifacts(500);
-    const page = cursorPage(reports, url.searchParams.get("cursor") || undefined, limit, (report) => report.turnId);
+    const filteredReports = reports.filter((report) => artifactReportMatches(report, kind, search));
+    const page = cursorPage(filteredReports, url.searchParams.get("cursor") || undefined, limit, (report) => report.turnId);
     sendJson(res, 200, { reports: page.items, pagination: page.pagination });
     return true;
   }
@@ -132,4 +135,22 @@ export async function handleDashboardArtifactRoute(
   }
 
   return false;
+}
+
+function artifactReportMatches(report: Awaited<ReturnType<RelayRuntime["artifacts"]>>[number], kind: string, search: string): boolean {
+  return (report.artifacts || []).some((artifact) => artifactFileMatches(artifact, kind, search));
+}
+
+function artifactFileMatches(artifact: { name?: string; relativePath?: string }, kind: string, search: string): boolean {
+  const name = String(artifact.name || artifact.relativePath || "").toLowerCase();
+  if (search && !name.includes(search)) {
+    return false;
+  }
+  if (kind === "images") {
+    return /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
+  }
+  if (kind === "docs") {
+    return !/\.(png|jpe?g|gif|webp|svg)$/i.test(name);
+  }
+  return true;
 }

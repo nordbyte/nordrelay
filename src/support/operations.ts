@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { readFile, stat } from "node:fs/promises";
+import { open, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -10,6 +10,7 @@ import { describeClaudeCodeCli, resolveClaudeCodeCli } from "../agents/claude-co
 import { describeHermesCli, resolveHermesCli } from "../agents/hermes/hermes-cli.js";
 import { describeOpenClawCli, resolveOpenClawCli } from "../agents/openclaw/openclaw-cli.js";
 import { describePiCli, resolvePiCli } from "../agents/pi/pi-cli.js";
+import { normalizeCursorLimit, type CursorPageMeta } from "../core/pagination.js";
 
 export interface ConnectorRuntimeState {
   status?: string;
@@ -98,8 +99,29 @@ export interface FormattedLogTail {
   filePath: string;
   requestedLines: number;
   lineCount: number;
+  scannedLineCount?: number;
+  totalLineCount?: number;
+  truncated?: boolean;
   updatedAt: Date | null;
+  entries?: FormattedLogEntry[];
+  pagination?: CursorPageMeta;
   plain: string;
+}
+
+export interface FormattedLogEntry {
+  line: string;
+  level: string;
+  time: number;
+}
+
+export interface FormattedLogReadOptions {
+  lines?: number;
+  limit?: number;
+  cursor?: string | null;
+  level?: string | null;
+  search?: string | null;
+  since?: string | null;
+  maxScanLines?: number;
 }
 
 export interface ClearLogResult {
@@ -191,27 +213,98 @@ export async function readLogTail(lines = 80, filePath = getConnectorLogPath()):
   }
 }
 
-export async function readFormattedLogTail(lines = 80, filePath = getConnectorLogPath()): Promise<FormattedLogTail> {
-  const boundedLines = Math.min(Math.max(lines, 1), 300);
+export async function readFormattedLogTail(linesOrOptions: number | FormattedLogReadOptions = 80, filePath = getConnectorLogPath()): Promise<FormattedLogTail> {
+  const options = typeof linesOrOptions === "number" ? { lines: linesOrOptions, limit: linesOrOptions } : linesOrOptions;
+  const boundedLines = normalizeCursorLimit(options.limit ?? options.lines, 80, 300);
+  const maxScanLines = normalizeCursorLimit(options.maxScanLines, 20_000, 100_000);
+  const cursorOffset = parseLogCursor(options.cursor);
   try {
-    const [contents, stats] = await Promise.all([readFile(filePath, "utf8"), stat(filePath)]);
-    const rawLines = contents.split(/\r?\n/).filter((line) => line.trim().length > 0).slice(-boundedLines);
-    const formatted = rawLines.map(formatLogLine).join("\n");
+    const { lines: rawLines, stats, truncated } = await readRecentNonEmptyLines(filePath, maxScanLines);
+    const filtered = parseFormattedLogEntries(rawLines.map(formatLogLine)).filter((entry) => logEntryMatches(entry, options));
+    const pageEnd = Math.max(0, filtered.length - cursorOffset);
+    const pageStart = Math.max(0, pageEnd - boundedLines);
+    const page = filtered.slice(pageStart, pageEnd);
+    const pageLines = page.map((entry) => redactSecrets(entry.line));
+    const hasNext = pageStart > 0;
+    const nextOffset = cursorOffset + page.length;
     return {
       filePath,
       requestedLines: boundedLines,
-      lineCount: rawLines.length,
+      lineCount: page.length,
+      scannedLineCount: rawLines.length,
+      totalLineCount: filtered.length,
+      truncated,
       updatedAt: stats.mtime,
-      plain: redactSecrets(formatted),
+      entries: page.map((entry, index) => ({ ...entry, line: pageLines[index] ?? "" })),
+      pagination: {
+        limit: boundedLines,
+        nextCursor: hasNext ? String(nextOffset) : null,
+        hasNext,
+        total: filtered.length,
+      },
+      plain: pageLines.join("\n"),
     };
   } catch (error) {
+    const message = `Cannot read log: ${error instanceof Error ? error.message : String(error)}`;
     return {
       filePath,
       requestedLines: boundedLines,
-      lineCount: 0,
+      lineCount: 1,
+      scannedLineCount: 0,
+      totalLineCount: 0,
+      truncated: false,
       updatedAt: null,
-      plain: `Cannot read log: ${error instanceof Error ? error.message : String(error)}`,
+      entries: [{ line: message, level: "ERROR", time: 0 }],
+      pagination: {
+        limit: boundedLines,
+        nextCursor: null,
+        hasNext: false,
+        total: 0,
+      },
+      plain: message,
     };
+  }
+}
+
+async function readRecentNonEmptyLines(filePath: string, maxLines: number): Promise<{ lines: string[]; stats: Awaited<ReturnType<typeof stat>>; truncated: boolean }> {
+  const stats = await stat(filePath);
+  if (stats.size === 0) {
+    return { lines: [], stats, truncated: false };
+  }
+
+  const file = await open(filePath, "r");
+  const collected: string[] = [];
+  const chunkSize = 64 * 1024;
+  let position = stats.size;
+  let carry = "";
+  let truncated = false;
+
+  try {
+    while (position > 0 && collected.length <= maxLines) {
+      const readSize = Math.min(chunkSize, position);
+      position -= readSize;
+      const buffer = Buffer.allocUnsafe(readSize);
+      await file.read(buffer, 0, readSize, position);
+      const text = buffer.toString("utf8") + carry;
+      const parts = text.split(/\r?\n/);
+      carry = parts.shift() ?? "";
+      for (let index = parts.length - 1; index >= 0; index -= 1) {
+        const line = parts[index] ?? "";
+        if (line.trim().length > 0) {
+          collected.push(line);
+        }
+        if (collected.length > maxLines) {
+          break;
+        }
+      }
+    }
+    if (position === 0 && carry.trim().length > 0) {
+      collected.push(carry);
+    }
+    truncated = position > 0 || collected.length > maxLines;
+    return { lines: collected.slice(0, maxLines).reverse(), stats, truncated };
+  } finally {
+    await file.close();
   }
 }
 
@@ -847,6 +940,69 @@ function formatLogLine(line: string): string {
   }
 
   return trimmed;
+}
+
+function parseLogCursor(cursor: string | null | undefined): number {
+  const parsed = Number.parseInt(String(cursor ?? ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function parseFormattedLogEntries(lines: string[]): FormattedLogEntry[] {
+  let currentLevel = "INFO";
+  let currentTime = 0;
+  return lines.filter((line) => line.length > 0).map((line) => {
+    const explicitLevel = explicitFormattedLogLevel(line);
+    if (explicitLevel) {
+      currentLevel = explicitLevel;
+    }
+    const parsedTime = formattedLogTime(line);
+    if (parsedTime) {
+      currentTime = parsedTime;
+    }
+    return {
+      line,
+      level: currentLevel,
+      time: currentTime,
+    };
+  });
+}
+
+function explicitFormattedLogLevel(line: string): string {
+  const match = String(line || "").match(/^\s*(?:\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}|unknown time)?\s*(ERROR|WARN|INFO)\b/i);
+  return match?.[1]?.toUpperCase() ?? "";
+}
+
+function formattedLogTime(line: string): number {
+  const match = String(line || "").match(/^\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})/);
+  if (!match?.[1]) {
+    return 0;
+  }
+  const parsed = new Date(match[1].replace(" ", "T")).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function logEntryMatches(entry: FormattedLogEntry, options: FormattedLogReadOptions): boolean {
+  const level = String(options.level || "all").toUpperCase();
+  if (level !== "ALL" && entry.level !== level) {
+    return false;
+  }
+  const search = String(options.search || "").trim().toLowerCase();
+  if (search && !entry.line.toLowerCase().includes(search)) {
+    return false;
+  }
+  const since = logSinceTime(options.since);
+  if (since && entry.time && entry.time < since) {
+    return false;
+  }
+  return true;
+}
+
+function logSinceTime(value: string | null | undefined): number {
+  if (!value) {
+    return 0;
+  }
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function parseJsonLogLine(line: string): string | null {

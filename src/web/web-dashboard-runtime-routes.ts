@@ -164,7 +164,13 @@ export async function handleDashboardRuntimeRoute(
 
   if (req.method === "GET" && url.pathname === "/api/logs") {
     const target = parseLogTarget(url.searchParams.get("target") ?? undefined);
-    sendJson(res, 200, await runtime.logs(target, numberParam(url, "lines", 100)));
+    sendJson(res, 200, await runtime.logs(target, {
+      limit: numberParam(url, "limit", numberParam(url, "lines", 100)),
+      cursor: url.searchParams.get("cursor"),
+      level: url.searchParams.get("level"),
+      search: url.searchParams.get("search"),
+      since: url.searchParams.get("since"),
+    }));
     return true;
   }
 

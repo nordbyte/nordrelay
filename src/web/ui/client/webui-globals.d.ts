@@ -15,6 +15,7 @@ declare const activityPager: any;
 declare const artifactPager: any;
 declare const auditPager: any;
 declare const jobsPager: any;
+declare const logPager: any;
 declare const sessionsPager: any;
 
 declare function accessCopyButton(value: any, label?: string): string;
@@ -73,7 +74,7 @@ declare var loadAudit: (...args: any[]) => Promise<any>;
 declare function loadBootstrap(): Promise<any>;
 declare var loadChatHistory: (...args: any[]) => Promise<any>;
 declare function loadDiagnostics(): Promise<void>;
-declare function loadLogs(): Promise<void>;
+declare function loadLogs(reset?: boolean): Promise<void>;
 declare function loadMetrics(): Promise<void>;
 declare function loadMirrorPreference(): Promise<void>;
 declare function loadMonitor(): Promise<void>;

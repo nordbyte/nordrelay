@@ -40,6 +40,7 @@ function createCursorPager(containerId,onChange){
 }
 const activityPager=createCursorPager('activityPager',()=>loadActivity(false));
 const auditPager=createCursorPager('auditPager',()=>loadAudit(false));
+const logPager=createCursorPager('logPager',()=>loadLogs(false));
 const artifactPager=createCursorPager('artifactPager',()=>loadArtifacts(false));
 const jobsPager=createCursorPager('jobsPager',()=>loadTasks(false));
 

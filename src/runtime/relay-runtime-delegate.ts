@@ -24,7 +24,7 @@ import type { QueuePlanStatus, QueuePlanStore } from "../state/queue-plan-store.
 import type { MetricsHistoryStore } from "../state/metrics-history-store.js";
 import type { QueuePlanInput } from "./relay-runtime-queue-planner.js";
 import type { ContextMetadata, SessionRegistry } from "../state/session-registry.js";
-import type { FormattedLogTail, SelfUpdateResult } from "../support/operations.js";
+import type { FormattedLogReadOptions, FormattedLogTail, SelfUpdateResult } from "../support/operations.js";
 import type { SupportBundleResult } from "../support/support-bundle.js";
 import type {
   WebActivityActor,
@@ -221,7 +221,7 @@ export interface RelayRuntimeDelegate {
   artifactUsage(): Promise<ArtifactUsageDto>;
   artifactCleanupPreview(): Promise<ArtifactCleanupDto>;
   artifactCleanupRun(actor?: WebActivityActor): Promise<ArtifactCleanupDto>;
-  logs(target?: "connector" | "update" | "agent-updates", lines?: number): Promise<FormattedLogTail>;
+  logs(target?: "connector" | "update" | "agent-updates", options?: number | FormattedLogReadOptions): Promise<FormattedLogTail>;
   clearLogs(target?: "connector" | "update" | "agent-updates", actor?: WebActivityActor): { ok: true; filePath: string; clearedAt: string };
   restartConnector(actor?: WebActivityActor): { ok: true; message: string };
   dispose(): void;

@@ -655,7 +655,13 @@ export class PeerRuntimeService {
 
   private handleOperationsWebRoute(context: PeerWebRouteContext): unknown {
     const { runtime, method, path, query, body, remoteActor } = context;
-    if (method === "GET" && path === "/api/logs") return runtime.logs((stringValue(query.target) || "connector") as never, numberValue(query.lines, 100));
+    if (method === "GET" && path === "/api/logs") return runtime.logs((stringValue(query.target) || "connector") as never, {
+      limit: numberValue(query.limit, numberValue(query.lines, 100)),
+      cursor: stringValue(query.cursor) || null,
+      level: stringValue(query.level) || null,
+      search: stringValue(query.search) || null,
+      since: stringValue(query.since) || null,
+    });
     if (method === "POST" && path === "/api/logs/clear") return runtime.clearLogs((stringValue(body.target) || "connector") as never, remoteActor);
     if (method === "POST" && path === "/api/runtime/restart") return runtime.restartConnector(remoteActor);
     throw unsupportedPeerRoute(method, path);

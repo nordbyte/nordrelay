@@ -48,6 +48,39 @@ describe("operations", () => {
     expect(tail.plain).toContain("failed");
   });
 
+  it("paginates and filters formatted logs server-side", async () => {
+    const dir = createTempDir();
+    const file = path.join(dir, "nordrelay.log");
+    writeFileSync(file, [
+      "[2026-05-12 14:30:01 +02:00] INFO first",
+      "[2026-05-12 14:30:02 +02:00] WARN second",
+      "continued warning",
+      "[2026-05-12 14:30:03 +02:00] ERROR third token=secret-value",
+      "[2026-05-12 14:30:04 +02:00] INFO fourth",
+    ].join("\n"));
+
+    const firstPage = await readFormattedLogTail({ limit: 2, level: "all" }, file);
+
+    expect(firstPage.lineCount).toBe(2);
+    expect(firstPage.plain).toContain("ERROR third token=[redacted]");
+    expect(firstPage.plain).toContain("INFO  fourth");
+    expect(firstPage.pagination?.hasNext).toBe(true);
+    expect(firstPage.pagination?.total).toBe(5);
+
+    const secondPage = await readFormattedLogTail({ limit: 2, cursor: firstPage.pagination?.nextCursor }, file);
+
+    expect(secondPage.plain).toContain("WARN  second");
+    expect(secondPage.plain).toContain("continued warning");
+
+    const warnPage = await readFormattedLogTail({ limit: 10, level: "WARN" }, file);
+
+    expect(warnPage.entries?.map((entry) => entry.line)).toEqual(expect.arrayContaining([
+      expect.stringContaining("WARN  second"),
+      "continued warning",
+    ]));
+    expect(warnPage.plain).not.toContain("ERROR third");
+  });
+
   it("detects git checkouts and npm installs for self-update", () => {
     const gitRoot = createTempDir();
     mkdirSync(path.join(gitRoot, ".git"));
