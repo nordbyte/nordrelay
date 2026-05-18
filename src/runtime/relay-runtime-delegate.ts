@@ -44,6 +44,12 @@ import type { RelayExternalActivityMonitor } from "./relay-external-activity-mon
 import type { RelayQueueAction, RelayQueueService } from "./relay-queue-service.js";
 import type { RuntimeMetricsDto } from "./metrics.js";
 import type { RuntimeSnapshotCache } from "./runtime-cache.js";
+import type { SessionWorktreeService } from "../worktrees/worktree-service.js";
+import type {
+  SessionWorktreeRecord,
+  WorktreeDashboardSnapshot,
+  WorktreeIntegrationRun,
+} from "../worktrees/worktree-types.js";
 import type {
   ActiveSessionDto,
   ActiveSessionsDto,
@@ -107,6 +113,7 @@ export interface RelayRuntimeDelegate {
   readonly queuePlanStore: QueuePlanStore;
   readonly workflowService: RelayWorkflowService;
   readonly artifactService: RelayArtifactService;
+  readonly worktreeService: SessionWorktreeService;
   readonly mirrorRegistry: ChannelMirrorRegistry;
   readonly externalActivityMonitor: RelayExternalActivityMonitor;
   readonly cache: RuntimeSnapshotCache;
@@ -174,16 +181,14 @@ export interface RelayRuntimeDelegate {
   filteredSessions(session: AgentSessionService, query: string, limit: number): AgentThreadRecord[];
   listModels(): Promise<ReturnType<AgentSessionService["listModels"]>>;
   setAgent(agentId: AgentId, actor?: WebActivityActor): Promise<AgentSessionInfo>;
-  newSession(options?: {
-    agentId?: AgentId;
-    workspace?: string;
-    model?: string;
-    reasoningEffort?: string;
-    launchProfileId?: string;
-    fastMode?: boolean;
-  }, actor?: WebActivityActor): Promise<AgentSessionInfo>;
+  newSession(options?: { agentId?: AgentId; workspace?: string; workspaceMode?: "shared" | "worktree" | "attached"; model?: string; reasoningEffort?: string; launchProfileId?: string; fastMode?: boolean }, actor?: WebActivityActor): Promise<AgentSessionInfo>;
   switchSession(threadId: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
   attachSession(threadId: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
+  sessionWorktrees(): Promise<WorktreeDashboardSnapshot>;
+  commitSessionWorktree(id: string, message?: string, actor?: WebActivityActor): Promise<{ record: SessionWorktreeRecord; clean: boolean; status: string[] }>;
+  integrateSessionWorktrees(ids: string[], actor?: WebActivityActor): Promise<WorktreeIntegrationRun>;
+  forkCurrentSessionToWorktree(options?: { includeUncommitted?: boolean }, actor?: WebActivityActor): Promise<{ session: AgentSessionInfo; record: SessionWorktreeRecord; copiedUntrackedFiles: string[]; skippedUntrackedFiles: string[]; patchApplied: boolean }>;
+  removeSessionWorktree(id: string, force?: boolean, actor?: WebActivityActor): Promise<SessionWorktreeRecord>;
   setModel(model: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
   setReasoningEffort(effort: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
   setFastMode(enabled: boolean, actor?: WebActivityActor): Promise<AgentSessionInfo>;

@@ -293,7 +293,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
 
   const ensureActiveThread = async (request: SlackRequest, session: AgentSessionService): Promise<void> => {
     if (!session.hasActiveThread()) {
-      await session.newThread();
+      await registry.startNewThread(request.contextKey, session);
       updateSession(request, session);
     }
   };
@@ -738,8 +738,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
       await reply(request, "Workspace is not allowed.");
       return;
     }
-    const info = await session.newThread(workspaceValue);
-    updateSession(request, session);
+    const info = await registry.startNewThread(request.contextKey, session, { workspace: workspaceValue });
     appendActivity(request, { status: "info", type: "session_new", threadId: info.threadId, workspace: info.workspace, agentId: info.agentId, detail: info.workspace });
     await reply(request, `New thread created.\n\n${renderSessionInfoPlain(info)}`);
   };

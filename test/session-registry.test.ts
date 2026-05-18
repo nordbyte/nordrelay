@@ -25,6 +25,7 @@ const mockSessionState = vi.hoisted(() => {
     getInfo: ReturnType<typeof vi.fn>;
     dispose: ReturnType<typeof vi.fn>;
     isProcessing: ReturnType<typeof vi.fn>;
+    newThread: ReturnType<typeof vi.fn>;
     setInfo: (next: Partial<{
       threadId: string | null;
       workspace: string;
@@ -189,6 +190,15 @@ describe("SessionRegistry", () => {
       getInfo: vi.fn(() => ({ ...currentInfo })),
       dispose: vi.fn(),
       isProcessing: vi.fn(() => false),
+      newThread: vi.fn(async (workspace?: string, model?: string) => {
+        currentInfo = {
+          ...currentInfo,
+          threadId: "thread-new",
+          workspace: workspace ?? currentInfo.workspace,
+          model: model ?? currentInfo.model,
+        };
+        return { ...currentInfo };
+      }),
       syncFromAgentState: vi.fn(() => ({
         threadId: currentInfo.threadId,
         changed: false,
@@ -414,6 +424,7 @@ describe("SessionRegistry", () => {
         agentId: "codex",
         threadId: "thread-b",
         workspace: "/workspace/b",
+        workspaceMode: "shared",
         model: "gpt-5.4",
         reasoningEffort: "high",
         launchProfileId: "default",
@@ -424,6 +435,7 @@ describe("SessionRegistry", () => {
         agentId: "codex",
         threadId: "thread-a",
         workspace: "/workspace/a",
+        workspaceMode: "shared",
         model: "o4-mini",
         reasoningEffort: undefined,
         launchProfileId: "readonly",
@@ -458,6 +470,7 @@ describe("SessionRegistry", () => {
         agentId: "codex",
         threadId: "thread-a",
         workspace: "/workspace/a",
+        workspaceMode: "shared",
         model: "o3",
         reasoningEffort: undefined,
         launchProfileId: "readonly",
@@ -475,6 +488,54 @@ describe("SessionRegistry", () => {
     expect(registry.listPinnedThreadIds("123")).toEqual(["thread-a", "thread-b"]);
     expect(registry.unpinThread("123", "thread-a")).toEqual(["thread-b"]);
     expect(registry.listPinnedThreadIds("123")).toEqual(["thread-b"]);
+  });
+
+  it("starts new sessions in isolated worktrees when requested", async () => {
+    const config = createConfig({
+      sessionWorkspaceMode: "worktree",
+      sessionWorktreeRoot: "/workspace/worktrees",
+      sessionWorktreeBranchPrefix: "nr/test",
+    });
+    const record = {
+      id: "wt-1",
+      mode: "worktree",
+      status: "active",
+      agentId: "codex",
+      contextKey: "123",
+      threadId: null,
+      sourceWorkspace: "/workspace/base",
+      repoRoot: "/workspace/base",
+      repoName: "base",
+      baseSha: "base-sha",
+      branchName: "nr/test/base/wt-1",
+      worktreePath: "/workspace/worktrees/base/wt-1",
+      createdAt: "2026-05-18T00:00:00.000Z",
+      updatedAt: "2026-05-18T00:00:00.000Z",
+    };
+    const worktreeService = {
+      create: vi.fn(() => record),
+      linkThread: vi.fn(() => ({ ...record, threadId: "thread-new" })),
+      getByThreadId: vi.fn(() => undefined),
+      getByWorkspace: vi.fn((workspace: string | undefined) => workspace === record.worktreePath ? record : undefined),
+    };
+    const registry = new SessionRegistry(config, { worktreeService: worktreeService as any });
+    const session = await registry.getOrCreate("123", { deferThreadStart: true }) as any;
+
+    await registry.startNewThread("123", session);
+
+    expect(worktreeService.create).toHaveBeenCalledWith({
+      contextKey: "123",
+      agentId: "codex",
+      sourceWorkspace: "/workspace/base",
+    });
+    expect(session.newThread).toHaveBeenCalledWith(record.worktreePath, undefined);
+    expect(worktreeService.linkThread).toHaveBeenCalledWith("wt-1", "thread-new", "codex", "123");
+    expect(registry.listContexts()[0]).toEqual(expect.objectContaining({
+      threadId: "thread-new",
+      workspace: record.worktreePath,
+      workspaceMode: "worktree",
+      worktreeId: "wt-1",
+    }));
   });
 
   it("syncs loaded sessions from Codex state and updates changed metadata", async () => {
@@ -551,6 +612,7 @@ describe("SessionRegistry", () => {
         agentId: "codex",
         threadId: "thread-a",
         workspace: "/workspace/a",
+        workspaceMode: "shared",
         model: "o4-mini",
         reasoningEffort: "medium",
         launchProfileId: "default",

@@ -6,6 +6,7 @@
 - `/agent` switches a chat context between enabled agents such as Codex, Pi, Hermes, OpenClaw, and Claude Code.
 - Persistent channel context metadata in the active workspace under `.nordrelay/contexts.json`.
 - `/new` starts a fresh thread, with workspace selection when known workspaces are available.
+- New sessions can run in the shared workspace, in an isolated Git worktree, or as an attached/manual CLI session. The WebUI Sessions page has a Worktrees tab for committing per-session changes and merging selected session branches into an integration worktree.
 - `/session` shows thread id, workspace, launch profile, launch behavior, model, reasoning, fast mode, context usage, token totals, and subscription limit remaining percentages.
 - `/sessions` opens a paginated browser for recent sessions from the selected agent.
 - `/sessions <query>` filters recent sessions by id, title, workspace, model, or first message.
@@ -36,6 +37,14 @@
 - `/support` exports a redacted diagnostics ZIP with config, health, versions, agent paths, recent logs, audit events, update jobs, state backend, and OS/Node/npm info.
 - `/lock`, `/unlock`, and `/locks` provide a team write-lock for shared sessions so one user can operate while others watch.
 - `/audit` shows recent prompt, queue, lock, command, authentication, permission-denied, user, group, Telegram-link, Telegram-chat, Discord-link, Discord-channel, Slack-link, Slack-channel, and web-session audit events for admins.
+
+## Isolated Session Worktrees
+
+- Set `NORDRELAY_SESSION_WORKSPACE_MODE=worktree` to create a dedicated Git worktree and branch for each new NordRelay-started session across WebUI, Telegram, Discord, and Slack.
+- The original repository remains unchanged while the session works in its own worktree path under `NORDRELAY_SESSION_WORKTREE_ROOT`.
+- Existing CLI-started sessions are treated as attached/manual sessions; NordRelay will not move a running native CLI process into a different worktree.
+- Use the WebUI Sessions → Worktrees tab to fork the current session, optionally copy pending tracked/untracked changes, commit a session worktree, remove it, or merge selected committed worktrees into a generated integration worktree.
+- Integration requires selected worktrees from the same repository and base commit. Merge conflicts are left in the integration worktree for manual resolution.
 
 ## Adapter Architecture
 

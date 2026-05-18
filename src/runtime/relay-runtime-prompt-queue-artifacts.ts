@@ -411,7 +411,22 @@ export async function relayRuntimeArtifactCleanupRun(runtime: RelayRuntimeDelega
 
 export async function relayRuntimeEnsureActiveThread(runtime: RelayRuntimeDelegate, session: AgentSessionService): Promise<void> {
     if (!session.hasActiveThread()) {
-      await session.newThread();
+      const current = runtime.publicInfo(session);
+      let workspace: string | undefined;
+      let worktreeId: string | undefined;
+      if (runtime.config.sessionWorkspaceMode === "worktree") {
+        const worktree = runtime.worktreeService.create({
+          agentId: current.agentId,
+          contextKey: runtime.contextKey,
+          sourceWorkspace: current.workspace,
+        });
+        workspace = worktree.worktreePath;
+        worktreeId = worktree.id;
+      }
+      const info = await session.newThread(workspace);
+      if (worktreeId) {
+        runtime.worktreeService.linkThread(worktreeId, info.threadId, info.agentId, runtime.contextKey);
+      }
       runtime.updateSession(session);
     }
   }

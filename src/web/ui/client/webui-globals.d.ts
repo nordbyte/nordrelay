@@ -82,6 +82,7 @@ declare function loadSettings(): Promise<void>;
 declare function loadTasks(reset?: boolean): Promise<void>;
 declare function loadVersion(): Promise<void>;
 declare function loadWorkflows(): Promise<void>;
+declare function loadWorktrees(): Promise<void>;
 declare function metricKvCard(title: string, rows?: any[]): string;
 declare function modelLabel(value: any): string;
 declare function normalizeThemePreference(value: any): string;

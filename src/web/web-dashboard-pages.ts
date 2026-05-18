@@ -281,12 +281,29 @@ ${faviconLinks}
 
       <section class="page" id="page-sessions">
         <div class="panel">
-          <div class="sessions-toolbar">
-            <div class="row search-row"><input id="sessionSearch" placeholder="Search sessions"><button id="sessionSearchBtn">Search</button></div>
-            <div class="row attach-row"><input id="attachInput" placeholder="Thread ID to attach/switch"><button id="attachBtn">Attach</button></div>
+          <div class="section-header sessions-section-header">
+            <div id="sessionTabs" class="section-tabs session-tabs" role="tablist" aria-label="Session sections">
+              <button type="button" role="tab" aria-selected="true" tabindex="0" data-session-tab="sessions" class="active">Sessions</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-session-tab="worktrees">Worktrees</button>
+            </div>
           </div>
-          <div id="sessionsList" class="sessions-table-host"></div>
-          <div id="sessionsPager" class="pager"></div>
+          <div class="session-tab active" data-session-tab-panel="sessions">
+            <div class="sessions-toolbar">
+              <div class="row search-row"><input id="sessionSearch" placeholder="Search sessions"><button id="sessionSearchBtn">Search</button></div>
+              <div class="row attach-row"><input id="attachInput" placeholder="Thread ID to attach/switch"><button id="attachBtn">Attach</button></div>
+            </div>
+            <div id="sessionsList" class="sessions-table-host"></div>
+            <div id="sessionsPager" class="pager"></div>
+          </div>
+          <div class="session-tab" data-session-tab-panel="worktrees">
+            <div class="sessions-toolbar">
+              <div class="row search-row"><button id="reloadWorktreesBtn">Reload worktrees</button><button id="forkWorktreeBtn" class="secondary">Fork current</button><label class="checkbox"><input id="forkIncludeUncommitted" type="checkbox"> Include uncommitted diff</label></div>
+              <div class="row attach-row"><button id="integrateWorktreesBtn">Integrate selected</button></div>
+            </div>
+            <div id="worktreeWarnings" class="list"></div>
+            <div id="worktreesList" class="sessions-table-host"></div>
+            <div id="worktreeIntegrations" class="list"></div>
+          </div>
         </div>
       </section>
 
@@ -559,6 +576,7 @@ ${faviconLinks}
         <label>Model<select id="newModel"></select></label>
         <label id="newReasoningWrap">Reasoning<select id="newReasoning"></select></label>
         <label id="newLaunchWrap">Launch profile<select id="newLaunch"></select></label>
+        <label>Workspace mode<select id="newWorkspaceMode"><option value="">Default</option><option value="shared">Shared workspace</option><option value="worktree">Isolated worktree</option><option value="attached">Attached/manual</option></select></label>
         <label id="newFastWrap" class="checkbox"><input id="newFast" type="checkbox"> Fast mode</label>
       </div>
       <datalist id="workspaceOptions"></datalist>

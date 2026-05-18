@@ -67,6 +67,8 @@ import { capabilitiesOf } from "../channels/shared/bot-rendering.js";
 import { renderSessionInfoPlain, renderSessionUsageRows } from "../channels/shared/session-format.js";
 import { SessionLockStore, type SessionLock } from "../access/session-locks.js";
 import { SessionRegistry, type ContextMetadata } from "../state/session-registry.js";
+import { createSessionWorktreeStore, SessionWorktreeService } from "../worktrees/worktree-service.js";
+import type { SessionWorktreeRecord, WorktreeDashboardSnapshot, WorktreeIntegrationRun } from "../worktrees/worktree-types.js";
 import { createSupportBundle, type SupportBundleResult } from "../support/support-bundle.js";
 import { transcribeAudio, type TranscriptionBackend } from "../artifacts/voice.js";
 import {
@@ -234,6 +236,7 @@ import {
   relayRuntimeGetControlSession,
   relayRuntimeCliPathOptions
 } from "./relay-runtime-sessions.js";
+import { relayRuntimeCommitSessionWorktree, relayRuntimeForkCurrentSessionToWorktree, relayRuntimeIntegrateSessionWorktrees, relayRuntimeRemoveSessionWorktree, relayRuntimeSessionWorktrees } from "./relay-runtime-worktrees.js";
 import {
   relayRuntimeSendPrompt,
   relayRuntimeSendUploadPrompt,
@@ -295,6 +298,7 @@ export class RelayRuntime {
   readonly queuePlanStore: QueuePlanStore;
   readonly workflowService: RelayWorkflowService;
   readonly artifactService: RelayArtifactService;
+  readonly worktreeService: SessionWorktreeService;
   readonly mirrorRegistry: ChannelMirrorRegistry;
   readonly externalActivityMonitor: RelayExternalActivityMonitor;
   readonly cache = new RuntimeSnapshotCache();
@@ -315,9 +319,11 @@ export class RelayRuntime {
 
   constructor(readonly config: ConnectorConfig, options: RelayRuntimeOptions = {}) {
     this.contextKey = options.contextKey ?? WEB_CONTEXT_KEY;
+    this.worktreeService = new SessionWorktreeService(config, createSessionWorktreeStore(config));
     this.registry = new SessionRegistry(config, {
       fileName: options.registryFileName ?? "web-contexts.json",
       sqliteKey: options.registrySqliteKey ?? "web-contexts",
+      worktreeService: this.worktreeService,
     });
     this.promptStore = new PromptStore(config.workspace, config.stateBackend);
     this.chatStore = new WebChatStore(config.workspace, config.stateBackend, MAX_CHAT_HISTORY);
@@ -623,14 +629,7 @@ export class RelayRuntime {
     return relayRuntimeSetAgent(this, agentId, actor);
   }
 
-  async newSession(options: {
-    agentId?: AgentId;
-    workspace?: string;
-    model?: string;
-    reasoningEffort?: string;
-    launchProfileId?: string;
-    fastMode?: boolean;
-  } = {}, actor?: WebActivityActor): Promise<AgentSessionInfo> {
+  async newSession(options: { agentId?: AgentId; workspace?: string; workspaceMode?: "shared" | "worktree" | "attached"; model?: string; reasoningEffort?: string; launchProfileId?: string; fastMode?: boolean } = {}, actor?: WebActivityActor): Promise<AgentSessionInfo> {
     return relayRuntimeNewSession(this, options, actor);
   }
 
@@ -641,6 +640,12 @@ export class RelayRuntime {
   async attachSession(threadId: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
     return relayRuntimeAttachSession(this, threadId, actor);
   }
+
+  async sessionWorktrees(): Promise<WorktreeDashboardSnapshot> { return relayRuntimeSessionWorktrees(this); }
+  async commitSessionWorktree(id: string, message?: string, actor?: WebActivityActor): Promise<{ record: SessionWorktreeRecord; clean: boolean; status: string[] }> { return relayRuntimeCommitSessionWorktree(this, id, message, actor); }
+  async integrateSessionWorktrees(ids: string[], actor?: WebActivityActor): Promise<WorktreeIntegrationRun> { return relayRuntimeIntegrateSessionWorktrees(this, ids, actor); }
+  async forkCurrentSessionToWorktree(options: { includeUncommitted?: boolean } = {}, actor?: WebActivityActor): Promise<{ session: AgentSessionInfo; record: SessionWorktreeRecord; copiedUntrackedFiles: string[]; skippedUntrackedFiles: string[]; patchApplied: boolean }> { return relayRuntimeForkCurrentSessionToWorktree(this, options, actor); }
+  async removeSessionWorktree(id: string, force = false, actor?: WebActivityActor): Promise<SessionWorktreeRecord> { return relayRuntimeRemoveSessionWorktree(this, id, force, actor); }
 
   async setModel(model: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
     return relayRuntimeSetModel(this, model, actor);
@@ -840,8 +845,5 @@ export class RelayRuntime {
     return relayRuntimeScheduleActiveSessionsBroadcast(this);
   }
 
-  publicInfo(session: AgentSessionService, options?: AgentSessionInfoOptions): AgentSessionInfo {
-    return relayRuntimePublicInfo(this, session, options);
-  }
-
+  publicInfo(session: AgentSessionService, options?: AgentSessionInfoOptions): AgentSessionInfo { return relayRuntimePublicInfo(this, session, options); }
 }

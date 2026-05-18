@@ -1008,7 +1008,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     try {
-      await session.newThread();
+      await registry.startNewThread(contextKey, session);
       updateSessionMetadata(contextKey, session);
       return true;
     } catch (error) {
@@ -2345,8 +2345,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const workspaces = filterAllowedWorkspaces(session.listWorkspaces(), config);
     if (workspaces.length <= 1) {
       try {
-        const info = await session.newThread();
-        updateSessionMetadata(contextKey, session);
+        const info = await registry.startNewThread(contextKey, session);
         appendTelegramActivity(ctx, contextKey, session, {
           status: "info",
           type: "session_new",
@@ -3453,8 +3452,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const busyState = getBusyState(contextKey);
     busyState.switching = true;
     try {
-      const info = await session.newThread(workspace);
-      updateSessionMetadata(contextKey, session);
+      const info = await registry.startNewThread(contextKey, session, { workspace });
       appendTelegramActivity(ctx, contextKey, session, {
         status: "info",
         type: "session_new",

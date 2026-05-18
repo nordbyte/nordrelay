@@ -1,5 +1,6 @@
 import type { CodexLaunchProfile } from "../codex/codex-launch.js";
 import type { CodexSessionUsage } from "../codex/codex-state.js";
+import type { SessionWorkspaceMode } from "../../worktrees/worktree-types.js";
 
 export const AGENT_IDS = ["codex", "pi", "hermes", "openclaw", "claude-code"] as const;
 export type AgentId = typeof AGENT_IDS[number];
@@ -206,6 +207,17 @@ export interface AgentSessionInfo {
   sessionUsage?: AgentSessionUsage;
   contextUsage?: AgentContextUsage;
   sessionPath?: string;
+  workspaceMode?: SessionWorkspaceMode;
+  worktree?: {
+    id: string;
+    sourceWorkspace: string;
+    repoRoot: string;
+    baseSha: string;
+    branchName: string;
+    status: string;
+    dirty?: boolean;
+    commitSha?: string;
+  };
   capabilities: AgentCapabilities;
 }
 
@@ -263,6 +275,17 @@ export interface AgentThreadRecord {
   firstUserMessage: string | null;
   agentId: AgentId;
   sessionPath?: string;
+  workspaceMode?: SessionWorkspaceMode;
+  worktree?: {
+    id: string;
+    sourceWorkspace: string;
+    repoRoot: string;
+    baseSha: string;
+    branchName: string;
+    status: string;
+    dirty?: boolean;
+    commitSha?: string;
+  };
 }
 
 export interface AgentFastModeResult {
@@ -340,6 +363,7 @@ export interface AgentDiagnostics {
 
 export interface AgentCreateOptions {
   workspace?: string;
+  workspaceMode?: SessionWorkspaceMode;
   model?: string;
   reasoningEffort?: string;
   launchProfileId?: string;

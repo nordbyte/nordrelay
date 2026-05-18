@@ -172,6 +172,9 @@ Workspace policy:
 
 - `WORKSPACE_ALLOWED_ROOTS`: comma-separated root directories allowed for session switching and workspace selection. Empty means unrestricted.
 - `WORKSPACE_WARN_ROOTS`: comma-separated broad roots that should be allowed but warned about in `/session` and `/workspaces`.
+- `NORDRELAY_SESSION_WORKSPACE_MODE`: controls how new NordRelay sessions choose a workspace. `shared` keeps the current workspace behavior, `worktree` creates an isolated Git worktree per new session, and `attached` marks external/manual sessions without creating a worktree.
+- `NORDRELAY_SESSION_WORKTREE_ROOT`: directory for session worktrees and integration worktrees. Defaults to `~/.nordrelay/worktrees`.
+- `NORDRELAY_SESSION_WORKTREE_BRANCH_PREFIX`: Git branch prefix for session and integration branches. Defaults to `nr/session`.
 
 Auth and voice:
 

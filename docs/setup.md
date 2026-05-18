@@ -299,8 +299,9 @@ http://127.0.0.1:31878/
 The dashboard is a second NordRelay client next to Telegram. It can:
 
 - Start a new Codex, Pi, Hermes, OpenClaw, or Claude Code session.
-- Start a new session from a modal with agent, workspace, model, reasoning/thinking, fast mode, and launch-profile choices.
+- Start a new session from a modal with agent, workspace, workspace mode, model, reasoning/thinking, fast mode, and launch-profile choices.
 - Switch or attach existing sessions, and copy thread IDs from the session list.
+- Manage isolated session worktrees from the Sessions page, including fork current, commit, remove, and integrate selected worktree branches.
 - Send prompts and receive streamed text/tool/plan updates through Server-Sent Events.
 - Mirror native CLI-started turns into the WebUI chat with `off`, `status`, `final`, and `full` modes from the toolbar or `/mirror [mode]`.
 - Upload images, documents, and audio files from the chat composer. Images are passed as image inputs, documents are staged for the agent, and audio is transcribed through the configured voice backend.

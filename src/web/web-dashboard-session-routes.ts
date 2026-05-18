@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { isAgentId, type AgentId } from "../agents/shared/agent.js";
 import type { RelayRuntime, SessionPageDto } from "../runtime/relay-runtime.js";
 import type { QueuePlanInput } from "../runtime/relay-runtime-queue-planner.js";
+import { SESSION_WORKSPACE_MODES, type SessionWorkspaceMode } from "../worktrees/worktree-types.js";
 import type { AuthenticatedUser } from "../access/user-management.js";
 import type { WebActivityActor, WebActivityCategory } from "./web-state.js";
 import { QUEUE_PLAN_STATUSES, type QueuePlanStatus } from "../state/queue-plan-store.js";
@@ -121,18 +122,59 @@ export async function handleDashboardSessionRoute(
     const body = await readJsonBody(req);
     const agentId = options.parseAgentId(optionalStringField(body, "agentId"));
     const workspace = optionalStringField(body, "workspace");
+    const workspaceMode = parseWorkspaceMode(optionalStringField(body, "workspaceMode"));
     options.assertScopedAgent(authUser, agentId);
     options.assertScopedWorkspace(authUser, workspace);
     sendJson(res, 200, {
       session: await runtime.newSession({
         agentId,
         workspace,
+        workspaceMode,
         model: optionalStringField(body, "model"),
         reasoningEffort: optionalStringField(body, "reasoningEffort"),
         launchProfileId: optionalStringField(body, "launchProfileId"),
         fastMode: optionalBooleanField(body, "fastMode"),
       }, options.activityActor),
     });
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/sessions/worktrees") {
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, await runtime.sessionWorktrees());
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/sessions/worktrees/fork") {
+    const body = await readJsonBody(req);
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, await runtime.forkCurrentSessionToWorktree({
+      includeUncommitted: optionalBooleanField(body, "includeUncommitted"),
+    }, options.activityActor));
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/sessions/worktrees/integrate") {
+    const body = await readJsonBody(req);
+    const ids = Array.isArray(body?.ids) ? body.ids.map(String).filter(Boolean) : [];
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, { run: await runtime.integrateSessionWorktrees(ids, options.activityActor) });
+    return true;
+  }
+
+  const worktreeCommitMatch = url.pathname.match(/^\/api\/sessions\/worktrees\/([^/]+)\/commit$/);
+  if (req.method === "POST" && worktreeCommitMatch) {
+    const body = await readJsonBody(req);
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, await runtime.commitSessionWorktree(decodeURIComponent(worktreeCommitMatch[1]!), optionalStringField(body, "message"), options.activityActor));
+    return true;
+  }
+
+  const worktreeMatch = url.pathname.match(/^\/api\/sessions\/worktrees\/([^/]+)$/);
+  if (req.method === "DELETE" && worktreeMatch) {
+    const body = await readJsonBody(req).catch(() => ({}));
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, { record: await runtime.removeSessionWorktree(decodeURIComponent(worktreeMatch[1]!), optionalBooleanField(body, "force") ?? false, options.activityActor) });
     return true;
   }
 
@@ -358,6 +400,16 @@ export async function handleDashboardSessionRoute(
   }
 
   return false;
+}
+
+function parseWorkspaceMode(value: string | undefined): SessionWorkspaceMode | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (SESSION_WORKSPACE_MODES.includes(value as SessionWorkspaceMode)) {
+    return value as SessionWorkspaceMode;
+  }
+  throw new Error(`Invalid workspace mode: ${value}`);
 }
 
 function parseQueuePlanBody(body: unknown, options: DashboardSessionRouteOptions): QueuePlanInput {

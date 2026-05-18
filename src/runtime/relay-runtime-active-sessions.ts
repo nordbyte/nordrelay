@@ -391,6 +391,19 @@ export function relayRuntimeSessionStubForMetadata(runtime: RelayRuntimeDelegate
       fastMode: false,
       unsafeLaunch: false,
       sessionPath: meta.sessionPath,
+      workspaceMode: meta.workspaceMode ?? "attached",
+      worktree: meta.worktreeId ? (() => {
+        const record = runtime.worktreeService.getByThreadId(meta.threadId);
+        return record ? {
+          id: record.id,
+          sourceWorkspace: record.sourceWorkspace,
+          repoRoot: record.repoRoot,
+          baseSha: record.baseSha,
+          branchName: record.branchName,
+          status: record.status,
+          commitSha: record.commitSha,
+        } : undefined;
+      })() : undefined,
       capabilities,
     };
     return {
@@ -521,10 +534,24 @@ export function relayRuntimeScheduleActiveSessionsBroadcast(runtime: RelayRuntim
 export function relayRuntimePublicInfo(runtime: RelayRuntimeDelegate, session: AgentSessionService, options?: AgentSessionInfoOptions): AgentSessionInfo {
     const info = session.getInfo(options);
     const agentId = info.agentId ?? "codex";
+    const metadata = runtime.listKnownContextMetadata().find((meta) => meta.contextKey === runtime.contextKey && (!info.threadId || meta.threadId === info.threadId));
+    const worktree = runtime.worktreeService.getByThreadId(info.threadId) ?? runtime.worktreeService.getByWorkspace(info.workspace);
+    const worktreeSnapshot = worktree ? runtime.worktreeService.snapshot(worktree) : undefined;
     return {
       ...info,
       agentId,
       agentLabel: info.agentLabel ?? agentLabel(agentId),
+      workspaceMode: worktreeSnapshot ? "worktree" : (info.workspaceMode ?? metadata?.workspaceMode ?? "shared"),
+      worktree: worktreeSnapshot ? {
+        id: worktreeSnapshot.id,
+        sourceWorkspace: worktreeSnapshot.sourceWorkspace,
+        repoRoot: worktreeSnapshot.repoRoot,
+        baseSha: worktreeSnapshot.baseSha,
+        branchName: worktreeSnapshot.branchName,
+        status: worktreeSnapshot.statusText,
+        dirty: worktreeSnapshot.dirty,
+        commitSha: worktreeSnapshot.commitSha,
+      } : info.worktree,
       capabilities: info.capabilities ?? CODEX_AGENT_CAPABILITIES,
     };
   }

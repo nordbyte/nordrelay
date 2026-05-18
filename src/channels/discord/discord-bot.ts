@@ -332,7 +332,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
 
   const ensureActiveThread = async (request: DiscordRequest, session: AgentSessionService): Promise<void> => {
     if (!session.hasActiveThread()) {
-      await session.newThread();
+      await registry.startNewThread(request.contextKey, session);
       updateSession(request, session);
     }
   };
@@ -865,8 +865,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       await reply(request, "Workspace is not allowed.");
       return;
     }
-    const info = await session.newThread(workspaceValue);
-    updateSession(request, session);
+    const info = await registry.startNewThread(request.contextKey, session, { workspace: workspaceValue });
     appendActivity(request, { status: "info", type: "session_new", threadId: info.threadId, workspace: info.workspace, agentId: info.agentId, detail: info.workspace });
     await reply(request, `New thread created.\n\n${renderSessionInfoPlain(info)}`);
   };

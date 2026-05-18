@@ -121,6 +121,9 @@ describe("loadConfig", () => {
     delete process.env.NORDRELAY_WORKSPACE;
     delete process.env.NORDRELAY_SOURCE_ROOT;
     delete process.env.NORDRELAY_STATE_BACKEND;
+    delete process.env.NORDRELAY_SESSION_WORKSPACE_MODE;
+    delete process.env.NORDRELAY_SESSION_WORKTREE_ROOT;
+    delete process.env.NORDRELAY_SESSION_WORKTREE_BRANCH_PREFIX;
     delete process.env.NORDRELAY_AUDIT_MAX_EVENTS;
     delete process.env.NORDRELAY_SESSION_LOCK_TTL_MS;
     delete process.env.NORDRELAY_PEER_ENABLED;
@@ -236,6 +239,9 @@ describe("loadConfig", () => {
       workspace: process.cwd(),
       workspaceAllowedRoots: [],
       workspaceWarnRoots: [],
+      sessionWorkspaceMode: "shared",
+      sessionWorktreeRoot: path.join(homedir(), ".nordrelay", "worktrees"),
+      sessionWorktreeBranchPrefix: "nr/session",
       stateBackend: "json",
       maxFileSize: 20 * 1024 * 1024,
       artifactRetentionDays: 7,
@@ -499,6 +505,9 @@ describe("loadConfig", () => {
     expect(config.workspaceAllowedRoots).toEqual([]);
     expect(config.workspaceWarnRoots).toEqual([]);
     expect(config.workspace).toBe(process.cwd());
+    expect(config.sessionWorkspaceMode).toBe("shared");
+    expect(config.sessionWorktreeRoot).toBe(path.join(homedir(), ".nordrelay", "worktrees"));
+    expect(config.sessionWorktreeBranchPrefix).toBe("nr/session");
   });
 
   it("parses webhook transport settings", () => {

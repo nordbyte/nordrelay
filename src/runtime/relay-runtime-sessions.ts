@@ -99,6 +99,7 @@ import type {
 export type { RuntimeMetricsDto } from "./metrics.js";
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "../core/workspace-policy.js";
 import type { RelayRuntimeDelegate } from "./relay-runtime-delegate.js";
+import type { SessionWorktreeRecord } from "../worktrees/worktree-types.js";
 export type {
   ActiveSessionDto,
   ActiveSessionsDto,
@@ -538,7 +539,7 @@ export async function relayRuntimeSync(runtime: RelayRuntimeDelegate, actor?: We
 export async function relayRuntimeListSessions(runtime: RelayRuntimeDelegate, limit = 80, query = "", agentId?: AgentId): Promise<AgentThreadRecord[]> {
     const { session, dispose } = await runtime.getControlSession(agentId);
     try {
-      return runtime.filteredSessions(session, query, Math.max(1, limit * 3)).slice(0, limit);
+      return runtime.filteredSessions(session, query, Math.max(1, limit * 3)).slice(0, limit).map((record) => enrichThreadRecord(runtime, record));
     } finally {
       if (dispose) {
         session.dispose();
@@ -553,7 +554,7 @@ export async function relayRuntimeListSessionsPage(runtime: RelayRuntimeDelegate
       const effectivePageSize = Math.min(MAX_WEB_SESSION_PAGE_SIZE, Math.max(1, Math.floor(pageSize)));
       const offset = (effectivePage - 1) * effectivePageSize;
       const requested = Math.min(5_000, Math.max(100, (offset + effectivePageSize + 1) * 3));
-      const records = runtime.filteredSessions(session, query, requested);
+      const records = runtime.filteredSessions(session, query, requested).map((record) => enrichThreadRecord(runtime, record));
       return {
         sessions: records.slice(offset, offset + effectivePageSize),
         pagination: {
@@ -595,6 +596,32 @@ function sessionUpdatedAtMs(record: AgentThreadRecord): number {
     return Number.isFinite(value) ? value : 0;
   }
 
+function enrichThreadRecord(runtime: RelayRuntimeDelegate, record: AgentThreadRecord): AgentThreadRecord {
+    const worktree = runtime.worktreeService.getByThreadId(record.id) ?? runtime.worktreeService.getByWorkspace(record.cwd);
+    const metadata = runtime.listKnownContextMetadata().find((meta) => meta.threadId === record.id);
+    if (!worktree) {
+      return {
+        ...record,
+        workspaceMode: metadata?.workspaceMode ?? "attached",
+      };
+    }
+    const snapshot = runtime.worktreeService.snapshot(worktree);
+    return {
+      ...record,
+      workspaceMode: "worktree",
+      worktree: {
+        id: snapshot.id,
+        sourceWorkspace: snapshot.sourceWorkspace,
+        repoRoot: snapshot.repoRoot,
+        baseSha: snapshot.baseSha,
+        branchName: snapshot.branchName,
+        status: snapshot.statusText,
+        dirty: snapshot.dirty,
+        commitSha: snapshot.commitSha,
+      },
+    };
+  }
+
 export async function relayRuntimeListModels(runtime: RelayRuntimeDelegate): Promise<ReturnType<AgentSessionService["listModels"]>> {
     const session = await runtime.getSession(true);
     const info = runtime.publicInfo(session);
@@ -629,6 +656,7 @@ export async function relayRuntimeSetAgent(runtime: RelayRuntimeDelegate, agentI
 export async function relayRuntimeNewSession(runtime: RelayRuntimeDelegate, options: {
     agentId?: AgentId;
     workspace?: string;
+    workspaceMode?: "shared" | "worktree" | "attached";
     model?: string;
     reasoningEffort?: string;
     launchProfileId?: string;
@@ -636,6 +664,18 @@ export async function relayRuntimeNewSession(runtime: RelayRuntimeDelegate, opti
   } = {}, actor?: WebActivityActor): Promise<AgentSessionInfo> {
     const session = options.agentId ? await runtime.registry.switchAgent(runtime.contextKey, options.agentId) : await runtime.getSession(true);
     runtime.ensureIdle(session);
+    const requestedMode = options.workspaceMode ?? runtime.config.sessionWorkspaceMode;
+    const sourceWorkspace = options.workspace ?? session.getInfo().workspace ?? runtime.config.workspace;
+    let worktree: SessionWorktreeRecord | undefined;
+    let effectiveWorkspace = options.workspace;
+    if (requestedMode === "worktree") {
+      worktree = runtime.worktreeService.create({
+        agentId: session.getInfo().agentId,
+        contextKey: runtime.contextKey,
+        sourceWorkspace,
+      });
+      effectiveWorkspace = worktree.worktreePath;
+    }
     if (options.reasoningEffort) {
       const reasoningOptions = agentReasoningOptions(session.getInfo().agentId);
       if (!reasoningOptions.includes(options.reasoningEffort as never)) {
@@ -649,7 +689,10 @@ export async function relayRuntimeNewSession(runtime: RelayRuntimeDelegate, opti
     if (typeof options.fastMode === "boolean" && (session.getInfo().capabilities ?? CODEX_AGENT_CAPABILITIES).fastMode) {
       session.setFastMode(options.fastMode);
     }
-    const info = await session.newThread(options.workspace, options.model);
+    const info = await session.newThread(effectiveWorkspace, options.model);
+    if (worktree) {
+      worktree = runtime.worktreeService.linkThread(worktree.id, info.threadId, info.agentId, runtime.contextKey);
+    }
     runtime.updateSession(session);
     runtime.appendActivity({
       source: "web",
@@ -659,7 +702,7 @@ export async function relayRuntimeNewSession(runtime: RelayRuntimeDelegate, opti
       workspace: info.workspace,
       agentId: info.agentId,
       actor,
-      detail: "New dashboard session created.",
+      detail: worktree ? `New isolated session worktree ${worktree.branchName} created.` : "New dashboard session created.",
     });
     return runtime.publicInfo(session);
   }

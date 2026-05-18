@@ -37,6 +37,12 @@ import type { QueuePlanStatus } from "../state/queue-plan-store.js";
 import type { SessionLock } from "../access/session-locks.js";
 import type { SettingsSnapshot, SettingsUpdateResult } from "../core/settings-service.js";
 import type {
+  SessionWorkspaceMode,
+  SessionWorktreeRecord,
+  WorktreeDashboardSnapshot,
+  WorktreeIntegrationRun,
+} from "../worktrees/worktree-types.js";
+import type {
   DiscordChannelAccessRecord,
   DiscordIdentityRecord,
   GroupRecord,
@@ -153,7 +159,11 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/profile/logout-other-sessions" ? Record<string, never> :
   P extends "/api/agent" ? { agentId: AgentId } :
   P extends "/api/agent-update" ? { agentId: AgentId; operation?: "update" | "install" } :
-  P extends "/api/sessions/new" ? { agentId?: AgentId; workspace?: string; model?: string; reasoningEffort?: string; launchProfileId?: string; fastMode?: boolean } :
+  P extends "/api/sessions/new" ? { agentId?: AgentId; workspace?: string; workspaceMode?: SessionWorkspaceMode; model?: string; reasoningEffort?: string; launchProfileId?: string; fastMode?: boolean } :
+  P extends "/api/sessions/worktrees/fork" ? { includeUncommitted?: boolean } :
+  P extends "/api/sessions/worktrees/integrate" ? { ids: string[] } :
+  P extends `/api/sessions/worktrees/${string}/commit` ? { message?: string } :
+  P extends `/api/sessions/worktrees/${string}` ? { force?: boolean } :
   P extends "/api/sessions/switch" | "/api/sessions/attach" ? { threadId: string } :
   P extends "/api/session/model" ? { model: string } :
   P extends "/api/session/reasoning" ? { reasoning: string } :
@@ -248,6 +258,11 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/control-options" ? DashboardControlOptions :
   P extends "/api/sessions" ? SessionPageDto :
   P extends "/api/sessions/new" | "/api/sessions/switch" | "/api/sessions/attach" | "/api/agent" | "/api/session/model" | "/api/session/reasoning" | "/api/session/fast" | "/api/session/launch" ? { session: AgentSessionInfo } :
+  P extends "/api/sessions/worktrees" ? WorktreeDashboardSnapshot :
+  P extends "/api/sessions/worktrees/fork" ? { session: AgentSessionInfo; record: SessionWorktreeRecord; copiedUntrackedFiles: string[]; skippedUntrackedFiles: string[]; patchApplied: boolean } :
+  P extends "/api/sessions/worktrees/integrate" ? { run: WorktreeIntegrationRun } :
+  P extends `/api/sessions/worktrees/${string}/commit` ? { record: SessionWorktreeRecord; clean: boolean; status: string[] } :
+  P extends `/api/sessions/worktrees/${string}` ? { record: SessionWorktreeRecord } :
   P extends "/api/sessions/detail" ? WebSessionDetailResponse :
   P extends "/api/models" ? { models: unknown[] } :
   P extends "/api/prompt" | "/api/prompt/upload" | "/api/retry" ? UploadPromptResult :

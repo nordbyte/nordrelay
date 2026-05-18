@@ -1,15 +1,19 @@
 import { createAgentSessionService } from "../agents/shared/agent-factory.js";
-import { CODEX_AGENT_CAPABILITIES, type AgentId, type AgentSessionService, type AgentSyncResult } from "../agents/shared/agent.js";
+import { CODEX_AGENT_CAPABILITIES, type AgentId, type AgentSessionInfo, type AgentSessionService, type AgentSyncResult } from "../agents/shared/agent.js";
 import { findLaunchProfile } from "../agents/codex/codex-launch.js";
 import type { ConnectorConfig } from "../core/config.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import { createDocumentStore, type DocumentStore } from "./state-backend.js";
+import type { SessionWorkspaceMode } from "../worktrees/worktree-types.js";
+import type { SessionWorktreeService } from "../worktrees/worktree-service.js";
 
 export interface ContextMetadata {
   contextKey: ChannelContextKey;
   agentId?: AgentId;
   threadId: string | null;
   workspace: string;
+  workspaceMode?: SessionWorkspaceMode;
+  worktreeId?: string;
   model?: string;
   reasoningEffort?: string;
   launchProfileId?: string;
@@ -22,6 +26,7 @@ export interface ContextMetadata {
 export interface SessionRegistryOptions {
   fileName?: string;
   sqliteKey?: string;
+  worktreeService?: SessionWorktreeService;
 }
 
 export class SessionRegistry {
@@ -30,7 +35,10 @@ export class SessionRegistry {
   private readonly store: DocumentStore<ContextMetadata[]>;
   private onRemoveCallback?: (contextKey: ChannelContextKey) => void;
 
+  private readonly worktreeService?: SessionWorktreeService;
+
   constructor(private readonly config: ConnectorConfig, options: SessionRegistryOptions = {}) {
+    this.worktreeService = options.worktreeService;
     this.store = createDocumentStore<ContextMetadata[]>({
       workspace: config.workspace,
       fileName: options.fileName ?? "contexts.json",
@@ -56,8 +64,18 @@ export class SessionRegistry {
     const meta = this.metadata.get(contextKey);
     const agentId = options?.agentId ?? meta?.agentId ?? this.config.defaultAgent ?? "codex";
     const launchProfileId = resolveLaunchProfileId(this.config, meta);
+    const mode = meta?.workspaceMode ?? this.config.sessionWorkspaceMode;
+    let workspace = meta?.workspace;
+    let worktreeId = meta?.worktreeId;
+    const shouldStartThread = !options?.deferThreadStart && !meta?.threadId;
+    if (shouldStartThread && mode === "worktree") {
+      const worktree = this.createWorktree(contextKey, agentId, workspace ?? this.config.workspace);
+      workspace = worktree.worktreePath;
+      worktreeId = worktree.id;
+    }
     session = await createAgentSessionService(this.config, agentId, {
-      workspace: meta?.workspace,
+      workspace,
+      workspaceMode: mode,
       model: meta?.model,
       reasoningEffort: meta?.reasoningEffort,
       launchProfileId,
@@ -67,6 +85,10 @@ export class SessionRegistry {
     });
 
     this.sessions.set(contextKey, session);
+    if (worktreeId && shouldStartThread) {
+      this.worktreeService?.linkThread(worktreeId, session.getInfo().threadId, agentId, contextKey);
+      this.updateMetadata(contextKey, session, { workspaceMode: "worktree", worktreeId });
+    }
     return session;
   }
 
@@ -96,6 +118,7 @@ export class SessionRegistry {
       agentId,
       threadId: null,
       workspace: previous?.workspace ?? this.config.workspace,
+      workspaceMode: "shared",
       pinnedThreadIdsByAgent: previous?.pinnedThreadIdsByAgent,
       updatedAt: Date.now(),
     };
@@ -104,22 +127,61 @@ export class SessionRegistry {
     return this.getOrCreate(contextKey, { deferThreadStart: true, agentId });
   }
 
-  updateMetadata(contextKey: ChannelContextKey, session: AgentSessionService): void {
+  async startNewThread(
+    contextKey: ChannelContextKey,
+    session: AgentSessionService,
+    options: { workspace?: string; model?: string; workspaceMode?: SessionWorkspaceMode } = {},
+  ): Promise<AgentSessionInfo> {
+    const current = session.getInfo();
+    const mode = options.workspaceMode ?? this.config.sessionWorkspaceMode;
+    let workspace = options.workspace;
+    let worktreeId: string | undefined;
+    if (mode === "worktree") {
+      const worktree = this.createWorktree(contextKey, current.agentId ?? "codex", workspace ?? current.workspace ?? this.config.workspace);
+      workspace = worktree.worktreePath;
+      worktreeId = worktree.id;
+    }
+    const info = await session.newThread(workspace, options.model);
+    if (worktreeId) {
+      this.worktreeService?.linkThread(worktreeId, info.threadId, info.agentId ?? current.agentId ?? "codex", contextKey);
+    }
+    this.updateMetadata(contextKey, session, {
+      workspaceMode: mode === "worktree" ? "worktree" : mode,
+      worktreeId,
+    });
+    return info;
+  }
+
+  updateMetadata(
+    contextKey: ChannelContextKey,
+    session: AgentSessionService,
+    overrides: Partial<Pick<ContextMetadata, "workspaceMode" | "worktreeId">> = {},
+  ): void {
     const info = session.getInfo();
     const previous = this.metadata.get(contextKey);
     const agentId = info.agentId ?? "codex";
     const previousPinnedByAgent = previous?.pinnedThreadIdsByAgent ?? {};
     const pinnedThreadIds = previousPinnedByAgent[agentId] ?? previous?.pinnedThreadIds ?? [];
+    const sameThread = Boolean(info.threadId && previous?.threadId === info.threadId);
+    const worktree = this.worktreeService?.getByThreadId(info.threadId) ?? this.worktreeService?.getByWorkspace(info.workspace);
+    const workspaceMode = worktree
+      ? "worktree"
+      : overrides.workspaceMode ?? info.workspaceMode ?? (sameThread ? previous?.workspaceMode : undefined) ?? (this.config.sessionWorkspaceMode === "attached" ? "attached" : "shared");
+    const worktreeId = worktree?.id ?? overrides.worktreeId ?? (sameThread && workspaceMode === "worktree" ? previous?.worktreeId : undefined);
     const next: ContextMetadata = {
       contextKey,
       agentId,
       threadId: info.threadId,
       workspace: info.workspace,
+      workspaceMode,
       model: info.model,
       reasoningEffort: info.reasoningEffort,
       launchProfileId: info.nextLaunchProfileId ?? info.launchProfileId,
       updatedAt: Date.now(),
     };
+    if (worktreeId) {
+      next.worktreeId = worktreeId;
+    }
     if (info.sessionPath) {
       next.sessionPath = info.sessionPath;
     }
@@ -134,6 +196,13 @@ export class SessionRegistry {
     }
     this.metadata.set(contextKey, next);
     this.persistMetadata();
+  }
+
+  private createWorktree(contextKey: ChannelContextKey, agentId: AgentId, sourceWorkspace: string) {
+    if (!this.worktreeService) {
+      throw new Error("Session worktrees are enabled, but no worktree service is configured.");
+    }
+    return this.worktreeService.create({ contextKey, agentId, sourceWorkspace });
   }
 
   pinThread(contextKey: ChannelContextKey, threadId: string): string[] {
@@ -255,6 +324,7 @@ export class SessionRegistry {
       agentId: this.config.defaultAgent ?? "codex",
       threadId: null,
       workspace: this.config.workspace,
+      workspaceMode: this.config.sessionWorkspaceMode,
       launchProfileId: this.config.defaultLaunchProfileId,
       pinnedThreadIds: [],
       updatedAt: Date.now(),

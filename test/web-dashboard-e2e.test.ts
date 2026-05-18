@@ -186,7 +186,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).not.toContain('id="agentSelect"');
     expect(pageSource).toContain('id="sessionLine" class="header-target-line"');
     expect(js).toContain("if(name==='overview') await loadActiveSessions()");
-    expect(js).toContain("if(name==='sessions') await loadSessions(true,options.agentId)");
+    expect(js).toContain("if(name==='sessions'){await loadSessions(true,options.agentId);if(state.sessionTab==='worktrees')await loadWorktrees()}");
   });
 
   it("shows compact relative age for sessions and keeps absolute time in the tooltip", () => {

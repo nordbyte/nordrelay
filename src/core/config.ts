@@ -41,6 +41,8 @@ import {
   parseArtifactDeliveryMode,
   type ArtifactDeliveryMode,
 } from "../artifacts/artifact-delivery.js";
+import { SESSION_WORKSPACE_MODES, type SessionWorkspaceMode } from "../worktrees/worktree-types.js";
+import { SessionWorktreeService } from "../worktrees/worktree-service.js";
 
 export type ToolVerbosity = "all" | "summary" | "errors-only" | "none";
 export type ArtifactSafeFilePolicy = "off" | "warn" | "block";
@@ -105,6 +107,9 @@ export interface ConnectorConfig {
   workspace: string;
   workspaceAllowedRoots: string[];
   workspaceWarnRoots: string[];
+  sessionWorkspaceMode: SessionWorkspaceMode;
+  sessionWorktreeRoot: string;
+  sessionWorktreeBranchPrefix: string;
   stateBackend: StateBackendKind;
   maxFileSize: number;
   artifactRetentionDays: number;
@@ -249,6 +254,9 @@ export function loadConfig(): ConnectorConfig {
   const workspace = resolveWorkspace();
   const workspaceAllowedRoots = parsePathList(optionalString(process.env.WORKSPACE_ALLOWED_ROOTS));
   const workspaceWarnRoots = parsePathList(optionalString(process.env.WORKSPACE_WARN_ROOTS));
+  const sessionWorkspaceMode = parseSessionWorkspaceMode(optionalString(process.env.NORDRELAY_SESSION_WORKSPACE_MODE));
+  const sessionWorktreeRoot = path.resolve(optionalString(process.env.NORDRELAY_SESSION_WORKTREE_ROOT) ?? SessionWorktreeService.defaultRoot());
+  const sessionWorktreeBranchPrefix = parseBranchPrefix(optionalString(process.env.NORDRELAY_SESSION_WORKTREE_BRANCH_PREFIX));
   const stateBackend = parseStateBackend(optionalString(process.env.NORDRELAY_STATE_BACKEND));
   const stateBackendAvailability = checkStateBackendAvailability(workspace, stateBackend);
   if (!stateBackendAvailability.ok) {
@@ -470,6 +478,9 @@ export function loadConfig(): ConnectorConfig {
     workspace,
     workspaceAllowedRoots,
     workspaceWarnRoots,
+    sessionWorkspaceMode,
+    sessionWorktreeRoot,
+    sessionWorktreeBranchPrefix,
     stateBackend,
     maxFileSize,
     artifactRetentionDays,
@@ -853,6 +864,27 @@ function parseStateBackend(raw: string | undefined): StateBackendKind {
 
   console.warn(`Invalid NORDRELAY_STATE_BACKEND value: "${raw}". Expected json or sqlite. Falling back to json.`);
   return "json";
+}
+
+function parseSessionWorkspaceMode(raw: string | undefined): SessionWorkspaceMode {
+  if (!raw) {
+    return "shared";
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (SESSION_WORKSPACE_MODES.includes(normalized as SessionWorkspaceMode)) {
+    return normalized as SessionWorkspaceMode;
+  }
+  console.warn(`Invalid NORDRELAY_SESSION_WORKSPACE_MODE value: "${raw}". Expected shared, worktree, or attached. Falling back to shared.`);
+  return "shared";
+}
+
+function parseBranchPrefix(raw: string | undefined): string {
+  const normalized = (raw?.trim() || "nr/session").replace(/^\/+|\/+$/g, "");
+  if (!normalized || normalized.includes("..") || /[\s~^:?*[\\]/.test(normalized)) {
+    console.warn(`Invalid NORDRELAY_SESSION_WORKTREE_BRANCH_PREFIX value: "${raw}". Falling back to nr/session.`);
+    return "nr/session";
+  }
+  return normalized;
 }
 
 function parseLaunchProfiles(

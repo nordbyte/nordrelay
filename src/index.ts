@@ -33,6 +33,7 @@ import { RelayRuntime } from "./runtime/relay-runtime.js";
 import { configureRedaction } from "./core/redaction.js";
 import { SessionRegistry } from "./state/session-registry.js";
 import { UserStore } from "./access/user-management.js";
+import { createSessionWorktreeStore, SessionWorktreeService } from "./worktrees/worktree-service.js";
 
 let registry: SessionRegistry | undefined;
 let bot: ReturnType<typeof createBot> | undefined;
@@ -50,7 +51,8 @@ try {
   runtimeConfig = config;
   configureRedaction(config.telegramRedactPatterns);
   installConsoleLogger(config.logFormat);
-  registry = new SessionRegistry(config);
+  const worktreeService = new SessionWorktreeService(config, createSessionWorktreeStore(config));
+  registry = new SessionRegistry(config, { worktreeService });
   if (config.telegramEnabled) {
     bot = createBot(config, registry);
     await registerCommands(bot);

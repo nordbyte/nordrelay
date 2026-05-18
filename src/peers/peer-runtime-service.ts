@@ -278,12 +278,36 @@ export class PeerRuntimeService {
         session: await runtime.newSession({
           agentId,
           workspace,
+          workspaceMode: stringValue(body.workspaceMode) as never || undefined,
           model: stringValue(body.model) || undefined,
           reasoningEffort: stringValue(body.reasoningEffort) || undefined,
           launchProfileId: stringValue(body.launchProfileId) || undefined,
           fastMode: typeof body.fastMode === "boolean" ? body.fastMode : undefined,
         }, remoteActor),
       };
+    }
+    if (method === "GET" && path === "/api/sessions/worktrees") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.sessionWorktrees();
+    }
+    if (method === "POST" && path === "/api/sessions/worktrees/fork") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.forkCurrentSessionToWorktree({ includeUncommitted: Boolean(body.includeUncommitted) }, remoteActor);
+    }
+    if (method === "POST" && path === "/api/sessions/worktrees/integrate") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
+      return { run: await runtime.integrateSessionWorktrees(ids, remoteActor) };
+    }
+    const worktreeCommitMatch = path.match(/^\/api\/sessions\/worktrees\/([^/]+)\/commit$/);
+    if (method === "POST" && worktreeCommitMatch?.[1]) {
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.commitSessionWorktree(decodeURIComponent(worktreeCommitMatch[1]), stringValue(body.message), remoteActor);
+    }
+    const worktreeMatch = path.match(/^\/api\/sessions\/worktrees\/([^/]+)$/);
+    if (method === "DELETE" && worktreeMatch?.[1]) {
+      await this.assertCurrentSessionScope(peer, runtime);
+      return { record: await runtime.removeSessionWorktree(decodeURIComponent(worktreeMatch[1]), Boolean(body.force), remoteActor) };
     }
     if (method === "POST" && path === "/api/sessions/switch") {
       const threadId = requiredString(body.threadId, "threadId");
