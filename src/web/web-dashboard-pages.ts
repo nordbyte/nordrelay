@@ -258,7 +258,7 @@ ${faviconLinks}
 
       <section class="page" id="page-metrics">
         <div class="panel">
-          <div class="metrics-section-header">
+          <div class="section-header metrics-section-header">
             <div id="metricsTabs" class="section-tabs metrics-tabs" role="tablist" aria-label="Metrics sections">
               <button type="button" role="tab" aria-selected="true" tabindex="0" data-metrics-tab="overview" class="active">Overview</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-metrics-tab="process">Process</button>

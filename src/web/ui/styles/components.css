@@ -1,7 +1,7 @@
 .access-tab,.adapter-tab,.peer-tab,.workflow-tab,.queue-tab,.monitor-tab,.metrics-tab{display:none}
 .access-tab.active,.adapter-tab.active,.peer-tab.active,.workflow-tab.active,.queue-tab.active,.monitor-tab.active,.metrics-tab.active{display:block}
 .section-header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:-12px -16px 0;padding:0 16px}
-.access-section-header,.settings-section-header,.adapter-section-header,.peer-section-header,.workflow-section-header,.queue-section-header,.monitor-section-header{margin-bottom:12px}
+.access-section-header,.settings-section-header,.adapter-section-header,.peer-section-header,.workflow-section-header,.queue-section-header,.monitor-section-header,.metrics-section-header{margin-bottom:12px}
 .section-tabs{display:flex;align-items:flex-end;gap:2px;width:100%;min-width:0;min-height:43px;overflow-x:auto;overflow-y:hidden;border-bottom:1px solid var(--border)}
 .section-tabs button{appearance:none;-webkit-appearance:none;display:inline-flex;align-items:center;justify-content:center;min-height:43px;height:43px;margin:0;padding:0 14px;border:0;border-radius:0;background:transparent;color:var(--muted);font-weight:650;line-height:1;white-space:nowrap;cursor:pointer;box-shadow:inset 0 -2px 0 transparent}
 .section-tabs button:hover{background:color-mix(in srgb,var(--accent) 8%,transparent);color:var(--text)}
@@ -197,10 +197,11 @@
 .metrics-card strong{margin-bottom:2px}
 .metric-kv{display:grid;grid-template-columns:minmax(138px,42%) minmax(0,1fr);column-gap:14px;margin-top:10px}
 .metric-kv-row{display:contents}
-.metric-kv-label,.metric-kv-value{min-width:0;padding:6px 0;border-top:1px solid var(--border-soft);line-height:1.3}
+.metric-kv-label,.metric-kv-value{display:flex;align-items:center;min-width:0;min-height:32px;padding:6px 0;border-top:1px solid var(--border-soft);font-size:14px;line-height:1.25;box-sizing:border-box}
 .metric-kv-label{color:var(--muted);font-size:13px}
 .metric-kv-value{color:var(--text);font-weight:650;overflow:hidden;text-overflow:ellipsis}
 .metric-kv-value .chip{margin-right:0}
+.metric-kv-number,.metrics-table td{font-size:14px}
 .metrics-auto-refresh{display:inline-flex!important;align-items:center;gap:7px;color:var(--muted);font-size:14px;line-height:1}
 .metrics-auto-refresh input{width:16px;height:16px;margin:0}
 #metricsLastUpdated{display:inline-flex;align-items:center;color:var(--muted);font-variant-numeric:tabular-nums}

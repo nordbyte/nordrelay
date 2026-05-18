@@ -464,7 +464,11 @@ describe("web dashboard browser-flow assets", () => {
     expect(metrics).toContain("function metricRateLimitTable");
     expect(metrics).toContain("function setMetricsAutoRefresh");
     expect(components).toContain(".metric-kv{display:grid");
+    expect(components).toContain(".metrics-section-header{margin-bottom:12px}");
+    expect(components).toContain(".metric-kv-label,.metric-kv-value{display:flex;align-items:center;min-width:0;min-height:32px;padding:6px 0");
+    expect(components).toContain(".metric-kv-number,.metrics-table td{font-size:14px}");
     expect(components).toContain(".metrics-table");
+    expect(pages).toContain('class="section-header metrics-section-header"');
     expect(pages).toContain('data-metrics-tab="web"');
     expect(pages).toContain('id="metricsAutoRefresh"');
     expect(readFileSync("src/web/ui/client/users.js", "utf8")).toContain("function renderUserManagementV2");
