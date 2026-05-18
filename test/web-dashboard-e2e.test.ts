@@ -219,6 +219,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".data-table-actions button{min-height:28px;height:28px;padding:0 8px;font-size:13px");
     expect(css).toContain(".sessions-table");
     expect(css).toContain(".sessions-table th:nth-child(8)");
+    expect(css).toContain(".access-users-table th:nth-child(8)");
+    expect(css).toContain(".access-audit-table th:nth-child(7)");
     expect(css).toContain("@media(max-width:760px){.data-table-wrap");
     expect(css).toContain("content:attr(data-label)");
     expect(css).toContain("justify-content:flex-start;text-align:left");
@@ -473,8 +475,17 @@ describe("web dashboard browser-flow assets", () => {
     expect(pages).toContain('class="section-header metrics-section-header"');
     expect(pages).toContain('data-metrics-tab="web"');
     expect(pages).toContain('id="metricsAutoRefresh"');
-    expect(readFileSync("src/web/ui/client/users.js", "utf8")).toContain("function renderUserManagementV2");
+    const users = readFileSync("src/web/ui/client/users.js", "utf8");
+    expect(users).toContain("function renderUserManagementV2");
+    expect(users).toContain("function renderUsersTable");
+    expect(users).toContain("class=\"data-table access-users-table\"");
+    expect(users).toContain("class=\"data-table access-groups-table\"");
+    expect(users).toContain("class=\"data-table access-channels-table\"");
     const admin = readFileSync("src/web/ui/client/admin.js", "utf8");
+    expect(admin).toContain("function renderLocksTable");
+    expect(admin).toContain("function renderAuditTable");
+    expect(admin).toContain("class=\"data-table access-locks-table\"");
+    expect(admin).toContain("class=\"data-table access-audit-table\"");
     expect(admin).toContain("function diagnosticsHtml");
     expect(admin).toContain("diagnostics-grid");
     expect(admin).toContain("metricKvCard('Runtime'");

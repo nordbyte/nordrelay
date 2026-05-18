@@ -492,10 +492,22 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator(".access-toolbar")).toHaveCount(0);
     await expect(page.locator("#createUserBtn")).toBeVisible();
     await expect(page.locator("#createGroupBtn")).toBeHidden();
+    await expect(page.locator("#accessPanel .access-users-table")).toBeVisible();
+    await expect(page.locator("#accessPanel .access-users-table thead th")).toHaveText([
+      "User",
+      "Email",
+      "Status",
+      "User ID",
+      "Groups",
+      "Identities",
+      "Scope",
+      "Actions",
+    ]);
     await expect(page.locator("#accessPanel")).toContainText("Admin");
     await page.locator("#userSearch").fill("missing");
     await expect(page.locator("#accessPanel")).toContainText("No users match");
     await page.locator("#userSearch").fill("admin");
+    await expect(page.locator("#accessPanel .access-users-table")).toBeVisible();
     await expect(page.locator("#accessPanel")).toContainText("Admin");
     await page.getByRole("button", { name: "Details" }).click();
     await expect(page.locator("#userDetailDialog")).toBeVisible();
@@ -511,15 +523,29 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator('[data-access-tab-panel="groups"] .access-heading-actions')).toContainText("Create group");
     await expect(page.locator("#createGroupBtn")).toBeVisible();
     await expect(page.locator("#createUserBtn")).toBeHidden();
+    await expect(page.locator("#groupsList .access-groups-table")).toBeVisible();
+    await expect(page.locator("#groupsList .access-groups-table thead th")).toHaveText([
+      "Name",
+      "Description",
+      "Users",
+      "Permissions",
+      "Agents",
+      "Workspaces",
+      "Channels",
+      "Actions",
+    ]);
 
     await page.locator('[data-access-tab="telegram"]').click();
     await expect(page.locator('[data-access-tab-panel="telegram"] h2')).toHaveCount(0);
     await expect(page.locator('[data-access-tab-panel="telegram"] .access-heading-actions')).toContainText("Add Telegram chat");
     await expect(page.locator("#createChatBtn")).toBeVisible();
+    await expect(page.locator("#telegramChatsList .access-channels-table")).toBeVisible();
+    await expect(page.locator("#telegramChatsList")).toContainText("Telegram Ops");
 
     await expect(page.locator("#accessTabs")).toContainText("Discord");
     await page.locator('[data-access-tab="discord"]').click();
     await expect(page.locator('[data-access-tab-panel="discord"] h2')).toHaveCount(0);
+    await expect(page.locator("#discordChannelsList .access-channels-table")).toBeVisible();
     await expect(page.locator("#discordChannelsList")).toContainText("Engineering Ops");
     await expect(page.locator("#createDiscordChannelBtn")).toBeVisible();
     await expect(page.locator("#createGroupBtn")).toBeHidden();
@@ -532,6 +558,7 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#accessTabs")).toContainText("Slack");
     await page.locator('[data-access-tab="slack"]').click();
     await expect(page.locator('[data-access-tab-panel="slack"] h2')).toHaveCount(0);
+    await expect(page.locator("#slackChannelsList .access-channels-table")).toBeVisible();
     await expect(page.locator("#slackChannelsList")).toContainText("Slack Engineering");
     await expect(page.locator("#createSlackChannelBtn")).toBeVisible();
 
@@ -544,11 +571,15 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator('[data-access-tab-panel="locks"] h2')).toHaveCount(0);
     await expect(page.locator('[data-access-tab-panel="locks"] .access-heading-actions')).toContainText("Lock web session");
     await expect(page.locator("#lockSessionBtn")).toBeVisible();
+    await expect(page.locator("#locksList .access-locks-table")).toBeVisible();
+    await expect(page.locator("#locksList")).toContainText("Admin");
 
     await page.locator('[data-access-tab="audit"]').click();
     await expect(page.locator('[data-access-tab-panel="audit"] h2')).toHaveCount(0);
     await expect(page.locator('[data-access-tab-panel="audit"] .access-heading-actions')).toContainText("Load audit");
     await expect(page.locator("#loadAuditBtn")).toBeVisible();
+    await expect(page.locator("#auditList .access-audit-table")).toBeVisible();
+    await expect(page.locator("#auditList")).toContainText("Admin login");
   });
 
   test("renders adapter conformance, artifact previews, and peer global sessions", async ({ page }) => {
@@ -952,8 +983,8 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): 
   if (url.pathname === "/api/logs/clear") return { filePath: "/tmp/nordrelay.log", clearedAt: new Date().toISOString() };
   if (url.pathname === "/api/diagnostics") return { health: health(), versionChecks: version().versionChecks, snapshot: bootstrap(session).status.snapshot, runtime: { stateBackend: "json", sourceWorkspace: "/tmp/project", queuePaused: false, externalMirror: null, agentDiagnostics: { lines: [] } } };
   if (url.pathname === "/api/users") return users();
-  if (url.pathname === "/api/locks") return { locks: [] };
-  if (url.pathname === "/api/audit") return { events: [] };
+  if (url.pathname === "/api/locks") return { locks: [{ contextKey: "web:codex-thread-1", ownerLabel: "Admin", ownerUserId: "user-1", ownerChannel: "web", ownerChannelUserId: "admin@example.com", expiresAt: "2099-05-14T10:20:00.000Z" }] };
+  if (url.pathname === "/api/audit") return { events: [{ id: "audit-1", timestamp: now(), channelId: "web", status: "ok", category: "auth", action: "login", actor: { label: "Admin", channel: "web", channelUserId: "admin@example.com" }, contextKey: "web", agentId: "codex", threadId: "codex-thread-1", workspace: "/tmp/project", description: "Admin login" }] };
   if (url.pathname === "/api/auth/status") return { agentId: url.searchParams.get("agent") || "codex", agentLabel: "Codex", supported: true, authenticated: true, detail: "authenticated", loginSupported: true, logoutSupported: true };
   if (url.pathname === "/api/auth/login" || url.pathname === "/api/auth/logout") return { agentId: "codex", agentLabel: "Codex", supported: true, authenticated: true, detail: "ok", loginSupported: true, logoutSupported: true };
   if (url.pathname === "/api/update") return { method: "npm", logPath: "/tmp/update.log", sourceRoot: "/tmp/nordrelay", summary: "mock update" };
@@ -1534,7 +1565,18 @@ function users() {
       },
     ],
     groups: auth.groups,
-    telegramChats: [],
+    telegramChats: [
+      {
+        id: "telegram-chat-1",
+        chatId: 296626516,
+        title: "Telegram Ops",
+        type: "group",
+        enabled: true,
+        allowedGroupIds: ["admin"],
+        createdAt: now(),
+        updatedAt: now(),
+      },
+    ],
     discordChannels: [
       {
         id: "discord-channel-1",

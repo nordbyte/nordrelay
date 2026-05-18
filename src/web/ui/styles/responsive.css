@@ -32,7 +32,7 @@ header{align-items:center}
 .data-table .actions-cell{display:block;padding-top:8px}
 .data-table .actions-cell::before{display:none}
 .data-table-actions{justify-content:flex-start}
-.sessions-table th,.sessions-table td,.templates-table th,.templates-table td,.adapters-table th,.adapters-table td,.metrics-table th,.metrics-table td,.version-table th,.version-table td,.activity-table th,.activity-table td{width:100%!important}
+.sessions-table th,.sessions-table td,.templates-table th,.templates-table td,.adapters-table th,.adapters-table td,.metrics-table th,.metrics-table td,.version-table th,.version-table td,.activity-table th,.activity-table td,.access-users-table th,.access-users-table td,.access-groups-table th,.access-groups-table td,.access-channels-table th,.access-channels-table td,.access-telegram-table th,.access-telegram-table td,.access-locks-table th,.access-locks-table td,.access-audit-table th,.access-audit-table td{width:100%!important}
 }
 @media(max-width:560px){.metrics{grid-template-columns:1fr}
 .metrics-summary{grid-template-columns:1fr 1fr}
