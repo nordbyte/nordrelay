@@ -126,9 +126,9 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .header-target-session-state.error{color:var(--danger)}
 .compact-apply-button{width:auto;min-width:0}
 .messages{flex:1;min-height:0;overflow:auto;border:1px solid var(--border-soft);border-radius:8px;padding:12px;background:var(--surface-soft)}
-.message{position:relative;margin:0 0 12px;padding:10px 42px 10px 12px;border-radius:8px;max-width:92%;white-space:pre-wrap;word-break:break-word}
-.message.user{margin-left:clamp(28px,8%,72px);background:var(--accent-soft)}
-.message.agent{background:color-mix(in srgb,var(--surface-soft) 80%,var(--border))}
+.message{position:relative;width:fit-content;max-width:92%;box-sizing:border-box;margin:0 0 12px;padding:10px 42px 10px 12px;border-radius:8px;white-space:pre-wrap;word-break:break-word}
+.message.user{max-width:min(88%,calc(100% - 36px));margin-left:auto;margin-right:0;background:var(--accent-soft)}
+.message.agent{margin-right:auto;background:color-mix(in srgb,var(--surface-soft) 80%,var(--border))}
 .message.system{background:var(--warn)}
 .message-body{white-space:pre-wrap}
 .message-copy-button{position:absolute;top:6px;right:6px;width:26px;height:26px;min-width:26px;min-height:26px;padding:0;border:1px solid var(--border-soft);border-radius:6px;background:var(--surface);color:var(--muted);opacity:0;pointer-events:none;transition:opacity .12s ease,background .12s ease,border-color .12s ease,color .12s ease}

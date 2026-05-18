@@ -311,6 +311,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("data-message-index");
     expect(js).toContain("function bindChatMessageCopyButton");
     expect(js).toContain("Message copied");
+    expect(css).toContain(".message{position:relative;width:fit-content;max-width:92%");
+    expect(css).toContain(".message.user{max-width:min(88%,calc(100% - 36px));margin-left:auto;margin-right:0");
     expect(css).toContain(".message-copy-button");
     expect(css).toContain("box-sizing:border-box;width:10px;height:12px");
     expect(css).toContain(".message-copy-button::before{left:9px;top:6px}");
