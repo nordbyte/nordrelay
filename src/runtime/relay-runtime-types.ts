@@ -130,9 +130,14 @@ export interface ArtifactReportDto {
   }>;
   provenance?: {
     agentId?: AgentId;
-    threadId?: string;
+    threadId?: string | null;
     workspace?: string;
     source?: string;
+    contextKey?: string;
+    correlationId?: string;
+    prompt?: string;
+    turnStartedAt?: string;
+    actor?: WebActivityActor;
   };
 }
 

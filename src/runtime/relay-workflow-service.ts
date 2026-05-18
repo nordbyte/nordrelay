@@ -7,6 +7,7 @@ import {
   type PromptTemplate,
   type Workflow,
   type WorkflowRun,
+  type WorkflowRunReport,
   type WorkflowStep,
   type WorkflowStepAttempt,
   type WorkflowStepRun,
@@ -55,6 +56,10 @@ export class RelayWorkflowService {
     this.scheduleTimer.unref?.();
     const recoveryTimer = setTimeout(() => this.recoverInterruptedRuns(), 250);
     recoveryTimer.unref?.();
+  }
+
+  dispose(): void {
+    clearInterval(this.scheduleTimer);
   }
 
   list(): { templates: PromptTemplate[]; workflows: Workflow[]; runs: WorkflowRun[] } {
@@ -238,6 +243,7 @@ export class RelayWorkflowService {
       createdAt: now,
       updatedAt: now,
     });
+    this.logRun(run.id, "info", "run", "Template run queued.", template.name);
     this.upsertRunJob(run, actor);
     this.options.appendActivity({
       source: "web",
@@ -269,10 +275,12 @@ export class RelayWorkflowService {
       steps: patchStep(initial.steps, template.id, {
         status: "running",
         prompt,
+        inputPreview: prompt.slice(0, 2_000),
         correlationId,
         startedAt,
       }),
     }) ?? initial;
+    this.logRun(id, "info", "run", "Template run started.", template.name);
     this.upsertRunJob(run, actor);
     this.options.appendActivity({
       source: "web",
@@ -296,6 +304,7 @@ export class RelayWorkflowService {
         currentStepIndex: 1,
         steps: patchStep(latest.steps, template.id, { status: "completed", finishedAt }),
       }) ?? latest;
+      this.logRun(id, "info", "run", "Template run completed.", template.name);
       this.upsertRunJob(completed, actor);
     } catch (error) {
       const latest = this.options.store.getRun(id) ?? run;
@@ -304,6 +313,7 @@ export class RelayWorkflowService {
       const withFailedStep = this.options.store.patchRun(id, {
         steps: patchStep(latest.steps, template.id, { status: "failed", finishedAt: failedAt, error: errorText }),
       }) ?? latest;
+      this.logRun(id, "error", "run", "Template run failed.", errorText);
       this.failRun(withFailedStep, error, actor);
     } finally {
       this.activeRuns.delete(id);
@@ -346,6 +356,7 @@ export class RelayWorkflowService {
       createdAt: now,
       updatedAt: now,
     });
+    this.logRun(run.id, "info", "run", "Workflow run queued.", workflow.name);
     this.upsertRunJob(run, actor);
     this.record("workflow_run_queued", "queued", workflow.name, actor);
     void this.executeWorkflowRun(run.id, actor).catch((error) => {
@@ -362,6 +373,7 @@ export class RelayWorkflowService {
       error: "Cancelled by user.",
     });
     if (!run) return null;
+    this.logRun(id, "warn", "run", "Workflow run cancelled by user.");
     if (this.activeRuns.has(id)) {
       await this.options.abort(actor).catch(() => {});
     }
@@ -381,6 +393,7 @@ export class RelayWorkflowService {
       finishedAt: undefined,
       steps: currentStep ? patchStep(run.steps, currentStep.stepId, { approvedAt: new Date().toISOString() }) : run.steps,
     }) ?? run;
+    this.logRun(id, "info", "run", "Workflow run resumed.");
     this.upsertRunJob(resumed, actor);
     this.record("workflow_run_resumed", "queued", resumed.name, actor);
     void this.executeWorkflowRun(id, actor).catch((error) => {
@@ -411,6 +424,7 @@ export class RelayWorkflowService {
       currentStepIndex: startIndex,
       steps: resetSteps,
     }) ?? run;
+    this.logRun(id, "info", "run", "Workflow run queued from failed step.", `Starting at step ${startIndex + 1}.`);
     this.upsertRunJob(patched, actor);
     this.record("workflow_run_rerun_from_failed_step", "queued", `${patched.name} from step ${startIndex + 1}`, actor);
     if (patched.workflowId) {
@@ -427,6 +441,30 @@ export class RelayWorkflowService {
     return patched;
   }
 
+  runReport(id: string): WorkflowRunReport {
+    const run = this.options.store.getRun(id);
+    if (!run) {
+      throw new Error(`Workflow run not found: ${id}`);
+    }
+    const started = run.startedAt ? Date.parse(run.startedAt) : Date.parse(run.createdAt);
+    const finished = run.finishedAt ? Date.parse(run.finishedAt) : undefined;
+    const durationMs = Number.isFinite(started) && Number.isFinite(finished) ? Math.max(0, (finished as number) - started) : null;
+    return {
+      generatedAt: new Date().toISOString(),
+      run,
+      summary: {
+        status: run.status,
+        totalSteps: run.steps.length,
+        completedSteps: run.steps.filter((step) => step.status === "completed").length,
+        failedSteps: run.steps.filter((step) => step.status === "failed").length,
+        skippedSteps: run.steps.filter((step) => step.status === "skipped").length,
+        durationMs,
+      },
+      steps: run.steps,
+      logs: run.logs ?? [],
+    };
+  }
+
   private async executeWorkflowRun(id: string, actor?: WebActivityActor, depth = 0): Promise<void> {
     const initial = this.options.store.getRun(id);
     if (!initial?.workflowId) return;
@@ -436,6 +474,7 @@ export class RelayWorkflowService {
       status: "running",
       startedAt: new Date().toISOString(),
     }) ?? initial;
+    this.logRun(id, "info", "run", "Workflow run started.", run.name);
     this.upsertRunJob(run, actor);
     this.record("workflow_run_started", "running", run.name, actor);
 
@@ -451,11 +490,18 @@ export class RelayWorkflowService {
             currentStepIndex: index + 1,
             steps: patchStep(run.steps, step.id, { status: "skipped", skippedReason: conditionDetail(step), finishedAt }),
           }) ?? run;
+          this.logRun(id, "info", "step", "Step skipped.", conditionDetail(step), step.id);
           this.upsertRunJob(run, actor);
           continue;
         }
         if (step.requiresApproval && !stepRun?.approvedAt) {
-          run = this.options.store.patchRun(id, { status: "paused", currentStepIndex: index }) ?? run;
+          const pauseReason = `Approval required before ${step.name}.`;
+          run = this.options.store.patchRun(id, {
+            status: "paused",
+            currentStepIndex: index,
+            steps: patchStep(run.steps, step.id, { pauseReason }),
+          }) ?? run;
+          this.logRun(id, "warn", "step", "Step paused for approval.", pauseReason, step.id);
           this.upsertRunJob(run, actor);
           this.record("workflow_run_paused_for_approval", "queued", `${run.name} before ${step.name}`, actor);
           this.options.broadcastStatus(`Workflow ${run.name} paused before ${step.name}. Approval is required.`, "warn");
@@ -469,6 +515,7 @@ export class RelayWorkflowService {
         currentStepIndex: workflow.steps.length,
       });
       if (completed) {
+        this.logRun(id, "info", "run", "Workflow run completed.", completed.name);
         this.upsertRunJob(completed, actor);
         this.record("workflow_run_completed", "completed", completed.name, actor);
       }
@@ -487,6 +534,7 @@ export class RelayWorkflowService {
       } catch (error) {
         lastError = error;
         if (attempt >= policy.maxAttempts || step.continueOnError) throw error;
+        this.logRun(id, "warn", "step", "Step attempt failed; retry scheduled.", error instanceof Error ? error.message : String(error), step.id);
         await new Promise((resolve) => setTimeout(resolve, policy.delayMs));
       }
     }
@@ -518,6 +566,7 @@ export class RelayWorkflowService {
         }),
       }),
     }) ?? run;
+    this.logRun(id, "info", "step", `Step ${attempt > 1 ? `attempt ${attempt} ` : ""}started.`, step.name, step.id);
     this.upsertRunJob(run, actor);
 
     try {
@@ -537,9 +586,11 @@ export class RelayWorkflowService {
         steps: patchStep(latest.steps, step.id, {
           status: "completed",
           finishedAt,
+          outputSummary: step.type === "workflow" ? "Subflow completed." : step.target !== "local" ? "Peer step completed." : "Prompt completed.",
           attemptHistory: finishAttemptHistory(latest.steps.find((candidate) => candidate.stepId === step.id)?.attemptHistory, attempt, "completed", finishedAt),
         }),
       });
+      this.logRun(id, "info", "step", "Step completed.", step.name, step.id);
       if (next) this.upsertRunJob(next, actor);
     } catch (error) {
       const latest = this.options.store.getRun(id) ?? run;
@@ -556,6 +607,7 @@ export class RelayWorkflowService {
           attemptHistory: finishAttemptHistory(latest.steps.find((candidate) => candidate.stepId === step.id)?.attemptHistory, attempt, "failed", finishedAt, errorText),
         }),
       });
+      this.logRun(id, "error", "step", "Step failed.", errorText, step.id);
       if (next) this.upsertRunJob(next, actor);
       this.options.appendActivity({
         source: "web",
@@ -669,6 +721,8 @@ export class RelayWorkflowService {
       createdAt: now,
       updatedAt: now,
     });
+    this.logRun(parentRunId, "info", "step", "Subflow queued.", workflow.name, step.id);
+    this.logRun(run.id, "info", "run", "Subflow run queued.", `Parent run: ${parentRunId}`);
     this.record("workflow_subflow_queued", "queued", `${parentRunId}: ${workflow.name}`, actor);
     await this.executeWorkflowRun(run.id, actor, depth + 1);
     const finished = this.options.store.getRun(run.id);
@@ -712,6 +766,7 @@ export class RelayWorkflowService {
       error: errorText,
       finishedAt: new Date().toISOString(),
     }) ?? run;
+    this.logRun(run.id, "error", "run", "Workflow run failed.", errorText);
     this.upsertRunJob(failed, actor);
     this.record("workflow_run_failed", "failed", `${run.name}: ${errorText}`, actor);
     return failed;
@@ -755,6 +810,23 @@ export class RelayWorkflowService {
     });
   }
 
+  private logRun(
+    runId: string,
+    level: "info" | "warn" | "error",
+    scope: "run" | "step",
+    message: string,
+    detail?: string,
+    stepId?: string,
+  ): void {
+    this.options.store.appendRunLog(runId, {
+      level,
+      scope,
+      stepId,
+      message,
+      detail,
+    });
+  }
+
   private runDueSchedules(): void {
     const now = Date.now();
     for (const workflow of this.options.store.listWorkflows()) {
@@ -782,6 +854,7 @@ export class RelayWorkflowService {
         error: undefined,
         finishedAt: undefined,
       }) ?? run;
+      this.logRun(patched.id, "warn", "run", "Interrupted workflow run recovered.", patched.name);
       this.upsertRunJob(patched, actor);
       this.record("workflow_run_recovered", "queued", patched.name, actor);
       if (patched.workflowId) {

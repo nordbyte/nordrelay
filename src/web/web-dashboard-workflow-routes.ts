@@ -125,12 +125,16 @@ export async function handleDashboardWorkflowRoute(
     return true;
   }
 
-  const workflowRunMatch = url.pathname.match(/^\/api\/workflow-runs\/([^/]+)(?:\/(cancel|rerun-failed))?$/);
+  const workflowRunMatch = url.pathname.match(/^\/api\/workflow-runs\/([^/]+)(?:\/(cancel|rerun-failed|report))?$/);
   if (workflowRunMatch?.[1]) {
     const id = decodeURIComponent(workflowRunMatch[1]);
     const action = workflowRunMatch[2];
     if (req.method === "GET" && !action) {
       sendJson(res, 200, { run: options.runtime.workflowStore.getRun(id) });
+      return true;
+    }
+    if (req.method === "GET" && action === "report") {
+      sendJson(res, 200, service.runReport(id));
       return true;
     }
     if (req.method === "POST" && action === "cancel") {

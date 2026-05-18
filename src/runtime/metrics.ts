@@ -66,6 +66,27 @@ export interface RuntimeMetricsDto {
   web: ReturnType<typeof getWebApiPerformanceMetrics>;
 }
 
+export interface RuntimeMetricHistorySample {
+  at: string;
+  queueLength: number;
+  queuePaused: boolean;
+  activeTurns: number;
+  failedTurns: number;
+  runningJobs: number;
+  failedJobs: number;
+  rssBytes: number;
+  heapUsedBytes: number;
+  cpuPercent: number | null;
+  eventLoopP95Ms: number | null;
+  webAverageMs: number | null;
+  webMaxMs: number | null;
+  rateLimitHits: {
+    telegram: number;
+    discord: number;
+    slack: number;
+  };
+}
+
 export function buildRuntimeMetrics(input: {
   queueLength: number;
   queuePaused: boolean;
@@ -106,6 +127,36 @@ export function buildRuntimeMetrics(input: {
       slack: getSlackRateLimitMetrics(),
     },
     web: getWebApiPerformanceMetrics(),
+  };
+}
+
+export function runtimeMetricHistorySample(metrics: RuntimeMetricsDto): RuntimeMetricHistorySample {
+  const webRoutes = metrics.web?.routes ?? [];
+  const webAverageMs = webRoutes.length
+    ? roundMetric(webRoutes.reduce((sum, route) => sum + Number(route.averageMs || 0), 0) / webRoutes.length)
+    : null;
+  const webMaxMs = webRoutes.length
+    ? Math.max(...webRoutes.map((route) => Number(route.maxMs || 0)))
+    : null;
+  return {
+    at: metrics.generatedAt,
+    queueLength: metrics.queue.length,
+    queuePaused: metrics.queue.paused,
+    activeTurns: metrics.turns.active,
+    failedTurns: metrics.turns.failed,
+    runningJobs: metrics.jobs.running,
+    failedJobs: metrics.jobs.failed,
+    rssBytes: metrics.process.memory.rssBytes,
+    heapUsedBytes: metrics.process.memory.heapUsedBytes,
+    cpuPercent: metrics.process.cpu.percentSinceStart,
+    eventLoopP95Ms: metrics.process.eventLoop.delayP95Ms,
+    webAverageMs,
+    webMaxMs,
+    rateLimitHits: {
+      telegram: Number(metrics.adapters.telegram?.rateLimitHits ?? 0),
+      discord: Number(metrics.adapters.discord?.rateLimitHits ?? 0),
+      slack: Number(metrics.adapters.slack?.rateLimitHits ?? 0),
+    },
   };
 }
 

@@ -8,6 +8,7 @@ import type { ChannelDescriptor } from "../channels/shared/channel-adapter.js";
 import type { ClearLogResult, ConnectorHealth, ConnectorRuntimeState, FormattedLogTail, SelfUpdateResult, VersionChecks } from "../support/operations.js";
 import type { PeerDiscoveryJobSnapshot, PeerDiscoveryResult, PeerIdentityBackup, PeerRelayQueueSnapshot, PeerSnapshot, PublicPeerRecord } from "../peers/peer-types.js";
 import type { PeerOutboundRelaySnapshot } from "../peers/peer-outbound-relay.js";
+import type { RuntimeMetricHistorySample, RuntimeMetricsDto } from "../runtime/metrics.js";
 import type { WebApiDynamicPathFromContract, WebApiStaticPathFromContract } from "./web-api-contract.js";
 import type {
   ActiveSessionsDto,
@@ -33,7 +34,7 @@ import type {
   WorkflowRunResultDto,
   WebTasksDto,
 } from "../runtime/relay-runtime.js";
-import type { PromptTemplate, Workflow, WorkflowExportBundle, WorkflowRun, WorkflowStep, WorkflowVersionDiff, WorkflowVersionRecord } from "../state/workflow-store.js";
+import type { PromptTemplate, Workflow, WorkflowExportBundle, WorkflowRun, WorkflowRunReport, WorkflowStep, WorkflowVersionDiff, WorkflowVersionRecord } from "../state/workflow-store.js";
 import type { QueuePlanStatus } from "../state/queue-plan-store.js";
 import type { SessionLock } from "../access/session-locks.js";
 import type { SettingsSnapshot, SettingsUpdateResult } from "../core/settings-service.js";
@@ -45,6 +46,7 @@ import type {
   WorktreeCleanupResult,
   WorktreeConflictResolution,
   WorktreeDashboardSnapshot,
+  WorktreeIntegrationPatchExport,
   WorktreeIntegrationRun,
   WorktreeIntegrationPreview,
 } from "../worktrees/worktree-types.js";
@@ -169,6 +171,7 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/sessions/worktrees/fork" ? { includeUncommitted?: boolean } :
   P extends "/api/sessions/worktrees/integrate" ? { ids: string[]; resolutions?: WorktreeConflictResolution[] } :
   P extends "/api/sessions/worktrees/integrate/preview" ? { ids: string[] } :
+  P extends "/api/sessions/worktrees/integrate/patch" ? { ids: string[] } :
   P extends "/api/sessions/worktrees/cleanup" ? Record<string, never> :
   P extends `/api/sessions/worktrees/${string}/commit` ? { message?: string } :
   P extends `/api/sessions/worktrees/${string}/update` ? Record<string, never> :
@@ -231,6 +234,8 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/health" ? WebStatusResponse :
   P extends "/api/snapshot" ? RelaySnapshot :
   P extends "/api/tasks" | "/api/progress" ? WebTasksDto :
+  P extends "/api/metrics" ? RuntimeMetricsDto :
+  P extends "/api/metrics/history" ? { samples: RuntimeMetricHistorySample[] } :
   P extends "/api/jobs" ? UnifiedJobsDto :
   P extends "/api/trace" ? TraceDetailDto :
   P extends "/api/active-sessions" ? ActiveSessionsDto :
@@ -285,6 +290,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends `/api/workflows/${string}/run` ? WorkflowRunResultDto :
   P extends `/api/workflows/${string}/preview` ? WorkflowPreviewDto :
   P extends `/api/workflows/${string}` ? { workflow?: Workflow; removed?: boolean } :
+  P extends `/api/workflow-runs/${string}/report` ? WorkflowRunReport :
   P extends `/api/workflow-runs/${string}/cancel` | `/api/workflow-runs/${string}/rerun-failed` | `/api/workflow-runs/${string}` ? { run: WorkflowRun | null } :
   P extends "/api/control-options" ? DashboardControlOptions :
   P extends "/api/sessions" ? SessionPageDto :
@@ -293,6 +299,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/sessions/worktrees/fork" ? { session: AgentSessionInfo; record: SessionWorktreeRecord; copiedUntrackedFiles: string[]; skippedUntrackedFiles: string[]; patchApplied: boolean } :
   P extends "/api/sessions/worktrees/integrate" ? { run: WorktreeIntegrationRun } :
   P extends "/api/sessions/worktrees/integrate/preview" ? WorktreeIntegrationPreview :
+  P extends "/api/sessions/worktrees/integrate/patch" ? WorktreeIntegrationPatchExport :
   P extends "/api/sessions/worktrees/cleanup" ? WorktreeCleanupResult :
   P extends `/api/sessions/worktrees/${string}/diff` ? SessionWorktreeDiffSnapshot :
   P extends `/api/sessions/worktrees/${string}/update` ? SessionWorktreeUpdateResult :

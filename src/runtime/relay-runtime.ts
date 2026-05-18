@@ -40,9 +40,10 @@ import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "../state/pro
 import { UnifiedJobStore } from "../state/job-store.js";
 import { WorkflowStore } from "../state/workflow-store.js";
 import { QueuePlanStore, type QueuePlanStatus } from "../state/queue-plan-store.js";
+import { MetricsHistoryStore } from "../state/metrics-history-store.js";
 import { RelayWorkflowService } from "./relay-workflow-service.js";
 import { runPeerWorkflowPromptStep } from "./relay-peer-workflow.js";
-import { buildRuntimeMetrics, type RuntimeMetricsDto } from "./metrics.js";
+import { buildRuntimeMetrics, runtimeMetricHistorySample, type RuntimeMetricHistorySample, type RuntimeMetricsDto } from "./metrics.js";
 import { RelayArtifactService } from "./relay-artifact-service.js";
 import { RelayAuthService } from "./relay-auth-service.js";
 import { RelayExternalActivityMonitor } from "./relay-external-activity-monitor.js";
@@ -69,7 +70,7 @@ import { renderSessionInfoPlain, renderSessionUsageRows } from "../channels/shar
 import { SessionLockStore, type SessionLock } from "../access/session-locks.js";
 import { SessionRegistry, type ContextMetadata } from "../state/session-registry.js";
 import { createSessionWorktreeStore, SessionWorktreeService } from "../worktrees/worktree-service.js";
-import type { SessionWorktreeDiffSnapshot, SessionWorktreeRecord, SessionWorktreeUpdateResult, WorktreeCleanupResult, WorktreeDashboardSnapshot, WorktreeIntegrationOptions, WorktreeIntegrationRun, WorktreeIntegrationPreview } from "../worktrees/worktree-types.js";
+import type { SessionWorktreeDiffSnapshot, SessionWorktreeRecord, SessionWorktreeUpdateResult, WorktreeCleanupResult, WorktreeDashboardSnapshot, WorktreeIntegrationOptions, WorktreeIntegrationPatchExport, WorktreeIntegrationRun, WorktreeIntegrationPreview } from "../worktrees/worktree-types.js";
 import { createSupportBundle, type SupportBundleResult } from "../support/support-bundle.js";
 import { transcribeAudio, type TranscriptionBackend } from "../artifacts/voice.js";
 import {
@@ -237,7 +238,7 @@ import {
   relayRuntimeGetControlSession,
   relayRuntimeCliPathOptions
 } from "./relay-runtime-sessions.js";
-import { relayRuntimeCleanupSessionWorktrees, relayRuntimeCommitSessionWorktree, relayRuntimeForkCurrentSessionToWorktree, relayRuntimeIntegrateSessionWorktrees, relayRuntimePreviewSessionWorktreeIntegration, relayRuntimeRemoveSessionWorktree, relayRuntimeSessionWorktreeDiff, relayRuntimeSessionWorktrees, relayRuntimeUpdateSessionWorktreeFromBase } from "./relay-runtime-worktrees.js";
+import { relayRuntimeCleanupSessionWorktrees, relayRuntimeCommitSessionWorktree, relayRuntimeExportSessionWorktreeIntegrationPatch, relayRuntimeForkCurrentSessionToWorktree, relayRuntimeIntegrateSessionWorktrees, relayRuntimePreviewSessionWorktreeIntegration, relayRuntimeRemoveSessionWorktree, relayRuntimeSessionWorktreeDiff, relayRuntimeSessionWorktrees, relayRuntimeUpdateSessionWorktreeFromBase } from "./relay-runtime-worktrees.js";
 import {
   relayRuntimeSendPrompt,
   relayRuntimeSendUploadPrompt,
@@ -297,6 +298,7 @@ export class RelayRuntime {
   readonly jobStore: UnifiedJobStore;
   readonly workflowStore: WorkflowStore;
   readonly queuePlanStore: QueuePlanStore;
+  readonly metricsHistoryStore: MetricsHistoryStore;
   readonly workflowService: RelayWorkflowService;
   readonly artifactService: RelayArtifactService;
   readonly worktreeService: SessionWorktreeService;
@@ -311,6 +313,7 @@ export class RelayRuntime {
   readonly agentUpdateStates = new Map<string, { status: AgentUpdateJobSnapshot["status"]; needsInput: boolean }>();
   externalMonitor?: AdaptiveExternalMonitorHandle;
   activeSessionsBroadcastTimer: NodeJS.Timeout | null = null;
+  metricsHistoryTimer: NodeJS.Timeout | null = null;
   activeSessionsLastBroadcastAt = 0;
   draining = false;
   currentTurnId: string | null = null;
@@ -336,6 +339,7 @@ export class RelayRuntime {
     this.jobStore = new UnifiedJobStore(config.workspace, config.stateBackend, config.unifiedJobMaxItems);
     this.workflowStore = new WorkflowStore(config.workspace, config.stateBackend);
     this.queuePlanStore = new QueuePlanStore(config.workspace, config.stateBackend);
+    this.metricsHistoryStore = new MetricsHistoryStore(config.workspace, config.stateBackend);
     this.artifactService = new RelayArtifactService(config);
     this.authService = new RelayAuthService(config);
     this.mirrorRegistry = new ChannelMirrorRegistry(config, this.promptStore);
@@ -354,8 +358,8 @@ export class RelayRuntime {
       mirrorMinUpdateMs: () => this.config.webMirrorMinUpdateMs,
       chatStore: this.chatStore,
       chatHistory: () => this.chatHistory(),
-      persistWorkspaceArtifactsForTurn: (workspace, turnId, startedAt) =>
-        this.artifactService.persistWorkspaceArtifactsForTurn(workspace, turnId, startedAt),
+      persistWorkspaceArtifactsForTurn: (workspace, turnId, startedAt, provenance) =>
+        this.artifactService.persistWorkspaceArtifactsForTurn(workspace, turnId, startedAt, provenance),
       drainQueue: () => this.drainQueue(),
       appendActivity: (input) => this.appendActivity(input),
       broadcast: (event) => this.broadcast(event),
@@ -373,6 +377,15 @@ export class RelayRuntime {
       cliPathOptions: () => this.cliPathOptions(),
     });
     this.dashboardService.startBackgroundRefresh();
+    const recordMetricsHistory = () => {
+      void this.metrics()
+        .then((metrics) => this.metricsHistoryStore.append(runtimeMetricHistorySample(metrics)))
+        .catch((error) => this.broadcastStatus(`Failed to record metrics history: ${friendlyErrorText(error)}`, "warn"));
+    };
+    const initialMetricsTimer = setTimeout(recordMetricsHistory, 2_000);
+    initialMetricsTimer.unref?.();
+    this.metricsHistoryTimer = setInterval(recordMetricsHistory, 60_000);
+    this.metricsHistoryTimer.unref?.();
     if (config.codexExternalBusyCheckMs > 0) {
       this.externalMonitor = startAdaptiveExternalMonitor({
         baseMs: config.codexExternalBusyCheckMs,
@@ -515,6 +528,10 @@ export class RelayRuntime {
     return relayRuntimeMetrics(this);
   }
 
+  metricsHistory(limit = 240): RuntimeMetricHistorySample[] {
+    return this.metricsHistoryStore.list(limit);
+  }
+
   audit(options: number | AuditListOptions = 50): AuditEvent[] {
     return relayRuntimeAudit(this, options);
   }
@@ -596,6 +613,7 @@ export class RelayRuntime {
   async sessionWorktrees(): Promise<WorktreeDashboardSnapshot> { return relayRuntimeSessionWorktrees(this); }
   async sessionWorktreeDiff(id: string): Promise<SessionWorktreeDiffSnapshot> { return relayRuntimeSessionWorktreeDiff(this, id); }
   async previewSessionWorktreeIntegration(ids: string[]): Promise<WorktreeIntegrationPreview> { return relayRuntimePreviewSessionWorktreeIntegration(this, ids); }
+  async exportSessionWorktreeIntegrationPatch(ids: string[]): Promise<WorktreeIntegrationPatchExport> { return relayRuntimeExportSessionWorktreeIntegrationPatch(this, ids); }
   async updateSessionWorktreeFromBase(id: string, actor?: WebActivityActor): Promise<SessionWorktreeUpdateResult> { return relayRuntimeUpdateSessionWorktreeFromBase(this, id, actor); }
   async cleanupSessionWorktrees(actor?: WebActivityActor): Promise<WorktreeCleanupResult> { return relayRuntimeCleanupSessionWorktrees(this, actor); }
   async commitSessionWorktree(id: string, message?: string, actor?: WebActivityActor): Promise<{ record: SessionWorktreeRecord; clean: boolean; status: string[] }> { return relayRuntimeCommitSessionWorktree(this, id, message, actor); }

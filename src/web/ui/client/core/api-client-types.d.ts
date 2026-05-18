@@ -53,6 +53,7 @@ export type WebApiStaticPath =
   | "/api/logs"
   | "/api/logs/clear"
   | "/api/metrics"
+  | "/api/metrics/history"
   | "/api/models"
   | "/api/peers"
   | "/api/peers/discover"
@@ -88,6 +89,7 @@ export type WebApiStaticPath =
   | "/api/sessions/worktrees/cleanup"
   | "/api/sessions/worktrees/fork"
   | "/api/sessions/worktrees/integrate"
+  | "/api/sessions/worktrees/integrate/patch"
   | "/api/sessions/worktrees/integrate/preview"
   | "/api/settings"
   | "/api/settings/wizard/test"
@@ -156,6 +158,7 @@ export type WebApiDynamicPath =
   | `/api/users/${string}/telegram/${string}`
   | `/api/workflow-runs/${string}`
   | `/api/workflow-runs/${string}/cancel`
+  | `/api/workflow-runs/${string}/report`
   | `/api/workflow-runs/${string}/rerun-failed`
   | `/api/workflows/${string}`
   | `/api/workflows/${string}/diff`

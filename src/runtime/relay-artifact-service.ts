@@ -14,6 +14,7 @@ import {
   removeArtifactTurn,
   totalArtifactSize,
   type ArtifactCleanupPlan,
+  type ArtifactProvenance,
   type ArtifactStorageUsage,
   type ArtifactTurnReport,
 } from "../artifacts/artifacts.js";
@@ -154,7 +155,7 @@ export class RelayArtifactService {
     return artifactCleanupDto(await cleanupArtifactStorage(workspace, this.cleanupOptions(), false));
   }
 
-  async persistWorkspaceArtifactsForTurn(workspace: string, turnId: string, startedAt: Date): Promise<void> {
+  async persistWorkspaceArtifactsForTurn(workspace: string, turnId: string, startedAt: Date, provenance?: ArtifactProvenance): Promise<void> {
     const report = await collectRecentWorkspaceArtifacts(workspace, {
       since: startedAt,
       until: new Date(),
@@ -166,7 +167,11 @@ export class RelayArtifactService {
     if (report.artifacts.length === 0 && report.skippedCount === 0 && !report.omittedCount) {
       return;
     }
-    await persistWorkspaceArtifactReport(workspace, turnId, report);
+    await persistWorkspaceArtifactReport(workspace, turnId, report, {
+      ...provenance,
+      workspace: provenance?.workspace ?? workspace,
+      turnStartedAt: provenance?.turnStartedAt ?? startedAt.toISOString(),
+    });
     if (this.config.artifactMaxTotalBytes > 0 || this.config.artifactRetentionDays > 0) {
       await cleanupArtifactStorage(workspace, this.cleanupOptions(), false);
     }
@@ -183,6 +188,11 @@ export class RelayArtifactService {
 }
 
 function artifactDto(report: ArtifactTurnReport, config: ConnectorConfig): ArtifactReportDto {
+  const provenance = report.provenance ?? {
+    source: report.source,
+    threadId: report.turnId,
+    workspace: report.outDir,
+  };
   return {
     turnId: report.turnId,
     updatedAt: report.updatedAt.toISOString(),
@@ -200,10 +210,7 @@ function artifactDto(report: ArtifactTurnReport, config: ConnectorConfig): Artif
         ...safeAssessment(relativePath, config.artifactSafeFilePolicy),
       };
     }),
-    provenance: {
-      source: report.source,
-      threadId: report.turnId,
-    },
+    provenance,
   };
 }
 

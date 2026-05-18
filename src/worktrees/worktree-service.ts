@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -20,6 +20,7 @@ import type {
   WorktreeCleanupResult,
   WorktreeDashboardSnapshot,
   WorktreeIntegrationOptions,
+  WorktreeIntegrationPatchExport,
   WorktreeIntegrationRun,
   WorktreeIntegrationPreview,
   WorktreeIntegrationPreviewSource,
@@ -27,6 +28,7 @@ import type {
 
 const MAX_GIT_BUFFER = 10 * 1024 * 1024;
 const DEFAULT_DIFF_LIMIT_BYTES = 256 * 1024;
+const MAX_FILE_PREVIEW_BYTES = 64 * 1024;
 
 export interface CreateWorktreeOptions {
   agentId?: AgentId;
@@ -248,8 +250,44 @@ export class SessionWorktreeService {
       sourceWorktrees,
       files,
       conflictCandidates,
-      conflictReview: files.map((file) => conflictReviewItem(file, sourceWorktrees)),
+      conflictReview: files.map((file) => conflictReviewItem(file, sourceWorktrees, records, repoRoot, baseSha)),
       warnings,
+      generatedAt,
+    };
+  }
+
+  exportIntegrationPatch(ids: string[]): WorktreeIntegrationPatchExport {
+    const records = ids.map((id) => this.requireRecord(id));
+    if (records.length === 0) {
+      throw new Error("Select at least one worktree to export patches.");
+    }
+    const repoRoot = records[0]!.repoRoot;
+    const baseSha = records[0]!.baseSha;
+    const incompatible = records.find((record) => record.repoRoot !== repoRoot || record.baseSha !== baseSha);
+    if (incompatible) {
+      throw new Error("All selected worktrees must use the same repository and base commit.");
+    }
+    const missingCommit = records.find((record) => !record.commitSha);
+    if (missingCommit) {
+      throw new Error(`Worktree ${missingCommit.id} has no session commit yet.`);
+    }
+    const generatedAt = new Date().toISOString();
+    const content = records.map((record, index) => {
+      const patch = gitRawOutput(["format-patch", "--stdout", `${record.baseSha}..${record.commitSha}`], record.repoRoot, true).trim();
+      const fallback = patch || gitRawOutput(["diff", "--binary", `${record.baseSha}..${record.commitSha}`, "--"], record.repoRoot, true).trim();
+      return [
+        `# NordRelay worktree patch ${index + 1}/${records.length}`,
+        `# Worktree: ${record.id}`,
+        `# Branch: ${record.branchName}`,
+        `# Commit: ${record.commitSha}`,
+        "",
+        fallback,
+      ].join("\n").trimEnd();
+    }).join("\n\n");
+    return {
+      fileName: `nordrelay-worktree-patches-${records[0]!.repoName}-${generatedAt.replace(/[:.]/g, "-")}.patch`,
+      content: `${content}\n`,
+      worktreeIds: records.map((record) => record.id),
       generatedAt,
     };
   }
@@ -635,7 +673,13 @@ function previewSource(record: SessionWorktreeRecord): WorktreeIntegrationPrevie
   };
 }
 
-function conflictReviewItem(file: WorktreeChangedFile, sources: WorktreeIntegrationPreviewSource[]): WorktreeConflictReviewItem {
+function conflictReviewItem(
+  file: WorktreeChangedFile,
+  sources: WorktreeIntegrationPreviewSource[],
+  records: SessionWorktreeRecord[],
+  repoRoot: string,
+  baseSha: string,
+): WorktreeConflictReviewItem {
   const sourceWorktrees = sources.filter((source) => file.sourceWorktreeIds.includes(source.id));
   const sameFile = sourceWorktrees.length > 1;
   const risk = file.status === "conflict" ? "status-mismatch" : sameFile ? "same-file" : "none";
@@ -644,12 +688,61 @@ function conflictReviewItem(file: WorktreeChangedFile, sources: WorktreeIntegrat
     : risk === "status-mismatch"
       ? "Review the file before merging because selected worktrees report different change types."
       : "Review side-by-side diffs before merging because multiple worktrees changed this file.";
-  return {
+  const item: WorktreeConflictReviewItem = {
     path: file.path,
     status: file.status,
     sourceWorktrees,
     risk,
     recommendation,
+  };
+  if (risk !== "none") {
+    item.baseContent = gitContentPreview("Base", repoRoot, baseSha, file.path);
+    item.sourceVersions = sourceWorktrees.map((source) => {
+      const record = records.find((candidate) => candidate.id === source.id);
+      const preview = record?.commitSha
+        ? gitContentPreview(source.branchName, record.repoRoot, record.commitSha, file.path, record.worktreePath)
+        : worktreeFilePreview(source.branchName, record?.worktreePath, file.path);
+      return {
+        ...preview,
+        worktreeId: source.id,
+        branchName: source.branchName,
+        commitSha: source.commitSha,
+      };
+    });
+  }
+  return item;
+}
+
+function gitContentPreview(label: string, cwd: string, ref: string, relativePath: string, fallbackRoot?: string) {
+  const content = gitOutputSafe(["show", `${ref}:${relativePath}`], cwd, true);
+  if (content !== undefined) {
+    return previewContent(label, content);
+  }
+  return worktreeFilePreview(label, fallbackRoot, relativePath);
+}
+
+function worktreeFilePreview(label: string, root: string | undefined, relativePath: string) {
+  if (!root || !isSafeRelativePath(relativePath)) {
+    return { label, unavailable: "File version is not available." };
+  }
+  const filePath = path.join(root, relativePath);
+  const stat = safeStat(filePath);
+  if (!stat?.isFile()) {
+    return { label, unavailable: "File version is not available." };
+  }
+  try {
+    return previewContent(label, readFileSync(filePath, "utf8"));
+  } catch (error) {
+    return { label, unavailable: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function previewContent(label: string, content: string) {
+  const limited = truncateUtf8(content, MAX_FILE_PREVIEW_BYTES);
+  return {
+    label,
+    content: limited.text,
+    truncated: limited.truncated,
   };
 }
 

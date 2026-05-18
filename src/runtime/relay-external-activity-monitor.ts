@@ -17,6 +17,7 @@ import type {
   RelayEvent,
   WebTaskDto,
 } from "./relay-runtime-types.js";
+import type { ArtifactProvenance } from "../artifacts/artifacts.js";
 import {
   type WebActivityEvent,
   type WebActivityActor,
@@ -38,7 +39,7 @@ export interface RelayExternalActivityMonitorOptions {
   mirrorMinUpdateMs: () => number;
   chatStore: WebChatStore;
   chatHistory: () => Promise<WebChatMessage[]>;
-  persistWorkspaceArtifactsForTurn: (workspace: string, turnId: string, startedAt: Date) => Promise<void>;
+  persistWorkspaceArtifactsForTurn: (workspace: string, turnId: string, startedAt: Date, provenance?: ArtifactProvenance) => Promise<void>;
   drainQueue: () => Promise<void>;
   appendActivity: (input: Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }) => WebActivityEvent;
   broadcast: (event: RelayEvent) => void;
@@ -226,7 +227,17 @@ export class RelayExternalActivityMonitor {
         durationMs: durationFromDates(externalStartedAt, terminalEvent.timestamp),
       });
       if (externalStartedAt && terminalEvent.turnId) {
-        await this.options.persistWorkspaceArtifactsForTurn(info.workspace, terminalEvent.turnId, externalStartedAt);
+        await this.options.persistWorkspaceArtifactsForTurn(info.workspace, terminalEvent.turnId, externalStartedAt, {
+          source: "cli",
+          agentId: info.agentId,
+          threadId: snapshot.threadId,
+          workspace: info.workspace,
+          contextKey: `cli:${snapshot.threadId}`,
+          correlationId: externalCorrelationId(snapshot),
+          prompt: snapshot.latestUserMessage ?? undefined,
+          actor: CLI_ACTIVITY_ACTOR,
+          turnStartedAt: externalStartedAt.toISOString(),
+        });
       }
       mirror.latestStatus = `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`;
       if (mirrorMode === "status" || mirrorMode === "full") {

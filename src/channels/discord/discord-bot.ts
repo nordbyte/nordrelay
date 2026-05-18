@@ -469,7 +469,23 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       progress.completedAt = Date.now();
       progress.updatedAt = progress.completedAt;
       await engine.finalize();
-      await artifactService.persistWorkspaceArtifactsForTurn(session.getInfo().workspace, engine.turnId, new Date(engine.startedAt));
+      await artifactService.persistWorkspaceArtifactsForTurn(session.getInfo().workspace, engine.turnId, new Date(engine.startedAt), {
+        source: "discord",
+        agentId: session.getInfo().agentId,
+        threadId: session.getInfo().threadId,
+        workspace: session.getInfo().workspace,
+        contextKey: request.contextKey,
+        correlationId: envelope.correlationId,
+        prompt: envelope.description,
+        actor: {
+          channel: "discord",
+          id: request.authUser?.user.id,
+          label: request.authUser?.user.displayName || request.username || request.user.username,
+          username: request.username || request.user.username,
+          channelUserId: request.user.id,
+        },
+        turnStartedAt: new Date(engine.startedAt).toISOString(),
+      });
       const artifactPolicy = artifactPolicyForRequest(request);
       if (artifactPolicy.sendSummary || artifactPolicy.autoSendFiles || artifactPolicy.autoSendZip) {
         await sendRecentDiscordArtifacts(artifactDeps, request, session, new Date(engine.startedAt), engine.turnId, artifactPolicy);

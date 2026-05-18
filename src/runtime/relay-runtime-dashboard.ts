@@ -304,6 +304,11 @@ export function relayRuntimeDispose(runtime: RelayRuntimeDelegate): void {
       runtime.externalMonitor.close();
       runtime.externalMonitor = undefined;
     }
+    if (runtime.metricsHistoryTimer) {
+      clearInterval(runtime.metricsHistoryTimer);
+      runtime.metricsHistoryTimer = null;
+    }
+    runtime.workflowService.dispose();
     runtime.dashboardService.stopBackgroundRefresh();
     runtime.agentUpdates.cancelAll();
     runtime.registry.disposeAll();

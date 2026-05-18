@@ -60,6 +60,16 @@ describe("SessionWorktreeService", () => {
     const preview = service.previewIntegration([committedFirst.record.id, committedSecond.record.id]);
     expect(preview.canIntegrate).toBe(false);
     expect(preview.conflictCandidates.map((file) => file.path)).toContain("README.md");
+    const review = preview.conflictReview.find((file) => file.path === "README.md");
+    expect(review?.baseContent?.content).toBe("base");
+    expect(review?.sourceVersions?.map((version) => normalizeLineEndings(version.content ?? ""))).toEqual(["session one", "session two"]);
+
+    const patch = service.exportIntegrationPatch([committedFirst.record.id, committedSecond.record.id]);
+    expect(patch.fileName).toMatch(/nordrelay-worktree-patches-.*\.patch$/);
+    expect(patch.worktreeIds).toEqual([committedFirst.record.id, committedSecond.record.id]);
+    expect(patch.content).toContain("session one");
+    expect(patch.content).toContain("session two");
+    expect(patch.content).toContain("README.md");
 
     writeFileSync(path.join(repo, "base.txt"), "base update\n");
     execFileSync("git", ["add", "base.txt"], { cwd: repo });

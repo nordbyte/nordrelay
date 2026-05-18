@@ -182,6 +182,16 @@ describe("collectArtifacts", () => {
       artifacts: [artifact],
       skippedCount: 1,
       omittedCount: 2,
+    }, {
+      source: "cli",
+      agentId: "codex",
+      threadId: "thread-1",
+      workspace: testDir,
+      contextKey: "cli:thread-1",
+      correlationId: "corr-1",
+      prompt: "Generate artifact",
+      actor: { channel: "cli", id: "local-cli", label: "Codex CLI" },
+      turnStartedAt: "2026-05-12T04:00:00.000Z",
     });
 
     const reports = await listRecentArtifactReports(testDir);
@@ -192,11 +202,26 @@ describe("collectArtifacts", () => {
       source: "workspace",
       skippedCount: 1,
       omittedCount: 2,
+      provenance: expect.objectContaining({
+        source: "cli",
+        agentId: "codex",
+        threadId: "thread-1",
+        contextKey: "cli:thread-1",
+        correlationId: "corr-1",
+        prompt: "Generate artifact",
+        actor: expect.objectContaining({ channel: "cli", label: "Codex CLI" }),
+        turnStartedAt: "2026-05-12T04:00:00.000Z",
+      }),
       artifacts: [expect.objectContaining({ name: "test/result.txt" })],
     }));
     await expect(getArtifactTurnReport(testDir, "turn-cli")).resolves.toEqual(expect.objectContaining({
       turnId: "turn-cli",
       source: "workspace",
+      provenance: expect.objectContaining({
+        source: "cli",
+        agentId: "codex",
+        threadId: "thread-1",
+      }),
     }));
   });
 

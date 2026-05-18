@@ -170,6 +170,14 @@ export async function handleDashboardSessionRoute(
     return true;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/sessions/worktrees/integrate/patch") {
+    const body = await readJsonBody(req);
+    const ids = Array.isArray(body?.ids) ? body.ids.map(String).filter(Boolean) : [];
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, await runtime.exportSessionWorktreeIntegrationPatch(ids));
+    return true;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/sessions/worktrees/cleanup") {
     await options.assertCurrentSessionScope(authUser);
     sendJson(res, 200, await runtime.cleanupSessionWorktrees(options.activityActor));

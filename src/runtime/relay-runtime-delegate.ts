@@ -21,6 +21,7 @@ import type { PromptEnvelope, PromptStore } from "../state/prompt-store.js";
 import type { RelayWorkflowService } from "./relay-workflow-service.js";
 import type { WorkflowStore } from "../state/workflow-store.js";
 import type { QueuePlanStatus, QueuePlanStore } from "../state/queue-plan-store.js";
+import type { MetricsHistoryStore } from "../state/metrics-history-store.js";
 import type { QueuePlanInput } from "./relay-runtime-queue-planner.js";
 import type { ContextMetadata, SessionRegistry } from "../state/session-registry.js";
 import type { FormattedLogTail, SelfUpdateResult } from "../support/operations.js";
@@ -41,7 +42,7 @@ import type { RelayDashboardService } from "./relay-dashboard-service.js";
 import type { AdaptiveExternalMonitorHandle } from "./relay-external-monitor-scheduler.js";
 import type { RelayExternalActivityMonitor } from "./relay-external-activity-monitor.js";
 import type { RelayQueueAction, RelayQueueService } from "./relay-queue-service.js";
-import type { RuntimeMetricsDto } from "./metrics.js";
+import type { RuntimeMetricHistorySample, RuntimeMetricsDto } from "./metrics.js";
 import type { RuntimeSnapshotCache } from "./runtime-cache.js";
 import type { SessionWorktreeService } from "../worktrees/worktree-service.js";
 import type {
@@ -50,7 +51,7 @@ import type {
   SessionWorktreeUpdateResult,
   WorktreeCleanupResult,
   WorktreeDashboardSnapshot,
-  WorktreeIntegrationOptions, WorktreeIntegrationRun,
+  WorktreeIntegrationOptions, WorktreeIntegrationPatchExport, WorktreeIntegrationRun,
   WorktreeIntegrationPreview,
 } from "../worktrees/worktree-types.js";
 import type {
@@ -112,9 +113,7 @@ export interface RelayRuntimeDelegate {
   readonly agentUpdates: AgentUpdateManager;
   readonly queueService: RelayQueueService;
   readonly jobStore: UnifiedJobStore;
-  readonly workflowStore: WorkflowStore;
-  readonly queuePlanStore: QueuePlanStore;
-  readonly workflowService: RelayWorkflowService;
+  readonly workflowStore: WorkflowStore; readonly queuePlanStore: QueuePlanStore; readonly metricsHistoryStore: MetricsHistoryStore; readonly workflowService: RelayWorkflowService;
   readonly artifactService: RelayArtifactService;
   readonly worktreeService: SessionWorktreeService;
   readonly mirrorRegistry: ChannelMirrorRegistry;
@@ -126,9 +125,7 @@ export interface RelayRuntimeDelegate {
   readonly subscribers: Set<(event: RelayEvent) => void>;
   readonly agentUpdateActors: Map<string, WebActivityActor>;
   readonly agentUpdateStates: Map<string, { status: AgentUpdateJobSnapshot["status"]; needsInput: boolean }>;
-  externalMonitor?: AdaptiveExternalMonitorHandle;
-  activeSessionsBroadcastTimer: NodeJS.Timeout | null;
-  activeSessionsLastBroadcastAt: number;
+  externalMonitor?: AdaptiveExternalMonitorHandle; activeSessionsBroadcastTimer: NodeJS.Timeout | null; metricsHistoryTimer: NodeJS.Timeout | null; activeSessionsLastBroadcastAt: number;
   draining: boolean;
   currentTurnId: string | null;
   accumulatedText: string;
@@ -155,7 +152,7 @@ export interface RelayRuntimeDelegate {
   jobLog(id: string): Promise<{ job: UnifiedJobDto | null; plain: string }>;
   jobAction(id: string, action: "cancel" | "retry", actor?: WebActivityActor): Promise<UnifiedJobsDto>;
   activeSessions(): Promise<ActiveSessionsDto>;
-  metrics(): Promise<RuntimeMetricsDto>;
+  metrics(): Promise<RuntimeMetricsDto>; metricsHistory(limit?: number): RuntimeMetricHistorySample[];
   audit(options?: number | AuditListOptions): AuditEvent[];
   auditPage(options?: AuditListOptions): CursorPageDto<AuditEvent>;
   trace(correlationId: string): Promise<TraceDetailDto>;
@@ -188,7 +185,7 @@ export interface RelayRuntimeDelegate {
   switchSession(threadId: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
   attachSession(threadId: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
   sessionWorktrees(): Promise<WorktreeDashboardSnapshot>; sessionWorktreeDiff(id: string): Promise<SessionWorktreeDiffSnapshot>;
-  previewSessionWorktreeIntegration(ids: string[]): Promise<WorktreeIntegrationPreview>; updateSessionWorktreeFromBase(id: string, actor?: WebActivityActor): Promise<SessionWorktreeUpdateResult>;
+  previewSessionWorktreeIntegration(ids: string[]): Promise<WorktreeIntegrationPreview>; updateSessionWorktreeFromBase(id: string, actor?: WebActivityActor): Promise<SessionWorktreeUpdateResult>; exportSessionWorktreeIntegrationPatch(ids: string[]): Promise<WorktreeIntegrationPatchExport>;
   cleanupSessionWorktrees(actor?: WebActivityActor): Promise<WorktreeCleanupResult>; commitSessionWorktree(id: string, message?: string, actor?: WebActivityActor): Promise<{ record: SessionWorktreeRecord; clean: boolean; status: string[] }>;
   integrateSessionWorktrees(ids: string[], options?: WorktreeIntegrationOptions, actor?: WebActivityActor): Promise<WorktreeIntegrationRun>;
   forkCurrentSessionToWorktree(options?: { includeUncommitted?: boolean }, actor?: WebActivityActor): Promise<{ session: AgentSessionInfo; record: SessionWorktreeRecord; copiedUntrackedFiles: string[]; skippedUntrackedFiles: string[]; patchApplied: boolean }>;

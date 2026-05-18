@@ -153,6 +153,9 @@ export interface WorkflowStepRun {
   attemptHistory?: WorkflowStepAttempt[];
   approvedAt?: string;
   skippedReason?: string;
+  pauseReason?: string;
+  inputPreview?: string;
+  outputSummary?: string;
 }
 
 export interface WorkflowStepAttempt {
@@ -183,6 +186,32 @@ export interface WorkflowRun {
   startedAt?: string;
   finishedAt?: string;
   error?: string;
+  logs?: WorkflowRunLogEntry[];
+}
+
+export interface WorkflowRunLogEntry {
+  id: string;
+  at: string;
+  level: "info" | "warn" | "error";
+  scope: "run" | "step";
+  stepId?: string;
+  message: string;
+  detail?: string;
+}
+
+export interface WorkflowRunReport {
+  generatedAt: string;
+  run: WorkflowRun;
+  summary: {
+    status: WorkflowRunStatus;
+    totalSteps: number;
+    completedSteps: number;
+    failedSteps: number;
+    skippedSteps: number;
+    durationMs: number | null;
+  };
+  steps: WorkflowStepRun[];
+  logs: WorkflowRunLogEntry[];
 }
 
 interface PersistedWorkflowStore {
@@ -379,6 +408,25 @@ export class WorkflowStore {
     return this.saveRun({ ...existing, ...patch, id, updatedAt: patch.updatedAt ?? new Date().toISOString() });
   }
 
+  appendRunLog(id: string, input: Omit<WorkflowRunLogEntry, "id" | "at"> & { id?: string; at?: string }): WorkflowRun | null {
+    const existing = this.getRun(id);
+    if (!existing) return null;
+    const entry = normalizeRunLog({
+      id: input.id ?? randomId(),
+      at: input.at ?? new Date().toISOString(),
+      level: input.level,
+      scope: input.scope,
+      stepId: input.stepId,
+      message: input.message,
+      detail: input.detail,
+    });
+    return this.saveRun({
+      ...existing,
+      logs: [...(existing.logs ?? []), entry].slice(-500),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
   private payload(): PersistedWorkflowStore {
     const payload = this.store.read();
     if (!payload || payload.version !== 1) {
@@ -490,6 +538,7 @@ function normalizeRun(input: WorkflowRun): WorkflowRun {
     startedAt: validDate(input.startedAt),
     finishedAt: validDate(input.finishedAt),
     error: cleanOptional(input.error),
+    logs: normalizeRunLogs(input.logs),
   };
 }
 
@@ -518,6 +567,32 @@ function normalizeStepRun(input: WorkflowStepRun): WorkflowStepRun {
     attemptHistory: normalizeAttemptHistory(input.attemptHistory),
     approvedAt: validDate(input.approvedAt),
     skippedReason: cleanOptional(input.skippedReason),
+    pauseReason: cleanOptional(input.pauseReason),
+    inputPreview: cleanOptional(input.inputPreview),
+    outputSummary: cleanOptional(input.outputSummary),
+  };
+}
+
+function normalizeRunLogs(input: unknown): WorkflowRunLogEntry[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const logs = input
+    .map((item): WorkflowRunLogEntry | null => {
+      if (!item || typeof item !== "object") return null;
+      return normalizeRunLog(item as WorkflowRunLogEntry);
+    })
+    .filter((item): item is WorkflowRunLogEntry => Boolean(item));
+  return logs.length ? logs.slice(-500) : undefined;
+}
+
+function normalizeRunLog(input: WorkflowRunLogEntry): WorkflowRunLogEntry {
+  return {
+    id: normalizeId(input.id) || randomId(),
+    at: validDate(input.at) ?? new Date().toISOString(),
+    level: input.level === "warn" || input.level === "error" ? input.level : "info",
+    scope: input.scope === "step" ? "step" : "run",
+    stepId: cleanOptional(input.stepId),
+    message: String(input.message ?? "").trim() || "Workflow event",
+    detail: cleanOptional(input.detail),
   };
 }
 

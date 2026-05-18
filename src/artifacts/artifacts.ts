@@ -3,6 +3,9 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import type { AgentId } from "../agents/shared/agent.js";
+import type { WebActivityActor } from "../core/activity-events.js";
+
 export interface Artifact {
   name: string;
   relativePath: string;
@@ -23,6 +26,19 @@ export interface ArtifactTurnReport extends ArtifactReport {
   updatedAt: Date;
   totalSizeBytes: number;
   source?: "turn" | "workspace";
+  provenance?: ArtifactProvenance;
+}
+
+export interface ArtifactProvenance {
+  source?: string;
+  agentId?: AgentId;
+  threadId?: string | null;
+  workspace?: string;
+  contextKey?: string;
+  correlationId?: string;
+  prompt?: string;
+  actor?: WebActivityActor;
+  turnStartedAt?: string;
 }
 
 export interface ArtifactZipOptions {
@@ -109,6 +125,7 @@ interface ArtifactTurnManifest {
   skippedCount: number;
   omittedCount?: number;
   artifacts: Artifact[];
+  provenance?: ArtifactProvenance;
 }
 
 const MAX_TELEGRAM_FILE_SIZE = 50 * 1024 * 1024;
@@ -192,6 +209,7 @@ export async function persistWorkspaceArtifactReport(
   workspace: string,
   turnId: string,
   report: ArtifactReport,
+  provenance?: ArtifactProvenance,
 ): Promise<ArtifactTurnReport | null> {
   const safeTurnId = sanitizeTurnId(turnId);
   if (!safeTurnId || (report.artifacts.length === 0 && report.skippedCount === 0 && !report.omittedCount)) {
@@ -209,6 +227,11 @@ export async function persistWorkspaceArtifactReport(
     skippedCount: report.skippedCount,
     omittedCount: report.omittedCount,
     artifacts: report.artifacts,
+    provenance: normalizeArtifactProvenance({
+      ...provenance,
+      workspace: provenance?.workspace ?? workspace,
+      turnStartedAt: provenance?.turnStartedAt,
+    }),
   };
   await writeFile(artifactManifestPath(workspace, safeTurnId), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
@@ -221,6 +244,7 @@ export async function persistWorkspaceArtifactReport(
     omittedCount: report.omittedCount,
     totalSizeBytes: totalArtifactSize(report.artifacts),
     source: "workspace",
+    provenance: manifest.provenance,
   };
 }
 
@@ -833,6 +857,7 @@ async function readWorkspaceArtifactManifest(
     omittedCount: normalized.omittedCount,
     totalSizeBytes: totalArtifactSize(normalized.artifacts),
     source: "workspace",
+    provenance: manifest.provenance,
   };
 }
 
@@ -850,6 +875,43 @@ async function readArtifactTurnManifest(filePath: string): Promise<ArtifactTurnM
     skippedCount: typeof payload.skippedCount === "number" ? payload.skippedCount : 0,
     omittedCount: typeof payload.omittedCount === "number" ? payload.omittedCount : 0,
     artifacts: payload.artifacts,
+    provenance: normalizeArtifactProvenance(payload.provenance),
+  };
+}
+
+function normalizeArtifactProvenance(input: unknown): ArtifactProvenance | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return undefined;
+  }
+  const record = input as Record<string, unknown>;
+  const actor = record.actor && typeof record.actor === "object" && !Array.isArray(record.actor)
+    ? record.actor as Record<string, unknown>
+    : undefined;
+  const provenance: ArtifactProvenance = {
+    source: cleanOptional(record.source),
+    agentId: normalizeAgentId(record.agentId),
+    threadId: record.threadId === null ? null : cleanOptional(record.threadId),
+    workspace: cleanOptional(record.workspace),
+    contextKey: cleanOptional(record.contextKey),
+    correlationId: cleanOptional(record.correlationId),
+    prompt: cleanOptional(record.prompt),
+    turnStartedAt: validIsoDate(record.turnStartedAt),
+    actor: normalizeActor(actor),
+  };
+  return Object.values(provenance).some((value) => value !== undefined && value !== null && value !== "") ? provenance : undefined;
+}
+
+function normalizeActor(actor: Record<string, unknown> | undefined): WebActivityActor | undefined {
+  const channel = normalizeActorChannel(actor?.channel);
+  if (!actor || !channel) {
+    return undefined;
+  }
+  return {
+    channel,
+    id: cleanOptional(actor.id),
+    label: cleanOptional(actor.label),
+    username: cleanOptional(actor.username),
+    channelUserId: cleanOptional(actor.channelUserId),
   };
 }
 
@@ -916,6 +978,28 @@ function isPathInside(candidate: string, root: string): boolean {
 function parseDate(value: string): Date | null {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function validIsoDate(value: unknown): string | undefined {
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) {
+    return undefined;
+  }
+  return value;
+}
+
+function normalizeAgentId(value: unknown): AgentId | undefined {
+  const text = cleanOptional(value);
+  return text === "codex" || text === "pi" || text === "hermes" || text === "openclaw" || text === "claude-code" ? text : undefined;
+}
+
+function normalizeActorChannel(value: unknown): WebActivityActor["channel"] | undefined {
+  const text = cleanOptional(value);
+  return text === "web" || text === "telegram" || text === "discord" || text === "slack" || text === "cli" || text === "system" ? text : undefined;
+}
+
+function cleanOptional(value: unknown): string | undefined {
+  const text = String(value ?? "").trim();
+  return text || undefined;
 }
 
 function sanitizeTurnId(turnId: string): string | null {

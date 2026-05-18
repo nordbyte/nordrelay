@@ -10,6 +10,7 @@ import type {
   WorktreeDashboardSnapshot,
   WorktreeIntegrationRun,
   WorktreeIntegrationOptions,
+  WorktreeIntegrationPatchExport,
   WorktreeIntegrationPreview,
 } from "../worktrees/worktree-types.js";
 
@@ -57,6 +58,13 @@ export async function relayRuntimePreviewSessionWorktreeIntegration(
   ids: string[],
 ): Promise<WorktreeIntegrationPreview> {
   return runtime.worktreeService.previewIntegration(ids);
+}
+
+export async function relayRuntimeExportSessionWorktreeIntegrationPatch(
+  runtime: RelayRuntimeDelegate,
+  ids: string[],
+): Promise<WorktreeIntegrationPatchExport> {
+  return runtime.worktreeService.exportIntegrationPatch(ids);
 }
 
 export async function relayRuntimeUpdateSessionWorktreeFromBase(

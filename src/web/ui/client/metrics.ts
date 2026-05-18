@@ -4,8 +4,12 @@ let metricsAutoRefreshTimer=null;
 let metricsAgeTimer=null;
 async function loadMetrics(options:any={}){
   if(!options.silent)setLoading('metricsPanel','Loading metrics...');
-  const d=await api('/api/metrics');
+  const [d,history]=await Promise.all([
+    api('/api/metrics'),
+    api('/api/metrics/history',{query:{limit:240}}).catch(()=>({samples:[]}))
+  ]);
   state.metricsLastData=d;
+  state.metricsHistory=history.samples||[];
   state.metricsLastUpdatedAt=Date.now();
   renderMetrics(d);
 }
@@ -183,6 +187,27 @@ function metricRateLimitTable(adapters){
   if(!rows.length)return uiEmpty('No rate-limit metrics.');
   return '<div class="data-table-wrap"><table class="data-table metrics-table metrics-rate-table"><thead><tr><th>Adapter</th><th>Queued</th><th>Running</th><th>Completed</th><th>Failed</th><th>Retries</th><th>Rate-limit hits</th><th>Retry after</th><th>Last limit</th><th>Buckets</th></tr></thead><tbody>'+rows.map(metricRateRow).join('')+'</tbody></table></div>';
 }
+function metricHistoryRow(sample){
+  const hits=sample.rateLimitHits||{};
+  return '<tr>'+
+    metricCell('Time',metricRelativeTimeHtml(sample.at,'Sample'),'updated-cell')+
+    metricCell('Queue',metricValueHtml(String(sample.queueLength??0)+(sample.queuePaused?' paused':''),sample.queuePaused?'warn':''),'number-cell')+
+    metricCell('Turns',metricValueHtml(sample.activeTurns??0,metricCountStatus(sample.activeTurns??0)),'number-cell')+
+    metricCell('Jobs',metricValueHtml(sample.runningJobs??0,metricCountStatus(sample.runningJobs??0)),'number-cell')+
+    metricCell('Failed',metricValueHtml((sample.failedTurns??0)+' / '+(sample.failedJobs??0),Number(sample.failedTurns||0)+Number(sample.failedJobs||0)>0?'error':''),'number-cell')+
+    metricCell('Heap',esc(fmtBytes(sample.heapUsedBytes||0)),'number-cell')+
+    metricCell('RSS',esc(fmtBytes(sample.rssBytes||0)),'number-cell')+
+    metricCell('CPU avg',metricValueHtml(metricPercent(sample.cpuPercent),metricCpuStatus(sample.cpuPercent)),'number-cell')+
+    metricCell('Loop p95',metricValueHtml(formatMs(sample.eventLoopP95Ms),metricLoopStatus(sample.eventLoopP95Ms)),'number-cell')+
+    metricCell('Web avg/max',metricValueHtml(formatMs(sample.webAverageMs)+' / '+formatMs(sample.webMaxMs),metricLatencyStatus(sample.webMaxMs)),'number-cell')+
+    metricCell('Rate hits','<span class="metric-kv-number">'+esc((hits.telegram||0)+' / '+(hits.discord||0)+' / '+(hits.slack||0))+'</span>','number-cell')+
+    '</tr>';
+}
+function metricHistoryTable(samples){
+  const rows=(samples||[]).slice(0,120);
+  if(!rows.length)return uiEmpty('No persisted metrics history yet.');
+  return '<div class="data-table-wrap"><table class="data-table metrics-table metrics-history-table"><thead><tr><th>Time</th><th>Queue</th><th>Turns</th><th>Jobs</th><th>Failed</th><th>Heap</th><th>RSS</th><th>CPU avg</th><th>Loop p95</th><th>Web avg/max</th><th>Rate hits T/D/S</th></tr></thead><tbody>'+rows.map(metricHistoryRow).join('')+'</tbody></table></div>';
+}
 function metricsTabPanel(id,html){
   return '<div class="metrics-tab '+(state.metricsTab===id?'active':'')+'" data-metrics-tab-panel="'+attr(id)+'">'+html+'</div>';
 }
@@ -194,7 +219,8 @@ function renderMetrics(d){
     metricsTabPanel('overview','<div class="metrics-grid">'+metricKvCard('Runtime',metricStatusRows(d))+metricKvCard('Jobs',metricJobRows(d))+'</div>')+
     metricsTabPanel('process','<div class="metrics-grid">'+metricKvCard('Process',metricProcessRows(d))+'</div>')+
     metricsTabPanel('web','<h2 class="task-section-title">Web API latency</h2>'+metricWebRoutesTable(d.web?.routes||[])+'<h2 class="task-section-title">Slow Web API calls</h2>'+metricSlowWebTable(d.web?.slowest||[]))+
-    metricsTabPanel('rate','<h2 class="task-section-title">Rate limits</h2>'+metricRateLimitTable(d.adapters||{}));
+    metricsTabPanel('rate','<h2 class="task-section-title">Rate limits</h2>'+metricRateLimitTable(d.adapters||{}))+
+    metricsTabPanel('history','<h2 class="task-section-title">Persisted history</h2>'+metricHistoryTable(state.metricsHistory||[]));
   switchMetricsTab(state.metricsTab||'overview');
   updateMetricsToolbar();
   startMetricAgeCounter();

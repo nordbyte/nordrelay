@@ -138,6 +138,7 @@ export class PeerRuntimeService {
       return this.scopedTrace(peer, await runtime.trace(requiredString(query.correlationId, "correlationId")));
     }
     if (method === "GET" && path === "/api/metrics") return runtime.metrics();
+    if (method === "GET" && path === "/api/metrics/history") return { samples: runtime.metricsHistory(numberValue(query.limit, 240)) };
     if (method === "GET" && path === "/api/active-sessions") return this.scopedActiveSessions(peer, await runtime.activeSessions());
     if (method === "GET" && path === "/api/adapters/health") {
       return { adapters: (await runtime.adapterHealth()).filter((adapter) => this.canUseAgent(peer, adapter.id)) };
@@ -301,6 +302,7 @@ export class PeerRuntimeService {
       const action = params[1];
       this.assertWorkflowRunScope(peer, runtime, id);
       if (method === "GET" && !action) return { run: runtime.workflowStore.getRun(id) };
+      if (method === "GET" && action === "report") return runtime.workflowService.runReport(id);
       if (method === "POST" && action === "cancel") return { run: await runtime.workflowService.cancelRun(id, remoteActor) };
       if (method === "POST" && action === "rerun-failed") return { run: runtime.workflowService.rerunFromFailedStep(id, remoteActor) };
     }
@@ -453,6 +455,11 @@ export class PeerRuntimeService {
       await this.assertCurrentSessionScope(peer, runtime);
       const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
       return runtime.previewSessionWorktreeIntegration(ids);
+    }
+    if (method === "POST" && path === "/api/sessions/worktrees/integrate/patch") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
+      return runtime.exportSessionWorktreeIntegrationPatch(ids);
     }
     if (method === "POST" && path === "/api/sessions/worktrees/cleanup") {
       await this.assertCurrentSessionScope(peer, runtime);

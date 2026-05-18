@@ -397,7 +397,23 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
       progress.completedAt = Date.now();
       progress.updatedAt = progress.completedAt;
       await engine.finalize();
-      await artifactService.persistWorkspaceArtifactsForTurn(session.getInfo().workspace, engine.turnId, new Date(engine.startedAt));
+      await artifactService.persistWorkspaceArtifactsForTurn(session.getInfo().workspace, engine.turnId, new Date(engine.startedAt), {
+        source: "slack",
+        agentId: session.getInfo().agentId,
+        threadId: session.getInfo().threadId,
+        workspace: session.getInfo().workspace,
+        contextKey: request.contextKey,
+        correlationId: envelope.correlationId,
+        prompt: envelope.description,
+        actor: {
+          channel: "slack",
+          id: request.authUser?.user.id,
+          label: request.authUser?.user.displayName || request.username || request.userId,
+          username: request.username,
+          channelUserId: request.userId,
+        },
+        turnStartedAt: new Date(engine.startedAt).toISOString(),
+      });
       const artifactPolicy = artifactPolicyForRequest(request);
       if (artifactPolicy.sendSummary || artifactPolicy.autoSendFiles || artifactPolicy.autoSendZip) {
         await sendRecentSlackArtifacts(artifactDeps, request, session, new Date(engine.startedAt), engine.turnId, artifactPolicy);

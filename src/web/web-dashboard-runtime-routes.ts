@@ -109,6 +109,13 @@ export async function handleDashboardRuntimeRoute(
     return true;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/metrics/history") {
+    sendJson(res, 200, {
+      samples: runtime.metricsHistory(numberParam(url, "limit", 240)),
+    });
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/jobs") {
     sendJson(res, 200, await runtime.jobs({
       limit: numberParam(url, "limit", 100),

@@ -118,6 +118,21 @@ export interface WorktreeConflictReviewItem {
   sourceWorktrees: WorktreeIntegrationPreviewSource[];
   risk: "none" | "same-file" | "status-mismatch";
   recommendation: string;
+  baseContent?: WorktreeFileContentPreview;
+  sourceVersions?: WorktreeFileVersionPreview[];
+}
+
+export interface WorktreeFileContentPreview {
+  label: string;
+  content?: string;
+  truncated?: boolean;
+  unavailable?: string;
+}
+
+export interface WorktreeFileVersionPreview extends WorktreeFileContentPreview {
+  worktreeId: string;
+  branchName: string;
+  commitSha?: string;
 }
 
 export type WorktreeConflictResolutionChoice = "auto" | "ours" | "theirs" | "both" | "manual";
@@ -131,6 +146,13 @@ export interface WorktreeConflictResolution {
 
 export interface WorktreeIntegrationOptions {
   resolutions?: WorktreeConflictResolution[];
+}
+
+export interface WorktreeIntegrationPatchExport {
+  fileName: string;
+  content: string;
+  worktreeIds: string[];
+  generatedAt: string;
 }
 
 export interface SessionWorktreeUpdateResult {

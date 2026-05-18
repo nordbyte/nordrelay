@@ -1,6 +1,11 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
-import { buildRuntimeMetrics } from "../src/runtime/metrics.js";
+import { MetricsHistoryStore } from "../src/state/metrics-history-store.js";
+import { buildRuntimeMetrics, runtimeMetricHistorySample, type RuntimeMetricHistorySample } from "../src/runtime/metrics.js";
 import { recordWebApiMetric } from "../src/web/web-performance.js";
 
 describe("runtime metrics", () => {
@@ -25,4 +30,67 @@ describe("runtime metrics", () => {
     expect(metrics.web.routes.some((route) => route.path === "/api/version" && route.averageMs >= 42)).toBe(true);
     expect(metrics.web.slowest.some((sample) => sample.path === "/api/version")).toBe(true);
   });
+
+  it("creates and persists compact history samples", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-metrics-"));
+    try {
+      const metrics = buildRuntimeMetrics({
+        queueLength: 3,
+        queuePaused: true,
+        activeTurnCount: 2,
+        jobs: [{
+          id: "job-1",
+          kind: "agent-update",
+          title: "Update",
+          status: "running",
+          source: "web",
+          threadId: null,
+          startedAt: "2026-05-15T10:00:00.000Z",
+          updatedAt: "2026-05-15T10:00:01.000Z",
+          canCancel: true,
+          canRetry: false,
+          canReadLog: true,
+        }],
+        activity: [{ id: "a1", timestamp: "2026-05-15T10:00:00.000Z", source: "web", category: "prompt", status: "failed", type: "prompt_failed", threadId: "thread-1" }],
+      });
+      const sample = runtimeMetricHistorySample(metrics);
+      expect(sample).toEqual(expect.objectContaining({
+        at: metrics.generatedAt,
+        queueLength: 3,
+        queuePaused: true,
+        activeTurns: 2,
+        failedTurns: 1,
+        runningJobs: 1,
+      }));
+
+      const store = new MetricsHistoryStore(workspace, "json", 2);
+      store.append(makeHistorySample("2026-05-15T10:00:00.000Z", 1));
+      store.append(makeHistorySample("2026-05-15T10:02:00.000Z", 3));
+      store.append(makeHistorySample("2026-05-15T10:01:00.000Z", 2));
+
+      const restored = new MetricsHistoryStore(workspace, "json", 2);
+      expect(restored.list(10).map((item) => item.queueLength)).toEqual([3, 2]);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
 });
+
+function makeHistorySample(at: string, queueLength: number): RuntimeMetricHistorySample {
+  return {
+    at,
+    queueLength,
+    queuePaused: false,
+    activeTurns: 0,
+    failedTurns: 0,
+    runningJobs: 0,
+    failedJobs: 0,
+    rssBytes: 1,
+    heapUsedBytes: 1,
+    cpuPercent: null,
+    eventLoopP95Ms: null,
+    webAverageMs: null,
+    webMaxMs: null,
+    rateLimitHits: { telegram: 0, discord: 0, slack: 0 },
+  };
+}

@@ -9,6 +9,7 @@ import {
   extractTemplateVariables,
   renderTemplateText,
 } from "../src/state/workflow-store.js";
+import { RelayWorkflowService, type RelayWorkflowServiceOptions } from "../src/runtime/relay-workflow-service.js";
 import {
   channelTemplatePrompt,
   channelWorkflowPrompts,
@@ -115,4 +116,108 @@ describe("WorkflowStore", () => {
       rmSync(importWorkspace, { recursive: true, force: true });
     }
   });
+
+  it("stores workflow debug logs and builds run reports", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-workflows-"));
+    try {
+      const store = new WorkflowStore(workspace, "json");
+      const run = store.saveRun({
+        id: "run-debug",
+        workflowId: "workflow-debug",
+        name: "Debug workflow",
+        status: "completed",
+        variables: { target: "src" },
+        steps: [
+          {
+            stepId: "step-1",
+            name: "Review",
+            status: "completed",
+            inputPreview: "Review src",
+            outputSummary: "No critical issues.",
+            startedAt: "2026-05-16T10:00:00.000Z",
+            finishedAt: "2026-05-16T10:00:02.000Z",
+          },
+          {
+            stepId: "step-2",
+            name: "Skip optional",
+            status: "skipped",
+            skippedReason: "Condition did not match.",
+            pauseReason: "Manual approval required.",
+          },
+        ],
+        currentStepIndex: 2,
+        createdAt: "2026-05-16T10:00:00.000Z",
+        updatedAt: "2026-05-16T10:00:02.000Z",
+        startedAt: "2026-05-16T10:00:00.000Z",
+        finishedAt: "2026-05-16T10:00:02.000Z",
+      });
+
+      store.appendRunLog(run.id, {
+        at: "2026-05-16T10:00:01.000Z",
+        level: "info",
+        scope: "step",
+        stepId: "step-1",
+        message: "Step completed.",
+        detail: "Review",
+      });
+
+      const restored = new WorkflowStore(workspace, "json");
+      expect(restored.getRun(run.id)?.logs?.[0]).toMatchObject({
+        level: "info",
+        scope: "step",
+        stepId: "step-1",
+        message: "Step completed.",
+      });
+      expect(restored.getRun(run.id)?.steps[0]).toMatchObject({
+        inputPreview: "Review src",
+        outputSummary: "No critical issues.",
+      });
+
+      const service = new RelayWorkflowService(workflowServiceOptions(restored));
+      try {
+        const report = service.runReport(run.id);
+        expect(report.summary).toEqual({
+          status: "completed",
+          totalSteps: 2,
+          completedSteps: 1,
+          failedSteps: 0,
+          skippedSteps: 1,
+          durationMs: 2000,
+        });
+        expect(report.logs).toHaveLength(1);
+        expect(report.steps[1]).toMatchObject({ pauseReason: "Manual approval required." });
+      } finally {
+        service.dispose();
+      }
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
 });
+
+function workflowServiceOptions(store: WorkflowStore): RelayWorkflowServiceOptions {
+  return {
+    store,
+    getSession: async () => { throw new Error("not needed"); },
+    newSession: async () => undefined,
+    setAgent: async () => undefined,
+    attachSession: async () => undefined,
+    runPrompt: async () => {},
+    isSessionBusy: () => false,
+    abort: async () => {},
+    appendActivity: (input) => ({
+      id: "activity",
+      timestamp: input.timestamp ?? new Date().toISOString(),
+      ...input,
+    }),
+    appendAudit: (input) => ({
+      id: "audit",
+      timestamp: new Date().toISOString(),
+      channelId: "web",
+      contextKey: "web:dashboard",
+      ...input,
+    }),
+    upsertJob: () => {},
+    broadcastStatus: () => {},
+  };
+}
