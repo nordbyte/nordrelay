@@ -87,7 +87,6 @@ function metricSummaryHtml(d){
 }
 function metricStatusRows(d){
   return [
-    ['Generated',metricRelativeTimeHtml(d.generatedAt,'Generated'),'html'],
     ['Queue',String(d.queue?.length??0)+(d.queue?.paused?' paused':' running'),d.queue?.paused?'warn':'ok'],
     ['Active turns',d.turns?.active??0,metricCountStatus(d.turns?.active??0)],
     ['Completed turns',d.turns?.completed??0],

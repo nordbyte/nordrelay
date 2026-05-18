@@ -205,6 +205,8 @@
 .metrics-auto-refresh{display:inline-flex!important;align-items:center;gap:7px;color:var(--muted);font-size:14px;line-height:1}
 .metrics-auto-refresh input{width:16px;height:16px;margin:0}
 #metricsLastUpdated{display:inline-flex;align-items:center;color:var(--muted);font-variant-numeric:tabular-nums}
+.diagnostics-grid{margin-top:12px}
+.diagnostics-inline-value{font-size:14px;color:var(--text)}
 .task-section-title{margin:18px 0 6px}
 .loading-state{display:flex;align-items:center;gap:10px;min-height:90px;color:var(--muted)}
 .spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}

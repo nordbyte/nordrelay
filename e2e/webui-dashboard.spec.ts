@@ -203,6 +203,7 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#metricsPanel .metrics-summary")).toBeVisible();
     await expect(page.locator("#metricsPanel")).toContainText("Runtime");
     await expect(page.locator("#metricsPanel .metric-kv").first()).toBeVisible();
+    await expect(page.locator("#metricsPanel .metrics-card").first()).not.toContainText("Generated");
     await page.getByRole("tab", { name: "Web API" }).click();
     await expect(page.locator("#metricsPanel .metrics-web-routes")).toBeVisible();
     await expect(page.locator("#metricsPanel .metrics-web-routes thead th")).toHaveText(["Route", "Avg", "Max", "Last", "Hits", "Status", "Last seen"]);
@@ -212,6 +213,13 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#metricsPanel .metrics-rate-table")).toContainText("Slack");
     await page.locator("#metricsAutoRefresh").check();
     await expect(page.locator("#metricsAutoRefresh")).toBeChecked();
+
+    await navigateDashboard(page, "Diagnostics");
+    await expect(page.locator("#diagnostics .diagnostics-grid")).toBeVisible();
+    await expect(page.locator("#diagnostics")).toContainText("Runtime");
+    await expect(page.locator("#diagnostics")).toContainText("Agent");
+    await expect(page.locator("#diagnostics")).toContainText("CLI Versions");
+    await expect(page.locator("#diagnostics .metric-kv").first()).toBeVisible();
   });
 
   test("sends prompts through the typed API client and shows queued feedback", async ({ page }) => {
