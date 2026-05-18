@@ -12,8 +12,12 @@ describe("web dashboard browser-flow assets", () => {
 
     expect(css).toContain(".feature-matrix");
     expect(css).toContain(".conformance-grid .item+.item{margin-top:8px}");
+    expect(css).toContain(".adapters-table th:nth-child(7)");
     expect(js).toContain("function featureMatrix");
+    expect(js).toContain("function renderAdapterHealthTable");
+    expect(js).toContain('class="data-table adapters-table"');
     expect(js).not.toContain("+'</small>'+featureMatrix(a.capabilities)+'<div class=\"row\">");
+    expect(js).not.toContain("'CLI: '+(a.cli.label||'-')+' / path '+(a.cli.path||'-')");
     expect(js).toContain("agent-updates");
     expect(js).toContain("/api/agent-updates");
   });

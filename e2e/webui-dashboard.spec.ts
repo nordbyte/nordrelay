@@ -534,7 +534,19 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#adapterTabs")).toHaveAttribute("role", "tablist");
     await expect(page.getByRole("tab", { name: "Adapters" })).toHaveAttribute("aria-selected", "true");
     await expect(page.locator("#adapterHealth")).toContainText("Codex");
+    await expect(page.locator("#adapterHealth .adapters-table")).toBeVisible();
+    await expect(page.locator("#adapterHealth .adapters-table thead th")).toHaveText([
+      "Adapter",
+      "Status",
+      "CLI Path",
+      "CLI Version",
+      "Auth",
+      "Version",
+      "Actions",
+    ]);
     await expect(page.locator("#adapterHealth .feature-matrix")).toHaveCount(0);
+    await expect(page.locator("#adapterHealth")).not.toContainText("CLI:");
+    await expect(page.locator("#adapterHealth")).not.toContainText(" / path ");
     await expect(page.locator('[data-adapter-tab-panel="conformance"]')).toBeHidden();
     await page.getByRole("tab", { name: "Adapter Conformance" }).click();
     await expect(page.getByRole("tab", { name: "Adapter Conformance" })).toHaveAttribute("aria-selected", "true");
