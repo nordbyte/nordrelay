@@ -17,6 +17,7 @@ import type { ActiveSessionsDto, QueuePlanDto, QueuePlannerSnapshotDto, RelayEve
 import type { QueuePlanInput } from "../runtime/relay-runtime-queue-planner.js";
 import { QUEUE_PLAN_STATUSES, type QueuePlanStatus } from "../state/queue-plan-store.js";
 import type { PromptTemplate, Workflow, WorkflowRun, WorkflowStep } from "../state/workflow-store.js";
+import type { WorktreeConflictResolution } from "../worktrees/worktree-types.js";
 import type { WebActivityActor } from "../web/web-state.js";
 
 export class PeerRuntimeService {
@@ -214,12 +215,14 @@ export class PeerRuntimeService {
       this.assertWorkflowInputScope(peer, input);
       return { workflow: runtime.workflowService.saveWorkflow(input, remoteActor) };
     }
-    const workflowRunMatch = path.match(/^\/api\/workflow-runs\/([^/]+)(?:\/cancel)?$/);
+    const workflowRunMatch = path.match(/^\/api\/workflow-runs\/([^/]+)(?:\/(cancel|rerun-failed))?$/);
     if (workflowRunMatch?.[1]) {
       const id = decodeURIComponent(workflowRunMatch[1]);
+      const action = workflowRunMatch[2];
       this.assertWorkflowRunScope(peer, runtime, id);
-      if (method === "GET" && !path.endsWith("/cancel")) return { run: runtime.workflowStore.getRun(id) };
-      if (method === "POST" && path.endsWith("/cancel")) return { run: await runtime.workflowService.cancelRun(id, remoteActor) };
+      if (method === "GET" && !action) return { run: runtime.workflowStore.getRun(id) };
+      if (method === "POST" && action === "cancel") return { run: await runtime.workflowService.cancelRun(id, remoteActor) };
+      if (method === "POST" && action === "rerun-failed") return { run: runtime.workflowService.rerunFromFailedStep(id, remoteActor) };
     }
     const workflowMatch = path.match(/^\/api\/workflows\/([^/]+)(?:\/(run|preview))?$/);
     if (workflowMatch?.[1]) {
@@ -301,7 +304,8 @@ export class PeerRuntimeService {
     if (method === "POST" && path === "/api/sessions/worktrees/integrate") {
       await this.assertCurrentSessionScope(peer, runtime);
       const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
-      return { run: await runtime.integrateSessionWorktrees(ids, remoteActor) };
+      const resolutions = Array.isArray(body.resolutions) ? body.resolutions.map(parseWorktreeResolution).filter((item): item is WorktreeConflictResolution => Boolean(item)) : [];
+      return { run: await runtime.integrateSessionWorktrees(ids, { resolutions }, remoteActor) };
     }
     if (method === "POST" && path === "/api/sessions/worktrees/integrate/preview") {
       await this.assertCurrentSessionScope(peer, runtime);
@@ -1087,6 +1091,19 @@ function parseQueuePlanStatus(value: string): QueuePlanStatus {
     throw new Error("Unsupported queue plan status.");
   }
   return value as QueuePlanStatus;
+}
+
+function parseWorktreeResolution(value: unknown): WorktreeConflictResolution | null {
+  const record = objectRecord(value);
+  const path = stringValue(record.path);
+  const choice = stringValue(record.choice) || "auto";
+  if (!path || !["auto", "ours", "theirs", "both", "manual"].includes(choice)) return null;
+  return {
+    path,
+    choice: choice as WorktreeConflictResolution["choice"],
+    sourceWorktreeId: stringValue(record.sourceWorktreeId) || undefined,
+    content: stringValue(record.content) || undefined,
+  };
 }
 
 function variableRecord(value: unknown): Record<string, string> {

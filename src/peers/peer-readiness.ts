@@ -2,12 +2,14 @@ import net from "node:net";
 
 import type { ConnectorConfig } from "../core/config.js";
 import type { PeerReadiness } from "./peer-types.js";
+import { ensurePeerTlsFiles, loadOrCreatePeerIdentity } from "./peer-identity.js";
 
-export async function buildPeerReadiness(config: ConnectorConfig): Promise<PeerReadiness> {
+export async function buildPeerReadiness(config: ConnectorConfig, home?: string): Promise<PeerReadiness> {
   const listenUrl = peerListenUrl(config);
   const localListening = await checkLocalPort(config.peerHost, config.peerPort);
   const loopbackOnly = isLoopbackUrl(listenUrl);
   const bindLoopbackOnly = isLoopbackHost(config.peerHost);
+  const tls = config.peerTlsEnabled ? ensurePeerTlsFiles(home, loadOrCreatePeerIdentity(home, config.peerName).public) : null;
   const warnings: string[] = [];
 
   if (!config.peerEnabled) {
@@ -32,6 +34,7 @@ export async function buildPeerReadiness(config: ConnectorConfig): Promise<PeerR
     port: config.peerPort,
     tlsEnabled: config.peerTlsEnabled,
     requireTls: config.peerRequireTls,
+    tlsExpiresAt: tls?.expiresAt,
     localListening,
     loopbackOnly,
     bindLoopbackOnly,

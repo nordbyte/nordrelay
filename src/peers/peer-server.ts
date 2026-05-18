@@ -16,12 +16,14 @@ import { header, PeerNonceCache, verifyPeerRequest } from "./peer-auth.js";
 import { checkPeerIdentityEndpoint } from "./peer-client.js";
 import { peerRuntimeContextKey } from "./peer-context.js";
 import { getPeerRelayBroker } from "./peer-relay-broker.js";
+import { PeerRelayEventStore } from "./peer-relay-event-store.js";
 import { PeerStore } from "./peer-store.js";
 import { PeerRuntimeService, peerError } from "./peer-runtime-service.js";
 import {
   PEER_PROTOCOL_VERSION,
   type PeerPairRequest,
   type PeerPairResponse,
+  type PeerRelayEventRequest,
   type PeerRelayPollRequest,
   type PeerRelayResultRequest,
   type PeerRpcRequest,
@@ -48,6 +50,7 @@ export async function startPeerServer(options: {
   const identity = loadOrCreatePeerIdentity(home, config.peerName);
   const store = new PeerStore(home);
   const relayBroker = getPeerRelayBroker(home);
+  const relayEvents = new PeerRelayEventStore(home);
   const nonces = new PeerNonceCache();
   const contextRuntimes = new Map<string, RelayRuntime>();
   const service = new PeerRuntimeService(config, runtime, {
@@ -142,6 +145,14 @@ export async function startPeerServer(options: {
           throw new Error("Invalid peer relay result.");
         }
         sendJson(res, relayBroker.resolve(peer.id, body.id, body.result) ? 200 : 404, { ok: true });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/peer/relay/event") {
+        const bodyText = await readBody(req, 64 * 1024 * 1024);
+        const peer = authenticate(req, "POST", "/peer/relay/event", bodyText);
+        const body = parseJson<PeerRelayEventRequest>(bodyText);
+        const events = Array.isArray(body.events) ? body.events : [];
+        sendJson(res, 200, { ok: true, stored: relayEvents.append(peer.id, events).length });
         return;
       }
       if (req.method === "GET" && url.pathname === "/peer/events") {

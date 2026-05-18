@@ -12,6 +12,7 @@ import {
 } from "../peers/peer-identity.js";
 import { getPeerOutboundRelaySnapshot } from "../peers/peer-outbound-relay.js";
 import { getPeerRelayBroker } from "../peers/peer-relay-broker.js";
+import { PeerRelayEventStore } from "../peers/peer-relay-event-store.js";
 import { checkPeerEndpoint, checkPeerIdentityEndpoint, pairPeer, RemoteRelayClient } from "../peers/peer-client.js";
 import type { PeerDiscoveryJobManager } from "../peers/peer-discovery-jobs.js";
 import { buildPeerReadiness, peerListenUrl } from "../peers/peer-readiness.js";
@@ -50,7 +51,7 @@ export async function handleDashboardPeerRoute(
   const tls = options.config.peerTlsEnabled ? ensurePeerTlsFiles(options.home, identity.public) : null;
 
   if (req.method === "GET" && url.pathname === "/api/peers") {
-    const readiness = await buildPeerReadiness(options.config);
+    const readiness = await buildPeerReadiness(options.config, options.home);
     sendJson(res, 200, store.snapshot(identity.public, {
       enabled: options.config.peerEnabled,
       listenUrl: readiness.listenUrl,
@@ -62,7 +63,7 @@ export async function handleDashboardPeerRoute(
 
   if (req.method === "POST" && url.pathname === "/api/peers/invite") {
     const body = await readJsonBody(req);
-    const readiness = await buildPeerReadiness(options.config);
+    const readiness = await buildPeerReadiness(options.config, options.home);
     const created = store.createInvitation({
       name: optionalStringField(body, "name"),
       group: optionalStringField(body, "group"),
@@ -90,7 +91,7 @@ export async function handleDashboardPeerRoute(
 
   if (req.method === "POST" && url.pathname === "/api/peers/probe") {
     const body = await readJsonBody(req);
-    const readiness = await buildPeerReadiness(options.config);
+    const readiness = await buildPeerReadiness(options.config, options.home);
     const peerId = optionalStringField(body, "peerId");
     if (peerId) {
       const probe = await new RemoteRelayClient(store, options.home).rpc(peerId, "peer.probe", {}, options.activityActor);
@@ -256,7 +257,7 @@ export async function handleDashboardPeerRoute(
   const rotateMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/rotate$/);
   if (rotateMatch?.[1] && req.method === "POST") {
     const body = await readJsonBody(req);
-    const readiness = await buildPeerReadiness(options.config);
+    const readiness = await buildPeerReadiness(options.config, options.home);
     const created = store.createRotationInvitation(decodeURIComponent(rotateMatch[1]), {
       expiresInMs: (optionalNumberField(body, "expiresMinutes") ?? 10) * 60 * 1000,
     });
@@ -345,12 +346,28 @@ export async function handleDashboardPeerRoute(
     });
     if (!peer?.url) {
       res.write("event: status\n");
-      res.write(`data: ${JSON.stringify({ type: "status", level: "warn", message: "Peer uses outbound relay mode. Live event streaming needs a direct peer URL; commands still use relay polling.", at: new Date().toISOString() })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: "status", level: "info", message: "Peer uses outbound relay mode. Waiting for relayed live events.", at: new Date().toISOString() })}\n\n`);
+      const eventStore = new PeerRelayEventStore(options.home);
+      let lastId: string | undefined = eventStore.list(peerId).at(-1)?.id;
+      const flush = () => {
+        for (const envelope of eventStore.list(peerId, lastId)) {
+          lastId = envelope.id;
+          if (res.destroyed || res.writableEnded) return;
+          res.write(`event: ${envelope.event.type}\n`);
+          res.write(`data: ${JSON.stringify(envelope.event)}\n\n`);
+        }
+      };
+      flush();
+      const poll = setInterval(flush, 2_000);
+      poll.unref?.();
       const heartbeat = setInterval(() => {
         if (!res.destroyed && !res.writableEnded) res.write(": heartbeat\n\n");
       }, 25_000);
       heartbeat.unref?.();
-      req.on("close", () => clearInterval(heartbeat));
+      req.on("close", () => {
+        clearInterval(poll);
+        clearInterval(heartbeat);
+      });
       return true;
     }
     const sourceContextKey = url.searchParams.get("contextKey") || undefined;

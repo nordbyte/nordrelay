@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, rmSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -15,9 +15,11 @@ import type {
   SessionWorktreeUpdateResult,
   WorktreeChangedFile,
   WorktreeConflictReviewItem,
+  WorktreeConflictResolution,
   WorktreeConflictWarning,
   WorktreeCleanupResult,
   WorktreeDashboardSnapshot,
+  WorktreeIntegrationOptions,
   WorktreeIntegrationRun,
   WorktreeIntegrationPreview,
   WorktreeIntegrationPreviewSource,
@@ -284,7 +286,7 @@ export class SessionWorktreeService {
     }
   }
 
-  integrate(ids: string[]): WorktreeIntegrationRun {
+  integrate(ids: string[], options: WorktreeIntegrationOptions = {}): WorktreeIntegrationRun {
     const records = ids.map((id) => this.requireRecord(id));
     if (records.length === 0) {
       throw new Error("Select at least one worktree to integrate.");
@@ -324,8 +326,22 @@ export class SessionWorktreeService {
     try {
       runGit(["worktree", "add", "-b", branchName, worktreePath, baseSha], repoRoot);
       const mergedCommitShas: string[] = [];
+      const resolvedConflicts: string[] = [];
       for (const record of records) {
-        runGit(["merge", "--no-ff", "--no-edit", record.commitSha!], worktreePath);
+        try {
+          runGit(["merge", "--no-ff", "--no-edit", record.commitSha!], worktreePath);
+        } catch (error) {
+          const resolved = this.applyIntegrationResolutions(worktreePath, records, options.resolutions ?? []);
+          if (!resolved.length) {
+            throw error;
+          }
+          resolvedConflicts.push(...resolved);
+          const remaining = unmergedFiles(worktreePath);
+          if (remaining.length > 0) {
+            throw new Error(`Integration has unresolved conflicts: ${remaining.join(", ")}`);
+          }
+          runGit(["commit", "--no-edit"], worktreePath);
+        }
         mergedCommitShas.push(record.commitSha!);
         this.store.patch(record.id, {
           status: "merged",
@@ -337,6 +353,7 @@ export class SessionWorktreeService {
       return this.store.patchIntegration(id, {
         status: "merged",
         mergedCommitShas,
+        resolvedConflicts: [...new Set(resolvedConflicts)],
         finishedAt: new Date().toISOString(),
       });
     } catch (error) {
@@ -357,6 +374,69 @@ export class SessionWorktreeService {
         finishedAt: new Date().toISOString(),
       });
     }
+  }
+
+  private applyIntegrationResolutions(
+    worktreePath: string,
+    records: SessionWorktreeRecord[],
+    resolutions: WorktreeConflictResolution[],
+  ): string[] {
+    const unmerged = unmergedFiles(worktreePath);
+    if (!unmerged.length || !resolutions.length) return [];
+    const byPath = new Map(resolutions
+      .filter((resolution) => isSafeRelativePath(resolution.path) && resolution.choice !== "auto")
+      .map((resolution) => [resolution.path, resolution]));
+    const resolved: string[] = [];
+    for (const relativePath of unmerged) {
+      const resolution = byPath.get(relativePath);
+      if (!resolution) continue;
+      this.applyIntegrationResolution(worktreePath, records, relativePath, resolution);
+      resolved.push(relativePath);
+    }
+    return resolved;
+  }
+
+  private applyIntegrationResolution(
+    worktreePath: string,
+    records: SessionWorktreeRecord[],
+    relativePath: string,
+    resolution: WorktreeConflictResolution,
+  ): void {
+    if (resolution.choice === "manual") {
+      const target = path.join(worktreePath, relativePath);
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, resolution.content ?? "", "utf8");
+      runGit(["add", "--", relativePath], worktreePath);
+      return;
+    }
+    if (resolution.choice === "both") {
+      const versions = records
+        .filter((record) => record.commitSha)
+        .map((record) => ({
+          label: record.branchName,
+          text: gitOutputSafe(["show", `${record.commitSha}:${relativePath}`], worktreePath, true),
+        }))
+        .filter((entry): entry is { label: string; text: string } => entry.text !== undefined);
+      if (!versions.length) {
+        throw new Error(`Cannot build combined conflict resolution for ${relativePath}; no source versions were readable.`);
+      }
+      const target = path.join(worktreePath, relativePath);
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, versions.map((version) => `<<<<<<< ${version.label}\n${version.text.replace(/\s+$/g, "")}\n>>>>>>> ${version.label}`).join("\n\n"), "utf8");
+      runGit(["add", "--", relativePath], worktreePath);
+      return;
+    }
+    if (resolution.choice === "theirs" && resolution.sourceWorktreeId) {
+      const source = records.find((record) => record.id === resolution.sourceWorktreeId);
+      if (!source?.commitSha) {
+        throw new Error(`Cannot resolve ${relativePath}; source worktree ${resolution.sourceWorktreeId} has no commit.`);
+      }
+      runGit(["checkout", source.commitSha, "--", relativePath], worktreePath);
+      runGit(["add", "--", relativePath], worktreePath);
+      return;
+    }
+    runGit(["checkout", resolution.choice === "ours" ? "--ours" : "--theirs", "--", relativePath], worktreePath);
+    runGit(["add", "--", relativePath], worktreePath);
   }
 
   remove(id: string, options: { force?: boolean } = {}): SessionWorktreeRecord {
@@ -606,6 +686,10 @@ function gitStatus(cwd: string): string[] {
     return [];
   }
   return gitOutputSafe(["status", "--porcelain"], cwd, true)?.split(/\r?\n/).filter(Boolean) ?? [];
+}
+
+function unmergedFiles(cwd: string): string[] {
+  return gitOutputSafe(["diff", "--name-only", "--diff-filter=U", "--"], cwd, true)?.split(/\r?\n/).filter(Boolean).filter(isSafeRelativePath) ?? [];
 }
 
 function gitOutput(args: string[], cwd: string, allowLarge = false): string {

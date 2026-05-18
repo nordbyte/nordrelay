@@ -88,6 +88,7 @@ const WEB_API_CLIENT_ROUTE_RULES = [
   { re: /^\/api\/workflows\/[^\/]+\/preview$/, methods: ['POST'] },
   { re: /^\/api\/workflow-runs\/[^\/]+$/, methods: ['GET'] },
   { re: /^\/api\/workflow-runs\/[^\/]+\/cancel$/, methods: ['POST'] },
+  { re: /^\/api\/workflow-runs\/[^\/]+\/rerun-failed$/, methods: ['POST'] },
   { path: "/api/control-options", methods: ['GET'] },
   { path: "/api/sessions", methods: ['GET'] },
   { path: "/api/sessions/new", methods: ['POST'] },

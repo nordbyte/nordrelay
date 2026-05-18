@@ -69,7 +69,7 @@ import { renderSessionInfoPlain, renderSessionUsageRows } from "../channels/shar
 import { SessionLockStore, type SessionLock } from "../access/session-locks.js";
 import { SessionRegistry, type ContextMetadata } from "../state/session-registry.js";
 import { createSessionWorktreeStore, SessionWorktreeService } from "../worktrees/worktree-service.js";
-import type { SessionWorktreeDiffSnapshot, SessionWorktreeRecord, SessionWorktreeUpdateResult, WorktreeCleanupResult, WorktreeDashboardSnapshot, WorktreeIntegrationRun, WorktreeIntegrationPreview } from "../worktrees/worktree-types.js";
+import type { SessionWorktreeDiffSnapshot, SessionWorktreeRecord, SessionWorktreeUpdateResult, WorktreeCleanupResult, WorktreeDashboardSnapshot, WorktreeIntegrationOptions, WorktreeIntegrationRun, WorktreeIntegrationPreview } from "../worktrees/worktree-types.js";
 import { createSupportBundle, type SupportBundleResult } from "../support/support-bundle.js";
 import { transcribeAudio, type TranscriptionBackend } from "../artifacts/voice.js";
 import {
@@ -599,7 +599,7 @@ export class RelayRuntime {
   async updateSessionWorktreeFromBase(id: string, actor?: WebActivityActor): Promise<SessionWorktreeUpdateResult> { return relayRuntimeUpdateSessionWorktreeFromBase(this, id, actor); }
   async cleanupSessionWorktrees(actor?: WebActivityActor): Promise<WorktreeCleanupResult> { return relayRuntimeCleanupSessionWorktrees(this, actor); }
   async commitSessionWorktree(id: string, message?: string, actor?: WebActivityActor): Promise<{ record: SessionWorktreeRecord; clean: boolean; status: string[] }> { return relayRuntimeCommitSessionWorktree(this, id, message, actor); }
-  async integrateSessionWorktrees(ids: string[], actor?: WebActivityActor): Promise<WorktreeIntegrationRun> { return relayRuntimeIntegrateSessionWorktrees(this, ids, actor); }
+  async integrateSessionWorktrees(ids: string[], options: WorktreeIntegrationOptions = {}, actor?: WebActivityActor): Promise<WorktreeIntegrationRun> { return relayRuntimeIntegrateSessionWorktrees(this, ids, options, actor); }
   async forkCurrentSessionToWorktree(options: { includeUncommitted?: boolean } = {}, actor?: WebActivityActor): Promise<{ session: AgentSessionInfo; record: SessionWorktreeRecord; copiedUntrackedFiles: string[]; skippedUntrackedFiles: string[]; patchApplied: boolean }> { return relayRuntimeForkCurrentSessionToWorktree(this, options, actor); }
   async removeSessionWorktree(id: string, force = false, actor?: WebActivityActor): Promise<SessionWorktreeRecord> { return relayRuntimeRemoveSessionWorktree(this, id, force, actor); }
 

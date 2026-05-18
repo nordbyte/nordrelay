@@ -27,6 +27,8 @@ export interface WorkflowSchedule {
   enabled: boolean;
   runAt?: string;
   intervalMinutes?: number;
+  cron?: string;
+  timezone?: string;
   nextRunAt?: string;
   lastRunAt?: string;
 }
@@ -471,16 +473,20 @@ function normalizeSchedule(input: unknown): WorkflowSchedule | undefined {
   if (!input || typeof input !== "object" || Array.isArray(input)) return undefined;
   const record = input as Record<string, unknown>;
   const intervalMinutes = Math.max(0, Math.floor(Number(record.intervalMinutes) || 0)) || undefined;
+  const cron = cleanOptional(record.cron);
+  const timezone = cleanOptional(record.timezone);
   const runAt = validDate(record.runAt);
   const nextRunAt = validDate(record.nextRunAt) ?? runAt ?? (Boolean(record.enabled) && intervalMinutes ? new Date(Date.now() + intervalMinutes * 60 * 1000).toISOString() : undefined);
   const schedule = {
     enabled: Boolean(record.enabled),
     runAt,
     intervalMinutes,
+    cron,
+    timezone,
     nextRunAt,
     lastRunAt: validDate(record.lastRunAt),
   };
-  return schedule.enabled || runAt || intervalMinutes ? schedule : undefined;
+  return schedule.enabled || runAt || intervalMinutes || cron ? schedule : undefined;
 }
 
 function upsertById<T extends { id: string }>(items: T[], item: T): T[] {

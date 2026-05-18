@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { isAgentId, type AgentId } from "../agents/shared/agent.js";
 import type { RelayRuntime, SessionPageDto } from "../runtime/relay-runtime.js";
 import type { QueuePlanInput } from "../runtime/relay-runtime-queue-planner.js";
-import { SESSION_WORKSPACE_MODES, type SessionWorkspaceMode } from "../worktrees/worktree-types.js";
+import { SESSION_WORKSPACE_MODES, type SessionWorkspaceMode, type WorktreeConflictResolution } from "../worktrees/worktree-types.js";
 import type { AuthenticatedUser } from "../access/user-management.js";
 import type { WebActivityActor, WebActivityCategory } from "./web-state.js";
 import { QUEUE_PLAN_STATUSES, type QueuePlanStatus } from "../state/queue-plan-store.js";
@@ -158,7 +158,7 @@ export async function handleDashboardSessionRoute(
     const body = await readJsonBody(req);
     const ids = Array.isArray(body?.ids) ? body.ids.map(String).filter(Boolean) : [];
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { run: await runtime.integrateSessionWorktrees(ids, options.activityActor) });
+    sendJson(res, 200, { run: await runtime.integrateSessionWorktrees(ids, { resolutions: parseWorktreeResolutions(body?.resolutions) }, options.activityActor) });
     return true;
   }
 
@@ -478,6 +478,22 @@ function parseQueuePlanStatus(value: string): QueuePlanStatus {
     throw new Error("Unsupported queue plan status.");
   }
   return value as QueuePlanStatus;
+}
+
+function parseWorktreeResolutions(value: unknown): WorktreeConflictResolution[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item): WorktreeConflictResolution | null => {
+    const record = objectRecord(item);
+    const path = optionalStringField(record, "path");
+    const choice = optionalStringField(record, "choice") ?? "auto";
+    if (!path || !["auto", "ours", "theirs", "both", "manual"].includes(choice)) return null;
+    return {
+      path,
+      choice: choice as WorktreeConflictResolution["choice"],
+      sourceWorktreeId: optionalStringField(record, "sourceWorktreeId"),
+      content: optionalStringField(record, "content"),
+    };
+  }).filter((item): item is WorktreeConflictResolution => Boolean(item));
 }
 
 function stringList(value: unknown): string[] {

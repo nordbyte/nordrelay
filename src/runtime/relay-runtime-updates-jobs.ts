@@ -455,6 +455,8 @@ export async function relayRuntimeJobAction(runtime: RelayRuntimeDelegate, id: s
         const run = runtime.workflowStore.getRun(runId);
         if (run?.status === "paused") {
           runtime.workflowService.resumeRun(runId, actor);
+        } else if (run?.status === "failed") {
+          runtime.workflowService.rerunFromFailedStep(runId, actor);
         } else if (run?.workflowId) {
           runtime.workflowService.runWorkflow(run.workflowId, run.variables, actor);
         } else if (run?.templateId) {

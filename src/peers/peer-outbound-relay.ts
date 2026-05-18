@@ -6,6 +6,7 @@ import type { TLSSocket } from "node:tls";
 
 import type { ConnectorConfig } from "../core/config.js";
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
+import type { RelayEvent } from "../runtime/relay-runtime-types.js";
 import { signPeerRequest } from "./peer-auth.js";
 import { PeerRuntimeService, peerError } from "./peer-runtime-service.js";
 import { PeerStore } from "./peer-store.js";
@@ -56,6 +57,8 @@ export function startPeerOutboundRelay(options: {
   const timers = new Map<string, NodeJS.Timeout>();
   const peerState = new Map<string, PeerOutboundRelayPeerSnapshot>();
   const allowedPeerIds = new Set(config.peerOutboundRelayPeerIds);
+  const eventQueue = new Map<string, RelayEvent[]>();
+  const eventTimers = new Map<string, NodeJS.Timeout>();
 
   const loop = async (peerId: string): Promise<void> => {
     if (closed) return;
@@ -118,6 +121,47 @@ export function startPeerOutboundRelay(options: {
     }
   };
 
+  const scheduleEventFlush = (peerId: string, delayMs = 500): void => {
+    if (closed || eventTimers.has(peerId)) return;
+    const timer = setTimeout(() => {
+      eventTimers.delete(peerId);
+      void flushEvents(peerId);
+    }, delayMs);
+    timer.unref?.();
+    eventTimers.set(peerId, timer);
+  };
+
+  const flushEvents = async (peerId: string): Promise<void> => {
+    if (closed) return;
+    const peer = store.get(peerId);
+    if (!peer || !isRelayPeerAllowed(peer, allowedPeerIds)) return;
+    const events = eventQueue.get(peerId)?.splice(0, 50) ?? [];
+    if (!events.length) return;
+    try {
+      await signedPeerPost(peer, "/peer/relay/event", { events });
+      const state = relayPeerState(peerState, peerId);
+      state.failures = 0;
+      state.lastError = undefined;
+      writeOutboundSnapshot(homeKey, config, peerState);
+    } catch (error) {
+      const state = relayPeerState(peerState, peerId);
+      state.failures = Math.min(state.failures + 1, 8);
+      state.lastError = peerError(error);
+      eventQueue.set(peerId, events.concat(eventQueue.get(peerId) ?? []).slice(-100));
+      scheduleEventFlush(peerId, nextDelayMs(config.peerOutboundRelayPollMs, state));
+    }
+  };
+
+  const unsubscribeEvents = runtime.subscribe((event) => {
+    for (const peer of store.list()) {
+      if (!isRelayPeerAllowed(peer, allowedPeerIds)) continue;
+      const queue = eventQueue.get(peer.id) ?? [];
+      queue.push(event);
+      eventQueue.set(peer.id, queue.slice(-100));
+      scheduleEventFlush(peer.id, 500);
+    }
+  });
+
   scheduleKnownPeers();
   const refreshTimer = setInterval(scheduleKnownPeers, Math.max(30_000, config.peerOutboundRelayPollMs * 5));
   refreshTimer.unref?.();
@@ -127,8 +171,11 @@ export function startPeerOutboundRelay(options: {
     close: () => {
       closed = true;
       clearInterval(refreshTimer);
+      unsubscribeEvents();
       for (const timer of timers.values()) clearTimeout(timer);
+      for (const timer of eventTimers.values()) clearTimeout(timer);
       timers.clear();
+      eventTimers.clear();
       outboundRelaySnapshots.set(homeKey, {
         enabled: false,
         allowedPeerIds: [...allowedPeerIds],

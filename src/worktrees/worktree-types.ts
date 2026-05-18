@@ -76,6 +76,7 @@ export interface WorktreeIntegrationRun {
   updatedAt: string;
   finishedAt?: string;
   lastError?: string;
+  resolvedConflicts?: string[];
 }
 
 export interface SessionWorktreeDiffSnapshot {
@@ -117,6 +118,19 @@ export interface WorktreeConflictReviewItem {
   sourceWorktrees: WorktreeIntegrationPreviewSource[];
   risk: "none" | "same-file" | "status-mismatch";
   recommendation: string;
+}
+
+export type WorktreeConflictResolutionChoice = "auto" | "ours" | "theirs" | "both" | "manual";
+
+export interface WorktreeConflictResolution {
+  path: string;
+  choice: WorktreeConflictResolutionChoice;
+  sourceWorktreeId?: string;
+  content?: string;
+}
+
+export interface WorktreeIntegrationOptions {
+  resolutions?: WorktreeConflictResolution[];
 }
 
 export interface SessionWorktreeUpdateResult {

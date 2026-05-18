@@ -75,15 +75,20 @@ export async function handleDashboardWorkflowRoute(
     return true;
   }
 
-  const workflowRunMatch = url.pathname.match(/^\/api\/workflow-runs\/([^/]+)(?:\/cancel)?$/);
+  const workflowRunMatch = url.pathname.match(/^\/api\/workflow-runs\/([^/]+)(?:\/(cancel|rerun-failed))?$/);
   if (workflowRunMatch?.[1]) {
     const id = decodeURIComponent(workflowRunMatch[1]);
-    if (req.method === "GET" && !url.pathname.endsWith("/cancel")) {
+    const action = workflowRunMatch[2];
+    if (req.method === "GET" && !action) {
       sendJson(res, 200, { run: options.runtime.workflowStore.getRun(id) });
       return true;
     }
-    if (req.method === "POST" && url.pathname.endsWith("/cancel")) {
+    if (req.method === "POST" && action === "cancel") {
       sendJson(res, 200, { run: await service.cancelRun(id, options.activityActor) });
+      return true;
+    }
+    if (req.method === "POST" && action === "rerun-failed") {
+      sendJson(res, 200, { run: service.rerunFromFailedStep(id, options.activityActor) });
       return true;
     }
   }
@@ -212,6 +217,8 @@ function parseWorkflowSchedule(value: unknown): WorkflowSchedule | undefined {
     enabled: Boolean(record.enabled),
     runAt: optionalStringField(record, "runAt"),
     intervalMinutes: Number.isFinite(Number(record.intervalMinutes)) ? Math.max(0, Math.floor(Number(record.intervalMinutes))) : undefined,
+    cron: optionalStringField(record, "cron"),
+    timezone: optionalStringField(record, "timezone"),
     nextRunAt: optionalStringField(record, "nextRunAt"),
     lastRunAt: optionalStringField(record, "lastRunAt"),
   };

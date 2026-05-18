@@ -138,6 +138,7 @@ export interface PeerReadiness {
   port: number;
   tlsEnabled: boolean;
   requireTls: boolean;
+  tlsExpiresAt?: string;
   localListening: boolean;
   loopbackOnly: boolean;
   bindLoopbackOnly: boolean;
@@ -297,6 +298,17 @@ export interface PeerRelayPollResponse {
 export interface PeerRelayResultRequest {
   id: string;
   result: PeerRpcResult;
+}
+
+export interface PeerRelayEventEnvelope {
+  peerId: string;
+  id: string;
+  receivedAt: string;
+  event: PeerEventEnvelope;
+}
+
+export interface PeerRelayEventRequest {
+  events: PeerEventEnvelope[];
 }
 
 export interface PeerWebProxyPayload {

@@ -87,6 +87,7 @@ const IMPLEMENTED_ROUTE_PATHS = new Set([
   "/api/workflows/:id/preview",
   "/api/workflow-runs/:id",
   "/api/workflow-runs/:id/cancel",
+  "/api/workflow-runs/:id/rerun-failed",
   "/api/locks",
   "/api/auth/status",
   "/api/auth/login",

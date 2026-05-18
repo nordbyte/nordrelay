@@ -9,6 +9,7 @@ import type {
   WorktreeCleanupResult,
   WorktreeDashboardSnapshot,
   WorktreeIntegrationRun,
+  WorktreeIntegrationOptions,
   WorktreeIntegrationPreview,
 } from "../worktrees/worktree-types.js";
 
@@ -97,9 +98,10 @@ export async function relayRuntimeCleanupSessionWorktrees(
 export async function relayRuntimeIntegrateSessionWorktrees(
   runtime: RelayRuntimeDelegate,
   ids: string[],
+  options: WorktreeIntegrationOptions = {},
   actor?: WebActivityActor,
 ): Promise<WorktreeIntegrationRun> {
-  const run = runtime.worktreeService.integrate(ids);
+  const run = runtime.worktreeService.integrate(ids, options);
   runtime.appendActivity({
     source: "web",
     status: run.status === "merged" ? "completed" : run.status === "conflict" ? "failed" : "info",
@@ -107,7 +109,7 @@ export async function relayRuntimeIntegrateSessionWorktrees(
     threadId: null,
     workspace: run.worktreePath,
     actor,
-    detail: run.status === "merged" ? `Integration branch ${run.branchName} created.` : run.lastError ?? run.status,
+    detail: run.status === "merged" ? `Integration branch ${run.branchName} created${run.resolvedConflicts?.length ? ` with ${run.resolvedConflicts.length} resolved conflict(s)` : ""}.` : run.lastError ?? run.status,
   });
   return run;
 }

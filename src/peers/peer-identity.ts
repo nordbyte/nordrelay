@@ -4,6 +4,7 @@ import {
   randomBytes,
   sign,
   verify,
+  X509Certificate,
 } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import os from "node:os";
@@ -31,6 +32,7 @@ export interface PeerTlsFiles {
   cert: string;
   key: string;
   fingerprint: string;
+  expiresAt?: string;
 }
 
 export function loadOrCreatePeerIdentity(home = process.env.NORDRELAY_HOME || DEFAULT_HOME, name?: string): LoadedPeerIdentity {
@@ -139,7 +141,7 @@ export function ensurePeerTlsFiles(home = process.env.NORDRELAY_HOME || DEFAULT_
   if (existsSync(certPath) && existsSync(keyPath)) {
     const cert = readFileSync(certPath, "utf8");
     const key = readFileSync(keyPath, "utf8");
-    return { certPath, keyPath, cert, key, fingerprint: fingerprintForCertificate(cert) };
+    return { certPath, keyPath, cert, key, fingerprint: fingerprintForCertificate(cert), expiresAt: certificateExpiresAt(cert) };
   }
 
   mkdirSync(certDir, { recursive: true });
@@ -172,6 +174,7 @@ export function ensurePeerTlsFiles(home = process.env.NORDRELAY_HOME || DEFAULT_
     cert: generated.cert,
     key: generated.private,
     fingerprint: fingerprintForCertificate(generated.cert),
+    expiresAt: certificateExpiresAt(generated.cert),
   };
 }
 
@@ -205,6 +208,14 @@ export function fingerprintForCertificate(certPem: string): string {
     .replace(/-----END CERTIFICATE-----/g, "")
     .replace(/\s+/g, "");
   return formatFingerprint(createHash("sha256").update(Buffer.from(body, "base64")).digest("hex"));
+}
+
+function certificateExpiresAt(certPem: string): string | undefined {
+  try {
+    return new Date(new X509Certificate(certPem).validTo).toISOString();
+  } catch {
+    return undefined;
+  }
 }
 
 function createNodeId(publicKey: string): string {

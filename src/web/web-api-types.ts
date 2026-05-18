@@ -43,6 +43,7 @@ import type {
   SessionWorktreeRecord,
   SessionWorktreeUpdateResult,
   WorktreeCleanupResult,
+  WorktreeConflictResolution,
   WorktreeDashboardSnapshot,
   WorktreeIntegrationRun,
   WorktreeIntegrationPreview,
@@ -166,7 +167,7 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/agent-update" ? { agentId: AgentId; operation?: "update" | "install" } :
   P extends "/api/sessions/new" ? { agentId?: AgentId; workspace?: string; workspaceMode?: SessionWorkspaceMode; model?: string; reasoningEffort?: string; launchProfileId?: string; fastMode?: boolean } :
   P extends "/api/sessions/worktrees/fork" ? { includeUncommitted?: boolean } :
-  P extends "/api/sessions/worktrees/integrate" ? { ids: string[] } :
+  P extends "/api/sessions/worktrees/integrate" ? { ids: string[]; resolutions?: WorktreeConflictResolution[] } :
   P extends "/api/sessions/worktrees/integrate/preview" ? { ids: string[] } :
   P extends "/api/sessions/worktrees/cleanup" ? Record<string, never> :
   P extends `/api/sessions/worktrees/${string}/commit` ? { message?: string } :
@@ -192,9 +193,10 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/templates" ? { name: string; prompt: string; description?: string; tags?: string[]; variables?: PromptTemplate["variables"]; scope?: "private" | "shared"; defaultAgentId?: AgentId; defaultWorkspace?: string; defaultModel?: string; defaultReasoning?: string; defaultLaunchProfile?: string } :
   P extends `/api/templates/${string}` ? { name: string; prompt: string; description?: string; tags?: string[]; variables?: PromptTemplate["variables"]; scope?: "private" | "shared"; defaultAgentId?: AgentId; defaultWorkspace?: string; defaultModel?: string; defaultReasoning?: string; defaultLaunchProfile?: string } :
   P extends `/api/templates/${string}/run` | `/api/templates/${string}/preview` ? { variables?: Record<string, string> } :
-  P extends "/api/workflows" ? { name: string; description?: string; tags?: string[]; steps: WorkflowStep[]; scope?: "private" | "shared" } :
-  P extends `/api/workflows/${string}` ? { name: string; description?: string; tags?: string[]; steps: WorkflowStep[]; scope?: "private" | "shared" } :
+  P extends "/api/workflows" ? { name: string; description?: string; tags?: string[]; steps: WorkflowStep[]; schedule?: Workflow["schedule"]; scope?: "private" | "shared" } :
+  P extends `/api/workflows/${string}` ? { name: string; description?: string; tags?: string[]; steps: WorkflowStep[]; schedule?: Workflow["schedule"]; scope?: "private" | "shared" } :
   P extends `/api/workflows/${string}/run` | `/api/workflows/${string}/preview` ? { variables?: Record<string, string> } :
+  P extends `/api/workflow-runs/${string}/rerun-failed` ? Record<string, never> :
   P extends "/api/users" ? { email: string; displayName?: string; password: string; groupIds?: string[]; active?: boolean; telegramUserId?: number; discordUserId?: string; preferences?: { artifactDelivery?: string } } :
   P extends `/api/users/${string}/password` ? { password: string } :
   P extends `/api/users/${string}/telegram` ? { createCode?: boolean; telegramUserId?: number; username?: string } :
@@ -264,7 +266,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends `/api/workflows/${string}/run` ? WorkflowRunResultDto :
   P extends `/api/workflows/${string}/preview` ? WorkflowPreviewDto :
   P extends `/api/workflows/${string}` ? { workflow?: Workflow; removed?: boolean } :
-  P extends `/api/workflow-runs/${string}/cancel` | `/api/workflow-runs/${string}` ? { run: WorkflowRun | null } :
+  P extends `/api/workflow-runs/${string}/cancel` | `/api/workflow-runs/${string}/rerun-failed` | `/api/workflow-runs/${string}` ? { run: WorkflowRun | null } :
   P extends "/api/control-options" ? DashboardControlOptions :
   P extends "/api/sessions" ? SessionPageDto :
   P extends "/api/sessions/new" | "/api/sessions/switch" | "/api/sessions/attach" | "/api/agent" | "/api/session/model" | "/api/session/reasoning" | "/api/session/fast" | "/api/session/launch" ? { session: AgentSessionInfo } :

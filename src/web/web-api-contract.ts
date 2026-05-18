@@ -105,6 +105,7 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   dynamic("/api/workflows/:id/preview", "^/api/workflows/[^/]+/preview$", ["POST"], "workflows.read", `/api/workflows/${stringToken}/preview`),
   dynamic("/api/workflow-runs/:id", "^/api/workflow-runs/[^/]+$", ["GET"], "workflows.read", `/api/workflow-runs/${stringToken}`),
   dynamic("/api/workflow-runs/:id/cancel", "^/api/workflow-runs/[^/]+/cancel$", ["POST"], "workflows.run", `/api/workflow-runs/${stringToken}/cancel`),
+  dynamic("/api/workflow-runs/:id/rerun-failed", "^/api/workflow-runs/[^/]+/rerun-failed$", ["POST"], "workflows.run", `/api/workflow-runs/${stringToken}/rerun-failed`),
   exact("/api/control-options", ["GET"], "settings.read"),
   exact("/api/sessions", ["GET"], "sessions.read"),
   exact("/api/sessions/new", ["POST"], "sessions.write"),

@@ -49,6 +49,8 @@ export class RelayWorkflowService {
   constructor(private readonly options: RelayWorkflowServiceOptions) {
     this.scheduleTimer = setInterval(() => this.runDueSchedules(), WORKFLOW_SCHEDULE_POLL_MS);
     this.scheduleTimer.unref?.();
+    const recoveryTimer = setTimeout(() => this.recoverInterruptedRuns(), 250);
+    recoveryTimer.unref?.();
   }
 
   list(): { templates: PromptTemplate[]; workflows: Workflow[]; runs: WorkflowRun[] } {
@@ -72,7 +74,7 @@ export class RelayWorkflowService {
   }
 
   saveWorkflow(input: Partial<Workflow> & Pick<Workflow, "name" | "steps">, actor?: WebActivityActor): Workflow {
-    const workflow = this.options.store.saveWorkflow({ ...input, ownerUserId: input.ownerUserId ?? actor?.id });
+    const workflow = this.options.store.saveWorkflow({ ...input, schedule: prepareWorkflowSchedule(input.schedule), ownerUserId: input.ownerUserId ?? actor?.id });
     this.record("workflow_saved", "info", workflow.name, actor);
     return workflow;
   }
@@ -266,6 +268,43 @@ export class RelayWorkflowService {
     return resumed;
   }
 
+  rerunFromFailedStep(id: string, actor?: WebActivityActor): WorkflowRun | null {
+    const run = this.options.store.getRun(id);
+    if (!run) return null;
+    const failedIndex = run.steps.findIndex((step) => step.status === "failed");
+    const startIndex = failedIndex >= 0 ? failedIndex : Math.min(run.currentStepIndex, Math.max(0, run.steps.length - 1));
+    const resetSteps = run.steps.map((step, index) => index < startIndex ? step : {
+      ...step,
+      status: "pending" as const,
+      startedAt: undefined,
+      finishedAt: undefined,
+      error: undefined,
+      correlationId: undefined,
+      approvedAt: step.requiresApproval ? step.approvedAt : undefined,
+    });
+    const patched = this.options.store.patchRun(id, {
+      status: "queued",
+      error: undefined,
+      finishedAt: undefined,
+      currentStepIndex: startIndex,
+      steps: resetSteps,
+    }) ?? run;
+    this.upsertRunJob(patched, actor);
+    this.record("workflow_run_rerun_from_failed_step", "queued", `${patched.name} from step ${startIndex + 1}`, actor);
+    if (patched.workflowId) {
+      void this.executeWorkflowRun(id, actor).catch((error) => {
+        const latest = this.options.store.getRun(id) ?? patched;
+        this.failRun(latest, error, actor);
+      });
+    } else if (patched.templateId) {
+      void this.executeTemplateRun(id, actor).catch((error) => {
+        const latest = this.options.store.getRun(id) ?? patched;
+        this.failRun(latest, error, actor);
+      });
+    }
+    return patched;
+  }
+
   private async executeWorkflowRun(id: string, actor?: WebActivityActor, depth = 0): Promise<void> {
     const initial = this.options.store.getRun(id);
     if (!initial?.workflowId) return;
@@ -296,7 +335,8 @@ export class RelayWorkflowService {
         if (step.requiresApproval && !stepRun?.approvedAt) {
           run = this.options.store.patchRun(id, { status: "paused", currentStepIndex: index }) ?? run;
           this.upsertRunJob(run, actor);
-          this.options.broadcastStatus(`Workflow ${run.name} paused before ${step.name}.`, "info");
+          this.record("workflow_run_paused_for_approval", "queued", `${run.name} before ${step.name}`, actor);
+          this.options.broadcastStatus(`Workflow ${run.name} paused before ${step.name}. Approval is required.`, "warn");
           return;
         }
         await this.runStepWithRetry(id, workflow, step, index, actor, depth);
@@ -587,12 +627,42 @@ export class RelayWorkflowService {
     const now = Date.now();
     for (const workflow of this.options.store.listWorkflows()) {
       const schedule = workflow.schedule;
+      if (schedule?.enabled && !schedule.nextRunAt && schedule.cron) {
+        this.options.store.saveWorkflow({ ...workflow, schedule: prepareWorkflowSchedule(schedule) });
+        continue;
+      }
       if (!schedule?.enabled || !schedule.nextRunAt || Date.parse(schedule.nextRunAt) > now) continue;
       if (this.activeRuns.has(`scheduled:${workflow.id}`)) continue;
       const nextSchedule = nextWorkflowSchedule(schedule, now);
       this.options.store.saveWorkflow({ ...workflow, schedule: nextSchedule });
       const scheduledActor: WebActivityActor = { channel: "system", id: "workflow-scheduler", label: "Workflow scheduler" };
       this.runWorkflow(workflow.id, {}, scheduledActor);
+    }
+  }
+
+  private recoverInterruptedRuns(): void {
+    const actor: WebActivityActor = { channel: "system", id: "workflow-recovery", label: "Workflow recovery" };
+    for (const run of this.options.store.listRuns(500)) {
+      if (this.activeRuns.has(run.id)) continue;
+      if (run.status !== "queued" && run.status !== "running") continue;
+      const patched = this.options.store.patchRun(run.id, {
+        status: "queued",
+        error: undefined,
+        finishedAt: undefined,
+      }) ?? run;
+      this.upsertRunJob(patched, actor);
+      this.record("workflow_run_recovered", "queued", patched.name, actor);
+      if (patched.workflowId) {
+        void this.executeWorkflowRun(patched.id, actor).catch((error) => {
+          const latest = this.options.store.getRun(patched.id) ?? patched;
+          this.failRun(latest, error, actor);
+        });
+      } else if (patched.templateId) {
+        void this.executeTemplateRun(patched.id, actor).catch((error) => {
+          const latest = this.options.store.getRun(patched.id) ?? patched;
+          this.failRun(latest, error, actor);
+        });
+      }
     }
   }
 }
@@ -662,12 +732,97 @@ function conditionMatches(step: WorkflowStep, variables: Record<string, string>)
 
 function nextWorkflowSchedule(schedule: NonNullable<Workflow["schedule"]>, now: number): NonNullable<Workflow["schedule"]> {
   const lastRunAt = new Date(now).toISOString();
+  if (schedule.cron) {
+    const next = nextCronDate(schedule.cron, schedule.timezone, new Date(now + 60_000));
+    return {
+      ...schedule,
+      lastRunAt,
+      nextRunAt: next?.toISOString(),
+      enabled: Boolean(next),
+    };
+  }
   const intervalMs = (schedule.intervalMinutes ?? 0) * 60 * 1000;
   return {
     ...schedule,
     lastRunAt,
     nextRunAt: intervalMs > 0 ? new Date(now + intervalMs).toISOString() : undefined,
     enabled: intervalMs > 0 ? schedule.enabled : false,
+  };
+}
+
+function prepareWorkflowSchedule(schedule: Workflow["schedule"]): Workflow["schedule"] {
+  if (!schedule?.enabled || schedule.nextRunAt || !schedule.cron) return schedule;
+  const next = nextCronDate(schedule.cron, schedule.timezone, new Date(Date.now() + 60_000));
+  return {
+    ...schedule,
+    nextRunAt: next?.toISOString(),
+    enabled: Boolean(next),
+  };
+}
+
+function nextCronDate(expression: string, timezone: string | undefined, from: Date): Date | null {
+  const parts = expression.trim().split(/\s+/);
+  if (parts.length !== 5) return null;
+  const fields = [
+    parseCronField(parts[0]!, 0, 59),
+    parseCronField(parts[1]!, 0, 23),
+    parseCronField(parts[2]!, 1, 31),
+    parseCronField(parts[3]!, 1, 12),
+    parseCronField(parts[4]!, 0, 6),
+  ];
+  if (fields.some((field) => !field)) return null;
+  const tz = timezone?.trim() || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const cursor = new Date(from);
+  cursor.setSeconds(0, 0);
+  const deadline = cursor.getTime() + 366 * 24 * 60 * 60 * 1000;
+  while (cursor.getTime() <= deadline) {
+    const parts = datePartsInTimezone(cursor, tz);
+    if (
+      fields[0]!.has(parts.minute) &&
+      fields[1]!.has(parts.hour) &&
+      fields[2]!.has(parts.day) &&
+      fields[3]!.has(parts.month) &&
+      fields[4]!.has(parts.weekday)
+    ) {
+      return cursor;
+    }
+    cursor.setMinutes(cursor.getMinutes() + 1);
+  }
+  return null;
+}
+
+function parseCronField(field: string, min: number, max: number): Set<number> | null {
+  const values = new Set<number>();
+  for (const part of field.split(",")) {
+    const [rangePart = "", stepPart] = part.split("/");
+    const step = stepPart ? Math.max(1, Number(stepPart)) : 1;
+    if (!Number.isFinite(step)) return null;
+    const range = rangePart === "*" ? [min, max] : rangePart.includes("-") ? rangePart.split("-").map(Number) : [Number(rangePart), Number(rangePart)];
+    const [start, end] = range;
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < min || end > max || start > end) return null;
+    for (let value = start; value <= end; value += step) values.add(value);
+  }
+  return values;
+}
+
+function datePartsInTimezone(date: Date, timezone: string): { minute: number; hour: number; day: number; month: number; weekday: number } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    minute: "numeric",
+    hour: "numeric",
+    day: "numeric",
+    month: "numeric",
+    weekday: "short",
+    hour12: false,
+  }).formatToParts(date);
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const weekdayText = parts.find((part) => part.type === "weekday")?.value ?? "Sun";
+  return {
+    minute: value("minute"),
+    hour: value("hour") % 24,
+    day: value("day"),
+    month: value("month"),
+    weekday: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekdayText.slice(0, 3)),
   };
 }
 
