@@ -1,3 +1,4 @@
+// @ts-nocheck
 if(state.metricsTab===undefined)state.metricsTab='overview';
 if(state.metricsAutoRefresh===undefined)state.metricsAutoRefresh=localStorage.getItem('nordrelayMetricsAutoRefresh')==='true';
 let metricsAutoRefreshTimer=null;

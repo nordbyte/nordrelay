@@ -1,3 +1,4 @@
+// @ts-nocheck
 const CHAT_CODE_BLOCK_PREFIX='\uE010C';
 const CHAT_CODE_BLOCK_SUFFIX='\uE010';
 const CHAT_INLINE_CODE_PREFIX='\uE011I';

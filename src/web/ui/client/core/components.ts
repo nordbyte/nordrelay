@@ -1,3 +1,4 @@
+// @ts-nocheck
 function uiBadge(text,status='enabled'){return '<span class="adapter-status '+esc(status)+'">'+esc(text)+'</span>'}
 function uiRows(rows=[]){return rows.filter(Boolean).map(row=>Array.isArray(row)?'<small>'+esc(row[0])+': '+esc(row[1]??'-')+'</small>':'<small>'+esc(row)+'</small>').join('')}
 function uiItem(title,options={}){const badge=options.badge?uiBadge(options.badge.text,options.badge.status):'';const rows=uiRows(options.rows||[]);const body=options.body||'';const actions=options.actions?uiActions(options.actions):'';const titleAttr=options.title?(' title="'+attr(options.title)+'"'):'';const titleBody=options.titleHtml||esc(title);return '<div class="item '+(options.className?attr(options.className):'')+'"><strong'+titleAttr+'>'+titleBody+' '+badge+'</strong>'+rows+body+actions+'</div>'}

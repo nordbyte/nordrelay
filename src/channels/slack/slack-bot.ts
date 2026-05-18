@@ -8,25 +8,21 @@ import { agentLabel, agentReasoningLabel, agentReasoningOptions, type AgentId, t
 import { getAgentActivityLog, getExternalSnapshotForSession } from "../../agents/shared/agent-activity.js";
 import { hostAgentLoginCommand, hostAgentLogoutCommand } from "../../agents/shared/agent-auth-commands.js";
 import { listAgentAdapterDescriptors } from "../../agents/shared/agent-adapter.js";
-import { AgentUpdateManager, type AgentUpdateOperation } from "../../agents/shared/agent-updates.js";
+import type { AgentUpdateOperation } from "../../agents/shared/agent-updates.js";
 import { enabledAgents } from "../../agents/shared/agent-factory.js";
 import { ensureOutDir } from "../../artifacts/artifacts.js";
 import { buildFileInstructions, outboxPath, stageFile, type StagedFile } from "../../artifacts/attachments.js";
-import { AuditLogStore } from "../../access/audit-log.js";
-import { BotPreferencesStore } from "../../state/bot-preferences.js";
-import { capabilitiesOf, filterActivityEvents, parseActivityOptions, renderPromptFailure, trimLine, type TurnProgress } from "../shared/bot-rendering.js";
+import { capabilitiesOf, filterActivityEvents, parseActivityOptions, renderPromptFailure, trimLine } from "../shared/bot-rendering.js";
 import { parseAgentUpdateId, renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction } from "../shared/channel-actions.js";
 import type { ChannelContext } from "../shared/channel-adapter.js";
 import {
   createChannelActivityRecorder,
   createChannelAuditRecorder,
-  createChannelBusyStore,
   createChannelPermissionChecker,
-  createChannelQueueStatusController,
 } from "../shared/channel-bridge-controller.js";
+import { createChannelBridgeEnvironment } from "../shared/channel-bridge-environment.js";
 import { createSharedChannelCommandDispatcher } from "../shared/channel-command-core.js";
 import { slackHelpCommandList } from "../shared/channel-command-catalog.js";
-import { ChannelCommandService } from "../shared/channel-command-service.js";
 import { createChannelPromptEngine } from "../shared/channel-prompt-engine.js";
 import { queueChannelPromptIfBusy } from "../shared/channel-prompt-queue.js";
 import { runChannelPeerPrompt } from "../shared/channel-peer-prompt.js";
@@ -42,14 +38,11 @@ import type { ConnectorConfig } from "../../core/config.js";
 import { isSlackContextKey, parseSlackContextKey, slackContextKey, type ChannelContextKey } from "../shared/context-key.js";
 import { friendlyErrorText } from "../../core/error-messages.js";
 import { spawnConnectorRestart, spawnSelfUpdate } from "../../support/operations.js";
-import { RemoteRelayClient } from "../../peers/peer-client.js";
-import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "../../state/prompt-store.js";
-import { RelayArtifactService } from "../../runtime/relay-artifact-service.js";
+import { toPromptEnvelope, type PromptEnvelope } from "../../state/prompt-store.js";
 import { resolveArtifactDeliveryPolicy, type ArtifactDeliveryMode } from "../../artifacts/artifact-delivery.js";
-import { RelayAuthService } from "../../runtime/relay-auth-service.js";
 import { configureRedaction, redactText } from "../../core/redaction.js";
 import { renderSessionInfoPlain } from "../shared/session-format.js";
-import { canWriteWithLock, SessionLockStore } from "../../access/session-locks.js";
+import { canWriteWithLock } from "../../access/session-locks.js";
 import { SessionRegistry } from "../../state/session-registry.js";
 import { createSlackArtifactCommandHandler, sendRecentSlackArtifacts } from "./slack-artifacts.js";
 import { SlackBotChannelRuntime, actionFromSlackActionId, splitSlackMessage, trimSlackMessage } from "./slack-channel-runtime.js";
@@ -58,8 +51,8 @@ import { isUnauthenticatedSlackCommandAllowed, parseSlackMessageCommand, parseSl
 import { collectSlackDiagnostics } from "./slack-diagnostics.js";
 import { getSlackRateLimitMetrics } from "./slack-rate-limit.js";
 import { transcribeAudio, type TranscriptionBackend } from "../../artifacts/voice.js";
-import { UserStore, type AuthenticatedUser } from "../../access/user-management.js";
-import { WebActivityStore, type WebActivityActor } from "../../web/web-state.js";
+import type { AuthenticatedUser, UserStore } from "../../access/user-management.js";
+import type { WebActivityActor } from "../../web/web-state.js";
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "../../core/workspace-policy.js";
 
 export { isUnauthenticatedSlackCommandAllowed, permissionForSlackAction, requiredPermissionForSlackCommand } from "./slack-command-surface.js";
@@ -91,31 +84,36 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     socketMode: config.slackSocketMode,
   });
   const runtime = new SlackBotChannelRuntime(app.client as WebClient);
-  const promptStore = new PromptStore(config.workspace, config.stateBackend);
-  const preferencesStore = new BotPreferencesStore(config.workspace, config.stateBackend);
-  const activityStore = new WebActivityStore(config.workspace, config.stateBackend, config.auditMaxEvents);
-  const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
-  const lockStore = new SessionLockStore(config.workspace, config.stateBackend);
-  const userStore = new UserStore();
+  const env = createChannelBridgeEnvironment<ChannelContextKey, BusyState, string, SlackExternalMirrorState>(config, {
+    queueStatus: {
+      send: async (_contextKey, context, text) => (await runtime.sendMessage(context, { text, fallbackText: text })).messageId,
+      edit: async (_contextKey, context, messageId, text) => {
+        await runtime.editMessage(context, messageId, { text, fallbackText: text });
+      },
+    },
+  });
+  const {
+    promptStore,
+    preferencesStore,
+    activityStore,
+    auditLog,
+    lockStore,
+    userStore,
+    artifactService,
+    authService,
+    agentUpdates,
+    commandService,
+    busyStates,
+    turnProgress,
+    draining,
+    externalMirrors,
+    remoteClient,
+  } = env;
 
   const artifactPolicyForRequest = (request: SlackRequest) => resolveArtifactDeliveryPolicy({ config, channelId: "slack", authUser: request.authUser, channelAccess: request.isDirectMessage ? null : userStore.snapshot().slackChannels.find((channel) => channel.channelId === request.channelId && (!request.teamId || channel.teamId === request.teamId)) ?? null });
   const artifactPolicyForContext = (context: ChannelContext) => resolveArtifactDeliveryPolicy({ config, channelId: "slack", channelAccess: userStore.snapshot().slackChannels.find((channel) => channel.channelId === context.chatId) ?? null });
-  const artifactService = new RelayArtifactService(config);
-  const authService = new RelayAuthService(config);
-  const agentUpdates = new AgentUpdateManager();
-  const commandService = new ChannelCommandService(config);
-  const busyStates = createChannelBusyStore<ChannelContextKey>();
-  const turnProgress = new Map<ChannelContextKey, TurnProgress>();
-  const draining = new Set<ChannelContextKey>();
   const picks = new Map<string, PickState>();
-  const externalMirrors = new Map<ChannelContextKey, SlackExternalMirrorState>();
-  const queueStatusMessages = createChannelQueueStatusController<ChannelContextKey, string>({
-    send: async (_contextKey, context, text) => (await runtime.sendMessage(context, { text, fallbackText: text })).messageId,
-    edit: async (_contextKey, context, messageId, text) => {
-      await runtime.editMessage(context, messageId, { text, fallbackText: text });
-    },
-  });
-  const remoteClient = new RemoteRelayClient();
+  const queueStatusMessages = env.queueStatusMessages!;
   let externalMonitor: NodeJS.Timeout | undefined;
   let externalMonitorRunning = false;
 

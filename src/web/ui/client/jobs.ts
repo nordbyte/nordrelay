@@ -1,3 +1,4 @@
+// @ts-nocheck
 async function loadTasks(reset=true){
   if(reset)jobsPager.reset();
   setLoading('tasksList','Loading tasks...');

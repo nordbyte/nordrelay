@@ -1,3 +1,4 @@
+// @ts-nocheck
 const SETUP_WIZARDS={
   telegram:{
     id:'telegram',

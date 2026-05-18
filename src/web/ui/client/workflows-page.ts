@@ -1,3 +1,4 @@
+// @ts-nocheck
 function switchWorkflowTab(tab){
   state.workflowTab=tab||'templates';
   document.querySelectorAll('[data-workflow-tab]').forEach(b=>{

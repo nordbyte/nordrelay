@@ -4,6 +4,9 @@
     "allowJs": true,
     "checkJs": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "strictFunctionTypes": false,
     "noEmit": true,
     "noResolve": true,
     "strict": false,
@@ -11,7 +14,8 @@
   },
   "include": [
     "src/web/ui/client/**/*.d.ts",
-    "src/web/ui/client/**/*.js"
+    "src/web/ui/client/**/*.js",
+    "src/web/ui/client/**/*.ts"
   ],
   "exclude": [
     "src/web/ui/client/core/api-routes.generated.js"

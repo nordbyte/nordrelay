@@ -94,7 +94,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("Advanced JSON import/export");
     expect(js).not.toContain("Steps JSON");
     expect(js).not.toContain("JSON.parse(val('dlgWorkflowSteps'))");
-    expect(readFileSync("scripts/build-web-assets.mjs", "utf8")).toContain("src/web/ui/client/workflows-page.js");
+    expect(readFileSync("scripts/build-web-assets.mjs", "utf8")).toContain("src/web/ui/client/workflows-page.ts");
     expect(js).toContain("/api/templates");
     expect(js).toContain("/api/workflows");
     expect(js).toContain("/api/workflow-runs/");
@@ -139,7 +139,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".queue-tab-heading");
     expect(contract).toContain('exact("/api/queue/plans"');
     expect(contract).toContain('dynamic("/api/queue/plans/:id/enqueue"');
-    expect(readFileSync("scripts/build-web-assets.mjs", "utf8")).toContain("src/web/ui/client/queue-planner.js");
+    expect(readFileSync("scripts/build-web-assets.mjs", "utf8")).toContain("src/web/ui/client/queue-planner.ts");
   });
 
   it("renders Discord setting help icons from setting metadata", () => {
@@ -446,18 +446,18 @@ describe("web dashboard browser-flow assets", () => {
   });
 
   it("composes dashboard assets from focused WebUI modules", () => {
-    expect(readFileSync("src/web/ui/client/core/api-client.js", "utf8")).toContain("async function api");
-    expect(readFileSync("src/web/ui/client/core/runtime.js", "utf8")).toContain("const state");
-    expect(readFileSync("src/web/ui/client/core/components.js", "utf8")).toContain("function uiItem");
-    expect(readFileSync("src/web/ui/client/profile.js", "utf8")).toContain("function openProfileDialog");
-    const overview = readFileSync("src/web/ui/client/overview.js", "utf8");
+    expect(readFileSync("src/web/ui/client/core/api-client.ts", "utf8")).toContain("async function api");
+    expect(readFileSync("src/web/ui/client/core/runtime.ts", "utf8")).toContain("const state");
+    expect(readFileSync("src/web/ui/client/core/components.ts", "utf8")).toContain("function uiItem");
+    expect(readFileSync("src/web/ui/client/profile.ts", "utf8")).toContain("function openProfileDialog");
+    const overview = readFileSync("src/web/ui/client/overview.ts", "utf8");
     expect(overview).toContain("function renderSnapshot");
     expect(overview).toContain("function headerThreadCopyButton");
     expect(overview).toContain('title="Copy thread ID"');
     expect(overview).toContain("bindUiCopyButtons(line)");
-    expect(readFileSync("src/web/ui/client/workflows.js", "utf8")).toContain("function loadSessions");
-    expect(readFileSync("src/web/ui/client/jobs.js", "utf8")).toContain("function renderUnifiedJobs");
-    const metrics = readFileSync("src/web/ui/client/metrics.js", "utf8");
+    expect(readFileSync("src/web/ui/client/workflows.ts", "utf8")).toContain("function loadSessions");
+    expect(readFileSync("src/web/ui/client/jobs.ts", "utf8")).toContain("function renderUnifiedJobs");
+    const metrics = readFileSync("src/web/ui/client/metrics.ts", "utf8");
     const components = readFileSync("src/web/ui/styles/components.css", "utf8");
     const pages = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
     expect(metrics).toContain("function loadMetrics");
@@ -475,13 +475,13 @@ describe("web dashboard browser-flow assets", () => {
     expect(pages).toContain('class="section-header metrics-section-header"');
     expect(pages).toContain('data-metrics-tab="web"');
     expect(pages).toContain('id="metricsAutoRefresh"');
-    const users = readFileSync("src/web/ui/client/users.js", "utf8");
+    const users = readFileSync("src/web/ui/client/users.ts", "utf8");
     expect(users).toContain("function renderUserManagementV2");
     expect(users).toContain("function renderUsersTable");
     expect(users).toContain("class=\"data-table access-users-table\"");
     expect(users).toContain("class=\"data-table access-groups-table\"");
     expect(users).toContain("class=\"data-table access-channels-table\"");
-    const admin = readFileSync("src/web/ui/client/admin.js", "utf8");
+    const admin = readFileSync("src/web/ui/client/admin.ts", "utf8");
     expect(admin).toContain("function renderLocksTable");
     expect(admin).toContain("function renderAuditTable");
     expect(admin).toContain("class=\"data-table access-locks-table\"");

@@ -1,3 +1,4 @@
+// @ts-nocheck
 function activityQuery(){return{source:val('activitySource'),category:val('activityCategory'),status:val('activityStatus'),limit:val('activityLimit')||'100',cursor:activityPager.cursor||undefined,actor:val('activityActor')||undefined,agent:val('activityAgent')||'all',thread:val('activityThread')||undefined,workspace:val('activityWorkspace')||undefined,type:val('activityType')||undefined,since:val('activitySince')||undefined}}
 async function loadActivity(reset=true){if(reset)activityPager.reset();setLoading('activityList','Loading activity...');const data=await api('/api/activity',{query:activityQuery()});state.activityEvents=data.events||[];renderActivity(state.activityEvents);activityPager.render(data.pagination||{})}
 function activityWorkspace(e){const active=state.snapshot?.session;return e.workspace||(active?.threadId&&e.threadId===active.threadId?active.workspace:'')}

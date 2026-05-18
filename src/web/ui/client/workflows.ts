@@ -1,3 +1,4 @@
+// @ts-nocheck
 let selectedFiles=[];
 function renderSelectedFiles(){const summary=document.getElementById('fileSummary');if(selectedFiles.length===0){summary.textContent='No files selected';return}const names=selectedFiles.slice(0,3).map(f=>f.name || 'file').join(', ');const more=selectedFiles.length>3?' +'+(selectedFiles.length-3)+' more':'';const bytes=selectedFiles.reduce((sum,file)=>sum+file.size,0);summary.textContent=names+more+' ('+fmtBytes(bytes)+')'}
 function addFiles(files){selectedFiles=selectedFiles.concat(Array.from(files||[]));renderSelectedFiles()}

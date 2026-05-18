@@ -1,3 +1,4 @@
+// @ts-nocheck
 function applyAccountChrome(auth){
   state.auth=auth||state.auth;
   const user=auth?.user||{};

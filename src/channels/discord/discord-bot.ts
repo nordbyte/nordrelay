@@ -18,23 +18,19 @@ import { agentLabel, agentReasoningLabel, agentReasoningOptions, type AgentId, t
 import { getAgentActivityLog, getExternalSnapshotForSession } from "../../agents/shared/agent-activity.js";
 import { hostAgentLoginCommand, hostAgentLogoutCommand } from "../../agents/shared/agent-auth-commands.js";
 import { listAgentAdapterDescriptors } from "../../agents/shared/agent-adapter.js";
-import { AgentUpdateManager, type AgentUpdateOperation } from "../../agents/shared/agent-updates.js";
+import type { AgentUpdateOperation } from "../../agents/shared/agent-updates.js";
 import { enabledAgents } from "../../agents/shared/agent-factory.js";
 import { ensureOutDir } from "../../artifacts/artifacts.js";
 import { buildFileInstructions, outboxPath, stageFile, type StagedFile } from "../../artifacts/attachments.js";
-import { AuditLogStore } from "../../access/audit-log.js";
-import { BotPreferencesStore } from "../../state/bot-preferences.js";
-import { capabilitiesOf, filterActivityEvents, formatLocalDateTime, parseActivityOptions, renderPromptFailure, trimLine, type TurnProgress } from "../shared/bot-rendering.js";
+import { capabilitiesOf, filterActivityEvents, formatLocalDateTime, parseActivityOptions, renderPromptFailure, trimLine } from "../shared/bot-rendering.js";
 import { renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction, type ChannelActionButton } from "../shared/channel-actions.js";
 import {
   createChannelActivityRecorder,
   createChannelAuditRecorder,
-  createChannelBusyStore,
   createChannelPermissionChecker,
-  createChannelQueueStatusController,
 } from "../shared/channel-bridge-controller.js";
+import { createChannelBridgeEnvironment } from "../shared/channel-bridge-environment.js";
 import { createSharedChannelCommandDispatcher } from "../shared/channel-command-core.js";
-import { ChannelCommandService } from "../shared/channel-command-service.js";
 import { discordHelpCommandList } from "../shared/channel-command-catalog.js";
 import { createChannelPromptEngine } from "../shared/channel-prompt-engine.js";
 import { queueChannelPromptIfBusy } from "../shared/channel-prompt-queue.js";
@@ -57,19 +53,16 @@ import { argumentFromDiscordInteraction, discordCommands, isUnauthenticatedDisco
 import { discordRateLimiter, getDiscordRateLimitMetrics } from "./discord-rate-limit.js";
 import { friendlyErrorText } from "../../core/error-messages.js";
 import { spawnConnectorRestart, spawnSelfUpdate } from "../../support/operations.js";
-import { RemoteRelayClient } from "../../peers/peer-client.js";
-import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "../../state/prompt-store.js";
-import { RelayArtifactService } from "../../runtime/relay-artifact-service.js";
+import { toPromptEnvelope, type PromptEnvelope } from "../../state/prompt-store.js";
 import { resolveArtifactDeliveryPolicy, type ArtifactDeliveryMode } from "../../artifacts/artifact-delivery.js";
-import { RelayAuthService } from "../../runtime/relay-auth-service.js";
 import { configureRedaction, redactText } from "../../core/redaction.js";
 import { renderSessionInfoPlain } from "../shared/session-format.js";
-import { canWriteWithLock, SessionLockStore } from "../../access/session-locks.js";
+import { canWriteWithLock } from "../../access/session-locks.js";
 import { SessionRegistry } from "../../state/session-registry.js";
 import { transcribeAudio, type TranscriptionBackend } from "../../artifacts/voice.js";
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "../../core/workspace-policy.js";
-import { UserStore, type AuthenticatedUser } from "../../access/user-management.js";
-import { WebActivityStore, type WebActivityActor } from "../../web/web-state.js";
+import type { AuthenticatedUser, UserStore } from "../../access/user-management.js";
+import type { WebActivityActor } from "../../web/web-state.js";
 import { capDiscordCommandReplyChunks, DISCORD_SESSION_PAGE_SIZE, renderDiscordSessionPageAction, type DiscordSessionListRecord, type DiscordSessionPageSource, type DiscordSessionPageState } from "./discord-sessions.js";
 
 export { isUnauthenticatedDiscordCommandAllowed, permissionForDiscordAction, requiredPermissionForDiscordCommand } from "./discord-command-surface.js";
@@ -107,32 +100,38 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     partials: [Partials.Channel],
   });
   const runtime = new DiscordBotChannelRuntime(client);
-  const promptStore = new PromptStore(config.workspace, config.stateBackend);
-  const preferencesStore = new BotPreferencesStore(config.workspace, config.stateBackend);
-  const activityStore = new WebActivityStore(config.workspace, config.stateBackend, config.auditMaxEvents);
-  const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
-  const lockStore = new SessionLockStore(config.workspace, config.stateBackend);
-  const userStore = new UserStore();
+  const env = createChannelBridgeEnvironment<ChannelContextKey, BusyState, string, DiscordExternalMirrorState>(config, {
+    queueStatus: {
+      send: async (_contextKey, context, text) => (await runtime.sendMessage(context, { text, fallbackText: text })).messageId,
+      edit: async (_contextKey, context, messageId, text) => {
+        await runtime.editMessage(context, messageId, { text, fallbackText: text });
+      },
+    },
+  });
+  const {
+    promptStore,
+    preferencesStore,
+    activityStore,
+    auditLog,
+    lockStore,
+    userStore,
+    artifactService,
+    authService,
+    agentUpdates,
+    commandService,
+    busyStates,
+    turnProgress,
+    draining,
+    externalMirrors,
+    remoteClient,
+  } = env;
 
   const artifactPolicyForRequest = (request: DiscordRequest) => resolveArtifactDeliveryPolicy({ config, channelId: "discord", authUser: request.authUser, channelAccess: request.isDirectMessage ? null : userStore.snapshot().discordChannels.find((channel) => channel.channelId === request.channelId && (!request.guildId || channel.guildId === request.guildId)) ?? null });
   const artifactPolicyForContext = (context: ChannelContext) => resolveArtifactDeliveryPolicy({ config, channelId: "discord", channelAccess: userStore.snapshot().discordChannels.find((channel) => channel.channelId === context.chatId) ?? null });
-  const artifactService = new RelayArtifactService(config);
-  const authService = new RelayAuthService(config);
-  const agentUpdates = new AgentUpdateManager();
-  const commandService = new ChannelCommandService(config);
-  const busyStates = createChannelBusyStore<ChannelContextKey>();
-  const turnProgress = new Map<ChannelContextKey, TurnProgress>();
-  const draining = new Set<ChannelContextKey>();
   const picks = new Map<string, PickState>();
   const sessionPages = new Map<string, DiscordSessionPageState>();
   const responseOwners = new Map<string, ChannelContextKey>();
-  const externalMirrors = new Map<ChannelContextKey, DiscordExternalMirrorState>();
-  const queueStatusMessages = createChannelQueueStatusController<ChannelContextKey, string>({
-    send: async (_contextKey, context, text) => (await runtime.sendMessage(context, { text, fallbackText: text })).messageId,
-    edit: async (_contextKey, context, messageId, text) => {
-      await runtime.editMessage(context, messageId, { text, fallbackText: text });
-    },
-  });
+  const queueStatusMessages = env.queueStatusMessages!;
   let externalMonitor: NodeJS.Timeout | undefined;
   let externalMonitorRunning = false;
 
@@ -334,8 +333,6 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     await reply(request, `Session is locked by ${lock?.ownerLabel || lock?.ownerUserId || "another user"}.`);
     return true;
   };
-
-  const remoteClient = new RemoteRelayClient();
 
   const handleRemotePrompt = async (request: DiscordRequest, envelope: PromptEnvelope): Promise<boolean> => {
     const targetPeerId = preferencesStore.get(request.contextKey).targetPeerId ?? undefined;

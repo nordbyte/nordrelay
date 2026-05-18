@@ -25,11 +25,10 @@ import {
   type ArtifactTurnReport,
 } from "../../artifacts/artifacts.js";
 import { artifactDeliveryPolicy, resolveArtifactDeliveryPolicy, type ArtifactDeliveryPolicy } from "../../artifacts/artifact-delivery.js";
-import { AgentUpdateManager, type AgentUpdateOperation } from "../../agents/shared/agent-updates.js";
-import { AuditLogStore, type AuditEvent } from "../../access/audit-log.js";
+import type { AgentUpdateOperation } from "../../agents/shared/agent-updates.js";
+import type { AuditEvent } from "../../access/audit-log.js";
 import { formatSessionLabel } from "./bot-ui.js";
 import {
-  BotPreferencesStore,
   isQuietNow,
   type ContextPreferences,
   type TelegramMirrorMode,
@@ -39,8 +38,8 @@ import {
 import { renderAgentUpdateJobAction, type ChannelActionResponse } from "../shared/channel-actions.js";
 import { buildArtifactActionsKeyboard } from "../shared/bot-rendering.js";
 import type { ChannelContext } from "../shared/channel-adapter.js";
-import { createChannelActivityRecorder, createChannelBusyStore } from "../shared/channel-bridge-controller.js";
-import { ChannelCommandService } from "../shared/channel-command-service.js";
+import { createChannelActivityRecorder } from "../shared/channel-bridge-controller.js";
+import { createChannelBridgeEnvironment } from "../shared/channel-bridge-environment.js";
 import { runChannelPeerPrompt } from "../shared/channel-peer-prompt.js";
 import { deliverChannelAction } from "../shared/channel-runtime.js";
 import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
@@ -76,11 +75,9 @@ import type { ConnectorConfig, ToolVerbosity } from "../../core/config.js";
 import { contextKeyFromCtx, isTelegramContextKey, isTopicContextKey, parseContextKey, type TelegramContextKey } from "../shared/context-key.js";
 import { friendlyErrorText } from "../../core/error-messages.js";
 import { escapeHTML } from "../../core/format.js";
-import { PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "../../state/prompt-store.js";
-import { RemoteRelayClient } from "../../peers/peer-client.js";
-import { RelayAuthService } from "../../runtime/relay-auth-service.js";
+import { toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "../../state/prompt-store.js";
 import { configureRedaction, redactText } from "../../core/redaction.js";
-import { canWriteWithLock, SessionLockStore } from "../../access/session-locks.js";
+import { canWriteWithLock } from "../../access/session-locks.js";
 import {
   renderSessionInfoHTML,
   renderSessionInfoPlain,
@@ -158,10 +155,9 @@ import {
   renderToolStartMessage,
   requiresTurnApproval,
   trimLine,
-  type TurnProgress,
 } from "../shared/bot-rendering.js";
-import { UserStore, type AuthenticatedUser } from "../../access/user-management.js";
-import { WebActivityStore, type WebActivityActor, type WebActivityEvent } from "../../web/web-state.js";
+import type { AuthenticatedUser } from "../../access/user-management.js";
+import type { WebActivityActor, WebActivityEvent } from "../../web/web-state.js";
 import {
   evaluateWorkspacePolicy,
   filterAllowedWorkspaces,
@@ -208,12 +204,32 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 10 }));
   const telegramChannelRuntime = new TelegramBotChannelRuntime(bot);
 
-  const contextBusy = createChannelBusyStore<TelegramContextKey, BusyState>(() => ({
-    processing: false,
-    switching: false,
-    transcribing: false,
-    approving: false,
-  }));
+  const env = createChannelBridgeEnvironment<TelegramContextKey, BusyState, number, ExternalMirrorState>(config, {
+    busyDefaults: () => ({
+      processing: false,
+      switching: false,
+      transcribing: false,
+      approving: false,
+    }),
+    agentUpdates: {
+      onUpdate: (job) => recordTelegramAgentUpdateLifecycle(job),
+    },
+  });
+  const {
+    promptStore,
+    preferencesStore,
+    activityStore,
+    auditLog,
+    lockStore,
+    userStore,
+    authService,
+    agentUpdates,
+    commandService,
+    turnProgress,
+    externalMirrors,
+    remoteClient,
+  } = env;
+  const contextBusy = env.busyStates;
   const pendingApprovals = new Map<
     string,
     {
@@ -234,18 +250,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const pendingEffortButtons = new Map<TelegramContextKey, KeyboardItem[]>();
   const pendingAgentPicks = new Map<TelegramContextKey, AgentId[]>();
   const pendingMediaGroups = new Map<string, PendingMediaGroup>();
-  const turnProgress = new Map<TelegramContextKey, TurnProgress>();
-  const promptStore = new PromptStore(config.workspace, config.stateBackend);
-  const preferencesStore = new BotPreferencesStore(config.workspace, config.stateBackend);
-  const activityStore = new WebActivityStore(config.workspace, config.stateBackend, config.auditMaxEvents);
-  const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
-  const lockStore = new SessionLockStore(config.workspace, config.stateBackend);
-  const userStore = new UserStore();
-  const authService = new RelayAuthService(config);
   const contextUsers = new WeakMap<Context, AuthenticatedUser>();
   const agentUpdateActors = new Map<string, WebActivityActor>();
   const agentUpdateStates = new Map<string, { status: string; needsInput: boolean }>();
-  const commandService = new ChannelCommandService(config);
   const artifactPolicyForTelegram = (input: { contextKey: TelegramContextKey; chatId: TelegramChatId; authUser?: AuthenticatedUser | null }): ArtifactDeliveryPolicy => {
     const parsed = parseContextKey(input.contextKey);
     const channelAccess = parsed.chatId < 0
@@ -254,13 +261,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const authUser = input.authUser ?? (parsed.chatId > 0 ? userStore.resolveTelegramUser(parsed.chatId) : null);
     return resolveArtifactDeliveryPolicy({ config, channelId: "telegram", authUser, channelAccess });
   };
-  const agentUpdates = new AgentUpdateManager({
-    onUpdate: (job) => recordTelegramAgentUpdateLifecycle(job),
-  });
   const linkAttempts = new Map<string, RateLimitBucket>();
   const drainingQueues = new Set<TelegramContextKey>();
   const externalQueueTimers = new Map<TelegramContextKey, NodeJS.Timeout>();
-  const externalMirrors = new Map<TelegramContextKey, ExternalMirrorState>();
   const queueStatusMessages = new Map<TelegramContextKey, QueueStatusState>();
   let externalMonitorRunning = false;
   const syncInterval = config.codexSyncIntervalMs > 0
@@ -1025,8 +1028,6 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     ].join("\n");
     await safeReply(ctx, html, { fallbackText: plain, replyMarkup: keyboard });
   };
-
-  const remoteClient = new RemoteRelayClient();
 
   const handleRemoteUserPrompt = async (
     ctx: Context,

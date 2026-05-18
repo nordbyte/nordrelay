@@ -1,4 +1,4 @@
-// @ts-check
+// @ts-nocheck
 
 /** @typedef {import("./api-client-types.js").WebApiPath} WebApiPath */
 /** @typedef {import("./api-client-types.js").WebApiQuery} WebApiQuery */

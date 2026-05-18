@@ -13,23 +13,23 @@ const minifyAssets = process.env.NORDRELAY_WEBUI_MINIFY !== "false";
 const assets = [
   {
     name: "dashboard.js",
-    loader: "js",
+    loader: "ts",
     sources: [
       "src/web/ui/client/core/api-routes.generated.js",
-      "src/web/ui/client/core/api-client.js",
-      "src/web/ui/client/core/runtime.js",
-      "src/web/ui/client/core/components.js",
-      "src/web/ui/client/profile.js",
-      "src/web/ui/client/overview.js",
-      "src/web/ui/client/events.js",
-      "src/web/ui/client/workflows.js",
-      "src/web/ui/client/jobs.js",
-      "src/web/ui/client/metrics.js",
-      "src/web/ui/client/admin.js",
-      "src/web/ui/client/queue-planner.js",
-      "src/web/ui/client/workflows-page.js",
-      "src/web/ui/client/users.js",
-      "src/web/ui/client/settings-wizard.js",
+      "src/web/ui/client/core/api-client.ts",
+      "src/web/ui/client/core/runtime.ts",
+      "src/web/ui/client/core/components.ts",
+      "src/web/ui/client/profile.ts",
+      "src/web/ui/client/overview.ts",
+      "src/web/ui/client/events.ts",
+      "src/web/ui/client/workflows.ts",
+      "src/web/ui/client/jobs.ts",
+      "src/web/ui/client/metrics.ts",
+      "src/web/ui/client/admin.ts",
+      "src/web/ui/client/queue-planner.ts",
+      "src/web/ui/client/workflows-page.ts",
+      "src/web/ui/client/users.ts",
+      "src/web/ui/client/settings-wizard.ts",
     ],
   },
   {
@@ -58,11 +58,11 @@ for (const asset of assets) {
     .join("\n\n") + "\n";
   const body = transformSync(source, {
     loader: asset.loader,
-    format: asset.loader === "js" ? "iife" : undefined,
+    format: asset.name.endsWith(".js") ? "iife" : undefined,
     legalComments: "none",
     minify: minifyAssets,
     sourcefile: asset.name,
-    target: asset.loader === "js" ? "es2022" : "chrome100",
+    target: asset.name.endsWith(".js") ? "es2022" : "chrome100",
   }).code;
 
   if (!body.trim()) {

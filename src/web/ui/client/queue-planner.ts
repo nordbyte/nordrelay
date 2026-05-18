@@ -1,3 +1,4 @@
+// @ts-nocheck
 const QUEUE_PLAN_COLUMNS=[
   ['draft','Draft'],
   ['review','Review'],

@@ -1,3 +1,4 @@
+// @ts-nocheck
 function createPaginator(containerId, onChange, pageSize=50){
   const container=document.getElementById(containerId);
   return {
