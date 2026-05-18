@@ -329,7 +329,7 @@
 .version-update-title{margin-top:22px}
 .mini-button{min-height:26px;height:26px;padding:0 8px;font-size:12px;line-height:1}
 .artifact-diff-pre{max-height:min(58vh,620px);overflow:auto;margin-top:10px;padding:12px;border:1px solid var(--border-soft);border-radius:8px;background:var(--pre);color:var(--pre-text);font-size:13px;line-height:1.45;white-space:pre-wrap}
-.update-log{max-height:280px;min-height:90px;margin-top:10px}
+.update-log{max-height:280px;min-height:90px;margin-top:10px;font-size:14px}
 .update-job-header{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
 .update-input{display:grid;grid-template-columns:1fr auto auto;gap:8px;margin-top:8px}
 .table-section-title{margin:0 0 8px;font-size:15px}

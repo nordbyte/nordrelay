@@ -32,6 +32,10 @@ function escapeChatRegExp(text){return text.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'
 function chatMessageCopyButtonHtml(){return '<button type="button" class="message-copy-button" title="Copy message" aria-label="Copy message"></button>'}
 function bindChatMessageCopyButton(root){root.querySelectorAll?.('.message-copy-button').forEach(button=>{button.onclick=event=>{event.preventDefault();event.stopPropagation();const message=button.closest('.message');const text=message?.__rawText||message?.querySelector('.message-body')?.textContent||'';copyText(text,'Message copied')}})}
 function bindChatCopyButtons(root){root.querySelectorAll?.('[data-chat-copy]').forEach(el=>{el.onclick=event=>{event.preventDefault();event.stopPropagation();const code=el.dataset.chatCopy==='code-block'?el.querySelector('code')?.textContent:el.textContent;copyText(code||'','Copied code')};el.onkeydown=event=>{if(el.tagName==='BUTTON')return;if(event.key==='Enter'||event.key===' '){event.preventDefault();el.click()}}});bindChatMessageCopyButton(root)}
+const AGENT_UPDATE_TERMINAL_STATUSES=new Set(['completed','failed','cancelled']);
+let agentUpdateVersionRefreshTimers=[];
+function clearAgentUpdateVersionRefreshTimers(){agentUpdateVersionRefreshTimers.forEach(timer=>clearTimeout(timer));agentUpdateVersionRefreshTimers=[]}
+function scheduleAgentUpdateVersionRefresh(job){if(!job||!AGENT_UPDATE_TERMINAL_STATUSES.has(job.status))return;clearAgentUpdateVersionRefreshTimers();const delays=job.status==='completed'?[500,2000,5000,10000]:[500];agentUpdateVersionRefreshTimers=delays.map(delay=>setTimeout(()=>{if(state.currentPage==='version')loadVersion({quiet:true,refreshJobs:false})},delay))}
 function connectEvents(){
   if(state.events) state.events.close();
   const eventsUrl = state.selectedPeer && state.selectedPeer !== 'local'
@@ -46,7 +50,7 @@ function connectEvents(){
   events.addEventListener('activity_update', e=>renderActivity(JSON.parse(e.data).events||[]));
   events.addEventListener('active_sessions_update', e=>{const d=JSON.parse(e.data);state.activeSessions=d.active||null;if(state.currentPage==='overview')renderActiveSessions(state.activeSessions?.sessions||[]);else renderChatWorkingIndicator()});
   events.addEventListener('session_update', e=>{loadBootstrap();loadChatHistory()});
-  events.addEventListener('agent_update', e=>{const d=JSON.parse(e.data);upsertAgentUpdateJob(d.job);if(state.currentPage==='version'){renderAgentUpdateJobs();if(d.job&&d.job.status!=='running')setTimeout(loadVersion,800)}});
+  events.addEventListener('agent_update', e=>{const d=JSON.parse(e.data);upsertAgentUpdateJob(d.job);if(state.currentPage==='version'){renderAgentUpdateJobs();scheduleAgentUpdateVersionRefresh(d.job)}});
   events.addEventListener('queue_update', e=>{const d=JSON.parse(e.data);renderQueue(d.queue,d.paused);if(state.currentPage==='queue')void loadQueuePlanner().catch(()=>{})});
   events.addEventListener('turn_start', e=>{const d=JSON.parse(e.data);appendMessage('user',d.prompt);currentAgentMessage=appendMessage('agent','');if(isMonitorTabActive('tasks'))loadTasks()});
   events.addEventListener('text_delta', e=>{const d=JSON.parse(e.data);const stick=isChatNearBottom();if(!currentAgentMessage)currentAgentMessage=appendMessage('agent','');setMessageText(currentAgentMessage,(currentAgentMessage.__rawText||'')+d.delta);if(stick)scrollChatToBottom({force:true});if(isMonitorTabActive('tasks'))loadTasks()});

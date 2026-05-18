@@ -80,7 +80,7 @@ declare var loadSessions: (...args: any[]) => Promise<any>;
 declare var loadSessionDetail: (...args: any[]) => Promise<any>;
 declare function loadSettings(): Promise<void>;
 declare function loadTasks(reset?: boolean): Promise<void>;
-declare function loadVersion(): Promise<void>;
+declare function loadVersion(options?: any): Promise<void>;
 declare function loadWorkflows(): Promise<void>;
 declare function loadWorktrees(): Promise<void>;
 declare function metricKvCard(title: string, rows?: any[]): string;
