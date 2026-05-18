@@ -2214,7 +2214,8 @@ function validateStateBackend() {
   if (backend !== "sqlite") return { ok: false, detail: `Invalid NORDRELAY_STATE_BACKEND=${backend}` };
   try {
     const Database = require("better-sqlite3");
-    const filePath = path.join(process.cwd(), ".nordrelay", "state.sqlite");
+    const workspace = path.resolve(process.env.NORDRELAY_WORKSPACE || process.cwd());
+    const filePath = path.join(workspace, ".nordrelay", "state.sqlite");
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const db = new Database(filePath);
     db.exec([
@@ -2229,7 +2230,7 @@ function validateStateBackend() {
   } catch (error) {
     return {
       ok: false,
-      detail: `NORDRELAY_STATE_BACKEND=sqlite failed: ${error instanceof Error ? error.message : String(error)}`,
+      detail: `NORDRELAY_STATE_BACKEND=sqlite is configured but unavailable: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }

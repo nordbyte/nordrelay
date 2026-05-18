@@ -120,7 +120,7 @@ document.querySelectorAll('[data-nav-toggle]').forEach(b=>b.onclick=()=>{const s
 initNavSections();
 document.getElementById('brandHomeBtn').onclick=()=>page('overview');
 document.getElementById('menuBtn').onclick=event=>{event.stopPropagation();toggleMobileMenu()};
-document.addEventListener('click',event=>{const sidebar=document.getElementById('sidebar');if(!sidebar?.classList.contains('open'))return;if(sidebar.contains(event.target))return;setMobileMenuOpen(false)});
+document.addEventListener('click',event=>{const sidebar=document.getElementById('sidebar');if(!sidebar?.classList.contains('open'))return;if(sidebar.contains(/** @type {Node} */ (event.target)))return;setMobileMenuOpen(false)});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')setMobileMenuOpen(false)});
 document.getElementById('toggleToolsBtn').onclick=toggleTools;
 document.getElementById('logoutBtn').onclick=()=>safe(async()=>{await api('/api/dashboard/logout',{method:'POST'});location.href='/'});

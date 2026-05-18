@@ -21,6 +21,11 @@ export interface DocumentStoreOptions {
   backend: StateBackendKind;
 }
 
+export interface StateBackendAvailability {
+  ok: boolean;
+  detail: string;
+}
+
 type SqliteDatabase = {
   exec(sql: string): void;
   prepare(sql: string): {
@@ -34,14 +39,43 @@ const require = createRequire(import.meta.url);
 
 export function createDocumentStore<TValue>(options: DocumentStoreOptions): DocumentStore<TValue> {
   if (options.backend === "sqlite") {
-    const sqlite = tryCreateSqliteDocumentStore<TValue>(options);
-    if (sqlite) {
-      return sqlite;
-    }
-    console.warn("SQLite state backend is not available. Falling back to JSON files.");
+    return createSqliteDocumentStore<TValue>(options);
   }
 
   return createJsonDocumentStore<TValue>(options);
+}
+
+export function checkStateBackendAvailability(
+  workspace: string,
+  backend: StateBackendKind,
+): StateBackendAvailability {
+  if (backend === "json") {
+    return { ok: true, detail: "JSON state backend is available." };
+  }
+  let Database: new (filePath: string) => SqliteDatabase;
+  try {
+    Database = require("better-sqlite3") as new (filePath: string) => SqliteDatabase;
+  } catch (error) {
+    return {
+      ok: false,
+      detail: `SQLite state backend requires better-sqlite3: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+  const filePath = stateBackendPath(workspace, "sqlite");
+  let db: SqliteDatabase | undefined;
+  try {
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    db = new Database(filePath);
+    db.exec("SELECT 1");
+    return { ok: true, detail: `SQLite state backend is available at ${filePath}.` };
+  } catch (error) {
+    return {
+      ok: false,
+      detail: `SQLite state backend failed at ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  } finally {
+    db?.close();
+  }
 }
 
 export function stateBackendPath(workspace: string, backend: StateBackendKind, fileName?: string): string {
@@ -65,12 +99,12 @@ function createJsonDocumentStore<TValue>(options: DocumentStoreOptions): Documen
   };
 }
 
-function tryCreateSqliteDocumentStore<TValue>(options: DocumentStoreOptions): DocumentStore<TValue> | null {
+function createSqliteDocumentStore<TValue>(options: DocumentStoreOptions): DocumentStore<TValue> {
   let Database: new (filePath: string) => SqliteDatabase;
   try {
     Database = require("better-sqlite3") as new (filePath: string) => SqliteDatabase;
-  } catch {
-    return null;
+  } catch (error) {
+    throw new Error(`SQLite state backend is configured, but better-sqlite3 is not available: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   const filePath = stateBackendPath(options.workspace, "sqlite");
@@ -86,11 +120,9 @@ function tryCreateSqliteDocumentStore<TValue>(options: DocumentStoreOptions): Do
       ")",
     ].join(" "));
   } catch (error) {
-    console.warn(
-      `SQLite state backend failed at ${filePath}:`,
-      error instanceof Error ? error.message : String(error),
+    throw new Error(
+      `SQLite state backend failed at ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
     );
-    return null;
   }
 
   return {

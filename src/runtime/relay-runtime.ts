@@ -62,6 +62,7 @@ import {
   uploadFileDtos,
 } from "./relay-runtime-helpers.js";
 import { RelayDashboardService } from "./relay-dashboard-service.js";
+import { startAdaptiveExternalMonitor, type AdaptiveExternalMonitorHandle } from "./relay-external-monitor-scheduler.js";
 import { capabilitiesOf } from "../channels/shared/bot-rendering.js";
 import { renderSessionInfoPlain, renderSessionUsageRows } from "../channels/shared/session-format.js";
 import { SessionLockStore, type SessionLock } from "../access/session-locks.js";
@@ -293,7 +294,7 @@ export class RelayRuntime {
   readonly subscribers = new Set<(event: RelayEvent) => void>();
   readonly agentUpdateActors = new Map<string, WebActivityActor>();
   readonly agentUpdateStates = new Map<string, { status: AgentUpdateJobSnapshot["status"]; needsInput: boolean }>();
-  readonly externalMonitor?: NodeJS.Timeout;
+  externalMonitor?: AdaptiveExternalMonitorHandle;
   activeSessionsBroadcastTimer: NodeJS.Timeout | null = null;
   activeSessionsLastBroadcastAt = 0;
   draining = false;
@@ -356,10 +357,10 @@ export class RelayRuntime {
     });
     this.dashboardService.startBackgroundRefresh();
     if (config.codexExternalBusyCheckMs > 0) {
-      this.externalMonitor = setInterval(() => {
-        void this.externalActivityMonitor.monitorSafe();
-      }, config.codexExternalBusyCheckMs);
-      this.externalMonitor.unref?.();
+      this.externalMonitor = startAdaptiveExternalMonitor({
+        baseMs: config.codexExternalBusyCheckMs,
+        run: () => this.externalActivityMonitor.monitorSafe(),
+      });
     }
     this.turnService = new ChannelTurnService({
       source: "web",

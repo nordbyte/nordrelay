@@ -301,7 +301,8 @@ export function relayRuntimeRestartConnector(runtime: RelayRuntimeDelegate, acto
 
 export function relayRuntimeDispose(runtime: RelayRuntimeDelegate): void {
     if (runtime.externalMonitor) {
-      clearInterval(runtime.externalMonitor);
+      runtime.externalMonitor.close();
+      runtime.externalMonitor = undefined;
     }
     runtime.dashboardService.stopBackgroundRefresh();
     runtime.agentUpdates.cancelAll();

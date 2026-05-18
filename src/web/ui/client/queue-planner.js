@@ -80,8 +80,8 @@ function renderQueueKanban(data){
     const items=(columns[status]||[]).filter(queuePlanMatches);
     return '<div class="queue-kanban-column" data-plan-drop="'+attr(status)+'"><h3><span>'+esc(label)+'</span><span>'+items.length+'</span></h3><div class="list">'+(items.map(queuePlanCard).join('')||uiEmpty('No prompts.'))+'</div></div>';
   }).join('');
-  bindQueuePlanButtons(target);
-  bindQueuePlanDrag(target);
+  bindQueuePlanButtons(/** @type {any} */ (target));
+  bindQueuePlanDrag(/** @type {any} */ (target));
   bindUiCopyButtons(target);
   bindUiTraceButtons(target);
 }
@@ -94,7 +94,7 @@ function renderQueueProgress(data){
   const runtime=(data.inProgress||[]).map(task=>'<div class="item queue-plan-card"><strong>'+esc(task.agentLabel||task.agentId||'Agent')+' '+uiBadge(task.status,task.status==='failed'?'disabled':'planned')+'</strong><small>'+esc(short(task.prompt||task.detail||'Running prompt',220))+'</small><small>'+esc([task.source,task.threadId||'pending',task.workspace,fmtDuration(task.durationMs)].filter(Boolean).join(' | '))+'</small>'+(task.correlationId?'<small>'+uiTraceControls(task.correlationId)+'</small>':'')+'</div>').join('');
   target.innerHTML='<div class="queue-kanban-column"><h3><span>Planned prompts</span><span>'+((data.columns?.in_progress||[]).length)+'</span></h3><div class="list">'+(planned||uiEmpty('No planned prompt is running.'))+'</div></div>'+
     '<div class="queue-kanban-column"><h3><span>Runtime activity</span><span>'+((data.inProgress||[]).length)+'</span></h3><div class="list">'+(runtime||uiEmpty('No runtime task is currently running.'))+'</div></div>';
-  bindQueuePlanButtons(target);
+  bindQueuePlanButtons(/** @type {any} */ (target));
   bindUiCopyButtons(target);
   bindUiTraceButtons(target);
 }

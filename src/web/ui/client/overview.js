@@ -172,7 +172,7 @@ function renderHeaderTargetMenu(s=state.snapshot){
   const targets=state.peerTargets&&state.peerTargets.length?state.peerTargets:[{id:state.selectedPeer||'local',name:headerTargetName(state.selectedPeer||'local'),agents:state.enabledAgents||[],snapshot:s,loading:false,error:''}];
   const groups=targets.map(target=>headerTargetGroupHtml(target,session)).join('');
   line.innerHTML='<div class="compact-control header-target-menu" data-header-target-menu><button type="button" id="headerTargetBtn" class="control-menu-button header-target-button" aria-haspopup="menu" aria-expanded="false" title="'+attr('Target: '+headerTargetName(state.selectedPeer||'local'))+'">'+esc(summary)+'</button><div class="control-menu-list header-target-list" role="menu" hidden>'+groups+'</div></div>'+(thread?headerThreadCopyButton(thread):'');
-  bindHeaderTargetMenu(line);
+  bindHeaderTargetMenu(/** @type {any} */ (line));
   bindUiCopyButtons(line);
 }
 function headerThreadCopyButton(thread){

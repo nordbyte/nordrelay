@@ -237,7 +237,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function toggleMobileMenu");
     expect(js).toContain("aria-expanded");
     expect(js).toContain("event.stopPropagation();toggleMobileMenu()");
-    expect(js).toContain("if(sidebar.contains(event.target))return;setMobileMenuOpen(false)");
+    expect(js).toContain("if(sidebar.contains(/** @type {Node} */ (event.target)))return;setMobileMenuOpen(false)");
     expect(js).toContain("event.key==='Escape'");
     expect(css).toContain(".menu:hover,.menu:focus{background:var(--accent-strong);border-color:var(--accent-strong);color:white");
     expect(css).toContain("header{z-index:30}");

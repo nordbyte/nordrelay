@@ -157,6 +157,42 @@
 .adapters-table th:nth-child(5),.adapters-table td:nth-child(5){width:14%}
 .adapters-table th:nth-child(6),.adapters-table td:nth-child(6){width:16%}
 .adapters-table th:nth-child(7),.adapters-table td:nth-child(7){width:220px}
+.peer-status-table th:nth-child(1),.peer-status-table td:nth-child(1){width:22%}
+.peer-status-table th:nth-child(2),.peer-status-table td:nth-child(2){width:78%}
+.peers-table th:nth-child(1),.peers-table td:nth-child(1){width:12%}
+.peers-table th:nth-child(2),.peers-table td:nth-child(2){width:8%;white-space:nowrap}
+.peers-table th:nth-child(3),.peers-table td:nth-child(3){width:9%;white-space:nowrap}
+.peers-table th:nth-child(4),.peers-table td:nth-child(4){width:16%}
+.peers-table th:nth-child(5),.peers-table td:nth-child(5){width:22%}
+.peers-table th:nth-child(6),.peers-table td:nth-child(6){width:13%}
+.peers-table th:nth-child(7),.peers-table td:nth-child(7){width:10%;white-space:nowrap}
+.peers-table th:nth-child(8),.peers-table td:nth-child(8){width:280px}
+.peer-invites-table th:nth-child(1),.peer-invites-table td:nth-child(1){width:14%}
+.peer-invites-table th:nth-child(2),.peer-invites-table td:nth-child(2){width:8%;white-space:nowrap}
+.peer-invites-table th:nth-child(3),.peer-invites-table td:nth-child(3){width:10%}
+.peer-invites-table th:nth-child(4),.peer-invites-table td:nth-child(4){width:12%;white-space:nowrap}
+.peer-invites-table th:nth-child(5),.peer-invites-table td:nth-child(5){width:18%}
+.peer-invites-table th:nth-child(6),.peer-invites-table td:nth-child(6){width:12%}
+.peer-invites-table th:nth-child(7),.peer-invites-table td:nth-child(7){width:12%}
+.peer-invites-table th:nth-child(8),.peer-invites-table td:nth-child(8){width:220px}
+.peer-discovery-table th:nth-child(1),.peer-discovery-table td:nth-child(1){width:14%}
+.peer-discovery-table th:nth-child(2),.peer-discovery-table td:nth-child(2){width:10%;white-space:nowrap}
+.peer-discovery-table th:nth-child(3),.peer-discovery-table td:nth-child(3){width:13%}
+.peer-discovery-table th:nth-child(4),.peer-discovery-table td:nth-child(4){width:27%}
+.peer-discovery-table th:nth-child(5),.peer-discovery-table td:nth-child(5),.peer-discovery-table th:nth-child(6),.peer-discovery-table td:nth-child(6){width:13%;white-space:nowrap}
+.peer-discovery-table th:nth-child(7),.peer-discovery-table td:nth-child(7){width:10%;white-space:nowrap}
+.peer-candidates-table th:nth-child(1),.peer-candidates-table td:nth-child(1){width:13%}
+.peer-candidates-table th:nth-child(2),.peer-candidates-table td:nth-child(2){width:18%}
+.peer-candidates-table th:nth-child(3),.peer-candidates-table td:nth-child(3),.peer-candidates-table th:nth-child(4),.peer-candidates-table td:nth-child(4),.peer-candidates-table th:nth-child(5),.peer-candidates-table td:nth-child(5){width:16%}
+.peer-candidates-table th:nth-child(6),.peer-candidates-table td:nth-child(6){width:8%;white-space:nowrap}
+.peer-candidates-table th:nth-child(7),.peer-candidates-table td:nth-child(7){width:130px}
+.global-peer-sessions-table th:nth-child(1),.global-peer-sessions-table td:nth-child(1){width:15%}
+.global-peer-sessions-table th:nth-child(2),.global-peer-sessions-table td:nth-child(2){width:8%;white-space:nowrap}
+.global-peer-sessions-table th:nth-child(3),.global-peer-sessions-table td:nth-child(3){width:18%}
+.global-peer-sessions-table th:nth-child(4),.global-peer-sessions-table td:nth-child(4){width:28%}
+.global-peer-sessions-table th:nth-child(5),.global-peer-sessions-table td:nth-child(5){width:12%;white-space:nowrap}
+.global-peer-sessions-table th:nth-child(6),.global-peer-sessions-table td:nth-child(6){width:19%}
+.peer-table-detail{display:grid;gap:10px;margin-top:12px}
 .metrics-table .number-cell,.metrics-table .status-cell,.metrics-table .updated-cell{white-space:nowrap}
 .metrics-web-routes th:nth-child(1),.metrics-web-routes td:nth-child(1){width:34%}
 .metrics-web-routes th:nth-child(2),.metrics-web-routes td:nth-child(2),.metrics-web-routes th:nth-child(3),.metrics-web-routes td:nth-child(3),.metrics-web-routes th:nth-child(4),.metrics-web-routes td:nth-child(4){width:10%}

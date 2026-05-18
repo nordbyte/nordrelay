@@ -89,25 +89,26 @@ export class RelayExternalActivityMonitor {
     };
   }
 
-  async monitorSafe(): Promise<void> {
+  async monitorSafe(): Promise<boolean> {
     if (this.running) {
-      return;
+      return false;
     }
     this.running = true;
     try {
-      await this.monitor();
+      return await this.monitor();
     } catch (error) {
       this.options.broadcastStatus(friendlyErrorText(error), "error");
+      return false;
     } finally {
       this.running = false;
     }
   }
 
-  private async monitor(): Promise<void> {
+  private async monitor(): Promise<boolean> {
     const session = await this.options.getSession();
     const info = this.options.publicInfo(session);
     if (!info.capabilities.externalActivity || !info.threadId || session.isProcessing()) {
-      return;
+      return false;
     }
 
     const snapshot = getExternalSnapshotForSession(session, this.options.config, {
@@ -116,7 +117,7 @@ export class RelayExternalActivityMonitor {
       maxEvents: 0,
     });
     if (!snapshot) {
-      return;
+      return false;
     }
 
     if (!this.mirror || this.mirror.threadId !== snapshot.threadId || this.mirror.rolloutPath !== snapshot.sourcePath) {
@@ -131,11 +132,11 @@ export class RelayExternalActivityMonitor {
         if (await this.shouldIgnoreExternalTurn(snapshot)) {
           this.ignoredTurns.add(externalTurnKey(snapshot));
           this.mirror.lastLine = Math.max(this.mirror.lastLine, snapshot.lineCount);
-          return;
+          return true;
         }
         await this.startExternalTurn(snapshot, info);
       }
-      return;
+      return snapshot.activity.active;
     }
 
     const mirror = this.mirror;
@@ -149,13 +150,13 @@ export class RelayExternalActivityMonitor {
         if (await this.shouldIgnoreExternalTurn(snapshot)) {
           this.ignoredTurns.add(externalTurnKey(snapshot));
           mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);
-          return;
+          return true;
         }
         await this.startExternalTurn(snapshot, info);
       }
       if (this.ignoredTurns.has(externalTurnKey(snapshot))) {
         mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);
-        return;
+        return true;
       }
       const mirrorMode = this.options.mirrorMode();
       const newEvents = snapshot.events.filter((event) => event.lineNumber > mirror.lastLine);
@@ -172,7 +173,7 @@ export class RelayExternalActivityMonitor {
         this.options.broadcastStatus(mirror.latestStatus, "info");
       }
       this.options.scheduleActiveSessionsBroadcast();
-      return;
+      return true;
     }
 
     const terminalEvent = [...snapshot.events].reverse().find((event) => event.kind === "task" && event.status && event.status !== "started");
@@ -183,7 +184,7 @@ export class RelayExternalActivityMonitor {
         await this.options.drainQueue();
       }
       mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);
-      return;
+      return false;
     }
     if (terminalEvent && terminalEvent.lineNumber > mirror.lastLine) {
       const mirrorMode = this.options.mirrorMode();
@@ -242,6 +243,7 @@ export class RelayExternalActivityMonitor {
       await this.options.drainQueue();
     }
     mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);
+    return false;
   }
 
   private async startExternalTurn(snapshot: AgentExternalSnapshot, info: AgentSessionInfo): Promise<void> {

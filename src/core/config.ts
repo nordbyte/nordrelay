@@ -35,7 +35,7 @@ import {
   type VoiceBackendPreference,
 } from "../state/bot-preferences.js";
 import type { ConnectorLogFormat } from "./logger.js";
-import type { StateBackendKind } from "../state/state-backend.js";
+import { checkStateBackendAvailability, type StateBackendKind } from "../state/state-backend.js";
 
 export type ToolVerbosity = "all" | "summary" | "errors-only" | "none";
 
@@ -230,6 +230,10 @@ export function loadConfig(): ConnectorConfig {
   const workspaceAllowedRoots = parsePathList(optionalString(process.env.WORKSPACE_ALLOWED_ROOTS));
   const workspaceWarnRoots = parsePathList(optionalString(process.env.WORKSPACE_WARN_ROOTS));
   const stateBackend = parseStateBackend(optionalString(process.env.NORDRELAY_STATE_BACKEND));
+  const stateBackendAvailability = checkStateBackendAvailability(workspace, stateBackend);
+  if (!stateBackendAvailability.ok) {
+    adapterWarnings.push(stateBackendAvailability.detail);
+  }
   const maxFileSize = parseMaxFileSize(optionalString(process.env.MAX_FILE_SIZE));
   const artifactRetentionDays = parsePositiveNumberEnv(optionalString(process.env.ARTIFACT_RETENTION_DAYS), 7, "ARTIFACT_RETENTION_DAYS");
   const artifactMaxTurnDirs = parsePositiveIntegerEnv(optionalString(process.env.ARTIFACT_MAX_TURNS), 30, "ARTIFACT_MAX_TURNS");

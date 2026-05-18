@@ -36,7 +36,7 @@ export interface RelayDashboardServiceOptions {
 
 export class RelayDashboardService {
   private readonly keys: RelayDashboardCacheKey[] = ["version", "adapterHealth", "diagnostics"];
-  private warmTimer: NodeJS.Timeout | undefined;
+  private warmTimers: NodeJS.Timeout[] = [];
 
   constructor(private readonly options: RelayDashboardServiceOptions) {
     options.cache.register("version", () => this.produceVersion());
@@ -47,20 +47,21 @@ export class RelayDashboardService {
   startBackgroundRefresh(): void {
     this.options.cache.warm(this.keys);
     const ttlMs = this.options.config.dashboardCacheTtlMs;
-    if (ttlMs <= 0 || this.warmTimer) {
+    if (ttlMs <= 0 || this.warmTimers.length > 0) {
       return;
     }
-    const intervalMs = Math.max(5_000, ttlMs);
-    this.warmTimer = setInterval(() => this.options.cache.warm(this.keys), intervalMs);
-    this.warmTimer.unref?.();
+    const diagnosticsIntervalMs = Math.max(5_000, ttlMs);
+    const slowIntervalMs = Math.max(30_000, ttlMs * 6);
+    this.warmTimers = [
+      setInterval(() => this.options.cache.warm(["diagnostics"]), diagnosticsIntervalMs),
+      setInterval(() => this.options.cache.warm(["version", "adapterHealth"]), slowIntervalMs),
+    ];
+    this.warmTimers.forEach((timer) => timer.unref?.());
   }
 
   stopBackgroundRefresh(): void {
-    if (!this.warmTimer) {
-      return;
-    }
-    clearInterval(this.warmTimer);
-    this.warmTimer = undefined;
+    this.warmTimers.forEach((timer) => clearInterval(timer));
+    this.warmTimers = [];
   }
 
   async version(): Promise<Record<string, unknown>> {

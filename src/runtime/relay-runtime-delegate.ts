@@ -39,6 +39,7 @@ import type {
 import type { RelayArtifactService } from "./relay-artifact-service.js";
 import type { RelayAuthService } from "./relay-auth-service.js";
 import type { RelayDashboardService } from "./relay-dashboard-service.js";
+import type { AdaptiveExternalMonitorHandle } from "./relay-external-monitor-scheduler.js";
 import type { RelayExternalActivityMonitor } from "./relay-external-activity-monitor.js";
 import type { RelayQueueAction, RelayQueueService } from "./relay-queue-service.js";
 import type { RuntimeMetricsDto } from "./metrics.js";
@@ -112,7 +113,7 @@ export interface RelayRuntimeDelegate {
   readonly subscribers: Set<(event: RelayEvent) => void>;
   readonly agentUpdateActors: Map<string, WebActivityActor>;
   readonly agentUpdateStates: Map<string, { status: AgentUpdateJobSnapshot["status"]; needsInput: boolean }>;
-  readonly externalMonitor?: NodeJS.Timeout;
+  externalMonitor?: AdaptiveExternalMonitorHandle;
   activeSessionsBroadcastTimer: NodeJS.Timeout | null;
   activeSessionsLastBroadcastAt: number;
   draining: boolean;

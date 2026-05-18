@@ -3,10 +3,11 @@ import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from
 const PASSWORD_KEYLEN = 64;
 
 export function sleepSync(ms: number): void {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    // The lock is only held around tiny JSON mutations; a short spin keeps the implementation dependency-free.
+  if (ms <= 0) {
+    return;
   }
+  const waiter = new Int32Array(new SharedArrayBuffer(4));
+  Atomics.wait(waiter, 0, 0, ms);
 }
 
 export function hashPassword(password: string): { salt: string; hash: string } {

@@ -156,7 +156,7 @@ async function logoutOtherProfileSessions(){
 document.getElementById('userMenuBtn')?.addEventListener('click',()=>setUserMenuOpen(document.getElementById('userMenuPanel')?.hidden!==false));
 document.addEventListener('click',event=>{
   const menu=document.getElementById('accountMenu');
-  if(menu&&!menu.contains(event.target))setUserMenuOpen(false);
+  if(menu&&!menu.contains(/** @type {Node} */ (event.target)))setUserMenuOpen(false);
 });
 document.addEventListener('keydown',event=>{if(event.key==='Escape')setUserMenuOpen(false)});
 document.getElementById('profileBtn')?.addEventListener('click',()=>safe(async()=>{setUserMenuOpen(false);await openProfileDialog()}));
