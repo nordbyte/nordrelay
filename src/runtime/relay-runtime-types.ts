@@ -128,6 +128,47 @@ export interface ArtifactReportDto {
   }>;
 }
 
+export interface ArtifactUsageDto {
+  workspace: string;
+  managedBytes: number;
+  referencedBytes: number;
+  totalBytes: number;
+  maxTotalBytes: number;
+  usagePercent: number | null;
+  warnPercent: number;
+  status: "ok" | "warn" | "over";
+  turnDirs: number;
+  inboxDirs: number;
+  indexedTurns: number;
+  indexedFiles: number;
+  skippedFiles: number;
+  oldestUpdatedAt?: string;
+  newestUpdatedAt?: string;
+  largestTurn?: {
+    turnId: string;
+    sizeBytes: number;
+    updatedAt: string;
+  };
+}
+
+export interface ArtifactCleanupDto {
+  workspace: string;
+  dryRun: boolean;
+  usageBefore: ArtifactUsageDto;
+  usageAfter: ArtifactUsageDto;
+  candidates: Array<{
+    kind: "turn" | "inbox";
+    id: string;
+    path: string;
+    sizeBytes: number;
+    updatedAt: string;
+    reasons: string[];
+  }>;
+  removedTurnDirs: number;
+  removedInboxDirs: number;
+  removedBytes: number;
+}
+
 export interface CursorPageDto<T> {
   items: T[];
   pagination: CursorPageMeta;
@@ -180,6 +221,17 @@ export interface ArtifactPreviewDto {
   kind: "text" | "image" | "unsupported";
   name: string;
   sizeBytes: number;
+  language?: string;
+  lineCount?: number;
+  text?: string;
+  truncated?: boolean;
+  detail?: string;
+}
+
+export interface ArtifactDiffDto {
+  kind: "diff" | "unavailable";
+  name: string;
+  relativePath: string;
   text?: string;
   truncated?: boolean;
   detail?: string;

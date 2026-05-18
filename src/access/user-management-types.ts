@@ -1,4 +1,5 @@
 import type { GroupDefinition, Permission } from "./access-control.js";
+import type { ArtifactDeliveryMode } from "../artifacts/artifact-delivery.js";
 
 export interface UserRecord {
   id: string;
@@ -17,6 +18,7 @@ export type UserThemePreference = "light" | "dark" | "system";
 
 export interface UserPreferences {
   theme?: UserThemePreference;
+  artifactDelivery?: ArtifactDeliveryMode;
 }
 
 export interface GroupRecord extends GroupDefinition {
@@ -53,6 +55,7 @@ export interface TelegramChatAccessRecord {
   type?: string;
   enabled: boolean;
   allowedGroupIds: string[];
+  artifactDelivery?: ArtifactDeliveryMode;
   createdAt: string;
   updatedAt: string;
 }
@@ -76,6 +79,7 @@ export interface DiscordChannelAccessRecord {
   type?: string;
   enabled: boolean;
   allowedGroupIds: string[];
+  artifactDelivery?: ArtifactDeliveryMode;
   createdAt: string;
   updatedAt: string;
 }
@@ -100,6 +104,7 @@ export interface SlackChannelAccessRecord {
   type?: string;
   enabled: boolean;
   allowedGroupIds: string[];
+  artifactDelivery?: ArtifactDeliveryMode;
   createdAt: string;
   updatedAt: string;
 }

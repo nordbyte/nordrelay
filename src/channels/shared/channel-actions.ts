@@ -280,6 +280,89 @@ export function renderArtifactReportsAction(reports: ArtifactTurnReport[]): Chan
   };
 }
 
+export function renderArtifactUsageAction(usage: {
+  managedBytes: number;
+  referencedBytes: number;
+  maxTotalBytes: number;
+  usagePercent: number | null;
+  warnPercent: number;
+  status: string;
+  indexedTurns: number;
+  indexedFiles: number;
+  skippedFiles: number;
+  newestUpdatedAt?: string;
+  largestTurn?: { turnId: string; sizeBytes: number };
+}): ChannelActionResponse {
+  const quota = usage.maxTotalBytes > 0
+    ? `${formatFileSize(usage.managedBytes)} / ${formatFileSize(usage.maxTotalBytes)} (${Math.round(usage.usagePercent ?? 0)}%)`
+    : `${formatFileSize(usage.managedBytes)} managed`;
+  const lines = [
+    "Artifact quota:",
+    `Status: ${usage.status}`,
+    `Quota: ${quota}`,
+    `Referenced: ${formatFileSize(usage.referencedBytes)}`,
+    `Turns: ${usage.indexedTurns}`,
+    `Files: ${usage.indexedFiles}`,
+    `Skipped: ${usage.skippedFiles}`,
+    usage.newestUpdatedAt ? `Newest: ${formatRelativeTime(new Date(usage.newestUpdatedAt))}` : undefined,
+    usage.largestTurn ? `Largest: ${usage.largestTurn.turnId} (${formatFileSize(usage.largestTurn.sizeBytes)})` : undefined,
+  ].filter((line): line is string => Boolean(line));
+  return {
+    plain: lines.join("\n"),
+    html: [
+      "<b>Artifact quota:</b>",
+      `<b>Status:</b> <code>${escapeHTML(usage.status)}</code>`,
+      `<b>Quota:</b> <code>${escapeHTML(quota)}</code>`,
+      `<b>Referenced:</b> <code>${escapeHTML(formatFileSize(usage.referencedBytes))}</code>`,
+      `<b>Turns:</b> <code>${usage.indexedTurns}</code>`,
+      `<b>Files:</b> <code>${usage.indexedFiles}</code>`,
+      `<b>Skipped:</b> <code>${usage.skippedFiles}</code>`,
+      usage.newestUpdatedAt ? `<b>Newest:</b> <code>${escapeHTML(formatRelativeTime(new Date(usage.newestUpdatedAt)))}</code>` : undefined,
+      usage.largestTurn ? `<b>Largest:</b> <code>${escapeHTML(usage.largestTurn.turnId)}</code> (${escapeHTML(formatFileSize(usage.largestTurn.sizeBytes))})` : undefined,
+    ].filter((line): line is string => Boolean(line)).join("\n"),
+  };
+}
+
+export function renderArtifactCleanupAction(plan: {
+  dryRun: boolean;
+  candidates: Array<{ kind: string; id: string; sizeBytes: number; reasons: string[] }>;
+  removedTurnDirs: number;
+  removedInboxDirs: number;
+  removedBytes: number;
+}): ChannelActionResponse {
+  const title = plan.dryRun ? "Artifact cleanup preview:" : "Artifact cleanup completed:";
+  const candidates = plan.candidates.slice(0, 8).map((candidate) =>
+    `${candidate.kind} ${candidate.id} · ${formatFileSize(candidate.sizeBytes)} · ${candidate.reasons.join(", ") || "cleanup"}`,
+  );
+  const lines = [
+    title,
+    `${plan.candidates.length} candidate(s), ${formatFileSize(plan.removedBytes)}, ${plan.removedTurnDirs} turn dirs, ${plan.removedInboxDirs} inbox dirs.`,
+    ...candidates,
+    plan.candidates.length > candidates.length ? `${plan.candidates.length - candidates.length} more not shown.` : undefined,
+  ].filter((line): line is string => Boolean(line));
+  return {
+    plain: lines.join("\n"),
+    html: [
+      `<b>${escapeHTML(title)}</b>`,
+      `<code>${plan.candidates.length}</code> candidate(s), <code>${escapeHTML(formatFileSize(plan.removedBytes))}</code>, <code>${plan.removedTurnDirs}</code> turn dirs, <code>${plan.removedInboxDirs}</code> inbox dirs.`,
+      ...candidates.map(escapeHTML),
+      plan.candidates.length > candidates.length ? escapeHTML(`${plan.candidates.length - candidates.length} more not shown.`) : undefined,
+    ].filter((line): line is string => Boolean(line)).join("\n"),
+  };
+}
+
+export function renderArtifactDeliveryAction(mode: string, scope = "user"): ChannelActionResponse {
+  const usage = "Modes: manual-only, summary, summary-with-actions, auto-files, auto-zip, images-only, off.";
+  return {
+    plain: [`Artifact delivery for ${scope}: ${mode}`, usage, "Use /artifacts delivery <mode>."].join("\n"),
+    html: [
+      `<b>Artifact delivery for ${escapeHTML(scope)}:</b> <code>${escapeHTML(mode)}</code>`,
+      escapeHTML(usage),
+      "Use <code>/artifacts delivery &lt;mode&gt;</code>.",
+    ].join("\n"),
+  };
+}
+
 export function renderQueueListAction(queue: QueuedPrompt[], paused: boolean): ChannelActionResponse {
   if (queue.length === 0) {
     return {

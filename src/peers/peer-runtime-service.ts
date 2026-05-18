@@ -413,9 +413,25 @@ export class PeerRuntimeService {
       await this.assertCurrentSessionScope(peer, runtime);
       return { reports: await runtime.artifacts() };
     }
+    if (method === "GET" && path === "/api/artifacts/usage") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.artifactUsage();
+    }
+    if (method === "POST" && path === "/api/artifacts/cleanup/preview") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.artifactCleanupPreview();
+    }
+    if (method === "POST" && path === "/api/artifacts/cleanup/run") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.artifactCleanupRun(remoteActor);
+    }
     if (method === "GET" && path === "/api/artifacts/preview") {
       await this.assertCurrentSessionScope(peer, runtime);
       return runtime.artifactPreview(requiredString(query.turnId, "turnId"), requiredString(query.path, "path"));
+    }
+    if (method === "GET" && path === "/api/artifacts/diff") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.artifactDiff(requiredString(query.turnId, "turnId"), requiredString(query.path, "path"));
     }
     if (method === "DELETE" && path === "/api/artifacts") {
       await this.assertCurrentSessionScope(peer, runtime);

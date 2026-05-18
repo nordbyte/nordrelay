@@ -10,8 +10,11 @@ import type { PeerDiscoveryJobSnapshot, PeerDiscoveryResult, PeerIdentityBackup,
 import type { WebApiDynamicPathFromContract, WebApiStaticPathFromContract } from "./web-api-contract.js";
 import type {
   ActiveSessionsDto,
+  ArtifactCleanupDto,
+  ArtifactDiffDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
+  ArtifactUsageDto,
   CursorPageDto,
   DashboardControlOptions,
   QueueItemDto,
@@ -161,6 +164,7 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends `/api/queue/plans/${string}/move` ? { status: QueuePlanStatus } :
   P extends `/api/queue/plans/${string}` ? { title?: string; prompt?: string; status?: QueuePlanStatus; labels?: string[]; priority?: number; agentId?: AgentId; workspace?: string; threadId?: string } :
   P extends "/api/artifacts/bulk" ? { action: "delete"; turnIds: string[] } :
+  P extends "/api/artifacts/cleanup/preview" | "/api/artifacts/cleanup/run" ? Record<string, never> :
   P extends "/api/peers/discovery-jobs" ? { targets?: string[]; timeoutMs?: number; concurrency?: number; maxHosts?: number } :
   P extends "/api/peers/identity/restore" ? { backup: PeerIdentityBackup } :
   P extends `/api/peers/${string}/rotate` ? { expiresMinutes?: number } :
@@ -172,20 +176,20 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/workflows" ? { name: string; description?: string; tags?: string[]; steps: WorkflowStep[]; scope?: "private" | "shared" } :
   P extends `/api/workflows/${string}` ? { name: string; description?: string; tags?: string[]; steps: WorkflowStep[]; scope?: "private" | "shared" } :
   P extends `/api/workflows/${string}/run` | `/api/workflows/${string}/preview` ? { variables?: Record<string, string> } :
-  P extends "/api/users" ? { email: string; displayName?: string; password: string; groupIds?: string[]; active?: boolean; telegramUserId?: number; discordUserId?: string } :
+  P extends "/api/users" ? { email: string; displayName?: string; password: string; groupIds?: string[]; active?: boolean; telegramUserId?: number; discordUserId?: string; preferences?: { artifactDelivery?: string } } :
   P extends `/api/users/${string}/password` ? { password: string } :
   P extends `/api/users/${string}/telegram` ? { createCode?: boolean; telegramUserId?: number; username?: string } :
   P extends `/api/users/${string}/discord` ? { createCode?: boolean; discordUserId?: string; username?: string; globalName?: string } :
   P extends `/api/users/${string}/slack` ? { createCode?: boolean; slackUserId?: string; teamId?: string; username?: string; realName?: string } :
-  P extends `/api/users/${string}` ? { email?: string; displayName?: string; active?: boolean; groupIds?: string[] } :
+  P extends `/api/users/${string}` ? { email?: string; displayName?: string; active?: boolean; groupIds?: string[]; preferences?: { artifactDelivery?: string } } :
   P extends "/api/groups" ? { name: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[]; discordChannelIds?: string[]; slackChannelIds?: string[] } :
   P extends `/api/groups/${string}` ? { name?: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[]; discordChannelIds?: string[]; slackChannelIds?: string[] } :
-  P extends "/api/telegram-chats" ? { chatId: number; title?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[] } :
-  P extends `/api/telegram-chats/${string}` ? { title?: string; enabled?: boolean; allowedGroupIds?: string[] } :
-  P extends "/api/discord-channels" ? { guildId?: string; channelId: string; title?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[] } :
-  P extends `/api/discord-channels/${string}` ? { title?: string; enabled?: boolean; allowedGroupIds?: string[] } :
-  P extends "/api/slack-channels" ? { teamId?: string; channelId: string; title?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[] } :
-  P extends `/api/slack-channels/${string}` ? { title?: string; enabled?: boolean; allowedGroupIds?: string[] } :
+  P extends "/api/telegram-chats" ? { chatId: number; title?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :
+  P extends `/api/telegram-chats/${string}` ? { title?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :
+  P extends "/api/discord-channels" ? { guildId?: string; channelId: string; title?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :
+  P extends `/api/discord-channels/${string}` ? { title?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :
+  P extends "/api/slack-channels" ? { teamId?: string; channelId: string; title?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :
+  P extends `/api/slack-channels/${string}` ? { title?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :
   P extends "/api/locks" ? { ownerName?: string } :
   P extends "/api/auth/login" | "/api/auth/logout" ? { agentId?: AgentId } :
   P extends `/api/agent-update/${string}/input` ? { input: string } :
@@ -258,8 +262,11 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/chat/mirror" ? { mode: string; minInterval: number; response: { plain: string; html: string } } :
   P extends "/api/activity" ? { events: WebActivityEvent[]; pagination?: CursorPageDto<WebActivityEvent>["pagination"] } :
   P extends "/api/artifacts" ? { reports: ArtifactReportDto[]; pagination?: CursorPageDto<ArtifactReportDto>["pagination"]; removed?: boolean } :
+  P extends "/api/artifacts/usage" ? ArtifactUsageDto :
+  P extends "/api/artifacts/cleanup/preview" | "/api/artifacts/cleanup/run" ? ArtifactCleanupDto :
   P extends "/api/artifacts/bulk" ? { removed: string[] } :
   P extends "/api/artifacts/preview" ? ArtifactPreviewDto :
+  P extends "/api/artifacts/diff" ? ArtifactDiffDto :
   P extends "/api/logs" ? FormattedLogTail :
   P extends "/api/logs/clear" ? ClearLogResult :
   P extends "/api/diagnostics" ? WebDiagnosticsDto :

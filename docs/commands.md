@@ -44,7 +44,7 @@
 - `/lock` locks writes for this Telegram session to the current user.
 - `/unlock` releases the current session write lock.
 - `/locks` lists active write locks.
-- `/artifacts [latest|zip latest|turn-id|images|docs|search <text>|delete <turn-id>]` lists, filters, resends, zips, searches, or deletes generated artifacts for the current workspace.
+- `/artifacts [latest|zip latest|turn-id|images|docs|search <text>|delete <turn-id>|quota|cleanup preview|cleanup run|delivery <mode>]` lists, filters, resends, zips, searches, configures, or deletes generated artifacts for the current workspace.
 - `/workspaces` lists workspaces known to the selected agent and allowed by the workspace policy.
 - `/abort` cancels the current operation.
 - `/stop` is an alias for `/abort`.
@@ -89,7 +89,7 @@ Discord supports slash commands and `/command` text messages for the shared comm
 - `/last [count]` resends the last agent reply for the active thread.
 - `/templates`, `/template <id> [{"variable":"value"}]`, `/workflows`, and `/workflow <id> [{"variable":"value"}]` use the shared prompt-template and workflow store.
 - `/peers` and `/target local|<peer-id>` use the same paired-instance target selection as Telegram.
-- `/artifacts latest`, `/artifacts zip latest`, `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, and `/artifacts delete <turn-id>` are available in Discord.
+- `/artifacts latest`, `/artifacts zip latest`, `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, `/artifacts quota`, `/artifacts cleanup preview|run`, `/artifacts delivery <mode>`, and `/artifacts delete <turn-id>` are available in Discord.
 - Unsafe launch profiles require explicit confirmation with `/launch <profile-id> confirm`; add `apply` to reattach the current idle thread immediately.
 - Discord does not support Telegram reactions or Telegram webhook transport; typing, message edits, attachments, files, DMs, guild channels, and threads are supported.
 
@@ -105,7 +105,7 @@ Slack supports the configured slash command and `/command` text messages for the
 - `/last [count]` resends the last agent reply for the active thread.
 - `/templates`, `/template <id> [{"variable":"value"}]`, `/workflows`, and `/workflow <id> [{"variable":"value"}]` use the shared prompt-template and workflow store.
 - `/peers` and `/target local|<peer-id>` use the same paired-instance target selection as Telegram and Discord.
-- `/artifacts latest`, `/artifacts zip latest`, `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, and `/artifacts delete <turn-id>` are available in Slack.
+- `/artifacts latest`, `/artifacts zip latest`, `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, `/artifacts quota`, `/artifacts cleanup preview|run`, `/artifacts delivery <mode>`, and `/artifacts delete <turn-id>` are available in Slack.
 - Unsafe launch profiles require explicit confirmation with `/launch <profile-id> confirm`; add `apply` to reattach the current idle thread immediately.
 - Slack does not support Telegram reactions or Telegram webhook transport; typing/status, message edits, attachments, files, DMs, channels, and threads are supported.
 

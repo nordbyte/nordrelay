@@ -1,9 +1,12 @@
 import {
   collectRecentWorkspaceArtifacts,
+  createArtifactZipBundle,
   formatArtifactSummary,
+  isTelegramImagePreview,
   persistWorkspaceArtifactReport,
   type Artifact,
 } from "../../artifacts/artifacts.js";
+import { artifactDeliveryPolicy, type ArtifactDeliveryPolicy } from "../../artifacts/artifact-delivery.js";
 import type { AgentSessionService } from "../../agents/shared/agent.js";
 import type { ConnectorConfig } from "../../core/config.js";
 import type { WebActivityEvent } from "../../web/web-state.js";
@@ -19,6 +22,7 @@ export interface ChannelCliArtifactDeliveryOptions<MessageId extends string | nu
   turnId: string | null;
   state?: ChannelExternalMirrorState<MessageId>;
   autoSend: boolean;
+  deliveryPolicy?: ArtifactDeliveryPolicy;
   sendSummaryWhenAutoSendDisabled?: boolean;
   logPrefix: string;
   sendSummary(summary: string): Promise<void>;
@@ -62,13 +66,25 @@ export async function deliverChannelCliArtifacts<MessageId extends string | numb
       return null;
     });
 
+    const policy = options.deliveryPolicy ?? artifactDeliveryPolicy(options.autoSend ? "auto-files" : "manual-only");
     const summary = formatArtifactSummary(report.artifacts, report.skippedCount, report.omittedCount);
-    if (options.autoSend || options.sendSummaryWhenAutoSendDisabled) {
+    if (policy.sendSummary || options.sendSummaryWhenAutoSendDisabled) {
       await options.sendSummary(summary);
     }
 
-    if (options.autoSend) {
-      for (const artifact of (persistedReport?.artifacts ?? report.artifacts).slice(0, 5)) {
+    if (policy.autoSendZip) {
+      const zip = await createArtifactZipBundle(persistedReport?.artifacts ?? report.artifacts, persistedReport?.outDir ?? workspace, {
+        maxFileSize: options.config.maxFileSize,
+        bundleName: `nordrelay-artifacts-${options.turnId}.zip`,
+      });
+      if (zip) {
+        await options.sendArtifact(zip);
+      }
+    } else if (policy.autoSendFiles) {
+      const artifacts = (persistedReport?.artifacts ?? report.artifacts)
+        .filter((artifact) => !policy.imagesOnly || isTelegramImagePreview(artifact))
+        .slice(0, 5);
+      for (const artifact of artifacts) {
         await options.sendArtifact(artifact);
       }
     }
@@ -77,13 +93,13 @@ export async function deliverChannelCliArtifacts<MessageId extends string | numb
     options.appendActivity({
       source: "cli",
       status: "info",
-      type: options.autoSend ? "artifacts_sent" : "artifacts_detected",
+      type: policy.autoSendFiles || policy.autoSendZip ? "artifacts_sent" : "artifacts_detected",
       contextKey: options.contextKey,
       threadId: info.threadId,
       workspace: info.workspace,
       agentId: info.agentId,
       actor: { channel: "cli", label: `${info.agentLabel} CLI` },
-      detail: summary,
+      detail: `${policy.mode}: ${summary}`,
     });
     if (options.state) options.state.artifactsDeliveredForTurnId = options.turnId;
   } finally {

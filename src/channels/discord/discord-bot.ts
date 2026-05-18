@@ -59,6 +59,7 @@ import { spawnConnectorRestart, spawnSelfUpdate } from "../../support/operations
 import { RemoteRelayClient } from "../../peers/peer-client.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "../../state/prompt-store.js";
 import { RelayArtifactService } from "../../runtime/relay-artifact-service.js";
+import { resolveArtifactDeliveryPolicy, type ArtifactDeliveryMode } from "../../artifacts/artifact-delivery.js";
 import { RelayAuthService } from "../../runtime/relay-auth-service.js";
 import { configureRedaction, redactText } from "../../core/redaction.js";
 import { renderSessionInfoPlain } from "../shared/session-format.js";
@@ -135,6 +136,9 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
   const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
   const lockStore = new SessionLockStore(config.workspace, config.stateBackend);
   const userStore = new UserStore();
+
+  const artifactPolicyForRequest = (request: DiscordRequest) => resolveArtifactDeliveryPolicy({ config, channelId: "discord", authUser: request.authUser, channelAccess: request.isDirectMessage ? null : userStore.snapshot().discordChannels.find((channel) => channel.channelId === request.channelId && (!request.guildId || channel.guildId === request.guildId)) ?? null });
+  const artifactPolicyForContext = (context: ChannelContext) => resolveArtifactDeliveryPolicy({ config, channelId: "discord", channelAccess: userStore.snapshot().discordChannels.find((channel) => channel.channelId === context.chatId) ?? null });
   const artifactService = new RelayArtifactService(config);
   const authService = new RelayAuthService(config);
   const agentUpdates = new AgentUpdateManager();
@@ -290,12 +294,8 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     return true;
   };
 
-  const getSession = async (request: DiscordRequest, options?: { deferThreadStart?: boolean }): Promise<AgentSessionService> =>
-    registry.getOrCreate(request.contextKey, options);
-
-  const updateSession = (request: DiscordRequest, session: AgentSessionService): void => {
-    registry.updateMetadata(request.contextKey, session);
-  };
+  const getSession = async (request: DiscordRequest, options?: { deferThreadStart?: boolean }): Promise<AgentSessionService> => registry.getOrCreate(request.contextKey, options);
+  const updateSession = (request: DiscordRequest, session: AgentSessionService): void => { registry.updateMetadata(request.contextKey, session); };
 
   const artifactDeps = {
     config,
@@ -304,6 +304,8 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     getSession,
     reply,
     appendActivity,
+    getArtifactDeliveryMode: (request: DiscordRequest) => request.authUser?.user.preferences?.artifactDelivery,
+    setArtifactDeliveryMode: async (request: DiscordRequest, mode: ArtifactDeliveryMode | null) => { if (!request.authUser) throw new Error("Authenticated Discord user required."); const updated = userStore.updateUser(request.authUser.user.id, { preferences: { artifactDelivery: mode } }); request.authUser = updated; return updated.user.preferences?.artifactDelivery ?? config.discordArtifactDeliveryMode; },
   };
   const commandArtifacts = createDiscordArtifactCommandHandler<DiscordRequest>(artifactDeps);
 
@@ -343,13 +345,8 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
 
   const startAgentLogout = (info: AgentSessionInfo): Promise<LoginResult> => authService.startLogout(info);
 
-  const hostLoginCommand = (info: AgentSessionInfo): string => {
-    return hostAgentLoginCommand(config, info);
-  };
-
-  const hostLogoutCommand = (info: AgentSessionInfo): string => {
-    return hostAgentLogoutCommand(config, info);
-  };
+  const hostLoginCommand = (info: AgentSessionInfo): string => hostAgentLoginCommand(config, info);
+  const hostLogoutCommand = (info: AgentSessionInfo): string => hostAgentLogoutCommand(config, info);
 
   const denyIfLocked = async (request: DiscordRequest): Promise<boolean> => {
     const lock = lockStore.get(request.contextKey);
@@ -499,8 +496,9 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       progress.updatedAt = progress.completedAt;
       await engine.finalize();
       await artifactService.persistWorkspaceArtifactsForTurn(session.getInfo().workspace, engine.turnId, new Date(engine.startedAt));
-      if (config.discordAutoSendArtifacts) {
-        await sendRecentDiscordArtifacts(artifactDeps, request, session, new Date(engine.startedAt), engine.turnId);
+      const artifactPolicy = artifactPolicyForRequest(request);
+      if (artifactPolicy.sendSummary || artifactPolicy.autoSendFiles || artifactPolicy.autoSendZip) {
+        await sendRecentDiscordArtifacts(artifactDeps, request, session, new Date(engine.startedAt), engine.turnId, artifactPolicy);
       }
       appendActivity(request, {
         status: "completed",
@@ -584,7 +582,8 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       turnId,
       state: externalMirrors.get(contextKey),
       autoSend: config.discordAutoSendArtifacts,
-      sendSummaryWhenAutoSendDisabled: true,
+      deliveryPolicy: artifactPolicyForContext(context),
+      sendSummaryWhenAutoSendDisabled: false,
       logPrefix: "Discord",
       sendSummary: (summary) => runtime.sendMessage(context, { text: summary, fallbackText: summary }).then(() => {}),
       sendArtifact: (artifact) => runtime.sendFile(context, { localPath: artifact.localPath, name: artifact.name }).then(() => {}).catch((error) => {

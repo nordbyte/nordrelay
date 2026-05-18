@@ -24,6 +24,7 @@ import {
   type Artifact,
   type ArtifactTurnReport,
 } from "../../artifacts/artifacts.js";
+import { artifactDeliveryPolicy, resolveArtifactDeliveryPolicy, type ArtifactDeliveryPolicy } from "../../artifacts/artifact-delivery.js";
 import { AgentUpdateManager, type AgentUpdateOperation } from "../../agents/shared/agent-updates.js";
 import { AuditLogStore, type AuditEvent } from "../../access/audit-log.js";
 import { formatSessionLabel } from "./bot-ui.js";
@@ -36,6 +37,7 @@ import {
   type VoiceBackendPreference,
 } from "../../state/bot-preferences.js";
 import { renderAgentUpdateJobAction, type ChannelActionResponse } from "../shared/channel-actions.js";
+import { buildArtifactActionsKeyboard } from "../shared/bot-rendering.js";
 import type { ChannelContext } from "../shared/channel-adapter.js";
 import { createChannelActivityRecorder, createChannelBusyStore } from "../shared/channel-bridge-controller.js";
 import type {
@@ -288,6 +290,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const agentUpdateActors = new Map<string, WebActivityActor>();
   const agentUpdateStates = new Map<string, { status: string; needsInput: boolean }>();
   const commandService = new ChannelCommandService(config);
+  const artifactPolicyForTelegram = (input: { contextKey: TelegramContextKey; chatId: TelegramChatId; authUser?: AuthenticatedUser | null }): ArtifactDeliveryPolicy => {
+    const parsed = parseContextKey(input.contextKey);
+    const channelAccess = parsed.chatId < 0
+      ? userStore.snapshot().telegramChats.find((chat) => chat.chatId === parsed.chatId) ?? null
+      : null;
+    const authUser = input.authUser ?? (parsed.chatId > 0 ? userStore.resolveTelegramUser(parsed.chatId) : null);
+    return resolveArtifactDeliveryPolicy({ config, channelId: "telegram", authUser, channelAccess });
+  };
   const agentUpdates = new AgentUpdateManager({
     onUpdate: (job) => recordTelegramAgentUpdateLifecycle(job),
   });
@@ -348,9 +358,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
   });
 
-  const getBusyState = (
-    contextKey: TelegramContextKey,
-  ): BusyState => contextBusy.get(contextKey);
+  const getBusyState = (contextKey: TelegramContextKey): BusyState => contextBusy.get(contextKey);
 
   const getExternalActivity = (session: AgentSessionService | undefined): AgentExternalActivity | null =>
     getExternalActivityForSession(session, config);
@@ -370,14 +378,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     return { busy: false, kind: "idle" };
   };
 
-  const isBusy = (contextKey: TelegramContextKey): boolean => {
-    return getBusyReason(contextKey).busy;
-  };
+  const isBusy = (contextKey: TelegramContextKey): boolean => getBusyReason(contextKey).busy;
 
-  const getContextSession = async (
-    ctx: Context,
-    options?: { deferThreadStart?: boolean },
-  ): Promise<{ contextKey: TelegramContextKey; session: AgentSessionService } | null> => {
+  const getContextSession = async (ctx: Context, options?: { deferThreadStart?: boolean }): Promise<{ contextKey: TelegramContextKey; session: AgentSessionService } | null> => {
     const contextKey = contextKeyFromCtx(ctx);
     if (!contextKey) {
       return null;
@@ -387,14 +390,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     return { contextKey, session };
   };
 
-  const updateSessionMetadata = (contextKey: TelegramContextKey, session: AgentSessionService): void => {
-    registry.updateMetadata(contextKey, session);
-  };
+  const updateSessionMetadata = (contextKey: TelegramContextKey, session: AgentSessionService): void => { registry.updateMetadata(contextKey, session); };
 
-  const checkAgentAuthStatus = async (info: AgentSessionInfo): Promise<{ authenticated: boolean; method: string; detail: string }> => {
-    const status = await authService.check(info);
-    return { ...status, method: status.method ?? "unknown" };
-  };
+  const checkAgentAuthStatus = (info: AgentSessionInfo): Promise<{ authenticated: boolean; method: string; detail: string }> => authService.check(info).then((status) => ({ ...status, method: status.method ?? "unknown" }));
 
   const agentIdForAuth = resolveAgentIdForAuth;
 
@@ -459,21 +457,10 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
   };
 
-  const startAgentLogin = (info?: AgentSessionInfo): Promise<LoginResult> => {
-    return info ? authService.startLogin(info) : startCodexLogin();
-  };
-
-  const startAgentLogout = (info?: AgentSessionInfo): Promise<LoginResult> => {
-    return info ? authService.startLogout(info) : startCodexLogout();
-  };
-
-  const hostLoginCommand = (info?: AgentSessionInfo): string => {
-    return hostAgentLoginCommand(config, info);
-  };
-
-  const hostLogoutCommand = (info?: AgentSessionInfo): string => {
-    return hostAgentLogoutCommand(config, info);
-  };
+  const startAgentLogin = (info?: AgentSessionInfo): Promise<LoginResult> => info ? authService.startLogin(info) : startCodexLogin();
+  const startAgentLogout = (info?: AgentSessionInfo): Promise<LoginResult> => info ? authService.startLogout(info) : startCodexLogout();
+  const hostLoginCommand = (info?: AgentSessionInfo): string => hostAgentLoginCommand(config, info);
+  const hostLogoutCommand = (info?: AgentSessionInfo): string => hostAgentLogoutCommand(config, info);
 
   const isTopicContext = (contextKey: TelegramContextKey): boolean => isTopicContextKey(contextKey);
 
@@ -673,6 +660,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       turnId,
       state: externalMirrors.get(contextKey),
       autoSend: config.telegramAutoSendArtifacts,
+      deliveryPolicy: artifactPolicyForTelegram({ contextKey, chatId }),
       sendSummaryWhenAutoSendDisabled: false,
       logPrefix: "Telegram",
       sendSummary: (summary) => sendTextMessage(bot.api, chatId, escapeHTML(summary), {
@@ -1763,8 +1751,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       await finalizeResponse();
       await deliverCliGeneratedArtifacts(contextKey, chatId, session, artifactStartedAt, artifactTurnId, messageThreadId);
       if (envelope.artifactOutDir) {
-        if (config.telegramAutoSendArtifacts) {
-          await deliverArtifacts(ctx, chatId, envelope.artifactOutDir, session.getInfo().workspace, messageThreadId);
+        const artifactPolicy = artifactPolicyForTelegram({ contextKey, chatId, authUser: getAuthenticatedUser(ctx) });
+        if (artifactPolicy.sendSummary || artifactPolicy.autoSendFiles || artifactPolicy.autoSendZip) {
+          await deliverArtifacts(ctx, chatId, envelope.artifactOutDir, session.getInfo().workspace, messageThreadId, artifactPolicy);
         } else {
           await pruneArtifacts(session.getInfo().workspace);
         }
@@ -1918,6 +1907,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     outDir: string,
     workspace: string,
     messageThreadId?: number,
+    policy: ArtifactDeliveryPolicy = artifactPolicyForTelegram({ contextKey: contextKeyFromCtx(ctx) ?? String(chatId), chatId, authUser: getAuthenticatedUser(ctx) }),
   ): Promise<void> => {
     const { artifacts, skippedCount } = await collectArtifactReport(outDir, config.maxFileSize);
     const report: ArtifactTurnReport = {
@@ -1929,7 +1919,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       totalSizeBytes: totalArtifactSize(artifacts),
       source: "turn",
     };
-    await deliverArtifactReport(ctx, chatId, report, messageThreadId);
+    await deliverArtifactReport(ctx, chatId, report, messageThreadId, policy);
     const contextKey = contextKeyFromCtx(ctx);
     const session = contextKey ? registry.get(contextKey) : undefined;
     if (contextKey && session) {
@@ -1947,6 +1937,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     chatId: TelegramChatId,
     report: ArtifactTurnReport,
     messageThreadId?: number,
+    policy: ArtifactDeliveryPolicy = artifactPolicyForTelegram({ contextKey: contextKeyFromCtx(ctx) ?? String(chatId), chatId, authUser: getAuthenticatedUser(ctx) }),
   ): Promise<void> => {
     if (isEmptyArtifactReport(report)) {
       return;
@@ -1957,25 +1948,31 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     let failedCount = 0;
     let bundledArtifact: Artifact | null = null;
 
-    if (report.artifacts.length > 5) {
+    if (policy.autoSendZip || report.artifacts.length > 5) {
       bundledArtifact = await createArtifactZipBundle(report.artifacts, report.outDir, {
         maxFileSize: config.maxFileSize,
       });
     }
 
-    const deliveredArtifacts = bundledArtifact ? [bundledArtifact] : report.artifacts;
-    for (const artifact of deliveredArtifacts) {
-      const sent = await sendArtifactFile(ctx, chatId, artifact, messageThreadId);
-      if (!sent) {
-        failedCount += 1;
+    const deliverFiles = policy.autoSendFiles || policy.autoSendZip;
+    if (deliverFiles) {
+      const deliveredArtifacts = bundledArtifact
+        ? [bundledArtifact]
+        : report.artifacts.filter((artifact) => !policy.imagesOnly || isTelegramImagePreview(artifact)).slice(0, 5);
+      for (const artifact of deliveredArtifacts) {
+        const sent = await sendArtifactFile(ctx, chatId, artifact, messageThreadId);
+        if (!sent) {
+          failedCount += 1;
+        }
       }
     }
 
     const summary = formatArtifactSummary(report.artifacts, report.skippedCount + failedCount, report.omittedCount);
-    if (summary) {
-      const bundleNote = bundledArtifact ? `\nSent as ZIP: ${bundledArtifact.name}` : "";
+    if (summary && policy.sendSummary) {
+      const bundleNote = deliverFiles && bundledArtifact ? `\nSent as ZIP: ${bundledArtifact.name}` : "";
       await safeReply(ctx, escapeHTML(`${summary}${bundleNote}`), {
         fallbackText: `${summary}${bundleNote}`,
+        replyMarkup: policy.includeActions ? buildArtifactActionsKeyboard([report]) : undefined,
       });
     }
   };
@@ -2471,8 +2468,11 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     bot,
     config,
     getContextSession,
-    deliverArtifactReport,
+    deliverArtifactReport: (ctx, chatId, report, messageThreadId) =>
+      deliverArtifactReport(ctx, chatId, report, messageThreadId, artifactDeliveryPolicy("auto-files")),
     deliverArtifactReportZip,
+    getArtifactDeliveryMode: (ctx) => getAuthenticatedUser(ctx)?.user.preferences?.artifactDelivery,
+    setArtifactDeliveryMode: async (ctx, mode) => { const authUser = getAuthenticatedUser(ctx); if (!authUser) throw new Error("Authenticated Telegram user required."); const updated = userStore.updateUser(authUser.user.id, { preferences: { artifactDelivery: mode } }); contextUsers.set(ctx, updated); return updated.user.preferences?.artifactDelivery ?? config.telegramArtifactDeliveryMode; },
     appendActivity: (ctx, input) => appendActivity({
       source: "telegram",
       ...input,

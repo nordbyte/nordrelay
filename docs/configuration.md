@@ -157,12 +157,16 @@ Telegram output:
 - `SHOW_TURN_TOKEN_USAGE`: appends per-turn token usage when `true`.
 - `ENABLE_TELEGRAM_REACTIONS`: enables Telegram reactions when `true`.
 - `MAX_FILE_SIZE`: maximum inbound Telegram document size in bytes. Defaults to 20 MB.
+- `NORDRELAY_ARTIFACT_DELIVERY`: default artifact delivery mode for chat adapters. Supported values: `manual-only`, `summary`, `summary-with-actions`, `auto-files`, `auto-zip`, `images-only`, and `off`.
+- `TELEGRAM_ARTIFACT_DELIVERY`, `DISCORD_ARTIFACT_DELIVERY`, and `SLACK_ARTIFACT_DELIVERY`: optional channel-specific artifact delivery overrides.
+- `ARTIFACT_MAX_TOTAL_BYTES`: optional managed artifact storage quota in bytes. `0` disables quota enforcement.
+- `ARTIFACT_WARN_PERCENT`: warning threshold for the artifact quota. Defaults to `80`.
 - `ARTIFACT_RETENTION_DAYS`: artifact/inbox turn age before pruning. Defaults to `7`.
 - `ARTIFACT_MAX_TURNS`: maximum artifact turn directories to keep per workspace. Defaults to `30`.
 - `ARTIFACT_MAX_INBOX_DIRS`: maximum staged inbox directories to keep per workspace. Defaults to `30`.
 - `ARTIFACT_IGNORE_DIRS`: comma-separated extra directory names or relative paths ignored during workspace artifact scans.
 - `ARTIFACT_IGNORE_GLOBS`: comma-separated glob patterns ignored during workspace artifact scans.
-- `TELEGRAM_AUTO_SEND_ARTIFACTS`: automatically post generated artifact summaries/files after Telegram turns and mirrored CLI turns. Defaults to `false`.
+- `TELEGRAM_AUTO_SEND_ARTIFACTS`, `DISCORD_AUTO_SEND_ARTIFACTS`, and `SLACK_AUTO_SEND_ARTIFACTS`: compatibility booleans that map to artifact delivery defaults when the newer delivery mode is not set.
 
 Workspace policy:
 

@@ -7,6 +7,7 @@ import {
   type Permission,
   isPermission,
 } from "./access-control.js";
+import { isArtifactDeliveryMode } from "../artifacts/artifact-delivery.js";
 import type {
   DiscordChannelAccessRecord,
   DiscordIdentityRecord,
@@ -69,16 +70,19 @@ export function normalizePayload(payload: PersistedUsers | undefined): Persisted
     telegramIdentities: (payload?.telegramIdentities ?? []).filter((item) => isTelegramIdentityRecord(item) && userIds.has(item.userId)),
     telegramChats: (payload?.telegramChats ?? []).filter(isTelegramChatAccessRecord).map((chat) => ({
       ...chat,
+      artifactDelivery: normalizeArtifactDeliveryMode(chat.artifactDelivery),
       allowedGroupIds: chat.allowedGroupIds.filter((groupId) => groupIds.has(groupId)),
     })),
     discordIdentities: (payload?.discordIdentities ?? []).filter((item) => isDiscordIdentityRecord(item) && userIds.has(item.userId)),
     discordChannels: (payload?.discordChannels ?? []).filter(isDiscordChannelAccessRecord).map((channel) => ({
       ...channel,
+      artifactDelivery: normalizeArtifactDeliveryMode(channel.artifactDelivery),
       allowedGroupIds: channel.allowedGroupIds.filter((groupId) => groupIds.has(groupId)),
     })),
     slackIdentities: (payload?.slackIdentities ?? []).filter((item) => isSlackIdentityRecord(item) && userIds.has(item.userId)),
     slackChannels: (payload?.slackChannels ?? []).filter(isSlackChannelAccessRecord).map((channel) => ({
       ...channel,
+      artifactDelivery: normalizeArtifactDeliveryMode(channel.artifactDelivery),
       allowedGroupIds: channel.allowedGroupIds.filter((groupId) => groupIds.has(groupId)),
     })),
     webSessions: (payload?.webSessions ?? []).filter((item) => isWebSessionRecord(item) && userIds.has(item.userId)),
@@ -169,7 +173,12 @@ export function normalizeUserPreferences(value: unknown): UserPreferences | unde
   const theme = candidate.theme === "light" || candidate.theme === "dark" || candidate.theme === "system"
     ? candidate.theme
     : undefined;
-  return theme ? { theme } : undefined;
+  const artifactDelivery = normalizeArtifactDeliveryMode(candidate.artifactDelivery);
+  return theme || artifactDelivery ? { theme, artifactDelivery } : undefined;
+}
+
+export function normalizeArtifactDeliveryMode(value: unknown): UserPreferences["artifactDelivery"] {
+  return isArtifactDeliveryMode(value) ? value : undefined;
 }
 
 function isUserRecord(value: unknown): value is UserRecord {

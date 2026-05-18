@@ -36,11 +36,59 @@ export interface ArtifactRetentionOptions {
   maxTurnDirs?: number;
   maxInboxDirs?: number;
   now?: number;
+  maxTotalBytes?: number;
+  keepLatestTurns?: number;
+  keepLatestInboxDirs?: number;
 }
 
 export interface ArtifactPruneReport {
   removedTurnDirs: number;
   removedInboxDirs: number;
+  removedBytes?: number;
+  planned?: ArtifactCleanupCandidate[];
+}
+
+export interface ArtifactStorageUsage {
+  workspace: string;
+  managedBytes: number;
+  referencedBytes: number;
+  totalBytes: number;
+  maxTotalBytes: number;
+  usagePercent: number | null;
+  warnPercent: number;
+  status: "ok" | "warn" | "over";
+  turnDirs: number;
+  inboxDirs: number;
+  indexedTurns: number;
+  indexedFiles: number;
+  skippedFiles: number;
+  oldestUpdatedAt?: string;
+  newestUpdatedAt?: string;
+  largestTurn?: {
+    turnId: string;
+    sizeBytes: number;
+    updatedAt: string;
+  };
+}
+
+export interface ArtifactCleanupCandidate {
+  kind: "turn" | "inbox";
+  id: string;
+  path: string;
+  sizeBytes: number;
+  updatedAt: string;
+  reasons: string[];
+}
+
+export interface ArtifactCleanupPlan {
+  workspace: string;
+  dryRun: boolean;
+  usageBefore: ArtifactStorageUsage;
+  usageAfter: ArtifactStorageUsage;
+  candidates: ArtifactCleanupCandidate[];
+  removedTurnDirs: number;
+  removedInboxDirs: number;
+  removedBytes: number;
 }
 
 export interface WorkspaceArtifactScanOptions {
@@ -86,6 +134,8 @@ const WORKSPACE_ARTIFACT_IGNORED_DIRS = new Set([
   "tmp",
   "temp",
 ]);
+
+type ManagedArtifactDir = ArtifactCleanupCandidate & { updatedAtMs: number };
 
 export async function ensureOutDir(outDir: string): Promise<void> {
   await mkdir(outDir, { recursive: true });
@@ -332,22 +382,123 @@ export async function pruneConnectorTurnDirs(
   workspace: string,
   options: ArtifactRetentionOptions = {},
 ): Promise<ArtifactPruneReport> {
-  const maxAgeMs = options.maxAgeMs ?? DEFAULT_RETENTION_AGE_MS;
+  const plan = await cleanupArtifactStorage(workspace, options, false);
+  return {
+    removedTurnDirs: plan.removedTurnDirs,
+    removedInboxDirs: plan.removedInboxDirs,
+  };
+}
+
+export async function inspectArtifactStorage(
+  workspace: string,
+  options: { maxTotalBytes?: number; warnPercent?: number } = {},
+): Promise<ArtifactStorageUsage> {
+  const reports = await listRecentArtifactReports(workspace, Number.MAX_SAFE_INTEGER);
+  const turnDirs = await listManagedDirs(artifactTurnsDir(workspace), "turn");
+  const inboxDirs = await listManagedDirs(artifactInboxDir(workspace), "inbox");
+  const managedBytes = sumBytes([...turnDirs, ...inboxDirs]);
+  const referencedBytes = sumBytes(reports.flatMap((report) => report.artifacts));
+  const maxTotalBytes = options.maxTotalBytes ?? 0;
+  const warnPercent = options.warnPercent ?? 80;
+  const usagePercent = maxTotalBytes > 0 ? managedBytes / maxTotalBytes * 100 : null;
+  const largest = reports
+    .map((report) => ({ turnId: report.turnId, sizeBytes: totalArtifactSize(report.artifacts), updatedAt: report.updatedAt.toISOString() }))
+    .sort((left, right) => right.sizeBytes - left.sizeBytes)[0];
+  const updated = reports.map((report) => report.updatedAt.getTime()).filter((value) => Number.isFinite(value));
+  const status = usagePercent === null ? "ok" : usagePercent >= 100 ? "over" : usagePercent >= warnPercent ? "warn" : "ok";
+  return {
+    workspace,
+    managedBytes,
+    referencedBytes,
+    totalBytes: managedBytes,
+    maxTotalBytes,
+    usagePercent,
+    warnPercent,
+    status,
+    turnDirs: turnDirs.length,
+    inboxDirs: inboxDirs.length,
+    indexedTurns: reports.length,
+    indexedFiles: reports.reduce((total, report) => total + report.artifacts.length, 0),
+    skippedFiles: reports.reduce((total, report) => total + report.skippedCount + (report.omittedCount ?? 0), 0),
+    oldestUpdatedAt: updated.length ? new Date(Math.min(...updated)).toISOString() : undefined,
+    newestUpdatedAt: updated.length ? new Date(Math.max(...updated)).toISOString() : undefined,
+    largestTurn: largest,
+  };
+}
+
+export async function planArtifactCleanup(
+  workspace: string,
+  options: ArtifactRetentionOptions = {},
+): Promise<ArtifactCleanupPlan> {
+  return cleanupArtifactStorage(workspace, options, true);
+}
+
+export async function cleanupArtifactStorage(
+  workspace: string,
+  options: ArtifactRetentionOptions = {},
+  dryRun = false,
+): Promise<ArtifactCleanupPlan> {
   const now = options.now ?? Date.now();
-  const connectorDir = path.join(workspace, ".nordrelay");
+  const maxAgeMs = options.maxAgeMs ?? DEFAULT_RETENTION_AGE_MS;
+  const maxTurnDirs = options.maxTurnDirs ?? DEFAULT_MAX_TURN_DIRS;
+  const maxInboxDirs = options.maxInboxDirs ?? DEFAULT_MAX_INBOX_DIRS;
+  const maxTotalBytes = options.maxTotalBytes ?? 0;
+  const keepLatestTurns = options.keepLatestTurns ?? 1;
+  const keepLatestInboxDirs = options.keepLatestInboxDirs ?? 0;
+  const usageBefore = await inspectArtifactStorage(workspace, { maxTotalBytes });
+  const turnDirs = await listManagedDirs(artifactTurnsDir(workspace), "turn");
+  const inboxDirs = await listManagedDirs(artifactInboxDir(workspace), "inbox");
+  const candidates = new Map<string, ArtifactCleanupCandidate>();
 
-  const removedTurnDirs = await pruneChildDirs(path.join(connectorDir, "turns"), {
-    maxAgeMs,
-    maxDirs: options.maxTurnDirs ?? DEFAULT_MAX_TURN_DIRS,
-    now,
-  });
-  const removedInboxDirs = await pruneChildDirs(path.join(connectorDir, "inbox"), {
-    maxAgeMs,
-    maxDirs: options.maxInboxDirs ?? DEFAULT_MAX_INBOX_DIRS,
-    now,
-  });
+  markRetentionCandidates(candidates, turnDirs, maxAgeMs, maxTurnDirs, keepLatestTurns, now);
+  markRetentionCandidates(candidates, inboxDirs, maxAgeMs, maxInboxDirs, keepLatestInboxDirs, now);
 
-  return { removedTurnDirs, removedInboxDirs };
+  if (maxTotalBytes > 0) {
+    let projectedBytes = usageBefore.managedBytes - sumBytes([...candidates.values()]);
+    const quotaCandidates = [...turnDirs, ...inboxDirs]
+      .filter((entry) => !candidates.has(entry.path))
+      .sort((left, right) => left.updatedAtMs - right.updatedAtMs);
+    for (const entry of quotaCandidates) {
+      if (projectedBytes <= maxTotalBytes) {
+        break;
+      }
+      if (entry.kind === "turn" && isProtectedLatest(entry, turnDirs, keepLatestTurns)) {
+        continue;
+      }
+      if (entry.kind === "inbox" && isProtectedLatest(entry, inboxDirs, keepLatestInboxDirs)) {
+        continue;
+      }
+      addCleanupReason(candidates, entry, "quota");
+      projectedBytes -= entry.sizeBytes;
+    }
+  }
+
+  const selected = [...candidates.values()].sort((left, right) => new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime());
+  if (!dryRun) {
+    for (const candidate of selected) {
+      await rm(candidate.path, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+  const removedTurnDirs = selected.filter((candidate) => candidate.kind === "turn").length;
+  const removedInboxDirs = selected.filter((candidate) => candidate.kind === "inbox").length;
+  const removedBytes = sumBytes(selected);
+  const usageAfter = dryRun
+    ? { ...usageBefore, managedBytes: Math.max(0, usageBefore.managedBytes - removedBytes), totalBytes: Math.max(0, usageBefore.totalBytes - removedBytes) }
+    : await inspectArtifactStorage(workspace, { maxTotalBytes });
+  if (dryRun && usageAfter.maxTotalBytes > 0) {
+    usageAfter.usagePercent = usageAfter.managedBytes / usageAfter.maxTotalBytes * 100;
+    usageAfter.status = usageAfter.usagePercent >= 100 ? "over" : usageAfter.usagePercent >= usageAfter.warnPercent ? "warn" : "ok";
+  }
+  return {
+    workspace,
+    dryRun,
+    usageBefore,
+    usageAfter,
+    candidates: selected,
+    removedTurnDirs,
+    removedInboxDirs,
+    removedBytes,
+  };
 }
 
 export function formatArtifactSummary(artifacts: Artifact[], skippedCount: number, omittedCount = 0): string {
@@ -535,12 +686,114 @@ async function pruneChildDirs(
   return removed;
 }
 
+async function listManagedDirs(rootDir: string, kind: "turn" | "inbox"): Promise<ManagedArtifactDir[]> {
+  const entries = await readdir(rootDir, { withFileTypes: true }).catch(() => []);
+  const dirs: ManagedArtifactDir[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || shouldIgnoreEntry(entry.name)) {
+      continue;
+    }
+    const fullPath = path.join(rootDir, entry.name);
+    const fileStat = await stat(fullPath).catch(() => null);
+    if (!fileStat?.isDirectory()) {
+      continue;
+    }
+    dirs.push({
+      kind,
+      id: entry.name,
+      path: fullPath,
+      sizeBytes: await directorySize(fullPath),
+      updatedAt: fileStat.mtime.toISOString(),
+      updatedAtMs: fileStat.mtimeMs,
+      reasons: [],
+    });
+  }
+  dirs.sort((left, right) => right.updatedAtMs - left.updatedAtMs);
+  return dirs;
+}
+
+async function directorySize(rootDir: string): Promise<number> {
+  const entries = await readdir(rootDir, { withFileTypes: true }).catch(() => []);
+  let total = 0;
+  for (const entry of entries) {
+    const fullPath = path.join(rootDir, entry.name);
+    if (entry.isSymbolicLink()) {
+      continue;
+    }
+    const fileStat = await stat(fullPath).catch(() => null);
+    if (!fileStat) {
+      continue;
+    }
+    if (fileStat.isDirectory()) {
+      total += await directorySize(fullPath);
+    } else if (fileStat.isFile()) {
+      total += fileStat.size;
+    }
+  }
+  return total;
+}
+
+function markRetentionCandidates(
+  candidates: Map<string, ArtifactCleanupCandidate>,
+  dirs: ManagedArtifactDir[],
+  maxAgeMs: number,
+  maxDirs: number,
+  keepLatest: number,
+  now: number,
+): void {
+  for (const [index, dir] of dirs.entries()) {
+    if (index < keepLatest) {
+      continue;
+    }
+    if (now - dir.updatedAtMs > maxAgeMs) {
+      addCleanupReason(candidates, dir, "retention-age");
+    }
+    if (index >= maxDirs) {
+      addCleanupReason(candidates, dir, "retention-count");
+    }
+  }
+}
+
+function addCleanupReason(
+  candidates: Map<string, ArtifactCleanupCandidate>,
+  dir: ManagedArtifactDir,
+  reason: string,
+): void {
+  const existing = candidates.get(dir.path);
+  if (existing) {
+    if (!existing.reasons.includes(reason)) {
+      existing.reasons.push(reason);
+    }
+    return;
+  }
+  candidates.set(dir.path, {
+    kind: dir.kind,
+    id: dir.id,
+    path: dir.path,
+    sizeBytes: dir.sizeBytes,
+    updatedAt: dir.updatedAt,
+    reasons: [reason],
+  });
+}
+
+function isProtectedLatest(dir: ManagedArtifactDir, dirs: ManagedArtifactDir[], keepLatest: number): boolean {
+  return keepLatest > 0 && dirs.slice(0, keepLatest).some((candidate) => candidate.path === dir.path);
+}
+
+function sumBytes(values: Array<{ sizeBytes: number }>): number {
+  return values.reduce((total, value) => total + value.sizeBytes, 0);
+}
+
 function shouldIgnoreEntry(name: string): boolean {
   return IGNORED_PATTERNS.some((pattern) => pattern.test(name));
 }
 
 function artifactTurnsDir(workspace: string): string {
   return path.join(workspace, ".nordrelay", "turns");
+}
+
+function artifactInboxDir(workspace: string): string {
+  return path.join(workspace, ".nordrelay", "inbox");
 }
 
 function artifactTurnDir(workspace: string, turnId: string): string {

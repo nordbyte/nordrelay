@@ -36,6 +36,11 @@ import {
 } from "../state/bot-preferences.js";
 import type { ConnectorLogFormat } from "./logger.js";
 import { checkStateBackendAvailability, type StateBackendKind } from "../state/state-backend.js";
+import {
+  artifactDeliveryModeFromAutoSend,
+  parseArtifactDeliveryMode,
+  type ArtifactDeliveryMode,
+} from "../artifacts/artifact-delivery.js";
 
 export type ToolVerbosity = "all" | "summary" | "errors-only" | "none";
 
@@ -53,6 +58,7 @@ export interface ConnectorConfig {
   notifyMode: ChannelNotifyMode;
   quietHours: QuietHours | null;
   autoSendArtifacts: boolean;
+  artifactDeliveryMode: ArtifactDeliveryMode;
   telegramMirrorMode: TelegramMirrorMode;
   telegramMirrorMinUpdateMs: number;
   telegramNotifyMode: TelegramNotifyMode;
@@ -78,6 +84,7 @@ export interface ConnectorConfig {
   discordNotifyMode: ChannelNotifyMode;
   discordQuietHours: QuietHours | null;
   discordAutoSendArtifacts: boolean;
+  discordArtifactDeliveryMode: ArtifactDeliveryMode;
   slackEnabled: boolean;
   slackBotToken?: string;
   slackAppToken?: string;
@@ -93,6 +100,7 @@ export interface ConnectorConfig {
   slackNotifyMode: ChannelNotifyMode;
   slackQuietHours: QuietHours | null;
   slackAutoSendArtifacts: boolean;
+  slackArtifactDeliveryMode: ArtifactDeliveryMode;
   workspace: string;
   workspaceAllowedRoots: string[];
   workspaceWarnRoots: string[];
@@ -104,6 +112,9 @@ export interface ConnectorConfig {
   artifactIgnoreDirs: string[];
   artifactIgnoreGlobs: string[];
   telegramAutoSendArtifacts: boolean;
+  telegramArtifactDeliveryMode: ArtifactDeliveryMode;
+  artifactMaxTotalBytes: number;
+  artifactWarnPercent: number;
   codexEnabled: boolean;
   codexApiKey?: string;
   codexModel?: string;
@@ -188,6 +199,10 @@ export function loadConfig(): ConnectorConfig {
   const notifyMode = parseNotifyMode(optionalString(process.env.NORDRELAY_NOTIFY_MODE), "minimal");
   const quietHours = parseQuietHoursOverride(process.env.NORDRELAY_QUIET_HOURS, null);
   const autoSendArtifacts = parseBooleanEnv(optionalString(process.env.NORDRELAY_AUTO_SEND_ARTIFACTS), false);
+  const artifactDeliveryMode = parseArtifactDeliveryMode(
+    optionalString(process.env.NORDRELAY_ARTIFACT_DELIVERY),
+    artifactDeliveryModeFromAutoSend(autoSendArtifacts),
+  );
   const telegramMirrorMode = parseMirrorMode(optionalString(process.env.TELEGRAM_CLI_MIRROR_MODE), mirrorMode);
   const telegramMirrorMinUpdateMs = parseNonNegativeIntegerEnv(optionalString(process.env.TELEGRAM_CLI_MIRROR_MIN_UPDATE_MS), mirrorMinUpdateMs, "TELEGRAM_CLI_MIRROR_MIN_UPDATE_MS");
   const telegramNotifyMode = parseNotifyMode(optionalString(process.env.TELEGRAM_NOTIFY_MODE), notifyMode);
@@ -240,9 +255,23 @@ export function loadConfig(): ConnectorConfig {
   const artifactMaxInboxDirs = parsePositiveIntegerEnv(optionalString(process.env.ARTIFACT_MAX_INBOX_DIRS), 30, "ARTIFACT_MAX_INBOX_DIRS");
   const artifactIgnoreDirs = parseOptionalStringList(optionalString(process.env.ARTIFACT_IGNORE_DIRS));
   const artifactIgnoreGlobs = parseOptionalStringList(optionalString(process.env.ARTIFACT_IGNORE_GLOBS));
+  const artifactMaxTotalBytes = parseNonNegativeIntegerEnv(optionalString(process.env.ARTIFACT_MAX_TOTAL_BYTES), 0, "ARTIFACT_MAX_TOTAL_BYTES");
+  const artifactWarnPercent = parsePercentEnv(optionalString(process.env.ARTIFACT_WARN_PERCENT), 80, "ARTIFACT_WARN_PERCENT");
   const telegramAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.TELEGRAM_AUTO_SEND_ARTIFACTS), autoSendArtifacts);
   const discordAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.DISCORD_AUTO_SEND_ARTIFACTS), autoSendArtifacts);
   const slackAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.SLACK_AUTO_SEND_ARTIFACTS), autoSendArtifacts);
+  const telegramArtifactDeliveryMode = parseArtifactDeliveryMode(
+    optionalString(process.env.TELEGRAM_ARTIFACT_DELIVERY),
+    optionalString(process.env.TELEGRAM_AUTO_SEND_ARTIFACTS) === undefined ? artifactDeliveryMode : artifactDeliveryModeFromAutoSend(telegramAutoSendArtifacts),
+  );
+  const discordArtifactDeliveryMode = parseArtifactDeliveryMode(
+    optionalString(process.env.DISCORD_ARTIFACT_DELIVERY),
+    optionalString(process.env.DISCORD_AUTO_SEND_ARTIFACTS) === undefined ? artifactDeliveryMode : artifactDeliveryModeFromAutoSend(discordAutoSendArtifacts),
+  );
+  const slackArtifactDeliveryMode = parseArtifactDeliveryMode(
+    optionalString(process.env.SLACK_ARTIFACT_DELIVERY),
+    optionalString(process.env.SLACK_AUTO_SEND_ARTIFACTS) === undefined ? artifactDeliveryMode : artifactDeliveryModeFromAutoSend(slackAutoSendArtifacts),
+  );
   const codexEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_CODEX_ENABLED), true);
   const codexApiKey = optionalString(process.env.CODEX_API_KEY);
   const codexModel = optionalString(process.env.CODEX_MODEL);
@@ -386,6 +415,7 @@ export function loadConfig(): ConnectorConfig {
     notifyMode,
     quietHours,
     autoSendArtifacts,
+    artifactDeliveryMode,
     telegramMirrorMode,
     telegramMirrorMinUpdateMs,
     telegramNotifyMode,
@@ -411,6 +441,7 @@ export function loadConfig(): ConnectorConfig {
     discordNotifyMode,
     discordQuietHours,
     discordAutoSendArtifacts,
+    discordArtifactDeliveryMode,
     slackEnabled,
     slackBotToken,
     slackAppToken,
@@ -426,6 +457,7 @@ export function loadConfig(): ConnectorConfig {
     slackNotifyMode,
     slackQuietHours,
     slackAutoSendArtifacts,
+    slackArtifactDeliveryMode,
     workspace,
     workspaceAllowedRoots,
     workspaceWarnRoots,
@@ -437,6 +469,9 @@ export function loadConfig(): ConnectorConfig {
     artifactIgnoreDirs,
     artifactIgnoreGlobs,
     telegramAutoSendArtifacts,
+    telegramArtifactDeliveryMode,
+    artifactMaxTotalBytes,
+    artifactWarnPercent,
     codexEnabled,
     codexApiKey,
     codexModel,
@@ -677,6 +712,18 @@ function parseNonNegativeIntegerEnv(raw: string | undefined, defaultValue: numbe
   }
 
   return Math.floor(parsed);
+}
+
+function parsePercentEnv(raw: string | undefined, defaultValue: number, envName: string): number {
+  if (!raw) {
+    return defaultValue;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+    console.warn(`Invalid ${envName} value: "${raw}". Falling back to ${defaultValue}.`);
+    return defaultValue;
+  }
+  return parsed;
 }
 
 function parseSandboxMode(raw: string | undefined): CodexSandboxMode {

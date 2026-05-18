@@ -162,12 +162,15 @@
 - Todo-list updates are rendered as a live plan/status message.
 - Generated artifacts from `.nordrelay/turns/<turn-id>/out/` are retained for manual retrieval with `/artifacts`.
 - Workspace files detected after mirrored Codex, Pi, Hermes, OpenClaw, or Claude Code CLI/API turns are indexed as `/artifacts` entries, even when automatic artifact delivery is disabled.
-- Automatic artifact summaries and file uploads are disabled by default; set `TELEGRAM_AUTO_SEND_ARTIFACTS=true` to send them after turns.
+- Automatic artifact summaries and file uploads are disabled by default; use `NORDRELAY_ARTIFACT_DELIVERY` plus Telegram/Discord/Slack overrides, per-user preferences, or per-channel settings to control delivery.
+- Artifact delivery modes support manual-only, summary, summary with actions, auto-files, auto-zip, images-only, and off.
+- Artifact quota and cleanup tools show managed storage usage, warn/over-quota status, cleanup candidates, and retention/quota removals in the WebUI and `/artifacts quota|cleanup` commands.
+- The WebUI artifact preview supports text/image previews and Git diffs for workspace artifacts when Git can provide a diff.
 - Workspace artifact detection sorts by modification time and supports configurable ignored directories and globs.
 - Image artifacts are sent with Telegram previews; large multi-file outputs are bundled into one ZIP when possible.
 - `/artifacts` lists recent generated files and can resend the latest or a specific artifact turn.
 - `/artifacts` includes inline actions to resend, ZIP, or delete artifact turns.
-- `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, and `/artifacts delete <turn-id>` filter, find, and clean up artifacts from Telegram.
+- `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, `/artifacts delivery <mode>`, `/artifacts quota`, `/artifacts cleanup preview|run`, and `/artifacts delete <turn-id>` filter, configure, inspect, and clean up artifacts from Telegram, Discord, and Slack.
 - Old artifact and inbox turn directories are pruned automatically with configurable retention.
 - Optional Telegram message reactions can acknowledge work start and completion with `ENABLE_TELEGRAM_REACTIONS=true`.
 

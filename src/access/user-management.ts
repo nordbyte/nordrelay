@@ -16,6 +16,7 @@ import {
   normalizeEmail,
   normalizeGroupIds,
   normalizeNumberList,
+  normalizeArtifactDeliveryMode,
   normalizePayload,
   normalizePermissions,
   normalizeSlackId,
@@ -80,6 +81,11 @@ const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const LINK_CODE_TTL_MS = 15 * 60 * 1000;
 const WRITE_LOCK_TIMEOUT_MS = 5_000;
 const STALE_LOCK_MS = 30_000;
+
+type UserPreferencePatch = {
+  theme?: UserPreferences["theme"] | null;
+  artifactDelivery?: UserPreferences["artifactDelivery"] | string | null;
+};
 
 export class UserStore {
   readonly filePath: string;
@@ -148,6 +154,7 @@ export class UserStore {
     discordUserId?: string;
     slackUserId?: string;
     slackTeamId?: string;
+    preferences?: UserPreferencePatch;
   }): AuthenticatedUser {
     return this.mutatePayload((payload) => {
       const email = normalizeEmail(input.email);
@@ -169,6 +176,7 @@ export class UserStore {
         createdAt: now,
         updatedAt: now,
       };
+      user.preferences = mergeUserPreferences(undefined, input.preferences);
       const groupIds = normalizeGroupIds(payload, input.groupIds?.length ? input.groupIds : [USER_GROUP_ID]);
       payload.users.push(user);
       payload.userGroups.push(...groupIds.map((groupId) => ({ userId: user.id, groupId })));
@@ -213,6 +221,7 @@ export class UserStore {
     displayName?: string;
     active?: boolean;
     groupIds?: string[];
+    preferences?: UserPreferencePatch;
   }): AuthenticatedUser {
     return this.mutatePayload((payload) => {
       const user = payload.users.find((candidate) => candidate.id === id);
@@ -241,6 +250,9 @@ export class UserStore {
         payload.userGroups = payload.userGroups.filter((item) => item.userId !== id);
         payload.userGroups.push(...groupIds.map((groupId) => ({ userId: id, groupId })));
       }
+      if (patch.preferences !== undefined) {
+        user.preferences = mergeUserPreferences(user.preferences, patch.preferences);
+      }
       assertActiveAdminExists(payload);
       if (shouldRevokeSessions) {
         this.revokeUserSessionsInPayload(payload, id);
@@ -252,7 +264,7 @@ export class UserStore {
 
   updateProfile(id: string, patch: {
     displayName?: string;
-    preferences?: UserPreferences;
+    preferences?: UserPreferencePatch;
   }): AuthenticatedUser {
     return this.mutatePayload((payload) => {
       const user = payload.users.find((candidate) => candidate.id === id);
@@ -263,7 +275,7 @@ export class UserStore {
         user.displayName = patch.displayName.trim() || user.email;
       }
       if (patch.preferences !== undefined) {
-        user.preferences = normalizeUserPreferences(patch.preferences);
+        user.preferences = mergeUserPreferences(user.preferences, patch.preferences);
       }
       user.updatedAt = new Date().toISOString();
       return this.authenticatedUser(payload, user);
@@ -645,6 +657,7 @@ export class UserStore {
     type?: string;
     enabled?: boolean;
     allowedGroupIds?: string[];
+    artifactDelivery?: string;
   }): TelegramChatAccessRecord {
     return this.mutatePayload((payload) => {
       const now = new Date().toISOString();
@@ -655,6 +668,7 @@ export class UserStore {
         existing.type = input.type ?? existing.type;
         existing.enabled = input.enabled ?? existing.enabled;
         existing.allowedGroupIds = allowedGroupIds;
+        existing.artifactDelivery = normalizeArtifactDeliveryMode(input.artifactDelivery) ?? existing.artifactDelivery;
         existing.updatedAt = now;
         return existing;
       }
@@ -665,6 +679,7 @@ export class UserStore {
         type: input.type,
         enabled: input.enabled ?? true,
         allowedGroupIds,
+        artifactDelivery: normalizeArtifactDeliveryMode(input.artifactDelivery),
         createdAt: now,
         updatedAt: now,
       };
@@ -673,7 +688,7 @@ export class UserStore {
     });
   }
 
-  updateTelegramChat(id: string, patch: { enabled?: boolean; allowedGroupIds?: string[]; title?: string }): TelegramChatAccessRecord {
+  updateTelegramChat(id: string, patch: { enabled?: boolean; allowedGroupIds?: string[]; title?: string; artifactDelivery?: string | null }): TelegramChatAccessRecord {
     return this.mutatePayload((payload) => {
       const chat = payload.telegramChats.find((candidate) => candidate.id === id);
       if (!chat) {
@@ -682,6 +697,7 @@ export class UserStore {
       if (patch.enabled !== undefined) chat.enabled = patch.enabled;
       if (patch.title !== undefined) chat.title = patch.title;
       if (patch.allowedGroupIds !== undefined) chat.allowedGroupIds = normalizeGroupIds(payload, patch.allowedGroupIds, null);
+      if (patch.artifactDelivery !== undefined) chat.artifactDelivery = normalizeArtifactDeliveryMode(patch.artifactDelivery) ?? undefined;
       chat.updatedAt = new Date().toISOString();
       return chat;
     });
@@ -694,6 +710,7 @@ export class UserStore {
     type?: string;
     enabled?: boolean;
     allowedGroupIds?: string[];
+    artifactDelivery?: string;
   }): DiscordChannelAccessRecord {
     return this.mutatePayload((payload) => {
       const now = new Date().toISOString();
@@ -709,6 +726,7 @@ export class UserStore {
         existing.type = input.type ?? existing.type;
         existing.enabled = input.enabled ?? existing.enabled;
         existing.allowedGroupIds = allowedGroupIds;
+        existing.artifactDelivery = normalizeArtifactDeliveryMode(input.artifactDelivery) ?? existing.artifactDelivery;
         existing.updatedAt = now;
         return existing;
       }
@@ -720,6 +738,7 @@ export class UserStore {
         type: input.type,
         enabled: input.enabled ?? true,
         allowedGroupIds,
+        artifactDelivery: normalizeArtifactDeliveryMode(input.artifactDelivery),
         createdAt: now,
         updatedAt: now,
       };
@@ -728,7 +747,7 @@ export class UserStore {
     });
   }
 
-  updateDiscordChannel(id: string, patch: { enabled?: boolean; allowedGroupIds?: string[]; title?: string }): DiscordChannelAccessRecord {
+  updateDiscordChannel(id: string, patch: { enabled?: boolean; allowedGroupIds?: string[]; title?: string; artifactDelivery?: string | null }): DiscordChannelAccessRecord {
     return this.mutatePayload((payload) => {
       const channel = payload.discordChannels.find((candidate) => candidate.id === id);
       if (!channel) {
@@ -737,6 +756,7 @@ export class UserStore {
       if (patch.enabled !== undefined) channel.enabled = patch.enabled;
       if (patch.title !== undefined) channel.title = patch.title;
       if (patch.allowedGroupIds !== undefined) channel.allowedGroupIds = normalizeGroupIds(payload, patch.allowedGroupIds, null);
+      if (patch.artifactDelivery !== undefined) channel.artifactDelivery = normalizeArtifactDeliveryMode(patch.artifactDelivery) ?? undefined;
       channel.updatedAt = new Date().toISOString();
       return channel;
     });
@@ -749,6 +769,7 @@ export class UserStore {
     type?: string;
     enabled?: boolean;
     allowedGroupIds?: string[];
+    artifactDelivery?: string;
   }): SlackChannelAccessRecord {
     return this.mutatePayload((payload) => {
       const now = new Date().toISOString();
@@ -764,6 +785,7 @@ export class UserStore {
         existing.type = input.type ?? existing.type;
         existing.enabled = input.enabled ?? existing.enabled;
         existing.allowedGroupIds = allowedGroupIds;
+        existing.artifactDelivery = normalizeArtifactDeliveryMode(input.artifactDelivery) ?? existing.artifactDelivery;
         existing.updatedAt = now;
         return existing;
       }
@@ -775,6 +797,7 @@ export class UserStore {
         type: input.type,
         enabled: input.enabled ?? true,
         allowedGroupIds,
+        artifactDelivery: normalizeArtifactDeliveryMode(input.artifactDelivery),
         createdAt: now,
         updatedAt: now,
       };
@@ -783,7 +806,7 @@ export class UserStore {
     });
   }
 
-  updateSlackChannel(id: string, patch: { enabled?: boolean; allowedGroupIds?: string[]; title?: string }): SlackChannelAccessRecord {
+  updateSlackChannel(id: string, patch: { enabled?: boolean; allowedGroupIds?: string[]; title?: string; artifactDelivery?: string | null }): SlackChannelAccessRecord {
     return this.mutatePayload((payload) => {
       const channel = payload.slackChannels.find((candidate) => candidate.id === id);
       if (!channel) {
@@ -792,6 +815,7 @@ export class UserStore {
       if (patch.enabled !== undefined) channel.enabled = patch.enabled;
       if (patch.title !== undefined) channel.title = patch.title;
       if (patch.allowedGroupIds !== undefined) channel.allowedGroupIds = normalizeGroupIds(payload, patch.allowedGroupIds, null);
+      if (patch.artifactDelivery !== undefined) channel.artifactDelivery = normalizeArtifactDeliveryMode(patch.artifactDelivery) ?? undefined;
       channel.updatedAt = new Date().toISOString();
       return channel;
     });
@@ -1171,6 +1195,23 @@ export class UserStore {
   private writePayload(payload: PersistedUsers): void {
     writeJsonFileAtomic(this.filePath, normalizePayload(payload));
   }
+}
+
+function mergeUserPreferences(current: UserPreferences | undefined, patch: UserPreferencePatch | undefined): UserPreferences | undefined {
+  if (patch === undefined) {
+    return normalizeUserPreferences(current);
+  }
+  const next: Record<string, unknown> = { ...(current ?? {}) };
+  if (patch.theme !== undefined) {
+    if (patch.theme) next.theme = patch.theme;
+    else delete next.theme;
+  }
+  if (patch.artifactDelivery !== undefined) {
+    const mode = normalizeArtifactDeliveryMode(patch.artifactDelivery);
+    if (mode) next.artifactDelivery = mode;
+    else delete next.artifactDelivery;
+  }
+  return normalizeUserPreferences(next);
 }
 
 export function publicUser(user: UserRecord): Omit<UserRecord, "passwordHash" | "passwordSalt"> {

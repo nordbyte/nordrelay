@@ -49,6 +49,9 @@ import type {
   ActiveSessionsDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
+  ArtifactUsageDto,
+  ArtifactCleanupDto,
+  ArtifactDiffDto,
   CursorPageDto,
   DashboardControlOptions,
   QueueItemDto,
@@ -205,6 +208,10 @@ export interface RelayRuntimeDelegate {
   deleteArtifact(turnId: string, actor?: WebActivityActor): Promise<boolean>;
   createArtifactZip(turnId: string, actor?: WebActivityActor): Promise<{ path: string; name: string } | null>;
   artifactPreview(turnId: string, relativePath: string): Promise<ArtifactPreviewDto | null>;
+  artifactDiff(turnId: string, relativePath: string): Promise<ArtifactDiffDto | null>;
+  artifactUsage(): Promise<ArtifactUsageDto>;
+  artifactCleanupPreview(): Promise<ArtifactCleanupDto>;
+  artifactCleanupRun(actor?: WebActivityActor): Promise<ArtifactCleanupDto>;
   logs(target?: "connector" | "update" | "agent-updates", lines?: number): Promise<FormattedLogTail>;
   clearLogs(target?: "connector" | "update" | "agent-updates", actor?: WebActivityActor): { ok: true; filePath: string; clearedAt: string };
   restartConnector(actor?: WebActivityActor): { ok: true; message: string };

@@ -59,6 +59,9 @@ export async function handleDashboardAccessRoute(
       discordUserId: optionalStringField(body, "discordUserId"),
       slackUserId: optionalStringField(body, "slackUserId"),
       slackTeamId: optionalStringField(body, "slackTeamId"),
+      preferences: body.preferences && typeof body.preferences === "object" && !Array.isArray(body.preferences)
+        ? { artifactDelivery: optionalStringField(body.preferences as Record<string, unknown>, "artifactDelivery") }
+        : body.artifactDelivery !== undefined ? { artifactDelivery: optionalStringField(body, "artifactDelivery") } : undefined,
     });
     options.auditUserAction(authUser, "user_created", user.user.email);
     sendJson(res, 201, { user: publicUser(user.user), groups: user.groups });
@@ -73,6 +76,9 @@ export async function handleDashboardAccessRoute(
       displayName: optionalStringField(body, "displayName"),
       active: optionalBooleanField(body, "active"),
       groupIds: body.groupIds === undefined ? undefined : arrayStringField(body, "groupIds"),
+      preferences: body.preferences && typeof body.preferences === "object" && !Array.isArray(body.preferences)
+        ? { artifactDelivery: optionalStringField(body.preferences as Record<string, unknown>, "artifactDelivery") }
+        : body.artifactDelivery !== undefined ? { artifactDelivery: optionalStringField(body, "artifactDelivery") } : undefined,
     });
     options.auditUserAction(authUser, "user_updated", user.user.email);
     sendJson(res, 200, { user: publicUser(user.user), groups: user.groups });
@@ -252,6 +258,7 @@ export async function handleDashboardAccessRoute(
       type: optionalStringField(body, "type"),
       enabled: optionalBooleanField(body, "enabled") ?? true,
       allowedGroupIds: arrayStringField(body, "allowedGroupIds"),
+      artifactDelivery: optionalStringField(body, "artifactDelivery"),
     });
     options.auditUserAction(authUser, "telegram_chat_updated", String(chat.chatId));
     sendJson(res, 201, { chat });
@@ -265,6 +272,7 @@ export async function handleDashboardAccessRoute(
       enabled: optionalBooleanField(body, "enabled"),
       title: optionalStringField(body, "title"),
       allowedGroupIds: body.allowedGroupIds === undefined ? undefined : arrayStringField(body, "allowedGroupIds"),
+      artifactDelivery: body.artifactDelivery === undefined ? undefined : optionalStringField(body, "artifactDelivery") ?? null,
     });
     options.auditUserAction(authUser, "telegram_chat_updated", String(chat.chatId));
     sendJson(res, 200, { chat });
@@ -285,6 +293,7 @@ export async function handleDashboardAccessRoute(
       type: optionalStringField(body, "type"),
       enabled: optionalBooleanField(body, "enabled") ?? true,
       allowedGroupIds: arrayStringField(body, "allowedGroupIds"),
+      artifactDelivery: optionalStringField(body, "artifactDelivery"),
     });
     options.auditUserAction(authUser, "discord_channel_updated", channel.channelId);
     sendJson(res, 201, { channel });
@@ -298,6 +307,7 @@ export async function handleDashboardAccessRoute(
       enabled: optionalBooleanField(body, "enabled"),
       title: optionalStringField(body, "title"),
       allowedGroupIds: body.allowedGroupIds === undefined ? undefined : arrayStringField(body, "allowedGroupIds"),
+      artifactDelivery: body.artifactDelivery === undefined ? undefined : optionalStringField(body, "artifactDelivery") ?? null,
     });
     options.auditUserAction(authUser, "discord_channel_updated", channel.channelId);
     sendJson(res, 200, { channel });
@@ -318,6 +328,7 @@ export async function handleDashboardAccessRoute(
       type: optionalStringField(body, "type"),
       enabled: optionalBooleanField(body, "enabled") ?? true,
       allowedGroupIds: arrayStringField(body, "allowedGroupIds"),
+      artifactDelivery: optionalStringField(body, "artifactDelivery"),
     });
     options.auditUserAction(authUser, "slack_channel_updated", channel.channelId);
     sendJson(res, 201, { channel });
@@ -331,6 +342,7 @@ export async function handleDashboardAccessRoute(
       enabled: optionalBooleanField(body, "enabled"),
       title: optionalStringField(body, "title"),
       allowedGroupIds: body.allowedGroupIds === undefined ? undefined : arrayStringField(body, "allowedGroupIds"),
+      artifactDelivery: body.artifactDelivery === undefined ? undefined : optionalStringField(body, "artifactDelivery") ?? null,
     });
     options.auditUserAction(authUser, "slack_channel_updated", channel.channelId);
     sendJson(res, 200, { channel });

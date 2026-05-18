@@ -1,6 +1,7 @@
-import { collectRecentWorkspaceArtifacts, createArtifactZipBundle, formatArtifactSummary, listRecentArtifactReports, type Artifact, type ArtifactTurnReport } from "../../artifacts/artifacts.js";
+import { collectRecentWorkspaceArtifacts, createArtifactZipBundle, formatArtifactSummary, listRecentArtifactReports, totalArtifactSize, type Artifact, type ArtifactTurnReport } from "../../artifacts/artifacts.js";
+import { ARTIFACT_DELIVERY_MODES, artifactDeliveryPolicy, isArtifactDeliveryMode, type ArtifactDeliveryMode, type ArtifactDeliveryPolicy } from "../../artifacts/artifact-delivery.js";
 import { filterArtifactReports as filterArtifactReportsForCommand } from "../shared/bot-rendering.js";
-import { renderArtifactReportsAction } from "../shared/channel-actions.js";
+import { renderArtifactCleanupAction, renderArtifactDeliveryAction, renderArtifactReportsAction, renderArtifactUsageAction } from "../shared/channel-actions.js";
 import type { ChannelContext, ChannelRuntime } from "../shared/channel-adapter.js";
 import { deliverChannelAction } from "../shared/channel-runtime.js";
 import type { ConnectorConfig } from "../../core/config.js";
@@ -24,6 +25,8 @@ export interface DiscordArtifactCommandDeps<TRequest extends DiscordArtifactRequ
     request: TRequest,
     input: Partial<Omit<WebActivityEvent, "id" | "timestamp" | "source">> & Pick<WebActivityEvent, "status" | "type"> & { timestamp?: string },
   ) => void;
+  getArtifactDeliveryMode?: (request: TRequest) => string | undefined;
+  setArtifactDeliveryMode?: (request: TRequest, mode: ArtifactDeliveryMode | null) => Promise<string>;
 }
 
 export function createDiscordArtifactCommandHandler<TRequest extends DiscordArtifactRequest>(
@@ -32,8 +35,52 @@ export function createDiscordArtifactCommandHandler<TRequest extends DiscordArti
   return async (request, argument) => {
     const session = await deps.getSession(request, { deferThreadStart: true });
     const [action, turnId] = argument.trim().split(/\s+/, 2);
+    const tokens = argument.trim().split(/\s+/).filter(Boolean);
+    const subcommand = tokens[0]?.toLowerCase();
     const info = session.getInfo();
     const workspace = info.workspace;
+
+    if (subcommand === "quota" || subcommand === "usage") {
+      await deps.reply(request, renderArtifactUsageAction(await deps.artifactService.usage(workspace)).plain);
+      return;
+    }
+
+    if (subcommand === "cleanup") {
+      const plan = tokens[1]?.toLowerCase() === "run"
+        ? await deps.artifactService.cleanupRun(workspace)
+        : await deps.artifactService.cleanupPreview(workspace);
+      deps.appendActivity(request, {
+        status: "info",
+        type: "artifact_cleanup",
+        threadId: info.threadId,
+        workspace,
+        agentId: info.agentId,
+        detail: `${plan.candidates.length} candidates, ${plan.removedBytes} bytes`,
+      });
+      await deps.reply(request, renderArtifactCleanupAction(plan).plain);
+      return;
+    }
+
+    if (subcommand === "delivery") {
+      const requested = tokens[1]?.toLowerCase();
+      if (!requested) {
+        await deps.reply(request, renderArtifactDeliveryAction(deps.getArtifactDeliveryMode?.(request) ?? deps.config.discordArtifactDeliveryMode, "user").plain);
+        return;
+      }
+      if (requested === "default" || requested === "inherit") {
+        const mode = await deps.setArtifactDeliveryMode?.(request, null);
+        await deps.reply(request, renderArtifactDeliveryAction(mode ?? deps.config.discordArtifactDeliveryMode, "user").plain);
+        return;
+      }
+      if (!isArtifactDeliveryMode(requested)) {
+        await deps.reply(request, `Unknown artifact delivery mode. Use one of: ${ARTIFACT_DELIVERY_MODES.join(", ")}, default.`);
+        return;
+      }
+      const mode = await deps.setArtifactDeliveryMode?.(request, requested);
+      await deps.reply(request, renderArtifactDeliveryAction(mode ?? requested, "user").plain);
+      return;
+    }
+
     const reports = await listRecentArtifactReports(workspace, 10, deps.config.maxFileSize);
     if (reports.length === 0) {
       await deps.reply(request, "No generated artifacts found for this workspace.");
@@ -104,6 +151,7 @@ export async function sendRecentDiscordArtifacts<TRequest extends DiscordArtifac
   session: AgentSessionService,
   since: Date,
   turnId: string,
+  policy: ArtifactDeliveryPolicy = artifactDeliveryPolicy(deps.config.discordAutoSendArtifacts ? "auto-files" : "manual-only"),
 ): Promise<void> {
   const report = await collectRecentWorkspaceArtifacts(session.getInfo().workspace, {
     since,
@@ -114,9 +162,31 @@ export async function sendRecentDiscordArtifacts<TRequest extends DiscordArtifac
   if (report.artifacts.length === 0) {
     return;
   }
-  await deps.reply(request, `${report.artifacts.length} artifacts generated.`);
-  for (const artifact of report.artifacts.slice(0, 5)) {
-    await sendDiscordArtifactFile(deps, request, artifact);
+  const summary = formatArtifactSummary(report.artifacts, report.skippedCount, report.omittedCount);
+  if (policy.includeActions) {
+    await deliverChannelAction(deps.runtime, request.context, renderDiscordArtifactReports(request.contextKey, [{
+      turnId,
+      outDir: session.getInfo().workspace,
+      updatedAt: new Date(),
+      artifacts: report.artifacts,
+      skippedCount: report.skippedCount,
+      omittedCount: report.omittedCount,
+      totalSizeBytes: totalArtifactSize(report.artifacts),
+      source: "workspace",
+    }]));
+  } else if (policy.sendSummary && summary) {
+    await deps.reply(request, summary);
+  }
+  if (policy.autoSendZip) {
+    const bundle = await createArtifactZipBundle(report.artifacts, session.getInfo().workspace, {
+      maxFileSize: deps.config.maxFileSize,
+      bundleName: `nordrelay-artifacts-${turnId}.zip`,
+    });
+    if (bundle) await sendDiscordArtifactFile(deps, request, bundle);
+  } else if (policy.autoSendFiles) {
+    for (const artifact of report.artifacts.filter((item) => !policy.imagesOnly || /\.(png|jpe?g|gif|webp)$/i.test(item.name)).slice(0, 5)) {
+      await sendDiscordArtifactFile(deps, request, artifact);
+    }
   }
   deps.appendActivity(request, {
     status: "info",

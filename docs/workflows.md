@@ -35,14 +35,19 @@
 ```
 
 - The connector stores files in that directory and keeps them available for `/artifacts`.
-- Automatic Telegram artifact delivery is off by default. Set `TELEGRAM_AUTO_SEND_ARTIFACTS=true` to collect and send files right after a turn.
-- When automatic delivery or explicit `/artifacts` sending is used, image outputs are sent with Telegram previews and other outputs are sent as documents.
+- Automatic artifact delivery is off by default. Configure `NORDRELAY_ARTIFACT_DELIVERY` or the channel-specific `TELEGRAM_ARTIFACT_DELIVERY`, `DISCORD_ARTIFACT_DELIVERY`, and `SLACK_ARTIFACT_DELIVERY` overrides to send summaries, files, ZIP bundles, images only, or nothing.
+- User preferences and registered Telegram/Discord/Slack channels can override artifact delivery in the WebUI.
+- Use `/artifacts delivery <mode>` in Telegram, Discord, or Slack to set the linked user's delivery preference. Use `default` to inherit the channel/system default.
+- When automatic delivery or explicit `/artifacts` sending is used, image outputs are sent with previews where the channel supports it and other outputs are sent as files.
 - When more than five artifacts are sent, the connector tries to send one ZIP bundle instead of many separate files.
 - Use `/artifacts` to list recent artifact turns with inline Send/ZIP/Delete actions.
 - Use `/artifacts latest`, `/artifacts zip latest`, or `/artifacts <turn-id>` from text commands.
 - Use `/artifacts images`, `/artifacts docs`, or `/artifacts search <text>` to narrow large artifact histories.
 - Use `/artifacts delete <turn-id>` to delete an artifact turn without opening the inline confirmation flow.
-- Telegram file delivery is capped at the configured `MAX_FILE_SIZE` per artifact or ZIP bundle.
+- Use `/artifacts quota` to show managed storage usage and quota status.
+- Use `/artifacts cleanup preview` to inspect retention/quota cleanup candidates and `/artifacts cleanup run` to remove them.
+- The WebUI Artifacts tab shows quota usage, cleanup previews, cleanup execution, text/image previews, and Git diffs for workspace artifacts where available.
+- File delivery is capped at the configured `MAX_FILE_SIZE` per artifact or ZIP bundle.
 - Old turn and inbox directories are pruned automatically to keep workspace state compact.
 
 ## Voice and Audio

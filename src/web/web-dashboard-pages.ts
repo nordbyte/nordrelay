@@ -351,8 +351,10 @@ ${faviconLinks}
           </div>
           <div class="monitor-tab" data-monitor-tab-panel="artifacts">
             <div class="monitor-tab-heading">
-              <div class="row"><button id="reloadArtifactsBtn">Reload artifacts</button><input id="artifactSearch" placeholder="Search artifacts"><select id="artifactKind"><option value="all">All files</option><option value="images">Images</option><option value="docs">Docs/code</option></select><button id="zipSelectedArtifactsBtn" class="secondary">ZIP selected</button><button id="deleteSelectedArtifactsBtn" class="danger">Delete selected</button></div>
+              <div class="row"><button id="reloadArtifactsBtn">Reload artifacts</button><input id="artifactSearch" placeholder="Search artifacts"><select id="artifactKind"><option value="all">All files</option><option value="images">Images</option><option value="docs">Docs/code</option></select><button id="previewArtifactCleanupBtn" class="secondary">Preview cleanup</button><button id="runArtifactCleanupBtn" class="danger">Run cleanup</button><button id="zipSelectedArtifactsBtn" class="secondary">ZIP selected</button><button id="deleteSelectedArtifactsBtn" class="danger">Delete selected</button></div>
             </div>
+            <div id="artifactUsage" class="artifact-usage"></div>
+            <div id="artifactCleanupPlan" class="artifact-cleanup-plan"></div>
             <div id="artifactPreview" class="preview"></div>
             <div id="artifactList" class="list"></div>
             <div id="artifactPager" class="pager"></div>

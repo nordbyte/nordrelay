@@ -2,15 +2,19 @@ import { InlineKeyboard, type Bot, type Context } from "grammy";
 
 import {
   getArtifactTurnReport,
+  cleanupArtifactStorage,
+  inspectArtifactStorage,
   listRecentArtifactReports,
+  planArtifactCleanup,
   removeArtifactTurn,
   type ArtifactTurnReport,
 } from "../../artifacts/artifacts.js";
+import { ARTIFACT_DELIVERY_MODES, isArtifactDeliveryMode, type ArtifactDeliveryMode } from "../../artifacts/artifact-delivery.js";
 import {
   buildArtifactActionsKeyboard,
   filterArtifactReports,
 } from "../shared/bot-rendering.js";
-import { renderArtifactReportsAction } from "../shared/channel-actions.js";
+import { renderArtifactCleanupAction, renderArtifactDeliveryAction, renderArtifactReportsAction, renderArtifactUsageAction } from "../shared/channel-actions.js";
 import type { ConnectorConfig } from "../../core/config.js";
 import { escapeHTML } from "../../core/format.js";
 import { NOOP_PAGE_CALLBACK_DATA } from "./telegram-channel-runtime.js";
@@ -42,6 +46,8 @@ export interface TelegramArtifactCommandOptions {
     ctx: Context,
     input: Partial<Omit<WebActivityEvent, "id" | "timestamp" | "source">> & Pick<WebActivityEvent, "status" | "type"> & { timestamp?: string },
   ) => void;
+  getArtifactDeliveryMode?: (ctx: Context) => string | undefined;
+  setArtifactDeliveryMode?: (ctx: Context, mode: ArtifactDeliveryMode | null) => Promise<string>;
 }
 
 export function registerTelegramArtifactCommands(options: TelegramArtifactCommandOptions): void {
@@ -56,6 +62,68 @@ export function registerTelegramArtifactCommands(options: TelegramArtifactComman
     const workspace = contextSession.session.getInfo().workspace;
     const rawText = ctx.message?.text ?? "";
     const argument = rawText.replace(/^\/artifacts(?:@\w+)?\s*/i, "").trim();
+    const parts = argument.split(/\s+/).filter(Boolean);
+    const subcommand = parts[0]?.toLowerCase();
+
+    if (subcommand === "quota" || subcommand === "usage") {
+      const rendered = renderArtifactUsageAction(await inspectArtifactStorage(workspace, {
+        maxTotalBytes: config.artifactMaxTotalBytes,
+        warnPercent: config.artifactWarnPercent,
+      }));
+      await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+      return;
+    }
+
+    if (subcommand === "cleanup") {
+      const action = parts[1]?.toLowerCase();
+      const cleanupOptions = {
+        maxAgeMs: config.artifactRetentionDays * 24 * 60 * 60 * 1000,
+        maxTurnDirs: config.artifactMaxTurnDirs,
+        maxInboxDirs: config.artifactMaxInboxDirs,
+        maxTotalBytes: config.artifactMaxTotalBytes,
+      };
+      const plan = action === "run"
+        ? await cleanupArtifactStorage(workspace, cleanupOptions, false)
+        : await planArtifactCleanup(workspace, cleanupOptions);
+      const rendered = renderArtifactCleanupAction(plan);
+      await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+      if (action === "run") {
+        options.appendActivity?.(ctx, {
+          status: "info",
+          type: "artifact_cleanup",
+          threadId: contextSession.session.getInfo().threadId,
+          workspace,
+          agentId: contextSession.session.getInfo().agentId,
+          detail: `${plan.candidates.length} candidates, ${plan.removedBytes} bytes`,
+        });
+      }
+      return;
+    }
+
+    if (subcommand === "delivery") {
+      const requested = parts[1]?.toLowerCase();
+      if (!requested) {
+        const rendered = renderArtifactDeliveryAction(options.getArtifactDeliveryMode?.(ctx) ?? config.telegramArtifactDeliveryMode, "user");
+        await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+        return;
+      }
+      if (requested === "default" || requested === "inherit") {
+        const mode = await options.setArtifactDeliveryMode?.(ctx, null);
+        const rendered = renderArtifactDeliveryAction(mode ?? config.telegramArtifactDeliveryMode, "user");
+        await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+        return;
+      }
+      if (!isArtifactDeliveryMode(requested)) {
+        const text = `Unknown artifact delivery mode. Use one of: ${ARTIFACT_DELIVERY_MODES.join(", ")}, default.`;
+        await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+        return;
+      }
+      const mode = await options.setArtifactDeliveryMode?.(ctx, requested);
+      const rendered = renderArtifactDeliveryAction(mode ?? requested, "user");
+      await safeReply(ctx, rendered.html, { fallbackText: rendered.plain });
+      return;
+    }
+
     const reports = await listRecentArtifactReports(workspace, 10, config.maxFileSize);
 
     if (reports.length === 0) {
@@ -66,7 +134,6 @@ export function registerTelegramArtifactCommands(options: TelegramArtifactComman
     }
 
     if (argument) {
-      const parts = argument.split(/\s+/).filter(Boolean);
       if (parts[0]?.toLowerCase() === "delete" && parts[1]) {
         const selected = reports.find((report) => report.turnId === parts[1] || report.turnId.startsWith(parts[1]!));
         if (!selected) {

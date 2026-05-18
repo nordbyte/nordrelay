@@ -37,6 +37,24 @@ export async function handleDashboardArtifactRoute(
     return true;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/artifacts/usage") {
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, await runtime.artifactUsage());
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/artifacts/cleanup/preview") {
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, await runtime.artifactCleanupPreview());
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/artifacts/cleanup/run") {
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, await runtime.artifactCleanupRun(options.activityActor));
+    return true;
+  }
+
   if (req.method === "DELETE" && url.pathname === "/api/artifacts") {
     await options.assertCurrentSessionScope(authUser);
     sendJson(res, 200, { removed: await runtime.deleteArtifact(requiredSearch(url, "turnId"), options.activityActor) });
@@ -94,6 +112,17 @@ export async function handleDashboardArtifactRoute(
       return true;
     }
     sendJson(res, 200, preview);
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/artifacts/diff") {
+    await options.assertCurrentSessionScope(authUser);
+    const diff = await runtime.artifactDiff(requiredSearch(url, "turnId"), requiredSearch(url, "path"));
+    if (!diff) {
+      sendJson(res, 404, { error: "Artifact not found" });
+      return true;
+    }
+    sendJson(res, 200, diff);
     return true;
   }
 

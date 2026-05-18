@@ -78,7 +78,10 @@ import type {
   ActiveSessionDto,
   ActiveSessionsDto,
   ArtifactPreviewDto,
+  ArtifactCleanupDto,
+  ArtifactDiffDto,
   ArtifactReportDto,
+  ArtifactUsageDto,
   DashboardControlOptions,
   QueueItemDto,
   RelayEvent,
@@ -372,6 +375,38 @@ export async function relayRuntimeCreateArtifactZip(runtime: RelayRuntimeDelegat
 export async function relayRuntimeArtifactPreview(runtime: RelayRuntimeDelegate, turnId: string, relativePath: string): Promise<ArtifactPreviewDto | null> {
     const session = await runtime.getSession(true);
     return runtime.artifactService.preview(session.getInfo().workspace, turnId, relativePath);
+  }
+
+export async function relayRuntimeArtifactDiff(runtime: RelayRuntimeDelegate, turnId: string, relativePath: string): Promise<ArtifactDiffDto | null> {
+    const session = await runtime.getSession(true);
+    return runtime.artifactService.diff(session.getInfo().workspace, turnId, relativePath);
+  }
+
+export async function relayRuntimeArtifactUsage(runtime: RelayRuntimeDelegate): Promise<ArtifactUsageDto> {
+    const session = await runtime.getSession(true);
+    return runtime.artifactService.usage(session.getInfo().workspace);
+  }
+
+export async function relayRuntimeArtifactCleanupPreview(runtime: RelayRuntimeDelegate): Promise<ArtifactCleanupDto> {
+    const session = await runtime.getSession(true);
+    return runtime.artifactService.cleanupPreview(session.getInfo().workspace);
+  }
+
+export async function relayRuntimeArtifactCleanupRun(runtime: RelayRuntimeDelegate, actor?: WebActivityActor): Promise<ArtifactCleanupDto> {
+    const session = await runtime.getSession(true);
+    const info = runtime.publicInfo(session);
+    const plan = await runtime.artifactService.cleanupRun(info.workspace);
+    runtime.appendActivity({
+      source: "web",
+      status: "info",
+      type: "artifact_cleanup",
+      threadId: info.threadId,
+      workspace: info.workspace,
+      agentId: info.agentId,
+      actor,
+      detail: `${plan.removedTurnDirs} turns, ${plan.removedInboxDirs} inbox dirs, ${plan.removedBytes} bytes`,
+    });
+    return plan;
   }
 
 export async function relayRuntimeEnsureActiveThread(runtime: RelayRuntimeDelegate, session: AgentSessionService): Promise<void> {

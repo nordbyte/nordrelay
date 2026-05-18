@@ -84,6 +84,16 @@
 .artifact-card{border:1px solid var(--border-soft);border-radius:8px;padding:8px;background:var(--surface-soft);min-width:0}
 .artifact-card img{width:100%;aspect-ratio:1.4;object-fit:cover;border:1px solid var(--border);border-radius:6px;background:var(--surface)}
 .artifact-card small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.artifact-usage{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap}
+.artifact-usage .adapter-status{margin-top:12px}
+.artifact-usage-table{min-width:min(100%,520px)}
+.artifact-cleanup-plan{display:grid;gap:10px;margin-top:10px}
+.artifact-cleanup-summary small{display:block}
+.artifact-preview-panel h2 small{color:var(--muted);font-size:13px;font-weight:650}
+.code-diff span{display:block;min-height:1.35em}
+.code-diff .diff-add{color:var(--success)}
+.code-diff .diff-del{color:var(--danger)}
+.code-diff .diff-hunk{color:var(--accent);font-weight:700}
 .data-table-wrap{margin-top:12px;overflow:auto;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface-soft)}
 .data-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px;line-height:1.35}
 .data-table th,.data-table td{padding:10px 12px;border-bottom:1px solid var(--border-soft);text-align:left;vertical-align:middle}

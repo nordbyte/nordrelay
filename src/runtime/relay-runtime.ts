@@ -82,8 +82,11 @@ import {
 import type {
   ActiveSessionDto,
   ActiveSessionsDto,
+  ArtifactCleanupDto,
+  ArtifactDiffDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
+  ArtifactUsageDto,
   CursorPageDto,
   DashboardControlOptions,
   QueueItemDto,
@@ -112,8 +115,11 @@ import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "../core/worksp
 export type {
   ActiveSessionDto,
   ActiveSessionsDto,
+  ArtifactCleanupDto,
+  ArtifactDiffDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
+  ArtifactUsageDto,
   CursorPageDto,
   DashboardControlOptions,
   ExternalMirrorState,
@@ -240,6 +246,10 @@ import {
   relayRuntimeDeleteArtifact,
   relayRuntimeCreateArtifactZip,
   relayRuntimeArtifactPreview,
+  relayRuntimeArtifactDiff,
+  relayRuntimeArtifactUsage,
+  relayRuntimeArtifactCleanupPreview,
+  relayRuntimeArtifactCleanupRun,
   relayRuntimeEnsureActiveThread,
   relayRuntimeEnsureIdle,
   relayRuntimeRunPrompt,
@@ -688,25 +698,15 @@ export class RelayRuntime {
   async enqueueQueuePlan(id: string, actor?: WebActivityActor): Promise<QueuePlanDto> { return relayRuntimeEnqueueQueuePlan(this, id, actor); }
   deleteQueuePlan(id: string, actor?: WebActivityActor): { removed: boolean; snapshot: QueuePlannerSnapshotDto } { return relayRuntimeDeleteQueuePlan(this, id, actor); }
 
-  async artifacts(limit = 20): Promise<ArtifactReportDto[]> {
-    return relayRuntimeArtifacts(this, limit);
-  }
-
-  async artifact(turnId: string): Promise<ArtifactTurnReport | null> {
-    return relayRuntimeArtifact(this, turnId);
-  }
-
-  async deleteArtifact(turnId: string, actor?: WebActivityActor): Promise<boolean> {
-    return relayRuntimeDeleteArtifact(this, turnId, actor);
-  }
-
-  async createArtifactZip(turnId: string, actor?: WebActivityActor): Promise<{ path: string; name: string } | null> {
-    return relayRuntimeCreateArtifactZip(this, turnId, actor);
-  }
-
-  async artifactPreview(turnId: string, relativePath: string): Promise<ArtifactPreviewDto | null> {
-    return relayRuntimeArtifactPreview(this, turnId, relativePath);
-  }
+  async artifacts(limit = 20): Promise<ArtifactReportDto[]> { return relayRuntimeArtifacts(this, limit); }
+  async artifact(turnId: string): Promise<ArtifactTurnReport | null> { return relayRuntimeArtifact(this, turnId); }
+  async deleteArtifact(turnId: string, actor?: WebActivityActor): Promise<boolean> { return relayRuntimeDeleteArtifact(this, turnId, actor); }
+  async createArtifactZip(turnId: string, actor?: WebActivityActor): Promise<{ path: string; name: string } | null> { return relayRuntimeCreateArtifactZip(this, turnId, actor); }
+  async artifactPreview(turnId: string, relativePath: string): Promise<ArtifactPreviewDto | null> { return relayRuntimeArtifactPreview(this, turnId, relativePath); }
+  async artifactDiff(turnId: string, relativePath: string): Promise<ArtifactDiffDto | null> { return relayRuntimeArtifactDiff(this, turnId, relativePath); }
+  async artifactUsage(): Promise<ArtifactUsageDto> { return relayRuntimeArtifactUsage(this); }
+  async artifactCleanupPreview(): Promise<ArtifactCleanupDto> { return relayRuntimeArtifactCleanupPreview(this); }
+  async artifactCleanupRun(actor?: WebActivityActor): Promise<ArtifactCleanupDto> { return relayRuntimeArtifactCleanupRun(this, actor); }
 
   async logs(target: "connector" | "update" | "agent-updates" = "connector", lines = 100): Promise<FormattedLogTail> {
     return relayRuntimeLogs(this, target, lines);

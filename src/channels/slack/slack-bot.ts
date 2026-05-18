@@ -45,6 +45,7 @@ import { spawnConnectorRestart, spawnSelfUpdate } from "../../support/operations
 import { RemoteRelayClient } from "../../peers/peer-client.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "../../state/prompt-store.js";
 import { RelayArtifactService } from "../../runtime/relay-artifact-service.js";
+import { resolveArtifactDeliveryPolicy, type ArtifactDeliveryMode } from "../../artifacts/artifact-delivery.js";
 import { RelayAuthService } from "../../runtime/relay-auth-service.js";
 import { configureRedaction, redactText } from "../../core/redaction.js";
 import { renderSessionInfoPlain } from "../shared/session-format.js";
@@ -118,6 +119,9 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
   const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
   const lockStore = new SessionLockStore(config.workspace, config.stateBackend);
   const userStore = new UserStore();
+
+  const artifactPolicyForRequest = (request: SlackRequest) => resolveArtifactDeliveryPolicy({ config, channelId: "slack", authUser: request.authUser, channelAccess: request.isDirectMessage ? null : userStore.snapshot().slackChannels.find((channel) => channel.channelId === request.channelId && (!request.teamId || channel.teamId === request.teamId)) ?? null });
+  const artifactPolicyForContext = (context: ChannelContext) => resolveArtifactDeliveryPolicy({ config, channelId: "slack", channelAccess: userStore.snapshot().slackChannels.find((channel) => channel.channelId === context.chatId) ?? null });
   const artifactService = new RelayArtifactService(config);
   const authService = new RelayAuthService(config);
   const agentUpdates = new AgentUpdateManager();
@@ -255,12 +259,8 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     return true;
   };
 
-  const getSession = async (request: SlackRequest, options?: { deferThreadStart?: boolean }): Promise<AgentSessionService> =>
-    registry.getOrCreate(request.contextKey, options);
-
-  const updateSession = (request: SlackRequest, session: AgentSessionService): void => {
-    registry.updateMetadata(request.contextKey, session);
-  };
+  const getSession = async (request: SlackRequest, options?: { deferThreadStart?: boolean }): Promise<AgentSessionService> => registry.getOrCreate(request.contextKey, options);
+  const updateSession = (request: SlackRequest, session: AgentSessionService): void => { registry.updateMetadata(request.contextKey, session); };
 
   const artifactDeps = {
     config,
@@ -269,6 +269,8 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     getSession,
     reply,
     appendActivity,
+    getArtifactDeliveryMode: (request: SlackRequest) => request.authUser?.user.preferences?.artifactDelivery,
+    setArtifactDeliveryMode: async (request: SlackRequest, mode: ArtifactDeliveryMode | null) => { if (!request.authUser) throw new Error("Authenticated Slack user required."); const updated = userStore.updateUser(request.authUser.user.id, { preferences: { artifactDelivery: mode } }); request.authUser = updated; return updated.user.preferences?.artifactDelivery ?? config.slackArtifactDeliveryMode; },
   };
   const commandArtifacts = createSlackArtifactCommandHandler<SlackRequest>(artifactDeps);
 
@@ -304,13 +306,8 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
 
   const startAgentLogout = (info: AgentSessionInfo): Promise<LoginResult> => authService.startLogout(info);
 
-  const hostLoginCommand = (info: AgentSessionInfo): string => {
-    return hostAgentLoginCommand(config, info);
-  };
-
-  const hostLogoutCommand = (info: AgentSessionInfo): string => {
-    return hostAgentLogoutCommand(config, info);
-  };
+  const hostLoginCommand = (info: AgentSessionInfo): string => hostAgentLoginCommand(config, info);
+  const hostLogoutCommand = (info: AgentSessionInfo): string => hostAgentLogoutCommand(config, info);
 
   const denyIfLocked = async (request: SlackRequest): Promise<boolean> => {
     const lock = lockStore.get(request.contextKey);
@@ -425,8 +422,9 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
       progress.updatedAt = progress.completedAt;
       await engine.finalize();
       await artifactService.persistWorkspaceArtifactsForTurn(session.getInfo().workspace, engine.turnId, new Date(engine.startedAt));
-      if (config.slackAutoSendArtifacts) {
-        await sendRecentSlackArtifacts(artifactDeps, request, session, new Date(engine.startedAt), engine.turnId);
+      const artifactPolicy = artifactPolicyForRequest(request);
+      if (artifactPolicy.sendSummary || artifactPolicy.autoSendFiles || artifactPolicy.autoSendZip) {
+        await sendRecentSlackArtifacts(artifactDeps, request, session, new Date(engine.startedAt), engine.turnId, artifactPolicy);
       }
       appendActivity(request, { status: "completed", type: "prompt_completed", prompt: envelope.description, threadId: session.getInfo().threadId, workspace: session.getInfo().workspace, agentId: session.getInfo().agentId, durationMs: Date.now() - engine.startedAt });
       audit(request, { action: "prompt_completed", status: "ok", agentId: session.getInfo().agentId, threadId: session.getInfo().threadId, workspace: session.getInfo().workspace, description: envelope.description });
@@ -478,7 +476,8 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
       turnId,
       state: externalMirrors.get(contextKey),
       autoSend: config.slackAutoSendArtifacts,
-      sendSummaryWhenAutoSendDisabled: true,
+      deliveryPolicy: artifactPolicyForContext(context),
+      sendSummaryWhenAutoSendDisabled: false,
       logPrefix: "Slack",
       sendSummary: (summary) => runtime.sendMessage(context, { text: summary, fallbackText: summary }).then(() => {}),
       sendArtifact: (artifact) => runtime.sendFile(context, { localPath: artifact.localPath, name: artifact.name }).then(() => {}).catch((error) => {
