@@ -14,7 +14,6 @@
     "src/web/ui/client/**/*.js"
   ],
   "exclude": [
-    "src/web/ui/client/core/api-routes.generated.js",
-    "src/web/ui/client/core/api-client.js"
+    "src/web/ui/client/core/api-routes.generated.js"
   ]
 }
