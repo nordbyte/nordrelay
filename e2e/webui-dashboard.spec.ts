@@ -534,6 +534,7 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#adapterTabs")).toHaveAttribute("role", "tablist");
     await expect(page.getByRole("tab", { name: "Adapters" })).toHaveAttribute("aria-selected", "true");
     await expect(page.locator("#adapterHealth")).toContainText("Codex");
+    await expect(page.locator("#adapterHealth .feature-matrix")).toHaveCount(0);
     await expect(page.locator('[data-adapter-tab-panel="conformance"]')).toBeHidden();
     await page.getByRole("tab", { name: "Adapter Conformance" }).click();
     await expect(page.getByRole("tab", { name: "Adapter Conformance" })).toHaveAttribute("aria-selected", "true");
@@ -542,6 +543,7 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#adapterConformance")).toContainText("Channel command contract");
     await expect(page.locator("#adapterConformance")).toContainText("Codex");
     await expect(page.locator("#adapterConformance")).toContainText("Telegram");
+    await expect(page.locator("#adapterConformance .feature-matrix").first()).toBeVisible();
 
     await navigateDashboard(page, "Artifacts");
     await expect(page.locator("#artifactList")).toContainText("turn-web-1");

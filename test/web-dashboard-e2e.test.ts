@@ -11,7 +11,9 @@ describe("web dashboard browser-flow assets", () => {
     const js = dashboardJs();
 
     expect(css).toContain(".feature-matrix");
+    expect(css).toContain(".conformance-grid .item+.item{margin-top:8px}");
     expect(js).toContain("function featureMatrix");
+    expect(js).not.toContain("+'</small>'+featureMatrix(a.capabilities)+'<div class=\"row\">");
     expect(js).toContain("agent-updates");
     expect(js).toContain("/api/agent-updates");
   });
