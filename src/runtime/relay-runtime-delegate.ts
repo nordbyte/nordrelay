@@ -51,6 +51,8 @@ import type {
   SessionWorktreeUpdateResult,
   WorktreeCleanupResult,
   WorktreeDashboardSnapshot,
+  WorktreeFinalizeIntegrationOptions,
+  WorktreeFinalizeIntegrationResult,
   WorktreeIntegrationOptions, WorktreeIntegrationPatchExport, WorktreeIntegrationRun,
   WorktreeIntegrationPreview,
 } from "../worktrees/worktree-types.js";
@@ -188,6 +190,7 @@ export interface RelayRuntimeDelegate {
   previewSessionWorktreeIntegration(ids: string[]): Promise<WorktreeIntegrationPreview>; updateSessionWorktreeFromBase(id: string, actor?: WebActivityActor): Promise<SessionWorktreeUpdateResult>; exportSessionWorktreeIntegrationPatch(ids: string[]): Promise<WorktreeIntegrationPatchExport>;
   cleanupSessionWorktrees(actor?: WebActivityActor): Promise<WorktreeCleanupResult>; commitSessionWorktree(id: string, message?: string, actor?: WebActivityActor): Promise<{ record: SessionWorktreeRecord; clean: boolean; status: string[] }>;
   integrateSessionWorktrees(ids: string[], options?: WorktreeIntegrationOptions, actor?: WebActivityActor): Promise<WorktreeIntegrationRun>;
+  finalizeSessionWorktreeIntegration(id: string, options?: WorktreeFinalizeIntegrationOptions, actor?: WebActivityActor): Promise<WorktreeFinalizeIntegrationResult>;
   forkCurrentSessionToWorktree(options?: { includeUncommitted?: boolean }, actor?: WebActivityActor): Promise<{ session: AgentSessionInfo; record: SessionWorktreeRecord; copiedUntrackedFiles: string[]; skippedUntrackedFiles: string[]; patchApplied: boolean }>;
   removeSessionWorktree(id: string, force?: boolean, actor?: WebActivityActor): Promise<SessionWorktreeRecord>;
   setModel(model: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;

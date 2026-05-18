@@ -8,6 +8,8 @@ import type {
   SessionWorktreeUpdateResult,
   WorktreeCleanupResult,
   WorktreeDashboardSnapshot,
+  WorktreeFinalizeIntegrationOptions,
+  WorktreeFinalizeIntegrationResult,
   WorktreeIntegrationRun,
   WorktreeIntegrationOptions,
   WorktreeIntegrationPatchExport,
@@ -120,6 +122,25 @@ export async function relayRuntimeIntegrateSessionWorktrees(
     detail: run.status === "merged" ? `Integration branch ${run.branchName} created${run.resolvedConflicts?.length ? ` with ${run.resolvedConflicts.length} resolved conflict(s)` : ""}.` : run.lastError ?? run.status,
   });
   return run;
+}
+
+export async function relayRuntimeFinalizeSessionWorktreeIntegration(
+  runtime: RelayRuntimeDelegate,
+  id: string,
+  options: WorktreeFinalizeIntegrationOptions = {},
+  actor?: WebActivityActor,
+): Promise<WorktreeFinalizeIntegrationResult> {
+  const result = runtime.worktreeService.finalizeIntegration(id, options);
+  runtime.appendActivity({
+    source: "web",
+    status: "completed",
+    type: "worktree_integration_finalized",
+    threadId: null,
+    workspace: result.run.repoRoot,
+    actor,
+    detail: `Applied ${result.run.branchName} to ${result.run.targetBranch ?? "current branch"} at ${result.run.appliedCommitSha ?? "HEAD"}.`,
+  });
+  return result;
 }
 
 export async function relayRuntimeForkCurrentSessionToWorktree(

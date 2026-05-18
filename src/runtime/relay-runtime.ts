@@ -70,7 +70,7 @@ import { renderSessionInfoPlain, renderSessionUsageRows } from "../channels/shar
 import { SessionLockStore, type SessionLock } from "../access/session-locks.js";
 import { SessionRegistry, type ContextMetadata } from "../state/session-registry.js";
 import { createSessionWorktreeStore, SessionWorktreeService } from "../worktrees/worktree-service.js";
-import type { SessionWorktreeDiffSnapshot, SessionWorktreeRecord, SessionWorktreeUpdateResult, WorktreeCleanupResult, WorktreeDashboardSnapshot, WorktreeIntegrationOptions, WorktreeIntegrationPatchExport, WorktreeIntegrationRun, WorktreeIntegrationPreview } from "../worktrees/worktree-types.js";
+import type { SessionWorktreeDiffSnapshot, SessionWorktreeRecord, SessionWorktreeUpdateResult, WorktreeCleanupResult, WorktreeDashboardSnapshot, WorktreeFinalizeIntegrationOptions, WorktreeFinalizeIntegrationResult, WorktreeIntegrationOptions, WorktreeIntegrationPatchExport, WorktreeIntegrationRun, WorktreeIntegrationPreview } from "../worktrees/worktree-types.js";
 import { createSupportBundle, type SupportBundleResult } from "../support/support-bundle.js";
 import { transcribeAudio, type TranscriptionBackend } from "../artifacts/voice.js";
 import {
@@ -106,6 +106,7 @@ import type {
   WebAuthDto,
   WebDiagnosticsDto,
   WebPermissionsDto,
+  WorkflowDryRunDto,
   WorkflowPreviewDto,
   WorkflowRunResultDto,
   QueuePlanDto,
@@ -140,6 +141,7 @@ export type {
   WebAuthDto,
   WebDiagnosticsDto,
   WebPermissionsDto,
+  WorkflowDryRunDto,
   WorkflowPreviewDto,
   WorkflowRunResultDto,
   QueuePlanDto,
@@ -238,7 +240,7 @@ import {
   relayRuntimeGetControlSession,
   relayRuntimeCliPathOptions
 } from "./relay-runtime-sessions.js";
-import { relayRuntimeCleanupSessionWorktrees, relayRuntimeCommitSessionWorktree, relayRuntimeExportSessionWorktreeIntegrationPatch, relayRuntimeForkCurrentSessionToWorktree, relayRuntimeIntegrateSessionWorktrees, relayRuntimePreviewSessionWorktreeIntegration, relayRuntimeRemoveSessionWorktree, relayRuntimeSessionWorktreeDiff, relayRuntimeSessionWorktrees, relayRuntimeUpdateSessionWorktreeFromBase } from "./relay-runtime-worktrees.js";
+import { relayRuntimeCleanupSessionWorktrees, relayRuntimeCommitSessionWorktree, relayRuntimeExportSessionWorktreeIntegrationPatch, relayRuntimeFinalizeSessionWorktreeIntegration, relayRuntimeForkCurrentSessionToWorktree, relayRuntimeIntegrateSessionWorktrees, relayRuntimePreviewSessionWorktreeIntegration, relayRuntimeRemoveSessionWorktree, relayRuntimeSessionWorktreeDiff, relayRuntimeSessionWorktrees, relayRuntimeUpdateSessionWorktreeFromBase } from "./relay-runtime-worktrees.js";
 import {
   relayRuntimeSendPrompt,
   relayRuntimeSendUploadPrompt,
@@ -618,6 +620,7 @@ export class RelayRuntime {
   async cleanupSessionWorktrees(actor?: WebActivityActor): Promise<WorktreeCleanupResult> { return relayRuntimeCleanupSessionWorktrees(this, actor); }
   async commitSessionWorktree(id: string, message?: string, actor?: WebActivityActor): Promise<{ record: SessionWorktreeRecord; clean: boolean; status: string[] }> { return relayRuntimeCommitSessionWorktree(this, id, message, actor); }
   async integrateSessionWorktrees(ids: string[], options: WorktreeIntegrationOptions = {}, actor?: WebActivityActor): Promise<WorktreeIntegrationRun> { return relayRuntimeIntegrateSessionWorktrees(this, ids, options, actor); }
+  async finalizeSessionWorktreeIntegration(id: string, options: WorktreeFinalizeIntegrationOptions = {}, actor?: WebActivityActor): Promise<WorktreeFinalizeIntegrationResult> { return relayRuntimeFinalizeSessionWorktreeIntegration(this, id, options, actor); }
   async forkCurrentSessionToWorktree(options: { includeUncommitted?: boolean } = {}, actor?: WebActivityActor): Promise<{ session: AgentSessionInfo; record: SessionWorktreeRecord; copiedUntrackedFiles: string[]; skippedUntrackedFiles: string[]; patchApplied: boolean }> { return relayRuntimeForkCurrentSessionToWorktree(this, options, actor); }
   async removeSessionWorktree(id: string, force = false, actor?: WebActivityActor): Promise<SessionWorktreeRecord> { return relayRuntimeRemoveSessionWorktree(this, id, force, actor); }
 

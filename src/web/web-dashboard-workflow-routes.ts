@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
-import type { PromptTemplate, Workflow, WorkflowStep, WorkflowStepCondition, WorkflowRetryPolicy, WorkflowSchedule } from "../state/workflow-store.js";
+import type { PromptTemplate, Workflow, WorkflowStep, WorkflowStepCondition, WorkflowRetryPolicy, WorkflowSchedule, WorkflowTriggerKind } from "../state/workflow-store.js";
 import type { AuthenticatedUser } from "../access/user-management.js";
 import type { WebActivityActor } from "./web-state.js";
 import {
@@ -185,6 +185,36 @@ export async function handleDashboardWorkflowRoute(
     }
   }
 
+  const workflowDryRunMatch = url.pathname.match(/^\/api\/workflows\/([^/]+)\/dry-run$/);
+  if (workflowDryRunMatch?.[1] && req.method === "POST") {
+    const body = await readJsonBody(req);
+    sendJson(res, 200, service.dryRunWorkflow(decodeURIComponent(workflowDryRunMatch[1]), variableRecord(body?.variables), versionParam(optionalStringField(objectRecord(body), "version"))));
+    return true;
+  }
+
+  const workflowTriggerMatch = url.pathname.match(/^\/api\/workflows\/([^/]+)\/triggers(?:\/([^/]+))?$/);
+  if (workflowTriggerMatch?.[1]) {
+    const workflowId = decodeURIComponent(workflowTriggerMatch[1]);
+    const triggerId = workflowTriggerMatch[2] ? decodeURIComponent(workflowTriggerMatch[2]) : undefined;
+    if (req.method === "GET" && !triggerId) {
+      sendJson(res, 200, { triggers: service.listWorkflowTriggers(workflowId) });
+      return true;
+    }
+    if (req.method === "POST" && !triggerId) {
+      const body = await readJsonBody(req);
+      sendJson(res, 201, service.createWorkflowTrigger(workflowId, {
+        kind: parseTriggerKind(optionalStringField(body, "kind")),
+        name: optionalStringField(body, "name"),
+        enabled: body?.enabled !== false,
+      }, options.activityActor));
+      return true;
+    }
+    if (req.method === "DELETE" && triggerId) {
+      sendJson(res, 200, service.deleteWorkflowTrigger(workflowId, triggerId, options.activityActor));
+      return true;
+    }
+  }
+
   const workflowMatch = url.pathname.match(/^\/api\/workflows\/([^/]+)(?:\/(run|preview))?$/);
   if (workflowMatch?.[1]) {
     const id = decodeURIComponent(workflowMatch[1]);
@@ -211,6 +241,10 @@ export async function handleDashboardWorkflowRoute(
   }
 
   return false;
+}
+
+function parseTriggerKind(value: string | undefined): WorkflowTriggerKind {
+  return value === "webhook" ? "webhook" : "api";
 }
 
 function importBody(body: unknown): unknown {

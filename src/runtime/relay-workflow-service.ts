@@ -3,6 +3,7 @@ import type { AgentId, AgentSessionService } from "../agents/shared/agent.js";
 import type { PromptEnvelope } from "../state/prompt-store.js";
 import { createCorrelationId, toPromptEnvelope } from "../state/prompt-store.js";
 import {
+  extractTemplateVariables,
   renderTemplateText,
   type PromptTemplate,
   type Workflow,
@@ -16,9 +17,12 @@ import {
   type WorkflowVersionKind,
   type WorkflowVersionRecord,
   type WorkflowExportBundle,
+  type WorkflowTrigger,
+  type WorkflowTriggerCreateResult,
+  type WorkflowTriggerKind,
 } from "../state/workflow-store.js";
 import type { WebActivityActor, WebActivityEvent } from "../web/web-state.js";
-import type { UnifiedJobDto, WorkflowPreviewDto } from "./relay-runtime-types.js";
+import type { UnifiedJobDto, WorkflowDryRunDto, WorkflowPreviewDto } from "./relay-runtime-types.js";
 
 export interface RelayWorkflowServiceOptions {
   store: WorkflowStore;
@@ -200,6 +204,77 @@ export class RelayWorkflowService {
         prompt: this.renderWorkflowStepPrompt(step, variables),
       })),
     };
+  }
+
+  dryRunWorkflow(id: string, variables: Record<string, string> = {}, versionNumber?: number): WorkflowDryRunDto {
+    const workflow = versionNumber
+      ? this.requireVersion("workflow", id, versionNumber).snapshot as Workflow
+      : this.requireWorkflow(id);
+    const preview = versionNumber
+      ? this.previewWorkflowVersion(id, versionNumber, variables)
+      : this.previewWorkflow(id, variables);
+    const defs = this.workflowVariableDefinitions(workflow);
+    const missingVariables = defs
+      .filter((variable) => variable.required && !Object.prototype.hasOwnProperty.call(variables, variable.name) && !variable.defaultValue)
+      .map((variable) => variable.name);
+    const warnings: string[] = [];
+    if (!workflow.steps.length) warnings.push("Workflow has no steps.");
+    const approvalSteps = workflow.steps.filter((step) => step.requiresApproval).length;
+    if (approvalSteps) warnings.push(`${approvalSteps} step(s) require manual approval.`);
+    const peerSteps = workflow.steps.filter((step) => step.target && step.target !== "local").length;
+    if (peerSteps) warnings.push(`${peerSteps} step(s) run on peers.`);
+    return {
+      ...preview,
+      valid: missingVariables.length === 0 && workflow.steps.length > 0,
+      variables: defs.map((variable) => ({
+        name: variable.name,
+        label: variable.label,
+        required: variable.required !== false,
+        provided: Object.prototype.hasOwnProperty.call(variables, variable.name),
+        defaultValue: variable.defaultValue,
+      })),
+      missingVariables,
+      warnings,
+    };
+  }
+
+  listWorkflowTriggers(workflowId: string): WorkflowTrigger[] {
+    this.requireWorkflow(workflowId);
+    return this.options.store.listWorkflowTriggers(workflowId);
+  }
+
+  createWorkflowTrigger(
+    workflowId: string,
+    input: { kind?: WorkflowTriggerKind; name?: string; enabled?: boolean } = {},
+    actor?: WebActivityActor,
+  ): WorkflowTriggerCreateResult {
+    const result = this.options.store.createWorkflowTrigger(workflowId, input);
+    this.record("workflow_trigger_created", "info", `${result.workflow.name}: ${result.trigger.name}`, actor);
+    return result;
+  }
+
+  deleteWorkflowTrigger(workflowId: string, triggerId: string, actor?: WebActivityActor): { workflow: Workflow; removed: boolean } {
+    const result = this.options.store.deleteWorkflowTrigger(workflowId, triggerId);
+    this.record("workflow_trigger_deleted", result.removed ? "info" : "failed", `${workflowId}: ${triggerId}`, actor);
+    return result;
+  }
+
+  async runWorkflowTriggerToken(token: string, variables: Record<string, string> = {}): Promise<WorkflowRun> {
+    const match = this.options.store.findWorkflowTriggerByToken(token);
+    if (!match) {
+      throw new Error("Workflow trigger token is invalid.");
+    }
+    if (!match.trigger.enabled) {
+      throw new Error("Workflow trigger is disabled.");
+    }
+    this.options.store.markWorkflowTriggerUsed(match.workflow.id, match.trigger.id);
+    const actor: WebActivityActor = {
+      channel: "system",
+      id: `workflow-trigger:${match.trigger.id}`,
+      label: `Workflow trigger: ${match.trigger.name}`,
+    };
+    this.record("workflow_trigger_run", "queued", `${match.workflow.name}: ${match.trigger.name}`, actor);
+    return this.queueWorkflowRun(match.workflow, variables, actor, this.options.store.latestVersion("workflow", match.workflow.id)?.version, this.options.store.latestVersion("workflow", match.workflow.id)?.snapshot as Workflow | undefined);
   }
 
   async runTemplate(id: string, variables: Record<string, string> = {}, actor?: WebActivityActor): Promise<WorkflowRun> {
@@ -757,6 +832,37 @@ export class RelayWorkflowService {
       prompt: this.renderWorkflowStepPrompt(step, variables),
       ...stepRunMetadata(step),
     };
+  }
+
+  private workflowVariableDefinitions(workflow: Workflow, seen = new Set<string>()): PromptTemplate["variables"] {
+    if (seen.has(workflow.id)) return [];
+    seen.add(workflow.id);
+    const variables = new Map<string, PromptTemplate["variables"][number]>();
+    const add = (variable: PromptTemplate["variables"][number]) => {
+      const name = String(variable.name ?? "").trim();
+      if (!name || variables.has(name)) return;
+      variables.set(name, {
+        name,
+        label: variable.label,
+        required: variable.required !== false,
+        defaultValue: variable.defaultValue,
+      });
+    };
+    for (const step of workflow.steps) {
+      if (step.type === "workflow" && step.workflowId) {
+        const subflow = this.options.store.getWorkflow(step.workflowId);
+        if (subflow) {
+          this.workflowVariableDefinitions(subflow, seen).forEach(add);
+        }
+        continue;
+      }
+      if (step.templateId) {
+        this.options.store.getTemplate(step.templateId)?.variables.forEach(add);
+      } else {
+        extractTemplateVariables(step.prompt ?? "").forEach(add);
+      }
+    }
+    return [...variables.values()];
   }
 
   private failRun(run: WorkflowRun, error: unknown, actor?: WebActivityActor): WorkflowRun {

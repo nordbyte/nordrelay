@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 import type { AgentId } from "../agents/shared/agent.js";
 import type { SessionWorkspaceMode } from "../worktrees/worktree-types.js";
@@ -11,6 +11,7 @@ export type WorkflowTarget = "local" | `peer:${string}`;
 export type WorkflowRunStatus = "queued" | "running" | "completed" | "failed" | "aborted" | "paused";
 export type WorkflowStepRunStatus = WorkflowRunStatus | "pending" | "skipped";
 export type WorkflowConditionOperator = "exists" | "equals" | "not_equals" | "contains" | "not_contains";
+export type WorkflowTriggerKind = "api" | "webhook";
 
 export interface WorkflowStepCondition {
   variable: string;
@@ -31,6 +32,23 @@ export interface WorkflowSchedule {
   timezone?: string;
   nextRunAt?: string;
   lastRunAt?: string;
+}
+
+export interface WorkflowTrigger {
+  id: string;
+  kind: WorkflowTriggerKind;
+  name: string;
+  enabled: boolean;
+  tokenHash: string;
+  createdAt: string;
+  updatedAt: string;
+  lastTriggeredAt?: string;
+}
+
+export interface WorkflowTriggerCreateResult {
+  workflow: Workflow;
+  trigger: WorkflowTrigger;
+  token: string;
 }
 
 export interface PromptTemplateVariable {
@@ -87,6 +105,7 @@ export interface Workflow {
   tags: string[];
   steps: WorkflowStep[];
   schedule?: WorkflowSchedule;
+  triggers?: WorkflowTrigger[];
   scope: WorkflowScope;
   ownerUserId?: string;
   createdAt: string;
@@ -308,6 +327,67 @@ export class WorkflowStore {
     return true;
   }
 
+  listWorkflowTriggers(workflowId: string): WorkflowTrigger[] {
+    return [...(this.getWorkflow(workflowId)?.triggers ?? [])].sort(sortByUpdated);
+  }
+
+  createWorkflowTrigger(workflowId: string, input: Partial<WorkflowTrigger> = {}): WorkflowTriggerCreateResult {
+    const workflow = this.getWorkflow(workflowId);
+    if (!workflow) {
+      throw new Error(`Workflow not found: ${workflowId}`);
+    }
+    const now = new Date().toISOString();
+    const token = `nrt_${randomBytes(24).toString("base64url")}`;
+    const trigger: WorkflowTrigger = normalizeWorkflowTrigger({
+      id: randomId(),
+      kind: input.kind,
+      name: input.name || `${input.kind === "webhook" ? "Webhook" : "API"} trigger`,
+      enabled: input.enabled !== false,
+      tokenHash: hashWorkflowTriggerToken(token),
+      createdAt: now,
+      updatedAt: now,
+    });
+    const updated = this.saveWorkflow({
+      ...workflow,
+      triggers: [...(workflow.triggers ?? []), trigger],
+    });
+    const saved = updated.triggers?.find((candidate) => candidate.id === trigger.id) ?? trigger;
+    return { workflow: updated, trigger: saved, token };
+  }
+
+  deleteWorkflowTrigger(workflowId: string, triggerId: string): { workflow: Workflow; removed: boolean } {
+    const workflow = this.getWorkflow(workflowId);
+    if (!workflow) {
+      throw new Error(`Workflow not found: ${workflowId}`);
+    }
+    const nextTriggers = (workflow.triggers ?? []).filter((trigger) => trigger.id !== triggerId);
+    if (nextTriggers.length === (workflow.triggers ?? []).length) {
+      return { workflow, removed: false };
+    }
+    return { workflow: this.saveWorkflow({ ...workflow, triggers: nextTriggers }), removed: true };
+  }
+
+  findWorkflowTriggerByToken(token: string): { workflow: Workflow; trigger: WorkflowTrigger } | null {
+    const tokenHash = hashWorkflowTriggerToken(token);
+    for (const workflow of this.listWorkflows()) {
+      const trigger = (workflow.triggers ?? []).find((candidate) => candidate.tokenHash === tokenHash);
+      if (trigger) {
+        return { workflow, trigger };
+      }
+    }
+    return null;
+  }
+
+  markWorkflowTriggerUsed(workflowId: string, triggerId: string): Workflow | null {
+    const workflow = this.getWorkflow(workflowId);
+    if (!workflow) return null;
+    const now = new Date().toISOString();
+    return this.saveWorkflow({
+      ...workflow,
+      triggers: (workflow.triggers ?? []).map((trigger) => trigger.id === triggerId ? { ...trigger, lastTriggeredAt: now, updatedAt: now } : trigger),
+    });
+  }
+
   listVersions(kind: WorkflowVersionKind, entityId: string): WorkflowVersionRecord[] {
     return this.payload().versions
       .filter((version) => version.kind === kind && version.entityId === entityId)
@@ -485,6 +565,7 @@ function normalizeWorkflow(input: Partial<Workflow> & Pick<Workflow, "id" | "nam
     tags: normalizeTags(input.tags),
     steps: (input.steps ?? []).map(normalizeStep),
     schedule: normalizeSchedule(input.schedule),
+    triggers: normalizeWorkflowTriggers(input.triggers),
     scope: input.scope === "shared" ? "shared" : "private",
     ownerUserId: cleanOptional(input.ownerUserId),
     createdAt: validDate(input.createdAt) ?? now,
@@ -672,6 +753,9 @@ function normalizeVersionSnapshot(kind: WorkflowVersionKind | null, snapshot: un
 function appendVersion(versions: WorkflowVersionRecord[], kind: WorkflowVersionKind, snapshot: PromptTemplate | Workflow, userId?: string): WorkflowVersionRecord[] {
   const normalized = normalizeVersionSnapshot(kind, snapshot);
   if (!normalized) return versions;
+  if (kind === "workflow") {
+    delete (normalized as Workflow).triggers;
+  }
   const entityVersions = versions
     .filter((version) => version.kind === kind && version.entityId === normalized.id)
     .sort((left, right) => right.version - left.version);
@@ -774,6 +858,40 @@ function normalizeTags(tags: unknown): string[] {
   return Array.isArray(tags)
     ? [...new Set(tags.map((tag) => String(tag).trim()).filter(Boolean))]
     : [];
+}
+
+function normalizeWorkflowTriggers(input: unknown): WorkflowTrigger[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const triggers = input
+    .map((item): WorkflowTrigger | null => {
+      if (!item || typeof item !== "object") return null;
+      const trigger = normalizeWorkflowTrigger(item as Partial<WorkflowTrigger>);
+      return trigger.tokenHash ? trigger : null;
+    })
+    .filter((item): item is WorkflowTrigger => Boolean(item));
+  return triggers.length ? triggers.slice(-50) : undefined;
+}
+
+function normalizeWorkflowTrigger(input: Partial<WorkflowTrigger>): WorkflowTrigger {
+  const now = new Date().toISOString();
+  return {
+    id: normalizeId(input.id) || randomId(),
+    kind: normalizeTriggerKind(input.kind),
+    name: String(input.name ?? "Workflow trigger").trim() || "Workflow trigger",
+    enabled: input.enabled !== false,
+    tokenHash: cleanOptional(input.tokenHash) ?? "",
+    createdAt: validDate(input.createdAt) ?? now,
+    updatedAt: validDate(input.updatedAt) ?? now,
+    lastTriggeredAt: validDate(input.lastTriggeredAt),
+  };
+}
+
+function normalizeTriggerKind(value: unknown): WorkflowTriggerKind {
+  return value === "webhook" ? "webhook" : "api";
+}
+
+export function hashWorkflowTriggerToken(token: string): string {
+  return createHash("sha256").update(String(token ?? ""), "utf8").digest("hex");
 }
 
 function normalizeTarget(target: unknown): WorkflowTarget {

@@ -119,6 +119,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  const workflowTriggerMatch = url.pathname.match(/^\/api\/workflow-triggers\/([^/]+)\/run$/);
+  if (req.method === "POST" && workflowTriggerMatch?.[1]) {
+    await handleWorkflowTriggerRun(req, res, decodeURIComponent(workflowTriggerMatch[1]));
+    return;
+  }
+
   const authenticated = authenticateRequest(req);
   if (url.pathname === "/api/auth/me" && req.method === "GET") {
     if (!authenticated) {
@@ -253,6 +259,26 @@ function sendDashboardBundle(res: ServerResponse, assetName: "dashboard.css" | "
   }
   const contentType = assetName === "dashboard.css" ? "text/css; charset=utf-8" : "application/javascript; charset=utf-8";
   sendText(res, 200, fallback(), contentType, { cacheControl });
+}
+
+async function handleWorkflowTriggerRun(req: IncomingMessage, res: ServerResponse, token: string): Promise<void> {
+  const limited = consumeRateLimit(
+    apiMutationAttempts,
+    `workflow-trigger:${req.socket.remoteAddress ?? "unknown"}`,
+    60,
+    WEB_API_MUTATION_WINDOW_MS,
+    WEB_API_MUTATION_BLOCK_MS,
+  );
+  if (limited.limited) {
+    sendJson(res, 429, { error: "Too many workflow trigger requests. Try again later.", retryAfterMs: limited.retryAfterMs });
+    return;
+  }
+  const body = await readJsonBody(req).catch((): Record<string, unknown> => ({}));
+  const variables = Object.fromEntries(
+    Object.entries(objectRecord(body?.variables)).map(([key, value]) => [key, String(value ?? "")]),
+  );
+  const run = await runtime.workflowService.runWorkflowTriggerToken(token, variables);
+  sendJson(res, 202, { run });
 }
 
 async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, authUser: AuthenticatedUser): Promise<void> {

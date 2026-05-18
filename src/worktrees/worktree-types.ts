@@ -64,10 +64,11 @@ export interface SessionWorktreeStatusSnapshot extends SessionWorktreeRecord {
 
 export interface WorktreeIntegrationRun {
   id: string;
-  status: "running" | "merged" | "conflict" | "failed";
+  status: "running" | "merged" | "applied" | "conflict" | "failed";
   repoRoot: string;
   repoName: string;
   baseSha: string;
+  baseBranch?: string;
   branchName: string;
   worktreePath: string;
   worktreeIds: string[];
@@ -75,6 +76,15 @@ export interface WorktreeIntegrationRun {
   createdAt: string;
   updatedAt: string;
   finishedAt?: string;
+  appliedAt?: string;
+  appliedCommitSha?: string;
+  targetBranch?: string;
+  cleanup?: {
+    removedIntegrationWorktree?: boolean;
+    deletedIntegrationBranch?: boolean;
+    removedSourceWorktrees?: string[];
+    warnings?: string[];
+  };
   lastError?: string;
   resolvedConflicts?: string[];
 }
@@ -146,6 +156,20 @@ export interface WorktreeConflictResolution {
 
 export interface WorktreeIntegrationOptions {
   resolutions?: WorktreeConflictResolution[];
+}
+
+export interface WorktreeFinalizeIntegrationOptions {
+  targetBranch?: string;
+  removeIntegrationWorktree?: boolean;
+  removeSourceWorktrees?: boolean;
+  deleteIntegrationBranch?: boolean;
+}
+
+export interface WorktreeFinalizeIntegrationResult {
+  run: WorktreeIntegrationRun;
+  removedIntegrationWorktree: boolean;
+  deletedIntegrationBranch: boolean;
+  removedSourceWorktrees: SessionWorktreeRecord[];
 }
 
 export interface WorktreeIntegrationPatchExport {

@@ -30,11 +30,12 @@ import type {
   WebAdapterHealthDto,
   WebAuthDto,
   WebDiagnosticsDto,
+  WorkflowDryRunDto,
   WorkflowPreviewDto,
   WorkflowRunResultDto,
   WebTasksDto,
 } from "../runtime/relay-runtime.js";
-import type { PromptTemplate, Workflow, WorkflowExportBundle, WorkflowRun, WorkflowRunReport, WorkflowStep, WorkflowVersionDiff, WorkflowVersionRecord } from "../state/workflow-store.js";
+import type { PromptTemplate, Workflow, WorkflowExportBundle, WorkflowRun, WorkflowRunReport, WorkflowStep, WorkflowTrigger, WorkflowTriggerCreateResult, WorkflowVersionDiff, WorkflowVersionRecord } from "../state/workflow-store.js";
 import type { QueuePlanStatus } from "../state/queue-plan-store.js";
 import type { SessionLock } from "../access/session-locks.js";
 import type { SettingsSnapshot, SettingsUpdateResult } from "../core/settings-service.js";
@@ -45,6 +46,8 @@ import type {
   SessionWorktreeUpdateResult,
   WorktreeCleanupResult,
   WorktreeConflictResolution,
+  WorktreeFinalizeIntegrationOptions,
+  WorktreeFinalizeIntegrationResult,
   WorktreeDashboardSnapshot,
   WorktreeIntegrationPatchExport,
   WorktreeIntegrationRun,
@@ -173,6 +176,7 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/sessions/worktrees/integrate/preview" ? { ids: string[] } :
   P extends "/api/sessions/worktrees/integrate/patch" ? { ids: string[] } :
   P extends "/api/sessions/worktrees/cleanup" ? Record<string, never> :
+  P extends `/api/sessions/worktrees/integrations/${string}/finalize` ? WorktreeFinalizeIntegrationOptions :
   P extends `/api/sessions/worktrees/${string}/commit` ? { message?: string } :
   P extends `/api/sessions/worktrees/${string}/update` ? Record<string, never> :
   P extends `/api/sessions/worktrees/${string}` ? { force?: boolean } :
@@ -202,6 +206,9 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/workflows" ? { name: string; description?: string; tags?: string[]; steps: WorkflowStep[]; schedule?: Workflow["schedule"]; scope?: "private" | "shared" } :
   P extends "/api/workflows/import" ? { bundle: unknown } :
   P extends `/api/workflows/${string}/versions/${string}/run` | `/api/workflows/${string}/versions/${string}/preview` ? { variables?: Record<string, string> } :
+  P extends `/api/workflows/${string}/dry-run` ? { variables?: Record<string, string>; version?: number | string } :
+  P extends `/api/workflows/${string}/triggers` ? { kind?: "api" | "webhook"; name?: string; enabled?: boolean } :
+  P extends `/api/workflow-triggers/${string}/run` ? { variables?: Record<string, string> } :
   P extends `/api/workflows/${string}/run` | `/api/workflows/${string}/preview` ? { variables?: Record<string, string> } :
   P extends `/api/workflows/${string}` ? { name: string; description?: string; tags?: string[]; steps: WorkflowStep[]; schedule?: Workflow["schedule"]; scope?: "private" | "shared" } :
   P extends `/api/workflow-runs/${string}/rerun-failed` ? Record<string, never> :
@@ -287,8 +294,12 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends `/api/workflows/${string}/versions/${string}/rollback` ? { workflow: Workflow } :
   P extends `/api/workflows/${string}/versions/${string}/run` ? WorkflowRunResultDto :
   P extends `/api/workflows/${string}/versions/${string}/preview` ? WorkflowPreviewDto :
+  P extends `/api/workflows/${string}/dry-run` ? WorkflowDryRunDto :
+  P extends `/api/workflows/${string}/triggers` ? { triggers: WorkflowTrigger[] } | WorkflowTriggerCreateResult :
+  P extends `/api/workflows/${string}/triggers/${string}` ? { workflow: Workflow; removed: boolean } :
   P extends `/api/workflows/${string}/run` ? WorkflowRunResultDto :
   P extends `/api/workflows/${string}/preview` ? WorkflowPreviewDto :
+  P extends `/api/workflow-triggers/${string}/run` ? WorkflowRunResultDto :
   P extends `/api/workflows/${string}` ? { workflow?: Workflow; removed?: boolean } :
   P extends `/api/workflow-runs/${string}/report` ? WorkflowRunReport :
   P extends `/api/workflow-runs/${string}/cancel` | `/api/workflow-runs/${string}/rerun-failed` | `/api/workflow-runs/${string}` ? { run: WorkflowRun | null } :
@@ -301,6 +312,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/sessions/worktrees/integrate/preview" ? WorktreeIntegrationPreview :
   P extends "/api/sessions/worktrees/integrate/patch" ? WorktreeIntegrationPatchExport :
   P extends "/api/sessions/worktrees/cleanup" ? WorktreeCleanupResult :
+  P extends `/api/sessions/worktrees/integrations/${string}/finalize` ? WorktreeFinalizeIntegrationResult :
   P extends `/api/sessions/worktrees/${string}/diff` ? SessionWorktreeDiffSnapshot :
   P extends `/api/sessions/worktrees/${string}/update` ? SessionWorktreeUpdateResult :
   P extends `/api/sessions/worktrees/${string}/commit` ? { record: SessionWorktreeRecord; clean: boolean; status: string[] } :

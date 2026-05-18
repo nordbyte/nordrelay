@@ -193,6 +193,37 @@ describe("WorkflowStore", () => {
       rmSync(workspace, { recursive: true, force: true });
     }
   });
+
+  it("supports workflow dry-runs and hashed external trigger tokens", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-workflows-"));
+    try {
+      const store = new WorkflowStore(workspace, "json");
+      const template = store.saveTemplate({ name: "Deploy", prompt: "Deploy {{service}} to {{env}}.", variables: [{ name: "service", required: true }, { name: "env", required: true, defaultValue: "staging" }] });
+      const workflow = store.saveWorkflow({
+        name: "Deploy flow",
+        steps: [{ name: "Deploy", templateId: template.id, sessionMode: "current", target: "local", type: "prompt", requiresApproval: false, continueOnError: false }],
+      });
+      const service = new RelayWorkflowService(workflowServiceOptions(store));
+      try {
+        const dryRun = service.dryRunWorkflow(workflow.id, { service: "api" });
+        expect(dryRun.valid).toBe(true);
+        expect(dryRun.prompts[0]?.prompt).toBe("Deploy api to staging.");
+
+        const trigger = service.createWorkflowTrigger(workflow.id, { kind: "webhook", name: "Deploy webhook" });
+        expect(trigger.token).toMatch(/^nrt_/);
+        expect(trigger.trigger.tokenHash).not.toBe(trigger.token);
+        expect(store.findWorkflowTriggerByToken(trigger.token)?.trigger.id).toBe(trigger.trigger.id);
+
+        const run = await service.runWorkflowTriggerToken(trigger.token, { service: "worker", env: "prod" });
+        expect(run.status).toBe("queued");
+        expect(store.getWorkflow(workflow.id)?.triggers?.[0]?.lastTriggeredAt).toBeTruthy();
+      } finally {
+        service.dispose();
+      }
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
 });
 
 function workflowServiceOptions(store: WorkflowStore): RelayWorkflowServiceOptions {

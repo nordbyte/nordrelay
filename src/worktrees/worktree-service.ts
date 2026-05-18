@@ -18,6 +18,8 @@ import type {
   WorktreeConflictResolution,
   WorktreeConflictWarning,
   WorktreeCleanupResult,
+  WorktreeFinalizeIntegrationOptions,
+  WorktreeFinalizeIntegrationResult,
   WorktreeDashboardSnapshot,
   WorktreeIntegrationOptions,
   WorktreeIntegrationPatchExport,
@@ -352,6 +354,7 @@ export class SessionWorktreeService {
       repoRoot,
       repoName,
       baseSha,
+      baseBranch: records[0]!.baseBranch,
       branchName,
       worktreePath,
       worktreeIds: records.map((record) => record.id),
@@ -412,6 +415,95 @@ export class SessionWorktreeService {
         finishedAt: new Date().toISOString(),
       });
     }
+  }
+
+  finalizeIntegration(
+    id: string,
+    options: WorktreeFinalizeIntegrationOptions = {},
+  ): WorktreeFinalizeIntegrationResult {
+    const run = this.requireIntegration(id);
+    if (run.status === "applied") {
+      return {
+        run,
+        removedIntegrationWorktree: Boolean(run.cleanup?.removedIntegrationWorktree),
+        deletedIntegrationBranch: Boolean(run.cleanup?.deletedIntegrationBranch),
+        removedSourceWorktrees: [],
+      };
+    }
+    if (run.status !== "merged") {
+      throw new Error(`Integration ${id} cannot be finalized while it is ${run.status}. Resolve or recreate it first.`);
+    }
+    if (!existsSync(run.repoRoot)) {
+      throw new Error(`Repository root does not exist: ${run.repoRoot}`);
+    }
+    const currentBranch = gitOutput(["rev-parse", "--abbrev-ref", "HEAD"], run.repoRoot);
+    if (!currentBranch || currentBranch === "HEAD") {
+      throw new Error("Open the target repository on a named branch before finalizing the integration.");
+    }
+    const targetBranch = (options.targetBranch?.trim() || run.targetBranch || run.baseBranch || currentBranch).trim();
+    if (currentBranch !== targetBranch) {
+      throw new Error(`Finalize requires ${run.repoRoot} to be on ${targetBranch}, but it is on ${currentBranch}. Switch branches and retry.`);
+    }
+    const status = gitStatus(run.repoRoot);
+    if (status.length > 0) {
+      throw new Error(`Commit or stash local changes before finalizing the integration. Dirty files: ${status.slice(0, 8).join(", ")}`);
+    }
+    if (!branchExists(run.repoRoot, run.branchName)) {
+      throw new Error(`Integration branch no longer exists: ${run.branchName}`);
+    }
+    if (!isAncestor(run.repoRoot, run.branchName, "HEAD")) {
+      runGit(["merge", "--no-ff", "--no-edit", run.branchName], run.repoRoot);
+    }
+    const appliedCommitSha = gitOutput(["rev-parse", "HEAD"], run.repoRoot);
+    let nextRun = this.store.patchIntegration(id, {
+      status: "applied",
+      targetBranch,
+      appliedCommitSha,
+      appliedAt: new Date().toISOString(),
+      lastError: undefined,
+    });
+
+    let removedIntegrationWorktree = false;
+    let deletedIntegrationBranch = false;
+    const removedSourceWorktrees: SessionWorktreeRecord[] = [];
+    const warnings: string[] = [];
+
+    if (options.removeIntegrationWorktree) {
+      try {
+        this.removeIntegrationWorktree(nextRun);
+        removedIntegrationWorktree = true;
+      } catch (error) {
+        warnings.push(`Failed to remove integration worktree: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    if (options.removeSourceWorktrees) {
+      for (const worktreeId of nextRun.worktreeIds) {
+        try {
+          removedSourceWorktrees.push(this.remove(worktreeId, { force: true }));
+        } catch (error) {
+          warnings.push(`Failed to remove source worktree ${worktreeId}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+    if (options.deleteIntegrationBranch) {
+      try {
+        runGit(["branch", "-d", nextRun.branchName], nextRun.repoRoot);
+        deletedIntegrationBranch = true;
+      } catch (error) {
+        warnings.push(`Failed to delete integration branch ${nextRun.branchName}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    nextRun = this.store.patchIntegration(id, {
+      cleanup: {
+        ...(nextRun.cleanup ?? {}),
+        removedIntegrationWorktree,
+        deletedIntegrationBranch,
+        removedSourceWorktrees: removedSourceWorktrees.map((record) => record.id),
+        warnings,
+      },
+    });
+    return { run: nextRun, removedIntegrationWorktree, deletedIntegrationBranch, removedSourceWorktrees };
   }
 
   private applyIntegrationResolutions(
@@ -490,6 +582,17 @@ export class SessionWorktreeService {
     return this.store.patch(id, { status: "removed" });
   }
 
+  private removeIntegrationWorktree(run: WorktreeIntegrationRun): void {
+    if (!existsSync(run.worktreePath)) {
+      return;
+    }
+    try {
+      runGit(["worktree", "remove", "--force", run.worktreePath], run.repoRoot);
+    } catch {
+      rmSync(run.worktreePath, { recursive: true, force: true });
+    }
+  }
+
   cleanup(): WorktreeCleanupResult {
     const removedRecords: string[] = [];
     const removedIntegrations: string[] = [];
@@ -508,7 +611,7 @@ export class SessionWorktreeService {
     }
     for (const run of this.store.listIntegrations()) {
       repositories.add(run.repoRoot);
-      const terminal = run.status === "merged" || run.status === "failed";
+      const terminal = run.status === "merged" || run.status === "applied" || run.status === "failed";
       if (terminal && !existsSync(run.worktreePath)) {
         if (this.store.deleteIntegration(run.id)) removedIntegrations.push(run.id);
       }
@@ -551,6 +654,14 @@ export class SessionWorktreeService {
       throw new Error(`Unknown session worktree: ${id}`);
     }
     return record;
+  }
+
+  private requireIntegration(id: string): WorktreeIntegrationRun {
+    const run = this.store.getIntegration(id);
+    if (!run) {
+      throw new Error(`Unknown worktree integration run: ${id}`);
+    }
+    return run;
   }
 
   private inspectRepo(workspace: string): { root: string; headSha: string; branch?: string } {
@@ -799,6 +910,24 @@ function gitOutputSafe(args: string[], cwd: string, allowLarge = false): string 
     return gitOutput(args, cwd, allowLarge);
   } catch {
     return undefined;
+  }
+}
+
+function branchExists(cwd: string, branchName: string): boolean {
+  try {
+    runGit(["rev-parse", "--verify", branchName], cwd);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isAncestor(cwd: string, ancestor: string, descendant: string): boolean {
+  try {
+    runGit(["merge-base", "--is-ancestor", ancestor, descendant], cwd);
+    return true;
+  } catch {
+    return false;
   }
 }
 

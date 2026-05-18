@@ -308,9 +308,25 @@ export class PeerRuntimeService {
     }
     if (path.startsWith("/api/workflows/")) {
       const id = params[0];
+      const directAction = params[1];
+      const directId = params[2];
+      this.assertWorkflowScope(peer, runtime, id);
+      if (method === "POST" && directAction === "dry-run") {
+        return runtime.workflowService.dryRunWorkflow(id, variableRecord(body.variables), positiveInteger(body.version));
+      }
+      if (directAction === "triggers") {
+        if (method === "GET" && !directId) return { triggers: runtime.workflowService.listWorkflowTriggers(id) };
+        if (method === "POST" && !directId) {
+          return runtime.workflowService.createWorkflowTrigger(id, {
+            kind: stringValue(body.kind) === "webhook" ? "webhook" : "api",
+            name: stringValue(body.name) || undefined,
+            enabled: body.enabled !== false,
+          }, remoteActor);
+        }
+        if (method === "DELETE" && directId) return runtime.workflowService.deleteWorkflowTrigger(id, directId, remoteActor);
+      }
       const version = positiveInteger(params[1]);
       const action = params[2] ?? (path.endsWith("/versions") ? "versions" : path.endsWith("/diff") ? "diff" : path.endsWith("/export") ? "export" : params[1]);
-      this.assertWorkflowScope(peer, runtime, id);
       if (method === "GET" && action === "versions") return { versions: runtime.workflowService.listWorkflowVersions(id) };
       if (method === "GET" && action === "diff") return runtime.workflowService.diffWorkflowVersions(id, positiveInteger(query.from), positiveInteger(query.to));
       if (method === "GET" && action === "export") return runtime.workflowService.exportWorkflow(id, positiveInteger(query.version) ?? version);
@@ -331,6 +347,9 @@ export class PeerRuntimeService {
         await this.assertCurrentSessionScope(peer, runtime);
         return { run: runtime.workflowService.runWorkflow(id, variableRecord(body.variables), remoteActor) };
       }
+    }
+    if (path.startsWith("/api/workflow-triggers/") && method === "POST") {
+      return { run: await runtime.workflowService.runWorkflowTriggerToken(params[0] ?? "", variableRecord(body.variables)) };
     }
     throw unsupportedPeerRoute(method, path);
   }
@@ -464,6 +483,17 @@ export class PeerRuntimeService {
     if (method === "POST" && path === "/api/sessions/worktrees/cleanup") {
       await this.assertCurrentSessionScope(peer, runtime);
       return runtime.cleanupSessionWorktrees(remoteActor);
+    }
+    if (method === "POST" && path.startsWith("/api/sessions/worktrees/integrations/") && path.endsWith("/finalize")) {
+      await this.assertCurrentSessionScope(peer, runtime);
+      const integrationId = params[0];
+      if (!integrationId) throw unsupportedPeerRoute(method, path);
+      return runtime.finalizeSessionWorktreeIntegration(integrationId, {
+        targetBranch: stringValue(body.targetBranch) || undefined,
+        removeIntegrationWorktree: Boolean(body.removeIntegrationWorktree),
+        removeSourceWorktrees: Boolean(body.removeSourceWorktrees),
+        deleteIntegrationBranch: Boolean(body.deleteIntegrationBranch),
+      }, remoteActor);
     }
     const id = params[0];
     const action = params[1];

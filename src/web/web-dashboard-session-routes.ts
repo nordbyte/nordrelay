@@ -184,6 +184,19 @@ export async function handleDashboardSessionRoute(
     return true;
   }
 
+  const worktreeFinalizeMatch = url.pathname.match(/^\/api\/sessions\/worktrees\/integrations\/([^/]+)\/finalize$/);
+  if (req.method === "POST" && worktreeFinalizeMatch) {
+    const body = await readJsonBody(req);
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, await runtime.finalizeSessionWorktreeIntegration(decodeURIComponent(worktreeFinalizeMatch[1]!), {
+      targetBranch: optionalStringField(body, "targetBranch"),
+      removeIntegrationWorktree: optionalBooleanField(body, "removeIntegrationWorktree"),
+      removeSourceWorktrees: optionalBooleanField(body, "removeSourceWorktrees"),
+      deleteIntegrationBranch: optionalBooleanField(body, "deleteIntegrationBranch"),
+    }, options.activityActor));
+    return true;
+  }
+
   const worktreeDiffMatch = url.pathname.match(/^\/api\/sessions\/worktrees\/([^/]+)\/diff$/);
   if (req.method === "GET" && worktreeDiffMatch) {
     await options.assertCurrentSessionScope(authUser);

@@ -64,7 +64,7 @@ function renderWorkflowRuns(){
 function runStatusClass(status){if(status==='completed')return'enabled';if(status==='failed'||status==='aborted')return'disabled';return'planned'}
 function workflowScheduleSummary(w){const s=w.schedule||{};if(!s.enabled&&!s.nextRunAt&&!s.intervalMinutes&&!s.cron)return'-';return [(s.enabled?'enabled':'disabled'),s.cron?'cron '+s.cron:'',s.timezone?'tz '+s.timezone:'',s.nextRunAt?'next '+fmtDate(s.nextRunAt):'',s.intervalMinutes?'every '+s.intervalMinutes+'m':'',s.lastRunAt?'last '+fmtDate(s.lastRunAt):''].filter(Boolean).join(' | ')}
 function workflowStepCounts(w){const steps=w.steps||[];const approvals=steps.filter(s=>s.requiresApproval).length;const peerTargets=steps.filter(s=>s.target&&s.target!=='local').length;const retries=steps.filter(s=>s.retryPolicy).length;return steps.length+' step(s)'+(approvals?' | '+approvals+' approval':'')+(peerTargets?' | '+peerTargets+' peer target':'')+(retries?' | '+retries+' retry policy':'')}
-function renderWorkflowRow(w){const scope='<span class="adapter-status '+(w.scope==='shared'?'enabled':'planned')+'">'+esc(w.scope||'private')+'</span>';const actions='<div class="data-table-actions"><button data-workflow-run="'+attr(w.id)+'"'+disabledAttr('workflows.run')+'>Run</button><button class="secondary" data-workflow-preview="'+attr(w.id)+'">Preview</button><button class="secondary" data-workflow-history="'+attr(w.id)+'">History</button><button class="secondary" data-workflow-export="'+attr(w.id)+'">Export</button><button class="secondary" data-workflow-edit="'+attr(w.id)+'"'+disabledAttr('workflows.write')+'>Edit</button><button class="danger" data-workflow-delete="'+attr(w.id)+'"'+disabledAttr('workflows.write')+'>Delete</button></div>';return '<tr>'+workflowCell('Updated',templateUpdatedHtml(w),'updated-cell')+workflowCell('Name','<span class="truncate-cell" title="'+attr(w.name||'')+'">'+esc(short(w.name||'-',120))+'</span>','primary-cell')+workflowCell('Scope',scope,'scope-cell')+workflowCell('Schedule','<span class="truncate-cell" title="'+attr(workflowScheduleSummary(w))+'">'+esc(short(workflowScheduleSummary(w),150))+'</span>')+workflowCell('Steps','<span class="truncate-cell" title="'+attr(workflowStepCounts(w))+'">'+esc(workflowStepCounts(w))+'</span>')+workflowCell('Tags',workflowTags(w.tags)||'-','tags-cell')+workflowCell('Description','<span class="truncate-cell" title="'+attr(w.description||'')+'">'+esc(short(w.description||'-',180))+'</span>')+workflowCell('Actions',actions,'actions-cell')+'</tr>'}
+function renderWorkflowRow(w){const scope='<span class="adapter-status '+(w.scope==='shared'?'enabled':'planned')+'">'+esc(w.scope||'private')+'</span>';const actions='<div class="data-table-actions"><button data-workflow-run="'+attr(w.id)+'"'+disabledAttr('workflows.run')+'>Run</button><button class="secondary" data-workflow-dry-run="'+attr(w.id)+'">Dry run</button><button class="secondary" data-workflow-preview="'+attr(w.id)+'">Preview</button><button class="secondary" data-workflow-triggers="'+attr(w.id)+'">Triggers</button><button class="secondary" data-workflow-history="'+attr(w.id)+'">History</button><button class="secondary" data-workflow-export="'+attr(w.id)+'">Export</button><button class="secondary" data-workflow-edit="'+attr(w.id)+'"'+disabledAttr('workflows.write')+'>Edit</button><button class="danger" data-workflow-delete="'+attr(w.id)+'"'+disabledAttr('workflows.write')+'>Delete</button></div>';return '<tr>'+workflowCell('Updated',templateUpdatedHtml(w),'updated-cell')+workflowCell('Name','<span class="truncate-cell" title="'+attr(w.name||'')+'">'+esc(short(w.name||'-',120))+'</span>','primary-cell')+workflowCell('Scope',scope,'scope-cell')+workflowCell('Schedule','<span class="truncate-cell" title="'+attr(workflowScheduleSummary(w))+'">'+esc(short(workflowScheduleSummary(w),150))+'</span>')+workflowCell('Steps','<span class="truncate-cell" title="'+attr(workflowStepCounts(w))+'">'+esc(workflowStepCounts(w))+'</span>')+workflowCell('Tags',workflowTags(w.tags)||'-','tags-cell')+workflowCell('Description','<span class="truncate-cell" title="'+attr(w.description||'')+'">'+esc(short(w.description||'-',180))+'</span>')+workflowCell('Actions',actions,'actions-cell')+'</tr>'}
 function renderWorkflowsTable(workflows){if(!workflows.length)return uiEmpty('No workflows.');return '<div class="data-table-wrap"><table class="data-table workflows-table"><thead><tr><th>Updated</th><th>Name</th><th>Scope</th><th>Schedule</th><th>Steps</th><th>Tags</th><th>Description</th><th class="actions-heading">Actions</th></tr></thead><tbody>'+workflows.map(renderWorkflowRow).join('')+'</tbody></table></div>'}
 function workflowRunProgress(r){const steps=r.steps||[];const done=steps.filter(s=>s.status==='completed'||s.status==='skipped').length;return done+'/'+steps.length+' steps'}
 function workflowRunCurrentStep(r){const step=(r.steps||[]).find(s=>['running','paused','queued'].includes(s.status))||(r.steps||[]).find(s=>s.status==='failed')||(r.steps||[]).slice(-1)[0];return step?step.name+' / '+step.status:'-'}
@@ -148,6 +148,49 @@ async function previewWorkflow(id){
     const p=await api('/api/workflows/'+encodeURIComponent(id)+'/preview',{method:'POST',body:JSON.stringify({variables})});
     showPreview(p);
   });
+}
+
+async function dryRunWorkflow(id){
+  const w=state.workflows.find(x=>x.id===id);
+  openWorkflowVariableDialog('Dry run workflow', workflowVariableItemsForWorkflow(w), 'Dry run', async variables=>{
+    const result=await api('/api/workflows/'+encodeURIComponent(id)+'/dry-run',{method:'POST',body:JSON.stringify({variables})});
+    showWorkflowDryRun(result);
+  });
+}
+
+function showWorkflowDryRun(result){
+  const variableRows=(result.variables||[]).map(v=>'<tr>'+workflowCell('Variable','<span class="truncate-cell" title="'+attr(v.name)+'">'+esc(v.label||v.name)+'</span>','primary-cell')+workflowCell('Required',v.required?'yes':'no')+workflowCell('Provided',v.provided?'yes':'no')+workflowCell('Default','<span class="truncate-cell" title="'+attr(v.defaultValue||'')+'">'+esc(v.defaultValue||'-')+'</span>')+'</tr>').join('');
+  const prompts=(result.prompts||[]).map((step,i)=>'<details class="workflow-run-timeline" '+(i===0?'open':'')+'><summary>'+esc((i+1)+'. '+step.name)+'</summary><pre class="artifact-diff-pre">'+esc(step.prompt||'')+'</pre></details>').join('');
+  const warnings=(result.warnings||[]).concat((result.missingVariables||[]).map(v=>'Missing variable: '+v));
+  const warningHtml=warnings.length?'<div class="peer-warning full-span"><strong>Dry-run warnings</strong>'+warnings.map(w=>'<small>'+esc(w)+'</small>').join('')+'</div>':'<div class="item"><strong>Dry run passed</strong><small>All required variables are available.</small></div>';
+  adminDialog('Workflow dry run',warningHtml+'<h2 class="task-section-title">Variables</h2>'+(variableRows?'<div class="data-table-wrap"><table class="data-table workflow-variable-table"><thead><tr><th>Variable</th><th>Required</th><th>Provided</th><th>Default</th></tr></thead><tbody>'+variableRows+'</tbody></table></div>':uiEmpty('No variables.'))+'<h2 class="task-section-title">Rendered prompts</h2>'+prompts,async()=>{}, {submitText:'Close',reloadAccess:false});
+}
+
+async function showWorkflowTriggers(id){
+  if(!can('workflows.read')){toast('Permission required: workflows.read');return}
+  const workflow=state.workflows.find(w=>w.id===id);
+  const data=await api('/api/workflows/'+encodeURIComponent(id)+'/triggers');
+  adminDialog('Workflow triggers',workflowTriggersHtml(workflow,data.triggers||[]),async()=>{}, {submitText:'Close',reloadAccess:false});
+  bindWorkflowTriggerDialog(id);
+}
+
+function workflowTriggersHtml(workflow,triggers){
+  const rows=triggers.map(t=>'<tr>'+workflowCell('Name','<span class="truncate-cell" title="'+attr(t.name||'')+'">'+esc(t.name||'-')+'</span>','primary-cell')+workflowCell('Kind','<span class="adapter-status planned">'+esc(t.kind||'api')+'</span>')+workflowCell('Status','<span class="adapter-status '+(t.enabled?'enabled':'disabled')+'">'+esc(t.enabled?'enabled':'disabled')+'</span>')+workflowCell('Last used','<span title="'+attr(fmtDate(t.lastTriggeredAt))+'">'+esc(t.lastTriggeredAt?fmtSessionAge(t.lastTriggeredAt):'-')+'</span>')+workflowCell('Actions','<div class="data-table-actions"><button class="danger" data-workflow-trigger-delete="'+attr(t.id)+'"'+disabledAttr('workflows.write')+'>Delete</button></div>','actions-cell')+'</tr>').join('');
+  return '<div class="full-span"><p>Create an API or webhook trigger for '+esc(workflow?.name||'this workflow')+'. The token is shown once after creation.</p><div class="form-grid"><label>Name<input id="workflowTriggerName" value="'+attr((workflow?.name||'Workflow')+' trigger')+'"></label><label>Kind<select id="workflowTriggerKind"><option value="api">API</option><option value="webhook">Webhook</option></select></label><label class="checkbox"><input id="workflowTriggerEnabled" type="checkbox" checked> Enabled</label></div><div class="row"><button type="button" id="createWorkflowTriggerInlineBtn"'+disabledAttr('workflows.write')+'>Create trigger</button></div><div id="workflowTriggerSecret"></div><h2 class="task-section-title">Existing triggers</h2>'+(rows?'<div class="data-table-wrap"><table class="data-table workflow-trigger-table"><thead><tr><th>Name</th><th>Kind</th><th>Status</th><th>Last used</th><th class="actions-heading">Actions</th></tr></thead><tbody>'+rows+'</tbody></table></div>':uiEmpty('No triggers yet.'))+'</div>';
+}
+
+function bindWorkflowTriggerDialog(id){
+  const create=document.getElementById('createWorkflowTriggerInlineBtn');
+  if(create)create.onclick=()=>safe(async()=>{
+    if(!can('workflows.write')){toast('Permission required: workflows.write');return}
+    const result=await api('/api/workflows/'+encodeURIComponent(id)+'/triggers',{method:'POST',body:JSON.stringify({name:val('workflowTriggerName'),kind:val('workflowTriggerKind'),enabled:document.getElementById('workflowTriggerEnabled').checked})});
+    const url=location.origin+'/api/workflow-triggers/'+encodeURIComponent(result.token)+'/run';
+    document.getElementById('workflowTriggerSecret').innerHTML='<div class="item"><strong>Token shown once</strong><button type="button" class="copy-id" data-copy-token="'+attr(result.token)+'">'+esc(shortMiddle(result.token,10,28))+'</button><small>POST '+esc(url)+'</small><small>Body: {"variables":{"name":"value"}}</small></div>';
+    document.querySelector('[data-copy-token]')?.addEventListener('click',e=>copyText(e.currentTarget.dataset.copyToken,'Trigger token copied'));
+    toast('Workflow trigger created');
+    await loadWorkflows();
+  });
+  document.querySelectorAll('[data-workflow-trigger-delete]').forEach(b=>b.onclick=()=>safe(async()=>{if(!can('workflows.write')){toast('Permission required: workflows.write');return}if(!confirm('Delete this trigger?'))return;await api('/api/workflows/'+encodeURIComponent(id)+'/triggers/'+encodeURIComponent(b.dataset.workflowTriggerDelete),{method:'DELETE'});toast('Trigger deleted');document.getElementById('adminDialog').close();await showWorkflowTriggers(id)}));
 }
 
 async function runTemplateVersion(id,version){
@@ -294,7 +337,9 @@ document.addEventListener('click',e=>{
   const templateEdit=e.target.closest?.('[data-template-edit]');if(templateEdit){e.preventDefault();openTemplateDialog(state.workflowTemplates.find(t=>t.id===templateEdit.dataset.templateEdit));return}
   const templateDelete=e.target.closest?.('[data-template-delete]');if(templateDelete){e.preventDefault();safe(async()=>{if(confirm('Delete template?')){await api('/api/templates/'+encodeURIComponent(templateDelete.dataset.templateDelete),{method:'DELETE'});await loadWorkflows()}});return}
   const workflowRun=e.target.closest?.('[data-workflow-run]');if(workflowRun){e.preventDefault();safe(()=>runWorkflow(workflowRun.dataset.workflowRun));return}
+  const workflowDryRun=e.target.closest?.('[data-workflow-dry-run]');if(workflowDryRun){e.preventDefault();safe(()=>dryRunWorkflow(workflowDryRun.dataset.workflowDryRun));return}
   const workflowPreview=e.target.closest?.('[data-workflow-preview]');if(workflowPreview){e.preventDefault();safe(()=>previewWorkflow(workflowPreview.dataset.workflowPreview));return}
+  const workflowTriggers=e.target.closest?.('[data-workflow-triggers]');if(workflowTriggers){e.preventDefault();safe(()=>showWorkflowTriggers(workflowTriggers.dataset.workflowTriggers));return}
   const workflowHistory=e.target.closest?.('[data-workflow-history]');if(workflowHistory){e.preventDefault();safe(()=>showWorkflowHistory('workflow',workflowHistory.dataset.workflowHistory));return}
   const workflowExport=e.target.closest?.('[data-workflow-export]');if(workflowExport){e.preventDefault();safe(()=>exportWorkflowItem('workflow',workflowExport.dataset.workflowExport));return}
   const workflowEdit=e.target.closest?.('[data-workflow-edit]');if(workflowEdit){e.preventDefault();openWorkflowDialog(state.workflows.find(w=>w.id===workflowEdit.dataset.workflowEdit));return}

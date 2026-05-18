@@ -134,6 +134,7 @@ export type WebApiDynamicPath =
   | `/api/sessions/worktrees/${string}/commit`
   | `/api/sessions/worktrees/${string}/diff`
   | `/api/sessions/worktrees/${string}/update`
+  | `/api/sessions/worktrees/integrations/${string}/finalize`
   | `/api/slack-channels/${string}`
   | `/api/telegram-chats/${string}`
   | `/api/templates/${string}`
@@ -160,11 +161,15 @@ export type WebApiDynamicPath =
   | `/api/workflow-runs/${string}/cancel`
   | `/api/workflow-runs/${string}/report`
   | `/api/workflow-runs/${string}/rerun-failed`
+  | `/api/workflow-triggers/${string}/run`
   | `/api/workflows/${string}`
   | `/api/workflows/${string}/diff`
+  | `/api/workflows/${string}/dry-run`
   | `/api/workflows/${string}/export`
   | `/api/workflows/${string}/preview`
   | `/api/workflows/${string}/run`
+  | `/api/workflows/${string}/triggers`
+  | `/api/workflows/${string}/triggers/${string}`
   | `/api/workflows/${string}/versions`
   | `/api/workflows/${string}/versions/${string}/export`
   | `/api/workflows/${string}/versions/${string}/preview`

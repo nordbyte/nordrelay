@@ -44,6 +44,32 @@ describe("SessionWorktreeService", () => {
     expect(existsSync(path.join(integration.worktreePath, "feature-b.txt"))).toBe(true);
   });
 
+  it("finalizes a merged integration back into the source repository and cleans up worktrees", () => {
+    const root = tempRoot();
+    const repo = initRepo(root);
+    const service = worktreeService(root);
+
+    const first = service.create({ sourceWorkspace: repo, agentId: "codex", contextKey: "web:test" });
+    writeFileSync(path.join(first.worktreePath, "feature-a.txt"), "a\n");
+    const committed = service.commit(first.id, "session a");
+    const integration = service.integrate([committed.record.id]);
+
+    const result = service.finalizeIntegration(integration.id, {
+      removeIntegrationWorktree: true,
+      removeSourceWorktrees: true,
+      deleteIntegrationBranch: true,
+    });
+
+    expect(result.run.status).toBe("applied");
+    expect(result.run.appliedCommitSha).toMatch(/[a-f0-9]{40}/);
+    expect(result.removedIntegrationWorktree).toBe(true);
+    expect(result.deletedIntegrationBranch).toBe(true);
+    expect(result.removedSourceWorktrees.map((record) => record.id)).toEqual([committed.record.id]);
+    expect(existsSync(path.join(repo, "feature-a.txt"))).toBe(true);
+    expect(existsSync(integration.worktreePath)).toBe(false);
+    expect(existsSync(first.worktreePath)).toBe(false);
+  });
+
   it("previews file conflicts and updates a clean worktree from the base branch", () => {
     const root = tempRoot();
     const repo = initRepo(root);

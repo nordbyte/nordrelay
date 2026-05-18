@@ -348,6 +348,19 @@ export interface WorkflowPreviewDto {
   }>;
 }
 
+export interface WorkflowDryRunDto extends WorkflowPreviewDto {
+  valid: boolean;
+  variables: Array<{
+    name: string;
+    label?: string;
+    required: boolean;
+    provided: boolean;
+    defaultValue?: string;
+  }>;
+  missingVariables: string[];
+  warnings: string[];
+}
+
 export interface WorkflowRunResultDto {
   run: WorkflowRun;
 }
