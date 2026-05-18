@@ -1,7 +1,7 @@
 .access-tab,.adapter-tab,.peer-tab,.workflow-tab,.queue-tab,.session-tab,.monitor-tab,.metrics-tab{display:none}
 .access-tab.active,.adapter-tab.active,.peer-tab.active,.workflow-tab.active,.queue-tab.active,.session-tab.active,.monitor-tab.active,.metrics-tab.active{display:block}
 .section-header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:-12px -16px 0;padding:0 16px}
-.access-section-header,.settings-section-header,.adapter-section-header,.peer-section-header,.workflow-section-header,.queue-section-header,.monitor-section-header,.metrics-section-header{margin-bottom:12px}
+.access-section-header,.settings-section-header,.adapter-section-header,.peer-section-header,.workflow-section-header,.queue-section-header,.sessions-section-header,.monitor-section-header,.metrics-section-header{margin-bottom:12px}
 .section-tabs{display:flex;align-items:flex-end;gap:2px;width:100%;min-width:0;min-height:43px;overflow-x:auto;overflow-y:hidden;border-bottom:1px solid var(--border)}
 .section-tabs button{appearance:none;-webkit-appearance:none;display:inline-flex;align-items:center;justify-content:center;min-height:43px;height:43px;margin:0;padding:0 14px;border:0;border-radius:0;background:transparent;color:var(--muted);font-weight:650;line-height:1;white-space:nowrap;cursor:pointer;box-shadow:inset 0 -2px 0 transparent}
 .section-tabs button:hover{background:color-mix(in srgb,var(--accent) 8%,transparent);color:var(--text)}
@@ -119,14 +119,25 @@
 .data-table-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:nowrap}
 .data-table-actions button{min-height:28px;height:28px;padding:0 8px;font-size:13px;line-height:1}
 .actions-heading{text-align:right!important}
-.sessions-table th:nth-child(1),.sessions-table td:nth-child(1){width:8%;white-space:nowrap}
-.sessions-table th:nth-child(2),.sessions-table td:nth-child(2){width:21%}
-.sessions-table th:nth-child(3),.sessions-table td:nth-child(3){width:18%}
-.sessions-table th:nth-child(4),.sessions-table td:nth-child(4){width:21%}
-.sessions-table th:nth-child(5),.sessions-table td:nth-child(5){width:7%}
-.sessions-table th:nth-child(6),.sessions-table td:nth-child(6){width:8%}
-.sessions-table th:nth-child(7),.sessions-table td:nth-child(7){width:7%;white-space:nowrap}
-.sessions-table th:nth-child(8),.sessions-table td:nth-child(8){width:120px}
+.sessions-table:not(.worktrees-table) th:nth-child(1),.sessions-table:not(.worktrees-table) td:nth-child(1){width:9%;white-space:nowrap}
+.sessions-table:not(.worktrees-table) th:nth-child(2),.sessions-table:not(.worktrees-table) td:nth-child(2){width:22%}
+.sessions-table:not(.worktrees-table) th:nth-child(3),.sessions-table:not(.worktrees-table) td:nth-child(3){width:112px}
+.sessions-table:not(.worktrees-table) th:nth-child(4),.sessions-table:not(.worktrees-table) td:nth-child(4){width:20%}
+.sessions-table:not(.worktrees-table) th:nth-child(5),.sessions-table:not(.worktrees-table) td:nth-child(5){width:8%}
+.sessions-table:not(.worktrees-table) th:nth-child(6),.sessions-table:not(.worktrees-table) td:nth-child(6){width:8%}
+.sessions-table:not(.worktrees-table) th:nth-child(7),.sessions-table:not(.worktrees-table) td:nth-child(7){width:9%}
+.sessions-table:not(.worktrees-table) th:nth-child(8),.sessions-table:not(.worktrees-table) td:nth-child(8){width:82px;white-space:nowrap}
+.sessions-table:not(.worktrees-table) th:nth-child(9),.sessions-table:not(.worktrees-table) td:nth-child(9){width:132px}
+.sessions-table .thread-cell .copy-id{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sessions-table:not(.worktrees-table) .actions-cell .data-table-actions{flex-wrap:wrap;row-gap:4px}
+.worktrees-table th:nth-child(1),.worktrees-table td:nth-child(1){width:44px}
+.worktrees-table th:nth-child(2),.worktrees-table td:nth-child(2){width:10%;white-space:nowrap}
+.worktrees-table th:nth-child(3),.worktrees-table td:nth-child(3){width:112px}
+.worktrees-table th:nth-child(4),.worktrees-table td:nth-child(4){width:15%}
+.worktrees-table th:nth-child(5),.worktrees-table td:nth-child(5){width:24%}
+.worktrees-table th:nth-child(6),.worktrees-table td:nth-child(6){width:92px}
+.worktrees-table th:nth-child(7),.worktrees-table td:nth-child(7){width:92px}
+.worktrees-table th:nth-child(8),.worktrees-table td:nth-child(8){width:240px}
 .access-users-table th:nth-child(1),.access-users-table td:nth-child(1){width:12%}
 .access-users-table th:nth-child(2),.access-users-table td:nth-child(2){width:16%}
 .access-users-table th:nth-child(3),.access-users-table td:nth-child(3){width:8%;white-space:nowrap}

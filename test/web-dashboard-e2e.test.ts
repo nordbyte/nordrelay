@@ -228,7 +228,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".data-table tbody tr:nth-child(even){background:color-mix(in srgb,var(--surface) 55%,var(--surface-soft))}");
     expect(css).toContain(".data-table-actions button{min-height:28px;height:28px;padding:0 8px;font-size:13px");
     expect(css).toContain(".sessions-table");
-    expect(css).toContain(".sessions-table th:nth-child(8)");
+    expect(css).toContain(".sessions-table:not(.worktrees-table) th:nth-child(9)");
     expect(css).toContain(".access-users-table th:nth-child(8)");
     expect(css).toContain(".access-audit-table th:nth-child(7)");
     expect(css).toContain("@media(max-width:760px){.data-table-wrap");

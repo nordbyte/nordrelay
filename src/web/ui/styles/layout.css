@@ -165,6 +165,8 @@ input[type=file]{display:none}
 .sessions-toolbar .search-row{flex:1 1 320px}
 .sessions-toolbar .attach-row{flex:1 1 360px;justify-content:flex-end;margin-left:auto}
 .sessions-toolbar input{min-width:220px}
+#worktreeWarnings:not(:empty)+#worktreesList{margin-top:12px}
+#worktreeWarnings:not(:empty)+#worktreesList .data-table-wrap{margin-top:0}
 .copy-id{height:auto;min-height:0;padding:0;border:0;background:transparent;color:var(--link);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.25;white-space:normal;justify-content:flex-start;text-align:left}
 .copy-id:hover{background:transparent;text-decoration:underline}
 .data-table .copy-id{font-size:13px}
@@ -207,8 +209,8 @@ input[type=file]{display:none}
 .setting small{display:block;color:var(--muted);margin-top:6px}
 .setting input,.setting textarea,.setting select{width:100%}
 .setting-error{color:var(--danger);font-size:12px;margin-top:6px}
-.checkbox{display:inline-flex!important;grid-template-columns:auto 1fr!important;align-items:center;gap:8px}
-.checkbox input{height:auto;width:auto}
+.checkbox{display:inline-flex!important;grid-template-columns:auto 1fr!important;align-items:center;gap:8px;line-height:1.2}
+.checkbox input[type=checkbox],.metrics-auto-refresh input[type=checkbox]{appearance:auto;-webkit-appearance:auto;width:16px;min-width:16px;height:16px;min-height:16px;margin:0;padding:0;flex:0 0 auto}
 .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
 .tabs button{background:var(--surface);color:var(--text);border-color:var(--border);min-height:34px;height:34px;line-height:1}
 .tabs button.active{background:var(--accent);color:white;border-color:var(--accent)}
