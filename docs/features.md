@@ -43,8 +43,14 @@
 - Set `NORDRELAY_SESSION_WORKSPACE_MODE=worktree` to create a dedicated Git worktree and branch for each new NordRelay-started session across WebUI, Telegram, Discord, and Slack.
 - The original repository remains unchanged while the session works in its own worktree path under `NORDRELAY_SESSION_WORKTREE_ROOT`.
 - Existing CLI-started sessions are treated as attached/manual sessions; NordRelay will not move a running native CLI process into a different worktree.
-- Use the WebUI Sessions → Worktrees tab to fork the current session, optionally copy pending tracked/untracked changes, commit a session worktree, remove it, or merge selected committed worktrees into a generated integration worktree.
-- Integration requires selected worktrees from the same repository and base commit. Merge conflicts are left in the integration worktree for manual resolution.
+- Use the WebUI Sessions → Worktrees tab to fork the current session, optionally copy pending tracked/untracked changes, preview diffs, commit a session worktree, update a clean worktree from its base branch, remove it, clean stale records, or merge selected committed worktrees into a generated integration worktree.
+- Integration preview shows changed files and flags files touched by multiple selected worktrees before the merge runs. Integration still requires selected worktrees from the same repository and base commit. Merge conflicts are left in the integration worktree for manual resolution.
+
+## Peer-Routed Workflows
+
+- Workflow steps can target `local` or a paired peer. Remote steps prepare the target session on that peer, send the prompt with a correlation ID, and poll the peer trace until the prompt completes or fails.
+- Peer workflow execution uses the same peer permissions as WebUI proxy requests. A peer used as a workflow target needs `sessions.read`, `sessions.write`, and `prompt.send`, plus the required agent/workspace access.
+- A peer-proxied workflow cannot target another peer, which prevents unapproved relay chaining through a trusted node.
 
 ## Adapter Architecture
 

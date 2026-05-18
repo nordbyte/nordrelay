@@ -18,10 +18,15 @@ async function loadWorkflows(){
   setLoading('templateList','Loading templates...');
   setLoading('workflowList','Loading workflows...');
   setLoading('workflowRunList','Loading runs...');
-  const [templates,workflows]=await Promise.all([api('/api/templates'),api('/api/workflows')]);
+  const [templates,workflows,peers]=await Promise.all([
+    api('/api/templates'),
+    api('/api/workflows'),
+    can('peers.read')?api('/api/peers',{local:true}).catch(()=>state.peers||null):Promise.resolve(state.peers||null)
+  ]);
   state.workflowTemplates=templates.templates||[];
   state.workflows=workflows.workflows||[];
   state.workflowRuns=workflows.runs||[];
+  if(peers)state.peers=peers;
   renderWorkflowSections();
 }
 
@@ -160,6 +165,7 @@ function workflowBuilderStep(step={},index=0){
     retryDelayMs: step.retryPolicy?.delayMs||0,
     agentId: step.agentId||'',
     workspace: step.workspace||'',
+    workspaceMode: step.workspaceMode||'',
     model: step.model||'',
     reasoningEffort: step.reasoningEffort||'',
     launchProfileId: step.launchProfileId||'',
@@ -177,6 +183,8 @@ function workflowOptions(selected,currentId){return '<option value="">Select wor
 function workflowAgentOptions(selected){return '<option value="">Active agent</option>'+(state.enabledAgents||[]).map(id=>'<option value="'+attr(id)+'" '+(id===selected?'selected':'')+'>'+esc(id)+'</option>').join('')}
 function workflowReasoningOptions(selected){return '<option value="">Default</option>'+((state.controls?.reasoningOptions||[]).map(v=>'<option value="'+attr(v)+'" '+(v===selected?'selected':'')+'>'+esc(v)+'</option>').join(''))}
 function workflowLaunchOptions(selected){return '<option value="">Default</option>'+((state.controls?.launchProfiles||[]).map(p=>'<option value="'+attr(p.id)+'" '+(p.id===selected?'selected':'')+'>'+esc(p.label+' - '+p.behavior+(p.unsafe?' - unsafe':''))+'</option>').join(''))}
+function workflowWorkspaceModeOptions(selected){return '<option value="">Default</option><option value="shared" '+(selected==='shared'?'selected':'')+'>Shared workspace</option><option value="worktree" '+(selected==='worktree'?'selected':'')+'>Isolated worktree</option><option value="attached" '+(selected==='attached'?'selected':'')+'>Attached/manual</option>'}
+function workflowTargetOptions(selected){const peers=(state.peers?.peers||[]).filter(p=>p.enabled);const known=new Set(peers.map(p=>'peer:'+p.id));const fallback=selected&&selected!=='local'&&!known.has(selected)?'<option value="'+attr(selected)+'" selected>'+esc(selected+' (unavailable)')+'</option>':'';return '<option value="local" '+(!selected||selected==='local'?'selected':'')+'>Local node</option>'+peers.map(p=>'<option value="peer:'+attr(p.id)+'" '+(selected==='peer:'+p.id?'selected':'')+'>'+esc('Peer: '+(p.name||p.id))+'</option>').join('')+fallback}
 function workflowModelDatalist(){return '<datalist id="workflowModelOptions">'+((state.controls?.models||[]).map(m=>'<option value="'+attr(m.slug)+'">'+esc(modelLabel(m))+'</option>').join(''))+'</datalist>'}
 function workflowWorkspaceDatalist(){return '<datalist id="workflowWorkspaceOptions">'+((state.controls?.workspaces||state.snapshot?.workspaces||[]).map(w=>'<option value="'+attr(w)+'"></option>').join(''))+'</datalist>'}
 
@@ -203,8 +211,8 @@ function workflowBuilderStepHtml(step,index){
     '<label>Session<select data-builder-field="sessionMode"><option value="current" '+(step.sessionMode==='current'?'selected':'')+'>Current session</option><option value="new" '+(step.sessionMode==='new'?'selected':'')+'>New session</option><option value="attach" '+(step.sessionMode==='attach'?'selected':'')+'>Attach to thread</option></select></label>'+
     '<label>Agent<select data-builder-field="agentId">'+workflowAgentOptions(step.agentId)+'</select></label>'+
     (showAttach?'<label class="full-span">Thread ID<input data-builder-field="threadId" value="'+attr(step.threadId)+'" placeholder="Thread ID to attach"></label>':'')+
-    (showNew?'<label>Workspace<input data-builder-field="workspace" value="'+attr(step.workspace)+'" list="workflowWorkspaceOptions" placeholder="Default workspace"></label><label>Model<input data-builder-field="model" value="'+attr(step.model)+'" list="workflowModelOptions" placeholder="Default model"></label><label>Reasoning<select data-builder-field="reasoningEffort">'+workflowReasoningOptions(step.reasoningEffort)+'</select></label><label>Launch profile<select data-builder-field="launchProfileId">'+workflowLaunchOptions(step.launchProfileId)+'</select></label>':'')+
-    '<label>Target<select data-builder-field="target"><option value="local" '+(step.target==='local'?'selected':'')+'>Local node</option></select></label>'+
+    (showNew?'<label>Workspace<input data-builder-field="workspace" value="'+attr(step.workspace)+'" list="workflowWorkspaceOptions" placeholder="Default workspace"></label><label>Workspace mode<select data-builder-field="workspaceMode">'+workflowWorkspaceModeOptions(step.workspaceMode)+'</select></label><label>Model<input data-builder-field="model" value="'+attr(step.model)+'" list="workflowModelOptions" placeholder="Default model"></label><label>Reasoning<select data-builder-field="reasoningEffort">'+workflowReasoningOptions(step.reasoningEffort)+'</select></label><label>Launch profile<select data-builder-field="launchProfileId">'+workflowLaunchOptions(step.launchProfileId)+'</select></label>':'')+
+    '<label>Target<select data-builder-field="target">'+workflowTargetOptions(step.target)+'</select></label>'+
     '<label>Condition variable<input data-builder-field="conditionVariable" value="'+attr(step.conditionVariable)+'" placeholder="optional variable"></label>'+
     '<label>Condition<select data-builder-field="conditionOperator"><option value="exists" '+(step.conditionOperator==='exists'?'selected':'')+'>exists</option><option value="equals" '+(step.conditionOperator==='equals'?'selected':'')+'>equals</option><option value="not_equals" '+(step.conditionOperator==='not_equals'?'selected':'')+'>not equals</option><option value="contains" '+(step.conditionOperator==='contains'?'selected':'')+'>contains</option><option value="not_contains" '+(step.conditionOperator==='not_contains'?'selected':'')+'>not contains</option></select></label>'+
     '<label>Condition value<input data-builder-field="conditionValue" value="'+attr(step.conditionValue)+'"></label>'+
@@ -262,6 +270,7 @@ function collectWorkflowBuilderFromDom(){
       retryDelayMs:Number(field('retryDelayMs')?.value||0),
       agentId:field('agentId')?.value||'',
       workspace:field('workspace')?.value||'',
+      workspaceMode:field('workspaceMode')?.value||'',
       model:field('model')?.value||'',
       reasoningEffort:field('reasoningEffort')?.value||'',
       launchProfileId:field('launchProfileId')?.value||'',
@@ -289,6 +298,7 @@ function workflowBuilderStepsPayload(collect=true){
       retryPolicy:(Number(step.retryAttempts)>1||Number(step.retryDelayMs)>0)?{maxAttempts:Number(step.retryAttempts)||1,delayMs:Number(step.retryDelayMs)||0}:undefined,
       agentId:step.agentId||undefined,
       workspace:step.sessionMode==='new'?(step.workspace||undefined):undefined,
+      workspaceMode:step.sessionMode==='new'?(step.workspaceMode||undefined):undefined,
       model:step.sessionMode==='new'?(step.model||undefined):undefined,
       reasoningEffort:step.sessionMode==='new'?(step.reasoningEffort||undefined):undefined,
       launchProfileId:step.sessionMode==='new'?(step.launchProfileId||undefined):undefined,

@@ -2,7 +2,15 @@ import type { AgentSessionInfo } from "../agents/shared/agent.js";
 import { getExternalSnapshotForSession } from "../agents/shared/agent-activity.js";
 import type { WebActivityActor } from "../web/web-state.js";
 import type { RelayRuntimeDelegate } from "./relay-runtime-delegate.js";
-import type { SessionWorktreeRecord, WorktreeDashboardSnapshot, WorktreeIntegrationRun } from "../worktrees/worktree-types.js";
+import type {
+  SessionWorktreeDiffSnapshot,
+  SessionWorktreeRecord,
+  SessionWorktreeUpdateResult,
+  WorktreeCleanupResult,
+  WorktreeDashboardSnapshot,
+  WorktreeIntegrationRun,
+  WorktreeIntegrationPreview,
+} from "../worktrees/worktree-types.js";
 
 export async function relayRuntimeSessionWorktrees(runtime: RelayRuntimeDelegate): Promise<WorktreeDashboardSnapshot> {
   const contexts = runtime.listKnownContextMetadata()
@@ -32,6 +40,56 @@ export async function relayRuntimeCommitSessionWorktree(
     agentId: result.record.agentId,
     actor,
     detail: result.clean ? "No changes; recorded current HEAD." : `Committed ${result.record.commitSha ?? result.record.branchName}.`,
+  });
+  return result;
+}
+
+export async function relayRuntimeSessionWorktreeDiff(
+  runtime: RelayRuntimeDelegate,
+  id: string,
+): Promise<SessionWorktreeDiffSnapshot> {
+  return runtime.worktreeService.diff(id);
+}
+
+export async function relayRuntimePreviewSessionWorktreeIntegration(
+  runtime: RelayRuntimeDelegate,
+  ids: string[],
+): Promise<WorktreeIntegrationPreview> {
+  return runtime.worktreeService.previewIntegration(ids);
+}
+
+export async function relayRuntimeUpdateSessionWorktreeFromBase(
+  runtime: RelayRuntimeDelegate,
+  id: string,
+  actor?: WebActivityActor,
+): Promise<SessionWorktreeUpdateResult> {
+  const result = runtime.worktreeService.updateFromBase(id);
+  runtime.appendActivity({
+    source: "web",
+    status: result.record.status === "conflict" ? "failed" : "info",
+    type: "worktree_updated_from_base",
+    threadId: result.record.threadId ?? null,
+    workspace: result.record.worktreePath,
+    agentId: result.record.agentId,
+    actor,
+    detail: result.rebased ? `Rebased ${result.record.branchName} onto ${result.newBaseSha}.` : "Worktree already used the latest base.",
+  });
+  return result;
+}
+
+export async function relayRuntimeCleanupSessionWorktrees(
+  runtime: RelayRuntimeDelegate,
+  actor?: WebActivityActor,
+): Promise<WorktreeCleanupResult> {
+  const result = runtime.worktreeService.cleanup();
+  runtime.appendActivity({
+    source: "web",
+    status: "info",
+    type: "worktree_cleanup",
+    threadId: null,
+    workspace: runtime.config.workspace,
+    actor,
+    detail: `${result.removedRecords.length} records removed, ${result.prunedRepositories.length} repos pruned.`,
   });
   return result;
 }

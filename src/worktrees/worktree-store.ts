@@ -37,6 +37,18 @@ export class SessionWorktreeStore {
     return this.integrations.get(id);
   }
 
+  delete(id: string): boolean {
+    const removed = this.records.delete(id);
+    if (removed) this.persist();
+    return removed;
+  }
+
+  deleteIntegration(id: string): boolean {
+    const removed = this.integrations.delete(id);
+    if (removed) this.persist();
+    return removed;
+  }
+
   findByThreadId(threadId: string | null | undefined): SessionWorktreeRecord | undefined {
     if (!threadId) {
       return undefined;

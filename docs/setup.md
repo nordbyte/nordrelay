@@ -127,7 +127,7 @@ Peer setup:
 5. Restart NordRelay on the accepting host and create an invitation:
 
 ```bash
-nordrelay peer invite --name workstation --scopes inspect,sessions.read,sessions.write,prompt.send,prompt.abort,queue.read,queue.write,files.read,files.write,diagnostics.read,logs.read
+nordrelay peer invite --name workstation --scopes inspect,sessions.read,sessions.write,prompt.send,prompt.abort,queue.read,queue.write,files.read,files.write,diagnostics.read,logs.read,workflows.read,workflows.run
 ```
 
 6. On the controlling host, run the printed command:
@@ -152,7 +152,7 @@ nordrelay peer list
 nordrelay peer test <peer-id>
 ```
 
-Use `--workspace-aliases app=/srv/app,demo=/home/me/demo` on invites when a controller should be able to start remote sessions with short workspace names. Use the WebUI Peers page for the same invite, pair, enable/disable, test, alias, global-session, and revoke workflow. Use `/peers` from Telegram, Discord, or Slack to inspect paired nodes and `/target <peer-id>` or `/target local` to choose where subsequent prompts run.
+Use `--workspace-aliases app=/srv/app,demo=/home/me/demo` on invites when a controller should be able to start remote sessions with short workspace names. Use the WebUI Peers page for the same invite, pair, enable/disable, test, alias, global-session, and revoke workflow. Use `/peers` from Telegram, Discord, or Slack to inspect paired nodes and `/target <peer-id>` or `/target local` to choose where subsequent prompts run. Workflow steps can also target paired peers from the WebUI workflow builder when the peer has `sessions.read`, `sessions.write`, and `prompt.send`.
 
 Codex authentication:
 
@@ -301,7 +301,7 @@ The dashboard is a second NordRelay client next to Telegram. It can:
 - Start a new Codex, Pi, Hermes, OpenClaw, or Claude Code session.
 - Start a new session from a modal with agent, workspace, workspace mode, model, reasoning/thinking, fast mode, and launch-profile choices.
 - Switch or attach existing sessions, and copy thread IDs from the session list.
-- Manage isolated session worktrees from the Sessions page, including fork current, commit, remove, and integrate selected worktree branches.
+- Manage isolated session worktrees from the Sessions page, including fork current, diff preview, update from base, commit, remove, cleanup, and preview/integrate selected worktree branches.
 - Send prompts and receive streamed text/tool/plan updates through Server-Sent Events.
 - Mirror native CLI-started turns into the WebUI chat with `off`, `status`, `final`, and `full` modes from the toolbar or `/mirror [mode]`.
 - Upload images, documents, and audio files from the chat composer. Images are passed as image inputs, documents are staged for the agent, and audio is transcribed through the configured voice backend.

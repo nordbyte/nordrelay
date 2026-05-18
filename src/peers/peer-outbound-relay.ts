@@ -25,11 +25,17 @@ export function startPeerOutboundRelay(options: {
   const store = new PeerStore(home);
   const service = new PeerRuntimeService(config, runtime);
   let closed = false;
-  const timers = new Set<NodeJS.Timeout>();
+  const timers = new Map<string, NodeJS.Timeout>();
+  const peerState = new Map<string, { failures: number; idle: number }>();
   const allowedPeerIds = new Set(config.peerOutboundRelayPeerIds);
 
-  const loop = async (peer: PeerRecord): Promise<void> => {
+  const loop = async (peerId: string): Promise<void> => {
     if (closed) return;
+    const peer = store.get(peerId);
+    if (!peer || !isRelayPeerAllowed(peer, allowedPeerIds)) {
+      return;
+    }
+    const state = relayPeerState(peerState, peer.id);
     try {
       const polled = await signedPeerPost<PeerRelayPollResponse>(peer, "/peer/relay/poll", { timeoutMs: config.peerOutboundRelayPollMs });
       const request = polled.request;
@@ -39,39 +45,79 @@ export function startPeerOutboundRelay(options: {
           error: peerError(error),
         }));
         await signedPeerPost(peer, "/peer/relay/result", { id: request.id, result });
+        state.idle = 0;
+        state.failures = 0;
+      } else {
+        state.idle = Math.min(state.idle + 1, 8);
+        state.failures = 0;
       }
       store.markSeen(peer.id, { remoteStatus: "relay-polling" });
     } catch (error) {
+      state.failures = Math.min(state.failures + 1, 8);
+      state.idle = 0;
       store.markError(peer.id, `Outbound relay poll failed: ${peerError(error)}`);
     } finally {
-      schedule(peer);
+      schedule(peer.id, nextDelayMs(config.peerOutboundRelayPollMs, state));
     }
   };
 
-  const schedule = (peer: PeerRecord): void => {
+  const schedule = (peerId: string, delayMs = config.peerOutboundRelayPollMs): void => {
     if (closed) return;
+    if (timers.has(peerId)) return;
     const timer = setTimeout(() => {
-      timers.delete(timer);
-      void loop(peer);
-    }, Math.max(250, config.peerOutboundRelayPollMs));
+      timers.delete(peerId);
+      void loop(peerId);
+    }, Math.max(250, delayMs));
     timer.unref?.();
-    timers.add(timer);
+    timers.set(peerId, timer);
   };
 
-  for (const peer of store.list()) {
-    if (!peer.enabled || !peer.url) continue;
-    if (allowedPeerIds.size > 0 && !allowedPeerIds.has(peer.id) && !allowedPeerIds.has(peer.nodeId)) continue;
-    schedule(peer);
-  }
+  const scheduleKnownPeers = () => {
+    for (const peer of store.list()) {
+      if (isRelayPeerAllowed(peer, allowedPeerIds)) schedule(peer.id, 250);
+    }
+  };
+
+  scheduleKnownPeers();
+  const refreshTimer = setInterval(scheduleKnownPeers, Math.max(30_000, config.peerOutboundRelayPollMs * 5));
+  refreshTimer.unref?.();
 
   console.log(`Peer outbound relay: ${allowedPeerIds.size > 0 ? [...allowedPeerIds].join(", ") : "all outbound peers"}`);
   return {
     close: () => {
       closed = true;
-      for (const timer of timers) clearTimeout(timer);
+      clearInterval(refreshTimer);
+      for (const timer of timers.values()) clearTimeout(timer);
       timers.clear();
     },
   };
+}
+
+function isRelayPeerAllowed(peer: PeerRecord, allowedPeerIds: Set<string>): boolean {
+  if (!peer.enabled || !peer.url) return false;
+  return allowedPeerIds.size === 0 || allowedPeerIds.has(peer.id) || allowedPeerIds.has(peer.nodeId);
+}
+
+function relayPeerState(states: Map<string, { failures: number; idle: number }>, peerId: string): { failures: number; idle: number } {
+  const state = states.get(peerId) ?? { failures: 0, idle: 0 };
+  states.set(peerId, state);
+  return state;
+}
+
+function nextDelayMs(baseMs: number, state: { failures: number; idle: number }): number {
+  const base = Math.max(250, baseMs);
+  if (state.failures > 0) {
+    return withJitter(Math.min(base * 2 ** state.failures, 5 * 60_000));
+  }
+  if (state.idle > 0) {
+    return withJitter(Math.min(base * (state.idle + 1), 60_000));
+  }
+  return 250;
+}
+
+function withJitter(ms: number): number {
+  const jitter = Math.floor(ms * 0.2 * Math.random());
+  return ms + jitter;
 }
 
 async function executeRelayRequest(service: PeerRuntimeService, peer: PeerRecord, request: PeerRpcRequest): Promise<PeerRpcResult> {

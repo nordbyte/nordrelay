@@ -12,6 +12,22 @@ export type SessionWorktreeStatus =
   | "removed"
   | "failed";
 
+export type WorktreeChangedFileStatus =
+  | "added"
+  | "modified"
+  | "deleted"
+  | "renamed"
+  | "copied"
+  | "untracked"
+  | "conflict"
+  | "unknown";
+
+export interface WorktreeChangedFile {
+  path: string;
+  status: WorktreeChangedFileStatus;
+  sourceWorktreeIds: string[];
+}
+
 export interface SessionWorktreeRecord {
   id: string;
   mode: "worktree";
@@ -60,6 +76,43 @@ export interface WorktreeIntegrationRun {
   updatedAt: string;
   finishedAt?: string;
   lastError?: string;
+}
+
+export interface SessionWorktreeDiffSnapshot {
+  record: SessionWorktreeRecord;
+  files: WorktreeChangedFile[];
+  diff: string;
+  truncated: boolean;
+  byteLength: number;
+  generatedAt: string;
+}
+
+export interface WorktreeIntegrationPreview {
+  ids: string[];
+  canIntegrate: boolean;
+  repoRoot?: string;
+  repoName?: string;
+  baseSha?: string;
+  files: WorktreeChangedFile[];
+  conflictCandidates: WorktreeChangedFile[];
+  warnings: string[];
+  generatedAt: string;
+}
+
+export interface SessionWorktreeUpdateResult {
+  record: SessionWorktreeRecord;
+  previousBaseSha: string;
+  newBaseSha: string;
+  rebased: boolean;
+  status: string[];
+}
+
+export interface WorktreeCleanupResult {
+  removedRecords: string[];
+  removedIntegrations: string[];
+  prunedRepositories: string[];
+  warnings: string[];
+  cleanedAt: string;
 }
 
 export interface WorktreeConflictWarning {

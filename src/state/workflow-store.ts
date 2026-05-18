@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { AgentId } from "../agents/shared/agent.js";
+import type { SessionWorkspaceMode } from "../worktrees/worktree-types.js";
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "./state-backend.js";
 
 export type WorkflowScope = "private" | "shared";
@@ -66,6 +67,7 @@ export interface WorkflowStep {
   retryPolicy?: WorkflowRetryPolicy;
   agentId?: AgentId;
   workspace?: string;
+  workspaceMode?: SessionWorkspaceMode;
   model?: string;
   reasoningEffort?: string;
   launchProfileId?: string;
@@ -312,6 +314,7 @@ function normalizeStep(input: Partial<WorkflowStep>): WorkflowStep {
     retryPolicy: normalizeRetryPolicy(input.retryPolicy),
     agentId: input.agentId,
     workspace: cleanOptional(input.workspace),
+    workspaceMode: normalizeWorkspaceMode(input.workspaceMode),
     model: cleanOptional(input.model),
     reasoningEffort: cleanOptional(input.reasoningEffort),
     launchProfileId: cleanOptional(input.launchProfileId),
@@ -375,6 +378,10 @@ function normalizeTags(tags: unknown): string[] {
 function normalizeTarget(target: unknown): WorkflowTarget {
   const value = String(target ?? "local").trim();
   return value.startsWith("peer:") ? value as WorkflowTarget : "local";
+}
+
+function normalizeWorkspaceMode(value: unknown): SessionWorkspaceMode | undefined {
+  return value === "shared" || value === "worktree" || value === "attached" ? value : undefined;
 }
 
 function normalizeRunStatus(status: unknown): WorkflowRunStatus {

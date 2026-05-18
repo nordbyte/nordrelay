@@ -168,6 +168,7 @@ function parseWorkflowStep(value: unknown): WorkflowStep {
     retryPolicy: parseRetryPolicy(record.retryPolicy),
     agentId: optionalStringField(record, "agentId") as WorkflowStep["agentId"],
     workspace: optionalStringField(record, "workspace"),
+    workspaceMode: parseWorkspaceMode(optionalStringField(record, "workspaceMode")),
     model: optionalStringField(record, "model"),
     reasoningEffort: optionalStringField(record, "reasoningEffort"),
     launchProfileId: optionalStringField(record, "launchProfileId"),
@@ -177,6 +178,10 @@ function parseWorkflowStep(value: unknown): WorkflowStep {
     requiresApproval: Boolean(record.requiresApproval),
     continueOnError: Boolean(record.continueOnError),
   };
+}
+
+function parseWorkspaceMode(value: string | undefined): WorkflowStep["workspaceMode"] {
+  return value === "shared" || value === "worktree" || value === "attached" ? value : undefined;
 }
 
 function parseWorkflowCondition(value: unknown): WorkflowStepCondition | undefined {

@@ -117,6 +117,7 @@ See [Commands](docs/commands.md) for the complete Telegram, Discord, Slack, queu
 
 - Independent sessions per Telegram chat/topic, Discord DM/channel/thread, Slack DM/channel/thread, WebUI, and peer target.
 - Optional isolated Git worktree sessions so multiple agent sessions can work on the same repository without seeing each other's unfinished changes.
+- Worktree diff/integration previews, base-branch updates, cleanup, and peer-routed workflow steps for multi-host automation.
 - Streaming replies, typing/status indicators, tool activity, queue handling, retry, abort/stop, and CLI handback.
 - File, photo, voice/audio, and generated artifact workflows.
 - Prompt templates and multi-step workflows with variable preview, run history, and unified job tracking.

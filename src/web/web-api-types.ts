@@ -37,10 +37,14 @@ import type { QueuePlanStatus } from "../state/queue-plan-store.js";
 import type { SessionLock } from "../access/session-locks.js";
 import type { SettingsSnapshot, SettingsUpdateResult } from "../core/settings-service.js";
 import type {
+  SessionWorktreeDiffSnapshot,
   SessionWorkspaceMode,
   SessionWorktreeRecord,
+  SessionWorktreeUpdateResult,
+  WorktreeCleanupResult,
   WorktreeDashboardSnapshot,
   WorktreeIntegrationRun,
+  WorktreeIntegrationPreview,
 } from "../worktrees/worktree-types.js";
 import type {
   DiscordChannelAccessRecord,
@@ -162,7 +166,10 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/sessions/new" ? { agentId?: AgentId; workspace?: string; workspaceMode?: SessionWorkspaceMode; model?: string; reasoningEffort?: string; launchProfileId?: string; fastMode?: boolean } :
   P extends "/api/sessions/worktrees/fork" ? { includeUncommitted?: boolean } :
   P extends "/api/sessions/worktrees/integrate" ? { ids: string[] } :
+  P extends "/api/sessions/worktrees/integrate/preview" ? { ids: string[] } :
+  P extends "/api/sessions/worktrees/cleanup" ? Record<string, never> :
   P extends `/api/sessions/worktrees/${string}/commit` ? { message?: string } :
+  P extends `/api/sessions/worktrees/${string}/update` ? Record<string, never> :
   P extends `/api/sessions/worktrees/${string}` ? { force?: boolean } :
   P extends "/api/sessions/switch" | "/api/sessions/attach" ? { threadId: string } :
   P extends "/api/session/model" ? { model: string } :
@@ -261,6 +268,10 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/sessions/worktrees" ? WorktreeDashboardSnapshot :
   P extends "/api/sessions/worktrees/fork" ? { session: AgentSessionInfo; record: SessionWorktreeRecord; copiedUntrackedFiles: string[]; skippedUntrackedFiles: string[]; patchApplied: boolean } :
   P extends "/api/sessions/worktrees/integrate" ? { run: WorktreeIntegrationRun } :
+  P extends "/api/sessions/worktrees/integrate/preview" ? WorktreeIntegrationPreview :
+  P extends "/api/sessions/worktrees/cleanup" ? WorktreeCleanupResult :
+  P extends `/api/sessions/worktrees/${string}/diff` ? SessionWorktreeDiffSnapshot :
+  P extends `/api/sessions/worktrees/${string}/update` ? SessionWorktreeUpdateResult :
   P extends `/api/sessions/worktrees/${string}/commit` ? { record: SessionWorktreeRecord; clean: boolean; status: string[] } :
   P extends `/api/sessions/worktrees/${string}` ? { record: SessionWorktreeRecord } :
   P extends "/api/sessions/detail" ? WebSessionDetailResponse :

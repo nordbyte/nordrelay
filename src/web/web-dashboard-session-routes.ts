@@ -162,6 +162,34 @@ export async function handleDashboardSessionRoute(
     return true;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/sessions/worktrees/integrate/preview") {
+    const body = await readJsonBody(req);
+    const ids = Array.isArray(body?.ids) ? body.ids.map(String).filter(Boolean) : [];
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, await runtime.previewSessionWorktreeIntegration(ids));
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/sessions/worktrees/cleanup") {
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, await runtime.cleanupSessionWorktrees(options.activityActor));
+    return true;
+  }
+
+  const worktreeDiffMatch = url.pathname.match(/^\/api\/sessions\/worktrees\/([^/]+)\/diff$/);
+  if (req.method === "GET" && worktreeDiffMatch) {
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, await runtime.sessionWorktreeDiff(decodeURIComponent(worktreeDiffMatch[1]!)));
+    return true;
+  }
+
+  const worktreeUpdateMatch = url.pathname.match(/^\/api\/sessions\/worktrees\/([^/]+)\/update$/);
+  if (req.method === "POST" && worktreeUpdateMatch) {
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, await runtime.updateSessionWorktreeFromBase(decodeURIComponent(worktreeUpdateMatch[1]!), options.activityActor));
+    return true;
+  }
+
   const worktreeCommitMatch = url.pathname.match(/^\/api\/sessions\/worktrees\/([^/]+)\/commit$/);
   if (req.method === "POST" && worktreeCommitMatch) {
     const body = await readJsonBody(req);

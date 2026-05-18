@@ -9,14 +9,20 @@ import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import type { ConnectorConfig } from "../core/config.js";
 import { SessionWorktreeStore } from "./worktree-store.js";
 import type {
+  SessionWorktreeDiffSnapshot,
   SessionWorktreeRecord,
   SessionWorktreeStatusSnapshot,
+  SessionWorktreeUpdateResult,
+  WorktreeChangedFile,
   WorktreeConflictWarning,
+  WorktreeCleanupResult,
   WorktreeDashboardSnapshot,
   WorktreeIntegrationRun,
+  WorktreeIntegrationPreview,
 } from "./worktree-types.js";
 
 const MAX_GIT_BUFFER = 10 * 1024 * 1024;
+const DEFAULT_DIFF_LIMIT_BYTES = 256 * 1024;
 
 export interface CreateWorktreeOptions {
   agentId?: AgentId;
@@ -171,6 +177,108 @@ export class SessionWorktreeService {
     };
   }
 
+  diff(id: string, limitBytes = DEFAULT_DIFF_LIMIT_BYTES): SessionWorktreeDiffSnapshot {
+    const record = this.requireRecord(id);
+    const exists = existsSync(record.worktreePath);
+    if (!exists) {
+      throw new Error(`Worktree path does not exist: ${record.worktreePath}`);
+    }
+    const diff = this.diffText(record);
+    const limited = truncateUtf8(diff, Math.max(1_024, limitBytes));
+    return {
+      record,
+      files: this.changedFiles(record),
+      diff: limited.text,
+      truncated: limited.truncated,
+      byteLength: Buffer.byteLength(diff, "utf8"),
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  previewIntegration(ids: string[]): WorktreeIntegrationPreview {
+    const generatedAt = new Date().toISOString();
+    const records = ids.map((id) => this.requireRecord(id));
+    const warnings: string[] = [];
+    if (records.length === 0) {
+      return { ids, canIntegrate: false, files: [], conflictCandidates: [], warnings: ["Select at least one worktree."], generatedAt };
+    }
+    const repoRoot = records[0]!.repoRoot;
+    const repoName = records[0]!.repoName;
+    const baseSha = records[0]!.baseSha;
+    for (const record of records) {
+      if (record.repoRoot !== repoRoot || record.baseSha !== baseSha) {
+        warnings.push("All selected worktrees must use the same repository and base commit.");
+        break;
+      }
+      if (!record.commitSha) {
+        warnings.push(`Worktree ${record.id} has no session commit yet.`);
+      }
+      if (!existsSync(record.worktreePath)) {
+        warnings.push(`Worktree ${record.id} is missing on disk.`);
+      }
+    }
+    const fileMap = new Map<string, WorktreeChangedFile>();
+    for (const record of records) {
+      for (const file of this.changedFiles(record)) {
+        const existing = fileMap.get(file.path);
+        if (existing) {
+          existing.sourceWorktreeIds = [...new Set([...existing.sourceWorktreeIds, record.id])];
+          if (existing.status !== file.status) existing.status = "conflict";
+        } else {
+          fileMap.set(file.path, { ...file, sourceWorktreeIds: [record.id] });
+        }
+      }
+    }
+    const files = [...fileMap.values()].sort((left, right) => left.path.localeCompare(right.path));
+    const conflictCandidates = files.filter((file) => file.sourceWorktreeIds.length > 1 || file.status === "conflict");
+    if (conflictCandidates.length) {
+      warnings.push(`${conflictCandidates.length} file(s) are changed by more than one selected worktree.`);
+    }
+    return {
+      ids,
+      canIntegrate: warnings.length === 0,
+      repoRoot,
+      repoName,
+      baseSha,
+      files,
+      conflictCandidates,
+      warnings,
+      generatedAt,
+    };
+  }
+
+  updateFromBase(id: string): SessionWorktreeUpdateResult {
+    const record = this.requireRecord(id);
+    if (!existsSync(record.worktreePath)) {
+      throw new Error(`Worktree path does not exist: ${record.worktreePath}`);
+    }
+    const status = gitStatus(record.worktreePath);
+    if (status.length > 0) {
+      throw new Error("Commit or clean the worktree before updating it from the base branch.");
+    }
+    const previousBaseSha = record.baseSha;
+    const baseRef = record.baseBranch || "HEAD";
+    const newBaseSha = gitOutput(["rev-parse", baseRef], record.repoRoot);
+    if (newBaseSha === previousBaseSha) {
+      return { record, previousBaseSha, newBaseSha, rebased: false, status };
+    }
+    try {
+      runGit(["rebase", newBaseSha], record.worktreePath, undefined, true);
+      const headSha = gitOutput(["rev-parse", "HEAD"], record.worktreePath);
+      const next = this.store.patch(id, {
+        baseSha: newBaseSha,
+        commitSha: headSha === newBaseSha ? undefined : headSha,
+        status: headSha === newBaseSha ? "active" : "committed",
+        lastError: undefined,
+      });
+      return { record: next, previousBaseSha, newBaseSha, rebased: true, status: gitStatus(record.worktreePath) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const next = this.store.patch(id, { status: "conflict", lastError: message });
+      return { record: next, previousBaseSha, newBaseSha, rebased: false, status: gitStatus(record.worktreePath) };
+    }
+  }
+
   integrate(ids: string[]): WorktreeIntegrationRun {
     const records = ids.map((id) => this.requireRecord(id));
     if (records.length === 0) {
@@ -259,6 +367,46 @@ export class SessionWorktreeService {
     return this.store.patch(id, { status: "removed" });
   }
 
+  cleanup(): WorktreeCleanupResult {
+    const removedRecords: string[] = [];
+    const removedIntegrations: string[] = [];
+    const prunedRepositories: string[] = [];
+    const warnings: string[] = [];
+    const repositories = new Set<string>();
+    for (const record of this.store.list()) {
+      repositories.add(record.repoRoot);
+      const missing = !existsSync(record.worktreePath);
+      if (record.status === "removed" || missing) {
+        if (missing && record.status !== "removed") {
+          warnings.push(`Removed stale record for missing worktree ${record.id}.`);
+        }
+        if (this.store.delete(record.id)) removedRecords.push(record.id);
+      }
+    }
+    for (const run of this.store.listIntegrations()) {
+      repositories.add(run.repoRoot);
+      const terminal = run.status === "merged" || run.status === "failed";
+      if (terminal && !existsSync(run.worktreePath)) {
+        if (this.store.deleteIntegration(run.id)) removedIntegrations.push(run.id);
+      }
+    }
+    for (const repoRoot of repositories) {
+      try {
+        runGit(["worktree", "prune"], repoRoot);
+        prunedRepositories.push(repoRoot);
+      } catch (error) {
+        warnings.push(`Failed to prune ${repoRoot}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    return {
+      removedRecords,
+      removedIntegrations,
+      prunedRepositories,
+      warnings,
+      cleanedAt: new Date().toISOString(),
+    };
+  }
+
   snapshot(record: SessionWorktreeRecord): SessionWorktreeStatusSnapshot {
     const exists = existsSync(record.worktreePath);
     const status = exists ? gitStatus(record.worktreePath) : [];
@@ -301,6 +449,47 @@ export class SessionWorktreeService {
     }
     runGit(["apply", "--3way", "--whitespace=nowarn"], record.worktreePath, patch);
     return true;
+  }
+
+  private diffText(record: SessionWorktreeRecord): string {
+    const baseDiff = gitRawOutput(["diff", "--stat", "--patch", `${record.baseSha}...HEAD`, "--"], record.worktreePath, true);
+    const workingDiff = gitRawOutput(["diff", "--stat", "--patch", "HEAD", "--"], record.worktreePath, true);
+    const untracked = gitRawOutput(["ls-files", "--others", "--exclude-standard"], record.worktreePath, true).trim();
+    return [
+      baseDiff.trim() ? `# Branch diff (${record.baseSha.slice(0, 12)}...HEAD)\n${baseDiff.trimEnd()}` : "",
+      workingDiff.trim() ? `# Uncommitted diff (HEAD)\n${workingDiff.trimEnd()}` : "",
+      untracked ? `# Untracked files\n${untracked}` : "",
+    ].filter(Boolean).join("\n\n");
+  }
+
+  private changedFiles(record: SessionWorktreeRecord): WorktreeChangedFile[] {
+    if (!existsSync(record.worktreePath)) {
+      return [];
+    }
+    const byPath = new Map<string, WorktreeChangedFile>();
+    const add = (relativePath: string, statusCode: string) => {
+      if (!relativePath || !isSafeRelativePath(relativePath)) return;
+      const status = gitStatusCodeToChangedStatus(statusCode);
+      const existing = byPath.get(relativePath);
+      if (existing) {
+        if (existing.status !== status) existing.status = "conflict";
+        return;
+      }
+      byPath.set(relativePath, { path: relativePath, status, sourceWorktreeIds: [record.id] });
+    };
+    const committed = gitRawOutput(["diff", "--name-status", `${record.baseSha}...HEAD`, "--"], record.worktreePath, true);
+    for (const line of committed.split(/\r?\n/).filter(Boolean)) {
+      const [statusCode = "", firstPath = "", secondPath = ""] = line.split(/\t+/);
+      add(secondPath || firstPath, statusCode);
+    }
+    const status = gitRawOutput(["status", "--porcelain"], record.worktreePath, true);
+    for (const line of status.split(/\r?\n/).filter(Boolean)) {
+      const code = line.slice(0, 2);
+      const rawPath = line.slice(3).trim();
+      const renamedPath = rawPath.includes(" -> ") ? rawPath.split(" -> ").pop() ?? rawPath : rawPath;
+      add(renamedPath.replace(/^"|"$/g, ""), code);
+    }
+    return [...byPath.values()].sort((left, right) => left.path.localeCompare(right.path));
   }
 
   private copyUntrackedFiles(record: SessionWorktreeRecord): { copied: string[]; skipped: string[] } {
@@ -436,4 +625,29 @@ function safeStat(filePath: string) {
   } catch {
     return null;
   }
+}
+
+function truncateUtf8(text: string, limitBytes: number): { text: string; truncated: boolean } {
+  const bytes = Buffer.byteLength(text, "utf8");
+  if (bytes <= limitBytes) {
+    return { text, truncated: false };
+  }
+  let end = Math.min(text.length, limitBytes);
+  while (Buffer.byteLength(text.slice(0, end), "utf8") > limitBytes && end > 0) {
+    end -= 1;
+  }
+  return { text: `${text.slice(0, end)}\n\n[diff truncated]`, truncated: true };
+}
+
+function gitStatusCodeToChangedStatus(code: string): WorktreeChangedFile["status"] {
+  const normalized = code.trim();
+  if (normalized === "??") return "untracked";
+  if (normalized.includes("U")) return "conflict";
+  const first = normalized[0] ?? "";
+  if (first === "A") return "added";
+  if (first === "D") return "deleted";
+  if (first === "R") return "renamed";
+  if (first === "C") return "copied";
+  if (first === "M") return "modified";
+  return "unknown";
 }

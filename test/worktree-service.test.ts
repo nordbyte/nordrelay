@@ -32,12 +32,47 @@ describe("SessionWorktreeService", () => {
     const committedSecond = service.commit(second.id, "session b");
 
     const integration = service.integrate([committed.record.id, committedSecond.record.id]);
+    const diff = service.diff(committed.record.id);
+    const preview = service.previewIntegration([committed.record.id, committedSecond.record.id]);
 
     expect(first.worktreePath).not.toBe(second.worktreePath);
     expect(committed.record.commitSha).toMatch(/[a-f0-9]{40}/);
+    expect(diff.files.map((file) => file.path)).toContain("feature-a.txt");
+    expect(preview.canIntegrate).toBe(true);
     expect(integration.status).toBe("merged");
     expect(existsSync(path.join(integration.worktreePath, "feature-a.txt"))).toBe(true);
     expect(existsSync(path.join(integration.worktreePath, "feature-b.txt"))).toBe(true);
+  });
+
+  it("previews file conflicts and updates a clean worktree from the base branch", () => {
+    const root = tempRoot();
+    const repo = initRepo(root);
+    const service = worktreeService(root);
+
+    const first = service.create({ sourceWorkspace: repo, agentId: "codex", contextKey: "web:test" });
+    writeFileSync(path.join(first.worktreePath, "README.md"), "session one\n");
+    const committedFirst = service.commit(first.id, "session one");
+
+    const second = service.create({ sourceWorkspace: repo, agentId: "codex", contextKey: "web:test" });
+    writeFileSync(path.join(second.worktreePath, "README.md"), "session two\n");
+    const committedSecond = service.commit(second.id, "session two");
+
+    const preview = service.previewIntegration([committedFirst.record.id, committedSecond.record.id]);
+    expect(preview.canIntegrate).toBe(false);
+    expect(preview.conflictCandidates.map((file) => file.path)).toContain("README.md");
+
+    writeFileSync(path.join(repo, "base.txt"), "base update\n");
+    execFileSync("git", ["add", "base.txt"], { cwd: repo });
+    execFileSync("git", ["commit", "-m", "base update"], { cwd: repo });
+    const clean = service.create({ sourceWorkspace: repo, agentId: "codex", contextKey: "web:test" });
+    writeFileSync(path.join(repo, "base-2.txt"), "base update 2\n");
+    execFileSync("git", ["add", "base-2.txt"], { cwd: repo });
+    execFileSync("git", ["commit", "-m", "base update 2"], { cwd: repo });
+
+    const updated = service.updateFromBase(clean.id);
+    expect(updated.rebased).toBe(true);
+    expect(updated.record.baseSha).toMatch(/[a-f0-9]{40}/);
+    expect(existsSync(path.join(clean.worktreePath, "base-2.txt"))).toBe(true);
   });
 
   it("can fork tracked and untracked pending changes into a new worktree", () => {

@@ -71,7 +71,7 @@ Peers:
 - `NORDRELAY_PEER_PUBLIC_URL`: optional URL other instances should use to reach this node.
 - `NORDRELAY_PEER_TLS_ENABLED`: serves the peer API over HTTPS with an automatically generated local certificate. Defaults to `true`.
 - `NORDRELAY_PEER_REQUIRE_TLS`: refuses plaintext peer serving on non-loopback hosts. Defaults to `true`.
-- Peer identity, TLS certificate, peers, and invitations are stored under `~/.nordrelay/identity.json`, `~/.nordrelay/tls/`, and `~/.nordrelay/peers.json`.
+- Peer identity, TLS certificate, peers, invitations, and pending outbound relay requests are stored under `~/.nordrelay/identity.json`, `~/.nordrelay/tls/`, `~/.nordrelay/peers.json`, and `~/.nordrelay/peer-relay-queue.json`.
 - Peer invitations expire after at most 24 hours even if a longer lifetime is requested.
 
 Agent selection:

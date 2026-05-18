@@ -212,6 +212,63 @@ describe("PeerRuntimeService", () => {
       inProgress: [{ id: "allowed-task" }],
     });
   });
+
+  it("proxies scoped trace data for peer workflow polling", async () => {
+    const service = new PeerRuntimeService(config(), runtime({
+      trace: async () => ({
+        correlationId: "corr-1",
+        summary: { startedAt: "2026-05-18T10:00:00.000Z", updatedAt: "2026-05-18T10:00:01.000Z", status: "completed", sources: ["activity"], threadId: "t1", workspace: "/allowed/app", agentId: "codex" },
+        activity: [
+          { id: "a1", timestamp: "2026-05-18T10:00:01.000Z", source: "web", status: "completed", type: "prompt_completed", threadId: "t1", workspace: "/allowed/app", agentId: "codex", correlationId: "corr-1" },
+          { id: "a2", timestamp: "2026-05-18T10:00:01.000Z", source: "web", status: "completed", type: "prompt_completed", threadId: "t2", workspace: "/other/app", agentId: "pi", correlationId: "corr-1" },
+        ],
+        audit: [{ id: "audit-1", timestamp: "2026-05-18T10:00:00.000Z", channelId: "web:dashboard", action: "prompt_started", status: "ok", correlationId: "corr-1" }],
+        chat: [{ id: "c1", threadId: "t1", role: "agent", source: "web", text: "done", timestamp: "2026-05-18T10:00:01.000Z", correlationId: "corr-1" }],
+        queue: [],
+        jobs: [],
+        timeline: [
+          { id: "a1", at: "2026-05-18T10:00:01.000Z", source: "activity", status: "completed", type: "prompt_completed", title: "done", threadId: "t1", workspace: "/allowed/app", agentId: "codex" },
+          { id: "a2", at: "2026-05-18T10:00:01.000Z", source: "activity", status: "completed", type: "prompt_completed", title: "done", threadId: "t2", workspace: "/other/app", agentId: "pi" },
+        ],
+      }),
+    }));
+
+    await expect(service.handle(peer({
+      scopes: ["sessions.read"],
+      allowedAgents: ["codex"],
+      allowedWorkspaceRoots: ["/allowed"],
+    }), {
+      protocolVersion: 1,
+      type: "web.proxy",
+      payload: { method: "GET", path: "/api/trace", query: { correlationId: "corr-1" } },
+    })).resolves.toMatchObject({
+      activity: [{ id: "a1" }],
+      audit: [],
+      chat: [{ id: "c1" }],
+      timeline: [{ id: "a1" }],
+    });
+  });
+
+  it("rejects peer-proxied workflows that target another peer", async () => {
+    const service = new PeerRuntimeService(config(), runtime({
+      workflowService: {
+        saveWorkflow: () => ({ id: "flow", name: "Flow" }),
+      },
+    }));
+
+    await expect(service.handle(peer({ scopes: ["workflows.write"] }), {
+      protocolVersion: 1,
+      type: "web.proxy",
+      payload: {
+        method: "POST",
+        path: "/api/workflows",
+        body: {
+          name: "Unsafe chain",
+          steps: [{ name: "Remote", type: "prompt", prompt: "hi", sessionMode: "current", target: "peer:other" }],
+        },
+      },
+    })).rejects.toThrow(/cannot target another peer/);
+  });
 });
 
 function peer(patch: Partial<PeerRecord> = {}): PeerRecord {

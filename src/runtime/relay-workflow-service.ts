@@ -19,6 +19,7 @@ export interface RelayWorkflowServiceOptions {
   newSession(options?: {
     agentId?: AgentId;
     workspace?: string;
+    workspaceMode?: "shared" | "worktree" | "attached";
     model?: string;
     reasoningEffort?: string;
     launchProfileId?: string;
@@ -26,6 +27,7 @@ export interface RelayWorkflowServiceOptions {
   setAgent(agentId: AgentId, actor?: WebActivityActor): Promise<unknown>;
   attachSession(threadId: string, actor?: WebActivityActor): Promise<unknown>;
   runPrompt(session: AgentSessionService, envelope: PromptEnvelope): Promise<void>;
+  runPeerPromptStep?(peerId: string, step: WorkflowStep, prompt: string, correlationId: string, actor?: WebActivityActor): Promise<{ status: string; detail?: string }>;
   isSessionBusy(session: AgentSessionService): boolean;
   abort(actor?: WebActivityActor): Promise<void>;
   appendActivity(input: Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }): WebActivityEvent;
@@ -351,6 +353,8 @@ export class RelayWorkflowService {
     try {
       if (step.type === "workflow") {
         await this.runSubflow(id, step, run.variables, actor, depth);
+      } else if (step.target !== "local") {
+        await this.runPeerStep(step, prompt, correlationId, actor);
       } else {
         await this.prepareStepSession(step, actor);
         await this.waitForIdle(id);
@@ -388,9 +392,6 @@ export class RelayWorkflowService {
   }
 
   private async prepareStepSession(step: WorkflowStep, actor?: WebActivityActor): Promise<void> {
-    if (step.target !== "local") {
-      throw new Error("Per-step peer targets are stored but not executable from a local workflow run yet. Select the peer target in the WebUI and run the workflow there.");
-    }
     if (step.sessionMode === "attach") {
       if (!step.threadId) throw new Error(`Workflow step ${step.name} needs a thread id.`);
       if (step.agentId) await this.options.setAgent(step.agentId, actor);
@@ -401,6 +402,7 @@ export class RelayWorkflowService {
       await this.options.newSession({
         agentId: step.agentId,
         workspace: step.workspace,
+        workspaceMode: step.workspaceMode,
         model: step.model,
         reasoningEffort: step.reasoningEffort,
         launchProfileId: step.launchProfileId,
@@ -410,6 +412,27 @@ export class RelayWorkflowService {
     if (step.agentId) {
       await this.options.setAgent(step.agentId, actor);
     }
+  }
+
+  private async runPeerStep(step: WorkflowStep, prompt: string, correlationId: string, actor?: WebActivityActor): Promise<void> {
+    const peerId = peerIdFromWorkflowTarget(step.target);
+    if (!peerId) {
+      throw new Error(`Unsupported workflow target: ${step.target}`);
+    }
+    if (!this.options.runPeerPromptStep) {
+      throw new Error("Peer workflow execution is not available in this runtime.");
+    }
+    const result = await this.options.runPeerPromptStep(peerId, step, prompt, correlationId, actor);
+    this.options.appendActivity({
+      source: "web",
+      status: result.status === "completed" ? "completed" : "info",
+      type: "workflow_peer_step_completed",
+      threadId: null,
+      actor,
+      correlationId,
+      prompt,
+      detail: result.detail ?? `Peer ${peerId} finished workflow step ${step.name}.`,
+    });
   }
 
   private async waitForIdle(runId: string): Promise<void> {
@@ -581,4 +604,8 @@ function nextWorkflowSchedule(schedule: NonNullable<Workflow["schedule"]>, now: 
     nextRunAt: intervalMs > 0 ? new Date(now + intervalMs).toISOString() : undefined,
     enabled: intervalMs > 0 ? schedule.enabled : false,
   };
+}
+
+function peerIdFromWorkflowTarget(target: WorkflowStep["target"]): string | null {
+  return target.startsWith("peer:") ? target.slice("peer:".length).trim() || null : null;
 }

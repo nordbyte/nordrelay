@@ -13,7 +13,7 @@ import { getPackageVersion } from "../support/operations.js";
 import { checkPeerEndpoint } from "./peer-client.js";
 import type { PeerRecord, PeerRpcRequest, PeerWebProxyPayload } from "./peer-types.js";
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
-import type { ActiveSessionsDto, QueuePlanDto, QueuePlannerSnapshotDto, RelayEvent, RelaySnapshot, SessionPageDto, UnifiedJobDto, UnifiedJobsDto, WebDiagnosticsDto, WebTasksDto } from "../runtime/relay-runtime-types.js";
+import type { ActiveSessionsDto, QueuePlanDto, QueuePlannerSnapshotDto, RelayEvent, RelaySnapshot, SessionPageDto, TraceDetailDto, UnifiedJobDto, UnifiedJobsDto, WebDiagnosticsDto, WebTasksDto } from "../runtime/relay-runtime-types.js";
 import type { QueuePlanInput } from "../runtime/relay-runtime-queue-planner.js";
 import { QUEUE_PLAN_STATUSES, type QueuePlanStatus } from "../state/queue-plan-store.js";
 import type { PromptTemplate, Workflow, WorkflowRun, WorkflowStep } from "../state/workflow-store.js";
@@ -127,6 +127,10 @@ export class PeerRuntimeService {
     }
     if (method === "GET" && path === "/api/tasks") return this.scopedTasks(peer, await runtime.tasks());
     if (method === "GET" && path === "/api/progress") return this.scopedTasks(peer, await runtime.tasks());
+    if (method === "GET" && path === "/api/trace") {
+      this.assertScope(peer, "sessions.read");
+      return this.scopedTrace(peer, await runtime.trace(requiredString(query.correlationId, "correlationId")));
+    }
     if (method === "GET" && path === "/api/metrics") return runtime.metrics();
     if (method === "GET" && path === "/api/jobs") return this.scopedJobs(peer, await runtime.jobs());
     const jobLogMatch = path.match(/^\/api\/jobs\/([^/]+)\/log$/);
@@ -298,6 +302,25 @@ export class PeerRuntimeService {
       await this.assertCurrentSessionScope(peer, runtime);
       const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
       return { run: await runtime.integrateSessionWorktrees(ids, remoteActor) };
+    }
+    if (method === "POST" && path === "/api/sessions/worktrees/integrate/preview") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
+      return runtime.previewSessionWorktreeIntegration(ids);
+    }
+    if (method === "POST" && path === "/api/sessions/worktrees/cleanup") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.cleanupSessionWorktrees(remoteActor);
+    }
+    const worktreeDiffMatch = path.match(/^\/api\/sessions\/worktrees\/([^/]+)\/diff$/);
+    if (method === "GET" && worktreeDiffMatch?.[1]) {
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.sessionWorktreeDiff(decodeURIComponent(worktreeDiffMatch[1]));
+    }
+    const worktreeUpdateMatch = path.match(/^\/api\/sessions\/worktrees\/([^/]+)\/update$/);
+    if (method === "POST" && worktreeUpdateMatch?.[1]) {
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.updateSessionWorktreeFromBase(decodeURIComponent(worktreeUpdateMatch[1]), remoteActor);
     }
     const worktreeCommitMatch = path.match(/^\/api\/sessions\/worktrees\/([^/]+)\/commit$/);
     if (method === "POST" && worktreeCommitMatch?.[1]) {
@@ -660,6 +683,30 @@ export class PeerRuntimeService {
     };
   }
 
+  private scopedTrace(peer: PeerRecord, trace: TraceDetailDto): TraceDetailDto {
+    const activity = trace.activity.filter((event) => this.canUseSession(peer, event));
+    const jobs = trace.jobs.filter((job) => this.canUseJob(peer, job));
+    const timeline = trace.timeline.filter((item) => this.canUseSession(peer, item));
+    const threadId = activity.find((event) => event.threadId)?.threadId ?? jobs.find((job) => job.threadId)?.threadId ?? trace.summary.threadId;
+    const workspace = activity.find((event) => event.workspace)?.workspace ?? jobs.find((job) => job.workspace)?.workspace ?? trace.summary.workspace;
+    const agentId = activity.find((event) => event.agentId)?.agentId ?? jobs.find((job) => job.agentId)?.agentId ?? trace.summary.agentId;
+    return {
+      ...trace,
+      activity,
+      jobs,
+      timeline,
+      audit: [],
+      chat: trace.chat.filter((message) => !threadId || message.threadId === threadId),
+      queue: trace.queue,
+      summary: {
+        ...trace.summary,
+        threadId,
+        workspace,
+        agentId,
+      },
+    };
+  }
+
   private canUseJob(peer: PeerRecord, job: UnifiedJobDto): boolean {
     return this.canUseSession(peer, job);
   }
@@ -674,7 +721,8 @@ export class PeerRuntimeService {
   }
 
   private canUseWorkflowStep(peer: PeerRecord, step: WorkflowStep): boolean {
-    return (!step.agentId || this.canUseAgent(peer, step.agentId)) &&
+    return step.target === "local" &&
+      (!step.agentId || this.canUseAgent(peer, step.agentId)) &&
       this.workspaceAllowed(peer, step.workspace);
   }
 
@@ -699,6 +747,9 @@ export class PeerRuntimeService {
 
   private assertWorkflowInputScope(peer: PeerRecord, input: Partial<Workflow>): void {
     for (const step of input.steps ?? []) {
+      if (step.target !== "local") {
+        throw new Error("Peer-proxied workflows cannot target another peer.");
+      }
       if (step.agentId) this.assertAgentScope(peer, step.agentId);
       this.assertWorkspaceScope(peer, step.workspace);
     }
@@ -869,6 +920,11 @@ function parseRequiredAgentId(value: unknown): AgentId {
   return agentId;
 }
 
+function parseWorkspaceMode(value: unknown): WorkflowStep["workspaceMode"] {
+  const text = stringValue(value);
+  return text === "shared" || text === "worktree" || text === "attached" ? text : undefined;
+}
+
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value.trim() : value === undefined || value === null ? "" : String(value).trim();
 }
@@ -986,6 +1042,7 @@ function parseWorkflowStepInput(value: unknown): WorkflowStep {
     retryPolicy: nonEmptyRecord(record.retryPolicy) as WorkflowStep["retryPolicy"],
     agentId: parseAgentId(record.agentId),
     workspace: stringValue(record.workspace) || undefined,
+    workspaceMode: parseWorkspaceMode(record.workspaceMode),
     model: stringValue(record.model) || undefined,
     reasoningEffort: stringValue(record.reasoningEffort) || undefined,
     launchProfileId: stringValue(record.launchProfileId) || undefined,
