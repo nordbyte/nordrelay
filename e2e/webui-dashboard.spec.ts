@@ -616,7 +616,7 @@ test.describe("NordRelay WebUI", () => {
 
     await navigateDashboard(page, "Artifacts");
     await expect(page.locator("#artifactList")).toContainText("turn-web-1");
-    await page.getByRole("button", { name: "Preview" }).click();
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
     await expect(page.locator("#artifactPreview")).toContainText("report.txt");
     await expect(page.locator("#artifactPreview")).toContainText("Artifact preview smoke");
 

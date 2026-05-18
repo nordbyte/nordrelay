@@ -319,11 +319,14 @@
 .update-log{max-height:280px;min-height:90px;margin-top:10px}
 .update-job-header{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
 .update-input{display:grid;grid-template-columns:1fr auto auto;gap:8px;margin-top:8px}
+.table-section-title{margin:0 0 8px;font-size:15px}
 .peer-invite-details{display:grid;gap:6px;margin:10px 0;padding:10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface)}
 .peer-invite-details small{margin-top:0;font-weight:700}
+.peer-invite-inline-details{display:grid;gap:6px;width:min(100%,520px)}
+.peer-invite-inline-details small{color:var(--muted);font-size:12px;font-weight:700}
 .peer-invite-copy,.peer-invite-command{display:block;width:100%;text-align:left;overflow-wrap:anywhere;white-space:pre-wrap}
-.copy-id.peer-invite-command{padding:8px;border:1px solid var(--border-soft);border-radius:6px;background:var(--surface);color:var(--text);text-decoration:none}
-.copy-id.peer-invite-command:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--link);text-decoration:none}
+.copy-id.peer-invite-code,.copy-id.peer-invite-command{padding:8px;border:1px solid var(--border-soft);border-radius:6px;background:var(--surface);color:var(--text);text-align:left;text-decoration:none;overflow-wrap:anywhere;white-space:pre-wrap}
+.copy-id.peer-invite-code:hover,.copy-id.peer-invite-command:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--link);text-decoration:none}
 .peer-warning{display:grid;gap:4px;margin:10px 0;padding:10px;border:1px solid #d9c27a;border-radius:8px;background:var(--warn);color:#8a6a12}
 .peer-warning small{color:#8a6a12}
 .peer-probe-result{margin-top:10px;padding:10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface)}
