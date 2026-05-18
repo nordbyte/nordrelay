@@ -1,4 +1,3 @@
-// @ts-nocheck
 function switchWorkflowTab(tab){
   state.workflowTab=tab||'templates';
   document.querySelectorAll('[data-workflow-tab]').forEach(b=>{
@@ -37,7 +36,7 @@ function workflowTags(tags){return (tags||[]).map(t=>'<span class="chip">'+esc(t
 function workflowCell(label,html,cls=''){return '<td data-label="'+attr(label)+'"'+(cls?' class="'+cls+'"':'')+'>'+html+'</td>'}
 function templateUpdatedHtml(t){return t.updatedAt?'<span title="'+attr(fmtDate(t.updatedAt))+'">'+esc(fmtSessionAge(t.updatedAt))+'</span>':'-'}
 function templateVariablesText(t){const count=(t.variables||[]).length;return count+' variable'+(count===1?'':'s')}
-function renderTemplateRow(t){const summary=t.description||t.prompt||'';const tags=workflowTags(t.tags)||'-';const scope='<span class="adapter-status '+(t.scope==='shared'?'enabled':'planned')+'">'+esc(t.scope||'private')+'</span>';const actions='<div class="data-table-actions"><button data-template-run="'+attr(t.id)+'"'+disabledAttr('workflows.run')+'>Run</button><button class="secondary" data-template-insert="'+attr(t.id)+'">Insert</button><button class="secondary" data-template-preview="'+attr(t.id)+'">Preview</button><button class="secondary" data-template-edit="'+attr(t.id)+'"'+disabledAttr('workflows.write')+'>Edit</button><button class="danger" data-template-delete="'+attr(t.id)+'"'+disabledAttr('workflows.write')+'>Delete</button></div>';return '<tr>'+workflowCell('Updated',templateUpdatedHtml(t),'updated-cell')+workflowCell('Name','<span class="truncate-cell" title="'+attr(t.name||'')+'">'+esc(short(t.name||'-',120))+'</span>','primary-cell')+workflowCell('Scope',scope,'scope-cell')+workflowCell('Tags',tags,'tags-cell')+workflowCell('Variables',esc(templateVariablesText(t)),'variables-cell')+workflowCell('Prompt','<span class="truncate-cell" title="'+attr(summary)+'">'+esc(short(summary||'-',180))+'</span>','prompt-cell')+workflowCell('Actions',actions,'actions-cell')+'</tr>'}
+function renderTemplateRow(t){const summary=t.description||t.prompt||'';const tags=workflowTags(t.tags)||'-';const scope='<span class="adapter-status '+(t.scope==='shared'?'enabled':'planned')+'">'+esc(t.scope||'private')+'</span>';const actions='<div class="data-table-actions"><button data-template-run="'+attr(t.id)+'"'+disabledAttr('workflows.run')+'>Run</button><button class="secondary" data-template-insert="'+attr(t.id)+'">Insert</button><button class="secondary" data-template-preview="'+attr(t.id)+'">Preview</button><button class="secondary" data-template-history="'+attr(t.id)+'">History</button><button class="secondary" data-template-export="'+attr(t.id)+'">Export</button><button class="secondary" data-template-edit="'+attr(t.id)+'"'+disabledAttr('workflows.write')+'>Edit</button><button class="danger" data-template-delete="'+attr(t.id)+'"'+disabledAttr('workflows.write')+'>Delete</button></div>';return '<tr>'+workflowCell('Updated',templateUpdatedHtml(t),'updated-cell')+workflowCell('Name','<span class="truncate-cell" title="'+attr(t.name||'')+'">'+esc(short(t.name||'-',120))+'</span>','primary-cell')+workflowCell('Scope',scope,'scope-cell')+workflowCell('Tags',tags,'tags-cell')+workflowCell('Variables',esc(templateVariablesText(t)),'variables-cell')+workflowCell('Prompt','<span class="truncate-cell" title="'+attr(summary)+'">'+esc(short(summary||'-',180))+'</span>','prompt-cell')+workflowCell('Actions',actions,'actions-cell')+'</tr>'}
 function renderTemplatesTable(templates){if(!templates.length)return uiEmpty('No templates.');return '<div class="data-table-wrap"><table class="data-table templates-table"><thead><tr><th>Updated</th><th>Name</th><th>Scope</th><th>Tags</th><th>Variables</th><th>Prompt</th><th class="actions-heading">Actions</th></tr></thead><tbody>'+templates.map(renderTemplateRow).join('')+'</tbody></table></div>'}
 
 function renderTemplates(){
@@ -64,7 +63,7 @@ function renderWorkflowRuns(){
 function runStatusClass(status){if(status==='completed')return'enabled';if(status==='failed'||status==='aborted')return'disabled';return'planned'}
 function workflowScheduleSummary(w){const s=w.schedule||{};if(!s.enabled&&!s.nextRunAt&&!s.intervalMinutes&&!s.cron)return'-';return [(s.enabled?'enabled':'disabled'),s.cron?'cron '+s.cron:'',s.timezone?'tz '+s.timezone:'',s.nextRunAt?'next '+fmtDate(s.nextRunAt):'',s.intervalMinutes?'every '+s.intervalMinutes+'m':'',s.lastRunAt?'last '+fmtDate(s.lastRunAt):''].filter(Boolean).join(' | ')}
 function workflowStepCounts(w){const steps=w.steps||[];const approvals=steps.filter(s=>s.requiresApproval).length;const peerTargets=steps.filter(s=>s.target&&s.target!=='local').length;const retries=steps.filter(s=>s.retryPolicy).length;return steps.length+' step(s)'+(approvals?' | '+approvals+' approval':'')+(peerTargets?' | '+peerTargets+' peer target':'')+(retries?' | '+retries+' retry policy':'')}
-function renderWorkflowRow(w){const scope='<span class="adapter-status '+(w.scope==='shared'?'enabled':'planned')+'">'+esc(w.scope||'private')+'</span>';const actions='<div class="data-table-actions"><button data-workflow-run="'+attr(w.id)+'"'+disabledAttr('workflows.run')+'>Run</button><button class="secondary" data-workflow-preview="'+attr(w.id)+'">Preview</button><button class="secondary" data-workflow-edit="'+attr(w.id)+'"'+disabledAttr('workflows.write')+'>Edit</button><button class="danger" data-workflow-delete="'+attr(w.id)+'"'+disabledAttr('workflows.write')+'>Delete</button></div>';return '<tr>'+workflowCell('Updated',templateUpdatedHtml(w),'updated-cell')+workflowCell('Name','<span class="truncate-cell" title="'+attr(w.name||'')+'">'+esc(short(w.name||'-',120))+'</span>','primary-cell')+workflowCell('Scope',scope,'scope-cell')+workflowCell('Schedule','<span class="truncate-cell" title="'+attr(workflowScheduleSummary(w))+'">'+esc(short(workflowScheduleSummary(w),150))+'</span>')+workflowCell('Steps','<span class="truncate-cell" title="'+attr(workflowStepCounts(w))+'">'+esc(workflowStepCounts(w))+'</span>')+workflowCell('Tags',workflowTags(w.tags)||'-','tags-cell')+workflowCell('Description','<span class="truncate-cell" title="'+attr(w.description||'')+'">'+esc(short(w.description||'-',180))+'</span>')+workflowCell('Actions',actions,'actions-cell')+'</tr>'}
+function renderWorkflowRow(w){const scope='<span class="adapter-status '+(w.scope==='shared'?'enabled':'planned')+'">'+esc(w.scope||'private')+'</span>';const actions='<div class="data-table-actions"><button data-workflow-run="'+attr(w.id)+'"'+disabledAttr('workflows.run')+'>Run</button><button class="secondary" data-workflow-preview="'+attr(w.id)+'">Preview</button><button class="secondary" data-workflow-history="'+attr(w.id)+'">History</button><button class="secondary" data-workflow-export="'+attr(w.id)+'">Export</button><button class="secondary" data-workflow-edit="'+attr(w.id)+'"'+disabledAttr('workflows.write')+'>Edit</button><button class="danger" data-workflow-delete="'+attr(w.id)+'"'+disabledAttr('workflows.write')+'>Delete</button></div>';return '<tr>'+workflowCell('Updated',templateUpdatedHtml(w),'updated-cell')+workflowCell('Name','<span class="truncate-cell" title="'+attr(w.name||'')+'">'+esc(short(w.name||'-',120))+'</span>','primary-cell')+workflowCell('Scope',scope,'scope-cell')+workflowCell('Schedule','<span class="truncate-cell" title="'+attr(workflowScheduleSummary(w))+'">'+esc(short(workflowScheduleSummary(w),150))+'</span>')+workflowCell('Steps','<span class="truncate-cell" title="'+attr(workflowStepCounts(w))+'">'+esc(workflowStepCounts(w))+'</span>')+workflowCell('Tags',workflowTags(w.tags)||'-','tags-cell')+workflowCell('Description','<span class="truncate-cell" title="'+attr(w.description||'')+'">'+esc(short(w.description||'-',180))+'</span>')+workflowCell('Actions',actions,'actions-cell')+'</tr>'}
 function renderWorkflowsTable(workflows){if(!workflows.length)return uiEmpty('No workflows.');return '<div class="data-table-wrap"><table class="data-table workflows-table"><thead><tr><th>Updated</th><th>Name</th><th>Scope</th><th>Schedule</th><th>Steps</th><th>Tags</th><th>Description</th><th class="actions-heading">Actions</th></tr></thead><tbody>'+workflows.map(renderWorkflowRow).join('')+'</tbody></table></div>'}
 function workflowRunProgress(r){const steps=r.steps||[];const done=steps.filter(s=>s.status==='completed'||s.status==='skipped').length;return done+'/'+steps.length+' steps'}
 function workflowRunCurrentStep(r){const step=(r.steps||[]).find(s=>['running','paused','queued'].includes(s.status))||(r.steps||[]).find(s=>s.status==='failed')||(r.steps||[]).slice(-1)[0];return step?step.name+' / '+step.status:'-'}
@@ -147,10 +146,82 @@ async function previewWorkflow(id){
   });
 }
 
+async function runTemplateVersion(id,version){
+  if(!can('workflows.run')){toast('Permission required: workflows.run');return}
+  const t=state.workflowTemplates.find(x=>x.id===id);
+  openWorkflowVariableDialog('Run template v'+version,[t],'Run',async variables=>{
+    const r=await api('/api/templates/'+encodeURIComponent(id)+'/versions/'+encodeURIComponent(version)+'/run',{method:'POST',body:JSON.stringify({variables})});
+    toast('Template run started: '+(r.run?.name||id));
+    await loadWorkflows();
+  });
+}
+
+async function runWorkflowVersion(id,version){
+  if(!can('workflows.run')){toast('Permission required: workflows.run');return}
+  const w=state.workflows.find(x=>x.id===id);
+  openWorkflowVariableDialog('Run workflow v'+version,workflowVariableItemsForWorkflow(w),'Run',async variables=>{
+    const r=await api('/api/workflows/'+encodeURIComponent(id)+'/versions/'+encodeURIComponent(version)+'/run',{method:'POST',body:JSON.stringify({variables})});
+    toast('Workflow queued: '+(r.run?.name||id));
+    await loadWorkflows();
+  });
+}
+
+async function previewTemplateVersion(id,version){
+  const t=state.workflowTemplates.find(x=>x.id===id);
+  openWorkflowVariableDialog('Preview template v'+version,[t],'Preview',async variables=>{
+    const p=await api('/api/templates/'+encodeURIComponent(id)+'/versions/'+encodeURIComponent(version)+'/preview',{method:'POST',body:JSON.stringify({variables})});
+    showPreview(p);
+  });
+}
+
+async function previewWorkflowVersion(id,version){
+  const w=state.workflows.find(x=>x.id===id);
+  openWorkflowVariableDialog('Preview workflow v'+version,workflowVariableItemsForWorkflow(w),'Preview',async variables=>{
+    const p=await api('/api/workflows/'+encodeURIComponent(id)+'/versions/'+encodeURIComponent(version)+'/preview',{method:'POST',body:JSON.stringify({variables})});
+    showPreview(p);
+  });
+}
+
+function workflowVersionCell(label,html,cls=''){return '<td data-label="'+attr(label)+'"'+(cls?' class="'+cls+'"':'')+'>'+html+'</td>'}
+function workflowVersionSummary(v){const s=v.snapshot||{};if(v.kind==='template')return short(s.prompt||'',180);return ((s.steps||[]).length||0)+' step(s)'+(s.description?' | '+s.description:'')}
+function workflowDiffHtml(diff){const changes=diff.changes||[];if(!changes.length)return uiEmpty('No differences.');return '<div class="data-table-wrap"><table class="data-table workflow-version-diff-table"><thead><tr><th>Path</th><th>Type</th><th>Before</th><th>After</th></tr></thead><tbody>'+changes.map(c=>'<tr>'+workflowVersionCell('Path','<span class="truncate-cell" title="'+attr(c.path||'')+'">'+esc(short(c.path||'-',140))+'</span>')+workflowVersionCell('Type','<span class="chip">'+esc(c.type||'-')+'</span>')+workflowVersionCell('Before','<span class="truncate-cell" title="'+attr(JSON.stringify(c.before??''))+'">'+esc(short(JSON.stringify(c.before??''),180))+'</span>')+workflowVersionCell('After','<span class="truncate-cell" title="'+attr(JSON.stringify(c.after??''))+'">'+esc(short(JSON.stringify(c.after??''),180))+'</span>')+'</tr>').join('')+'</tbody></table></div>'}
+function workflowVersionsTable(kind,id,versions,diff){if(!versions.length)return uiEmpty('No versions recorded yet.');return '<div class="data-table-wrap"><table class="data-table workflow-version-table"><thead><tr><th>Version</th><th>Created</th><th>Name</th><th>Summary</th><th class="actions-heading">Actions</th></tr></thead><tbody>'+versions.map(v=>{const actions='<div class="data-table-actions"><button class="secondary" data-version-preview="'+attr(kind+':'+id+':'+v.version)+'">Preview</button><button class="secondary" data-version-run="'+attr(kind+':'+id+':'+v.version)+'"'+disabledAttr('workflows.run')+'>Run</button><button class="secondary" data-version-export="'+attr(kind+':'+id+':'+v.version)+'">Export</button><button class="danger" data-version-rollback="'+attr(kind+':'+id+':'+v.version)+'"'+disabledAttr('workflows.write')+'>Rollback</button></div>';return '<tr>'+workflowVersionCell('Version','v'+esc(v.version),'updated-cell')+workflowVersionCell('Created','<span title="'+attr(fmtDate(v.createdAt))+'">'+esc(fmtSessionAge(v.createdAt))+'</span>')+workflowVersionCell('Name','<span class="truncate-cell" title="'+attr(v.name||'')+'">'+esc(short(v.name||'-',120))+'</span>','primary-cell')+workflowVersionCell('Summary','<span class="truncate-cell" title="'+attr(workflowVersionSummary(v))+'">'+esc(short(workflowVersionSummary(v),180))+'</span>')+workflowVersionCell('Actions',actions,'actions-cell')+'</tr>'}).join('')+'</tbody></table></div><h2 class="task-section-title">Latest diff</h2>'+workflowDiffHtml(diff||{})}
+function workflowVersionAction(value){const [kind,id,versionText]=String(value||'').split(':');return{kind,id,version:Number(versionText)}}
+async function showWorkflowHistory(kind,id){
+  const [versions,diff]=await Promise.all([
+    api('/api/'+(kind==='template'?'templates':'workflows')+'/'+encodeURIComponent(id)+'/versions'),
+    api('/api/'+(kind==='template'?'templates':'workflows')+'/'+encodeURIComponent(id)+'/diff').catch(()=>({changes:[]}))
+  ]);
+  adminDialog((kind==='template'?'Template':'Workflow')+' history',workflowVersionsTable(kind,id,versions.versions||[],diff),async()=>{},{
+    submitText:'Close',
+    reloadAccess:false,
+    afterSubmit:async()=>{}
+  });
+  bindWorkflowVersionButtons();
+}
+function bindWorkflowVersionButtons(){const root=document.getElementById('adminDialogBody');root.querySelectorAll('[data-version-preview]').forEach(b=>b.onclick=()=>safe(()=>{const a=workflowVersionAction(b.dataset.versionPreview);document.getElementById('adminDialog').close();return a.kind==='template'?previewTemplateVersion(a.id,a.version):previewWorkflowVersion(a.id,a.version)}));root.querySelectorAll('[data-version-run]').forEach(b=>b.onclick=()=>safe(()=>{const a=workflowVersionAction(b.dataset.versionRun);document.getElementById('adminDialog').close();return a.kind==='template'?runTemplateVersion(a.id,a.version):runWorkflowVersion(a.id,a.version)}));root.querySelectorAll('[data-version-export]').forEach(b=>b.onclick=()=>safe(()=>{const a=workflowVersionAction(b.dataset.versionExport);return exportWorkflowItem(a.kind,a.id,a.version)}));root.querySelectorAll('[data-version-rollback]').forEach(b=>b.onclick=()=>safe(async()=>{const a=workflowVersionAction(b.dataset.versionRollback);if(!confirm('Rollback to version '+a.version+'?'))return;await api('/api/'+(a.kind==='template'?'templates':'workflows')+'/'+encodeURIComponent(a.id)+'/versions/'+encodeURIComponent(a.version)+'/rollback',{method:'POST',body:JSON.stringify({})});document.getElementById('adminDialog').close();toast('Rolled back to version '+a.version);await loadWorkflows()}))}
+async function exportWorkflowItem(kind,id,version=null){
+  const url='/api/'+(kind==='template'?'templates':'workflows')+'/'+encodeURIComponent(id)+(version?'/versions/'+encodeURIComponent(version)+'/export':'/export');
+  const bundle=await api(url);
+  const name=(bundle.template?.name||bundle.workflow?.name||kind).toLowerCase().replace(/[^a-z0-9_-]+/g,'-').replace(/^-|-$/g,'')||kind;
+  downloadJson('nordrelay-'+kind+'-'+name+(version?'-v'+version:'')+'.json',bundle);
+  toast('Exported '+kind);
+}
+function importWorkflowDialog(kind){
+  if(!can('workflows.write')){toast('Permission required: workflows.write');return}
+  adminDialog('Import '+kind,'<label class="full-span">JSON bundle<textarea id="workflowImportJson" rows="12" placeholder="Paste exported NordRelay '+kind+' JSON"></textarea></label>',async()=>{
+    const raw=val('workflowImportJson');
+    if(!raw.trim())throw new Error('Paste a JSON bundle first.');
+    const bundle=JSON.parse(raw);
+    await api('/api/'+(kind==='template'?'templates':'workflows')+'/import',{method:'POST',body:JSON.stringify({bundle})});
+    toast('Imported '+kind);
+  },{afterSubmit:loadWorkflows});
+}
+
 function showPreview(p){toast((p.prompts||[]).map((step,i)=>(i+1)+'. '+step.name+'\n'+step.prompt).join('\n\n---\n\n').slice(0,3500),{duration:12000})}
 function insertTemplate(id){const t=state.workflowTemplates.find(x=>x.id===id);if(!t)return;document.getElementById('promptInput').value=t.prompt;page('chat');document.getElementById('promptInput').focus()}
 
-function openTemplateDialog(t){
+function openTemplateDialog(t=null){
   if(!can('workflows.write')){toast('Permission required: workflows.write');return}
   adminDialog(t?'Edit template':'Create template','<label>Name<input id="dlgTemplateName" value="'+attr(t?.name||'')+'"></label><label>Scope<select id="dlgTemplateScope"><option value="private">Private</option><option value="shared">Shared</option></select></label><label class="full-span">Description<input id="dlgTemplateDescription" value="'+attr(t?.description||'')+'"></label><label class="full-span">Tags<input id="dlgTemplateTags" value="'+attr((t?.tags||[]).join(', '))+'"></label><label class="full-span">Prompt<textarea id="dlgTemplatePrompt" rows="10">'+esc(t?.prompt||'')+'</textarea></label>',async()=>{
     const promptText=val('dlgTemplatePrompt');
@@ -159,218 +230,6 @@ function openTemplateDialog(t){
     else await api('/api/templates',{method:'POST',body:JSON.stringify(body)});
   },{afterSubmit:loadWorkflows});
   document.getElementById('dlgTemplateScope').value=t?.scope||'private';
-}
-
-function workflowBuilderUid(){return 'step_'+Math.random().toString(36).slice(2,9)}
-function workflowStepSource(step){return step.type==='workflow'||step.workflowId?'workflow':step.templateId?'template':'prompt'}
-function workflowBuilderStep(step={},index=0){
-  return {
-    _uid: step._uid||workflowBuilderUid(),
-    id: step.id||'',
-    name: step.name||'Step '+(index+1),
-    source: step.source||workflowStepSource(step),
-    prompt: step.prompt||'',
-    templateId: step.templateId||'',
-    workflowId: step.workflowId||'',
-    conditionVariable: step.condition?.variable||'',
-    conditionOperator: step.condition?.operator||'exists',
-    conditionValue: step.condition?.value||'',
-    retryAttempts: step.retryPolicy?.maxAttempts||1,
-    retryDelayMs: step.retryPolicy?.delayMs||0,
-    agentId: step.agentId||'',
-    workspace: step.workspace||'',
-    workspaceMode: step.workspaceMode||'',
-    model: step.model||'',
-    reasoningEffort: step.reasoningEffort||'',
-    launchProfileId: step.launchProfileId||'',
-    sessionMode: step.sessionMode||'current',
-    threadId: step.threadId||'',
-    target: step.target||'local',
-    requiresApproval:Boolean(step.requiresApproval),
-    continueOnError:Boolean(step.continueOnError),
-  };
-}
-
-function workflowBuilderState(w){return {workflowId:w?.id||'',steps:(w?.steps?.length?w.steps:[{name:'Step 1',type:'prompt',prompt:'',sessionMode:'current',target:'local'}]).map(workflowBuilderStep)}}
-function workflowTemplateOptions(selected){return '<option value="">Select template...</option>'+(state.workflowTemplates||[]).map(t=>'<option value="'+attr(t.id)+'" '+(t.id===selected?'selected':'')+'>'+esc(t.name)+'</option>').join('')}
-function workflowOptions(selected,currentId){return '<option value="">Select workflow...</option>'+(state.workflows||[]).filter(w=>w.id!==currentId).map(w=>'<option value="'+attr(w.id)+'" '+(w.id===selected?'selected':'')+'>'+esc(w.name)+'</option>').join('')}
-function workflowAgentOptions(selected){return '<option value="">Active agent</option>'+(state.enabledAgents||[]).map(id=>'<option value="'+attr(id)+'" '+(id===selected?'selected':'')+'>'+esc(id)+'</option>').join('')}
-function workflowReasoningOptions(selected){return '<option value="">Default</option>'+((state.controls?.reasoningOptions||[]).map(v=>'<option value="'+attr(v)+'" '+(v===selected?'selected':'')+'>'+esc(v)+'</option>').join(''))}
-function workflowLaunchOptions(selected){return '<option value="">Default</option>'+((state.controls?.launchProfiles||[]).map(p=>'<option value="'+attr(p.id)+'" '+(p.id===selected?'selected':'')+'>'+esc(p.label+' - '+p.behavior+(p.unsafe?' - unsafe':''))+'</option>').join(''))}
-function workflowWorkspaceModeOptions(selected){return '<option value="">Default</option><option value="shared" '+(selected==='shared'?'selected':'')+'>Shared workspace</option><option value="worktree" '+(selected==='worktree'?'selected':'')+'>Isolated worktree</option><option value="attached" '+(selected==='attached'?'selected':'')+'>Attached/manual</option>'}
-function workflowTargetOptions(selected){const peers=(state.peers?.peers||[]).filter(p=>p.enabled);const known=new Set(peers.map(p=>'peer:'+p.id));const fallback=selected&&selected!=='local'&&!known.has(selected)?'<option value="'+attr(selected)+'" selected>'+esc(selected+' (unavailable)')+'</option>':'';return '<option value="local" '+(!selected||selected==='local'?'selected':'')+'>Local node</option>'+peers.map(p=>'<option value="peer:'+attr(p.id)+'" '+(selected==='peer:'+p.id?'selected':'')+'>'+esc('Peer: '+(p.name||p.id))+'</option>').join('')+fallback}
-function workflowModelDatalist(){return '<datalist id="workflowModelOptions">'+((state.controls?.models||[]).map(m=>'<option value="'+attr(m.slug)+'">'+esc(modelLabel(m))+'</option>').join(''))+'</datalist>'}
-function workflowWorkspaceDatalist(){return '<datalist id="workflowWorkspaceOptions">'+((state.controls?.workspaces||state.snapshot?.workspaces||[]).map(w=>'<option value="'+attr(w)+'"></option>').join(''))+'</datalist>'}
-
-function workflowBuilderStepHtml(step,index){
-  const source=step.source||workflowStepSource(step);
-  const template=source==='template'?(state.workflowTemplates||[]).find(t=>t.id===step.templateId):null;
-  const showNew=step.sessionMode==='new';
-  const showAttach=step.sessionMode==='attach';
-  return '<div class="workflow-builder-step" data-workflow-builder-step="'+attr(step._uid)+'">'+
-    '<div class="workflow-step-header"><strong>Step '+esc(index+1)+'</strong><div class="row workflow-step-actions">'+
-    '<button type="button" class="secondary mini-button" data-workflow-builder-move="up" '+(index===0?'disabled':'')+'>Up</button>'+
-    '<button type="button" class="secondary mini-button" data-workflow-builder-move="down" '+(index===state.workflowBuilder.steps.length-1?'disabled':'')+'>Down</button>'+
-    '<button type="button" class="secondary mini-button" data-workflow-builder-duplicate>Duplicate</button>'+
-    '<button type="button" class="danger mini-button" data-workflow-builder-delete '+(state.workflowBuilder.steps.length<2?'disabled':'')+'>Delete</button>'+
-    '</div></div>'+
-    '<div class="workflow-builder-grid">'+
-    '<label>Step name<input data-builder-field="name" value="'+attr(step.name)+'"></label>'+
-    '<label>Source<select data-builder-field="source"><option value="prompt" '+(source==='prompt'?'selected':'')+'>Prompt text</option><option value="template" '+(source==='template'?'selected':'')+'>Template</option><option value="workflow" '+(source==='workflow'?'selected':'')+'>Subflow</option></select></label>'+
-    (source==='template'
-      ? '<label class="full-span">Template<select data-builder-field="templateId">'+workflowTemplateOptions(step.templateId)+'</select></label>'+(template?'<div class="workflow-template-preview full-span"><strong>'+esc(template.name)+'</strong><small>'+esc(short(template.description||template.prompt,320))+'</small></div>':'<div class="workflow-template-preview full-span">Select a template for this step.</div>')
-      : source==='workflow'
-        ? '<label class="full-span">Subflow<select data-builder-field="workflowId">'+workflowOptions(step.workflowId,state.workflowBuilder.workflowId)+'</select></label>'
-        : '<label class="full-span">Prompt<textarea data-builder-field="prompt" rows="6" placeholder="Write the prompt for this workflow step...">'+esc(step.prompt||'')+'</textarea></label>')+
-    '<label>Session<select data-builder-field="sessionMode"><option value="current" '+(step.sessionMode==='current'?'selected':'')+'>Current session</option><option value="new" '+(step.sessionMode==='new'?'selected':'')+'>New session</option><option value="attach" '+(step.sessionMode==='attach'?'selected':'')+'>Attach to thread</option></select></label>'+
-    '<label>Agent<select data-builder-field="agentId">'+workflowAgentOptions(step.agentId)+'</select></label>'+
-    (showAttach?'<label class="full-span">Thread ID<input data-builder-field="threadId" value="'+attr(step.threadId)+'" placeholder="Thread ID to attach"></label>':'')+
-    (showNew?'<label>Workspace<input data-builder-field="workspace" value="'+attr(step.workspace)+'" list="workflowWorkspaceOptions" placeholder="Default workspace"></label><label>Workspace mode<select data-builder-field="workspaceMode">'+workflowWorkspaceModeOptions(step.workspaceMode)+'</select></label><label>Model<input data-builder-field="model" value="'+attr(step.model)+'" list="workflowModelOptions" placeholder="Default model"></label><label>Reasoning<select data-builder-field="reasoningEffort">'+workflowReasoningOptions(step.reasoningEffort)+'</select></label><label>Launch profile<select data-builder-field="launchProfileId">'+workflowLaunchOptions(step.launchProfileId)+'</select></label>':'')+
-    '<label>Target<select data-builder-field="target">'+workflowTargetOptions(step.target)+'</select></label>'+
-    '<label>Condition variable<input data-builder-field="conditionVariable" value="'+attr(step.conditionVariable)+'" placeholder="optional variable"></label>'+
-    '<label>Condition<select data-builder-field="conditionOperator"><option value="exists" '+(step.conditionOperator==='exists'?'selected':'')+'>exists</option><option value="equals" '+(step.conditionOperator==='equals'?'selected':'')+'>equals</option><option value="not_equals" '+(step.conditionOperator==='not_equals'?'selected':'')+'>not equals</option><option value="contains" '+(step.conditionOperator==='contains'?'selected':'')+'>contains</option><option value="not_contains" '+(step.conditionOperator==='not_contains'?'selected':'')+'>not contains</option></select></label>'+
-    '<label>Condition value<input data-builder-field="conditionValue" value="'+attr(step.conditionValue)+'"></label>'+
-    '<label>Retry attempts<input type="number" min="1" max="10" data-builder-field="retryAttempts" value="'+attr(step.retryAttempts)+'"></label>'+
-    '<label>Retry delay ms<input type="number" min="0" data-builder-field="retryDelayMs" value="'+attr(step.retryDelayMs)+'"></label>'+
-    '<label class="checkbox workflow-builder-check"><input type="checkbox" data-builder-field="requiresApproval" '+(step.requiresApproval?'checked':'')+'> Require approval</label>'+
-    '<label class="checkbox workflow-builder-check"><input type="checkbox" data-builder-field="continueOnError" '+(step.continueOnError?'checked':'')+'> Continue on error</label>'+
-    '</div></div>';
-}
-
-function workflowBuilderJsonFromState(){return JSON.stringify(workflowBuilderStepsPayload(false),null,2)}
-function workflowBuilderPreviewText(){
-  return workflowBuilderStepsPayload(false).map((step,index)=>{
-    const template=step.templateId?state.workflowTemplates.find(t=>t.id===step.templateId):null;
-    const subflow=step.workflowId?state.workflows.find(w=>w.id===step.workflowId):null;
-    const prompt=subflow?('Run subflow: '+subflow.name):template?.prompt||step.prompt||'';
-    return (index+1)+'. '+(step.name||'Step '+(index+1))+'\n'+prompt;
-  }).join('\n\n---\n\n');
-}
-
-function workflowBuilderVariablesHtml(){
-  const items=workflowBuilderStepsPayload(false).map(step=>step.templateId?state.workflowTemplates.find(t=>t.id===step.templateId)||step:step);
-  const vars=workflowVariableDefinitions(items);
-  if(!vars.length)return '<small>No variables detected.</small>';
-  return '<small>Variables: '+vars.map(v=>'<span class="chip">'+esc(v.name)+'</span>').join('')+'</small>';
-}
-
-function renderWorkflowBuilder(){
-  const target=document.getElementById('workflowBuilderSteps');
-  if(!target)return;
-  target.innerHTML=(state.workflowBuilder.steps||[]).map(workflowBuilderStepHtml).join('');
-  document.getElementById('workflowBuilderDataLists').innerHTML=workflowModelDatalist()+workflowWorkspaceDatalist();
-  bindWorkflowBuilderControls();
-  updateWorkflowBuilderPreview();
-  applyPermissions();
-}
-
-function collectWorkflowBuilderFromDom(){
-  if(!state.workflowBuilder)return;
-  state.workflowBuilder.steps=(state.workflowBuilder.steps||[]).map(step=>{
-    const card=document.querySelector('[data-workflow-builder-step="'+cssEscape(step._uid)+'"]');
-    if(!card)return step;
-    const field=name=>card.querySelector('[data-builder-field="'+name+'"]');
-    return {
-      ...step,
-      name:(field('name')?.value||'').trim(),
-      source:field('source')?.value||step.source||'prompt',
-      prompt:field('prompt')?.value||'',
-      templateId:field('templateId')?.value||'',
-      workflowId:field('workflowId')?.value||'',
-      conditionVariable:field('conditionVariable')?.value||'',
-      conditionOperator:field('conditionOperator')?.value||'exists',
-      conditionValue:field('conditionValue')?.value||'',
-      retryAttempts:Number(field('retryAttempts')?.value||1),
-      retryDelayMs:Number(field('retryDelayMs')?.value||0),
-      agentId:field('agentId')?.value||'',
-      workspace:field('workspace')?.value||'',
-      workspaceMode:field('workspaceMode')?.value||'',
-      model:field('model')?.value||'',
-      reasoningEffort:field('reasoningEffort')?.value||'',
-      launchProfileId:field('launchProfileId')?.value||'',
-      sessionMode:field('sessionMode')?.value||'current',
-      threadId:field('threadId')?.value||'',
-      target:field('target')?.value||'local',
-      requiresApproval:Boolean(field('requiresApproval')?.checked),
-      continueOnError:Boolean(field('continueOnError')?.checked),
-    };
-  });
-}
-
-function workflowBuilderStepsPayload(collect=true){
-  if(collect)collectWorkflowBuilderFromDom();
-  return (state.workflowBuilder?.steps||[]).map((step,index)=>{
-    const source=step.source||workflowStepSource(step);
-    return {
-      id:step.id||undefined,
-      name:step.name||'Step '+(index+1),
-      type:source==='workflow'?'workflow':'prompt',
-      prompt:source==='prompt'?(step.prompt||''):undefined,
-      templateId:source==='template'?(step.templateId||undefined):undefined,
-      workflowId:source==='workflow'?(step.workflowId||undefined):undefined,
-      condition:step.conditionVariable?{variable:step.conditionVariable,operator:step.conditionOperator||'exists',value:step.conditionValue||undefined}:undefined,
-      retryPolicy:(Number(step.retryAttempts)>1||Number(step.retryDelayMs)>0)?{maxAttempts:Number(step.retryAttempts)||1,delayMs:Number(step.retryDelayMs)||0}:undefined,
-      agentId:step.agentId||undefined,
-      workspace:step.sessionMode==='new'?(step.workspace||undefined):undefined,
-      workspaceMode:step.sessionMode==='new'?(step.workspaceMode||undefined):undefined,
-      model:step.sessionMode==='new'?(step.model||undefined):undefined,
-      reasoningEffort:step.sessionMode==='new'?(step.reasoningEffort||undefined):undefined,
-      launchProfileId:step.sessionMode==='new'?(step.launchProfileId||undefined):undefined,
-      sessionMode:step.sessionMode||'current',
-      threadId:step.sessionMode==='attach'?(step.threadId||undefined):undefined,
-      target:step.target||'local',
-      requiresApproval:Boolean(step.requiresApproval),
-      continueOnError:Boolean(step.continueOnError),
-    };
-  });
-}
-
-function validateWorkflowBuilder(){
-  collectWorkflowBuilderFromDom();
-  const rawSteps=state.workflowBuilder?.steps||[];
-  const steps=workflowBuilderStepsPayload(false);
-  const errors=[];
-  if(!steps.length)errors.push('Add at least one step.');
-  steps.forEach((step,index)=>{
-    const rawStep=rawSteps[index]||{};
-    const label=step.name||'Step '+(index+1);
-    if((rawStep.source||workflowStepSource(rawStep))==='template'&&!step.templateId)errors.push(label+': template is required.');
-    if(step.templateId&&!state.workflowTemplates.some(t=>t.id===step.templateId))errors.push(label+': selected template was not found.');
-    if((rawStep.source||workflowStepSource(rawStep))==='workflow'&&!step.workflowId)errors.push(label+': subflow is required.');
-    if(step.workflowId&&!state.workflows.some(w=>w.id===step.workflowId))errors.push(label+': selected subflow was not found.');
-    if((rawStep.source||workflowStepSource(rawStep))==='prompt'&&!String(step.prompt||'').trim())errors.push(label+': prompt text is required.');
-    if(step.sessionMode==='attach'&&!step.threadId)errors.push(label+': thread ID is required for attach mode.');
-  });
-  const target=document.getElementById('workflowBuilderValidation');
-  if(target)target.innerHTML=errors.map(error=>'<div class="workflow-builder-error">'+esc(error)+'</div>').join('');
-  return errors;
-}
-
-function updateWorkflowBuilderPreview(){
-  const json=document.getElementById('dlgWorkflowStepsJson');
-  if(json&&!json.matches(':focus'))json.value=workflowBuilderJsonFromState();
-  const preview=document.getElementById('workflowBuilderPreview');
-  if(preview)preview.innerHTML='<pre>'+esc(workflowBuilderPreviewText()||'Add a prompt or template step to preview the workflow.')+'</pre>'+workflowBuilderVariablesHtml();
-  validateWorkflowBuilder();
-}
-
-function bindWorkflowBuilderControls(){
-  document.querySelectorAll('[data-workflow-builder-step] [data-builder-field]').forEach(el=>{
-    el.oninput=()=>{collectWorkflowBuilderFromDom();updateWorkflowBuilderPreview()};
-    el.onchange=()=>{collectWorkflowBuilderFromDom();if(['source','sessionMode','templateId'].includes(el.dataset.builderField))renderWorkflowBuilder();else updateWorkflowBuilderPreview()};
-  });
-  document.querySelectorAll('[data-workflow-builder-move]').forEach(b=>b.onclick=()=>{collectWorkflowBuilderFromDom();const uid=b.closest('[data-workflow-builder-step]').dataset.workflowBuilderStep;const index=state.workflowBuilder.steps.findIndex(s=>s._uid===uid);const next=b.dataset.workflowBuilderMove==='up'?index-1:index+1;if(index<0||next<0||next>=state.workflowBuilder.steps.length)return;const steps=state.workflowBuilder.steps;[steps[index],steps[next]]=[steps[next],steps[index]];renderWorkflowBuilder()});
-  document.querySelectorAll('[data-workflow-builder-delete]').forEach(b=>b.onclick=()=>{collectWorkflowBuilderFromDom();const uid=b.closest('[data-workflow-builder-step]').dataset.workflowBuilderStep;state.workflowBuilder.steps=state.workflowBuilder.steps.filter(s=>s._uid!==uid);if(!state.workflowBuilder.steps.length)state.workflowBuilder.steps.push(workflowBuilderStep({},0));renderWorkflowBuilder()});
-  document.querySelectorAll('[data-workflow-builder-duplicate]').forEach(b=>b.onclick=()=>{collectWorkflowBuilderFromDom();const uid=b.closest('[data-workflow-builder-step]').dataset.workflowBuilderStep;const index=state.workflowBuilder.steps.findIndex(s=>s._uid===uid);if(index<0)return;const copy={...state.workflowBuilder.steps[index],_uid:workflowBuilderUid(),id:'',name:(state.workflowBuilder.steps[index].name||'Step')+' copy'};state.workflowBuilder.steps.splice(index+1,0,copy);renderWorkflowBuilder()});
-  document.querySelectorAll('[data-workflow-builder-add]').forEach(b=>b.onclick=()=>{collectWorkflowBuilderFromDom();state.workflowBuilder.steps.push(workflowBuilderStep({},state.workflowBuilder.steps.length));renderWorkflowBuilder()});
-  const syncJson=document.getElementById('workflowBuilderSyncJsonBtn');
-  if(syncJson)syncJson.onclick=()=>{collectWorkflowBuilderFromDom();document.getElementById('dlgWorkflowStepsJson').value=workflowBuilderJsonFromState();toast('Workflow JSON updated')};
-  const copyJson=document.getElementById('workflowBuilderCopyJsonBtn');
-  if(copyJson)copyJson.onclick=()=>copyText(workflowBuilderJsonFromState(),'Workflow JSON copied');
-  const importJson=document.getElementById('workflowBuilderImportJsonBtn');
-  if(importJson)importJson.onclick=()=>safe(()=>{const raw=document.getElementById('dlgWorkflowStepsJson').value;const parsed=JSON.parse(raw);if(!Array.isArray(parsed))throw new Error('Workflow JSON must be an array of steps.');state.workflowBuilder.steps=parsed.map(workflowBuilderStep);renderWorkflowBuilder();toast('Workflow JSON imported')});
-  const previewBtn=document.getElementById('workflowBuilderPreviewBtn');
-  if(previewBtn)previewBtn.onclick=()=>{collectWorkflowBuilderFromDom();toast(workflowBuilderPreviewText().slice(0,3500),{duration:12000})};
 }
 
 function workflowDialogBody(w){
@@ -393,7 +252,7 @@ function workflowDialogBody(w){
     '</div>';
 }
 
-function openWorkflowDialog(w){
+function openWorkflowDialog(w=null){
   if(!can('workflows.write')){toast('Permission required: workflows.write');return}
   state.workflowBuilder=workflowBuilderState(w);
   adminDialog(w?'Edit workflow':'Create workflow',workflowDialogBody(w),async()=>{
@@ -419,15 +278,21 @@ function bindWorkflowPageControls(){
 document.addEventListener('click',e=>{
   const tab=e.target.closest?.('[data-workflow-tab]');if(tab){e.preventDefault();switchWorkflowTab(tab.dataset.workflowTab);return}
   const createTemplate=e.target.closest?.('#createTemplateBtn');if(createTemplate){e.preventDefault();openTemplateDialog();return}
+  const importTemplate=e.target.closest?.('#importTemplateBtn');if(importTemplate){e.preventDefault();importWorkflowDialog('template');return}
   const createWorkflow=e.target.closest?.('#createWorkflowBtn');if(createWorkflow){e.preventDefault();openWorkflowDialog();return}
+  const importWorkflow=e.target.closest?.('#importWorkflowBtn');if(importWorkflow){e.preventDefault();importWorkflowDialog('workflow');return}
   const reload=e.target.closest?.('#reloadWorkflowsBtn,#reloadWorkflowRunsBtn');if(reload){e.preventDefault();safe(loadWorkflows);return}
   const templateRun=e.target.closest?.('[data-template-run]');if(templateRun){e.preventDefault();safe(()=>runTemplate(templateRun.dataset.templateRun));return}
   const templateInsert=e.target.closest?.('[data-template-insert]');if(templateInsert){e.preventDefault();insertTemplate(templateInsert.dataset.templateInsert);return}
   const templatePreview=e.target.closest?.('[data-template-preview]');if(templatePreview){e.preventDefault();safe(()=>previewTemplate(templatePreview.dataset.templatePreview));return}
+  const templateHistory=e.target.closest?.('[data-template-history]');if(templateHistory){e.preventDefault();safe(()=>showWorkflowHistory('template',templateHistory.dataset.templateHistory));return}
+  const templateExport=e.target.closest?.('[data-template-export]');if(templateExport){e.preventDefault();safe(()=>exportWorkflowItem('template',templateExport.dataset.templateExport));return}
   const templateEdit=e.target.closest?.('[data-template-edit]');if(templateEdit){e.preventDefault();openTemplateDialog(state.workflowTemplates.find(t=>t.id===templateEdit.dataset.templateEdit));return}
   const templateDelete=e.target.closest?.('[data-template-delete]');if(templateDelete){e.preventDefault();safe(async()=>{if(confirm('Delete template?')){await api('/api/templates/'+encodeURIComponent(templateDelete.dataset.templateDelete),{method:'DELETE'});await loadWorkflows()}});return}
   const workflowRun=e.target.closest?.('[data-workflow-run]');if(workflowRun){e.preventDefault();safe(()=>runWorkflow(workflowRun.dataset.workflowRun));return}
   const workflowPreview=e.target.closest?.('[data-workflow-preview]');if(workflowPreview){e.preventDefault();safe(()=>previewWorkflow(workflowPreview.dataset.workflowPreview));return}
+  const workflowHistory=e.target.closest?.('[data-workflow-history]');if(workflowHistory){e.preventDefault();safe(()=>showWorkflowHistory('workflow',workflowHistory.dataset.workflowHistory));return}
+  const workflowExport=e.target.closest?.('[data-workflow-export]');if(workflowExport){e.preventDefault();safe(()=>exportWorkflowItem('workflow',workflowExport.dataset.workflowExport));return}
   const workflowEdit=e.target.closest?.('[data-workflow-edit]');if(workflowEdit){e.preventDefault();openWorkflowDialog(state.workflows.find(w=>w.id===workflowEdit.dataset.workflowEdit));return}
   const workflowDelete=e.target.closest?.('[data-workflow-delete]');if(workflowDelete){e.preventDefault();safe(async()=>{if(confirm('Delete workflow?')){await api('/api/workflows/'+encodeURIComponent(workflowDelete.dataset.workflowDelete),{method:'DELETE'});await loadWorkflows()}})}
 });

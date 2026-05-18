@@ -237,14 +237,14 @@ ${faviconLinks}
           </div>
           <div class="workflow-tab active" data-workflow-tab-panel="templates">
             <div class="workflow-tab-heading">
-              <div class="row workflow-heading-actions"><button id="reloadWorkflowsBtn" class="secondary">Reload</button><button id="createTemplateBtn">Create template</button></div>
+              <div class="row workflow-heading-actions"><button id="reloadWorkflowsBtn" class="secondary">Reload</button><button id="importTemplateBtn" class="secondary">Import template</button><button id="createTemplateBtn">Create template</button></div>
               <div class="workflow-filter-row"><input id="templateSearch" placeholder="Search templates"></div>
             </div>
             <div id="templateList" class="list"></div>
           </div>
           <div class="workflow-tab" data-workflow-tab-panel="workflows">
             <div class="workflow-tab-heading">
-              <div class="row workflow-heading-actions"><button id="createWorkflowBtn">Create workflow</button></div>
+              <div class="row workflow-heading-actions"><button id="importWorkflowBtn" class="secondary">Import workflow</button><button id="createWorkflowBtn">Create workflow</button></div>
               <div class="workflow-filter-row"><input id="workflowSearch" placeholder="Search workflows"></div>
             </div>
             <div id="workflowList" class="list"></div>

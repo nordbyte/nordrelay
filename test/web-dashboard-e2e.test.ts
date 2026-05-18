@@ -83,19 +83,25 @@ describe("web dashboard browser-flow assets", () => {
 
     expect(pageSource).toContain('id="page-workflows"');
     expect(pageSource).toContain('id="createTemplateBtn"');
+    expect(pageSource).toContain('id="importTemplateBtn"');
     expect(pageSource).toContain('id="createWorkflowBtn"');
+    expect(pageSource).toContain('id="importWorkflowBtn"');
     expect(js).toContain("function loadWorkflows");
     expect(js).toContain("document.addEventListener('click'");
     expect(js).toContain("[data-workflow-tab]");
     expect(js).toContain("function renderTemplatesTable");
     expect(js).toContain('class="data-table templates-table"');
     expect(js).toContain("function workflowBuilderState");
+    expect(js).toContain("function showWorkflowHistory");
+    expect(js).toContain("function exportWorkflowItem");
     expect(js).toContain("function openWorkflowVariableDialog");
     expect(js).toContain("Advanced JSON import/export");
     expect(js).not.toContain("Steps JSON");
     expect(js).not.toContain("JSON.parse(val('dlgWorkflowSteps'))");
     expect(readFileSync("scripts/build-web-assets.mjs", "utf8")).toContain("src/web/ui/client/workflows-page.ts");
+    expect(readFileSync("scripts/build-web-assets.mjs", "utf8")).toContain("src/web/ui/client/workflow-builder.ts");
     expect(js).toContain("/api/templates");
+    expect(js).toContain("/versions/");
     expect(js).toContain("/api/workflows");
     expect(js).toContain("/api/workflow-runs/");
     expect(css).toContain(".workflow-section-header");
@@ -104,7 +110,11 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".workflow-builder-json");
     expect(css).toContain(".templates-table th:nth-child(7)");
     expect(contract).toContain('exact("/api/templates"');
+    expect(contract).toContain('exact("/api/templates/import"');
+    expect(contract).toContain('dynamic("/api/templates/:id/versions"');
     expect(contract).toContain('exact("/api/workflows"');
+    expect(contract).toContain('exact("/api/workflows/import"');
+    expect(contract).toContain('dynamic("/api/workflows/:id/versions"');
     expect(contract).toContain('dynamic("/api/workflow-runs/:id/cancel"');
   });
 
@@ -237,7 +247,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function toggleMobileMenu");
     expect(js).toContain("aria-expanded");
     expect(js).toContain("event.stopPropagation();toggleMobileMenu()");
-    expect(js).toContain("if(sidebar.contains(/** @type {Node} */ (event.target)))return;setMobileMenuOpen(false)");
+    expect(js).toContain("if (sidebar.contains(event.target)) return;");
     expect(js).toContain("event.key==='Escape'");
     expect(css).toContain(".menu:hover,.menu:focus{background:var(--accent-strong);border-color:var(--accent-strong);color:white");
     expect(css).toContain("header{z-index:30}");

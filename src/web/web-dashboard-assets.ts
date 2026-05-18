@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 
 const clientSources = [
   "client/core/api-routes.generated.js",
@@ -16,8 +18,10 @@ const clientSources = [
   "client/workflows.ts",
   "client/jobs.ts",
   "client/metrics.ts",
+  "client/settings-panel.ts",
   "client/admin.ts",
   "client/queue-planner.ts",
+  "client/workflow-builder.ts",
   "client/workflows-page.ts",
   "client/users.ts",
   "client/settings-wizard.ts",
@@ -84,9 +88,28 @@ function readDashboardAsset(assetName: string, sourceFiles: string[]): string {
   }
 
   const sourceDir = path.join(moduleDir, "ui");
-  return sourceFiles
+  const source = sourceFiles
     .map((file) => readFileSync(path.join(sourceDir, file), "utf8"))
     .join("\n");
+  return assetName === "dashboard.js" ? transformDashboardJsSource(source) : source;
+}
+
+function transformDashboardJsSource(source: string): string {
+  try {
+    const { transformSync } = require("esbuild") as typeof import("esbuild");
+    const transformed = transformSync(source, {
+      loader: "ts",
+      format: "iife",
+      legalComments: "none",
+      minify: false,
+      sourcefile: "dashboard.js",
+      target: "es2022",
+    }).code;
+    return `${transformed}\n/* NordRelay dashboard source snapshot\n${source.replaceAll("*/", "* /")}\n*/\n`;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Dashboard source fallback requires esbuild. Run npm run build first. ${detail}`);
+  }
 }
 
 function dashboardStaticAssetPath(assetName: string): string | null {

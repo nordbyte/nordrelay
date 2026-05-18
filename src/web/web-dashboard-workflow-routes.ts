@@ -38,6 +38,50 @@ export async function handleDashboardWorkflowRoute(
     return true;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/templates/import") {
+    const body = await readJsonBody(req);
+    sendJson(res, 201, { template: service.importTemplate(importBody(body), options.activityActor) });
+    return true;
+  }
+
+  const templateHistoryMatch = url.pathname.match(/^\/api\/templates\/([^/]+)\/(versions|diff|export)(?:\/([^/]+))?(?:\/(rollback|run|preview|export))?$/);
+  if (templateHistoryMatch?.[1]) {
+    const id = decodeURIComponent(templateHistoryMatch[1]);
+    const section = templateHistoryMatch[2];
+    const version = versionParam(templateHistoryMatch[3]);
+    const action = templateHistoryMatch[4];
+    if (req.method === "GET" && section === "versions" && !version && !action) {
+      sendJson(res, 200, { versions: service.listTemplateVersions(id) });
+      return true;
+    }
+    if (req.method === "GET" && section === "diff") {
+      sendJson(res, 200, service.diffTemplateVersions(id, queryVersion(url, "from"), queryVersion(url, "to")));
+      return true;
+    }
+    if (req.method === "GET" && section === "export") {
+      sendJson(res, 200, service.exportTemplate(id, queryVersion(url, "version")));
+      return true;
+    }
+    if (section === "versions" && version && req.method === "GET" && action === "export") {
+      sendJson(res, 200, service.exportTemplate(id, version));
+      return true;
+    }
+    if (section === "versions" && version && req.method === "POST" && action === "rollback") {
+      sendJson(res, 200, { template: service.restoreTemplateVersion(id, version, options.activityActor) });
+      return true;
+    }
+    if (section === "versions" && version && req.method === "POST" && action === "preview") {
+      const body = await readJsonBody(req);
+      sendJson(res, 200, service.previewTemplateVersion(id, version, variableRecord(body?.variables)));
+      return true;
+    }
+    if (section === "versions" && version && req.method === "POST" && action === "run") {
+      const body = await readJsonBody(req);
+      sendJson(res, 202, { run: await service.runTemplateVersion(id, version, variableRecord(body?.variables), options.activityActor) });
+      return true;
+    }
+  }
+
   const templateMatch = url.pathname.match(/^\/api\/templates\/([^/]+)(?:\/(run|preview))?$/);
   if (templateMatch?.[1]) {
     const id = decodeURIComponent(templateMatch[1]);
@@ -75,6 +119,12 @@ export async function handleDashboardWorkflowRoute(
     return true;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/workflows/import") {
+    const body = await readJsonBody(req);
+    sendJson(res, 201, { workflow: service.importWorkflow(importBody(body), options.activityActor) });
+    return true;
+  }
+
   const workflowRunMatch = url.pathname.match(/^\/api\/workflow-runs\/([^/]+)(?:\/(cancel|rerun-failed))?$/);
   if (workflowRunMatch?.[1]) {
     const id = decodeURIComponent(workflowRunMatch[1]);
@@ -89,6 +139,44 @@ export async function handleDashboardWorkflowRoute(
     }
     if (req.method === "POST" && action === "rerun-failed") {
       sendJson(res, 200, { run: service.rerunFromFailedStep(id, options.activityActor) });
+      return true;
+    }
+  }
+
+  const workflowHistoryMatch = url.pathname.match(/^\/api\/workflows\/([^/]+)\/(versions|diff|export)(?:\/([^/]+))?(?:\/(rollback|run|preview|export))?$/);
+  if (workflowHistoryMatch?.[1]) {
+    const id = decodeURIComponent(workflowHistoryMatch[1]);
+    const section = workflowHistoryMatch[2];
+    const version = versionParam(workflowHistoryMatch[3]);
+    const action = workflowHistoryMatch[4];
+    if (req.method === "GET" && section === "versions" && !version && !action) {
+      sendJson(res, 200, { versions: service.listWorkflowVersions(id) });
+      return true;
+    }
+    if (req.method === "GET" && section === "diff") {
+      sendJson(res, 200, service.diffWorkflowVersions(id, queryVersion(url, "from"), queryVersion(url, "to")));
+      return true;
+    }
+    if (req.method === "GET" && section === "export") {
+      sendJson(res, 200, service.exportWorkflow(id, queryVersion(url, "version")));
+      return true;
+    }
+    if (section === "versions" && version && req.method === "GET" && action === "export") {
+      sendJson(res, 200, service.exportWorkflow(id, version));
+      return true;
+    }
+    if (section === "versions" && version && req.method === "POST" && action === "rollback") {
+      sendJson(res, 200, { workflow: service.restoreWorkflowVersion(id, version, options.activityActor) });
+      return true;
+    }
+    if (section === "versions" && version && req.method === "POST" && action === "preview") {
+      const body = await readJsonBody(req);
+      sendJson(res, 200, service.previewWorkflowVersion(id, version, variableRecord(body?.variables)));
+      return true;
+    }
+    if (section === "versions" && version && req.method === "POST" && action === "run") {
+      const body = await readJsonBody(req);
+      sendJson(res, 202, { run: service.runWorkflowVersion(id, version, variableRecord(body?.variables), options.activityActor) });
       return true;
     }
   }
@@ -119,6 +207,20 @@ export async function handleDashboardWorkflowRoute(
   }
 
   return false;
+}
+
+function importBody(body: unknown): unknown {
+  const record = objectRecord(body);
+  return record.bundle ?? body;
+}
+
+function versionParam(value: string | undefined): number | undefined {
+  const version = Number(value);
+  return Number.isFinite(version) && version > 0 ? Math.floor(version) : undefined;
+}
+
+function queryVersion(url: URL, key: string): number | undefined {
+  return versionParam(url.searchParams.get(key) ?? undefined);
 }
 
 function parseTemplateBody(body: unknown, ownerUserId: string): Partial<PromptTemplate> & Pick<PromptTemplate, "name" | "prompt"> {

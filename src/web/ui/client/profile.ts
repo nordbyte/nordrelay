@@ -1,4 +1,3 @@
-// @ts-nocheck
 function applyAccountChrome(auth){
   state.auth=auth||state.auth;
   const user=auth?.user||{};
@@ -109,7 +108,7 @@ function renderProfileWebSessions(profile){
   box.innerHTML=rows.join('')||'<div class="item empty-state">No active web sessions.</div>';
 }
 
-function profileListItem(title,rows,status){
+function profileListItem(title,rows,status=''){
   const badge=status?'<span class="adapter-status '+attr(status)+'">'+esc(status==='enabled'?'current':'other')+'</span>':'';
   return '<div class="item"><strong>'+esc(title)+' '+badge+'</strong>'+rows.map(([key,value])=>'<small>'+esc(key)+': '+esc(value||'-')+'</small>').join('')+'</div>';
 }
@@ -157,7 +156,7 @@ async function logoutOtherProfileSessions(){
 document.getElementById('userMenuBtn')?.addEventListener('click',()=>setUserMenuOpen(document.getElementById('userMenuPanel')?.hidden!==false));
 document.addEventListener('click',event=>{
   const menu=document.getElementById('accountMenu');
-  if(menu&&!menu.contains(/** @type {Node} */ (event.target)))setUserMenuOpen(false);
+  if(menu&&!menu.contains(event.target as Node))setUserMenuOpen(false);
 });
 document.addEventListener('keydown',event=>{if(event.key==='Escape')setUserMenuOpen(false)});
 document.getElementById('profileBtn')?.addEventListener('click',()=>safe(async()=>{setUserMenuOpen(false);await openProfileDialog()}));

@@ -1,4 +1,3 @@
-// @ts-nocheck
 const ACCESS_USER_PAGE_SIZE=20;
 const ACCESS_PERMISSION_GROUPS=[
   ['Overview',['inspect']],

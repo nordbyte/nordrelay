@@ -1,11 +1,10 @@
-// @ts-nocheck
 function createPaginator(containerId, onChange, pageSize=50){
   const container=document.getElementById(containerId);
   return {
     page:1,
     pageSize,
     reset(){this.page=1},
-    render(meta={}){
+    render(meta:any={}){
       const hasPrevious=Boolean(meta.hasPrevious);
       const hasNext=Boolean(meta.hasNext);
       container.innerHTML='<span>Page '+this.page+' / '+this.pageSize+' per page</span><div class="pager-actions"><button data-page-action="prev" '+(!hasPrevious?'disabled':'')+'>Previous</button><button data-page-action="next" '+(!hasNext?'disabled':'')+'>Next</button></div>';
@@ -26,7 +25,7 @@ function createCursorPager(containerId,onChange){
     hasNext:false,
     total:0,
     reset(){this.stack=[];this.cursor=null;this.nextCursor=null;this.hasNext=false;this.total=0},
-    render(meta={}){
+    render(meta:any={}){
       if(!container)return;
       this.nextCursor=meta.nextCursor||null;
       this.hasNext=Boolean(meta.hasNext);
@@ -196,7 +195,7 @@ function headerTargetAgentHtml(target,agent,selected){
   return '<div class="header-target-agent-block" data-target-agent-block="'+attr(key)+'"><div class="header-target-agent-row"><button type="button" role="menuitemradio" class="header-target-agent" data-target-peer="'+attr(target.id)+'" data-target-agent="'+attr(agent)+'" aria-selected="'+(selected?'true':'false')+'"'+disabledAttr('sessions.write')+'><span>'+esc(agent)+'</span>'+(meta?'<small>'+esc(meta)+'</small>':'')+'</button><button type="button" class="header-target-session-toggle" data-target-sessions-toggle="'+attr(key)+'" data-target-peer="'+attr(target.id)+'" data-target-agent="'+attr(agent)+'" aria-expanded="false" title="Show recent sessions" aria-label="Show recent '+attr(agent)+' sessions"'+disabledAttr('sessions.read')+'><span aria-hidden="true"></span></button></div><div class="header-target-sessions" data-target-sessions="'+attr(key)+'" hidden></div></div>';
 }
 function headerTargetSessionKey(peerId,agentId){return String(peerId||'local')+'::'+String(agentId||'')}
-function bindHeaderTargetMenu(root=document){
+function bindHeaderTargetMenu(root:any=document){
   const menu=root.querySelector?.('[data-header-target-menu]');
   const button=menu?.querySelector('#headerTargetBtn');
   const list=menu?.querySelector('.header-target-list');
@@ -225,7 +224,7 @@ function bindHeaderTargetMenu(root=document){
     await loadHeaderTargetSessionsPage(panel,button.dataset.targetPeer||'local',button.dataset.targetAgent||'',nextPage);
   },event));
 }
-async function headerTargetRequest(peerId,path,options={}){
+async function headerTargetRequest(peerId,path,options:any={}){
   return peerId==='local'?api(path,{...options,local:true}):apiPeer(peerId,path,options);
 }
 async function selectHeaderTarget(peerId,agentId){
@@ -360,7 +359,7 @@ function compactControlMenu(id,label,value,display,items){
   return '<div class="compact-control" data-control-menu="'+attr(id)+'"><span class="compact-control-label">'+esc(label)+'</span><button type="button" id="'+attr(id)+'" class="control-menu-button" data-control-value="'+attr(value)+'" aria-haspopup="listbox" aria-expanded="false"'+disabledAttr('settings.write')+'>'+esc(display||'Default')+'</button><div class="control-menu-list" role="listbox" hidden>'+options+'</div></div>';
 }
 function selectedCompactControlValue(id){return document.getElementById(id)?.dataset.controlValue||''}
-function closeCompactControlMenus(except){
+function closeCompactControlMenus(except=null){
   document.querySelectorAll('.compact-control').forEach(menu=>{
     if(except&&menu===except)return;
     menu.querySelector('.control-menu-list')?.setAttribute('hidden','');
@@ -410,7 +409,7 @@ function adapterCard(label,status,detail,tooltip='',settingsGroup=''){
 }
 function agentSettingsGroup(adapter){return ({codex:'Codex',pi:'Pi',hermes:'Hermes',openclaw:'OpenClaw','claude-code':'Claude Code'}[adapter?.id]||adapter?.label||'Agents')}
 function channelSettingsGroup(adapter){return ({telegram:'Telegram',discord:'Discord',slack:'Slack'}[adapter?.id]||adapter?.label||'Chat')}
-function bindAdapterSettingsLinks(root=document){
+function bindAdapterSettingsLinks(root:any=document){
   root.querySelectorAll?.('[data-settings-group]').forEach(button=>button.onclick=()=>{state.settingsGroup=button.dataset.settingsGroup||null;page('settings')});
 }
 const agentFeatureDefs=[

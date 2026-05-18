@@ -93,6 +93,42 @@ export interface Workflow {
   updatedAt: string;
 }
 
+export type WorkflowVersionKind = "template" | "workflow";
+
+export interface WorkflowVersionRecord {
+  id: string;
+  kind: WorkflowVersionKind;
+  entityId: string;
+  version: number;
+  name: string;
+  createdAt: string;
+  createdByUserId?: string;
+  snapshot: PromptTemplate | Workflow;
+}
+
+export interface WorkflowVersionDiffEntry {
+  path: string;
+  type: "added" | "removed" | "changed";
+  before?: unknown;
+  after?: unknown;
+}
+
+export interface WorkflowVersionDiff {
+  kind: WorkflowVersionKind;
+  entityId: string;
+  fromVersion?: number;
+  toVersion?: number;
+  changes: WorkflowVersionDiffEntry[];
+}
+
+export interface WorkflowExportBundle {
+  kind: WorkflowVersionKind;
+  exportedAt: string;
+  template?: PromptTemplate;
+  workflow?: Workflow;
+  version?: WorkflowVersionRecord;
+}
+
 export interface WorkflowStepRun {
   stepId: string;
   name: string;
@@ -132,6 +168,10 @@ export interface WorkflowRun {
   id: string;
   workflowId?: string;
   templateId?: string;
+  workflowVersion?: number;
+  templateVersion?: number;
+  workflowSnapshot?: Workflow;
+  templateSnapshot?: PromptTemplate;
   name: string;
   status: WorkflowRunStatus;
   ownerUserId?: string;
@@ -150,6 +190,7 @@ interface PersistedWorkflowStore {
   templates: PromptTemplate[];
   workflows: Workflow[];
   runs: WorkflowRun[];
+  versions: WorkflowVersionRecord[];
 }
 
 const DEFAULT_MAX_RUNS = 500;
@@ -187,6 +228,7 @@ export class WorkflowStore {
       updatedAt: now,
     });
     payload.templates = upsertById(payload.templates, template);
+    payload.versions = appendVersion(payload.versions ?? [], "template", template, input.ownerUserId);
     this.store.write(payload);
     return template;
   }
@@ -196,6 +238,7 @@ export class WorkflowStore {
     const next = payload.templates.filter((template) => template.id !== id);
     if (next.length === payload.templates.length) return false;
     payload.templates = next;
+    payload.versions = (payload.versions ?? []).filter((version) => !(version.kind === "template" && version.entityId === id));
     this.store.write(payload);
     return true;
   }
@@ -221,6 +264,7 @@ export class WorkflowStore {
       updatedAt: now,
     });
     payload.workflows = upsertById(payload.workflows, workflow);
+    payload.versions = appendVersion(payload.versions ?? [], "workflow", workflow, input.ownerUserId);
     this.store.write(payload);
     return workflow;
   }
@@ -230,8 +274,83 @@ export class WorkflowStore {
     const next = payload.workflows.filter((workflow) => workflow.id !== id);
     if (next.length === payload.workflows.length) return false;
     payload.workflows = next;
+    payload.versions = (payload.versions ?? []).filter((version) => !(version.kind === "workflow" && version.entityId === id));
     this.store.write(payload);
     return true;
+  }
+
+  listVersions(kind: WorkflowVersionKind, entityId: string): WorkflowVersionRecord[] {
+    return this.payload().versions
+      .filter((version) => version.kind === kind && version.entityId === entityId)
+      .sort((left, right) => right.version - left.version);
+  }
+
+  getVersion(kind: WorkflowVersionKind, entityId: string, version: number): WorkflowVersionRecord | null {
+    return this.payload().versions.find((item) => item.kind === kind && item.entityId === entityId && item.version === version) ?? null;
+  }
+
+  latestVersion(kind: WorkflowVersionKind, entityId: string): WorkflowVersionRecord | null {
+    return this.listVersions(kind, entityId)[0] ?? null;
+  }
+
+  restoreVersion(kind: WorkflowVersionKind, entityId: string, version: number, ownerUserId?: string): PromptTemplate | Workflow | null {
+    const record = this.getVersion(kind, entityId, version);
+    if (!record) return null;
+    if (kind === "template") {
+      return this.saveTemplate({ ...(record.snapshot as PromptTemplate), id: entityId, ownerUserId });
+    }
+    return this.saveWorkflow({ ...(record.snapshot as Workflow), id: entityId, ownerUserId });
+  }
+
+  diffVersions(kind: WorkflowVersionKind, entityId: string, fromVersion?: number, toVersion?: number): WorkflowVersionDiff {
+    const versions = this.listVersions(kind, entityId).slice().reverse();
+    const to = toVersion ? this.getVersion(kind, entityId, toVersion) : versions.at(-1) ?? null;
+    const from = fromVersion ? this.getVersion(kind, entityId, fromVersion) : versions.at(-2) ?? null;
+    return {
+      kind,
+      entityId,
+      fromVersion: from?.version,
+      toVersion: to?.version,
+      changes: diffObjects(from?.snapshot, to?.snapshot),
+    };
+  }
+
+  exportTemplate(id: string, version?: number): WorkflowExportBundle | null {
+    const versionRecord = version ? this.getVersion("template", id, version) : this.latestVersion("template", id);
+    const template = (versionRecord?.snapshot as PromptTemplate | undefined) ?? this.getTemplate(id) ?? undefined;
+    return template ? { kind: "template", exportedAt: new Date().toISOString(), template, version: versionRecord ?? undefined } : null;
+  }
+
+  exportWorkflow(id: string, version?: number): WorkflowExportBundle | null {
+    const versionRecord = version ? this.getVersion("workflow", id, version) : this.latestVersion("workflow", id);
+    const workflow = (versionRecord?.snapshot as Workflow | undefined) ?? this.getWorkflow(id) ?? undefined;
+    return workflow ? { kind: "workflow", exportedAt: new Date().toISOString(), workflow, version: versionRecord ?? undefined } : null;
+  }
+
+  importTemplate(input: unknown, ownerUserId?: string): PromptTemplate {
+    const raw = importedRecord<PromptTemplate>(input, "template");
+    return this.saveTemplate({
+      ...raw,
+      id: randomId(),
+      ownerUserId,
+      createdAt: undefined,
+      updatedAt: undefined,
+      name: raw.name ? String(raw.name) : "Imported template",
+      prompt: raw.prompt ?? "",
+    });
+  }
+
+  importWorkflow(input: unknown, ownerUserId?: string): Workflow {
+    const raw = importedRecord<Workflow>(input, "workflow");
+    return this.saveWorkflow({
+      ...raw,
+      id: randomId(),
+      ownerUserId,
+      createdAt: undefined,
+      updatedAt: undefined,
+      name: raw.name ? String(raw.name) : "Imported workflow",
+      steps: raw.steps ?? [],
+    });
   }
 
   listRuns(limit = 100): WorkflowRun[] {
@@ -263,13 +382,14 @@ export class WorkflowStore {
   private payload(): PersistedWorkflowStore {
     const payload = this.store.read();
     if (!payload || payload.version !== 1) {
-      return { version: 1, templates: [], workflows: [], runs: [] };
+      return { version: 1, templates: [], workflows: [], runs: [], versions: [] };
     }
     return {
       version: 1,
       templates: Array.isArray(payload.templates) ? payload.templates.map(normalizeTemplate) : [],
       workflows: Array.isArray(payload.workflows) ? payload.workflows.map(normalizeWorkflow) : [],
       runs: Array.isArray(payload.runs) ? payload.runs.map(normalizeRun).slice(0, this.maxRuns) : [],
+      versions: normalizeVersions(payload.versions),
     };
   }
 }
@@ -351,9 +471,15 @@ function normalizeStep(input: Partial<WorkflowStep>): WorkflowStep {
 
 function normalizeRun(input: WorkflowRun): WorkflowRun {
   const now = new Date().toISOString();
+  const workflowSnapshot = input.workflowSnapshot ? normalizeWorkflow(input.workflowSnapshot) : undefined;
+  const templateSnapshot = input.templateSnapshot ? normalizeTemplate(input.templateSnapshot) : undefined;
   return {
     ...input,
     id: normalizeId(input.id) || randomId(),
+    workflowVersion: normalizePositiveNumber(input.workflowVersion),
+    templateVersion: normalizePositiveNumber(input.templateVersion),
+    workflowSnapshot,
+    templateSnapshot,
     name: String(input.name ?? "Workflow run").trim() || "Workflow run",
     status: normalizeRunStatus(input.status),
     variables: input.variables && typeof input.variables === "object" ? input.variables : {},
@@ -393,6 +519,150 @@ function normalizeStepRun(input: WorkflowStepRun): WorkflowStepRun {
     approvedAt: validDate(input.approvedAt),
     skippedReason: cleanOptional(input.skippedReason),
   };
+}
+
+function normalizeVersions(input: unknown): WorkflowVersionRecord[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map(normalizeVersionRecord)
+    .filter((version): version is WorkflowVersionRecord => Boolean(version))
+    .sort((left, right) => {
+      if (left.kind !== right.kind) return left.kind.localeCompare(right.kind);
+      if (left.entityId !== right.entityId) return left.entityId.localeCompare(right.entityId);
+      return left.version - right.version;
+    })
+    .slice(-2_000);
+}
+
+function normalizeVersionRecord(input: unknown): WorkflowVersionRecord | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const record = input as Record<string, unknown>;
+  const kind = normalizeVersionKind(record.kind);
+  const entityId = normalizeId(record.entityId);
+  const version = normalizePositiveNumber(record.version);
+  const snapshot = normalizeVersionSnapshot(kind, record.snapshot);
+  if (!kind || !entityId || !version || !snapshot) return null;
+  return {
+    id: normalizeId(record.id) || `${kind}_${entityId}_v${version}`,
+    kind,
+    entityId,
+    version,
+    name: String(record.name ?? snapshot.name ?? `${kind} ${version}`).trim(),
+    createdAt: validDate(record.createdAt) ?? new Date().toISOString(),
+    createdByUserId: cleanOptional(record.createdByUserId),
+    snapshot,
+  };
+}
+
+function normalizeVersionKind(value: unknown): WorkflowVersionKind | null {
+  return value === "template" || value === "workflow" ? value : null;
+}
+
+function normalizeVersionSnapshot(kind: WorkflowVersionKind | null, snapshot: unknown): PromptTemplate | Workflow | null {
+  if (!kind || !snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return null;
+  const record = snapshot as Record<string, unknown>;
+  if (kind === "template") {
+    return normalizeTemplate({
+      id: normalizeId(record.id),
+      name: String(record.name ?? "Untitled template"),
+      prompt: String(record.prompt ?? ""),
+      description: cleanOptional(record.description),
+      tags: Array.isArray(record.tags) ? record.tags.map(String) : [],
+      variables: Array.isArray(record.variables) ? record.variables as PromptTemplateVariable[] : undefined,
+      defaultAgentId: cleanOptional(record.defaultAgentId) as AgentId | undefined,
+      defaultWorkspace: cleanOptional(record.defaultWorkspace),
+      defaultModel: cleanOptional(record.defaultModel),
+      defaultReasoning: cleanOptional(record.defaultReasoning),
+      defaultLaunchProfile: cleanOptional(record.defaultLaunchProfile),
+      scope: record.scope === "shared" ? "shared" : "private",
+      ownerUserId: cleanOptional(record.ownerUserId),
+      createdAt: validDate(record.createdAt),
+      updatedAt: validDate(record.updatedAt),
+    });
+  }
+  return normalizeWorkflow({
+    id: normalizeId(record.id),
+    name: String(record.name ?? "Untitled workflow"),
+    description: cleanOptional(record.description),
+    tags: Array.isArray(record.tags) ? record.tags.map(String) : [],
+    steps: Array.isArray(record.steps) ? record.steps as WorkflowStep[] : [],
+    schedule: record.schedule as WorkflowSchedule | undefined,
+    scope: record.scope === "shared" ? "shared" : "private",
+    ownerUserId: cleanOptional(record.ownerUserId),
+    createdAt: validDate(record.createdAt),
+    updatedAt: validDate(record.updatedAt),
+  });
+}
+
+function appendVersion(versions: WorkflowVersionRecord[], kind: WorkflowVersionKind, snapshot: PromptTemplate | Workflow, userId?: string): WorkflowVersionRecord[] {
+  const normalized = normalizeVersionSnapshot(kind, snapshot);
+  if (!normalized) return versions;
+  const entityVersions = versions
+    .filter((version) => version.kind === kind && version.entityId === normalized.id)
+    .sort((left, right) => right.version - left.version);
+  const latest = entityVersions[0];
+  if (latest && snapshotFingerprint(latest.snapshot) === snapshotFingerprint(normalized)) {
+    return versions;
+  }
+  const nextVersion = (latest?.version ?? 0) + 1;
+  const record: WorkflowVersionRecord = {
+    id: `${kind}_${normalized.id}_v${nextVersion}`,
+    kind,
+    entityId: normalized.id,
+    version: nextVersion,
+    name: normalized.name,
+    createdAt: new Date().toISOString(),
+    createdByUserId: cleanOptional(userId),
+    snapshot: cloneJson(normalized),
+  };
+  return [...versions, record]
+    .filter((item) => item.kind !== kind || item.entityId !== normalized.id || item.version > nextVersion - 50)
+    .slice(-2_000);
+}
+
+function snapshotFingerprint(snapshot: PromptTemplate | Workflow): string {
+  const copy = cloneJson(snapshot);
+  delete (copy as { updatedAt?: string }).updatedAt;
+  return JSON.stringify(copy);
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function diffObjects(before: unknown, after: unknown, basePath = ""): WorkflowVersionDiffEntry[] {
+  if (JSON.stringify(before) === JSON.stringify(after)) return [];
+  const beforeRecord = objectDiffRecord(before);
+  const afterRecord = objectDiffRecord(after);
+  if (!beforeRecord || !afterRecord) {
+    return [{ path: basePath || "$", type: before === undefined ? "added" : after === undefined ? "removed" : "changed", before, after }];
+  }
+  const keys = [...new Set([...Object.keys(beforeRecord), ...Object.keys(afterRecord)])].sort();
+  return keys.flatMap((key) => {
+    const path = basePath ? `${basePath}.${key}` : key;
+    if (!(key in beforeRecord)) return [{ path, type: "added" as const, after: afterRecord[key] }];
+    if (!(key in afterRecord)) return [{ path, type: "removed" as const, before: beforeRecord[key] }];
+    return diffObjects(beforeRecord[key], afterRecord[key], path);
+  }).slice(0, 200);
+}
+
+function objectDiffRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function importedRecord<T extends PromptTemplate | Workflow>(input: unknown, kind: WorkflowVersionKind): T {
+  const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  const bundleKind = normalizeVersionKind(record.kind);
+  const bundled = kind === "template" ? record.template : record.workflow;
+  const version = record.version && typeof record.version === "object" ? record.version as WorkflowVersionRecord : null;
+  const snapshot = version?.snapshot ?? bundled ?? input;
+  if (bundleKind && bundleKind !== kind) {
+    throw new Error(`Import bundle is for ${bundleKind}, not ${kind}.`);
+  }
+  if (!snapshot || typeof snapshot !== "object") {
+    throw new Error(`Invalid ${kind} import bundle.`);
+  }
+  return cloneJson(snapshot) as T;
 }
 
 function normalizeAttemptHistory(input: unknown): WorkflowStepAttempt[] | undefined {
@@ -512,6 +782,11 @@ function cleanOptional(value: unknown): string | undefined {
 
 function validDate(value: unknown): string | undefined {
   return typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : undefined;
+}
+
+function normalizePositiveNumber(value: unknown): number | undefined {
+  const number = Math.floor(Number(value));
+  return Number.isFinite(number) && number > 0 ? number : undefined;
 }
 
 function randomId(): string {

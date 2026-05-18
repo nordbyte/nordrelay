@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 /** @typedef {import("./api-client-types.js").WebApiPath} WebApiPath */
 /** @typedef {import("./api-client-types.js").WebApiQuery} WebApiQuery */
 /** @typedef {import("./api-client-types.js").WebApiMethod} WebApiMethod */
@@ -14,7 +12,10 @@ const API_ROUTE_RULES = /** @type {{ NORDRELAY_WEB_API_CLIENT_ROUTE_RULES?: ApiR
  * @param {import("./api-client-types.js").WebApiClientOptions<P> & { local?: boolean }} [options]
  * @returns {Promise<import("./api-client-types.js").WebApiClientResponse<P>>}
  */
-async function api(path, options = {}) {
+async function api<P extends import("./api-client-types.js").WebApiPath>(
+  path: P,
+  options: import("./api-client-types.js").WebApiClientOptions<P> & { local?: boolean } = {},
+): Promise<import("./api-client-types.js").WebApiClientResponse<P>> {
   const method = normalizeMethod(options.method, options.body);
   const url = apiUrl(path, options.query);
   assertApiRoute(url.pathname, method);
@@ -61,7 +62,11 @@ async function api(path, options = {}) {
  * @param {import("./api-client-types.js").WebApiClientOptions<P>} [options]
  * @returns {Promise<import("./api-client-types.js").WebApiClientResponse<P>>}
  */
-async function apiPeer(peerId, path, options = {}) {
+async function apiPeer<P extends import("./api-client-types.js").WebApiPath>(
+  peerId: string,
+  path: P,
+  options: import("./api-client-types.js").WebApiClientOptions<P> = {},
+): Promise<import("./api-client-types.js").WebApiClientResponse<P>> {
   const method = normalizeMethod(options.method, options.body);
   const url = apiUrl(path, options.query);
   assertApiRoute(url.pathname, method);

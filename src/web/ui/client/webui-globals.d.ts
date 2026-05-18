@@ -1,3 +1,7 @@
+interface Object {
+  [key: string]: any;
+}
+
 interface Element {
   [key: string]: any;
 }
@@ -140,3 +144,8 @@ declare function upsertAgentUpdateJob(job: any): void;
 declare function val(id: string): string;
 declare function versionStatusClass(status: string): string;
 declare function versionStatusLabel(status: string): string;
+declare function renderWorkflowBuilder(): void;
+declare function validateWorkflowBuilder(): any[];
+declare function workflowBuilderState(workflow?: any): any;
+declare function workflowBuilderStepsPayload(collect?: boolean): any[];
+declare function workflowVariableDefinitions(items: any[]): any[];

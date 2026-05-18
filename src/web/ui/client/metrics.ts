@@ -1,9 +1,8 @@
-// @ts-nocheck
 if(state.metricsTab===undefined)state.metricsTab='overview';
 if(state.metricsAutoRefresh===undefined)state.metricsAutoRefresh=localStorage.getItem('nordrelayMetricsAutoRefresh')==='true';
 let metricsAutoRefreshTimer=null;
 let metricsAgeTimer=null;
-async function loadMetrics(options={}){
+async function loadMetrics(options:any={}){
   if(!options.silent)setLoading('metricsPanel','Loading metrics...');
   const d=await api('/api/metrics');
   state.metricsLastData=d;
@@ -64,13 +63,13 @@ function metricValueHtml(value,status){
   const text=value===null||value===undefined||value===''?'-':String(value);
   return status?metricChip(text,status):'<span class="metric-kv-number">'+esc(text)+'</span>';
 }
-function metricKvRow(label,value,status){
+function metricKvRow(label,value,status=''){
   return '<div class="metric-kv-row"><div class="metric-kv-label">'+esc(label)+'</div><div class="metric-kv-value">'+metricValueHtml(value,status)+'</div></div>';
 }
-function metricKvCard(title,rows){
+function metricKvCard(title,rows=[]){
   return '<div class="item metrics-card"><strong>'+esc(title)+'</strong><div class="metric-kv">'+rows.map(row=>metricKvRow(row[0],row[1],row[2])).join('')+'</div></div>';
 }
-function metricKpi(label,value,status,title){
+function metricKpi(label,value,status='',title=''){
   return '<div class="metric metric-kpi '+(status||'')+'"'+(title?' title="'+attr(title)+'"':'')+'><div class="label">'+esc(label)+'</div><div class="value">'+metricValueHtml(value,status)+'</div></div>';
 }
 function metricSummaryHtml(d){

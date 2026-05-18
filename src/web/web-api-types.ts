@@ -33,7 +33,7 @@ import type {
   WorkflowRunResultDto,
   WebTasksDto,
 } from "../runtime/relay-runtime.js";
-import type { PromptTemplate, Workflow, WorkflowRun, WorkflowStep } from "../state/workflow-store.js";
+import type { PromptTemplate, Workflow, WorkflowExportBundle, WorkflowRun, WorkflowStep, WorkflowVersionDiff, WorkflowVersionRecord } from "../state/workflow-store.js";
 import type { QueuePlanStatus } from "../state/queue-plan-store.js";
 import type { SessionLock } from "../access/session-locks.js";
 import type { SettingsSnapshot, SettingsUpdateResult } from "../core/settings-service.js";
@@ -191,11 +191,16 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/logs/clear" ? { target?: "connector" | "update" | "agent-updates" } :
   P extends "/api/settings" ? { settings: Record<string, string | null | undefined> } :
   P extends "/api/templates" ? { name: string; prompt: string; description?: string; tags?: string[]; variables?: PromptTemplate["variables"]; scope?: "private" | "shared"; defaultAgentId?: AgentId; defaultWorkspace?: string; defaultModel?: string; defaultReasoning?: string; defaultLaunchProfile?: string } :
-  P extends `/api/templates/${string}` ? { name: string; prompt: string; description?: string; tags?: string[]; variables?: PromptTemplate["variables"]; scope?: "private" | "shared"; defaultAgentId?: AgentId; defaultWorkspace?: string; defaultModel?: string; defaultReasoning?: string; defaultLaunchProfile?: string } :
+  P extends "/api/templates/import" ? { bundle: unknown } :
+  P extends `/api/templates/${string}/versions/${string}/rollback` | `/api/workflows/${string}/versions/${string}/rollback` ? Record<string, never> :
+  P extends `/api/templates/${string}/versions/${string}/run` | `/api/templates/${string}/versions/${string}/preview` ? { variables?: Record<string, string> } :
   P extends `/api/templates/${string}/run` | `/api/templates/${string}/preview` ? { variables?: Record<string, string> } :
+  P extends `/api/templates/${string}` ? { name: string; prompt: string; description?: string; tags?: string[]; variables?: PromptTemplate["variables"]; scope?: "private" | "shared"; defaultAgentId?: AgentId; defaultWorkspace?: string; defaultModel?: string; defaultReasoning?: string; defaultLaunchProfile?: string } :
   P extends "/api/workflows" ? { name: string; description?: string; tags?: string[]; steps: WorkflowStep[]; schedule?: Workflow["schedule"]; scope?: "private" | "shared" } :
-  P extends `/api/workflows/${string}` ? { name: string; description?: string; tags?: string[]; steps: WorkflowStep[]; schedule?: Workflow["schedule"]; scope?: "private" | "shared" } :
+  P extends "/api/workflows/import" ? { bundle: unknown } :
+  P extends `/api/workflows/${string}/versions/${string}/run` | `/api/workflows/${string}/versions/${string}/preview` ? { variables?: Record<string, string> } :
   P extends `/api/workflows/${string}/run` | `/api/workflows/${string}/preview` ? { variables?: Record<string, string> } :
+  P extends `/api/workflows/${string}` ? { name: string; description?: string; tags?: string[]; steps: WorkflowStep[]; schedule?: Workflow["schedule"]; scope?: "private" | "shared" } :
   P extends `/api/workflow-runs/${string}/rerun-failed` ? Record<string, never> :
   P extends "/api/users" ? { email: string; displayName?: string; password: string; groupIds?: string[]; active?: boolean; telegramUserId?: number; discordUserId?: string; preferences?: { artifactDelivery?: string } } :
   P extends `/api/users/${string}/password` ? { password: string } :
@@ -259,10 +264,24 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/auth/status" | "/api/auth/login" | "/api/auth/logout" ? WebAuthDto :
   P extends "/api/settings" ? SettingsSnapshot | SettingsUpdateResult :
   P extends "/api/templates" ? { templates: PromptTemplate[] } | { template: PromptTemplate } :
+  P extends "/api/templates/import" ? { template: PromptTemplate } :
+  P extends `/api/templates/${string}/versions` ? { versions: WorkflowVersionRecord[] } :
+  P extends `/api/templates/${string}/diff` ? WorkflowVersionDiff :
+  P extends `/api/templates/${string}/export` | `/api/templates/${string}/versions/${string}/export` ? WorkflowExportBundle :
+  P extends `/api/templates/${string}/versions/${string}/rollback` ? { template: PromptTemplate } :
+  P extends `/api/templates/${string}/versions/${string}/run` ? WorkflowRunResultDto :
+  P extends `/api/templates/${string}/versions/${string}/preview` ? WorkflowPreviewDto :
   P extends `/api/templates/${string}/run` ? WorkflowRunResultDto :
   P extends `/api/templates/${string}/preview` ? WorkflowPreviewDto :
   P extends `/api/templates/${string}` ? { template?: PromptTemplate; removed?: boolean } :
   P extends "/api/workflows" ? { workflows: Workflow[]; runs?: WorkflowRun[] } | { workflow: Workflow } :
+  P extends "/api/workflows/import" ? { workflow: Workflow } :
+  P extends `/api/workflows/${string}/versions` ? { versions: WorkflowVersionRecord[] } :
+  P extends `/api/workflows/${string}/diff` ? WorkflowVersionDiff :
+  P extends `/api/workflows/${string}/export` | `/api/workflows/${string}/versions/${string}/export` ? WorkflowExportBundle :
+  P extends `/api/workflows/${string}/versions/${string}/rollback` ? { workflow: Workflow } :
+  P extends `/api/workflows/${string}/versions/${string}/run` ? WorkflowRunResultDto :
+  P extends `/api/workflows/${string}/versions/${string}/preview` ? WorkflowPreviewDto :
   P extends `/api/workflows/${string}/run` ? WorkflowRunResultDto :
   P extends `/api/workflows/${string}/preview` ? WorkflowPreviewDto :
   P extends `/api/workflows/${string}` ? { workflow?: Workflow; removed?: boolean } :

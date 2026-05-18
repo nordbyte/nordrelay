@@ -76,4 +76,43 @@ describe("WorkflowStore", () => {
       rmSync(workspace, { recursive: true, force: true });
     }
   });
+
+  it("stores workflow versions, diffs, rollback snapshots, and import/export bundles", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-workflows-"));
+    const importWorkspace = mkdtempSync(path.join(tmpdir(), "nordrelay-workflows-import-"));
+    try {
+      const store = new WorkflowStore(workspace, "json");
+      const template = store.saveTemplate({ name: "Draft", prompt: "One {{target}}." });
+      const updatedTemplate = store.saveTemplate({ ...template, prompt: "Two {{target}}." });
+      const workflow = store.saveWorkflow({
+        name: "Flow",
+        steps: [{ name: "Step 1", prompt: "Do one", sessionMode: "current", target: "local", type: "prompt", requiresApproval: false, continueOnError: false }],
+      });
+      const updatedWorkflow = store.saveWorkflow({
+        ...workflow,
+        steps: workflow.steps.concat({ name: "Step 2", prompt: "Do two", sessionMode: "current", target: "local", type: "prompt", requiresApproval: false, continueOnError: false }),
+      });
+
+      expect(store.listVersions("template", template.id).map((version) => version.version)).toEqual([2, 1]);
+      expect(store.diffVersions("template", template.id).changes.some((change) => change.path === "prompt")).toBe(true);
+      expect(store.exportTemplate(template.id, 1)?.version?.version).toBe(1);
+
+      const restored = store.restoreVersion("template", updatedTemplate.id, 1);
+      expect(restored).toMatchObject({ prompt: "One {{target}}." });
+      expect(store.getTemplate(template.id)?.prompt).toBe("One {{target}}.");
+      expect(store.listVersions("workflow", workflow.id).map((version) => version.version)).toEqual([2, 1]);
+      expect(store.exportWorkflow(updatedWorkflow.id)?.workflow?.steps).toHaveLength(2);
+
+      const imported = new WorkflowStore(importWorkspace, "json");
+      const importedTemplate = imported.importTemplate(store.exportTemplate(template.id, 1));
+      const importedWorkflow = imported.importWorkflow(store.exportWorkflow(workflow.id, 2));
+      expect(importedTemplate.id).not.toBe(template.id);
+      expect(importedTemplate.prompt).toBe("One {{target}}.");
+      expect(importedWorkflow.id).not.toBe(workflow.id);
+      expect(importedWorkflow.steps).toHaveLength(2);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+      rmSync(importWorkspace, { recursive: true, force: true });
+    }
+  });
 });

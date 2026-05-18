@@ -1,4 +1,3 @@
-// @ts-nocheck
 const QUEUE_PLAN_COLUMNS=[
   ['draft','Draft'],
   ['review','Review'],
@@ -51,12 +50,13 @@ async function loadQueue(){
 }
 
 async function loadQueuePlanner(options={}){
+  const queueOptions:any=options;
   if(!can('queue.plan.read'))return;
   setLoading('queuePlannerBoard','Loading planned prompts...');
   setLoading('queueProgressBoard','Loading in-progress prompts...');
   const planner=await api('/api/queue/plans');
   renderQueuePlanner(planner);
-  if(options.notify)toast('Planner reloaded');
+  if(queueOptions.notify)toast('Planner reloaded');
 }
 
 function renderQueuePlanner(data){
@@ -120,7 +120,7 @@ function queuePlanCard(plan){
 function queuePlanStatusLabel(status){return String(status||'draft').replace('_',' ')}
 function queuePlanStatusClass(status){if(status==='done')return'enabled';if(status==='failed'||status==='aborted'||status==='archived')return'disabled';if(status==='queued'||status==='in_progress')return'planned';return'planned'}
 
-function bindQueuePlanButtons(root=document){
+function bindQueuePlanButtons(root:any=document){
   root.querySelectorAll('[data-plan-edit]').forEach(b=>b.onclick=()=>openQueuePlanDialog((state.queuePlanner?.plans||[]).find(p=>p.id===b.dataset.planEdit)));
   root.querySelectorAll('[data-plan-delete]').forEach(b=>b.onclick=()=>safe(async()=>{if(!can('queue.plan.write')){toast('Permission required: queue.plan.write');return}if(confirm('Delete planned prompt '+b.dataset.planDelete+'?')){const r=await api('/api/queue/plans/'+encodeURIComponent(b.dataset.planDelete),{method:'DELETE'});renderQueuePlanner(r.snapshot);toast(r.removed?'Plan deleted':'Plan not found')}}));
   root.querySelectorAll('[data-plan-move]').forEach(b=>b.onclick=()=>safe(()=>moveQueuePlan(b.dataset.planMove,b.dataset.planStatus)));
@@ -129,7 +129,7 @@ function bindQueuePlanButtons(root=document){
   root.querySelectorAll('[data-q]').forEach(b=>b.onclick=()=>safe(async()=>{if(!can('queue.write')){toast('Permission required: queue.write');return}const r=await api('/api/queue',{method:'POST',body:JSON.stringify({action:b.dataset.q,id:b.dataset.id})});renderQueue(r.queue,r.paused);await loadQueuePlanner()}));
 }
 
-function bindQueuePlanDrag(root=document){
+function bindQueuePlanDrag(root:any=document){
   let dragged=null;
   root.querySelectorAll('[data-plan-id]').forEach(card=>{
     card.ondragstart=()=>{if(!can('queue.plan.write'))return;dragged=card.dataset.planId;card.classList.add('dragging')};
@@ -166,7 +166,7 @@ async function enqueueQueuePlan(id){
   toast('Plan sent to runtime queue');
 }
 
-function openQueuePlanDialog(plan){
+function openQueuePlanDialog(plan=null){
   if(!can('queue.plan.write')){toast('Permission required: queue.plan.write');return}
   const session=state.snapshot?.session||{};
   const agentOptions=(state.enabledAgents||[]).map(id=>'<option value="'+attr(id)+'" '+(id===(plan?.agentId||session.agentId)?'selected':'')+'>'+esc(id)+'</option>').join('');

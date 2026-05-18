@@ -11,6 +11,10 @@ import {
   type WorkflowStepAttempt,
   type WorkflowStepRun,
   type WorkflowStore,
+  type WorkflowVersionDiff,
+  type WorkflowVersionKind,
+  type WorkflowVersionRecord,
+  type WorkflowExportBundle,
 } from "../state/workflow-store.js";
 import type { WebActivityActor, WebActivityEvent } from "../web/web-state.js";
 import type { UnifiedJobDto, WorkflowPreviewDto } from "./relay-runtime-types.js";
@@ -85,6 +89,88 @@ export class RelayWorkflowService {
     return { removed };
   }
 
+  listTemplateVersions(id: string): WorkflowVersionRecord[] {
+    return this.options.store.listVersions("template", id);
+  }
+
+  listWorkflowVersions(id: string): WorkflowVersionRecord[] {
+    return this.options.store.listVersions("workflow", id);
+  }
+
+  diffTemplateVersions(id: string, fromVersion?: number, toVersion?: number): WorkflowVersionDiff {
+    return this.options.store.diffVersions("template", id, fromVersion, toVersion);
+  }
+
+  diffWorkflowVersions(id: string, fromVersion?: number, toVersion?: number): WorkflowVersionDiff {
+    return this.options.store.diffVersions("workflow", id, fromVersion, toVersion);
+  }
+
+  restoreTemplateVersion(id: string, version: number, actor?: WebActivityActor): PromptTemplate {
+    const restored = this.options.store.restoreVersion("template", id, version, actor?.id);
+    if (!restored) throw new Error(`Template version not found: ${id} v${version}`);
+    this.record("workflow_template_version_restored", "info", `${restored.name} v${version}`, actor);
+    return restored as PromptTemplate;
+  }
+
+  restoreWorkflowVersion(id: string, version: number, actor?: WebActivityActor): Workflow {
+    const restored = this.options.store.restoreVersion("workflow", id, version, actor?.id);
+    if (!restored) throw new Error(`Workflow version not found: ${id} v${version}`);
+    this.record("workflow_version_restored", "info", `${restored.name} v${version}`, actor);
+    return restored as Workflow;
+  }
+
+  exportTemplate(id: string, version?: number): WorkflowExportBundle {
+    const bundle = this.options.store.exportTemplate(id, version);
+    if (!bundle) throw new Error(`Template not found: ${id}`);
+    return bundle;
+  }
+
+  exportWorkflow(id: string, version?: number): WorkflowExportBundle {
+    const bundle = this.options.store.exportWorkflow(id, version);
+    if (!bundle) throw new Error(`Workflow not found: ${id}`);
+    return bundle;
+  }
+
+  importTemplate(input: unknown, actor?: WebActivityActor): PromptTemplate {
+    const template = this.options.store.importTemplate(input, actor?.id);
+    this.record("workflow_template_imported", "info", template.name, actor);
+    return template;
+  }
+
+  importWorkflow(input: unknown, actor?: WebActivityActor): Workflow {
+    const workflow = this.options.store.importWorkflow(input, actor?.id);
+    this.record("workflow_imported", "info", workflow.name, actor);
+    return workflow;
+  }
+
+  previewTemplateVersion(id: string, version: number, variables: Record<string, string> = {}): WorkflowPreviewDto {
+    const record = this.requireVersion("template", id, version);
+    const template = record.snapshot as PromptTemplate;
+    return {
+      templateId: template.id,
+      name: `${template.name} v${record.version}`,
+      prompts: [{
+        stepId: template.id,
+        name: template.name,
+        prompt: renderPromptTemplate(template, variables),
+      }],
+    };
+  }
+
+  previewWorkflowVersion(id: string, version: number, variables: Record<string, string> = {}): WorkflowPreviewDto {
+    const record = this.requireVersion("workflow", id, version);
+    const workflow = record.snapshot as Workflow;
+    return {
+      workflowId: workflow.id,
+      name: `${workflow.name} v${record.version}`,
+      prompts: workflow.steps.map((step) => ({
+        stepId: step.id,
+        name: step.name,
+        prompt: this.renderWorkflowStepPrompt(step, variables),
+      })),
+    };
+  }
+
   previewTemplate(id: string, variables: Record<string, string> = {}): WorkflowPreviewDto {
     const template = this.requireTemplate(id);
     return {
@@ -113,11 +199,29 @@ export class RelayWorkflowService {
 
   async runTemplate(id: string, variables: Record<string, string> = {}, actor?: WebActivityActor): Promise<WorkflowRun> {
     const template = this.requireTemplate(id);
+    const version = this.options.store.latestVersion("template", id);
+    return this.queueTemplateRun(template, variables, actor, version?.version, version?.snapshot as PromptTemplate | undefined);
+  }
+
+  async runTemplateVersion(id: string, versionNumber: number, variables: Record<string, string> = {}, actor?: WebActivityActor): Promise<WorkflowRun> {
+    const version = this.requireVersion("template", id, versionNumber);
+    return this.queueTemplateRun(version.snapshot as PromptTemplate, variables, actor, version.version, version.snapshot as PromptTemplate);
+  }
+
+  private async queueTemplateRun(
+    template: PromptTemplate,
+    variables: Record<string, string>,
+    actor: WebActivityActor | undefined,
+    templateVersion?: number,
+    templateSnapshot?: PromptTemplate,
+  ): Promise<WorkflowRun> {
     const prompt = renderPromptTemplate(template, variables);
     const now = new Date().toISOString();
     const run: WorkflowRun = this.options.store.saveRun({
       id: createRunId(),
       templateId: template.id,
+      templateVersion,
+      templateSnapshot,
       name: template.name,
       status: "queued",
       ownerUserId: actor?.id,
@@ -154,7 +258,7 @@ export class RelayWorkflowService {
   private async executeTemplateRun(id: string, actor?: WebActivityActor): Promise<void> {
     const initial = this.options.store.getRun(id);
     if (!initial?.templateId) return;
-    const template = this.requireTemplate(initial.templateId);
+    const template = initial.templateSnapshot ?? this.requireTemplate(initial.templateId);
     const correlationId = createCorrelationId();
     const prompt = renderPromptTemplate(template, initial.variables);
     const startedAt = new Date().toISOString();
@@ -208,6 +312,22 @@ export class RelayWorkflowService {
 
   runWorkflow(id: string, variables: Record<string, string> = {}, actor?: WebActivityActor): WorkflowRun {
     const workflow = this.requireWorkflow(id);
+    const version = this.options.store.latestVersion("workflow", id);
+    return this.queueWorkflowRun(workflow, variables, actor, version?.version, version?.snapshot as Workflow | undefined);
+  }
+
+  runWorkflowVersion(id: string, versionNumber: number, variables: Record<string, string> = {}, actor?: WebActivityActor): WorkflowRun {
+    const version = this.requireVersion("workflow", id, versionNumber);
+    return this.queueWorkflowRun(version.snapshot as Workflow, variables, actor, version.version, version.snapshot as Workflow);
+  }
+
+  private queueWorkflowRun(
+    workflow: Workflow,
+    variables: Record<string, string>,
+    actor: WebActivityActor | undefined,
+    workflowVersion?: number,
+    workflowSnapshot?: Workflow,
+  ): WorkflowRun {
     if (workflow.steps.length === 0) {
       throw new Error("Workflow has no steps.");
     }
@@ -215,6 +335,8 @@ export class RelayWorkflowService {
     const run = this.options.store.saveRun({
       id: createRunId(),
       workflowId: workflow.id,
+      workflowVersion,
+      workflowSnapshot,
       name: workflow.name,
       status: "queued",
       ownerUserId: actor?.id,
@@ -308,7 +430,7 @@ export class RelayWorkflowService {
   private async executeWorkflowRun(id: string, actor?: WebActivityActor, depth = 0): Promise<void> {
     const initial = this.options.store.getRun(id);
     if (!initial?.workflowId) return;
-    const workflow = this.requireWorkflow(initial.workflowId);
+    const workflow = initial.workflowSnapshot ?? this.requireWorkflow(initial.workflowId);
     this.activeRuns.add(id);
     let run = this.options.store.patchRun(id, {
       status: "running",
@@ -375,7 +497,8 @@ export class RelayWorkflowService {
     let run = this.options.store.getRun(id);
     if (!run) return;
     const correlationId = createCorrelationId();
-    const prompt = this.renderWorkflowStepPrompt(step, run.variables);
+    const existingStep = run.steps.find((candidate) => candidate.stepId === step.id);
+    const prompt = existingStep?.prompt || this.renderWorkflowStepPrompt(step, run.variables);
     const startedAt = new Date().toISOString();
     run = this.options.store.patchRun(id, {
       currentStepIndex: index,
@@ -524,10 +647,13 @@ export class RelayWorkflowService {
     if (depth >= MAX_SUBFLOW_DEPTH) throw new Error("Workflow subflow depth limit reached.");
     if (!step.workflowId) throw new Error(`Workflow step ${step.name} has no subflow.`);
     const workflow = this.requireWorkflow(step.workflowId);
+    const version = this.options.store.latestVersion("workflow", workflow.id);
     const now = new Date().toISOString();
     const run = this.options.store.saveRun({
       id: createRunId(),
       workflowId: workflow.id,
+      workflowVersion: version?.version,
+      workflowSnapshot: version?.snapshot as Workflow | undefined,
       name: `${workflow.name} (subflow)`,
       status: "queued",
       ownerUserId: actor?.id,
@@ -561,6 +687,12 @@ export class RelayWorkflowService {
     const workflow = this.options.store.getWorkflow(id);
     if (!workflow) throw new Error(`Workflow not found: ${id}`);
     return workflow;
+  }
+
+  private requireVersion(kind: WorkflowVersionKind, id: string, version: number): WorkflowVersionRecord {
+    const record = this.options.store.getVersion(kind, id, version);
+    if (!record) throw new Error(`${kind === "template" ? "Template" : "Workflow"} version not found: ${id} v${version}`);
+    return record;
   }
 
   private initialStepRun(step: WorkflowStep, variables: Record<string, string>): WorkflowStepRun {

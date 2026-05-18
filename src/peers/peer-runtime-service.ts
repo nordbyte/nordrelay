@@ -187,7 +187,7 @@ export class PeerRuntimeService {
   }
 
   private handleAgentUpdateWebRoute(context: PeerWebRouteContext, params: string[]): unknown {
-    const { peer, runtime, method, path, body, remoteActor } = context;
+    const { peer, runtime, method, path, query, body, remoteActor } = context;
     if (method === "GET" && path === "/api/agent-updates") {
       return { jobs: runtime.agentUpdateJobs().filter((job) => this.canUseAgent(peer, job.agentId)) };
     }
@@ -239,7 +239,7 @@ export class PeerRuntimeService {
   }
 
   private async handleWorkflowWebRoute(context: PeerWebRouteContext, params: string[]): Promise<unknown> {
-    const { peer, runtime, method, path, body, remoteActor } = context;
+    const { peer, runtime, method, path, query, body, remoteActor } = context;
     if (method === "GET" && path === "/api/templates") {
       return { templates: runtime.workflowService.list().templates.filter((template) => this.canUseTemplate(peer, template)) };
     }
@@ -248,10 +248,25 @@ export class PeerRuntimeService {
       this.assertTemplateInputScope(peer, input);
       return { template: runtime.workflowService.saveTemplate(input, remoteActor) };
     }
+    if (method === "POST" && path === "/api/templates/import") {
+      const template = runtime.workflowService.importTemplate(body.bundle ?? body, remoteActor);
+      this.assertTemplateScope(peer, runtime, template.id);
+      return { template };
+    }
     if (path.startsWith("/api/templates/")) {
       const id = params[0];
-      const action = params[1];
+      const version = positiveInteger(params[1]);
+      const action = params[2] ?? (path.endsWith("/versions") ? "versions" : path.endsWith("/diff") ? "diff" : path.endsWith("/export") ? "export" : params[1]);
       this.assertTemplateScope(peer, runtime, id);
+      if (method === "GET" && action === "versions") return { versions: runtime.workflowService.listTemplateVersions(id) };
+      if (method === "GET" && action === "diff") return runtime.workflowService.diffTemplateVersions(id, positiveInteger(query.from), positiveInteger(query.to));
+      if (method === "GET" && action === "export") return runtime.workflowService.exportTemplate(id, positiveInteger(query.version) ?? version);
+      if (version && method === "POST" && action === "rollback") return { template: runtime.workflowService.restoreTemplateVersion(id, version, remoteActor) };
+      if (version && method === "POST" && action === "preview") return runtime.workflowService.previewTemplateVersion(id, version, variableRecord(body.variables));
+      if (version && method === "POST" && action === "run") {
+        await this.assertCurrentSessionScope(peer, runtime);
+        return { run: await runtime.workflowService.runTemplateVersion(id, version, variableRecord(body.variables), remoteActor) };
+      }
       if (method === "PUT" && !action) {
         const input = { ...parseTemplateInput(body), id };
         this.assertTemplateInputScope(peer, input);
@@ -276,6 +291,11 @@ export class PeerRuntimeService {
       this.assertWorkflowInputScope(peer, input);
       return { workflow: runtime.workflowService.saveWorkflow(input, remoteActor) };
     }
+    if (method === "POST" && path === "/api/workflows/import") {
+      const workflow = runtime.workflowService.importWorkflow(body.bundle ?? body, remoteActor);
+      this.assertWorkflowScope(peer, runtime, workflow.id);
+      return { workflow };
+    }
     if (path.startsWith("/api/workflow-runs/")) {
       const id = params[0];
       const action = params[1];
@@ -286,8 +306,18 @@ export class PeerRuntimeService {
     }
     if (path.startsWith("/api/workflows/")) {
       const id = params[0];
-      const action = params[1];
+      const version = positiveInteger(params[1]);
+      const action = params[2] ?? (path.endsWith("/versions") ? "versions" : path.endsWith("/diff") ? "diff" : path.endsWith("/export") ? "export" : params[1]);
       this.assertWorkflowScope(peer, runtime, id);
+      if (method === "GET" && action === "versions") return { versions: runtime.workflowService.listWorkflowVersions(id) };
+      if (method === "GET" && action === "diff") return runtime.workflowService.diffWorkflowVersions(id, positiveInteger(query.from), positiveInteger(query.to));
+      if (method === "GET" && action === "export") return runtime.workflowService.exportWorkflow(id, positiveInteger(query.version) ?? version);
+      if (version && method === "POST" && action === "rollback") return { workflow: runtime.workflowService.restoreWorkflowVersion(id, version, remoteActor) };
+      if (version && method === "POST" && action === "preview") return runtime.workflowService.previewWorkflowVersion(id, version, variableRecord(body.variables));
+      if (version && method === "POST" && action === "run") {
+        await this.assertCurrentSessionScope(peer, runtime);
+        return { run: runtime.workflowService.runWorkflowVersion(id, version, variableRecord(body.variables), remoteActor) };
+      }
       if (method === "PUT" && !action) {
         const input = { ...parseWorkflowInput(body), id };
         this.assertWorkflowInputScope(peer, input);
@@ -1074,6 +1104,11 @@ function permissionForJobAction(id: string, action: "cancel" | "retry"): Permiss
     return "workflows.run";
   }
   return "updates.run";
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  const number = Math.floor(Number(value));
+  return Number.isFinite(number) && number > 0 ? number : undefined;
 }
 
 function parseTemplateInput(body: Record<string, unknown>): Partial<PromptTemplate> & Pick<PromptTemplate, "name" | "prompt"> {
