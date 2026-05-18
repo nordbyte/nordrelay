@@ -280,6 +280,7 @@
 .metrics-auto-refresh input{width:16px;height:16px;margin:0}
 #metricsLastUpdated{display:inline-flex;align-items:center;color:var(--muted);font-variant-numeric:tabular-nums}
 .diagnostics-grid{margin-top:12px}
+.diagnostics-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 .diagnostics-inline-value{font-size:14px;color:var(--text)}
 .task-section-title{margin:18px 0 6px}
 .loading-state{display:flex;align-items:center;gap:10px;min-height:90px;color:var(--muted)}

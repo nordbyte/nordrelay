@@ -27,10 +27,10 @@ export const DASHBOARD_NAV_SECTIONS: DashboardNavSection[] = [
     id: "operations",
     label: "Operations",
     pages: [
-      { id: "metrics", label: "Metrics", permission: "inspect" },
       { id: "adapters", label: "Adapters", permission: "inspect" },
       { id: "version", label: "Version", permission: "inspect" },
       { id: "logs", label: "Logs", permission: "logs.read" },
+      { id: "metrics", label: "Metrics", permission: "inspect" },
       { id: "diagnostics", label: "Diagnostics", permission: "diagnostics.read" },
     ],
   },
