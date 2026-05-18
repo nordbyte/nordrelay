@@ -57,8 +57,8 @@ describe("SessionWorktreeService", () => {
 
     expect(fork.patchApplied).toBe(true);
     expect(fork.copiedUntrackedFiles).toContain("notes.txt");
-    expect(readFileSync(path.join(fork.record.worktreePath, "README.md"), "utf8")).toBe("changed\n");
-    expect(readFileSync(path.join(fork.record.worktreePath, "notes.txt"), "utf8")).toBe("untracked\n");
+    expect(normalizeLineEndings(readFileSync(path.join(fork.record.worktreePath, "README.md"), "utf8"))).toBe("changed\n");
+    expect(normalizeLineEndings(readFileSync(path.join(fork.record.worktreePath, "notes.txt"), "utf8"))).toBe("untracked\n");
   });
 
   function tempRoot(): string {
@@ -77,6 +77,10 @@ function initRepo(root: string): string {
   execFileSync("git", ["add", "README.md"], { cwd: repo });
   execFileSync("git", ["commit", "-m", "base"], { cwd: repo });
   return repo;
+}
+
+function normalizeLineEndings(value: string): string {
+  return value.replace(/\r\n/g, "\n");
 }
 
 function worktreeService(root: string): SessionWorktreeService {
