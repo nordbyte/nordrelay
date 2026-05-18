@@ -191,9 +191,20 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#traceDetail .trace-table tbody tr")).toHaveCount(2);
 
     await navigateDashboard(page, "Metrics");
+    await expect(page.locator("#metricsTabs")).toHaveAttribute("role", "tablist");
+    await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#metricsPanel .metrics-summary")).toBeVisible();
     await expect(page.locator("#metricsPanel")).toContainText("Runtime");
-    await expect(page.locator("#metricsPanel")).toContainText("Telegram rate limits");
-    await expect(page.locator("#metricsPanel")).toContainText("Slack rate limits");
+    await expect(page.locator("#metricsPanel .metric-kv").first()).toBeVisible();
+    await page.getByRole("tab", { name: "Web API" }).click();
+    await expect(page.locator("#metricsPanel .metrics-web-routes")).toBeVisible();
+    await expect(page.locator("#metricsPanel .metrics-web-routes thead th")).toHaveText(["Route", "Avg", "Max", "Last", "Hits", "Status", "Last seen"]);
+    await page.getByRole("tab", { name: "Rate Limits" }).click();
+    await expect(page.locator("#metricsPanel .metrics-rate-table")).toBeVisible();
+    await expect(page.locator("#metricsPanel .metrics-rate-table")).toContainText("Telegram");
+    await expect(page.locator("#metricsPanel .metrics-rate-table")).toContainText("Slack");
+    await page.locator("#metricsAutoRefresh").check();
+    await expect(page.locator("#metricsAutoRefresh")).toBeChecked();
   });
 
   test("sends prompts through the typed API client and shows queued feedback", async ({ page }) => {
@@ -1001,6 +1012,15 @@ function metrics() {
       telegram: { queued: 0, running: 0, completed: 2, failed: 0, retries: 0, rateLimitHits: 0, buckets: [] },
       discord: { queued: 0, running: 0, completed: 1, failed: 0, retries: 0, rateLimitHits: 0, buckets: [] },
       slack: { queued: 0, running: 0, completed: 1, failed: 0, retries: 0, rateLimitHits: 0, buckets: [] },
+    },
+    web: {
+      routes: [
+        { method: "GET", path: "/api/version", count: 3, averageMs: 42, maxMs: 80, lastMs: 35, lastStatusCode: 200, lastAt: new Date().toISOString() },
+      ],
+      slowest: [
+        { method: "GET", path: "/api/diagnostics", statusCode: 200, durationMs: 120, at: new Date().toISOString() },
+      ],
+      recent: [],
     },
   };
 }

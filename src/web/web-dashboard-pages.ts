@@ -258,8 +258,22 @@ ${faviconLinks}
 
       <section class="page" id="page-metrics">
         <div class="panel">
-          <div class="row"><button id="reloadMetricsBtn">Reload metrics</button></div>
-          <div id="metricsPanel" class="list"></div>
+          <div class="metrics-section-header">
+            <div id="metricsTabs" class="section-tabs metrics-tabs" role="tablist" aria-label="Metrics sections">
+              <button type="button" role="tab" aria-selected="true" tabindex="0" data-metrics-tab="overview" class="active">Overview</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-metrics-tab="process">Process</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-metrics-tab="web">Web API</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-metrics-tab="rate">Rate Limits</button>
+            </div>
+          </div>
+          <div class="metrics-tab-heading">
+            <div class="row metrics-heading-actions">
+              <button id="reloadMetricsBtn">Reload metrics</button>
+              <label class="metrics-auto-refresh"><input id="metricsAutoRefresh" type="checkbox"> Auto refresh</label>
+              <small id="metricsLastUpdated">Last updated -</small>
+            </div>
+          </div>
+          <div id="metricsPanel"></div>
         </div>
       </section>
 
