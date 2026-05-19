@@ -334,6 +334,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("active_sessions_update");
     expect(js).toContain("function renderChatWorkingIndicator");
     expect(js).toContain("Working...");
+    expect(js).toContain("id=\"chatWorkingElapsed\"");
+    expect(js).toContain("function syncChatWorkingTimer");
+    expect(js).toContain("function fmtChatWorkingElapsed");
     expect(readFileSync("src/runtime/relay-runtime-active-sessions.ts", "utf8")).toContain("right.durationMs - left.durationMs");
     expect(readFileSync("src/runtime/relay-runtime-active-sessions.ts", "utf8")).toContain("function safeActiveSessionList");
     expect(readFileSync("src/agents/shared/agent-activity.ts", "utf8")).toContain("snapshot = null");
