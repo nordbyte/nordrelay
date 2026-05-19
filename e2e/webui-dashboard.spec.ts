@@ -135,33 +135,37 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#toggleToolsBtn")).toHaveAttribute("aria-expanded", "true");
 
     await navigateDashboard(page, "Settings");
-    await expect(page.locator("#settingsTabs")).toContainText("Agents");
-    await expect(page.locator("#settingsTabs")).toContainText("Chat");
-    await expect(page.locator("#settingsTabs")).not.toContainText("Codex");
-    await expect(page.locator("#settingsTabs")).not.toContainText("Telegram");
-    await expect(page.locator(".settings-section-header #settingsTabs")).toBeVisible();
-    await expect(page.locator("#settingsTabs")).toHaveAttribute("role", "tablist");
-    await expect(page.getByRole("tab", { name: /Agents/ })).toHaveAttribute("aria-selected", "true");
-    await expect(page.locator("#settingsTabs")).toHaveCSS("border-radius", "0px");
+    await expect(page.locator("#settingsSearchInput")).toBeVisible();
+    await expect(page.locator("#settingsSubnav")).toContainText("Agents");
+    await expect(page.locator("#settingsSubnav")).toContainText("Chat");
+    await expect(page.locator("#settingsSubnav")).toContainText("Telegram");
+    await expect(page.locator("#settingsSubnav")).toContainText("Discord");
+    await expect(page.locator('[data-setting-group="Agents"]')).toHaveClass(/active/);
     await expect
       .poll(async () => {
-        const tabs = await page.locator("#settingsTabs").boundingBox();
+        const search = await page.locator("#settingsSearchInput").boundingBox();
         const actions = await page.locator("#settingsActions").boundingBox();
-        return Boolean(tabs && actions && tabs.y < actions.y);
+        return Boolean(search && actions && search.y < actions.y);
       })
       .toBe(true);
     await expect(page.locator("#settingsForm")).toContainText("Enable Codex");
-    await page.getByRole("tab", { name: /Chat/ }).click();
-    await expect(page.getByRole("tab", { name: /Chat/ })).toHaveAttribute("aria-selected", "true");
-    await expect(page.locator("#settingsSubgroupSelect")).toHaveValue("Telegram");
-    await page.locator("#settingsSubgroupSelect").selectOption("Discord");
+    await page.locator('[data-setting-group="Telegram"]').click();
+    await expect(page.locator("#settingsForm")).toContainText("Telegram bot token");
+    await expect(page.locator('[data-setting-box="TELEGRAM_BOT_TOKEN"] .setting-info')).toHaveAttribute("title", /BotFather/);
+    await page.locator('[data-setting-group="Discord"]').click();
     await expect(page.locator('[data-setting-box="DISCORD_BOT_TOKEN"] .setting-info')).toHaveAttribute("title", /Discord Developer Portal/);
-    await page.locator("#settingsSubgroupSelect").selectOption("Slack");
+    await page.locator('[data-setting-group="Slack"]').click();
     await expect(page.locator('[data-setting-box="SLACK_BOT_TOKEN"] .setting-info')).toHaveAttribute("title", /Slack API Apps/);
-    await page.getByRole("tab", { name: /Agents/ }).click();
+    await page.locator('[data-setting-group="Agents"]').click();
 
     await page.locator('[data-setting="NORDRELAY_PI_ENABLED"]').selectOption("true");
     await expect(page.locator("#settingsStatus")).toContainText("1 unsaved change");
+    await page.locator("#settingsSearchInput").fill("telegram");
+    await expect(page.locator("#settingsForm")).toContainText("Telegram bot token");
+    await expect(page.locator("#settingsForm")).not.toContainText("Enable Pi");
+    await page.locator("#settingsSearchInput").fill("");
+    await page.locator('[data-setting-group="Agents"]').click();
+    await expect(page.locator('[data-setting="NORDRELAY_PI_ENABLED"]')).toHaveValue("true");
     await page.getByRole("button", { name: "Save settings" }).click();
     await expect(page.locator("#settingsStatus")).toContainText("Saved 1 setting");
     const settingsRequest = mock.requests.find((request) => request.path === "/api/settings" && request.method === "PATCH");
@@ -876,10 +880,9 @@ test.describe("NordRelay WebUI", () => {
 
     await page.getByRole("button", { name: "Open navigation" }).click();
     await navigateDashboard(page, "Settings");
-    await expect(page.locator("#settingsTabs")).toContainText("Agents");
-    await expect(page.locator("#settingsTabs")).toHaveAttribute("role", "tablist");
-    await page.getByRole("tab", { name: /Chat/ }).click();
-    await page.locator("#settingsSubgroupSelect").selectOption("Discord");
+    await expect(page.locator("#settingsSubnav")).toContainText("Agents");
+    await expect(page.locator("#settingsSubnav")).toContainText("Discord");
+    await page.locator('[data-setting-group="Discord"]').click();
     await expect(page.locator('[data-setting-box="DISCORD_CLIENT_ID"]')).toBeVisible();
 
     await page.getByRole("button", { name: "Open navigation" }).click();

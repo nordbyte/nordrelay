@@ -556,12 +556,16 @@ ${faviconLinks}
 
       <section class="page" id="page-settings">
         <div class="panel">
-          <div id="settingsTabHeader" class="section-header settings-section-header">
-            <div id="settingsTabs" class="section-tabs settings-tabs" role="tablist" aria-label="Settings sections"></div>
+          <div id="settingsTabHeader" class="settings-topbar">
+            <label class="settings-search-label"><span>Search settings</span><input id="settingsSearchInput" type="search" placeholder="Search by key, label, description, or help text"></label>
           </div>
-          <div id="settingsSubnav" class="settings-subnav" hidden></div>
-          <div id="settingsActions" class="row settings-actions"><button id="saveSettingsBtn">Save settings</button><button id="settingsWizardBtn" class="secondary">Setup wizard</button><button id="restartBtn" class="secondary">Restart NordRelay</button><span id="settingsStatus"></span></div>
-          <div id="settingsForm" class="settings-grid"></div>
+          <div id="settingsLayout" class="settings-layout">
+            <aside id="settingsSubnav" class="settings-navigator"></aside>
+            <div class="settings-content">
+              <div id="settingsActions" class="row settings-actions"><button id="saveSettingsBtn">Save settings</button><button id="settingsWizardBtn" class="secondary">Setup wizard</button><button id="restartBtn" class="secondary">Restart NordRelay</button><span id="settingsStatus"></span></div>
+              <div id="settingsForm" class="settings-grid"></div>
+            </div>
+          </div>
         </div>
       </section>
 
