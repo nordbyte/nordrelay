@@ -80,6 +80,7 @@ describe("web dashboard browser-flow assets", () => {
     const css = dashboardCss();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
     const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
+    const workflowsSource = readFileSync("src/web/ui/client/workflows-page.ts", "utf8");
 
     expect(pageSource).toContain('id="page-workflows"');
     expect(pageSource).toContain('id="createTemplateBtn"');
@@ -95,6 +96,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function openTemplatePickerMenu");
     expect(js).toContain("data-template-pick");
     expect(js).toContain("setPromptInputText(t.prompt)");
+    expect(workflowsSource).toContain('title="\'+attr(t.prompt||summary||t.name||\'\')+\'"');
     expect(js).toContain('class="data-table templates-table"');
     expect(js).toContain("function workflowBuilderState");
     expect(js).toContain("function showWorkflowHistory");
@@ -114,6 +116,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".workflow-builder-step");
     expect(css).toContain(".workflow-builder-json");
     expect(css).toContain(".template-picker-list");
+    expect(css).toContain(".template-picker-item span{font-size:14px}");
     expect(css).toContain(".templates-table th:nth-child(7)");
     expect(contract).toContain('exact("/api/templates"');
     expect(contract).toContain('exact("/api/templates/import"');
