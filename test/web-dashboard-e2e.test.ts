@@ -275,7 +275,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("selectedLaunch=s.launchProfileId||s.nextLaunchProfileId");
     expect(js).toContain("compactControlMenu('controlLaunch','Launch'");
     expect(js).toContain("compactControlMenu('controlMirror','Mirror'");
-    expect(js).toContain("setMirrorPreference(button.dataset.controlValue||'off')");
+    expect(js).toContain("if(id==='controlMirror')");
+    expect(js).toContain("button.textContent='Saving...'");
+    expect(js).toContain("await setMirrorPreference(nextValue||'off')");
+    expect(js).toContain("body:{mode:argument}");
     expect(js).toContain("function bindCompactControlMenus");
     expect(js).toContain("selectedCompactControlValue('controlLaunch')");
     expect(js).toContain(">Apply</button>");

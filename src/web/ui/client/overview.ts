@@ -384,7 +384,26 @@ function bindCompactControlMenus(){
     const id=option.dataset.controlOption;
     const button=document.getElementById(id);
     if(!button||button.disabled)return;
-    button.dataset.controlValue=option.dataset.controlValue||'';
+    const nextValue=option.dataset.controlValue||'';
+    const previousValue=button.dataset.controlValue||'';
+    const previousText=button.textContent||'Default';
+    if(id==='controlMirror'){
+      closeCompactControlMenus();
+      button.textContent='Saving...';
+      button.setAttribute('aria-busy','true');
+      try{
+        await setMirrorPreference(nextValue||'off');
+      }catch(error){
+        button.dataset.controlValue=previousValue;
+        button.textContent=previousText;
+        option.closest('.control-menu-list')?.querySelectorAll('[data-control-option]').forEach(item=>item.setAttribute('aria-selected',item.dataset.controlValue===previousValue?'true':'false'));
+        throw error;
+      }finally{
+        button.removeAttribute('aria-busy');
+      }
+      return;
+    }
+    button.dataset.controlValue=nextValue;
     button.textContent=option.textContent||'Default';
     option.closest('.control-menu-list')?.querySelectorAll('[data-control-option]').forEach(item=>item.setAttribute('aria-selected',item===option?'true':'false'));
     closeCompactControlMenus();
@@ -396,8 +415,6 @@ function bindCompactControlMenus(){
       await api('/api/session/fast',{method:'POST',body:JSON.stringify({enabled:button.dataset.controlValue==='on'})});toast('Fast mode updated');loadBootstrap();
     }else if(id==='controlLaunch'){
       await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId:button.dataset.controlValue})});toast('Launch profile updated');loadBootstrap();
-    }else if(id==='controlMirror'){
-      await setMirrorPreference(button.dataset.controlValue||'off');
     }
   },event));
   if(!state.compactControlOutsideBound){
