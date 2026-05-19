@@ -628,6 +628,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(components).toContain(".metric-kv-number,.metrics-table td{font-size:14px}");
     expect(components).toContain(".metrics-table");
     expect(components).toContain(".diagnostics-grid{margin-top:12px}");
+    expect(components).toContain(".diagnostics-overview-grid{grid-template-columns:repeat(2,minmax(0,1fr))}");
+    expect(components).toContain(".diagnostics-single-grid{grid-template-columns:minmax(0,1fr)}");
     expect(components).toContain(".metrics-tab,.diagnostics-tab{display:none}");
     expect(pages).toContain('class="section-header adapter-section-header"');
     expect(pages).toContain('class="section-header metrics-section-header"');
@@ -665,6 +667,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(admin).toContain("function diagnosticsTabPanel");
     expect(admin).toContain("function diagnosticsVoiceRows");
     expect(admin).toContain("diagnostics-grid");
+    expect(admin).toContain("diagnostics-single-grid");
+    expect(admin).toContain("diagnostics-overview-grid");
     expect(admin).toContain("metricKvCard('Overview'");
     expect(readFileSync("src/web/ui/styles/theme.css", "utf8")).toContain(":root");
     expect(readFileSync("src/web/ui/styles/layout.css", "utf8")).toContain(".chat-layout");
