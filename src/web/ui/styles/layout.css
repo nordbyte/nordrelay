@@ -79,6 +79,14 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .control-grid label,.form-grid label{display:grid;gap:5px;font-size:12px;color:var(--muted)}
 .control-grid>button,.control-grid>.checkbox,.control-grid>.compact-control{align-self:flex-end}
 .control-grid>.checkbox{min-height:36px;height:36px;margin:0}
+.chat-workspace-line{display:flex;align-items:center;gap:8px;min-height:34px;margin:0 0 12px;padding:7px 10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface-soft);color:var(--muted);font-size:13px;max-width:100%}
+.chat-workspace-line[hidden]{display:none}
+.chat-workspace-label{flex:0 0 auto;font-size:12px;font-weight:750;text-transform:uppercase;color:var(--muted)}
+.copy-id.chat-workspace-path{max-width:min(72ch,100%);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.copy-id.chat-workspace-copy{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:28px;min-width:28px;height:28px;min-height:28px;padding:0;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--muted);font-family:inherit}
+.copy-id.chat-workspace-copy:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--link);text-decoration:none}
+.copy-id.chat-workspace-copy .copy-icon{width:13px;height:13px}
+.copy-id.chat-workspace-copy .copy-icon::before,.copy-id.chat-workspace-copy .copy-icon::after{width:8px;height:9px}
 .compact-control{position:relative;display:inline-flex;flex-direction:column;gap:5px;min-width:0;color:var(--muted);font-size:12px}
 .compact-control-label{line-height:1}
 .control-menu-button{position:relative;width:auto;max-width:min(520px,calc(100vw - 48px));min-height:28px;height:auto;padding:0 18px 0 0;border:0;background:transparent;color:var(--text);font-weight:650;line-height:1.25;text-align:left;white-space:normal;justify-content:flex-start}

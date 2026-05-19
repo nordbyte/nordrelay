@@ -325,6 +325,22 @@ describe("web dashboard browser-flow assets", () => {
     expect(toolbar.indexOf('id="clearChatBtn"')).toBeLessThan(toolbar.indexOf('id="syncBtn"'));
   });
 
+  it("shows the active workspace in the WebUI chat header", () => {
+    const js = dashboardJs();
+    const css = dashboardCss();
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+
+    expect(pageSource).toContain('id="chatWorkspaceLine" class="chat-workspace-line" hidden');
+    expect(pageSource.indexOf('id="sessionControls"')).toBeLessThan(pageSource.indexOf('id="chatWorkspaceLine"'));
+    expect(pageSource.indexOf('id="chatWorkspaceLine"')).toBeLessThan(pageSource.indexOf('id="messages"'));
+    expect(js).toContain("function renderChatWorkspaceLine");
+    expect(js).toContain("Workspace path copied");
+    expect(js).toContain("Copy workspace path");
+    expect(js).toContain("renderChatWorkspaceLine()");
+    expect(css).toContain(".chat-workspace-line{");
+    expect(css).toContain(".copy-id.chat-workspace-copy");
+  });
+
   it("renders active sessions on the overview instead of the single current session panel", () => {
     const js = dashboardJs();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
@@ -552,6 +568,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(overview).toContain("function headerThreadCopyButton");
     expect(overview).toContain('title="Copy thread ID"');
     expect(overview).toContain("bindUiCopyButtons(line)");
+    expect(overview).toContain("function renderChatWorkspaceLine");
+    expect(overview).toContain("Workspace path copied");
     expect(readFileSync("src/web/ui/client/workflows.ts", "utf8")).toContain("function loadSessions");
     expect(readFileSync("src/web/ui/client/jobs.ts", "utf8")).toContain("function renderUnifiedJobs");
     const metrics = readFileSync("src/web/ui/client/metrics.ts", "utf8");

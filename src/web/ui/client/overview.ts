@@ -166,6 +166,22 @@ function sessionAgentModelText(session){return [(session.agentLabel||session.age
 function metricThreadCopyHtml(thread){
   return thread?' <button type="button" class="copy-id metric-thread-copy" data-copy-value="'+attr(thread)+'" data-copy-label="Thread ID copied" title="Copy thread ID" aria-label="Copy thread ID"><span class="copy-icon" aria-hidden="true"></span></button>':'';
 }
+function renderChatWorkspaceLine(){
+  const line=document.getElementById('chatWorkspaceLine');
+  if(!line)return;
+  const session=state.snapshot?.session||{};
+  const workspace=session.workspace||'';
+  if(!workspace){
+    line.hidden=true;
+    line.innerHTML='';
+    return;
+  }
+  const peer=state.selectedPeer&&state.selectedPeer!=='local'?headerTargetName(state.selectedPeer):'';
+  const label=peer?'Workspace on '+peer:'Workspace';
+  line.hidden=false;
+  line.innerHTML='<span class="chat-workspace-label">'+esc(label)+'</span><button type="button" class="copy-id chat-workspace-path" data-copy-value="'+attr(workspace)+'" data-copy-label="Workspace path copied" title="'+attr(workspace)+'">'+esc(shortMiddle(workspace,18,52))+'</button><button type="button" class="copy-id chat-workspace-copy" data-copy-value="'+attr(workspace)+'" data-copy-label="Workspace path copied" title="Copy workspace path" aria-label="Copy workspace path"><span class="copy-icon" aria-hidden="true"></span></button>';
+  bindUiCopyButtons(line);
+}
 function launchPermissionsText(session){
   if(!session?.capabilities?.launchProfiles)return'n/a';
   const selectedLaunch=session.launchProfileId||session.nextLaunchProfileId;
@@ -366,6 +382,7 @@ function renderSessionControls(){
     caps.launchProfiles?'<button id="applyLaunchBtn" class="secondary compact-apply-button" title="Apply selected launch profile to the current idle session"'+disabledAttr('settings.write')+'>Apply</button>':''
   ].join('');
   bindCompactControlMenus();
+  renderChatWorkspaceLine();
   const applyLaunch=document.getElementById('applyLaunchBtn'); if(applyLaunch) applyLaunch.onclick=()=>safe(async()=>{const profileId=selectedCompactControlValue('controlLaunch');if(!configuredLaunchProfile(c,profileId)){toast('Select a configured launch profile first');return}await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId,apply:true})});toast('Launch profile applied to current session');loadBootstrap()});
 }
 function activeLaunchProfileId(session){return session.launchProfileId||session.nextLaunchProfileId||''}

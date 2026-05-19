@@ -209,6 +209,7 @@ ${faviconLinks}
               </div>
             </div>
             <div class="control-grid" id="sessionControls"></div>
+            <div id="chatWorkspaceLine" class="chat-workspace-line" hidden></div>
             <div id="messages" class="messages"></div>
             <form id="promptForm" class="composer">
               <div class="composer-fields">
