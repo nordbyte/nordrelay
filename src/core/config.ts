@@ -367,7 +367,7 @@ export function loadConfig(): ConnectorConfig {
     false,
   );
   const voicePreferredBackend = parseVoiceBackendPreference(optionalString(process.env.VOICE_PREFERRED_BACKEND));
-  const voiceDefaultLanguage = optionalString(process.env.VOICE_DEFAULT_LANGUAGE);
+  const voiceDefaultLanguage = parseVoiceDefaultLanguage(optionalString(process.env.VOICE_DEFAULT_LANGUAGE));
   const voiceTranscribeOnly = parseBooleanEnv(optionalString(process.env.VOICE_TRANSCRIBE_ONLY), false);
   const auditMaxEvents = parsePositiveIntegerEnv(optionalString(process.env.NORDRELAY_AUDIT_MAX_EVENTS), 1000, "NORDRELAY_AUDIT_MAX_EVENTS");
   const sessionLockTtlMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_SESSION_LOCK_TTL_MS), 30 * 60 * 1000, "NORDRELAY_SESSION_LOCK_TTL_MS");
@@ -647,6 +647,14 @@ function requireEnv(name: string): string {
 function optionalString(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function parseVoiceDefaultLanguage(value: string | undefined): string | undefined {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized || normalized === "auto" || normalized === "default" || normalized === "detect") {
+    return undefined;
+  }
+  return normalized;
 }
 
 function parseQuietHoursOverride(value: string | undefined, fallback: QuietHours | null): QuietHours | null {

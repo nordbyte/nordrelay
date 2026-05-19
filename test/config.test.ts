@@ -510,6 +510,17 @@ describe("loadConfig", () => {
     expect(config.sessionWorktreeBranchPrefix).toBe("nr/session");
   });
 
+  it("treats auto voice language as backend auto-detect", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.VOICE_DEFAULT_LANGUAGE = "auto";
+
+    expect(loadConfig().voiceDefaultLanguage).toBeUndefined();
+
+    process.env.VOICE_DEFAULT_LANGUAGE = "DE";
+
+    expect(loadConfig().voiceDefaultLanguage).toBe("de");
+  });
+
   it("parses webhook transport settings", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
     process.env.TELEGRAM_TRANSPORT = "webhook";

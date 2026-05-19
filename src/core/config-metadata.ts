@@ -229,7 +229,14 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
 
   setting("OPENAI_API_KEY", "OpenAI API key", "Voice", "secret", "Whisper fallback API key.", true),
   setting("VOICE_PREFERRED_BACKEND", "Voice backend", "Voice", "string", "auto, parakeet, faster-whisper, or openai.", false, ["auto", "parakeet", "faster-whisper", "openai"]),
-  setting("VOICE_DEFAULT_LANGUAGE", "Voice language", "Voice", "string", "Default transcription language.", false),
+  setting(
+    "VOICE_DEFAULT_LANGUAGE",
+    "Voice language",
+    "Voice",
+    "string",
+    "Default transcription language. Leave empty or use auto for backend auto-detect. Use ISO language codes such as de or en; Parakeet ignores this value.",
+    false,
+  ),
   setting("VOICE_TRANSCRIBE_ONLY", "Voice transcribe only", "Voice", "boolean", "Do not send voice transcripts as prompts.", false),
   setting("FASTER_WHISPER_PYTHON", "faster-whisper Python", "Voice", "string", "Python executable.", true),
   setting("FASTER_WHISPER_MODEL", "faster-whisper model", "Voice", "string", "Model name.", true),

@@ -187,7 +187,7 @@ Auth and voice:
 - `FASTER_WHISPER_TIMEOUT_MS`: local transcription timeout. Defaults to `600000`.
 - `OPENAI_API_KEY`: enables Whisper transcription fallback for voice/audio.
 - `VOICE_PREFERRED_BACKEND`: `auto`, `parakeet`, `faster-whisper`, or `openai`. Defaults to `auto`.
-- `VOICE_DEFAULT_LANGUAGE`: optional default language code, for example `de` or `en`.
+- `VOICE_DEFAULT_LANGUAGE`: optional default language code, for example `de` or `en`. Leave empty or set `auto` for backend auto-detect; Parakeet ignores this value.
 - `VOICE_TRANSCRIBE_ONLY`: when `true`, voice/audio messages are transcribed but not sent to the selected agent.
 
 NordRelay wrapper:
