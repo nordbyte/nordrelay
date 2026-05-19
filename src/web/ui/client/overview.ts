@@ -326,12 +326,25 @@ function headerTargetLoadMoreHtml(peerId,agentId,hasNext,nextPage){
 async function loadActiveSessions(){
   const box=document.getElementById('activeSessions');
   if(!box)return;
-  if(!can('sessions.read')){box.innerHTML='<div class="item">Permission required: sessions.read</div>';return}
+  if(!can('sessions.read')){updateActiveSessionsCount([]);box.innerHTML='<div class="item">Permission required: sessions.read</div>';return}
   const data=await api('/api/active-sessions');
   renderActiveSessions(data.sessions||[]);
 }
+function updateActiveSessionsCount(items:any=undefined){
+  const sessions=Array.isArray(items)?items:(Array.isArray(state.activeSessions?.sessions)?state.activeSessions.sessions:[]);
+  const count=sessions.length;
+  const heading=document.getElementById('activeSessionsCount');
+  if(heading)heading.textContent='('+count+')';
+  const badge=document.getElementById('overviewActiveBadge');
+  if(badge){
+    badge.textContent=String(count);
+    badge.hidden=count<1;
+    badge.setAttribute('aria-label',count+' active session'+(count===1?'':'s'));
+  }
+}
 function renderActiveSessions(items){
   state.activeSessions={sessions:items||[],updatedAt:new Date().toISOString()};
+  updateActiveSessionsCount(items||[]);
   renderChatWorkingIndicator();
   const box=document.getElementById('activeSessions');
   if(!box)return;

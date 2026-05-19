@@ -111,6 +111,7 @@ declare var populateNewSessionForm: (...args: any[]) => any;
 declare var reloadCurrentPage: (...args: any[]) => Promise<any>;
 declare function renderAccessTab(tab?: string): void;
 declare function renderActiveSessions(value?: any): void;
+declare function updateActiveSessionsCount(value?: any): void;
 declare function renderActivity(value?: any): void;
 declare function renderAgentUpdateJobs(): void;
 declare function renderArtifacts(value?: any): void;

@@ -367,12 +367,20 @@ describe("web dashboard browser-flow assets", () => {
 
   it("renders active sessions on the overview instead of the single current session panel", () => {
     const js = dashboardJs();
+    const css = dashboardCss();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    const navSource = readFileSync("src/web/web-dashboard-ui.ts", "utf8");
 
     expect(pageSource).toContain("Active Sessions");
+    expect(pageSource).toContain('id="activeSessionsCount"');
     expect(pageSource).toContain('id="activeSessions"');
+    expect(navSource).toContain('id="overviewActiveBadge"');
+    expect(navSource).toContain('class="nav-badge" hidden');
     expect(pageSource).not.toContain("Current Session");
     expect(js).toContain("function renderActiveSessions");
+    expect(js).toContain("function updateActiveSessionsCount");
+    expect(js).toContain("badge.hidden=count<1");
+    expect(js).toContain("updateActiveSessionsCount(state.activeSessions?.sessions||[])");
     expect(js).toContain("metricHtml('Workspace'");
     expect(js).toContain("metricHtml('Agent / Model'");
     expect(js).toContain("function sessionAgentModelText");
@@ -388,6 +396,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(readFileSync("src/agents/shared/agent-activity.ts", "utf8")).toContain("snapshot = null");
     expect(readFileSync("src/runtime/relay-external-activity-monitor.ts", "utf8")).toContain("shouldIgnoreExternalTurn");
     expect(readFileSync("src/runtime/relay-external-activity-monitor.ts", "utf8")).toContain("message.source === \"cli\"");
+    expect(css).toContain(".active-sessions-count");
+    expect(css).toContain(".nav-badge{");
     expect(js).not.toContain("activeSessionsTimer=setInterval");
   });
 

@@ -174,7 +174,7 @@ ${faviconLinks}
       <section class="page active" id="page-overview">
         <div class="metrics" id="metrics"></div>
         <div class="stack">
-          <div class="panel"><h2>Active Sessions</h2><div id="activeSessions" class="list"></div></div>
+          <div class="panel"><h2>Active Sessions <span id="activeSessionsCount" class="active-sessions-count">(0)</span></h2><div id="activeSessions" class="list"></div></div>
           <div class="overview-adapter-grid">
             <div class="panel"><h2>Agent Adapters</h2><div id="agentAdapters"></div></div>
             <div class="panel"><h2>Chat Adapters</h2><div id="chatAdapters"></div></div>
