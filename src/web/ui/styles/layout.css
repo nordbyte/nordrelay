@@ -126,18 +126,23 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .header-target-session-state.error{color:var(--danger)}
 .compact-apply-button{width:auto;min-width:0}
 .messages{flex:1;min-height:0;overflow:auto;border:1px solid var(--border-soft);border-radius:8px;padding:12px;background:var(--surface-soft)}
-.message{position:relative;width:fit-content;max-width:92%;box-sizing:border-box;margin:0 0 12px;padding:10px 42px 10px 12px;border-radius:8px;white-space:pre-wrap;word-break:break-word}
+.message{position:relative;width:fit-content;max-width:92%;box-sizing:border-box;margin:0 0 12px;padding:10px 74px 10px 12px;border-radius:8px;white-space:pre-wrap;word-break:break-word}
 .message.user{max-width:min(88%,calc(100% - 36px));margin-left:auto;margin-right:0;background:var(--accent-soft)}
 .message.agent{margin-right:auto;background:color-mix(in srgb,var(--surface-soft) 80%,var(--border))}
 .message.system{background:var(--warn)}
 .message-body{white-space:pre-wrap}
-.message-copy-button{position:absolute;top:6px;right:6px;width:26px;height:26px;min-width:26px;min-height:26px;padding:0;border:1px solid var(--border-soft);border-radius:6px;background:var(--surface);color:var(--muted);opacity:0;pointer-events:none;transition:opacity .12s ease,background .12s ease,border-color .12s ease,color .12s ease}
-.message:hover .message-copy-button,.message:focus-within .message-copy-button{opacity:1;pointer-events:auto}
+.message-action-button{position:absolute;top:6px;width:26px;height:26px;min-width:26px;min-height:26px;padding:0;border:1px solid var(--border-soft);border-radius:6px;background:var(--surface);color:var(--muted);opacity:0;pointer-events:none;transition:opacity .12s ease,background .12s ease,border-color .12s ease,color .12s ease}
+.message-copy-button{right:6px}
+.message-edit-button{right:38px}
+.message:hover .message-action-button,.message:focus-within .message-action-button{opacity:1;pointer-events:auto}
 .message-copy-button::before,.message-copy-button::after{content:"";position:absolute;box-sizing:border-box;width:10px;height:12px;border:1.5px solid currentColor;border-radius:2px;background:var(--surface)}
 .message-copy-button::before{left:9px;top:6px}
 .message-copy-button::after{left:7px;top:8px}
-.message-copy-button:hover,.message-copy-button:focus{background:var(--accent);border-color:var(--accent);color:white;outline:none}
+.message-edit-button::before{content:"";position:absolute;left:7px;top:14px;width:12px;height:2px;border-radius:2px;background:currentColor;transform:rotate(-45deg);transform-origin:center}
+.message-edit-button::after{content:"";position:absolute;left:14px;top:6px;width:4px;height:8px;border:1.5px solid currentColor;border-radius:2px;background:var(--surface);transform:rotate(-45deg)}
+.message-action-button:hover,.message-action-button:focus{background:var(--accent);border-color:var(--accent);color:white;outline:none}
 .message-copy-button:hover::before,.message-copy-button:hover::after,.message-copy-button:focus::before,.message-copy-button:focus::after{background:var(--accent)}
+.message-edit-button:hover::after,.message-edit-button:focus::after{background:var(--accent)}
 .message .chat-inline-code{appearance:none;-webkit-appearance:none;display:inline;min-height:0;height:auto;margin:0;padding:0;border:0;background:transparent;color:var(--link);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:1em;line-height:inherit;white-space:normal;vertical-align:baseline;cursor:pointer}
 .message .chat-inline-code:hover,.message .chat-inline-code:focus{background:transparent;color:var(--link);text-decoration:underline;outline:none}
 .message .chat-code-block{position:relative;margin:8px 0;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--pre);color:var(--pre-text);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.45;white-space:pre;overflow:auto;cursor:pointer}

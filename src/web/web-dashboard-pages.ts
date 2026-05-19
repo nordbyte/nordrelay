@@ -188,7 +188,6 @@ ${faviconLinks}
             <div class="chat-toolbar">
               <button id="newSessionBtn">New session</button>
               <button id="retryBtn" class="secondary">Retry</button>
-              <button id="editLastBtn" class="secondary">Edit last</button>
               <button id="templatePickerBtn" class="secondary" type="button">Templates</button>
               <button id="syncBtn" class="secondary">Sync</button>
               <button id="notifyBtn" class="secondary">Notify</button>
