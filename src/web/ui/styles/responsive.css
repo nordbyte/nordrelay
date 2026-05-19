@@ -14,7 +14,9 @@ header{z-index:30}
 .chat-panel{height:auto;min-height:0}
 .messages{max-height:55vh;min-height:300px}
 .composer{grid-template-columns:1fr}
-.composer button{height:40px}
+.composer-actions{min-width:0}
+.composer-actions button{height:40px}
+.composer-abort{height:32px;min-height:32px}
 .side-panel{order:-1;max-height:360px}
 .tool-stream{max-height:300px}
 .sessions-table .optional-model{display:none}

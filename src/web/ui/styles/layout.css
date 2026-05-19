@@ -163,9 +163,14 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .chat-working-indicator small{color:var(--muted)}
 .chat-working-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 40%,transparent);animation:workingPulse 1.4s ease-out infinite;flex:0 0 auto}
 @keyframes workingPulse{70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
-.composer{display:grid;grid-template-columns:1fr auto;gap:10px;margin-top:12px}
+.composer{display:grid;grid-template-columns:1fr auto;gap:10px;margin-top:12px;align-items:stretch}
 .composer-fields{min-width:0}
-.composer button{height:auto;min-width:90px}
+.composer-actions{display:grid;grid-template-rows:1fr;gap:6px;align-self:stretch;min-width:90px}
+.composer.composer-abort-visible .composer-actions{grid-template-rows:minmax(42px,1fr) auto}
+.composer-actions button{min-width:90px}
+#sendPromptBtn{height:auto;min-height:42px}
+.composer-abort{height:28px;min-height:28px;padding:0 10px;font-size:13px}
+.composer-abort[hidden]{display:none}
 .attachment-row{margin-top:8px;color:var(--muted);font-size:13px}
 .file-button{display:inline-flex;align-items:center;justify-content:center;min-height:34px;height:34px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;line-height:1}
 input[type=file]{display:none}

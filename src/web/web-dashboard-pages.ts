@@ -200,7 +200,6 @@ ${faviconLinks}
                 </select>
               </label>
               <button id="clearChatBtn" class="secondary" title="Clears only the WebUI chat history shown for this session. Agent context and session history stay intact.">Clear</button>
-              <button id="abortBtn">Abort</button>
               <div class="chat-more-menu">
                 <button id="chatMoreBtn" class="secondary chat-more-toggle" type="button" aria-haspopup="menu" aria-expanded="false">More</button>
                 <div id="chatMoreMenu" class="control-menu-list chat-more-list" role="menu" hidden>
@@ -222,7 +221,10 @@ ${faviconLinks}
                   <button type="button" id="clearFilesBtn" class="secondary">Clear</button>
                 </div>
               </div>
-              <button>Send</button>
+              <div class="composer-actions">
+                <button id="sendPromptBtn" type="submit">Send</button>
+                <button id="abortBtn" class="secondary composer-abort" type="button" hidden>Abort</button>
+              </div>
             </form>
           </div>
           <div class="panel side-panel" id="toolPanel" hidden><h2>Tools / Plan</h2><div id="toolStream" class="tool-stream"></div></div>
