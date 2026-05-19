@@ -58,6 +58,7 @@ async function loadBootstrap(){
   state.enabledAgents = data.enabledAgents || [];
   mergeHeaderTargetBootstrap(state.selectedPeer||'local',data);
   applyPermissions();
+  await refreshChatMirrorPreferenceForBootstrap();
   renderSnapshot(state.snapshot);
   void refreshRemoteHeaderTargets(local,data).catch(()=>renderHeaderTargetMenu(state.snapshot));
   safe(loadActiveSessions);
@@ -68,6 +69,13 @@ async function loadBootstrap(){
   document.getElementById('footerHealth').textContent='Health: '+footerHealthLabel(data.status.health?.state?.status);
   renderFooterUser(local.auth);
   applyPermissions();
+}
+async function refreshChatMirrorPreferenceForBootstrap(){
+  if(state.currentPage!=='chat'||!can('sessions.read'))return;
+  try{
+    const data=await api('/api/chat/mirror');
+    if(data)state.webMirror=data;
+  }catch{}
 }
 function footerHealthLabel(status){
   if(status==='ready')return'healthy';

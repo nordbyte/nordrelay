@@ -357,10 +357,12 @@ test.describe("NordRelay WebUI", () => {
     await expect.poll(() => mock.requests.filter((request) => request.path === "/api/chat/mirror" && request.method === "POST").length).toBe(1);
     expect(mock.requests.find((request) => request.path === "/api/chat/mirror" && request.method === "POST")?.body).toMatchObject({ mode: "full" });
     await expect(page.locator("#controlMirror")).toHaveText("full");
+    await page.reload();
+    await expect(page.locator("#controlMirror")).toHaveText("full");
 
     await page.locator("#promptInput").fill("/mirror");
     await page.locator("#sendPromptBtn").click();
-    await expect(page.locator("#messages")).toContainText("CLI mirroring: status");
+    await expect(page.locator("#messages")).toContainText("CLI mirroring: full");
     await expect(page.locator("#messages")).toContainText("Minimum update interval: 4000 ms");
   });
 
@@ -895,6 +897,7 @@ test.describe("NordRelay WebUI", () => {
 async function startMockDashboardServer(): Promise<MockServer> {
   const requests: MockServer["requests"] = [];
   const jobs: unknown[] = [];
+  const state = { mirrorMode: "status" };
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (url.pathname === "/") return sendText(res, 200, renderDashboardApp(), "text/html; charset=utf-8");
@@ -908,7 +911,7 @@ async function startMockDashboardServer(): Promise<MockServer> {
     if (url.pathname.startsWith("/api/")) {
       const body = await readJson(req);
       requests.push({ method: req.method ?? "GET", path: url.pathname, query: Object.fromEntries(url.searchParams), body });
-      return sendJson(res, 200, apiResponse(url, req.method ?? "GET", body, jobs));
+      return sendJson(res, 200, apiResponse(url, req.method ?? "GET", body, jobs, state));
     }
 
     sendText(res, 404, "not found", "text/plain; charset=utf-8");
@@ -926,11 +929,11 @@ async function startMockDashboardServer(): Promise<MockServer> {
   };
 }
 
-function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[]): unknown {
+function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[], state: { mirrorMode: string }): unknown {
   const session = sessionInfo((body as { agentId?: string } | null)?.agentId || "codex");
   if (url.pathname === "/api/bootstrap") return bootstrap(session);
   if (url.pathname === "/api/chat/history") return method === "DELETE" ? { messages: [], removed: 1 } : { messages: chatMessages() };
-  if (url.pathname === "/api/chat/mirror") return mirrorPreference(body);
+  if (url.pathname === "/api/chat/mirror") return mirrorPreference(body, state);
   if (url.pathname === "/api/queue") return { queue: [], paused: false };
   if (url.pathname === "/api/prompt") return { queued: true, queueId: "queue-web-1", correlationId: (body as { correlationId?: string } | null)?.correlationId, files: [] };
   if (url.pathname === "/api/settings") return method === "PATCH" ? settingsPatchResponse(body) : settings();
@@ -1219,8 +1222,12 @@ function chatMessages() {
   ];
 }
 
-function mirrorPreference(body: unknown) {
-  const mode = (body as { argument?: string; mode?: string } | null)?.argument || (body as { mode?: string } | null)?.mode || "status";
+function mirrorPreference(body: unknown, state: { mirrorMode: string }) {
+  const requested = (body as { argument?: string; mode?: string } | null)?.argument || (body as { mode?: string } | null)?.mode;
+  if (requested) {
+    state.mirrorMode = requested;
+  }
+  const mode = state.mirrorMode;
   return {
     mode,
     minInterval: 4000,
