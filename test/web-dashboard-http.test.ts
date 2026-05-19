@@ -40,6 +40,13 @@ describe("web dashboard HTTP helpers", () => {
     expect(csp).not.toContain("'unsafe-inline'");
   });
 
+  it("allows same-origin microphone access for WebUI voice recording", () => {
+    const policy = webSecurityHeaders()["permissions-policy"];
+
+    expect(policy).toContain("microphone=(self)");
+    expect(policy).toContain("camera=()");
+  });
+
   it("requires CSRF for every mutating Web API route", () => {
     for (const route of WEB_API_ROUTE_DEFINITIONS) {
       for (const method of route.methods) {

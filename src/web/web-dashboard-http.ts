@@ -14,7 +14,7 @@ const BASE_SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
   "referrer-policy": "no-referrer",
-  "permissions-policy": "camera=(), microphone=(), geolocation=()",
+  "permissions-policy": "camera=(), microphone=(self), geolocation=()",
 };
 const JSON_HEADERS = { ...webSecurityHeaders(), "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
 const responseRequests = new WeakMap<ServerResponse, IncomingMessage>();
