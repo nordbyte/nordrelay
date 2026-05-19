@@ -326,11 +326,15 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("chat-list-continuation");
     expect(js).toContain("start=\"'+start+'\"");
     expect(js).toContain("function chatMessageActionsHtml");
+    expect(js).toContain("function chatMessageClass");
+    expect(js).toContain("function isChatUserPromptMessage");
+    expect(js).toContain("message?.source==='cli'&&/^Working on\\b/i");
     expect(js).toContain("data-message-index");
     expect(js).toContain("function bindChatMessageActionButtons");
     expect(js).toContain("Message copied");
     expect(css).toContain(".message{position:relative;width:fit-content;max-width:92%");
-    expect(css).toContain(".message.user{max-width:min(88%,calc(100% - 36px));margin-left:auto;margin-right:0");
+    expect(css).toContain(".message.user,.message.user-prompt{max-width:min(88%,calc(100% - 36px));margin-left:auto;margin-right:0");
+    expect(css).toContain(".message.user,.message.user-prompt{max-width:calc(100% - 24px);margin-left:auto;margin-right:0");
     expect(css).toContain(".message-copy-button");
     expect(css).toContain("box-sizing:border-box;width:10px;height:12px");
     expect(css).toContain(".message-copy-button::before{left:9px;top:6px}");

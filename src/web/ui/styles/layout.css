@@ -134,7 +134,8 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .notify-toggle.notifications-enabled .notify-filled{display:block}
 .messages{flex:1;min-height:0;overflow:auto;border:1px solid var(--border-soft);border-radius:8px;padding:12px;background:var(--surface-soft)}
 .message{position:relative;width:fit-content;max-width:92%;box-sizing:border-box;margin:0 0 12px;padding:10px 74px 10px 12px;border-radius:8px;white-space:pre-wrap;word-break:break-word}
-.message.user{max-width:min(88%,calc(100% - 36px));margin-left:auto;margin-right:0;background:var(--accent-soft)}
+.message.user,.message.user-prompt{max-width:min(88%,calc(100% - 36px));margin-left:auto;margin-right:0;margin-inline-start:auto;margin-inline-end:0}
+.message.user{background:var(--accent-soft)}
 .message.agent{margin-right:auto;background:color-mix(in srgb,var(--surface-soft) 80%,var(--border))}
 .message.system{background:var(--warn)}
 .message-body{white-space:pre-wrap}
