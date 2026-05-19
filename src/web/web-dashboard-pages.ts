@@ -200,12 +200,12 @@ ${faviconLinks}
                   <path class="notify-filled" d="M12 3a6 6 0 0 0-6 6c0 4.7-1.5 6.2-2.6 6.9A1 1 0 0 0 4 18h16a1 1 0 0 0 .6-2.1C19.5 15.2 18 13.7 18 9a6 6 0 0 0-6-6Zm2 17h-4a2 2 0 0 0 4 0Z" fill="currentColor"/>
                 </svg>
               </button>
-              <button id="clearChatBtn" class="secondary" title="Clears only the WebUI chat history shown for this session. Agent context and session history stay intact.">Clear</button>
               <div class="chat-more-menu">
                 <button id="chatMoreBtn" class="secondary chat-more-toggle" type="button" aria-haspopup="menu" aria-expanded="false">More</button>
                 <div id="chatMoreMenu" class="control-menu-list chat-more-list" role="menu" hidden>
-                  <button id="syncBtn" class="secondary" type="button" role="menuitem">Sync</button>
-                  <button id="toggleToolsBtn" class="secondary" type="button" role="menuitem" aria-controls="toolPanel" aria-expanded="false">Show Tools</button>
+                  <button id="clearChatBtn" class="secondary" type="button" role="menuitem" title="Clears only the WebUI chat history shown for this session. Agent context and session history stay intact.">Clear</button>
+                  <button id="syncBtn" class="secondary" type="button" role="menuitem" title="Sync the current WebUI session controls from the active agent session.">Sync</button>
+                  <button id="toggleToolsBtn" class="secondary" type="button" role="menuitem" aria-controls="toolPanel" aria-expanded="false" title="Show or hide the Tools / Plan sidebar for the current chat.">Show Tools</button>
                 </div>
               </div>
             </div>

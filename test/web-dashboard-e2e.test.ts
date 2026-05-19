@@ -298,6 +298,21 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".notify-toggle.notifications-enabled .notify-filled{display:block}");
   });
 
+  it("keeps secondary chat actions in the More menu", () => {
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    const toolbar = pageSource.slice(pageSource.indexOf('<div class="chat-toolbar">'), pageSource.indexOf('<div class="control-grid" id="sessionControls">'));
+
+    expect(toolbar).toContain('id="chatMoreMenu"');
+    expect(toolbar).toContain('id="clearChatBtn"');
+    expect(toolbar).toContain('id="syncBtn"');
+    expect(toolbar).toContain('id="toggleToolsBtn"');
+    expect(toolbar).toContain('Clears only the WebUI chat history shown for this session');
+    expect(toolbar).toContain('Sync the current WebUI session controls');
+    expect(toolbar).toContain('Show or hide the Tools / Plan sidebar');
+    expect(toolbar.indexOf('id="clearChatBtn"')).toBeGreaterThan(toolbar.indexOf('id="chatMoreMenu"'));
+    expect(toolbar.indexOf('id="clearChatBtn"')).toBeLessThan(toolbar.indexOf('id="syncBtn"'));
+  });
+
   it("renders active sessions on the overview instead of the single current session panel", () => {
     const js = dashboardJs();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
