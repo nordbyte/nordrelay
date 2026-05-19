@@ -377,6 +377,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(workflowsSource).toContain("lock/site controls");
     expect(workflowsSource).toContain("Your browser should show a microphone permission prompt");
     expect(workflowsSource).toContain("permission==='prompt'");
+    expect(workflowsSource).not.toContain("if(permission==='denied')throw new Error(microphoneBlockedMessage())");
     expect(css).toContain(".message{position:relative;width:fit-content;max-width:92%");
     expect(css).toContain("padding:10px 106px 10px 12px");
     expect(css).toContain(".message.user,.message.user-prompt{max-width:min(88%,calc(100% - 36px));margin-left:auto;margin-right:0");
