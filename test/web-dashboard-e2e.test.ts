@@ -618,6 +618,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(pages).toContain('class="section-header diagnostics-section-header"');
     expect(pages).toContain('id="diagnosticsTabs"');
     expect(pages).toContain('data-diagnostics-tab="channels"');
+    expect(pages).toContain('class="setting-info session-workspace-mode-help"');
+    expect(pages).toContain('Isolated worktree creates a separate Git worktree');
+    expect(readFileSync("src/web/ui/styles/layout.css", "utf8")).toContain(".form-label-title{display:inline-flex;align-items:center;gap:6px;min-width:0}");
     const users = readFileSync("src/web/ui/client/users.ts", "utf8");
     expect(users).toContain("function renderUserManagementV2");
     expect(users).toContain("function renderUsersTable");

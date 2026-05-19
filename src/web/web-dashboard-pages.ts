@@ -610,7 +610,7 @@ ${faviconLinks}
         <label>Model<select id="newModel"></select></label>
         <label id="newReasoningWrap">Reasoning<select id="newReasoning"></select></label>
         <label id="newLaunchWrap">Launch profile<select id="newLaunch"></select></label>
-        <label>Workspace mode<select id="newWorkspaceMode"><option value="">Default</option><option value="shared">Shared workspace</option><option value="worktree">Isolated worktree</option><option value="attached">Attached/manual</option></select></label>
+        <label><span class="form-label-title">Workspace mode <span class="setting-info session-workspace-mode-help" tabindex="0" role="img" aria-label="Default uses the configured workspace mode. Shared uses the selected workspace directly. Isolated worktree creates a separate Git worktree and branch for the new session. Attached/manual keeps externally started sessions untouched." title="Default uses the configured workspace mode. Shared uses the selected workspace directly. Isolated worktree creates a separate Git worktree and branch for the new session. Attached/manual keeps externally started sessions untouched.">i</span></span><select id="newWorkspaceMode"><option value="">Default</option><option value="shared">Shared workspace</option><option value="worktree">Isolated worktree</option><option value="attached">Attached/manual</option></select></label>
         <label id="newFastWrap" class="checkbox"><input id="newFast" type="checkbox"> Fast mode</label>
       </div>
       <datalist id="workspaceOptions"></datalist>

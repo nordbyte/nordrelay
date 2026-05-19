@@ -122,6 +122,10 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#messages")).toContainText("Existing web message");
     await expect(page.locator("#messages")).toHaveCSS("overflow-y", "auto");
     await expect(page.locator("#toolPanel")).toBeHidden();
+    await page.locator("#newSessionBtn").click();
+    await expect(page.locator("#newSessionDialog")).toBeVisible();
+    await expect(page.locator(".session-workspace-mode-help")).toHaveAttribute("title", /Isolated worktree creates a separate Git worktree/);
+    await page.locator("#cancelSessionBtn").click();
     await page.locator("#chatMoreBtn").click();
     await expect(page.locator("#toggleToolsBtn")).toHaveText("Show Tools");
     await expect(page.locator("#toggleToolsBtn")).toHaveAttribute("aria-expanded", "false");
