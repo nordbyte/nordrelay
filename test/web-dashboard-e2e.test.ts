@@ -272,7 +272,13 @@ describe("web dashboard browser-flow assets", () => {
   it("selects the current launch mode in the launch dropdown", () => {
     const js = dashboardJs();
 
-    expect(js).toContain("selectedLaunch=s.launchProfileId||s.nextLaunchProfileId");
+    expect(js).toContain("selectedLaunch=activeLaunchProfileId(s)");
+    expect(js).toContain("function activeLaunchProfileId");
+    expect(js).toContain("function launchMenuItems");
+    expect(js).toContain("function activeLaunchLabel");
+    expect(js).toContain("items.unshift({value:selectedLaunch,label:activeLaunchLabel(session,selectedLaunch)})");
+    expect(js).toContain("function configuredLaunchProfile");
+    expect(js).toContain("Select a configured launch profile first");
     expect(js).toContain("compactControlMenu('controlLaunch','Launch'");
     expect(js).toContain("compactControlMenu('controlMirror','Mirror'");
     expect(js).toContain("if(id==='controlMirror')");

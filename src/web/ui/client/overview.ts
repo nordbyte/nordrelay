@@ -352,8 +352,8 @@ function renderSessionControls(){
   const selectedReasoning=reasoningItems.find(item=>item.value===s.reasoningEffort)||(s.reasoningEffort?{value:s.reasoningEffort,label:s.reasoningEffort}:reasoningItems[0]);
   const fastItems=[{value:'on',label:'on'},{value:'off',label:'off'}];
   const selectedFast=s.fastMode?'on':'off';
-  const selectedLaunch=s.launchProfileId||s.nextLaunchProfileId;
-  const launchItems=(c.launchProfiles||[]).map(p=>({value:p.id,label:p.label+' - '+p.behavior+(p.unsafe?' - unsafe':'')}));
+  const selectedLaunch=activeLaunchProfileId(s);
+  const launchItems=launchMenuItems(c,s,selectedLaunch);
   const selectedLaunchItem=launchItems.find(item=>item.value===selectedLaunch)||launchItems[0];
   const mirrorItems=[{value:'off',label:'off'},{value:'status',label:'status'},{value:'final',label:'final'},{value:'full',label:'full'}];
   const selectedMirror=state.webMirror?.mode||'off';
@@ -366,8 +366,23 @@ function renderSessionControls(){
     caps.launchProfiles?'<button id="applyLaunchBtn" class="secondary compact-apply-button" title="Apply selected launch profile to the current idle session"'+disabledAttr('settings.write')+'>Apply</button>':''
   ].join('');
   bindCompactControlMenus();
-  const applyLaunch=document.getElementById('applyLaunchBtn'); if(applyLaunch) applyLaunch.onclick=()=>safe(async()=>{const profileId=selectedCompactControlValue('controlLaunch');await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId,apply:true})});toast('Launch profile applied to current session');loadBootstrap()});
+  const applyLaunch=document.getElementById('applyLaunchBtn'); if(applyLaunch) applyLaunch.onclick=()=>safe(async()=>{const profileId=selectedCompactControlValue('controlLaunch');if(!configuredLaunchProfile(c,profileId)){toast('Select a configured launch profile first');return}await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId,apply:true})});toast('Launch profile applied to current session');loadBootstrap()});
 }
+function activeLaunchProfileId(session){return session.launchProfileId||session.nextLaunchProfileId||''}
+function launchMenuItems(controls,session,selectedLaunch){
+  const items=(controls.launchProfiles||[]).map(p=>({value:p.id,label:p.label+' - '+p.behavior+(p.unsafe?' - unsafe':'')}));
+  if(selectedLaunch&&!items.some(item=>item.value===selectedLaunch)){
+    items.unshift({value:selectedLaunch,label:activeLaunchLabel(session,selectedLaunch)});
+  }
+  return items;
+}
+function activeLaunchLabel(session,selectedLaunch){
+  const label=session.launchProfileLabel||session.nextLaunchProfileLabel||selectedLaunch||'Current launch';
+  const behavior=session.launchProfileBehavior||session.nextLaunchProfileBehavior||'';
+  const unsafe=session.unsafeLaunch||session.nextUnsafeLaunch;
+  return label+(behavior?' - '+behavior:'')+(unsafe?' - unsafe':'');
+}
+function configuredLaunchProfile(controls,profileId){return Boolean(profileId&&(controls.launchProfiles||[]).some(p=>p.id===profileId))}
 function compactControlMenu(id,label,value,display,items){
   const options=(items||[]).map(item=>'<button type="button" role="option" data-control-option="'+attr(id)+'" data-control-value="'+attr(item.value)+'" aria-selected="'+(item.value===value?'true':'false')+'">'+esc(item.label)+'</button>').join('');
   return '<div class="compact-control" data-control-menu="'+attr(id)+'"><span class="compact-control-label">'+esc(label)+'</span><button type="button" id="'+attr(id)+'" class="control-menu-button" data-control-value="'+attr(value)+'" aria-haspopup="listbox" aria-expanded="false"'+disabledAttr('settings.write')+'>'+esc(display||'Default')+'</button><div class="control-menu-list" role="listbox" hidden>'+options+'</div></div>';
