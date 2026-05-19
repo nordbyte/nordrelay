@@ -358,10 +358,11 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("Workspace path copied");
     expect(js).toContain("Copy workspace path");
     expect(js).toContain("renderChatWorkspaceLine()");
+    expect(js).not.toContain("chat-workspace-copy");
     expect(css).toContain(".chat-workspace-line{");
     expect(css).toContain(".attachment-row .chat-workspace-line{");
     expect(css).toContain("margin:0 0 0 auto");
-    expect(css).toContain(".copy-id.chat-workspace-copy");
+    expect(css).not.toContain(".copy-id.chat-workspace-copy");
   });
 
   it("renders active sessions on the overview instead of the single current session panel", () => {

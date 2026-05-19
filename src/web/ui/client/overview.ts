@@ -179,7 +179,7 @@ function renderChatWorkspaceLine(){
   const peer=state.selectedPeer&&state.selectedPeer!=='local'?headerTargetName(state.selectedPeer):'';
   const label=peer?'Workspace on '+peer:'Workspace';
   line.hidden=false;
-  line.innerHTML='<span class="chat-workspace-label">'+esc(label)+'</span><button type="button" class="copy-id chat-workspace-path" data-copy-value="'+attr(workspace)+'" data-copy-label="Workspace path copied" title="'+attr(workspace)+'">'+esc(shortMiddle(workspace,18,52))+'</button><button type="button" class="copy-id chat-workspace-copy" data-copy-value="'+attr(workspace)+'" data-copy-label="Workspace path copied" title="Copy workspace path" aria-label="Copy workspace path"><span class="copy-icon" aria-hidden="true"></span></button>';
+  line.innerHTML='<span class="chat-workspace-label">'+esc(label)+'</span><button type="button" class="copy-id chat-workspace-path" data-copy-value="'+attr(workspace)+'" data-copy-label="Workspace path copied" title="'+attr(workspace)+'" aria-label="Copy workspace path">'+esc(shortMiddle(workspace,18,52))+'</button>';
   bindUiCopyButtons(line);
 }
 function launchPermissionsText(session){
