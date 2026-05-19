@@ -140,10 +140,10 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .template-picker-list .header-target-session small{white-space:normal}
 .icon-button{display:inline-flex;align-items:center;justify-content:center;width:36px;min-width:36px;height:36px;min-height:36px;padding:0}
 .icon-button svg{display:block;width:18px;height:18px}
-.notify-toggle .notify-filled{display:none}
-.notify-toggle.notifications-enabled{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
-.notify-toggle.notifications-enabled .notify-outline{display:none}
-.notify-toggle.notifications-enabled .notify-filled{display:block}
+.notify-toggle .notify-filled,.sound-toggle .sound-filled{display:none}
+.notify-toggle.notifications-enabled,.sound-toggle.sound-enabled{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.notify-toggle.notifications-enabled .notify-outline,.sound-toggle.sound-enabled .sound-outline{display:none}
+.notify-toggle.notifications-enabled .notify-filled,.sound-toggle.sound-enabled .sound-filled{display:block}
 .messages{flex:1;min-height:0;overflow:auto;border:1px solid var(--border-soft);border-radius:8px;padding:12px;background:var(--surface-soft)}
 .message{position:relative;width:fit-content;max-width:92%;box-sizing:border-box;margin:0 0 12px;padding:10px 106px 10px 12px;border-radius:8px;white-space:pre-wrap;word-break:break-word}
 .message.user,.message.user-prompt{max-width:min(88%,calc(100% - 36px));margin-left:auto;margin-right:0;margin-inline-start:auto;margin-inline-end:0}

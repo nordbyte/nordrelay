@@ -54,6 +54,7 @@ declare function discordScopeLabel(value: any): string;
 declare function downloadBase64(name: string, data: string, mimeType?: string): void;
 declare function downloadJson(name: string, value: any): void;
 declare function toggleNotifications(): Promise<void>;
+declare function toggleCompletionSound(): Promise<void>;
 declare function esc(value: any): string;
 declare function fmtAge(value: any): string;
 declare function fmtBytes(value: any): string;

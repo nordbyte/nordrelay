@@ -199,6 +199,12 @@ ${faviconLinks}
                   <path class="notify-filled" d="M12 3a6 6 0 0 0-6 6c0 4.7-1.5 6.2-2.6 6.9A1 1 0 0 0 4 18h16a1 1 0 0 0 .6-2.1C19.5 15.2 18 13.7 18 9a6 6 0 0 0-6-6Zm2 17h-4a2 2 0 0 0 4 0Z" fill="currentColor"/>
                 </svg>
               </button>
+              <button id="soundBtn" class="secondary icon-button sound-toggle" type="button" aria-label="Enable completion sound" aria-pressed="false" title="Enable completion sound">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path class="sound-outline" d="M11 5 6.5 9H3v6h3.5L11 19V5Zm4.5 4.5a4 4 0 0 1 0 5M18 7a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path class="sound-filled" d="M11.6 4.2a1 1 0 0 0-1.1.2L6.1 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h3.1l4.4 3.6A1 1 0 0 0 12 19V5a1 1 0 0 0-.4-.8Zm4.4 4.1a1 1 0 0 0-1.4 1.4 3.2 3.2 0 0 1 0 4.6 1 1 0 1 0 1.4 1.4 5.2 5.2 0 0 0 0-7.4Zm3-2.8a1 1 0 0 0-1.4 1.4 7.2 7.2 0 0 1 0 10.2 1 1 0 1 0 1.4 1.4 9.2 9.2 0 0 0 0-13Z" fill="currentColor"/>
+                </svg>
+              </button>
               <div class="chat-more-menu">
                 <button id="chatMoreBtn" class="secondary chat-more-toggle" type="button" aria-haspopup="menu" aria-expanded="false">More</button>
                 <div id="chatMoreMenu" class="control-menu-list chat-more-list" role="menu" hidden>

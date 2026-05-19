@@ -295,19 +295,31 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).not.toContain("Next launch");
   });
 
-  it("renders chat notifications as a toggle icon", () => {
+  it("renders chat notifications and completion sounds as toggle icons", () => {
     const js = dashboardJs();
     const css = dashboardCss();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
 
     expect(pageSource).toContain('id="notifyBtn" class="secondary icon-button notify-toggle"');
+    expect(pageSource).toContain('id="soundBtn" class="secondary icon-button sound-toggle"');
     expect(pageSource).toContain('class="notify-outline"');
     expect(pageSource).toContain('class="notify-filled"');
+    expect(pageSource).toContain('class="sound-outline"');
+    expect(pageSource).toContain('class="sound-filled"');
     expect(pageSource).not.toContain(">Notify</button>");
     expect(js).toContain("function toggleNotifications");
+    expect(js).toContain("function toggleCompletionSound");
+    expect(js).toContain("function syncCompletionSoundActivity");
+    expect(js).toContain("function playCompletionSound");
+    expect(js).toContain("function bindCompletionSoundUnlockGesture");
+    expect(js).toContain("COMPLETION_SOUND_PREF_KEY");
+    expect(js).toContain("active_sessions_update");
+    expect(js).toContain("syncCompletionSoundActivity();renderChatWorkingIndicator()");
     expect(js).toContain("localStorage.setItem(NOTIFICATION_PREF_KEY");
+    expect(js).toContain("localStorage.setItem(COMPLETION_SOUND_PREF_KEY");
     expect(css).toContain(".notify-toggle.notifications-enabled");
-    expect(css).toContain(".notify-toggle.notifications-enabled .notify-filled{display:block}");
+    expect(css).toContain(".notify-toggle.notifications-enabled .notify-filled,.sound-toggle.sound-enabled .sound-filled{display:block}");
+    expect(css).toContain(".sound-toggle.sound-enabled");
   });
 
   it("keeps secondary chat actions in the More menu", () => {
