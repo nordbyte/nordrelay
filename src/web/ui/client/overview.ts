@@ -342,18 +342,19 @@ function renderSessionControls(){
   const selectedModel=modelItems.find(item=>item.value===s.model)||(s.model?{value:s.model,label:s.model}:modelItems[0]);
   const reasoningItems=(c.reasoningOptions||[]).map(v=>({value:v,label:v}));
   const selectedReasoning=reasoningItems.find(item=>item.value===s.reasoningEffort)||(s.reasoningEffort?{value:s.reasoningEffort,label:s.reasoningEffort}:reasoningItems[0]);
+  const fastItems=[{value:'on',label:'on'},{value:'off',label:'off'}];
+  const selectedFast=s.fastMode?'on':'off';
   const selectedLaunch=s.launchProfileId||s.nextLaunchProfileId;
   const launchItems=(c.launchProfiles||[]).map(p=>({value:p.id,label:p.label+' - '+p.behavior+(p.unsafe?' - unsafe':'')}));
   const selectedLaunchItem=launchItems.find(item=>item.value===selectedLaunch)||launchItems[0];
   document.getElementById('sessionControls').innerHTML=[
     caps.modelSelection?compactControlMenu('controlModel','Model',selectedModel?.value||'',selectedModel?.label||'Default',modelItems):'',
     caps.reasoningSelection?compactControlMenu('controlReasoning',c.reasoningLabel||'Reasoning',selectedReasoning?.value||'',selectedReasoning?.label||'Default',reasoningItems):'',
-    caps.launchProfiles?compactControlMenu('controlLaunch','Launch',selectedLaunchItem?.value||'',selectedLaunchItem?.label||'Default',launchItems)+'<button id="applyLaunchBtn" class="secondary compact-apply-button" title="Apply selected launch profile to the current idle session"'+disabledAttr('settings.write')+'>Apply</button>':'',
-    caps.fastMode?'<label class="checkbox"><input id="controlFast" type="checkbox" '+(s.fastMode?'checked':'')+disabledAttr('settings.write')+'> Fast mode</label>':''
+    caps.fastMode?compactControlMenu('controlFast','Fast mode',selectedFast,selectedFast,fastItems):'',
+    caps.launchProfiles?compactControlMenu('controlLaunch','Launch',selectedLaunchItem?.value||'',selectedLaunchItem?.label||'Default',launchItems)+'<button id="applyLaunchBtn" class="secondary compact-apply-button" title="Apply selected launch profile to the current idle session"'+disabledAttr('settings.write')+'>Apply</button>':''
   ].join('');
   bindCompactControlMenus();
   const applyLaunch=document.getElementById('applyLaunchBtn'); if(applyLaunch) applyLaunch.onclick=()=>safe(async()=>{const profileId=selectedCompactControlValue('controlLaunch');await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId,apply:true})});toast('Launch profile applied to current session');loadBootstrap()});
-  const fast=document.getElementById('controlFast'); if(fast) fast.onchange=()=>safe(async()=>{await api('/api/session/fast',{method:'POST',body:JSON.stringify({enabled:fast.checked})});toast('Fast mode updated');loadBootstrap()});
 }
 function compactControlMenu(id,label,value,display,items){
   const options=(items||[]).map(item=>'<button type="button" role="option" data-control-option="'+attr(id)+'" data-control-value="'+attr(item.value)+'" aria-selected="'+(item.value===value?'true':'false')+'">'+esc(item.label)+'</button>').join('');
@@ -387,6 +388,8 @@ function bindCompactControlMenus(){
       if(button.dataset.controlValue){await api('/api/session/model',{method:'POST',body:JSON.stringify({model:button.dataset.controlValue})});toast('Model updated');loadBootstrap()}
     }else if(id==='controlReasoning'){
       await api('/api/session/reasoning',{method:'POST',body:JSON.stringify({reasoning:button.dataset.controlValue})});toast(((state.controls||{}).reasoningLabel||'Reasoning')+' updated');loadBootstrap();
+    }else if(id==='controlFast'){
+      await api('/api/session/fast',{method:'POST',body:JSON.stringify({enabled:button.dataset.controlValue==='on'})});toast('Fast mode updated');loadBootstrap();
     }else if(id==='controlLaunch'){
       await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId:button.dataset.controlValue})});toast('Launch profile updated');loadBootstrap();
     }
