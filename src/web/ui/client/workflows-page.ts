@@ -266,7 +266,16 @@ function importWorkflowDialog(kind){
 }
 
 function showPreview(p){toast((p.prompts||[]).map((step,i)=>(i+1)+'. '+step.name+'\n'+step.prompt).join('\n\n---\n\n').slice(0,3500),{duration:12000})}
-function insertTemplate(id){const t=state.workflowTemplates.find(x=>x.id===id);if(!t)return;document.getElementById('promptInput').value=t.prompt;page('chat');document.getElementById('promptInput').focus()}
+function setPromptInputText(text){const input=document.getElementById('promptInput') as HTMLTextAreaElement|null;if(!input)return;input.value=String(text||'');input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();input.setSelectionRange(input.value.length,input.value.length)}
+function insertTemplate(id){const t=state.workflowTemplates.find(x=>x.id===id);if(!t)return;setPromptInputText(t.prompt);page('chat');setTimeout(()=>setPromptInputText(t.prompt),0)}
+
+function templatePickerElements(){const menu=document.querySelector('[data-template-picker-menu]');return{menu,button:document.getElementById('templatePickerBtn'),list:document.getElementById('templatePickerMenu')}}
+function setTemplatePickerOpen(open){const {button,list}=templatePickerElements();if(list)list.hidden=!open;if(button)button.setAttribute('aria-expanded',open?'true':'false')}
+function closeTemplatePickerMenu(){setTemplatePickerOpen(false)}
+function templatePickerItemHtml(t){const summary=t.description||t.prompt||'';const meta=[templateVariablesText(t),(t.tags||[]).slice(0,3).join(', ')].filter(Boolean).join(' | ');return '<button type="button" role="menuitem" class="header-target-session template-picker-item" data-template-pick="'+attr(t.id)+'" title="'+attr([t.name,summary].filter(Boolean).join(' | '))+'"><span>'+esc(short(t.name||'Untitled template',92))+'</span><small>'+esc(short([meta,summary].filter(Boolean).join(' - '),180))+'</small></button>'}
+function renderTemplatePickerList(){const {list}=templatePickerElements();if(!list)return;const templates=state.workflowTemplates||[];if(!templates.length){list.innerHTML='<div class="header-target-session-state">No templates.</div>';return}list.innerHTML='<div class="header-target-peer"><div class="header-target-peer-title"><strong>Templates</strong><small>'+templates.length+'</small></div>'+templates.map(templatePickerItemHtml).join('')+'</div>'}
+async function loadTemplatePickerTemplates(){if(state.workflowTemplates?.length)return;const data=await api('/api/templates');state.workflowTemplates=data.templates||[]}
+async function openTemplatePickerMenu(){if(!can('workflows.read')){toast('Permission required: workflows.read');return}const {list}=templatePickerElements();if(!list)return;closeCompactControlMenus();closeChatMoreMenu();setTemplatePickerOpen(true);if(!state.workflowTemplates?.length){list.innerHTML='<div class="header-target-session-state">Loading templates...</div>';await loadTemplatePickerTemplates()}renderTemplatePickerList();applyPermissions()}
 
 function openTemplateDialog(t=null){
   if(!can('workflows.write')){toast('Permission required: workflows.write');return}
@@ -319,10 +328,12 @@ function workflowSchedulePayload(){const enabled=Boolean(document.getElementById
 function bindWorkflowPageControls(){
   const templateSearch=document.getElementById('templateSearch');if(templateSearch&&!templateSearch.dataset.bound){templateSearch.dataset.bound='true';templateSearch.oninput=renderTemplates}
   const workflowSearch=document.getElementById('workflowSearch');if(workflowSearch&&!workflowSearch.dataset.bound){workflowSearch.dataset.bound='true';workflowSearch.oninput=renderWorkflowList}
-  const picker=document.getElementById('templatePickerBtn');if(picker&&!picker.dataset.bound){picker.dataset.bound='true';picker.onclick=()=>{if(!can('workflows.read')){toast('Permission required: workflows.read');return}page('workflows')}}
+  const picker=document.getElementById('templatePickerBtn');if(picker&&!picker.dataset.bound){picker.dataset.bound='true';picker.onclick=event=>safe(async()=>{event.preventDefault();event.stopPropagation();const list=document.getElementById('templatePickerMenu');if(list&&!list.hidden){closeTemplatePickerMenu();return}await openTemplatePickerMenu()},event)}
+  if(!state.templatePickerOutsideBound){state.templatePickerOutsideBound=true;document.addEventListener('click',event=>{if(!event.target.closest?.('[data-template-picker-menu]'))closeTemplatePickerMenu()});document.addEventListener('keydown',event=>{if(event.key==='Escape')closeTemplatePickerMenu()})}
 }
 
 document.addEventListener('click',e=>{
+  const templatePick=e.target.closest?.('[data-template-pick]');if(templatePick){e.preventDefault();insertTemplate(templatePick.dataset.templatePick);closeTemplatePickerMenu();return}
   const tab=e.target.closest?.('[data-workflow-tab]');if(tab){e.preventDefault();switchWorkflowTab(tab.dataset.workflowTab);return}
   const createTemplate=e.target.closest?.('#createTemplateBtn');if(createTemplate){e.preventDefault();openTemplateDialog();return}
   const importTemplate=e.target.closest?.('#importTemplateBtn');if(importTemplate){e.preventDefault();importWorkflowDialog('template');return}

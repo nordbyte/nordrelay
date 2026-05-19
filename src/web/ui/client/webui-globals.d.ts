@@ -40,6 +40,8 @@ declare function bindUiTraceButtons(root?: any): void;
 declare var bindUserButtons: (...args: any[]) => any;
 declare function can(permission: string): boolean;
 declare function card(title: string, rows?: any[], options?: any): string;
+declare function closeChatMoreMenu(): void;
+declare function closeCompactControlMenus(except?: any): void;
 declare function clearStickyToast(): void;
 declare function connectEvents(): void;
 declare function copyText(value: string, label?: string): void;

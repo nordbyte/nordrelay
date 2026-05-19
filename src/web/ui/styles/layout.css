@@ -126,6 +126,9 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .header-target-session-state{padding:7px 9px;color:var(--muted);font-size:12px}
 .header-target-session-state.error{color:var(--danger)}
 .compact-apply-button{width:auto;min-width:0;min-height:28px;height:28px;padding:0 9px;font-size:13px}
+.template-picker-menu{position:relative;display:inline-flex}
+.template-picker-list{left:0;right:auto;min-width:min(420px,calc(100vw - 44px));width:min(460px,calc(100vw - 44px));z-index:40}
+.template-picker-list .header-target-session small{white-space:normal}
 .icon-button{display:inline-flex;align-items:center;justify-content:center;width:36px;min-width:36px;height:36px;min-height:36px;padding:0}
 .icon-button svg{display:block;width:18px;height:18px}
 .notify-toggle .notify-filled{display:none}

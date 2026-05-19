@@ -86,10 +86,15 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('id="importTemplateBtn"');
     expect(pageSource).toContain('id="createWorkflowBtn"');
     expect(pageSource).toContain('id="importWorkflowBtn"');
+    expect(pageSource).toContain('data-template-picker-menu');
+    expect(pageSource).toContain('id="templatePickerMenu"');
     expect(js).toContain("function loadWorkflows");
     expect(js).toContain("document.addEventListener('click'");
     expect(js).toContain("[data-workflow-tab]");
     expect(js).toContain("function renderTemplatesTable");
+    expect(js).toContain("function openTemplatePickerMenu");
+    expect(js).toContain("data-template-pick");
+    expect(js).toContain("setPromptInputText(t.prompt)");
     expect(js).toContain('class="data-table templates-table"');
     expect(js).toContain("function workflowBuilderState");
     expect(js).toContain("function showWorkflowHistory");
@@ -108,6 +113,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".workflow-tab-heading");
     expect(css).toContain(".workflow-builder-step");
     expect(css).toContain(".workflow-builder-json");
+    expect(css).toContain(".template-picker-list");
     expect(css).toContain(".templates-table th:nth-child(7)");
     expect(contract).toContain('exact("/api/templates"');
     expect(contract).toContain('exact("/api/templates/import"');

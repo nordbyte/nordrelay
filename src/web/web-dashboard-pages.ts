@@ -188,7 +188,12 @@ ${faviconLinks}
             <div class="chat-toolbar">
               <button id="newSessionBtn">New session</button>
               <button id="retryBtn" class="secondary">Retry</button>
-              <button id="templatePickerBtn" class="secondary" type="button">Templates</button>
+              <div class="template-picker-menu" data-template-picker-menu>
+                <button id="templatePickerBtn" class="secondary" type="button" aria-haspopup="menu" aria-expanded="false">Templates</button>
+                <div id="templatePickerMenu" class="control-menu-list header-target-list template-picker-list" role="menu" hidden>
+                  <div class="header-target-session-state">Loading templates...</div>
+                </div>
+              </div>
               <button id="notifyBtn" class="secondary icon-button notify-toggle" type="button" aria-label="Enable notifications" aria-pressed="false" title="Enable notifications">
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                   <path class="notify-outline" d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8M13.7 21a2 2 0 0 1-3.4 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
