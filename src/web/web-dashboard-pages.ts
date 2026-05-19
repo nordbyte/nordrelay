@@ -187,7 +187,6 @@ ${faviconLinks}
           <div class="panel chat-panel">
             <div class="chat-toolbar">
               <button id="newSessionBtn">New session</button>
-              <button id="retryBtn" class="secondary">Retry</button>
               <div class="template-picker-menu" data-template-picker-menu>
                 <button id="templatePickerBtn" class="secondary" type="button" aria-haspopup="menu" aria-expanded="false">Templates</button>
                 <div id="templatePickerMenu" class="control-menu-list header-target-list template-picker-list" role="menu" hidden>

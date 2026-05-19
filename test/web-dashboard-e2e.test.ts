@@ -345,6 +345,7 @@ describe("web dashboard browser-flow assets", () => {
   it("renders compact chat lists and copy controls for chat messages", () => {
     const js = dashboardJs();
     const css = dashboardCss();
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
 
     expect(js).toContain("function normalizeChatListSpacing");
     expect(js).toContain("function normalizeChatCodeBlockSpacing");
@@ -358,11 +359,20 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("message?.source==='cli'&&/^Working on\\b/i");
     expect(js).toContain("data-message-index");
     expect(js).toContain("function bindChatMessageActionButtons");
+    expect(js).toContain("function retryChatMessage");
     expect(js).toContain("Message copied");
+    expect(js).toContain("Retry message");
+    expect(js).toContain("await api('/api/prompt',{method:'POST',body:{text,correlationId:createWebCorrelationId()}})");
+    expect(js).toContain("if(r.queued&&r.queueId)appendQueuedMessage(r.queueId,r.correlationId)");
+    expect(js).toContain("'.message-retry-button','prompt.send'");
+    expect(pageSource).not.toContain('id="retryBtn"');
     expect(css).toContain(".message{position:relative;width:fit-content;max-width:92%");
+    expect(css).toContain("padding:10px 106px 10px 12px");
     expect(css).toContain(".message.user,.message.user-prompt{max-width:min(88%,calc(100% - 36px));margin-left:auto;margin-right:0");
     expect(css).toContain(".message.user,.message.user-prompt{max-width:calc(100% - 24px);margin-left:auto;margin-right:0");
     expect(css).toContain(".message-copy-button");
+    expect(css).toContain(".message-retry-button{right:70px}");
+    expect(css).toContain(".message-retry-button::before");
     expect(css).toContain("box-sizing:border-box;width:10px;height:12px");
     expect(css).toContain(".message-copy-button::before{left:9px;top:6px}");
     expect(css).toContain(".message-copy-button::after{left:7px;top:8px}");
