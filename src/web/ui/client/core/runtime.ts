@@ -40,7 +40,7 @@ function applyPermissions(){
     ['#fileInput,#recordBtn,#clearFilesBtn','files.write'],
     ['#newSessionBtn,#attachBtn,#createSessionBtn','sessions.write'],
     ['#retryBtn','prompt.send'],
-    ['#syncBtn,#handbackBtn','sessions.write'],
+    ['#syncBtn','sessions.write'],
     ['#mirrorModeSelect','settings.write'],
     ['#controlModel,#controlReasoning,#controlFast,#controlLaunch,#applyLaunchBtn','settings.write'],
     ['#abortBtn','prompt.abort'],

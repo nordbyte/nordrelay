@@ -202,7 +202,6 @@ ${faviconLinks}
               </label>
               <button id="clearChatBtn" class="secondary" title="Clears only the WebUI chat history shown for this session. Agent context and session history stay intact.">Clear</button>
               <button id="abortBtn">Abort</button>
-              <button id="handbackBtn">Handback</button>
               <button id="toggleToolsBtn" class="secondary" type="button" aria-controls="toolPanel" aria-expanded="false">Show Tools</button>
             </div>
             <div class="control-grid" id="sessionControls"></div>
