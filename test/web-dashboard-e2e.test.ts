@@ -346,6 +346,7 @@ describe("web dashboard browser-flow assets", () => {
     const js = dashboardJs();
     const css = dashboardCss();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    const workflowsSource = readFileSync("src/web/ui/client/workflows.ts", "utf8");
 
     expect(js).toContain("function normalizeChatListSpacing");
     expect(js).toContain("function normalizeChatCodeBlockSpacing");
@@ -366,6 +367,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("if(r.queued&&r.queueId)appendQueuedMessage(r.queueId,r.correlationId)");
     expect(js).toContain("'.message-retry-button','prompt.send'");
     expect(pageSource).not.toContain('id="retryBtn"');
+    expect(pageSource).toContain("Requires browser microphone permission");
+    expect(workflowsSource).toContain("function ensureMicrophoneRecordingAvailable");
+    expect(workflowsSource).toContain("Microphone access requires HTTPS or localhost");
+    expect(workflowsSource).toContain("Microphone access is blocked for this site");
     expect(css).toContain(".message{position:relative;width:fit-content;max-width:92%");
     expect(css).toContain("padding:10px 106px 10px 12px");
     expect(css).toContain(".message.user,.message.user-prompt{max-width:min(88%,calc(100% - 36px));margin-left:auto;margin-right:0");
