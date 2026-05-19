@@ -79,7 +79,7 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .control-grid label,.form-grid label{display:grid;gap:5px;font-size:12px;color:var(--muted)}
 .control-grid>button,.control-grid>.checkbox,.control-grid>.compact-control{align-self:flex-end}
 .control-grid>.checkbox{min-height:36px;height:36px;margin:0}
-.chat-workspace-line{display:flex;align-items:center;gap:8px;min-height:34px;margin:0 0 12px;padding:7px 10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface-soft);color:var(--muted);font-size:13px;max-width:100%}
+.chat-workspace-line{display:flex;align-items:center;gap:8px;min-height:34px;margin:8px 0 0;padding:7px 10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface-soft);color:var(--muted);font-size:13px;max-width:100%}
 .chat-workspace-line[hidden]{display:none}
 .chat-workspace-label{flex:0 0 auto;font-size:12px;font-weight:750;text-transform:uppercase;color:var(--muted)}
 .copy-id.chat-workspace-path{max-width:min(72ch,100%);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}

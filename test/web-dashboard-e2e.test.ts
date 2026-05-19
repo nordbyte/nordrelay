@@ -337,14 +337,15 @@ describe("web dashboard browser-flow assets", () => {
     expect(toolbar.indexOf('id="clearChatBtn"')).toBeLessThan(toolbar.indexOf('id="syncBtn"'));
   });
 
-  it("shows the active workspace in the WebUI chat header", () => {
+  it("shows the active workspace at the bottom of the WebUI chat composer", () => {
     const js = dashboardJs();
     const css = dashboardCss();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
 
     expect(pageSource).toContain('id="chatWorkspaceLine" class="chat-workspace-line" hidden');
-    expect(pageSource.indexOf('id="sessionControls"')).toBeLessThan(pageSource.indexOf('id="chatWorkspaceLine"'));
-    expect(pageSource.indexOf('id="chatWorkspaceLine"')).toBeLessThan(pageSource.indexOf('id="messages"'));
+    expect(pageSource.indexOf('id="messages"')).toBeLessThan(pageSource.indexOf('id="chatWorkspaceLine"'));
+    expect(pageSource.indexOf('id="clearFilesBtn"')).toBeLessThan(pageSource.indexOf('id="chatWorkspaceLine"'));
+    expect(pageSource.indexOf('id="chatWorkspaceLine"')).toBeLessThan(pageSource.indexOf('<div class="composer-actions">'));
     expect(js).toContain("function renderChatWorkspaceLine");
     expect(js).toContain("Workspace path copied");
     expect(js).toContain("Copy workspace path");
