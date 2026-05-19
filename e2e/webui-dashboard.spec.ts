@@ -218,11 +218,15 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#metricsAutoRefresh")).toBeChecked();
 
     await navigateDashboard(page, "Diagnostics");
-    await expect(page.locator("#diagnostics .diagnostics-grid")).toBeVisible();
-    await expect(page.locator("#diagnostics")).toContainText("Runtime");
-    await expect(page.locator("#diagnostics")).toContainText("Agent");
-    await expect(page.locator("#diagnostics")).toContainText("CLI Versions");
-    await expect(page.locator("#diagnostics .metric-kv").first()).toBeVisible();
+    await expect(page.locator("#diagnosticsTabs")).toHaveAttribute("role", "tablist");
+    await expect(page.locator('#diagnosticsTabs [data-diagnostics-tab="overview"]')).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator('#diagnostics [data-diagnostics-tab-panel="overview"] .diagnostics-grid')).toBeVisible();
+    await expect(page.locator('#diagnostics [data-diagnostics-tab-panel="overview"]')).toContainText("Runtime");
+    await expect(page.locator('#diagnostics [data-diagnostics-tab-panel="overview"]')).toContainText("Agent");
+    await expect(page.locator('#diagnostics [data-diagnostics-tab-panel="overview"] .metric-kv').first()).toBeVisible();
+    await page.locator('#diagnosticsTabs [data-diagnostics-tab="versions"]').click();
+    await expect(page.locator('#diagnosticsTabs [data-diagnostics-tab="versions"]')).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator('#diagnostics [data-diagnostics-tab-panel="versions"]')).toContainText("CLI Versions");
   });
 
   test("sends prompts through the typed API client and shows queued feedback", async ({ page }) => {

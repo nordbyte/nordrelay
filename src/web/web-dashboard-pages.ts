@@ -575,8 +575,21 @@ ${faviconLinks}
 
       <section class="page" id="page-diagnostics">
         <div class="panel">
-          <div class="row"><button id="exportDiagnosticsBundleBtn" class="secondary">Export diagnostics bundle</button></div>
-          <div id="diagnostics" class="list"></div>
+          <div class="section-header diagnostics-section-header">
+            <div id="diagnosticsTabs" class="section-tabs diagnostics-tabs" role="tablist" aria-label="Diagnostics sections">
+              <button type="button" role="tab" aria-selected="true" tabindex="0" data-diagnostics-tab="overview" class="active">Overview</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-diagnostics-tab="runtime">Runtime</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-diagnostics-tab="agent">Agent</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-diagnostics-tab="state">Agent State</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-diagnostics-tab="versions">Versions</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-diagnostics-tab="channels">Channels</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-diagnostics-tab="mirror">Mirror</button>
+            </div>
+          </div>
+          <div class="diagnostics-tab-heading">
+            <div class="row diagnostics-heading-actions"><button id="exportDiagnosticsBundleBtn" class="secondary">Export diagnostics bundle</button></div>
+          </div>
+          <div id="diagnostics"></div>
         </div>
       </section>
 
