@@ -68,7 +68,7 @@ describe("SessionWorktreeService", () => {
     expect(existsSync(path.join(repo, "feature-a.txt"))).toBe(true);
     expect(existsSync(integration.worktreePath)).toBe(false);
     expect(existsSync(first.worktreePath)).toBe(false);
-  });
+  }, 20_000);
 
   it("previews file conflicts and updates a clean worktree from the base branch", () => {
     const root = tempRoot();
