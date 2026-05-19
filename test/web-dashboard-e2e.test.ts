@@ -191,9 +191,10 @@ describe("web dashboard browser-flow assets", () => {
   it("refreshes the active page after an agent switch", () => {
     const js = dashboardJs();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    const headerTargetSource = readFileSync("src/web/ui/client/header-target.ts", "utf8");
 
     expect(js).toContain("function selectHeaderTarget");
-    expect(js).toContain("await loadBootstrap();await reloadCurrentPage({agentId:selected})");
+    expect(headerTargetSource).toContain("await loadBootstrap(); await reloadCurrentPage({ agentId: selected });");
     expect(js).toContain("data-target-peer");
     expect(js).toContain("data-target-agent");
     expect(js).toContain("data-target-sessions-toggle");
@@ -604,11 +605,12 @@ describe("web dashboard browser-flow assets", () => {
     expect(readFileSync("src/web/ui/client/core/runtime.ts", "utf8")).toContain("const state");
     expect(readFileSync("src/web/ui/client/core/components.ts", "utf8")).toContain("function uiItem");
     expect(readFileSync("src/web/ui/client/profile.ts", "utf8")).toContain("function openProfileDialog");
+    const headerTarget = readFileSync("src/web/ui/client/header-target.ts", "utf8");
     const overview = readFileSync("src/web/ui/client/overview.ts", "utf8");
     expect(overview).toContain("function renderSnapshot");
-    expect(overview).toContain("function headerThreadCopyButton");
-    expect(overview).toContain('title="Copy thread ID"');
-    expect(overview).toContain("bindUiCopyButtons(line)");
+    expect(headerTarget).toContain("function headerThreadCopyButton");
+    expect(headerTarget).toContain('title="Copy thread ID"');
+    expect(headerTarget).toContain("bindUiCopyButtons(line)");
     expect(overview).toContain("function renderChatWorkspaceLine");
     expect(overview).toContain("Workspace path copied");
     expect(readFileSync("src/web/ui/client/workflows.ts", "utf8")).toContain("function loadSessions");
@@ -661,15 +663,16 @@ describe("web dashboard browser-flow assets", () => {
     expect(admin).toContain("function renderAuditTable");
     expect(admin).toContain("class=\"data-table access-locks-table\"");
     expect(admin).toContain("class=\"data-table access-audit-table\"");
-    expect(admin).toContain("function diagnosticsHtml");
-    expect(admin).toContain("function switchDiagnosticsTab");
-    expect(admin).toContain("function bindDiagnosticsTabs");
-    expect(admin).toContain("function diagnosticsTabPanel");
-    expect(admin).toContain("function diagnosticsVoiceRows");
-    expect(admin).toContain("diagnostics-grid");
-    expect(admin).toContain("diagnostics-single-grid");
-    expect(admin).toContain("diagnostics-overview-grid");
-    expect(admin).toContain("metricKvCard('Overview'");
+    const diagnostics = readFileSync("src/web/ui/client/diagnostics.ts", "utf8");
+    expect(diagnostics).toContain("function diagnosticsHtml");
+    expect(diagnostics).toContain("function switchDiagnosticsTab");
+    expect(diagnostics).toContain("function bindDiagnosticsTabs");
+    expect(diagnostics).toContain("function diagnosticsTabPanel");
+    expect(diagnostics).toContain("function diagnosticsVoiceRows");
+    expect(diagnostics).toContain("diagnostics-grid");
+    expect(diagnostics).toContain("diagnostics-single-grid");
+    expect(diagnostics).toContain("diagnostics-overview-grid");
+    expect(diagnostics).toContain("metricKvCard('Overview'");
     expect(readFileSync("src/web/ui/styles/theme.css", "utf8")).toContain(":root");
     expect(readFileSync("src/web/ui/styles/layout.css", "utf8")).toContain(".chat-layout");
   });

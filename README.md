@@ -54,6 +54,7 @@ The recommended setup path is interactive:
 nordrelay init
 nordrelay user list
 nordrelay doctor
+nordrelay doctor --fix
 nordrelay start
 ```
 
@@ -88,6 +89,7 @@ CLI:
 ```bash
 nordrelay status
 nordrelay doctor
+nordrelay doctor --fix
 nordrelay web
 nordrelay restart
 nordrelay update

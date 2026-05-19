@@ -1,7 +1,7 @@
 # Architecture
 
 - `plugins/nordrelay/`: Codex plugin bundle with manifest, skill, command, icon, and process wrapper.
-- `plugins/nordrelay/scripts/nordrelay.mjs`: process manager for `start`, `stop`, `restart`, `status`, and `foreground`.
+- `plugins/nordrelay/scripts/nordrelay.mjs`: process manager for `start`, `stop`, `restart`, `status`, `foreground`, setup validation, and safe `doctor --fix` corrections.
 - `src/index.ts`: runtime entrypoint, config load, auth check, state-file writes, polling lifecycle, shutdown.
 - `src/channels/telegram/bot.ts`: Telegram prompt/session runtime, streaming, file/photo/voice handling, artifacts, and error handling.
 - `src/channels/telegram/telegram-general-commands.ts`, `src/channels/telegram/telegram-agent-commands.ts`, `src/channels/telegram/telegram-preference-commands.ts`, `src/channels/telegram/telegram-access-commands.ts`, `src/channels/telegram/telegram-diagnostics-command.ts`, `src/channels/telegram/telegram-update-commands.ts`, `src/channels/telegram/telegram-support-command.ts`, and `src/channels/telegram/telegram-command-menu.ts`: focused Telegram command groups for start/help/adapters, agent/auth controls, per-chat preferences, access linking, diagnostics/log/version commands, update jobs, diagnostics bundle export, and command menu registration.
@@ -16,7 +16,7 @@
 - `src/runtime/relay-workflow-service.ts`, `src/runtime/relay-peer-workflow.ts`, and `src/state/workflow-store.ts`: prompt-template storage, workflow/run persistence, variable rendering, sequential local/peer execution, busy waiting, unified job tracking, and cancel/retry handling.
 - `src/runtime/relay-runtime-types.ts`: shared Runtime/WebUI DTO types used by runtime, API contracts, and dashboard code.
 - `src/web/web-dashboard-http.ts`, `src/web/web-dashboard-pages.ts`, `src/web/web-dashboard-runtime-routes.ts`, and `src/web/web-dashboard-workflow-routes.ts`: dashboard HTTP helpers, HTML shell rendering, operational runtime API routes, and workflow/template APIs.
-- `src/web/ui/`: focused WebUI source assets for core runtime state/API helpers, overview rendering, live events, chat/session workflows, admin pages, and CSS sections.
+- `src/web/ui/`: focused WebUI source assets for typed API helpers, core runtime state, pagination helpers, header target selection, overview rendering, diagnostics, live events, chat/session workflows, admin pages, and CSS sections.
 - `src/state/bot-preferences.ts`: per-context mirror, notification, quiet-hour, and voice preference persistence.
 - `src/channels/telegram/telegram-rate-limit.ts`: centralized Telegram API send/edit/document rate limiting and retry-after tracking.
 - `src/state/persistence.ts`: atomic JSON/text writes with backup recovery.

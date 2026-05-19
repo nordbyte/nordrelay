@@ -23,7 +23,7 @@ yarn dlx @nordbyte/nordrelay init
 `nordrelay init` writes the private runtime config to `~/.nordrelay/nordrelay.env`.
 If you start `nordrelay web` before creating an admin, the dashboard opens a first-run setup wizard. Remote setup requires the one-time setup token printed in the NordRelay console.
 
-If `nordrelay init` returns `command not found`, check the postinstall warning printed by npm or pnpm. It reports the package-manager global bin directory and the shell profile line needed to add it to `PATH`, for example `export PATH="/opt/homebrew/bin:$PATH"` on macOS/Homebrew installs. `nordrelay doctor` also checks whether the CLI and npm global bin directory are currently visible on `PATH`.
+If `nordrelay init` returns `command not found`, check the postinstall warning printed by npm or pnpm. It reports the package-manager global bin directory and the shell profile line needed to add it to `PATH`, for example `export PATH="/opt/homebrew/bin:$PATH"` on macOS/Homebrew installs. `nordrelay doctor` also checks whether the CLI and npm global bin directory are currently visible on `PATH`. Run `nordrelay doctor --fix` to apply safe local fixes such as enabling the WebUI in the env file, adding the npm global bin directory to the shell profile, or rebuilding a source checkout runtime.
 
 Non-interactive setup is also supported:
 
@@ -233,6 +233,7 @@ Manual process commands:
 ```bash
 nordrelay init
 nordrelay doctor
+nordrelay doctor --fix
 nordrelay start
 nordrelay status
 nordrelay update

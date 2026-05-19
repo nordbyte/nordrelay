@@ -1,13 +1,43 @@
-interface Object {
-  [key: string]: any;
-}
-
 interface Element {
-  [key: string]: any;
+  __rawText?: string;
+  __meta?: any[];
+  checked?: boolean;
+  close?: () => void;
+  dataset: DOMStringMap;
+  disabled?: boolean;
+  files?: FileList | null;
+  hidden: boolean;
+  onchange?: ((event: Event) => void) | null;
+  onclick?: ((event: MouseEvent) => void) | null;
+  ondragend?: ((event: DragEvent) => void) | null;
+  ondragover?: ((event: DragEvent) => void) | null;
+  ondragstart?: ((event: DragEvent) => void) | null;
+  ondrop?: ((event: DragEvent) => void) | null;
+  oninput?: ((event: Event) => void) | null;
+  showModal?: () => void;
+  tabIndex: number;
+  title: string;
+  type?: string;
+  value?: string;
+  focus?: () => void;
 }
 
 interface EventTarget {
-  [key: string]: any;
+  checked?: boolean;
+  close?: () => void;
+  closest?: (selector: string) => Element | null;
+  dataset?: DOMStringMap;
+  files?: FileList | null;
+  value?: string;
+}
+
+interface HTMLElement {
+  __rawText?: string;
+  __meta?: any[];
+}
+
+interface Window {
+  webkitAudioContext?: typeof AudioContext;
 }
 
 declare const state: any;
@@ -21,8 +51,8 @@ declare const sessionsPager: any;
 declare function accessCopyButton(value: any, label?: string): string;
 declare function activeSourceLabel(value: any): string;
 declare var adminDialog: (...args: any[]) => any;
-declare function api(path: string, options?: any): Promise<any>;
-declare var apiPeer: (...args: any[]) => Promise<any>;
+declare function api<P extends import("./core/api-client-types.js").WebApiPath>(path: P, options?: import("./core/api-client-types.js").WebApiClientOptions<P> & { local?: boolean }): Promise<import("./core/api-client-types.js").WebApiClientResponse<P>>;
+declare function apiPeer<P extends import("./core/api-client-types.js").WebApiPath>(peerId: string, path: P, options?: import("./core/api-client-types.js").WebApiClientOptions<P>): Promise<import("./core/api-client-types.js").WebApiClientResponse<P>>;
 declare function appendMessage(role: string, text: string, options?: any): void;
 declare function appendQueuedMessage(queueId: string, text: string, options?: any): void;
 declare var applyAccountChrome: (...args: any[]) => any;
@@ -63,6 +93,7 @@ declare function fmtDuration(value: any): string;
 declare function fmtRelativeAgo(value: any): string;
 declare function fmtSessionAge(value: any): string;
 declare function groupNames(groups?: any): string;
+declare function headerTargetName(peerId: string): string;
 declare function isCliDoneStatus(value: any): boolean;
 declare function isCliRunningStatus(value: any): boolean;
 declare function isMonitorTabActive(tab?: string): boolean;
@@ -75,6 +106,7 @@ declare var loadAdapterHealth: (...args: any[]) => Promise<any>;
 declare var loadArtifacts: (...args: any[]) => Promise<any>;
 declare var loadAudit: (...args: any[]) => Promise<any>;
 declare function loadBootstrap(): Promise<any>;
+declare function loadHeaderTargetCandidates(local: any): Promise<void>;
 declare var loadChatHistory: (...args: any[]) => Promise<any>;
 declare function loadDiagnostics(): Promise<void>;
 declare function loadLogs(reset?: boolean): Promise<void>;
@@ -125,6 +157,8 @@ declare function renderSessionControls(value?: any): void;
 declare function renderSettings(): void;
 declare var renderSlackChannels: (...args: any[]) => any;
 declare function renderSnapshot(value?: any): void;
+declare function mergeHeaderTargetBootstrap(peerId: string, bootstrap: any): void;
+declare function refreshRemoteHeaderTargets(local: any, selectedData: any): Promise<void>;
 declare var renderUserManagement: (...args: any[]) => any;
 declare function safe(fn: (...args: any[]) => any, event?: any): void;
 declare function savedThemePreference(): string;

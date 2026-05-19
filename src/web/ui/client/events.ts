@@ -110,7 +110,7 @@ function updateToolAgeTitles(){document.querySelectorAll('.tool[data-created-at]
 const toolStreamEl=document.getElementById('toolStream');
 toolStreamEl.addEventListener('mouseover',e=>{const target=e.target.closest?.('.tool[data-created-at]');if(target&&target!==state.toolTooltipTarget)showToolTooltip(target,e)});
 toolStreamEl.addEventListener('mousemove',e=>positionToolTooltip(e));
-toolStreamEl.addEventListener('mouseout',e=>{const target=e.target.closest?.('.tool[data-created-at]');if(target&&!target.contains(e.relatedTarget))hideToolTooltip()});
+toolStreamEl.addEventListener('mouseout',e=>{const target=e.target.closest?.('.tool[data-created-at]');const related=e.relatedTarget instanceof Node?e.relatedTarget:null;if(target&&!target.contains(related))hideToolTooltip()});
 toolStreamEl.addEventListener('focusin',e=>{const target=e.target.closest?.('.tool[data-created-at]');if(target)showToolTooltip(target,{clientX:target.getBoundingClientRect().left,clientY:target.getBoundingClientRect().bottom})});
 toolStreamEl.addEventListener('focusout',hideToolTooltip);
 function tool(cls,text){const div=document.createElement('div');div.className='tool '+(cls==='danger'?'danger':'');div.dataset.createdAt=String(Date.now());div.tabIndex=0;div.textContent=text;document.getElementById('toolStream').prepend(div);updateToolAgeTitles()}

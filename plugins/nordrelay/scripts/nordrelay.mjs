@@ -76,6 +76,7 @@ function parseArgs(argv) {
     restartAfterUpdate: true,
     updateMethod: undefined,
     buildBeforeStart: false,
+    fix: false,
   };
 
   for (let i = 0; i < copy.length; i += 1) {
@@ -87,6 +88,7 @@ function parseArgs(argv) {
     else if (arg === "--port") options.port = Number.parseInt(requireValue(copy, ++i, arg), 10);
     else if (arg === "--method") options.updateMethod = requireValue(copy, ++i, arg);
     else if (arg === "--build") options.buildBeforeStart = true;
+    else if (arg === "--fix") options.fix = true;
     else if (arg === "--no-restart") options.restartAfterUpdate = false;
     else if (arg === "--restart") options.restartAfterUpdate = true;
     else if (arg === "--disable-webui") options.disableWebui = true;
@@ -140,13 +142,16 @@ async function mkdirp(dir) {
 }
 
 function loadEnvFiles(home) {
-  const envPath = process.env.NORDRELAY_ENV_FILE
-    ? path.resolve(process.env.NORDRELAY_ENV_FILE)
-    : path.join(home, "nordrelay.env");
-
+  const envPath = resolveEnvPath(home);
   loadEnvFile(envPath);
 
   normalizeEnvAliases();
+}
+
+function resolveEnvPath(home) {
+  return process.env.NORDRELAY_ENV_FILE
+    ? path.resolve(process.env.NORDRELAY_ENV_FILE)
+    : path.join(home, "nordrelay.env");
 }
 
 function resolveLaunchWorkspace() {
@@ -1451,9 +1456,10 @@ async function commandDoctor(options) {
   const checks = [];
   checks.push(check("Node.js >= 22", Number.parseInt(process.versions.node.split(".")[0], 10) >= 22, process.version));
   const cliPath = cliPathDiagnostics();
-  checks.push(check("NordRelay CLI on PATH", cliPath.ok, cliPath.ok ? cliPath.detail : `${cliPath.detail}; ${cliPath.hint}`, "warn"));
+  const cliPathFix = cliPath.globalBin ? pathFix(cliPath.globalBin) : hintFix(cliPath.hint);
+  checks.push(check("NordRelay CLI on PATH", cliPath.ok, cliPath.ok ? cliPath.detail : `${cliPath.detail}; ${cliPath.hint}`, "warn", cliPathFix));
   if (cliPath.globalBin) {
-    checks.push(check("npm global bin on PATH", cliPath.pathContainsGlobalBin, cliPath.globalBin, "warn"));
+    checks.push(check("npm global bin on PATH", cliPath.pathContainsGlobalBin, cliPath.globalBin, "warn", pathFix(cliPath.globalBin)));
   }
   const webUiEnabled = isWebUiEnabled();
   const telegramRequested = process.env.TELEGRAM_ENABLED !== "false";
@@ -1468,6 +1474,7 @@ async function commandDoctor(options) {
     webUiEnabled,
     webUiEnabled ? "enabled" : "disabled by NORDRELAY_WEBUI_ENABLED=false",
     "warn",
+    envValueFix(options.home, "NORDRELAY_WEBUI_ENABLED", "true", "Enable the WebUI in the local env file."),
   ));
   checks.push(check(
     "Telegram bot token",
@@ -1498,10 +1505,11 @@ async function commandDoctor(options) {
     webUiEnabled || telegramUsable || discordUsable || slackUsable,
     [webUiEnabled ? "WebUI" : "", telegramUsable ? "Telegram" : "", discordUsable ? "Discord" : "", slackUsable ? "Slack" : ""].filter(Boolean).join(" and ") || "none",
     "fail",
+    envValueFix(options.home, "NORDRELAY_WEBUI_ENABLED", "true", "Enable WebUI so at least one access surface is available."),
   ));
-  checks.push(check("Discord client ID", !discordUsable || Boolean(process.env.DISCORD_CLIENT_ID), discordUsable ? (process.env.DISCORD_CLIENT_ID ? "configured" : "missing; slash command auto-registration disabled") : "disabled", "warn"));
-  checks.push(check("User store", Boolean(userStore), userStore ? userStore.filePath : "missing runtime", userStore ? "pass" : "fail"));
-  checks.push(check("Admin user", Boolean(userSnapshot?.adminConfigured), userSnapshot?.adminConfigured ? "configured" : "missing"));
+  checks.push(check("Discord client ID", !discordUsable || Boolean(process.env.DISCORD_CLIENT_ID), discordUsable ? (process.env.DISCORD_CLIENT_ID ? "configured" : "missing; slash command auto-registration disabled") : "disabled", "warn", hintFix("Set DISCORD_CLIENT_ID from the Discord Developer Portal.")));
+  checks.push(check("User store", Boolean(userStore), userStore ? userStore.filePath : "missing runtime", userStore ? "pass" : "fail", runtimeBuildFix()));
+  checks.push(check("Admin user", Boolean(userSnapshot?.adminConfigured), userSnapshot?.adminConfigured ? "configured" : "missing", "fail", hintFix("Run `nordrelay user create-admin` to create the first admin.")));
   checks.push(check("WebUI login", true, "required for every dashboard request"));
   checks.push(check("Telegram access", true, "requires linked active users and enabled group chats"));
   checks.push(check("Discord access", true, "requires linked active users and enabled channels"));
@@ -1510,33 +1518,39 @@ async function commandDoctor(options) {
   const peerTlsEnabled = process.env.NORDRELAY_PEER_TLS_ENABLED !== "false";
   const peerHost = process.env.NORDRELAY_PEER_HOST || "127.0.0.1";
   checks.push(check("Peer server", peerEnabled, peerEnabled ? `${peerHost}:${process.env.NORDRELAY_PEER_PORT || "31979"}` : "disabled", "warn"));
-  checks.push(check("Peer TLS", !peerEnabled || peerTlsEnabled || isLoopbackName(peerHost), peerTlsEnabled ? "enabled" : "plaintext loopback only", peerEnabled ? "fail" : "warn"));
+  checks.push(check("Peer TLS", !peerEnabled || peerTlsEnabled || isLoopbackName(peerHost), peerTlsEnabled ? "enabled" : "plaintext loopback only", peerEnabled ? "fail" : "warn", envValueFix(options.home, "NORDRELAY_PEER_TLS_ENABLED", "true", "Enable TLS for non-loopback peer traffic.")));
   checks.push(check("Codex enabled flag", process.env.NORDRELAY_CODEX_ENABLED !== "false", `NORDRELAY_CODEX_ENABLED=${process.env.NORDRELAY_CODEX_ENABLED ?? "true"}`));
   checks.push(check("Pi enabled flag", process.env.NORDRELAY_PI_ENABLED === "true" || process.env.NORDRELAY_PI_ENABLED === undefined, `NORDRELAY_PI_ENABLED=${process.env.NORDRELAY_PI_ENABLED ?? "false"}`, process.env.NORDRELAY_PI_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("Hermes enabled flag", process.env.NORDRELAY_HERMES_ENABLED === "true", `NORDRELAY_HERMES_ENABLED=${process.env.NORDRELAY_HERMES_ENABLED ?? "false"}`, process.env.NORDRELAY_HERMES_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("OpenClaw enabled flag", process.env.NORDRELAY_OPENCLAW_ENABLED === "true", `NORDRELAY_OPENCLAW_ENABLED=${process.env.NORDRELAY_OPENCLAW_ENABLED ?? "false"}`, process.env.NORDRELAY_OPENCLAW_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("Claude Code enabled flag", process.env.NORDRELAY_CLAUDE_CODE_ENABLED === "true", `NORDRELAY_CLAUDE_CODE_ENABLED=${process.env.NORDRELAY_CLAUDE_CODE_ENABLED ?? "false"}`, process.env.NORDRELAY_CLAUDE_CODE_ENABLED === "true" ? "pass" : "warn"));
-  checks.push(check("Codex CLI", Boolean(findExecutable(process.env.CODEX_CLI_PATH || "codex")), process.env.CODEX_CLI_PATH || findExecutable("codex") || "not found", process.env.NORDRELAY_CODEX_ENABLED === "false" ? "warn" : "fail"));
-  checks.push(check("Pi CLI", Boolean(findExecutable(process.env.PI_CLI_PATH || "pi")), process.env.PI_CLI_PATH || findExecutable("pi") || "not found", process.env.NORDRELAY_PI_ENABLED === "true" ? "fail" : "warn"));
-  checks.push(check("Hermes CLI", Boolean(findExecutable(process.env.HERMES_CLI_PATH || "hermes")), process.env.HERMES_CLI_PATH || findExecutable("hermes") || "not found", process.env.NORDRELAY_HERMES_ENABLED === "true" ? "fail" : "warn"));
-  checks.push(check("OpenClaw CLI", Boolean(findExecutable(process.env.OPENCLAW_CLI_PATH || "openclaw")), process.env.OPENCLAW_CLI_PATH || findExecutable("openclaw") || "not found", process.env.NORDRELAY_OPENCLAW_ENABLED === "true" ? "fail" : "warn"));
-  checks.push(check("Claude Code CLI", Boolean(findExecutable(process.env.CLAUDE_CODE_CLI_PATH || "claude")), process.env.CLAUDE_CODE_CLI_PATH || findExecutable("claude") || "SDK bundled runtime", "warn"));
+  checks.push(check("Codex CLI", Boolean(findExecutable(process.env.CODEX_CLI_PATH || "codex")), process.env.CODEX_CLI_PATH || findExecutable("codex") || "not found", process.env.NORDRELAY_CODEX_ENABLED === "false" ? "warn" : "fail", hintFix("Install Codex CLI or set CODEX_CLI_PATH to its executable.")));
+  checks.push(check("Pi CLI", Boolean(findExecutable(process.env.PI_CLI_PATH || "pi")), process.env.PI_CLI_PATH || findExecutable("pi") || "not found", process.env.NORDRELAY_PI_ENABLED === "true" ? "fail" : "warn", hintFix("Install Pi CLI or set PI_CLI_PATH to its executable.")));
+  checks.push(check("Hermes CLI", Boolean(findExecutable(process.env.HERMES_CLI_PATH || "hermes")), process.env.HERMES_CLI_PATH || findExecutable("hermes") || "not found", process.env.NORDRELAY_HERMES_ENABLED === "true" ? "fail" : "warn", hintFix("Install Hermes CLI or set HERMES_CLI_PATH to its executable.")));
+  checks.push(check("OpenClaw CLI", Boolean(findExecutable(process.env.OPENCLAW_CLI_PATH || "openclaw")), process.env.OPENCLAW_CLI_PATH || findExecutable("openclaw") || "not found", process.env.NORDRELAY_OPENCLAW_ENABLED === "true" ? "fail" : "warn", hintFix("Install OpenClaw CLI or set OPENCLAW_CLI_PATH to its executable.")));
+  checks.push(check("Claude Code CLI", Boolean(findExecutable(process.env.CLAUDE_CODE_CLI_PATH || "claude")), process.env.CLAUDE_CODE_CLI_PATH || findExecutable("claude") || "SDK bundled runtime", "warn", hintFix("Install Claude Code CLI or set CLAUDE_CODE_CLI_PATH to its executable.")));
   const hermesApiCheck = await checkHermesApiServer();
   checks.push(check("Hermes API Server", hermesApiCheck.ok, hermesApiCheck.detail, process.env.NORDRELAY_HERMES_ENABLED === "true" ? "fail" : "warn"));
   const openClawGatewayCheck = await checkOpenClawGateway();
   checks.push(check("OpenClaw Gateway", openClawGatewayCheck.ok, openClawGatewayCheck.detail, process.env.NORDRELAY_OPENCLAW_ENABLED === "true" ? "fail" : "warn"));
-  checks.push(check("ffmpeg", Boolean(findExecutable("ffmpeg")), findExecutable("ffmpeg") || "not found", "warn"));
+  checks.push(check("ffmpeg", Boolean(findExecutable("ffmpeg")), findExecutable("ffmpeg") || "not found", "warn", hintFix("Install ffmpeg with your OS package manager to enable voice conversion.")));
   const stateBackendCheck = validateStateBackend();
-  checks.push(check("State backend", stateBackendCheck.ok, stateBackendCheck.detail));
-  checks.push(check("Runtime entry", Boolean(await resolveRuntimeEntry()), RUNTIME_ROOT));
+  checks.push(check("State backend", stateBackendCheck.ok, stateBackendCheck.detail, "fail", hintFix("Use NORDRELAY_STATE_BACKEND=json or install/rebuild better-sqlite3 for sqlite.")));
+  checks.push(check("Runtime entry", Boolean(await resolveRuntimeEntry()), RUNTIME_ROOT, "fail", runtimeBuildFix()));
 
   for (const item of checks) {
     console.log(`${item.icon} ${item.name}: ${item.detail}`);
+    if (!item.ok && item.fix?.summary) console.log(`   Fix: ${item.fix.summary}`);
   }
 
   const failed = checks.filter((item) => item.status === "fail" && !item.ok);
   const warned = checks.filter((item) => item.status === "warn" && !item.ok);
   console.log(`\nSummary: ${failed.length} failed, ${warned.length} warnings.`);
+  if (options.fix) {
+    await runDoctorFixes(checks);
+  } else if ([...failed, ...warned].some((item) => item.fix?.apply)) {
+    console.log("Run `nordrelay doctor --fix` to apply safe local fixes.");
+  }
   if (failed.length > 0) process.exitCode = 1;
 }
 
@@ -2101,14 +2115,139 @@ async function askChoice(rl, label, defaultValue) {
   return value || defaultValue;
 }
 
-function check(name, ok, detail, status = "fail") {
+function check(name, ok, detail, status = "fail", fix = null) {
   return {
     name,
     ok,
     detail,
     status,
+    fix,
     icon: ok ? "✅" : status === "warn" ? "⚠️" : "❌",
   };
+}
+
+function hintFix(summary) {
+  return summary ? { summary } : null;
+}
+
+function envValueFix(home, key, value, summary) {
+  return {
+    id: `env:${key}`,
+    summary: `${summary} (${key}=${value})`,
+    apply: async () => {
+      const envPath = await writeEnvValue(home, key, value);
+      process.env[key] = value;
+      return `Set ${key}=${value} in ${envPath}`;
+    },
+  };
+}
+
+function pathFix(dir) {
+  const profilePath = resolveShellProfilePath();
+  if (!profilePath) {
+    return hintFix(`Add ${dir} to PATH for your shell.`);
+  }
+  return {
+    id: `path:${dir}`,
+    summary: `Add ${dir} to PATH in ${profilePath}.`,
+    apply: async () => addPathToShellProfile(profilePath, dir),
+  };
+}
+
+function runtimeBuildFix() {
+  if (!isSourceRuntime()) {
+    return hintFix("Reinstall NordRelay or run `npm install -g @nordbyte/nordrelay`.");
+  }
+  return {
+    id: "runtime-build",
+    summary: "Build the local source runtime with npm.",
+    apply: async () => {
+      await buildRuntime();
+      return "Built local source runtime.";
+    },
+  };
+}
+
+async function runDoctorFixes(checks) {
+  const seen = new Set();
+  const fixable = checks.filter((item) => {
+    if (item.ok || typeof item.fix?.apply !== "function") return false;
+    const id = item.fix.id || item.fix.summary || item.name;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+  if (!fixable.length) {
+    console.log("\nNo automatic fixes are available for the current findings.");
+    return;
+  }
+  console.log("\nAuto-fixes:");
+  for (const item of fixable) {
+    try {
+      const message = await item.fix.apply();
+      console.log(`✅ ${item.name}: ${message}`);
+    } catch (error) {
+      console.log(`❌ ${item.name}: ${error instanceof Error ? error.message : String(error)}`);
+      process.exitCode = 1;
+    }
+  }
+  console.log("\nRun `nordrelay doctor` again to verify the updated setup.");
+}
+
+async function writeEnvValue(home, key, value) {
+  const envPath = resolveEnvPath(home);
+  await mkdirp(path.dirname(envPath));
+  let text = "";
+  try {
+    text = await fsp.readFile(envPath, "utf8");
+  } catch {
+    text = "# NordRelay local runtime config.\n";
+  }
+  const lines = text.split(/\r?\n/);
+  const pattern = new RegExp(`^(?:export\\s+)?${escapeRegExp(key)}\\s*=`);
+  let updated = false;
+  const next = lines.map((line) => {
+    if (!pattern.test(line.trim())) return line;
+    updated = true;
+    return `${key}=${value}`;
+  });
+  if (!updated) {
+    if (next.length && next[next.length - 1] !== "") next.push("");
+    next.push(`${key}=${value}`);
+  }
+  await fsp.writeFile(envPath, `${next.join("\n").replace(/\n+$/, "")}\n`, { mode: 0o600 });
+  await fsp.chmod(envPath, 0o600).catch(() => {});
+  return envPath;
+}
+
+function resolveShellProfilePath() {
+  if (process.platform === "win32") return null;
+  const home = os.homedir();
+  const shell = path.basename(process.env.SHELL || "");
+  if (shell === "zsh") return path.join(home, ".zprofile");
+  if (shell === "bash") return path.join(home, ".bashrc");
+  return path.join(home, ".profile");
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function addPathToShellProfile(profilePath, dir) {
+  await mkdirp(path.dirname(profilePath));
+  let text = "";
+  try {
+    text = await fsp.readFile(profilePath, "utf8");
+  } catch {}
+  if (text.includes(dir)) return `${dir} is already mentioned in ${profilePath}`;
+  const block = [
+    "",
+    "# Added by nordrelay doctor --fix",
+    `case ":$PATH:" in *":${dir}:"*) ;; *) export PATH="${dir}:$PATH" ;; esac`,
+    "",
+  ].join("\n");
+  await fsp.appendFile(profilePath, block, "utf8");
+  return `Added ${dir} to ${profilePath}. Open a new shell or source the profile.`;
 }
 
 function findExecutable(command, pathValue = process.env.PATH, pathextValue = process.env.PATHEXT) {
@@ -2262,7 +2401,7 @@ function printHelp() {
   console.log("  user                 Manage users, groups, and channel links");
   console.log("  peer                 Manage secure NordRelay peer federation");
   console.log("  service              Install, remove, or inspect the OS service");
-  console.log("  doctor               Validate the local setup");
+  console.log("  doctor [--fix]       Validate the local setup and apply safe fixes");
   console.log("  web, dashboard       Start the WebUI and connector");
   console.log("  start                Start the connector");
   console.log("  stop                 Stop the connector and WebUI");
@@ -2278,6 +2417,7 @@ function printHelp() {
   console.log("  --port <port>        WebUI port");
   console.log("  service install --dry-run [--platform linux|darwin|win32]");
   console.log("  --build              Build source runtime before start/web/restart");
+  console.log("  --fix                Apply safe local fixes during doctor");
   console.log("  --force              Overwrite existing config during init");
   console.log("  --disable-webui      Disable the WebUI during init");
   console.log("  --help, -h           Show this help");

@@ -31,6 +31,16 @@ describe("nordrelay CLI script", () => {
     expect(source).toContain("At least WebUI or one chat adapter must be enabled.");
   });
 
+  it("supports doctor auto-fix hints and safe local fixes", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain('arg === "--fix"');
+    expect(source).toContain("async function runDoctorFixes");
+    expect(source).toContain("function envValueFix");
+    expect(source).toContain("doctor [--fix]");
+    expect(source).toContain("Run `nordrelay doctor --fix` to apply safe local fixes.");
+  });
+
   it("supports source builds before launches and restart", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
 
