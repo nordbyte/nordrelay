@@ -95,7 +95,7 @@
 .peer-heading-actions input,.peer-discovery-controls input{max-width:none;width:100%;min-width:0}
 }
 .drop-active{outline:2px dashed var(--accent);outline-offset:-8px}
-.chip{display:inline-flex;align-items:center;justify-content:center;min-height:20px;border-radius:999px;border:1px solid var(--border);padding:0 8px;font-size:12px;line-height:1;color:var(--muted);margin-right:6px}
+.chip{display:inline-flex;align-items:center;justify-content:center;min-height:20px;border-radius:999px;border:1px solid var(--border);padding:2px 8px;font-size:12px;line-height:1.15;color:var(--muted);margin-right:6px;box-sizing:border-box}
 .chip.ok{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
 .chip.error{color:var(--danger);border-color:var(--danger)}
 .chip.warn{color:#8a6a12;border-color:#d9c27a;background:var(--warn)}
@@ -323,11 +323,16 @@
 .metrics-card strong{margin-bottom:2px}
 .metric-kv{display:grid;grid-template-columns:minmax(138px,42%) minmax(0,1fr);column-gap:14px;margin-top:10px}
 .metric-kv-row{display:contents}
-.metric-kv-label,.metric-kv-value{display:flex;align-items:center;min-width:0;min-height:32px;padding:6px 0;border-top:1px solid var(--border-soft);font-size:14px;line-height:1.25;box-sizing:border-box}
+.metric-kv-label,.metric-kv-value{display:flex;align-items:center;min-width:0;min-height:34px;padding:7px 0;border-top:1px solid var(--border-soft);font-size:14px;line-height:1.35;box-sizing:border-box}
 .metric-kv-label{color:var(--muted);font-size:13px}
 .metric-kv-value{color:var(--text);font-weight:650;overflow:hidden;text-overflow:ellipsis}
 .metric-kv-value .chip{margin-right:0}
 .metric-kv-number,.metrics-table td{font-size:14px}
+.diagnostics-chip-list{display:flex;align-items:flex-start;gap:5px;flex-wrap:wrap;min-width:0}
+.diagnostics-chip-list .chip{margin-right:0}
+.diagnostics-value-stack{display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap;min-width:0;width:100%;line-height:1.35}
+.diagnostics-value-stack .chip{flex:0 0 auto;margin-right:0}
+.diagnostics-value-detail{flex:1 1 160px;min-width:0;overflow-wrap:anywhere;color:var(--text)}
 .metrics-auto-refresh{display:inline-flex!important;align-items:center;gap:7px;color:var(--muted);font-size:14px;line-height:1}
 .metrics-auto-refresh input{width:16px;height:16px;margin:0}
 #metricsLastUpdated{display:inline-flex;align-items:center;color:var(--muted);font-variant-numeric:tabular-nums}
