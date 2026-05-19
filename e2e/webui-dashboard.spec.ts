@@ -122,10 +122,13 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#messages")).toContainText("Existing web message");
     await expect(page.locator("#messages")).toHaveCSS("overflow-y", "auto");
     await expect(page.locator("#toolPanel")).toBeHidden();
-    await expect(page.getByRole("button", { name: "Show Tools" })).toHaveAttribute("aria-expanded", "false");
-    await page.getByRole("button", { name: "Show Tools" }).click();
+    await page.locator("#chatMoreBtn").click();
+    await expect(page.locator("#toggleToolsBtn")).toHaveText("Show Tools");
+    await expect(page.locator("#toggleToolsBtn")).toHaveAttribute("aria-expanded", "false");
+    await page.locator("#toggleToolsBtn").click();
     await expect(page.locator("#toolPanel")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Hide Tools" })).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator("#toggleToolsBtn")).toHaveText("Hide Tools");
+    await expect(page.locator("#toggleToolsBtn")).toHaveAttribute("aria-expanded", "true");
 
     await navigateDashboard(page, "Settings");
     await expect(page.locator("#settingsTabs")).toContainText("Agents");
@@ -228,7 +231,7 @@ test.describe("NordRelay WebUI", () => {
     await navigateDashboard(page, "Chat");
 
     await page.locator("#promptInput").fill("Run a browser smoke test");
-    await page.locator("#promptForm button").last().click();
+    await page.locator("#sendPromptBtn").click();
 
     await expect(page.locator("#messages")).toContainText("Queued prompt queue-web-1");
     const promptRequest = mock.requests.find((request) => request.path === "/api/prompt");
@@ -348,13 +351,15 @@ test.describe("NordRelay WebUI", () => {
     await page.goto(mock.baseUrl);
     await navigateDashboard(page, "Chat");
 
-    await expect(page.locator("#mirrorModeSelect")).toHaveValue("status");
-    await page.locator("#mirrorModeSelect").selectOption("full");
+    await expect(page.locator("#controlMirror")).toHaveText("status");
+    await page.locator("#controlMirror").click();
+    await page.locator('[data-control-option="controlMirror"][data-control-value="full"]').click();
     await expect.poll(() => mock.requests.filter((request) => request.path === "/api/chat/mirror" && request.method === "POST").length).toBe(1);
-    expect(mock.requests.find((request) => request.path === "/api/chat/mirror" && request.method === "POST")?.body).toMatchObject({ argument: "full" });
+    expect(mock.requests.find((request) => request.path === "/api/chat/mirror" && request.method === "POST")?.body).toMatchObject({ mode: "full" });
+    await expect(page.locator("#controlMirror")).toHaveText("full");
 
     await page.locator("#promptInput").fill("/mirror");
-    await page.locator("#promptForm button").last().click();
+    await page.locator("#sendPromptBtn").click();
     await expect(page.locator("#messages")).toContainText("CLI mirroring: status");
     await expect(page.locator("#messages")).toContainText("Minimum update interval: 4000 ms");
   });
@@ -871,7 +876,7 @@ test.describe("NordRelay WebUI", () => {
     await navigateDashboard(page, "Chat");
     await expect(page.locator("#messages")).toHaveCSS("overflow-y", "auto");
     await page.locator("#promptInput").fill("Mobile prompt smoke");
-    await page.locator("#promptForm button").last().click();
+    await page.locator("#sendPromptBtn").click();
     await expect(page.locator("#messages")).toContainText("Queued prompt queue-web-1");
 
     await page.getByRole("button", { name: "Open navigation" }).click();
@@ -1215,7 +1220,7 @@ function chatMessages() {
 }
 
 function mirrorPreference(body: unknown) {
-  const mode = (body as { argument?: string } | null)?.argument || "status";
+  const mode = (body as { argument?: string; mode?: string } | null)?.argument || (body as { mode?: string } | null)?.mode || "status";
   return {
     mode,
     minInterval: 4000,
