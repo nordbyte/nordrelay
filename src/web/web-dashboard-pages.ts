@@ -225,8 +225,8 @@ ${faviconLinks}
                   <button type="button" id="recordBtn" class="secondary" title="Requires browser microphone permission. On LAN URLs, browsers require HTTPS; localhost is allowed.">Record voice</button>
                   <span id="fileSummary">No files selected</span>
                   <button type="button" id="clearFilesBtn" class="secondary">Clear</button>
+                  <div id="chatWorkspaceLine" class="chat-workspace-line" hidden></div>
                 </div>
-                <div id="chatWorkspaceLine" class="chat-workspace-line" hidden></div>
               </div>
               <div class="composer-actions">
                 <button id="sendPromptBtn" type="submit">Send</button>

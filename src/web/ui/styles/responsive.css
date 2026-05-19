@@ -50,6 +50,7 @@ header{display:flex}
 .pager{align-items:stretch}
 .pager-actions,.pager button{width:100%}
 .attachment-row>*,.sessions-toolbar,.sessions-toolbar .row,.sessions-toolbar input,.sessions-toolbar button{width:100%}
+.attachment-row .chat-workspace-line{width:auto;max-width:100%;margin-left:auto}
 .sessions-toolbar .attach-row{margin-left:0;justify-content:stretch}
 .wizard-header,.wizard-actions{align-items:stretch;flex-direction:column}
 .wizard-header button,.wizard-actions button{width:100%}
