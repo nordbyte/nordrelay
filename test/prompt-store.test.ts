@@ -21,6 +21,8 @@ describe("PromptStore", () => {
         expect.objectContaining({
           id: queued.id,
           description: "queued · 1 image",
+          displayText: "queued",
+          displayMeta: ["1 image"],
         }),
       ]);
     } finally {

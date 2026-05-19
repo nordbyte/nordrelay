@@ -10,7 +10,11 @@ import {
 } from "../../agents/shared/agent.js";
 import type { AuditEvent } from "../../access/audit-log.js";
 import { friendlyErrorText } from "../../core/error-messages.js";
-import type { PromptEnvelope } from "../../state/prompt-store.js";
+import {
+  displayMetaForPromptEnvelope,
+  displayTextForPromptEnvelope,
+  type PromptEnvelope,
+} from "../../state/prompt-store.js";
 import type { RelayArtifactService } from "../../runtime/relay-artifact-service.js";
 import type { RelayEvent, WebTaskDto } from "../../runtime/relay-runtime-types.js";
 import type { WebActivityActor, WebActivityEvent, WebChatStore } from "../../web/web-state.js";
@@ -72,11 +76,14 @@ export class ChannelTurnService {
     this.options.setLastPrompt(envelope);
     const startedDate = new Date();
     const startedAt = startedDate.toISOString();
+    const displayText = displayTextForPromptEnvelope(envelope);
+    const displayMeta = displayMetaForPromptEnvelope(envelope);
 
     this.options.chatStore.append({
       threadId: info.threadId ?? "pending",
       role: "user",
-      text: envelope.description,
+      text: displayText,
+      meta: displayMeta,
       source: this.options.source,
       correlationId,
       turnId,
@@ -104,7 +111,16 @@ export class ChannelTurnService {
       correlationId,
       description: envelope.description,
     });
-    this.options.broadcast({ type: "turn_start", id: turnId, prompt: envelope.description, at: startedAt, source: this.options.source, correlationId });
+    this.options.broadcast({
+      type: "turn_start",
+      id: turnId,
+      prompt: envelope.description,
+      text: displayText,
+      meta: displayMeta,
+      at: startedAt,
+      source: this.options.source,
+      correlationId,
+    });
 
     try {
       await session.prompt(envelope.input as AgentPromptInput, this.callbacks(turnId, info, envelope, actor));

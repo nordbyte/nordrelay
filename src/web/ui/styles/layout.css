@@ -148,6 +148,8 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .message.agent{margin-right:auto;background:color-mix(in srgb,var(--surface-soft) 80%,var(--border))}
 .message.system{background:var(--warn)}
 .message-body{white-space:pre-wrap}
+.message-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;white-space:normal}
+.message-meta span{display:inline-flex;align-items:center;min-height:20px;padding:2px 7px;border:1px solid var(--border-soft);border-radius:999px;background:color-mix(in srgb,var(--surface) 72%,transparent);color:var(--muted);font-size:12px;line-height:1}
 .message-action-button{position:absolute;top:6px;width:26px;height:26px;min-width:26px;min-height:26px;padding:0;border:1px solid var(--border-soft);border-radius:6px;background:var(--surface);color:var(--muted);opacity:0;pointer-events:none;transition:opacity .12s ease,background .12s ease,border-color .12s ease,color .12s ease}
 .message-copy-button{right:6px}
 .message-edit-button{right:38px}

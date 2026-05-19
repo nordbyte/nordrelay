@@ -323,7 +323,7 @@
 .metrics-card strong{margin-bottom:2px}
 .metric-kv{display:grid;grid-template-columns:minmax(138px,42%) minmax(0,1fr);column-gap:14px;margin-top:10px}
 .metric-kv-row{display:contents}
-.metric-kv-label,.metric-kv-value{display:flex;align-items:center;min-width:0;min-height:34px;padding:7px 0;border-top:1px solid var(--border-soft);font-size:14px;line-height:1.35;box-sizing:border-box}
+.metric-kv-label,.metric-kv-value{display:flex;align-items:center;min-width:0;min-height:32px;padding:6px 0;border-top:1px solid var(--border-soft);font-size:14px;line-height:1.35;box-sizing:border-box}
 .metric-kv-label{color:var(--muted);font-size:13px}
 .metric-kv-value{color:var(--text);font-weight:650;overflow:hidden;text-overflow:ellipsis}
 .metric-kv-value .chip{margin-right:0}

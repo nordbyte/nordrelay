@@ -19,6 +19,7 @@ export interface WebChatMessage {
   threadId: string;
   role: WebChatRole;
   text: string;
+  meta?: string[];
   timestamp: string;
   source: WebActivitySource;
   correlationId?: string;
@@ -294,6 +295,7 @@ function isWebChatMessage(value: unknown): value is WebChatMessage {
     typeof candidate.threadId === "string" &&
     typeof candidate.text === "string" &&
     typeof candidate.timestamp === "string" &&
+    (candidate.meta === undefined || (Array.isArray(candidate.meta) && candidate.meta.every((item) => typeof item === "string"))) &&
     (candidate.key === undefined || typeof candidate.key === "string") &&
     ["user", "agent", "system", "tool"].includes(candidate.role) &&
     ["web", "telegram", "discord", "slack", "cli"].includes(candidate.source);

@@ -7,6 +7,8 @@ import type { WebActivityActor } from "../web/web-state.js";
 export interface PromptEnvelope {
   input: AgentPromptInput;
   description: string;
+  displayText?: string;
+  displayMeta?: string[];
   correlationId?: string;
   artifactOutDir?: string;
   activityActor?: WebActivityActor;
@@ -273,11 +275,43 @@ export function describePromptInput(input: AgentPromptInput): string {
   return parts.join(" · ") || "prompt";
 }
 
+export function displayTextForPromptInput(input: AgentPromptInput): string {
+  if (typeof input === "string") {
+    return input;
+  }
+  return input.text ?? "";
+}
+
+export function displayMetaForPromptInput(input: AgentPromptInput): string[] {
+  if (typeof input === "string") {
+    return [];
+  }
+  const meta: string[] = [];
+  if (input.imagePaths?.length) {
+    meta.push(`${input.imagePaths.length} image${input.imagePaths.length === 1 ? "" : "s"}`);
+  }
+  if (input.stagedFileInstructions) {
+    meta.push("staged file input");
+  }
+  return meta;
+}
+
+export function displayTextForPromptEnvelope(envelope: PromptEnvelope): string {
+  const text = envelope.displayText ?? displayTextForPromptInput(envelope.input);
+  return text || envelope.description;
+}
+
+export function displayMetaForPromptEnvelope(envelope: PromptEnvelope): string[] {
+  return envelope.displayMeta ?? displayMetaForPromptInput(envelope.input);
+}
+
 export function toPromptEnvelope(input: AgentPromptInput, artifactOutDir?: string): PromptEnvelope {
   return {
     input,
     artifactOutDir,
     description: describePromptInput(input),
+    displayText: displayTextForPromptInput(input),
+    displayMeta: displayMetaForPromptInput(input),
   };
 }
 
@@ -304,6 +338,9 @@ function isPromptEnvelope(value: unknown): value is PromptEnvelope {
   const candidate = value as PromptEnvelope;
   return isCodexPromptInput(candidate.input) &&
     typeof candidate.description === "string" &&
+    (candidate.displayText === undefined || typeof candidate.displayText === "string") &&
+    (candidate.displayMeta === undefined ||
+      (Array.isArray(candidate.displayMeta) && candidate.displayMeta.every((item) => typeof item === "string"))) &&
     (candidate.correlationId === undefined || typeof candidate.correlationId === "string");
 }
 
