@@ -189,7 +189,6 @@ ${faviconLinks}
               <button id="newSessionBtn">New session</button>
               <button id="retryBtn" class="secondary">Retry</button>
               <button id="templatePickerBtn" class="secondary" type="button">Templates</button>
-              <button id="syncBtn" class="secondary">Sync</button>
               <button id="notifyBtn" class="secondary">Notify</button>
               <label class="mirror-control" title="Mirror local CLI activity into this WebUI chat">
                 Mirror
@@ -202,7 +201,13 @@ ${faviconLinks}
               </label>
               <button id="clearChatBtn" class="secondary" title="Clears only the WebUI chat history shown for this session. Agent context and session history stay intact.">Clear</button>
               <button id="abortBtn">Abort</button>
-              <button id="toggleToolsBtn" class="secondary" type="button" aria-controls="toolPanel" aria-expanded="false">Show Tools</button>
+              <div class="chat-more-menu">
+                <button id="chatMoreBtn" class="secondary chat-more-toggle" type="button" aria-haspopup="menu" aria-expanded="false">More</button>
+                <div id="chatMoreMenu" class="control-menu-list chat-more-list" role="menu" hidden>
+                  <button id="syncBtn" class="secondary" type="button" role="menuitem">Sync</button>
+                  <button id="toggleToolsBtn" class="secondary" type="button" role="menuitem" aria-controls="toolPanel" aria-expanded="false">Show Tools</button>
+                </div>
+              </div>
             </div>
             <div class="control-grid" id="sessionControls"></div>
             <div id="messages" class="messages"></div>

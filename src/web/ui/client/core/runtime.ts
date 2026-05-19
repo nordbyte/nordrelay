@@ -109,6 +109,8 @@ function updateThemeControls(){const pref=state.themePreference||savedThemePrefe
 window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{if((state.themePreference||savedThemePreference())==='system')applyThemePreference('system',{persist:false})});
 function setToolsVisible(visible){state.toolsVisible=Boolean(visible);const layout=document.getElementById('chatLayout');const panel=document.getElementById('toolPanel');const button=document.getElementById('toggleToolsBtn');layout?.classList.toggle('tools-hidden',!state.toolsVisible);if(panel)panel.hidden=!state.toolsVisible;if(button){button.textContent=state.toolsVisible?'Hide Tools':'Show Tools';button.setAttribute('aria-expanded',state.toolsVisible?'true':'false')}}
 function toggleTools(){setToolsVisible(!state.toolsVisible)}
+function setChatMoreOpen(open){const menu=document.getElementById('chatMoreMenu');const button=document.getElementById('chatMoreBtn');if(menu)menu.hidden=!open;if(button)button.setAttribute('aria-expanded',open?'true':'false')}
+function closeChatMoreMenu(){setChatMoreOpen(false)}
 function isDialogBackdropClick(event){const dialog=event.target;if(!(dialog instanceof HTMLDialogElement)||!dialog.open)return false;const rect=dialog.getBoundingClientRect();return event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom}
 function bindDialogBackdropClose(){document.addEventListener('click',event=>{if(isDialogBackdropClick(event)){event.preventDefault();event.target.close()}})}
 function normalizePageName(name){if(MONITOR_PAGE_ALIASES.has(name)){state.monitorTab=name;return'monitor'}return name||'overview'}
@@ -123,7 +125,10 @@ initNavSections();
 document.getElementById('brandHomeBtn').onclick=()=>page('overview');
 document.getElementById('menuBtn').onclick=event=>{event.stopPropagation();toggleMobileMenu()};
 document.addEventListener('click',event=>{const sidebar=document.getElementById('sidebar');if(!sidebar?.classList.contains('open'))return;if(sidebar.contains(event.target as Node))return;setMobileMenuOpen(false)});
-document.addEventListener('keydown',event=>{if(event.key==='Escape')setMobileMenuOpen(false)});
+document.addEventListener('click',event=>{if(event.target.closest?.('.chat-more-menu'))return;closeChatMoreMenu()});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'){setMobileMenuOpen(false);closeChatMoreMenu()}});
+document.getElementById('chatMoreBtn').onclick=event=>{event.preventDefault();event.stopPropagation();const menu=document.getElementById('chatMoreMenu');setChatMoreOpen(Boolean(menu?.hidden))};
+document.getElementById('chatMoreMenu')?.addEventListener('click',event=>{if(event.target.closest?.('button'))closeChatMoreMenu()});
 document.getElementById('toggleToolsBtn').onclick=toggleTools;
 document.getElementById('logoutBtn').onclick=()=>safe(async()=>{await api('/api/dashboard/logout',{method:'POST'});location.href='/'});
 bindDialogBackdropClose();

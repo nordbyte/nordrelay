@@ -92,6 +92,9 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .control-menu-list button{width:100%;height:auto;min-height:32px;padding:7px 9px;border:0;border-radius:6px;background:transparent;color:var(--text);justify-content:flex-start;text-align:left;white-space:normal;line-height:1.25}
 .control-menu-list button:hover,.control-menu-list button:focus{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--text);outline:none}
 .control-menu-list button[aria-selected="true"]{background:var(--accent);color:white}
+.chat-more-menu{position:relative;display:inline-flex}
+.chat-more-toggle{width:auto}
+.chat-more-list{left:auto;right:0;min-width:150px;z-index:40}
 .header-target-line{display:flex;align-items:center;gap:8px;margin-top:4px;min-width:0;color:var(--muted)}
 .header-target-menu{font-size:13px;max-width:100%}
 .header-target-button{max-width:min(760px,calc(100vw - 210px));font-size:14px}
