@@ -75,7 +75,7 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.getByRole("button", { name: "Administration", exact: true })).toHaveAttribute("aria-expanded", "false");
     await expect(page.locator('[data-nav-section="operations"] .nav-section-items')).toBeHidden();
     await expect(page.locator('[data-nav-section="administration"] .nav-section-items')).toBeHidden();
-    await expect(page.locator('nav > .nav-primary button[data-page]')).toHaveText([
+    await expect(page.locator('nav > .nav-primary button[data-page] .nav-label')).toHaveText([
       "Overview",
       "Chat",
       "Workflows",
@@ -83,6 +83,7 @@ test.describe("NordRelay WebUI", () => {
       "Queue",
       "Monitor",
     ]);
+    await expect(page.locator("#overviewActiveBadge")).toHaveText("1");
     await expect(page.getByRole("heading", { name: "Active Sessions" })).toBeVisible();
     await expect(page.locator("#activeSessions")).toContainText("Run active smoke test");
     await expect(page.locator("#activeSessions")).toContainText("exec_command");

@@ -375,7 +375,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('id="activeSessionsCount"');
     expect(pageSource).toContain('id="activeSessions"');
     expect(navSource).toContain('id="overviewActiveBadge"');
-    expect(navSource).toContain('class="nav-badge" hidden');
+    expect(navSource).toContain('class="nav-badge" aria-hidden="true" hidden');
     expect(pageSource).not.toContain("Current Session");
     expect(js).toContain("function renderActiveSessions");
     expect(js).toContain("function updateActiveSessionsCount");
