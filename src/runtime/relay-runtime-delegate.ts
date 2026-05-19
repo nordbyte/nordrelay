@@ -74,7 +74,7 @@ import type {
   SessionPageDto,
   UnifiedJobDto,
   UnifiedJobsDto,
-  UploadPromptFile,
+  UploadPromptOptions,
   UploadPromptResult,
   WebAdapterHealthDto,
   WebAuthDto,
@@ -200,7 +200,7 @@ export interface RelayRuntimeDelegate {
   handback(actor?: WebActivityActor): Promise<ReturnType<AgentSessionService["handback"]>>;
   abort(actor?: WebActivityActor): Promise<void>;
   sendPrompt(text: string, actor?: WebActivityActor, correlationId?: string): Promise<{ queued: boolean; queueId?: string; correlationId?: string }>;
-  sendUploadPrompt(options: { text?: string; files: UploadPromptFile[]; correlationId?: string }, actor?: WebActivityActor): Promise<UploadPromptResult>;
+  sendUploadPrompt(options: UploadPromptOptions, actor?: WebActivityActor): Promise<UploadPromptResult>;
   sendEnvelope(envelope: PromptEnvelope, actor?: WebActivityActor): Promise<{ queued: boolean; queueId?: string; correlationId?: string }>;
   queue(): QueueItemDto[];
   queuePaused(): boolean;

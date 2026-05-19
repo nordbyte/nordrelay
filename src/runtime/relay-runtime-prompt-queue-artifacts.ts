@@ -90,6 +90,7 @@ import type {
   UnifiedJobDto,
   UnifiedJobsDto,
   UploadPromptFile,
+  UploadPromptOptions,
   UploadPromptResult,
   WebAdapterHealthDto,
   WebAuthDto,
@@ -138,7 +139,7 @@ export async function relayRuntimeSendPrompt(runtime: RelayRuntimeDelegate, text
     return runtime.sendEnvelope({ ...toPromptEnvelope(trimmed), correlationId, activityActor: actor }, actor);
   }
 
-export async function relayRuntimeSendUploadPrompt(runtime: RelayRuntimeDelegate, options: { text?: string; files: UploadPromptFile[]; correlationId?: string }, actor?: WebActivityActor): Promise<UploadPromptResult> {
+export async function relayRuntimeSendUploadPrompt(runtime: RelayRuntimeDelegate, options: UploadPromptOptions, actor?: WebActivityActor): Promise<UploadPromptResult> {
     const text = options.text?.trim() ?? "";
     const files = options.files.filter((file) => file.data.byteLength > 0);
     if (!text && files.length === 0) {
@@ -210,7 +211,7 @@ export async function relayRuntimeSendUploadPrompt(runtime: RelayRuntimeDelegate
     }
 
     const audioOnly = stagedFiles.length > 0 && stagedFiles.every((file) => file.mimeType.startsWith("audio/"));
-    if (runtime.config.voiceTranscribeOnly && audioOnly && !text) {
+    if (audioOnly && (options.transcribeOnly || (runtime.config.voiceTranscribeOnly && !text))) {
       return {
         queued: false,
         correlationId,

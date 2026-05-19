@@ -203,6 +203,13 @@ export interface UploadPromptFile {
   data: Buffer;
 }
 
+export interface UploadPromptOptions {
+  text?: string;
+  files: UploadPromptFile[];
+  correlationId?: string;
+  transcribeOnly?: boolean;
+}
+
 export interface UploadPromptResult {
   queued: boolean;
   queueId?: string;

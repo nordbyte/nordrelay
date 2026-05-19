@@ -101,6 +101,7 @@ import type {
   UnifiedJobDto,
   UnifiedJobsDto,
   UploadPromptFile,
+  UploadPromptOptions,
   UploadPromptResult,
   WebAdapterHealthDto,
   WebAuthDto,
@@ -136,6 +137,7 @@ export type {
   UnifiedJobDto,
   UnifiedJobsDto,
   UploadPromptFile,
+  UploadPromptOptions,
   UploadPromptResult,
   WebAdapterHealthDto,
   WebAuthDto,
@@ -639,7 +641,7 @@ export class RelayRuntime {
     return relayRuntimeSendPrompt(this, text, actor, correlationId);
   }
 
-  async sendUploadPrompt(options: { text?: string; files: UploadPromptFile[]; correlationId?: string }, actor?: WebActivityActor): Promise<UploadPromptResult> {
+  async sendUploadPrompt(options: UploadPromptOptions, actor?: WebActivityActor): Promise<UploadPromptResult> {
     return relayRuntimeSendUploadPrompt(this, options, actor);
   }
 

@@ -305,6 +305,7 @@ export async function handleDashboardSessionRoute(
     sendJson(res, 202, await runtime.sendUploadPrompt({
       text: optionalStringField(body, "text"),
       correlationId: optionalStringField(body, "correlationId"),
+      transcribeOnly: optionalBooleanField(body, "transcribeOnly") ?? false,
       files: parseUploadFiles(body.files),
     }, options.activityActor));
     return true;

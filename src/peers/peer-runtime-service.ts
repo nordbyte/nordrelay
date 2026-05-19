@@ -432,7 +432,7 @@ export class PeerRuntimeService {
     if (method === "POST" && path === "/api/prompt/upload") {
       await this.assertCurrentSessionScope(peer, runtime);
       const files = Array.isArray(body.files) ? body.files.map((file, index) => parseUploadFile(file, index)) : [];
-      return runtime.sendUploadPrompt({ text: stringValue(body.text), correlationId: stringValue(body.correlationId) || undefined, files }, remoteActor);
+      return runtime.sendUploadPrompt({ text: stringValue(body.text), correlationId: stringValue(body.correlationId) || undefined, transcribeOnly: Boolean(body.transcribeOnly), files }, remoteActor);
     }
     if (method === "POST" && (path === "/api/abort" || path === "/api/stop")) {
       await this.assertCurrentSessionScope(peer, runtime);

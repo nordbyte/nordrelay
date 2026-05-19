@@ -164,7 +164,7 @@ export interface WebApiClientOptions<P extends WebApiPath = WebApiPath> {
 
 export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/prompt" ? { text: string; correlationId?: string } :
-  P extends "/api/prompt/upload" ? { text?: string; correlationId?: string; files: Array<{ name: string; mimeType?: string; dataBase64: string }> } :
+  P extends "/api/prompt/upload" ? { text?: string; correlationId?: string; transcribeOnly?: boolean; files: Array<{ name: string; mimeType?: string; dataBase64: string }> } :
   P extends "/api/profile" ? { displayName?: string; theme?: "light" | "dark" | "system"; preferences?: { theme?: "light" | "dark" | "system" } } :
   P extends "/api/profile/password" ? { currentPassword: string; newPassword?: string; password?: string } :
   P extends "/api/profile/logout-other-sessions" ? Record<string, never> :
