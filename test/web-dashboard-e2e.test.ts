@@ -312,6 +312,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function syncCompletionSoundActivity");
     expect(js).toContain("function playCompletionSound");
     expect(js).toContain("function bindCompletionSoundUnlockGesture");
+    expect(js).toContain("beep.type='square'");
+    expect(js).toContain("beep.frequency.setValueAtTime(880");
+    expect(js).toContain("output.gain.exponentialRampToValueAtTime(0.42");
     expect(js).toContain("COMPLETION_SOUND_PREF_KEY");
     expect(js).toContain("active_sessions_update");
     expect(js).toContain("syncCompletionSoundActivity();renderChatWorkingIndicator()");
