@@ -379,9 +379,12 @@ describe("web dashboard browser-flow assets", () => {
     expect(workflowsSource).toContain("permission==='prompt'");
     expect(workflowsSource).toContain("function transcribeVoiceNote");
     expect(workflowsSource).toContain("function insertPromptTranscript");
+    expect(workflowsSource).toContain("function currentAgentSupportsRawAudioAttachments");
+    expect(workflowsSource).toContain("'pi','hermes','openclaw'");
     expect(workflowsSource).toContain("transcribeOnly:true");
     expect(workflowsSource).toContain("Voice transcribed");
     expect(workflowsSource).toContain("Voice transcription failed; audio attached instead");
+    expect(workflowsSource).toContain("audio was not attached for");
     expect(workflowsSource).not.toContain("if(permission==='denied')throw new Error(microphoneBlockedMessage())");
     expect(css).toContain(".message{position:relative;width:fit-content;max-width:92%");
     expect(css).toContain("padding:10px 106px 10px 12px");

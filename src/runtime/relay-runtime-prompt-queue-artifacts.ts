@@ -12,6 +12,7 @@ import {
   agentLabel,
   agentReasoningLabel,
   agentReasoningOptions,
+  agentSupportsRawAudioAttachments,
   isAgentId,
   type AgentCapabilities,
   type AgentId,
@@ -148,7 +149,10 @@ export async function relayRuntimeSendUploadPrompt(runtime: RelayRuntimeDelegate
     const correlationId = options.correlationId?.trim() || createCorrelationId();
 
     const session = await runtime.getSession(false);
-    const workspace = session.getInfo().workspace;
+    const sessionInfo = session.getInfo();
+    const workspace = sessionInfo.workspace;
+    const agentId = sessionInfo.agentId;
+    const allowRawAudioAttachments = agentSupportsRawAudioAttachments(agentId);
     const turnId = randomUUID().slice(0, 12);
     const outDir = outboxPath(workspace, turnId);
     await ensureOutDir(outDir);
@@ -171,27 +175,44 @@ export async function relayRuntimeSendUploadPrompt(runtime: RelayRuntimeDelegate
       }
 
       if (mimeType.startsWith("audio/")) {
-        const result = await transcribeAudio(staged.localPath, {
-          preferredBackend: runtime.config.voicePreferredBackend === "auto"
-            ? undefined
-            : runtime.config.voicePreferredBackend as TranscriptionBackend,
-          language: runtime.config.voiceDefaultLanguage,
-        });
-        const transcript = result.text.trim();
-        if (transcript) {
-          transcriptParts.push(`Audio transcript (${staged.safeName}, via ${result.backend}):\n${transcript}`);
+        try {
+          const result = await transcribeAudio(staged.localPath, {
+            preferredBackend: runtime.config.voicePreferredBackend === "auto"
+              ? undefined
+              : runtime.config.voicePreferredBackend as TranscriptionBackend,
+            language: runtime.config.voiceDefaultLanguage,
+          });
+          const transcript = result.text.trim();
+          if (transcript) {
+            transcriptParts.push(`Audio transcript (${staged.safeName}, via ${result.backend}):\n${transcript}`);
+            runtime.appendActivity({
+              source: "web",
+              status: "completed",
+              type: "voice_transcribed",
+              threadId: sessionInfo.threadId,
+              workspace,
+              agentId,
+              actor,
+              correlationId,
+              detail: `${staged.safeName} via ${result.backend}`,
+              durationMs: result.durationMs,
+            });
+          }
+        } catch (error) {
           runtime.appendActivity({
             source: "web",
-            status: "completed",
-            type: "voice_transcribed",
-            threadId: session.getInfo().threadId,
+            status: "failed",
+            type: "voice_transcription_failed",
+            threadId: sessionInfo.threadId,
             workspace,
-            agentId: session.getInfo().agentId,
+            agentId,
             actor,
             correlationId,
-            detail: `${staged.safeName} via ${result.backend}`,
-            durationMs: result.durationMs,
+            detail: `${staged.safeName}: ${friendlyErrorText(error)}`,
           });
+          if (options.transcribeOnly) {
+            throw error;
+          }
         }
       }
     }
@@ -201,12 +222,28 @@ export async function relayRuntimeSendUploadPrompt(runtime: RelayRuntimeDelegate
         source: "web",
         status: "info",
         type: "attachment_staged",
-        threadId: session.getInfo().threadId,
+        threadId: sessionInfo.threadId,
         workspace,
-        agentId: session.getInfo().agentId,
+        agentId,
         actor,
         correlationId,
         detail: `${stagedFiles.length} file(s): ${stagedFiles.map((file) => file.safeName).join(", ")}`,
+      });
+    }
+
+    const promptAttachmentFiles = stagedFiles.filter((file) => !file.mimeType.startsWith("audio/") || allowRawAudioAttachments);
+    const filteredAudioFiles = stagedFiles.filter((file) => file.mimeType.startsWith("audio/") && !allowRawAudioAttachments);
+    if (filteredAudioFiles.length > 0) {
+      runtime.appendActivity({
+        source: "web",
+        status: "info",
+        type: "attachment_filtered",
+        threadId: sessionInfo.threadId,
+        workspace,
+        agentId,
+        actor,
+        correlationId,
+        detail: `${filteredAudioFiles.length} audio file(s) not sent to ${agentLabel(agentId)}: ${filteredAudioFiles.map((file) => file.safeName).join(", ")}`,
       });
     }
 
@@ -229,8 +266,17 @@ export async function relayRuntimeSendUploadPrompt(runtime: RelayRuntimeDelegate
     if (imagePaths.length > 0) {
       promptInput.imagePaths = imagePaths;
     }
-    if (stagedFiles.length > 0) {
-      promptInput.stagedFileInstructions = buildFileInstructions(stagedFiles, outDir);
+    if (promptAttachmentFiles.length > 0) {
+      promptInput.stagedFileInstructions = buildFileInstructions(promptAttachmentFiles, outDir);
+    }
+    if (textParts.length === 0 && imagePaths.length === 0 && promptAttachmentFiles.length === 0) {
+      return {
+        queued: false,
+        correlationId,
+        transcript: transcriptParts.join("\n\n"),
+        transcribeOnly: true,
+        files: uploadFileDtos(stagedFiles),
+      };
     }
 
     const result = await runtime.sendEnvelope({ ...toPromptEnvelope(promptInput, outDir), correlationId, activityActor: actor }, actor);

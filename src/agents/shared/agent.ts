@@ -422,6 +422,10 @@ export function agentLabel(agentId: AgentId): string {
   return "Codex";
 }
 
+export function agentSupportsRawAudioAttachments(agentId: AgentId): boolean {
+  return agentId === "pi" || agentId === "hermes" || agentId === "openclaw";
+}
+
 export function agentReasoningLabel(agentId: AgentId): string {
   if (agentId === "pi" || agentId === "openclaw") {
     return "Thinking";
