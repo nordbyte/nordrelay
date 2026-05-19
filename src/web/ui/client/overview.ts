@@ -347,11 +347,15 @@ function renderSessionControls(){
   const selectedLaunch=s.launchProfileId||s.nextLaunchProfileId;
   const launchItems=(c.launchProfiles||[]).map(p=>({value:p.id,label:p.label+' - '+p.behavior+(p.unsafe?' - unsafe':'')}));
   const selectedLaunchItem=launchItems.find(item=>item.value===selectedLaunch)||launchItems[0];
+  const mirrorItems=[{value:'off',label:'off'},{value:'status',label:'status'},{value:'final',label:'final'},{value:'full',label:'full'}];
+  const selectedMirror=state.webMirror?.mode||'off';
   document.getElementById('sessionControls').innerHTML=[
     caps.modelSelection?compactControlMenu('controlModel','Model',selectedModel?.value||'',selectedModel?.label||'Default',modelItems):'',
     caps.reasoningSelection?compactControlMenu('controlReasoning',c.reasoningLabel||'Reasoning',selectedReasoning?.value||'',selectedReasoning?.label||'Default',reasoningItems):'',
     caps.fastMode?compactControlMenu('controlFast','Fast mode',selectedFast,selectedFast,fastItems):'',
-    caps.launchProfiles?compactControlMenu('controlLaunch','Launch',selectedLaunchItem?.value||'',selectedLaunchItem?.label||'Default',launchItems)+'<button id="applyLaunchBtn" class="secondary compact-apply-button" title="Apply selected launch profile to the current idle session"'+disabledAttr('settings.write')+'>Apply</button>':''
+    caps.launchProfiles?compactControlMenu('controlLaunch','Launch',selectedLaunchItem?.value||'',selectedLaunchItem?.label||'Default',launchItems):'',
+    compactControlMenu('controlMirror','Mirror',selectedMirror,selectedMirror,mirrorItems),
+    caps.launchProfiles?'<button id="applyLaunchBtn" class="secondary compact-apply-button" title="Apply selected launch profile to the current idle session"'+disabledAttr('settings.write')+'>Apply</button>':''
   ].join('');
   bindCompactControlMenus();
   const applyLaunch=document.getElementById('applyLaunchBtn'); if(applyLaunch) applyLaunch.onclick=()=>safe(async()=>{const profileId=selectedCompactControlValue('controlLaunch');await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId,apply:true})});toast('Launch profile applied to current session');loadBootstrap()});
@@ -392,6 +396,8 @@ function bindCompactControlMenus(){
       await api('/api/session/fast',{method:'POST',body:JSON.stringify({enabled:button.dataset.controlValue==='on'})});toast('Fast mode updated');loadBootstrap();
     }else if(id==='controlLaunch'){
       await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId:button.dataset.controlValue})});toast('Launch profile updated');loadBootstrap();
+    }else if(id==='controlMirror'){
+      await setMirrorPreference(button.dataset.controlValue||'off');
     }
   },event));
   if(!state.compactControlOutsideBound){

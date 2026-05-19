@@ -77,6 +77,7 @@ declare function loadDiagnostics(): Promise<void>;
 declare function loadLogs(reset?: boolean): Promise<void>;
 declare function loadMetrics(): Promise<void>;
 declare function loadMirrorPreference(): Promise<void>;
+declare function setMirrorPreference(argument: string): Promise<any>;
 declare function loadMonitor(): Promise<void>;
 declare function loadPeers(): Promise<void>;
 declare function loadQueue(): Promise<void>;

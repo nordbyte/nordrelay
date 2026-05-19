@@ -190,15 +190,6 @@ ${faviconLinks}
               <button id="retryBtn" class="secondary">Retry</button>
               <button id="templatePickerBtn" class="secondary" type="button">Templates</button>
               <button id="notifyBtn" class="secondary">Notify</button>
-              <label class="mirror-control" title="Mirror local CLI activity into this WebUI chat">
-                Mirror
-                <select id="mirrorModeSelect">
-                  <option value="off">Off</option>
-                  <option value="status">Status</option>
-                  <option value="final">Final</option>
-                  <option value="full">Full</option>
-                </select>
-              </label>
               <button id="clearChatBtn" class="secondary" title="Clears only the WebUI chat history shown for this session. Agent context and session history stay intact.">Clear</button>
               <div class="chat-more-menu">
                 <button id="chatMoreBtn" class="secondary chat-more-toggle" type="button" aria-haspopup="menu" aria-expanded="false">More</button>

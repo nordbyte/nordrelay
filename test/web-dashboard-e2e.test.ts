@@ -265,11 +265,14 @@ describe("web dashboard browser-flow assets", () => {
 
     expect(js).toContain("selectedLaunch=s.launchProfileId||s.nextLaunchProfileId");
     expect(js).toContain("compactControlMenu('controlLaunch','Launch'");
+    expect(js).toContain("compactControlMenu('controlMirror','Mirror'");
+    expect(js).toContain("setMirrorPreference(button.dataset.controlValue||'off')");
     expect(js).toContain("function bindCompactControlMenus");
     expect(js).toContain("selectedCompactControlValue('controlLaunch')");
     expect(js).toContain(">Apply</button>");
     expect(js).not.toContain("Apply to Current");
     expect(js).not.toContain("<label>Launch<select id=\"controlLaunch\"");
+    expect(js).not.toContain("mirrorModeSelect");
     expect(js).not.toContain("Active launch");
     expect(js).not.toContain("Next launch");
   });
@@ -307,9 +310,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain('replace(/(<\\/pre>)[ \\t]*\\n(?:[ \\t]*\\n)+/g');
     expect(js).toContain("chat-list-continuation");
     expect(js).toContain("start=\"'+start+'\"");
-    expect(js).toContain("function chatMessageCopyButtonHtml");
+    expect(js).toContain("function chatMessageActionsHtml");
     expect(js).toContain("data-message-index");
-    expect(js).toContain("function bindChatMessageCopyButton");
+    expect(js).toContain("function bindChatMessageActionButtons");
     expect(js).toContain("Message copied");
     expect(css).toContain(".message{position:relative;width:fit-content;max-width:92%");
     expect(css).toContain(".message.user{max-width:min(88%,calc(100% - 36px));margin-left:auto;margin-right:0");
@@ -317,7 +320,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain("box-sizing:border-box;width:10px;height:12px");
     expect(css).toContain(".message-copy-button::before{left:9px;top:6px}");
     expect(css).toContain(".message-copy-button::after{left:7px;top:8px}");
-    expect(css).toContain(".message:hover .message-copy-button");
+    expect(css).toContain(".message:hover .message-action-button");
     expect(css).toContain(".message .chat-list-continuation");
   });
 

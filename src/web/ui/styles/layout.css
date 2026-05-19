@@ -44,8 +44,6 @@ a{color:var(--link)}
 .account-menu-panel button{width:100%;justify-content:flex-start;background:var(--surface);color:var(--text);border-color:transparent}
 .account-menu-panel button:hover,.account-menu-panel button.active{background:var(--accent);border-color:var(--accent);color:white}
 .account-menu-group{display:grid;gap:4px;padding:6px 0;border-top:1px solid var(--border-soft);border-bottom:1px solid var(--border-soft)}
-.mirror-control{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;line-height:1}
-.mirror-control select{min-width:86px}
 .menu{display:none;width:36px;min-width:36px;height:36px;min-height:36px;padding:0;background:var(--surface-soft);color:var(--text)}
 .menu:hover,.menu:focus{background:var(--accent-strong);border-color:var(--accent-strong);color:white;outline:none}
 .page{display:none;padding:22px}
