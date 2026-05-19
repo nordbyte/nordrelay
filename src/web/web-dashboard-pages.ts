@@ -396,7 +396,7 @@ ${faviconLinks}
 
       <section class="page" id="page-adapters">
         <div class="panel">
-          <div class="adapter-section-header">
+          <div class="section-header adapter-section-header">
             <div id="adapterTabs" class="section-tabs adapter-tabs" role="tablist" aria-label="Adapter sections">
               <button type="button" role="tab" aria-selected="true" tabindex="0" data-adapter-tab="adapters" class="active">Adapters</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-adapter-tab="conformance">Adapter Conformance</button>

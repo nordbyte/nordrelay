@@ -612,6 +612,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(components).toContain(".metrics-table");
     expect(components).toContain(".diagnostics-grid{margin-top:12px}");
     expect(components).toContain(".metrics-tab,.diagnostics-tab{display:none}");
+    expect(pages).toContain('class="section-header adapter-section-header"');
     expect(pages).toContain('class="section-header metrics-section-header"');
     expect(pages).toContain('data-metrics-tab="web"');
     expect(pages).toContain('id="metricsAutoRefresh"');
