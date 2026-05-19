@@ -3,6 +3,7 @@ import { enabledAgents } from "../agents/shared/agent-factory.js";
 import { listAgentAdapterDescriptors } from "../agents/shared/agent-adapter.js";
 import type { ConnectorConfig } from "../core/config.js";
 import { friendlyErrorText } from "../core/error-messages.js";
+import { getVoiceDiagnostics } from "../artifacts/voice.js";
 import { getAgentDiagnostics } from "../agents/shared/agent-activity.js";
 import { getConnectorHealth, getVersionChecks, readConnectorState } from "../support/operations.js";
 import type { RuntimeSnapshotCache } from "./runtime-cache.js";
@@ -111,6 +112,19 @@ export class RelayDashboardService {
       this.options.snapshot(),
       this.options.getSession(),
     ]);
+    const [slackDiagnostics, voiceDiagnostics] = await Promise.all([
+      collectSlackDiagnostics({
+        config: this.options.config,
+        timeoutMs: 2_500,
+        rateLimit: getSlackRateLimitMetrics(),
+      }),
+      getVoiceDiagnostics({
+        preferredBackend: this.options.config.voicePreferredBackend,
+        defaultLanguage: this.options.config.voiceDefaultLanguage ?? null,
+        transcribeOnly: this.options.config.voiceTranscribeOnly,
+        fasterWhisperPython: process.env.FASTER_WHISPER_PYTHON,
+      }),
+    ]);
     return {
       health,
       versionChecks,
@@ -121,11 +135,8 @@ export class RelayDashboardService {
         queuePaused: this.options.queuePaused(),
         externalMirror: this.options.externalMirror(),
         agentDiagnostics: getAgentDiagnostics(session, this.options.config),
-        slackDiagnostics: await collectSlackDiagnostics({
-          config: this.options.config,
-          timeoutMs: 2_500,
-          rateLimit: getSlackRateLimitMetrics(),
-        }),
+        slackDiagnostics,
+        voiceDiagnostics,
       },
     };
   }

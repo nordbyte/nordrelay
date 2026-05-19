@@ -9,6 +9,7 @@ import type {
 } from "../agents/shared/agent.js";
 import type { AgentUpdateJobSnapshot } from "../agents/shared/agent-updates.js";
 import type { ConnectorHealth, VersionChecks } from "../support/operations.js";
+import type { VoiceDiagnostics } from "../artifacts/voice.js";
 import type { AuditEvent } from "../access/audit-log.js";
 import type { CursorPageMeta } from "../core/pagination.js";
 import type { SlackDiagnostics } from "../channels/slack/slack-diagnostics.js";
@@ -270,6 +271,7 @@ export interface WebDiagnosticsDto {
     externalMirror: ExternalMirrorState | null;
     agentDiagnostics: AgentDiagnostics;
     slackDiagnostics?: SlackDiagnostics;
+    voiceDiagnostics: VoiceDiagnostics;
   };
 }
 

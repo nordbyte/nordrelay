@@ -619,6 +619,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(pages).toContain('class="section-header diagnostics-section-header"');
     expect(pages).toContain('id="diagnosticsTabs"');
     expect(pages).toContain('data-diagnostics-tab="channels"');
+    expect(pages).toContain('data-diagnostics-tab="voice"');
     expect(pages).toContain('id="settingsSearchInput"');
     expect(pages).toContain('class="settings-navigator"');
     expect(pages).toContain('class="setting-info session-workspace-mode-help"');
@@ -645,6 +646,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(admin).toContain("function switchDiagnosticsTab");
     expect(admin).toContain("function bindDiagnosticsTabs");
     expect(admin).toContain("function diagnosticsTabPanel");
+    expect(admin).toContain("function diagnosticsVoiceRows");
     expect(admin).toContain("diagnostics-grid");
     expect(admin).toContain("metricKvCard('Overview'");
     expect(readFileSync("src/web/ui/styles/theme.css", "utf8")).toContain(":root");

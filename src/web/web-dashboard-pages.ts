@@ -587,6 +587,7 @@ ${faviconLinks}
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-diagnostics-tab="state">Agent State</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-diagnostics-tab="versions">Versions</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-diagnostics-tab="channels">Channels</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-diagnostics-tab="voice">Voice</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-diagnostics-tab="mirror">Mirror</button>
             </div>
           </div>

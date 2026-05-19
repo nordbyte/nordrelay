@@ -9,6 +9,7 @@ import {
   _setDecodeHook,
   _setImportHook,
   getAvailableBackends,
+  getVoiceDiagnostics,
   transcribeAudio,
 } from "../src/artifacts/voice.js";
 
@@ -204,6 +205,40 @@ describe("voice transcription", () => {
     delete process.env.OPENAI_API_KEY;
 
     await expect(getAvailableBackends()).resolves.toEqual([]);
+  });
+
+  it("reports voice diagnostics without exposing secrets", async () => {
+    _setImportHook(async () => {
+      const error = new Error("Cannot find package 'parakeet-coreml'") as Error & { code?: string };
+      error.code = "ERR_MODULE_NOT_FOUND";
+      throw error;
+    });
+    process.env.OPENAI_API_KEY = "sk-test";
+    _setCommandHook(async (command, args) => {
+      if (command === "ffmpeg") {
+        return { code: 0, signal: null, stdout: "ffmpeg version test\n", stderr: "" };
+      }
+      expect(args).toEqual(["-c", "import faster_whisper"]);
+      return { code: 0, signal: null, stdout: "", stderr: "" };
+    });
+
+    const diagnostics = await getVoiceDiagnostics({
+      preferredBackend: "auto",
+      defaultLanguage: "de",
+      transcribeOnly: true,
+      fasterWhisperPython: "/opt/venv/bin/python",
+    });
+
+    expect(diagnostics.availableBackends).toEqual(["faster-whisper", "openai"]);
+    expect(diagnostics.defaultLanguage).toBe("de");
+    expect(diagnostics.transcribeOnly).toBe(true);
+    expect(diagnostics.backends.map((backend) => [backend.id, backend.status])).toEqual([
+      ["ffmpeg", "available"],
+      ["parakeet", "missing"],
+      ["faster-whisper", "available"],
+      ["openai", "configured"],
+    ]);
+    expect(JSON.stringify(diagnostics)).not.toContain("sk-test");
   });
 
   it("allows empty transcripts without throwing", async () => {

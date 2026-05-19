@@ -17,6 +17,32 @@ export interface TranscriptionOptions {
   fasterWhisperModel?: string;
 }
 
+export type VoiceBackendStatus = "available" | "missing" | "configured" | "unconfigured" | "error";
+
+export interface VoiceBackendDiagnostic {
+  id: "ffmpeg" | TranscriptionBackend;
+  label: string;
+  status: VoiceBackendStatus;
+  detail: string;
+  version?: string;
+  path?: string;
+}
+
+export interface VoiceDiagnostics {
+  preferredBackend: TranscriptionBackend | "auto";
+  defaultLanguage: string | null;
+  transcribeOnly: boolean;
+  availableBackends: TranscriptionBackend[];
+  backends: VoiceBackendDiagnostic[];
+}
+
+export interface VoiceDiagnosticsOptions {
+  preferredBackend?: TranscriptionBackend | "auto";
+  defaultLanguage?: string | null;
+  transcribeOnly?: boolean;
+  fasterWhisperPython?: string;
+}
+
 // Minimal interface for the parakeet-coreml engine instance.
 interface ParakeetEngine {
   initialize(): Promise<void>;
@@ -145,6 +171,27 @@ export async function getAvailableBackends(): Promise<TranscriptionBackend[]> {
   }
 
   return backends;
+}
+
+export async function getVoiceDiagnostics(options: VoiceDiagnosticsOptions = {}): Promise<VoiceDiagnostics> {
+  const [ffmpeg, parakeet, fasterWhisper] = await Promise.all([
+    inspectFfmpeg(),
+    inspectParakeet(),
+    inspectFasterWhisper(options.fasterWhisperPython),
+  ]);
+  const openai = inspectOpenAI();
+  const availableBackends = [parakeet, fasterWhisper, openai]
+    .filter((backend): backend is VoiceBackendDiagnostic & { id: TranscriptionBackend } =>
+      isTranscriptionBackend(backend.id) && (backend.status === "available" || backend.status === "configured"))
+    .map((backend) => backend.id);
+
+  return {
+    preferredBackend: options.preferredBackend ?? "auto",
+    defaultLanguage: options.defaultLanguage?.trim() || null,
+    transcribeOnly: Boolean(options.transcribeOnly),
+    availableBackends,
+    backends: [ffmpeg, parakeet, fasterWhisper, openai],
+  };
 }
 
 async function transcribeWithParakeet(filePath: string, parakeetMod: unknown): Promise<TranscriptionResult> {
@@ -354,6 +401,105 @@ function resolveFasterWhisperPython(): string {
 
 function hasOpenAIApiKey(): boolean {
   return Boolean(process.env.OPENAI_API_KEY?.trim());
+}
+
+async function inspectFfmpeg(): Promise<VoiceBackendDiagnostic> {
+  const result = await _runCommand("ffmpeg", ["-version"], {
+    env: process.env,
+    timeoutMs: 5_000,
+  }).catch((error): CommandResult => ({
+    code: null,
+    signal: null,
+    stdout: "",
+    stderr: error instanceof Error ? error.message : String(error),
+  }));
+  if (result.code !== 0) {
+    return {
+      id: "ffmpeg",
+      label: "ffmpeg",
+      status: "missing",
+      detail: (result.stderr || result.stdout || "ffmpeg not found").trim(),
+    };
+  }
+  return {
+    id: "ffmpeg",
+    label: "ffmpeg",
+    status: "available",
+    detail: "Audio decoding available.",
+    version: firstNonEmptyLine(result.stdout),
+  };
+}
+
+async function inspectParakeet(): Promise<VoiceBackendDiagnostic> {
+  try {
+    await _importModule(PARAKEET_SPECIFIER);
+    return {
+      id: "parakeet",
+      label: "Parakeet CoreML",
+      status: "available",
+      detail: "Local macOS Apple Silicon transcription backend is installed.",
+    };
+  } catch (error) {
+    const missing = isModuleNotFoundError(error, PARAKEET_SPECIFIER);
+    return {
+      id: "parakeet",
+      label: "Parakeet CoreML",
+      status: missing ? "missing" : "error",
+      detail: missing ? "Package parakeet-coreml is not installed." : errorDetail(error),
+    };
+  }
+}
+
+async function inspectFasterWhisper(pythonOverride?: string): Promise<VoiceBackendDiagnostic> {
+  const python = pythonOverride?.trim() || resolveFasterWhisperPython();
+  const result = await _runCommand(python, ["-c", FASTER_WHISPER_CHECK_SCRIPT], {
+    env: process.env,
+    timeoutMs: 10_000,
+  }).catch((error): CommandResult => ({
+    code: null,
+    signal: null,
+    stdout: "",
+    stderr: error instanceof Error ? error.message : String(error),
+  }));
+  if (result.code !== 0) {
+    return {
+      id: "faster-whisper",
+      label: "faster-whisper",
+      status: "missing",
+      detail: (result.stderr || result.stdout || "faster-whisper is not available.").trim(),
+      path: python,
+    };
+  }
+  return {
+    id: "faster-whisper",
+    label: "faster-whisper",
+    status: "available",
+    detail: "Local Python transcription backend is installed.",
+    path: python,
+  };
+}
+
+function inspectOpenAI(): VoiceBackendDiagnostic {
+  return {
+    id: "openai",
+    label: "OpenAI Whisper",
+    status: hasOpenAIApiKey() ? "configured" : "unconfigured",
+    detail: hasOpenAIApiKey()
+      ? "OPENAI_API_KEY is configured for cloud transcription."
+      : "OPENAI_API_KEY is not configured.",
+  };
+}
+
+function firstNonEmptyLine(value: string): string | undefined {
+  return value.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+}
+
+function errorDetail(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isTranscriptionBackend(value: unknown): value is TranscriptionBackend {
+  return value === "parakeet" || value === "faster-whisper" || value === "openai";
 }
 
 function extractTranscribedText(result: unknown): string | undefined {
