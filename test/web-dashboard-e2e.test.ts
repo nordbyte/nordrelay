@@ -277,6 +277,21 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).not.toContain("Next launch");
   });
 
+  it("renders chat notifications as a toggle icon", () => {
+    const js = dashboardJs();
+    const css = dashboardCss();
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+
+    expect(pageSource).toContain('id="notifyBtn" class="secondary icon-button notify-toggle"');
+    expect(pageSource).toContain('class="notify-outline"');
+    expect(pageSource).toContain('class="notify-filled"');
+    expect(pageSource).not.toContain(">Notify</button>");
+    expect(js).toContain("function toggleNotifications");
+    expect(js).toContain("localStorage.setItem(NOTIFICATION_PREF_KEY");
+    expect(css).toContain(".notify-toggle.notifications-enabled");
+    expect(css).toContain(".notify-toggle.notifications-enabled .notify-filled{display:block}");
+  });
+
   it("renders active sessions on the overview instead of the single current session panel", () => {
     const js = dashboardJs();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");

@@ -125,7 +125,13 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .header-target-load-more:hover,.header-target-load-more:focus{background:color-mix(in srgb,var(--accent) 12%,transparent)!important;color:var(--link)!important;outline:none}
 .header-target-session-state{padding:7px 9px;color:var(--muted);font-size:12px}
 .header-target-session-state.error{color:var(--danger)}
-.compact-apply-button{width:auto;min-width:0}
+.compact-apply-button{width:auto;min-width:0;min-height:28px;height:28px;padding:0 9px;font-size:13px}
+.icon-button{display:inline-flex;align-items:center;justify-content:center;width:36px;min-width:36px;height:36px;min-height:36px;padding:0}
+.icon-button svg{display:block;width:18px;height:18px}
+.notify-toggle .notify-filled{display:none}
+.notify-toggle.notifications-enabled{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.notify-toggle.notifications-enabled .notify-outline{display:none}
+.notify-toggle.notifications-enabled .notify-filled{display:block}
 .messages{flex:1;min-height:0;overflow:auto;border:1px solid var(--border-soft);border-radius:8px;padding:12px;background:var(--surface-soft)}
 .message{position:relative;width:fit-content;max-width:92%;box-sizing:border-box;margin:0 0 12px;padding:10px 74px 10px 12px;border-radius:8px;white-space:pre-wrap;word-break:break-word}
 .message.user{max-width:min(88%,calc(100% - 36px));margin-left:auto;margin-right:0;background:var(--accent-soft)}
