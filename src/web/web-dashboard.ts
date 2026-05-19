@@ -11,7 +11,7 @@ import { isAgentId } from "../agents/shared/agent.js";
 import { AuditLogStore, type AuditEvent } from "../access/audit-log.js";
 import { listChannelDescriptors } from "../channels/shared/channel-adapter.js";
 import { permissionForWebRequest } from "../access/access-control.js";
-import { loadConfig } from "../core/config.js";
+import { loadConfig, loadEnvFile } from "../core/config.js";
 import { friendlyErrorText } from "../core/error-messages.js";
 import { RelayRuntime, type ActiveSessionsDto, type DashboardControlOptions, type RelayEvent, type SessionPageDto, type WebTasksDto } from "../runtime/relay-runtime.js";
 import { resolveDashboardEnvPath, SettingsService } from "../core/settings-service.js";
@@ -55,6 +55,7 @@ const WEB_API_MUTATION_WINDOW_MS = 60_000;
 const WEB_API_MUTATION_BLOCK_MS = 60_000;
 
 const options = parseOptions(process.argv.slice(2));
+loadEnvFile(resolveDashboardEnvPath(options.home));
 const config = loadConfig();
 if (!config.webuiEnabled) {
   throw new Error("WebUI is disabled by NORDRELAY_WEBUI_ENABLED=false.");
@@ -340,7 +341,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     await assertCurrentSessionScope(authUser);
     sendJson(res, 200, {
       auth: currentUserDto(authUser, req),
-      channels: listChannelDescriptors(),
+      channels: listChannelDescriptors(config),
       agentAdapters: listAgentAdapterDescriptors().filter((adapter) => users.canUseAgent(authUser, adapter.id)),
       adapterConformance: scopedAdapterConformance(authUser),
       enabledAgents: enabledAgents(config).filter((agentId) => users.canUseAgent(authUser, agentId)),
@@ -741,7 +742,7 @@ function scopedControlOptions(authUser: AuthenticatedUser, options: DashboardCon
 }
 
 function scopedAdapterConformance(authUser: AuthenticatedUser) {
-  const matrix = buildAdapterConformanceMatrix();
+  const matrix = buildAdapterConformanceMatrix({ channels: listChannelDescriptors(config) });
   return {
     ...matrix,
     agents: matrix.agents.filter((adapter) => users.canUseAgent(authUser, adapter.id)),

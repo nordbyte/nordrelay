@@ -600,7 +600,7 @@ function isRunningInDocker(): boolean {
   return existsSync("/.dockerenv") || process.env.container === "docker";
 }
 
-function loadEnvFile(envPath: string): void {
+export function loadEnvFile(envPath: string): void {
   if (!existsSync(envPath)) {
     return;
   }

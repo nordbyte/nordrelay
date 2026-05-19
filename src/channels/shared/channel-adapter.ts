@@ -1,4 +1,5 @@
 import type { AgentPromptInput } from "../../agents/shared/agent.js";
+import type { ConnectorConfig } from "../../core/config.js";
 
 export type ChannelId = "telegram" | "discord" | "whatsapp" | "slack" | "matrix";
 
@@ -126,12 +127,43 @@ const PLANNED_CHANNELS: ChannelDescriptor[] = [
   },
 ];
 
+type ChannelDescriptorConfig = Pick<
+  ConnectorConfig,
+  | "adapterWarnings"
+  | "telegramEnabled"
+  | "telegramBotToken"
+  | "telegramTransport"
+  | "discordEnabled"
+  | "discordBotToken"
+  | "slackEnabled"
+  | "slackBotToken"
+  | "slackAppToken"
+  | "slackSocketMode"
+>;
+
+function adapterWarning(config: ChannelDescriptorConfig, label: "Telegram" | "Discord" | "Slack"): string | undefined {
+  return config.adapterWarnings?.find((warning) => warning.startsWith(`${label} disabled:`));
+}
+
 export class TelegramChannelAdapter implements ChannelAdapter {
   readonly id = "telegram";
   readonly label = "Telegram";
   readonly capabilities = new Set<ChannelCapability>(TELEGRAM_CAPABILITIES);
 
-  describe(): ChannelDescriptor {
+  describe(config?: ChannelDescriptorConfig): ChannelDescriptor {
+    if (config) {
+      const warning = adapterWarning(config, "Telegram");
+      return {
+        id: this.id,
+        label: this.label,
+        capabilities: [...this.capabilities],
+        status: "available",
+        enabled: config.telegramEnabled,
+        notes: config.telegramEnabled
+          ? `Telegram bot runtime is enabled (${config.telegramTransport}).`
+          : (warning ?? "Telegram bot runtime is disabled."),
+      };
+    }
     const requested = process.env.TELEGRAM_ENABLED !== "false";
     const enabled = requested && Boolean(process.env.TELEGRAM_BOT_TOKEN);
     return {
@@ -154,7 +186,20 @@ export class DiscordChannelAdapter implements ChannelAdapter {
   readonly label = "Discord";
   readonly capabilities = new Set<ChannelCapability>(DISCORD_CAPABILITIES);
 
-  describe(): ChannelDescriptor {
+  describe(config?: ChannelDescriptorConfig): ChannelDescriptor {
+    if (config) {
+      const warning = adapterWarning(config, "Discord");
+      return {
+        id: this.id,
+        label: this.label,
+        capabilities: [...this.capabilities],
+        status: "available",
+        enabled: config.discordEnabled,
+        notes: config.discordEnabled
+          ? "Discord bot runtime is enabled."
+          : (warning ?? "Enable with DISCORD_ENABLED=true and DISCORD_BOT_TOKEN."),
+      };
+    }
     const requested = process.env.DISCORD_ENABLED === "true";
     const enabled = requested && Boolean(process.env.DISCORD_BOT_TOKEN);
     return {
@@ -177,7 +222,20 @@ export class SlackChannelAdapter implements ChannelAdapter {
   readonly label = "Slack";
   readonly capabilities = new Set<ChannelCapability>(SLACK_CAPABILITIES);
 
-  describe(): ChannelDescriptor {
+  describe(config?: ChannelDescriptorConfig): ChannelDescriptor {
+    if (config) {
+      const warning = adapterWarning(config, "Slack");
+      return {
+        id: this.id,
+        label: this.label,
+        capabilities: [...this.capabilities],
+        status: "available",
+        enabled: config.slackEnabled,
+        notes: config.slackEnabled
+          ? "Slack bot runtime is enabled."
+          : (warning ?? "Enable with SLACK_ENABLED=true, SLACK_BOT_TOKEN, and SLACK_APP_TOKEN."),
+      };
+    }
     const requested = process.env.SLACK_ENABLED === "true";
     const enabled = requested && Boolean(process.env.SLACK_BOT_TOKEN) && Boolean(process.env.SLACK_APP_TOKEN);
     return {
@@ -195,11 +253,11 @@ export class SlackChannelAdapter implements ChannelAdapter {
   }
 }
 
-export function listChannelDescriptors(): ChannelDescriptor[] {
+export function listChannelDescriptors(config?: ChannelDescriptorConfig): ChannelDescriptor[] {
   return [
-    new TelegramChannelAdapter().describe(),
-    new DiscordChannelAdapter().describe(),
-    new SlackChannelAdapter().describe(),
+    new TelegramChannelAdapter().describe(config),
+    new DiscordChannelAdapter().describe(config),
+    new SlackChannelAdapter().describe(config),
     ...PLANNED_CHANNELS,
   ];
 }

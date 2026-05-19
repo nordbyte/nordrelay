@@ -68,7 +68,7 @@ export class ChannelCommandService {
   constructor(private readonly config: ConnectorConfig) {}
 
   renderChannels(): ChannelActionResponse {
-    return renderChannelsAction(listChannelDescriptors());
+    return renderChannelsAction(listChannelDescriptors(this.config));
   }
 
   renderAgents(agentIds: AgentId[] = enabledAgents(this.config)): ChannelActionResponse {

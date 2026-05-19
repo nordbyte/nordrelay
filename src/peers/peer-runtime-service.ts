@@ -120,7 +120,7 @@ export class PeerRuntimeService {
           groups: [],
           permissions: peer.scopes,
         },
-        channels: listChannelDescriptors(),
+        channels: listChannelDescriptors(this.config),
         agentAdapters: listAgentAdapterDescriptors().filter((adapter) => this.canUseAgent(peer, adapter.id)),
         enabledAgents: enabledAgents(this.config).filter((agentId) => this.canUseAgent(peer, agentId)),
         controls: this.scopedControlOptions(peer, await runtime.controlOptions(agentId)),
@@ -146,7 +146,7 @@ export class PeerRuntimeService {
     if (method === "GET" && path === "/api/adapters/conformance") {
       return buildAdapterConformanceMatrix({
         agents: listAgentAdapterDescriptors().filter((adapter) => this.canUseAgent(peer, adapter.id)),
-        channels: listChannelDescriptors(),
+        channels: listChannelDescriptors(this.config),
       });
     }
     if (method === "GET" && path === "/api/diagnostics") return this.scopedDiagnostics(peer, await runtime.diagnostics());
