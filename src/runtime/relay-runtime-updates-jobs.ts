@@ -35,7 +35,7 @@ import type { ConnectorConfig } from "../core/config.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import { friendlyErrorText } from "../core/error-messages.js";
 import { cursorPage, normalizeCursorLimit } from "../core/pagination.js";
-import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "../support/operations.js";
+import { clearAgentCliVersionCache, clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "../support/operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "../state/prompt-store.js";
 import { UnifiedJobStore } from "../state/job-store.js";
 import { buildRuntimeMetrics, type RuntimeMetricsDto } from "./metrics.js";
@@ -494,6 +494,9 @@ export function relayRuntimeRecordAgentUpdateLifecycle(runtime: RelayRuntimeDele
       });
     }
     if (job.status !== "running" && previous?.status === "running") {
+      clearAgentCliVersionCache(job.agentId, runtime.cliPathOptions());
+      runtime.dashboardService.invalidate("version");
+      runtime.dashboardService.invalidate("adapterHealth");
       runtime.appendActivity({
         source: "web",
         status: job.status === "completed" ? "completed" : job.status === "cancelled" ? "aborted" : "failed",

@@ -52,7 +52,7 @@ function bindChatCopyButtons(root){root.querySelectorAll?.('[data-chat-copy]').f
 const AGENT_UPDATE_TERMINAL_STATUSES=new Set(['completed','failed','cancelled']);
 let agentUpdateVersionRefreshTimers=[];
 function clearAgentUpdateVersionRefreshTimers(){agentUpdateVersionRefreshTimers.forEach(timer=>clearTimeout(timer));agentUpdateVersionRefreshTimers=[]}
-function scheduleAgentUpdateVersionRefresh(job){if(!job||!AGENT_UPDATE_TERMINAL_STATUSES.has(job.status))return;clearAgentUpdateVersionRefreshTimers();const delays=job.status==='completed'?[500,2000,5000,10000]:[500];agentUpdateVersionRefreshTimers=delays.map(delay=>setTimeout(()=>{if(state.currentPage==='version')loadVersion({quiet:true,refreshJobs:false})},delay))}
+function scheduleAgentUpdateVersionRefresh(job){if(!job||!AGENT_UPDATE_TERMINAL_STATUSES.has(job.status))return;clearAgentUpdateVersionRefreshTimers();const delays=[500,2000,5000,10000];agentUpdateVersionRefreshTimers=delays.map(delay=>setTimeout(()=>{if(state.currentPage==='version')loadVersion({quiet:true,refreshJobs:false})},delay))}
 function connectEvents(){
   if(state.events) state.events.close();
   const eventsUrl = state.selectedPeer && state.selectedPeer !== 'local'

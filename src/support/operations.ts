@@ -175,6 +175,29 @@ interface CommandOutput {
 
 const cliVersionCache = new Map<string, { value?: string; expiresAt: number; promise?: Promise<string> }>();
 
+export function clearAgentCliVersionCache(
+  agentId?: keyof Omit<VersionChecks, "nordrelay"> | "claude-code",
+  options: { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string; claudeCodeCliPath?: string } = {},
+): number {
+  const env = process.env;
+  const paths = new Set<string>();
+  const add = (filePath: string | undefined | null): void => {
+    if (filePath) paths.add(filePath);
+  };
+
+  if (!agentId || agentId === "codex") add(resolveCodexCli(env).path);
+  if (!agentId || agentId === "pi") add(resolvePiCli(env, options.piCliPath).path);
+  if (!agentId || agentId === "hermes") add(resolveHermesCli(env, options.hermesCliPath).path);
+  if (!agentId || agentId === "openclaw") add(resolveOpenClawCli(env, options.openClawCliPath).path);
+  if (!agentId || agentId === "claudeCode" || agentId === "claude-code") add(resolveClaudeCodeCli(env, options.claudeCodeCliPath).path);
+
+  let cleared = 0;
+  for (const filePath of paths) {
+    if (cliVersionCache.delete(filePath)) cleared += 1;
+  }
+  return cleared;
+}
+
 export function getConnectorHome(): string {
   return process.env.NORDRELAY_HOME || DEFAULT_HOME;
 }

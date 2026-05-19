@@ -474,6 +474,8 @@ describe("web dashboard browser-flow assets", () => {
 
   it("binds version agent update buttons after rendering version cards", () => {
     const js = dashboardJs();
+    const runtimeSource = readFileSync("src/runtime/relay-runtime-updates-jobs.ts", "utf8");
+    const operationsSource = readFileSync("src/support/operations.ts", "utf8");
 
     expect(js).toContain("data-update-agent");
     expect(js).toContain("updateOperation");
@@ -485,6 +487,11 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain('class="data-table version-table"');
     expect(js).not.toContain("versionPanel').innerHTML='<div class=\"version-grid\"");
     expect(js).toContain("bindAgentUpdateButtons();applyPermissions()");
+    expect(js).toContain("const delays=[500,2000,5000,10000]");
+    expect(runtimeSource).toContain("clearAgentCliVersionCache(job.agentId, runtime.cliPathOptions())");
+    expect(runtimeSource).toContain('runtime.dashboardService.invalidate("version")');
+    expect(runtimeSource).toContain('runtime.dashboardService.invalidate("adapterHealth")');
+    expect(operationsSource).toContain("export function clearAgentCliVersionCache");
   });
 
   it("loads dashboard CSS and JavaScript through static asset routes", () => {
