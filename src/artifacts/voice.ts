@@ -5,11 +5,11 @@ import { readFile } from "node:fs/promises";
 
 export interface TranscriptionResult {
   text: string;
-  backend: "parakeet" | "faster-whisper" | "openai";
+  backend: "parakeet" | "faster-whisper" | "cohere-transcribe" | "openai";
   durationMs: number;
 }
 
-export type TranscriptionBackend = "parakeet" | "faster-whisper" | "openai";
+export type TranscriptionBackend = "parakeet" | "faster-whisper" | "cohere-transcribe" | "openai";
 
 export interface TranscriptionOptions {
   preferredBackend?: TranscriptionBackend | "auto";
@@ -62,7 +62,12 @@ Option 2: Install Parakeet for local macOS Apple Silicon transcription (free, pr
   npm install parakeet-coreml
 Also requires ffmpeg: sudo apt-get install ffmpeg or brew install ffmpeg
 
-Option 3: Set OPENAI_API_KEY for cloud transcription (~$0.006/min):
+Option 3: Install Cohere Transcribe for local Hugging Face transcription:
+  .venv/bin/python -m pip install torch transformers librosa soundfile accelerate
+  Add VOICE_PREFERRED_BACKEND=cohere-transcribe to your .env file
+  The model may require a Hugging Face login/token before first download.
+
+Option 4: Set OPENAI_API_KEY for cloud transcription (~$0.006/min):
   Add OPENAI_API_KEY=sk-... to your .env file`;
 const FASTER_WHISPER_CHECK_SCRIPT = "import faster_whisper";
 const FASTER_WHISPER_TRANSCRIBE_SCRIPT = `
@@ -86,6 +91,96 @@ print(json.dumps({
     "duration": getattr(info, "duration", None),
 }))
 `;
+const COHERE_TRANSCRIBE_MODEL_DEFAULT = "CohereLabs/cohere-transcribe-03-2026";
+const COHERE_TRANSCRIBE_CHECK_SCRIPT = `
+import json
+import sys
+
+try:
+    import torch
+    import transformers
+    from transformers import AutoProcessor, CohereAsrForConditionalGeneration
+    from transformers.audio_utils import load_audio
+except Exception as exc:
+    print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))
+    sys.exit(1)
+
+print(json.dumps({
+    "ok": True,
+    "torch": getattr(torch, "__version__", None),
+    "transformers": getattr(transformers, "__version__", None),
+}))
+`;
+const COHERE_TRANSCRIBE_SCRIPT = `
+import json
+import os
+import sys
+import time
+
+import torch
+from transformers import AutoProcessor, CohereAsrForConditionalGeneration
+from transformers.audio_utils import load_audio
+
+audio_path = sys.argv[1]
+model_name = os.environ.get("COHERE_TRANSCRIBE_MODEL", "CohereLabs/cohere-transcribe-03-2026")
+device = os.environ.get("COHERE_TRANSCRIBE_DEVICE", "auto").strip().lower()
+dtype_name = os.environ.get("COHERE_TRANSCRIBE_DTYPE", "auto").strip().lower()
+language = (
+    os.environ.get("COHERE_TRANSCRIBE_LANGUAGE")
+    or os.environ.get("VOICE_DEFAULT_LANGUAGE")
+    or "en"
+).strip().lower()
+if language in ("", "auto", "default", "detect"):
+    language = "en"
+punctuation = os.environ.get("COHERE_TRANSCRIBE_PUNCTUATION", "true").strip().lower() not in ("0", "false", "no", "off")
+max_new_tokens = int(os.environ.get("COHERE_TRANSCRIBE_MAX_NEW_TOKENS", "1024"))
+
+started = time.time()
+processor = AutoProcessor.from_pretrained(model_name)
+model_kwargs = {}
+if device == "auto":
+    model_kwargs["device_map"] = "auto"
+if dtype_name not in ("", "auto"):
+    model_kwargs["torch_dtype"] = getattr(torch, dtype_name)
+model = CohereAsrForConditionalGeneration.from_pretrained(model_name, **model_kwargs)
+if device not in ("", "auto"):
+    model.to(device)
+
+audio = load_audio(audio_path, sampling_rate=16000)
+duration = len(audio) / 16000 if hasattr(audio, "__len__") else None
+inputs = processor(
+    audio=audio,
+    sampling_rate=16000,
+    return_tensors="pt",
+    language=language,
+    punctuation=punctuation,
+)
+audio_chunk_index = inputs.get("audio_chunk_index")
+try:
+    model_device = getattr(model, "device", None) or next(model.parameters()).device
+except Exception:
+    model_device = torch.device("cpu")
+model_dtype = getattr(model, "dtype", None)
+if model_dtype is not None:
+    inputs.to(model_device, dtype=model_dtype)
+else:
+    inputs.to(model_device)
+outputs = model.generate(**inputs, max_new_tokens=max_new_tokens)
+text = processor.decode(
+    outputs,
+    skip_special_tokens=True,
+    audio_chunk_index=audio_chunk_index,
+    language=language,
+)
+if isinstance(text, list):
+    text = text[0] if text else ""
+print(json.dumps({
+    "text": str(text).strip(),
+    "language": language,
+    "duration": duration,
+    "elapsed": time.time() - started,
+}))
+`;
 
 const _require = createRequire(import.meta.url);
 let _importModule: (specifier: string) => Promise<unknown> = async (specifier) => _require(specifier);
@@ -93,6 +188,7 @@ let _decodeAudio: (filePath: string) => Promise<Float32Array> = decodeAudioToSam
 let _runCommand: CommandRunner = runCommand;
 let _engine: ParakeetEngine | null = null;
 let _fasterWhisperAvailable: boolean | undefined;
+let _cohereTranscribeAvailable: boolean | undefined;
 
 type CommandResult = {
   code: number | null;
@@ -118,6 +214,7 @@ export function _setDecodeHook(hook: (filePath: string) => Promise<Float32Array>
 export function _setCommandHook(hook: CommandRunner): void {
   _runCommand = hook;
   _fasterWhisperAvailable = undefined;
+  _cohereTranscribeAvailable = undefined;
 }
 
 export function _resetImportHook(): void {
@@ -126,6 +223,7 @@ export function _resetImportHook(): void {
   _runCommand = runCommand;
   _engine = null;
   _fasterWhisperAvailable = undefined;
+  _cohereTranscribeAvailable = undefined;
 }
 
 export async function transcribeAudio(filePath: string, options: TranscriptionOptions = {}): Promise<TranscriptionResult> {
@@ -137,6 +235,9 @@ export async function transcribeAudio(filePath: string, options: TranscriptionOp
       }
       if (backend === "faster-whisper" && await hasFasterWhisper()) {
         return await transcribeWithFasterWhisper(filePath, options);
+      }
+      if (backend === "cohere-transcribe" && await hasCohereTranscribe()) {
+        return await transcribeWithCohereTranscribe(filePath, options);
       }
       if (backend === "openai" && hasOpenAIApiKey()) {
         return await transcribeWithOpenAI(filePath, options);
@@ -166,6 +267,10 @@ export async function getAvailableBackends(): Promise<TranscriptionBackend[]> {
     backends.push("faster-whisper");
   }
 
+  if (await hasCohereTranscribe()) {
+    backends.push("cohere-transcribe");
+  }
+
   if (hasOpenAIApiKey()) {
     backends.push("openai");
   }
@@ -174,13 +279,14 @@ export async function getAvailableBackends(): Promise<TranscriptionBackend[]> {
 }
 
 export async function getVoiceDiagnostics(options: VoiceDiagnosticsOptions = {}): Promise<VoiceDiagnostics> {
-  const [ffmpeg, parakeet, fasterWhisper] = await Promise.all([
+  const [ffmpeg, parakeet, fasterWhisper, cohereTranscribe] = await Promise.all([
     inspectFfmpeg(),
     inspectParakeet(),
     inspectFasterWhisper(options.fasterWhisperPython),
+    inspectCohereTranscribe(),
   ]);
   const openai = inspectOpenAI();
-  const availableBackends = [parakeet, fasterWhisper, openai]
+  const availableBackends = [parakeet, fasterWhisper, cohereTranscribe, openai]
     .filter((backend): backend is VoiceBackendDiagnostic & { id: TranscriptionBackend } =>
       isTranscriptionBackend(backend.id) && (backend.status === "available" || backend.status === "configured"))
     .map((backend) => backend.id);
@@ -190,7 +296,7 @@ export async function getVoiceDiagnostics(options: VoiceDiagnosticsOptions = {})
     defaultLanguage: options.defaultLanguage?.trim() || null,
     transcribeOnly: Boolean(options.transcribeOnly),
     availableBackends,
-    backends: [ffmpeg, parakeet, fasterWhisper, openai],
+    backends: [ffmpeg, parakeet, fasterWhisper, cohereTranscribe, openai],
   };
 }
 
@@ -270,6 +376,42 @@ async function transcribeWithFasterWhisper(filePath: string, options: Transcript
     text: payload.text,
     backend: "faster-whisper",
     durationMs: typeof payload.duration === "number" ? Math.round(payload.duration * 1000) : Date.now() - startedAt,
+  };
+}
+
+async function transcribeWithCohereTranscribe(filePath: string, options: TranscriptionOptions = {}): Promise<TranscriptionResult> {
+  const startedAt = Date.now();
+  const env = {
+    ...process.env,
+    ...(options.language ? { VOICE_DEFAULT_LANGUAGE: options.language } : {}),
+  };
+  const result = await _runCommand(
+    resolveCohereTranscribePython(),
+    ["-c", COHERE_TRANSCRIBE_SCRIPT, filePath],
+    {
+      env,
+      timeoutMs: parsePositiveInteger(process.env.COHERE_TRANSCRIBE_TIMEOUT_MS, 30 * 60 * 1000),
+    },
+  );
+
+  if (result.code !== 0) {
+    const detail = (result.stderr || result.stdout || "unknown error").trim();
+    throw new Error(`Cohere Transcribe failed (${result.code ?? result.signal ?? "unknown"}): ${detail}`);
+  }
+
+  const payload = parseJsonLine(result.stdout) as { text?: unknown; duration?: unknown; elapsed?: unknown } | null;
+  if (!payload || typeof payload.text !== "string") {
+    throw new Error("Cohere Transcribe response did not include a text field");
+  }
+
+  return {
+    text: payload.text,
+    backend: "cohere-transcribe",
+    durationMs: typeof payload.duration === "number"
+      ? Math.round(payload.duration * 1000)
+      : typeof payload.elapsed === "number"
+        ? Math.round(payload.elapsed * 1000)
+        : Date.now() - startedAt,
   };
 }
 
@@ -395,8 +537,25 @@ async function hasFasterWhisper(): Promise<boolean> {
   return _fasterWhisperAvailable;
 }
 
+async function hasCohereTranscribe(): Promise<boolean> {
+  if (_cohereTranscribeAvailable !== undefined) {
+    return _cohereTranscribeAvailable;
+  }
+
+  const result = await _runCommand(resolveCohereTranscribePython(), ["-c", COHERE_TRANSCRIBE_CHECK_SCRIPT], {
+    env: process.env,
+    timeoutMs: 10_000,
+  }).catch(() => null);
+  _cohereTranscribeAvailable = result?.code === 0;
+  return _cohereTranscribeAvailable;
+}
+
 function resolveFasterWhisperPython(): string {
   return process.env.FASTER_WHISPER_PYTHON?.trim() || process.env.WHISPER_PYTHON?.trim() || "python3";
+}
+
+function resolveCohereTranscribePython(): string {
+  return process.env.COHERE_TRANSCRIBE_PYTHON?.trim() || resolveFasterWhisperPython();
 }
 
 function hasOpenAIApiKey(): boolean {
@@ -479,6 +638,43 @@ async function inspectFasterWhisper(pythonOverride?: string): Promise<VoiceBacke
   };
 }
 
+async function inspectCohereTranscribe(): Promise<VoiceBackendDiagnostic> {
+  const python = resolveCohereTranscribePython();
+  const result = await _runCommand(python, ["-c", COHERE_TRANSCRIBE_CHECK_SCRIPT], {
+    env: process.env,
+    timeoutMs: 10_000,
+  }).catch((error): CommandResult => ({
+    code: null,
+    signal: null,
+    stdout: "",
+    stderr: error instanceof Error ? error.message : String(error),
+  }));
+  const payload = parseJsonLine(result.stdout) as { ok?: unknown; torch?: unknown; transformers?: unknown; error?: unknown } | null;
+  if (result.code !== 0 || payload?.ok !== true) {
+    return {
+      id: "cohere-transcribe",
+      label: "Cohere Transcribe",
+      status: "missing",
+      detail: typeof payload?.error === "string"
+        ? payload.error
+        : (result.stderr || result.stdout || "Cohere Transcribe Python dependencies are not available.").trim(),
+      path: python,
+    };
+  }
+  const model = process.env.COHERE_TRANSCRIBE_MODEL?.trim() || COHERE_TRANSCRIBE_MODEL_DEFAULT;
+  const versions = [
+    typeof payload.transformers === "string" ? `transformers ${payload.transformers}` : "",
+    typeof payload.torch === "string" ? `torch ${payload.torch}` : "",
+  ].filter(Boolean).join(" / ");
+  return {
+    id: "cohere-transcribe",
+    label: "Cohere Transcribe",
+    status: "available",
+    detail: `Local Hugging Face backend is installed. Model ${model} downloads on first use and may require HF_TOKEN for gated access.${versions ? ` ${versions}.` : ""}`,
+    path: python,
+  };
+}
+
 function inspectOpenAI(): VoiceBackendDiagnostic {
   return {
     id: "openai",
@@ -499,7 +695,7 @@ function errorDetail(error: unknown): string {
 }
 
 function isTranscriptionBackend(value: unknown): value is TranscriptionBackend {
-  return value === "parakeet" || value === "faster-whisper" || value === "openai";
+  return value === "parakeet" || value === "faster-whisper" || value === "cohere-transcribe" || value === "openai";
 }
 
 function extractTranscribedText(result: unknown): string | undefined {
@@ -600,7 +796,7 @@ function parsePositiveInteger(raw: string | undefined, fallback: number): number
 }
 
 function backendOrder(preferred: TranscriptionOptions["preferredBackend"]): TranscriptionBackend[] {
-  const all: TranscriptionBackend[] = ["parakeet", "faster-whisper", "openai"];
+  const all: TranscriptionBackend[] = ["parakeet", "faster-whisper", "cohere-transcribe", "openai"];
   if (!preferred || preferred === "auto") {
     return all;
   }

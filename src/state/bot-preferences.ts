@@ -5,7 +5,7 @@ export type ChannelMirrorMode = "off" | "status" | "final" | "full";
 export type ChannelNotifyMode = "off" | "minimal" | "all";
 export type TelegramMirrorMode = ChannelMirrorMode;
 export type TelegramNotifyMode = ChannelNotifyMode;
-export type VoiceBackendPreference = "auto" | "parakeet" | "faster-whisper" | "openai";
+export type VoiceBackendPreference = "auto" | "parakeet" | "faster-whisper" | "cohere-transcribe" | "openai";
 
 export interface QuietHours {
   startHour: number;
@@ -104,6 +104,7 @@ export function parseVoiceBackendPreference(value: string | undefined): VoiceBac
   if (
     normalized === "parakeet" ||
     normalized === "faster-whisper" ||
+    normalized === "cohere-transcribe" ||
     normalized === "openai"
   ) {
     return normalized;
@@ -197,5 +198,5 @@ function isNotifyMode(value: unknown): value is TelegramNotifyMode {
 }
 
 function isVoiceBackendPreference(value: unknown): value is VoiceBackendPreference {
-  return value === "auto" || value === "parakeet" || value === "faster-whisper" || value === "openai";
+  return value === "auto" || value === "parakeet" || value === "faster-whisper" || value === "cohere-transcribe" || value === "openai";
 }

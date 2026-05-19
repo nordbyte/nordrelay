@@ -192,7 +192,12 @@ describe("voice transcription", () => {
       throw new Error(`unexpected import: ${specifier}`);
     });
     process.env.OPENAI_API_KEY = "sk-test";
-    _setCommandHook(async () => ({ code: 0, signal: null, stdout: "", stderr: "" }));
+    _setCommandHook(async (_command, args) => {
+      if (args[1] === "import faster_whisper") {
+        return { code: 0, signal: null, stdout: "", stderr: "" };
+      }
+      return { code: 1, signal: null, stdout: "", stderr: "missing cohere-transcribe dependencies" };
+    });
 
     await expect(getAvailableBackends()).resolves.toEqual(["parakeet", "faster-whisper", "openai"]);
 
@@ -201,10 +206,39 @@ describe("voice transcription", () => {
       error.code = "ERR_MODULE_NOT_FOUND";
       throw error;
     });
-    _setCommandHook(async () => ({ code: 1, signal: null, stdout: "", stderr: "missing faster-whisper" }));
+    _setCommandHook(async () => ({ code: 1, signal: null, stdout: "", stderr: "missing voice backend" }));
     delete process.env.OPENAI_API_KEY;
 
     await expect(getAvailableBackends()).resolves.toEqual([]);
+  });
+
+  it("uses local Cohere Transcribe when available", async () => {
+    _setImportHook(async () => {
+      const error = new Error("Cannot find package 'parakeet-coreml'") as Error & { code?: string };
+      error.code = "ERR_MODULE_NOT_FOUND";
+      throw error;
+    });
+    _setCommandHook(async (_command, args) => {
+      const script = String(args[1] ?? "");
+      if (args[1] === "import faster_whisper") {
+        return { code: 1, signal: null, stdout: "", stderr: "missing faster-whisper" };
+      }
+      if (script.includes("CohereAsrForConditionalGeneration") && args.length === 2) {
+        return { code: 0, signal: null, stdout: JSON.stringify({ ok: true, torch: "2.9.0", transformers: "5.4.0" }), stderr: "" };
+      }
+      if (script.includes("CohereAsrForConditionalGeneration") && args.at(-1) === audioPath) {
+        return { code: 0, signal: null, stdout: JSON.stringify({ text: "cohere transcript", duration: 1.5 }), stderr: "" };
+      }
+      return { code: 1, signal: null, stdout: "", stderr: "unexpected command" };
+    });
+
+    const result = await transcribeAudio(audioPath, { preferredBackend: "cohere-transcribe", language: "de" });
+
+    expect(result).toEqual({
+      text: "cohere transcript",
+      backend: "cohere-transcribe",
+      durationMs: 1500,
+    });
   });
 
   it("reports voice diagnostics without exposing secrets", async () => {
@@ -218,7 +252,11 @@ describe("voice transcription", () => {
       if (command === "ffmpeg") {
         return { code: 0, signal: null, stdout: "ffmpeg version test\n", stderr: "" };
       }
-      expect(args).toEqual(["-c", "import faster_whisper"]);
+      const script = String(args[1] ?? "");
+      if (args[1] === "import faster_whisper") {
+        return { code: 0, signal: null, stdout: "", stderr: "" };
+      }
+      expect(script).toContain("CohereAsrForConditionalGeneration");
       return { code: 0, signal: null, stdout: "", stderr: "" };
     });
 
@@ -236,6 +274,7 @@ describe("voice transcription", () => {
       ["ffmpeg", "available"],
       ["parakeet", "missing"],
       ["faster-whisper", "available"],
+      ["cohere-transcribe", "missing"],
       ["openai", "configured"],
     ]);
     expect(JSON.stringify(diagnostics)).not.toContain("sk-test");

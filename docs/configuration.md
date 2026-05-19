@@ -185,9 +185,17 @@ Auth and voice:
 - `FASTER_WHISPER_COMPUTE_TYPE`: faster-whisper compute type. Defaults to `int8`.
 - `FASTER_WHISPER_LANGUAGE`: optional fixed transcription language.
 - `FASTER_WHISPER_TIMEOUT_MS`: local transcription timeout. Defaults to `600000`.
+- `COHERE_TRANSCRIBE_PYTHON`: Python executable with `torch`, `transformers`, `librosa`, `soundfile`, and `accelerate` installed. Defaults to `FASTER_WHISPER_PYTHON`.
+- `COHERE_TRANSCRIBE_MODEL`: Hugging Face model id. Defaults to `CohereLabs/cohere-transcribe-03-2026`.
+- `COHERE_TRANSCRIBE_DEVICE`: local device for Cohere Transcribe. Defaults to `auto`.
+- `COHERE_TRANSCRIBE_DTYPE`: local dtype for Cohere Transcribe. Defaults to `auto`.
+- `COHERE_TRANSCRIBE_PUNCTUATION`: enables punctuation/casing for Cohere Transcribe. Defaults to `true`.
+- `COHERE_TRANSCRIBE_MAX_NEW_TOKENS`: maximum generated transcription tokens. Defaults to `1024`.
+- `COHERE_TRANSCRIBE_TIMEOUT_MS`: local Cohere Transcribe timeout. Defaults to `1800000`.
+- `HF_TOKEN`: optional Hugging Face token for gated local model downloads.
 - `OPENAI_API_KEY`: enables Whisper transcription fallback for voice/audio.
-- `VOICE_PREFERRED_BACKEND`: `auto`, `parakeet`, `faster-whisper`, or `openai`. Defaults to `auto`.
-- `VOICE_DEFAULT_LANGUAGE`: optional default language code, for example `de` or `en`. Leave empty or set `auto` for backend auto-detect; Parakeet ignores this value.
+- `VOICE_PREFERRED_BACKEND`: `auto`, `parakeet`, `faster-whisper`, `cohere-transcribe`, or `openai`. Defaults to `auto`.
+- `VOICE_DEFAULT_LANGUAGE`: optional default language code, for example `de` or `en`. Leave empty or set `auto` for backend auto-detect where supported; Parakeet ignores this value and Cohere Transcribe expects one of its supported language codes.
 - `VOICE_TRANSCRIBE_ONLY`: when `true`, voice/audio messages are transcribed but not sent to the selected agent.
 
 NordRelay wrapper:

@@ -54,7 +54,7 @@
 
 - Send a Telegram voice note or audio file.
 - The connector transcribes it, then sends the transcript to the selected agent.
-- Local transcription is tried first with `parakeet-coreml` or `faster-whisper` when installed.
+- Local transcription is tried first with `parakeet-coreml`, `faster-whisper`, or `cohere-transcribe` when installed.
 - OpenAI Whisper is used when `OPENAI_API_KEY` is set.
 
 ## Voice Prerequisites
@@ -72,6 +72,26 @@ python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install faster-whisper
 ```
+
+For local Cohere Transcribe on Ubuntu/Linux:
+
+```bash
+python3 -m venv ~/.nordrelay/voice/.venv
+~/.nordrelay/voice/.venv/bin/python -m pip install -U pip setuptools wheel
+~/.nordrelay/voice/.venv/bin/python -m pip install -U --index-url https://download.pytorch.org/whl/cpu torch
+~/.nordrelay/voice/.venv/bin/python -m pip install -U transformers librosa soundfile accelerate sentencepiece protobuf
+```
+
+Then set:
+
+```env
+VOICE_PREFERRED_BACKEND=cohere-transcribe
+VOICE_DEFAULT_LANGUAGE=de
+COHERE_TRANSCRIBE_PYTHON=/home/you/.nordrelay/voice/.venv/bin/python
+COHERE_TRANSCRIBE_MODEL=CohereLabs/cohere-transcribe-03-2026
+```
+
+The first Cohere Transcribe run downloads the Hugging Face model locally. If Hugging Face requires gated access, accept the model terms in the browser and configure `HF_TOKEN`.
 
 ```dotenv
 FASTER_WHISPER_PYTHON=.venv/bin/python

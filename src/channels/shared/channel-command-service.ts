@@ -303,8 +303,8 @@ export class ChannelCommandService {
       const value = parts.slice(1).join(" ").trim();
       if (key === "backend" && value) {
         const normalized = value.toLowerCase();
-        if (!["auto", "parakeet", "faster-whisper", "openai"].includes(normalized)) {
-          return usageResponse("Usage: /voice backend auto|parakeet|faster-whisper|openai");
+        if (!["auto", "parakeet", "faster-whisper", "cohere-transcribe", "openai"].includes(normalized)) {
+          return usageResponse("Usage: /voice backend auto|parakeet|faster-whisper|cohere-transcribe|openai");
         }
         options.preferencesStore.update(options.contextKey, { voiceBackend: parseVoiceBackendPreference(value) });
       } else if (key === "language") {
@@ -316,7 +316,7 @@ export class ChannelCommandService {
         }
         options.preferencesStore.update(options.contextKey, { voiceTranscribeOnly: enabled });
       } else {
-        return usageResponse("Usage: /voice, /voice backend auto|parakeet|faster-whisper|openai, /voice language auto|language-code, /voice transcribe_only on|off");
+        return usageResponse("Usage: /voice, /voice backend auto|parakeet|faster-whisper|cohere-transcribe|openai, /voice language auto|language-code, /voice transcribe_only on|off");
       }
     }
 
@@ -325,13 +325,13 @@ export class ChannelCommandService {
       const plain = [
         "Voice transcription is not available.",
         "",
-        "Install faster-whisper + ffmpeg, install parakeet-coreml on macOS Apple Silicon, or set OPENAI_API_KEY.",
+        "Install faster-whisper + ffmpeg, install Cohere Transcribe local dependencies, install parakeet-coreml on macOS Apple Silicon, or set OPENAI_API_KEY.",
         "Cloud transcription uses OPENAI_API_KEY, not CODEX_API_KEY.",
       ].join("\n");
       const html = [
         "<b>Voice transcription is not available.</b>",
         "",
-        "Install <code>faster-whisper</code> + ffmpeg, install <code>parakeet-coreml</code> on macOS Apple Silicon, or set <code>OPENAI_API_KEY</code>.",
+        "Install <code>faster-whisper</code> + ffmpeg, install Cohere Transcribe local dependencies, install <code>parakeet-coreml</code> on macOS Apple Silicon, or set <code>OPENAI_API_KEY</code>.",
         "<i>Cloud transcription uses OPENAI_API_KEY, not CODEX_API_KEY.</i>",
       ].join("\n");
       return { plain, html };

@@ -20,6 +20,8 @@ export const SECRET_KEYS = new Set([
   "OPENCLAW_GATEWAY_TOKEN",
   "OPENCLAW_GATEWAY_PASSWORD",
   "OPENAI_API_KEY",
+  "HF_TOKEN",
+  "HUGGINGFACE_HUB_TOKEN",
   "TELEGRAM_WEBHOOK_SECRET",
 ]);
 
@@ -228,13 +230,13 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   setting("NORDRELAY_PEER_OUTBOUND_RELAY_POLL_MS", "Outbound relay poll interval", "Peers", "number", "Delay between outbound relay polls in milliseconds.", true),
 
   setting("OPENAI_API_KEY", "OpenAI API key", "Voice", "secret", "Whisper fallback API key.", true),
-  setting("VOICE_PREFERRED_BACKEND", "Voice backend", "Voice", "string", "auto, parakeet, faster-whisper, or openai.", false, ["auto", "parakeet", "faster-whisper", "openai"]),
+  setting("VOICE_PREFERRED_BACKEND", "Voice backend", "Voice", "string", "auto, parakeet, faster-whisper, cohere-transcribe, or openai.", false, ["auto", "parakeet", "faster-whisper", "cohere-transcribe", "openai"]),
   setting(
     "VOICE_DEFAULT_LANGUAGE",
     "Voice language",
     "Voice",
     "string",
-    "Default transcription language. Leave empty or use auto for backend auto-detect. Use ISO language codes such as de or en; Parakeet ignores this value.",
+    "Default transcription language. Leave empty or use auto for backend auto-detect where supported. Use ISO language codes such as de or en; Parakeet ignores this value and Cohere Transcribe expects one of its 14 supported language codes.",
     false,
   ),
   setting("VOICE_TRANSCRIBE_ONLY", "Voice transcribe only", "Voice", "boolean", "Do not send voice transcripts as prompts.", false),
@@ -244,6 +246,14 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   setting("FASTER_WHISPER_COMPUTE_TYPE", "faster-whisper compute type", "Voice", "string", "int8, float16, etc.", true),
   setting("FASTER_WHISPER_LANGUAGE", "faster-whisper language", "Voice", "string", "Fixed transcription language.", true),
   setting("FASTER_WHISPER_TIMEOUT_MS", "faster-whisper timeout", "Voice", "number", "Transcription timeout.", true),
+  setting("COHERE_TRANSCRIBE_PYTHON", "Cohere Transcribe Python", "Voice", "string", "Python executable with torch and transformers installed. Defaults to FASTER_WHISPER_PYTHON.", true),
+  setting("COHERE_TRANSCRIBE_MODEL", "Cohere Transcribe model", "Voice", "string", "Hugging Face model id.", true),
+  setting("COHERE_TRANSCRIBE_DEVICE", "Cohere Transcribe device", "Voice", "string", "auto, cpu, cuda, etc.", true),
+  setting("COHERE_TRANSCRIBE_DTYPE", "Cohere Transcribe dtype", "Voice", "string", "auto, float16, bfloat16, float32, etc.", true),
+  setting("COHERE_TRANSCRIBE_PUNCTUATION", "Cohere punctuation", "Voice", "boolean", "Enable punctuation/casing for Cohere Transcribe output.", true),
+  setting("COHERE_TRANSCRIBE_MAX_NEW_TOKENS", "Cohere max tokens", "Voice", "number", "Maximum generated transcription tokens.", true),
+  setting("COHERE_TRANSCRIBE_TIMEOUT_MS", "Cohere timeout", "Voice", "number", "Local Cohere Transcribe timeout.", true),
+  setting("HF_TOKEN", "Hugging Face token", "Voice", "secret", "Optional Hugging Face token for gated local model downloads.", true),
 
   setting("NORDRELAY_DASHBOARD_HOST", "Dashboard host", "Dashboard", "string", "WebUI bind host.", true),
   setting("NORDRELAY_DASHBOARD_PORT", "Dashboard port", "Dashboard", "number", "WebUI bind port.", true),
@@ -406,6 +416,14 @@ const EXAMPLE_VALUES: Record<string, string> = {
   "FASTER_WHISPER_COMPUTE_TYPE": "int8",
   "FASTER_WHISPER_LANGUAGE": "",
   "FASTER_WHISPER_TIMEOUT_MS": "600000",
+  "COHERE_TRANSCRIBE_PYTHON": "",
+  "COHERE_TRANSCRIBE_MODEL": "CohereLabs/cohere-transcribe-03-2026",
+  "COHERE_TRANSCRIBE_DEVICE": "auto",
+  "COHERE_TRANSCRIBE_DTYPE": "auto",
+  "COHERE_TRANSCRIBE_PUNCTUATION": "true",
+  "COHERE_TRANSCRIBE_MAX_NEW_TOKENS": "1024",
+  "COHERE_TRANSCRIBE_TIMEOUT_MS": "1800000",
+  "HF_TOKEN": "",
 };
 
 const GROUP_INTROS: Record<string, string> = {

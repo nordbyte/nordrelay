@@ -3833,7 +3833,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         durationMs: result.durationMs,
       });
     } catch (error) {
-      const note = "Voice uses faster-whisper/parakeet locally or OPENAI_API_KEY for cloud transcription, not CODEX_API_KEY.";
+      const note = "Voice uses faster-whisper, Cohere Transcribe, or parakeet locally, or OPENAI_API_KEY for cloud transcription, not CODEX_API_KEY.";
       await safeReply(ctx, `<b>Transcription failed:</b>\n${escapeHTML(friendlyErrorText(error))}\n\n<i>${escapeHTML(note)}</i>`, {
         fallbackText: `Transcription failed:\n${friendlyErrorText(error)}\n\n${note}`,
       });

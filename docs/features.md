@@ -157,7 +157,7 @@
 
 - Plain text messages become prompts for the selected agent.
 - Voice and audio messages are transcribed before being sent to the selected agent.
-- Voice transcription uses local `faster-whisper` on Linux, local `parakeet-coreml` on macOS Apple Silicon, or OpenAI Whisper when `OPENAI_API_KEY` is set.
+- Voice transcription uses local `faster-whisper` on Linux, local Cohere Transcribe via Hugging Face, local `parakeet-coreml` on macOS Apple Silicon, or OpenAI Whisper when `OPENAI_API_KEY` is set.
 - `/voice` can select backend preference, language, and transcribe-only mode.
 - Photo messages are passed to the selected agent as local image input when supported.
 - Document messages are downloaded, sanitized, size-checked, and staged under `.nordrelay/inbox/<turn-id>/`.

@@ -92,7 +92,7 @@ Claude Code not available:
 Voice not working:
 
 - Run `/voice` to list available backends.
-- Install `ffmpeg` and `faster-whisper` on Linux, install `parakeet-coreml` on macOS Apple Silicon, or set `OPENAI_API_KEY`.
+- Install `ffmpeg` and `faster-whisper` on Linux, install local Cohere Transcribe dependencies for Hugging Face transcription, install `parakeet-coreml` on macOS Apple Silicon, or set `OPENAI_API_KEY`.
 - Check `~/.nordrelay/nordrelay.log` for transcription errors.
 
 Files not returned:

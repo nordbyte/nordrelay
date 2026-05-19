@@ -60,7 +60,7 @@
 - `/login` starts Telegram-initiated CLI login for Codex, Hermes, or Claude Code when one of those agents is selected.
 - `/logout` signs out from CLI auth for Codex, Hermes, or Claude Code when one of those agents is selected; Codex logout is disabled while `CODEX_API_KEY` is active.
 - `/voice` reports voice transcription backends and current voice preferences.
-- `/voice backend auto|parakeet|faster-whisper|openai` selects backend preference.
+- `/voice backend auto|parakeet|faster-whisper|cohere-transcribe|openai` selects backend preference.
 - `/voice language auto|<code>` selects transcription language.
 - `/voice transcribe_only on|off` controls whether voice is only transcribed or also sent to the selected agent.
 - `/tasks` or `/progress` reports the current turn and queue progress.
