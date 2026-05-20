@@ -188,6 +188,17 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".wizard-checklist");
   });
 
+  it("does not treat setup wizard defaults as pending settings changes", () => {
+    const js = dashboardJs();
+
+    expect(js).toContain("function wizardInputValue");
+    expect(js).toContain("function wizardEffectiveValue");
+    expect(js).toContain("state.settingsWizard={channel,step:0,values:{}");
+    expect(js).toContain("collectWizardSettings(wizard)");
+    expect(js).toContain("settings[key]=wizardEffectiveValue(key)");
+    expect(js).not.toContain("Object.entries(wizard.defaults||{})");
+  });
+
   it("refreshes the active page after an agent switch", () => {
     const js = dashboardJs();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
