@@ -259,6 +259,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--pre);color:var(-
 footer{margin-top:auto;display:flex;gap:18px;flex-wrap:wrap;padding:14px 22px;border-top:1px solid var(--border);color:var(--muted);background:var(--surface)}
 .footer-connection{font-weight:650}
 .footer-label{color:var(--muted);font-weight:400}
+.footer-connection-value{font-weight:400}
 .footer-profile-link{display:inline;height:auto;min-height:0;padding:0;border:0;background:transparent;color:var(--link);font:inherit;line-height:inherit}
 .footer-profile-link:hover{background:transparent;color:var(--link);text-decoration:underline}
 dialog{border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);width:min(720px,calc(100vw - 28px));padding:18px;box-shadow:0 18px 70px rgba(0,0,0,.22)}
