@@ -29,22 +29,35 @@ describe("adapter and e2e harness primitives", () => {
     const previousTelegramToken = process.env.TELEGRAM_BOT_TOKEN;
     const previousDiscord = process.env.DISCORD_ENABLED;
     const previousDiscordToken = process.env.DISCORD_BOT_TOKEN;
+    const previousMatrix = process.env.MATRIX_ENABLED;
+    const previousMatrixUrl = process.env.MATRIX_HOMESERVER_URL;
+    const previousMatrixToken = process.env.MATRIX_ACCESS_TOKEN;
+    const previousMatrixUserId = process.env.MATRIX_USER_ID;
     delete process.env.TELEGRAM_ENABLED;
     delete process.env.TELEGRAM_BOT_TOKEN;
     delete process.env.DISCORD_ENABLED;
     delete process.env.DISCORD_BOT_TOKEN;
+    delete process.env.MATRIX_ENABLED;
+    delete process.env.MATRIX_HOMESERVER_URL;
+    delete process.env.MATRIX_ACCESS_TOKEN;
+    delete process.env.MATRIX_USER_ID;
     try {
       const disabledChannels = listChannelDescriptors();
 
       expect(disabledChannels.find((channel) => channel.id === "telegram")).toMatchObject({ status: "available", enabled: false });
       expect(disabledChannels.find((channel) => channel.id === "discord")).toMatchObject({ status: "available", enabled: false });
+      expect(disabledChannels.find((channel) => channel.id === "matrix")).toMatchObject({ status: "available", enabled: false });
       process.env.TELEGRAM_BOT_TOKEN = "bot-token";
       process.env.DISCORD_ENABLED = "true";
       process.env.DISCORD_BOT_TOKEN = "discord-token";
+      process.env.MATRIX_ENABLED = "true";
+      process.env.MATRIX_HOMESERVER_URL = "https://matrix.example.com";
+      process.env.MATRIX_ACCESS_TOKEN = "matrix-token";
+      process.env.MATRIX_USER_ID = "@nordrelay:example.com";
       const channels = listChannelDescriptors();
       expect(channels.find((channel) => channel.id === "telegram")).toMatchObject({ status: "available", enabled: true });
       expect(channels.find((channel) => channel.id === "discord")).toMatchObject({ status: "available", enabled: true });
-      expect(channels.find((channel) => channel.id === "matrix")?.status).toBe("planned");
+      expect(channels.find((channel) => channel.id === "matrix")).toMatchObject({ status: "available", enabled: true });
       expect(new TelegramChannelAdapter().capabilities.has("typing")).toBe(true);
     } finally {
       if (previousTelegram === undefined) delete process.env.TELEGRAM_ENABLED;
@@ -55,6 +68,14 @@ describe("adapter and e2e harness primitives", () => {
       else process.env.DISCORD_ENABLED = previousDiscord;
       if (previousDiscordToken === undefined) delete process.env.DISCORD_BOT_TOKEN;
       else process.env.DISCORD_BOT_TOKEN = previousDiscordToken;
+      if (previousMatrix === undefined) delete process.env.MATRIX_ENABLED;
+      else process.env.MATRIX_ENABLED = previousMatrix;
+      if (previousMatrixUrl === undefined) delete process.env.MATRIX_HOMESERVER_URL;
+      else process.env.MATRIX_HOMESERVER_URL = previousMatrixUrl;
+      if (previousMatrixToken === undefined) delete process.env.MATRIX_ACCESS_TOKEN;
+      else process.env.MATRIX_ACCESS_TOKEN = previousMatrixToken;
+      if (previousMatrixUserId === undefined) delete process.env.MATRIX_USER_ID;
+      else process.env.MATRIX_USER_ID = previousMatrixUserId;
     }
   });
 

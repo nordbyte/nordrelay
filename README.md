@@ -1,7 +1,7 @@
 # NordRelay
 ![NordRelay Banner](https://raw.githubusercontent.com/nordbyte/nordrelay/main/docs/assets/nordrelay.png) [![Latest release](https://img.shields.io/github/v/release/nordbyte/nordrelay?style=flat-square)](https://github.com/nordbyte/nordrelay/releases/latest) [![CI](https://img.shields.io/github/actions/workflow/status/nordbyte/nordrelay/ci.yml?branch=main&style=flat-square)](https://github.com/nordbyte/nordrelay/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-ffd60a?style=flat-square)](LICENSE) [![npm](https://img.shields.io/npm/v/@nordbyte/nordrelay?logo=npm&logoColor=white&style=flat-square)](https://www.npmjs.com/package/@nordbyte/nordrelay) [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22-339933?logo=node.js&logoColor=white&style=flat-square)](package.json) [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&logoColor=white&style=flat-square)](tsconfig.json)
 
-NordRelay is a secure remote control plane for coding agents. It connects Codex, Pi, Hermes, OpenClaw, and Claude Code sessions to Telegram, Discord, Slack, the WebUI, and trusted peer nodes, with streaming replies, file/photo/voice input, queues, artifacts, user permissions, and multi-host control.
+NordRelay is a secure remote control plane for coding agents. It connects Codex, Pi, Hermes, OpenClaw, and Claude Code sessions to Telegram, Discord, Slack, Matrix, the WebUI, and trusted peer nodes, with streaming replies, file/photo/voice input, queues, artifacts, user permissions, and multi-host control.
 
 Use the README for the first install and quick start. Full feature, command, configuration, deployment, and architecture details live in [docs/](docs/).
 
@@ -11,7 +11,7 @@ Requirements:
 
 - Node.js 22 or newer.
 - At least one supported coding agent installed and authenticated, for example Codex CLI.
-- A Telegram, Discord, or Slack bot/app token if you want chat access.
+- A Telegram, Discord, Slack, or Matrix bot/app token if you want chat access.
 
 Install NordRelay globally:
 
@@ -44,7 +44,7 @@ The dashboard is available at the URL printed by the command, usually:
 http://127.0.0.1:31878/
 ```
 
-On first WebUI startup, create the first admin user. After that, every dashboard page and chat adapter action is controlled by NordRelay users, groups, linked Telegram/Discord/Slack accounts, and registered channels.
+On first WebUI startup, create the first admin user. After that, every dashboard page and chat adapter action is controlled by NordRelay users, groups, linked Telegram/Discord/Slack/Matrix accounts, and registered channels or rooms.
 
 ## Minimal Setup
 
@@ -72,6 +72,7 @@ TELEGRAM_ENABLED=true
 TELEGRAM_BOT_TOKEN=123456789:replace-me
 DISCORD_ENABLED=false
 SLACK_ENABLED=false
+MATRIX_ENABLED=false
 NORDRELAY_CODEX_ENABLED=true
 NORDRELAY_DEFAULT_AGENT=codex
 CODEX_SANDBOX_MODE=workspace-write
@@ -80,7 +81,7 @@ CODEX_APPROVAL_POLICY=never
 
 For a browser-only setup, keep `NORDRELAY_WEBUI_ENABLED=true` and set all chat adapters to `false`.
 
-For guided setup in the browser, open the WebUI, go to **Settings**, then use **Setup wizard** for Telegram, Discord, or Slack.
+For guided setup in the browser, open the WebUI, go to **Settings**, then use **Setup wizard** for Telegram, Discord, Slack, or Matrix.
 
 ## Common Commands
 
@@ -113,11 +114,11 @@ Chat adapters share the core command set:
 /diagnostics
 ```
 
-See [Commands](docs/commands.md) for the complete Telegram, Discord, Slack, queue, artifact, mirror, update, and diagnostic command reference.
+See [Commands](docs/commands.md) for the complete Telegram, Discord, Slack, Matrix, queue, artifact, mirror, update, and diagnostic command reference.
 
 ## What NordRelay Provides
 
-- Independent sessions per Telegram chat/topic, Discord DM/channel/thread, Slack DM/channel/thread, WebUI, and peer target.
+- Independent sessions per Telegram chat/topic, Discord DM/channel/thread, Slack DM/channel/thread, Matrix DM/room/thread, WebUI, and peer target.
 - Optional isolated Git worktree sessions so multiple agent sessions can work on the same repository without seeing each other's unfinished changes.
 - Worktree diff/integration previews, base-branch updates, cleanup, and peer-routed workflow steps for multi-host automation.
 - Streaming replies, typing/status indicators, tool activity, queue handling, retry, abort/stop, and CLI handback.
@@ -127,7 +128,7 @@ See [Commands](docs/commands.md) for the complete Telegram, Discord, Slack, queu
 - Optional peer federation for controlling agents on other trusted NordRelay hosts.
 - WebUI dashboard for chat, sessions, settings, logs, diagnostics, updates, artifacts, peers, metrics, and users.
 - Agent adapters for Codex, Pi, Hermes, OpenClaw, and Claude Code.
-- Chat adapters for Telegram, Discord, and Slack.
+- Chat adapters for Telegram, Discord, Slack, and Matrix.
 
 ## Documentation
 
@@ -135,7 +136,7 @@ See [Commands](docs/commands.md) for the complete Telegram, Discord, Slack, queu
 | --- | --- |
 | Full feature list and adapter capabilities | [docs/features.md](docs/features.md) |
 | First-run setup, users, running modes, and WebUI | [docs/setup.md](docs/setup.md) |
-| Telegram, Discord, Slack, and WebUI commands | [docs/commands.md](docs/commands.md) |
+| Telegram, Discord, Slack, Matrix, and WebUI commands | [docs/commands.md](docs/commands.md) |
 | Files, photos, voice, transcription, and artifacts | [docs/workflows.md](docs/workflows.md) |
 | Environment variables and launch profiles | [docs/configuration.md](docs/configuration.md) |
 | Security notes and troubleshooting | [docs/security-troubleshooting.md](docs/security-troubleshooting.md) |

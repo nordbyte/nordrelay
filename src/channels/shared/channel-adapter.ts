@@ -111,13 +111,14 @@ const SLACK_CAPABILITIES: ChannelCapability[] = [
   "webhooks",
 ];
 
-const PLANNED_CHANNELS: ChannelDescriptor[] = [
-  {
-    id: "matrix",
-    label: "Matrix",
-    capabilities: ["text", "files", "photos", "voice"],
-    status: "planned",
-  },
+const MATRIX_CAPABILITIES: ChannelCapability[] = [
+  "text",
+  "streaming-edits",
+  "typing",
+  "files",
+  "photos",
+  "voice",
+  "topics",
 ];
 
 type ChannelDescriptorConfig = Pick<
@@ -132,9 +133,13 @@ type ChannelDescriptorConfig = Pick<
   | "slackBotToken"
   | "slackAppToken"
   | "slackSocketMode"
+  | "matrixEnabled"
+  | "matrixHomeserverUrl"
+  | "matrixAccessToken"
+  | "matrixUserId"
 >;
 
-function adapterWarning(config: ChannelDescriptorConfig, label: "Telegram" | "Discord" | "Slack"): string | undefined {
+function adapterWarning(config: ChannelDescriptorConfig, label: "Telegram" | "Discord" | "Slack" | "Matrix"): string | undefined {
   return config.adapterWarnings?.find((warning) => warning.startsWith(`${label} disabled:`));
 }
 
@@ -246,11 +251,47 @@ export class SlackChannelAdapter implements ChannelAdapter {
   }
 }
 
+export class MatrixChannelAdapter implements ChannelAdapter {
+  readonly id = "matrix";
+  readonly label = "Matrix";
+  readonly capabilities = new Set<ChannelCapability>(MATRIX_CAPABILITIES);
+
+  describe(config?: ChannelDescriptorConfig): ChannelDescriptor {
+    if (config) {
+      const warning = adapterWarning(config, "Matrix");
+      return {
+        id: this.id,
+        label: this.label,
+        capabilities: [...this.capabilities],
+        status: "available",
+        enabled: config.matrixEnabled,
+        notes: config.matrixEnabled
+          ? `Matrix bot runtime is enabled (${config.matrixHomeserverUrl ?? "homeserver"}).`
+          : (warning ?? "Enable with MATRIX_ENABLED=true, MATRIX_HOMESERVER_URL, MATRIX_ACCESS_TOKEN, and MATRIX_USER_ID."),
+      };
+    }
+    const requested = process.env.MATRIX_ENABLED === "true";
+    const enabled = requested && Boolean(process.env.MATRIX_HOMESERVER_URL) && Boolean(process.env.MATRIX_ACCESS_TOKEN) && Boolean(process.env.MATRIX_USER_ID);
+    return {
+      id: this.id,
+      label: this.label,
+      capabilities: [...this.capabilities],
+      status: "available",
+      enabled,
+      notes: enabled
+        ? "Matrix bot runtime is enabled."
+        : requested
+          ? "Matrix bot runtime is disabled because MATRIX_HOMESERVER_URL, MATRIX_ACCESS_TOKEN, or MATRIX_USER_ID is missing."
+          : "Enable with MATRIX_ENABLED=true, MATRIX_HOMESERVER_URL, MATRIX_ACCESS_TOKEN, and MATRIX_USER_ID.",
+    };
+  }
+}
+
 export function listChannelDescriptors(config?: ChannelDescriptorConfig): ChannelDescriptor[] {
   return [
     new TelegramChannelAdapter().describe(config),
     new DiscordChannelAdapter().describe(config),
     new SlackChannelAdapter().describe(config),
-    ...PLANNED_CHANNELS,
+    new MatrixChannelAdapter().describe(config),
   ];
 }

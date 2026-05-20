@@ -15,6 +15,7 @@ export const SECRET_KEYS = new Set([
   "SLACK_BOT_TOKEN",
   "SLACK_APP_TOKEN",
   "SLACK_SIGNING_SECRET",
+  "MATRIX_ACCESS_TOKEN",
   "CODEX_API_KEY",
   "HERMES_API_KEY",
   "OPENCLAW_GATEWAY_TOKEN",
@@ -50,6 +51,18 @@ const SLACK_SETTING_HELP: Record<string, string> = {
   SLACK_ALLOWED_TEAM_IDS: "Optional workspace allow-list. Copy Team IDs from Slack event payloads or app diagnostics.",
   SLACK_ALLOWED_CHANNEL_IDS: "Optional channel allow-list before NordRelay user/group checks. Copy channel IDs from Slack channel details.",
   SLACK_COMMAND: "Slash command configured in the Slack app. Defaults to /nordrelay.",
+};
+
+const MATRIX_SETTING_HELP: Record<string, string> = {
+  MATRIX_ENABLED: "Create a Matrix bot user or access token, invite it to the desired rooms, then enable Matrix.",
+  MATRIX_HOMESERVER_URL: "Base URL of the Matrix homeserver, for example https://matrix.org or https://matrix.example.com.",
+  MATRIX_ACCESS_TOKEN: "Matrix access token for the bot user. Create it from the bot account or your homeserver admin tooling and store only the token value here.",
+  MATRIX_USER_ID: "Full Matrix user id for the bot account, for example @nordrelay:example.com.",
+  MATRIX_DEVICE_ID: "Optional device id belonging to the access token.",
+  MATRIX_AUTOJOIN_INVITES: "Automatically join rooms when the bot user is invited.",
+  MATRIX_ALLOWED_ROOM_IDS: "Optional room allow-list before NordRelay user/group checks. Use room ids like !roomid:example.com.",
+  MATRIX_MESSAGE_CONTENT_ENABLED: "Read regular Matrix text messages as prompts. Disable this if commands should be the only message surface.",
+  MATRIX_COMMAND_PREFIX: "Text command prefix for Matrix, for example !nr. Slash-style /session messages are also recognized.",
 };
 
 const TELEGRAM_SETTING_HELP: Record<string, string> = {
@@ -133,6 +146,23 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   slackSetting("SLACK_NOTIFY_MODE", "Slack notify override", "string", "Optional Slack override for completion notifications.", false, ["off", "minimal", "all"]),
   slackSetting("SLACK_QUIET_HOURS", "Slack quiet hours override", "string", "Optional Slack quiet hours override. Use HH-HH, off, or leave blank for default.", false),
   slackSetting("SLACK_AUTO_SEND_ARTIFACTS", "Slack auto-send artifacts override", "boolean", "Optional Slack override for automatic artifact summaries/uploads.", false),
+
+  matrixSetting("MATRIX_ENABLED", "Enable Matrix", "boolean", "Start the Matrix bot adapter.", true),
+  matrixSetting("MATRIX_HOMESERVER_URL", "Matrix homeserver URL", "string", "Matrix homeserver base URL.", true),
+  matrixSetting("MATRIX_ACCESS_TOKEN", "Matrix access token", "secret", "Matrix access token for the bot user.", true),
+  matrixSetting("MATRIX_USER_ID", "Matrix bot user ID", "string", "Full Matrix user id for the bot account.", true),
+  matrixSetting("MATRIX_DEVICE_ID", "Matrix device ID", "string", "Optional Matrix device id.", true),
+  matrixSetting("MATRIX_AUTOJOIN_INVITES", "Auto-join invites", "boolean", "Automatically join rooms where the bot is invited.", true),
+  matrixSetting("MATRIX_ALLOWED_ROOM_IDS", "Allowed Matrix rooms", "list", "Optional comma-separated room allow-list before user/group checks.", true),
+  matrixSetting("MATRIX_MESSAGE_CONTENT_ENABLED", "Matrix message content", "boolean", "Read regular Matrix text messages as prompts.", true),
+  matrixSetting("MATRIX_COMMAND_PREFIX", "Matrix command prefix", "string", "Text command prefix, for example !nr.", true),
+  matrixSetting("MATRIX_SYNC_TIMEOUT_MS", "Matrix sync timeout", "number", "Matrix /sync long-poll timeout.", true),
+  matrixSetting("MATRIX_POLL_TIMEOUT_MS", "Matrix poll timeout", "number", "HTTP timeout for each Matrix /sync request.", true),
+  matrixSetting("MATRIX_CLI_MIRROR_MODE", "Matrix mirror override", "string", "Optional Matrix override for CLI mirror mode. Uses the NordRelay default when unset.", false, ["off", "status", "final", "full"]),
+  matrixSetting("MATRIX_CLI_MIRROR_MIN_UPDATE_MS", "Matrix mirror update override", "number", "Optional Matrix override for mirrored edit interval.", true),
+  matrixSetting("MATRIX_NOTIFY_MODE", "Matrix notify override", "string", "Optional Matrix override for completion notifications.", false, ["off", "minimal", "all"]),
+  matrixSetting("MATRIX_QUIET_HOURS", "Matrix quiet hours override", "string", "Optional Matrix quiet hours override. Use HH-HH, off, or leave blank for default.", false),
+  matrixSetting("MATRIX_AUTO_SEND_ARTIFACTS", "Matrix auto-send artifacts override", "boolean", "Optional Matrix override for automatic artifact summaries/uploads.", false),
 
   setting("NORDRELAY_CODEX_ENABLED", "Enable Codex", "Agents", "boolean", "Allow Codex sessions.", true),
   setting("NORDRELAY_PI_ENABLED", "Enable Pi", "Agents", "boolean", "Allow Pi sessions.", true),
@@ -221,6 +251,7 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   setting("TELEGRAM_ARTIFACT_DELIVERY", "Telegram artifact delivery", "Artifacts", "string", "Optional Telegram artifact delivery mode override.", false, ["manual-only", "summary", "summary-with-actions", "auto-files", "auto-zip", "images-only", "off"]),
   setting("DISCORD_ARTIFACT_DELIVERY", "Discord artifact delivery", "Artifacts", "string", "Optional Discord artifact delivery mode override.", false, ["manual-only", "summary", "summary-with-actions", "auto-files", "auto-zip", "images-only", "off"]),
   setting("SLACK_ARTIFACT_DELIVERY", "Slack artifact delivery", "Artifacts", "string", "Optional Slack artifact delivery mode override.", false, ["manual-only", "summary", "summary-with-actions", "auto-files", "auto-zip", "images-only", "off"]),
+  setting("MATRIX_ARTIFACT_DELIVERY", "Matrix artifact delivery", "Artifacts", "string", "Optional Matrix artifact delivery mode override.", false, ["manual-only", "summary", "summary-with-actions", "auto-files", "auto-zip", "images-only", "off"]),
 
   setting("WORKSPACE_ALLOWED_ROOTS", "Workspace allowed roots", "Workspace", "list", "Restrict selectable workspaces.", true),
   setting("WORKSPACE_WARN_ROOTS", "Workspace warn roots", "Workspace", "list", "Warn for broad workspace roots.", true),
@@ -317,6 +348,22 @@ const EXAMPLE_VALUES: Record<string, string> = {
   "SLACK_NOTIFY_MODE": "",
   "SLACK_QUIET_HOURS": "",
   "SLACK_AUTO_SEND_ARTIFACTS": "",
+  "MATRIX_ENABLED": "false",
+  "MATRIX_HOMESERVER_URL": "",
+  "MATRIX_ACCESS_TOKEN": "",
+  "MATRIX_USER_ID": "",
+  "MATRIX_DEVICE_ID": "",
+  "MATRIX_AUTOJOIN_INVITES": "true",
+  "MATRIX_ALLOWED_ROOM_IDS": "",
+  "MATRIX_MESSAGE_CONTENT_ENABLED": "true",
+  "MATRIX_COMMAND_PREFIX": "!nr",
+  "MATRIX_SYNC_TIMEOUT_MS": "30000",
+  "MATRIX_POLL_TIMEOUT_MS": "35000",
+  "MATRIX_CLI_MIRROR_MODE": "",
+  "MATRIX_CLI_MIRROR_MIN_UPDATE_MS": "",
+  "MATRIX_NOTIFY_MODE": "",
+  "MATRIX_QUIET_HOURS": "",
+  "MATRIX_AUTO_SEND_ARTIFACTS": "",
   "NORDRELAY_CODEX_ENABLED": "true",
   "NORDRELAY_PI_ENABLED": "false",
   "NORDRELAY_HERMES_ENABLED": "false",
@@ -406,6 +453,7 @@ const EXAMPLE_VALUES: Record<string, string> = {
   "TELEGRAM_ARTIFACT_DELIVERY": "",
   "DISCORD_ARTIFACT_DELIVERY": "",
   "SLACK_ARTIFACT_DELIVERY": "",
+  "MATRIX_ARTIFACT_DELIVERY": "",
   "NORDRELAY_STATE_BACKEND": "json",
   "NORDRELAY_AUDIT_MAX_EVENTS": "1000",
   "NORDRELAY_SESSION_LOCK_TTL_MS": "1800000",
@@ -456,6 +504,7 @@ const GROUP_INTROS: Record<string, string> = {
   Telegram: "Telegram bot and transport settings.",
   Discord: "Discord bot settings. Discord is opt-in and uses the same NordRelay users, groups, and permissions as Telegram.",
   Slack: "Slack bot settings. Slack is opt-in and uses the same NordRelay users, groups, and permissions as Telegram and Discord.",
+  Matrix: "Matrix bot settings. Matrix is opt-in and uses the same NordRelay users, groups, and permissions as Telegram, Discord, and Slack.",
   Agents: "Agent access. Codex is enabled by default; Pi, Hermes, OpenClaw, and Claude Code are opt-in.",
   Codex: "Codex defaults for newly created or reattached sessions.",
   Pi: "Pi coding agent defaults.",
@@ -539,4 +588,15 @@ function slackSetting(
   options?: string[],
 ): SettingDefinition {
   return setting(key, label, "Slack", kind, description, restartRequired, options, SLACK_SETTING_HELP[key]);
+}
+
+function matrixSetting(
+  key: string,
+  label: string,
+  kind: SettingDefinition["kind"],
+  description: string,
+  restartRequired: boolean,
+  options?: string[],
+): SettingDefinition {
+  return setting(key, label, "Matrix", kind, description, restartRequired, options, MATRIX_SETTING_HELP[key]);
 }

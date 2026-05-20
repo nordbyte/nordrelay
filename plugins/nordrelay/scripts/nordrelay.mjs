@@ -101,12 +101,20 @@ function parseArgs(argv) {
     else if (arg === "--slack-bot-token") options.slackBotToken = requireValue(copy, ++i, arg);
     else if (arg === "--slack-app-token") options.slackAppToken = requireValue(copy, ++i, arg);
     else if (arg === "--slack-signing-secret") options.slackSigningSecret = requireValue(copy, ++i, arg);
+    else if (arg === "--enable-matrix") options.enableMatrix = true;
+    else if (arg === "--matrix-homeserver-url") options.matrixHomeserverUrl = requireValue(copy, ++i, arg);
+    else if (arg === "--matrix-access-token") options.matrixAccessToken = requireValue(copy, ++i, arg);
+    else if (arg === "--matrix-user-id") options.matrixUserId = requireValue(copy, ++i, arg);
+    else if (arg === "--matrix-device-id") options.matrixDeviceId = requireValue(copy, ++i, arg);
     else if (arg === "--admin-email") options.adminEmail = requireValue(copy, ++i, arg);
     else if (arg === "--admin-name") options.adminName = requireValue(copy, ++i, arg);
     else if (arg === "--admin-password") options.adminPassword = requireValue(copy, ++i, arg);
     else if (arg === "--telegram-user-id") options.telegramUserId = requireValue(copy, ++i, arg);
+    else if (arg === "--discord-user-id") options.discordUserId = requireValue(copy, ++i, arg);
     else if (arg === "--slack-user-id") options.slackUserId = requireValue(copy, ++i, arg);
     else if (arg === "--slack-team-id") options.slackTeamId = requireValue(copy, ++i, arg);
+    else if (arg === "--matrix-user-id-link") options.matrixLinkedUserId = requireValue(copy, ++i, arg);
+    else if (arg === "--matrix-homeserver") options.matrixLinkedHomeserver = requireValue(copy, ++i, arg);
     else if (arg === "--state-backend") options.stateBackend = requireValue(copy, ++i, arg);
     else if (arg === "--enable-pi") options.enablePi = true;
     else if (arg === "--enable-hermes") options.enableHermes = true;
@@ -879,12 +887,28 @@ async function commandInit(options) {
   const slackSigningSecret = enableSlack === "true"
     ? options.slackSigningSecret || process.env.SLACK_SIGNING_SECRET || await ask(null, "Slack signing secret (optional for Socket Mode)", "")
     : "";
+  const enableMatrix = options.enableMatrix ? "true" : await askChoice(null, "Enable Matrix", "false");
+  const matrixHomeserverUrl = enableMatrix === "true"
+    ? options.matrixHomeserverUrl || process.env.MATRIX_HOMESERVER_URL || await ask(null, "Matrix homeserver URL", "")
+    : "";
+  const matrixAccessToken = enableMatrix === "true"
+    ? options.matrixAccessToken || process.env.MATRIX_ACCESS_TOKEN || await ask(null, "Matrix access token", "")
+    : "";
+  const matrixUserId = enableMatrix === "true"
+    ? options.matrixUserId || process.env.MATRIX_USER_ID || await ask(null, "Matrix bot user ID", "")
+    : "";
+  const matrixDeviceId = enableMatrix === "true"
+    ? options.matrixDeviceId || process.env.MATRIX_DEVICE_ID || await ask(null, "Matrix device ID (optional)", "")
+    : "";
   const adminEmail = options.adminEmail || await ask(null, "Admin email", "");
   const adminName = options.adminName || await ask(null, "Admin name", "Admin");
   const adminPassword = options.adminPassword || await askSecret(null, "Admin password", "");
   const telegramUserId = options.telegramUserId || await ask(null, "Optional Telegram user id to link", "");
+  const discordUserId = options.discordUserId || await ask(null, "Optional Discord user id to link", "");
   const slackUserId = options.slackUserId || await ask(null, "Optional Slack user id to link", "");
   const slackTeamId = slackUserId ? (options.slackTeamId || await ask(null, "Optional Slack team id for linked user", "")) : "";
+  const linkedMatrixUserId = options.matrixLinkedUserId || await ask(null, "Optional Matrix user id to link", "");
+  const linkedMatrixHomeserver = linkedMatrixUserId ? (options.matrixLinkedHomeserver || await ask(null, "Optional Matrix homeserver for linked user", "")) : "";
   const enableCodex = options.disableCodex ? "false" : await askChoice(null, "Enable Codex", "true");
   const enablePi = options.enablePi ? "true" : await askChoice(null, "Enable Pi", "false");
   const enableHermes = options.enableHermes ? "true" : await askChoice(null, "Enable Hermes", "false");
@@ -896,7 +920,8 @@ async function commandInit(options) {
   if (enableDiscord === "true" && !discordBotToken) throw new Error("Discord bot token is required when Discord is enabled.");
   if (enableSlack === "true" && !slackBotToken) throw new Error("Slack bot token is required when Slack is enabled.");
   if (enableSlack === "true" && !slackAppToken) throw new Error("Slack app-level token is required for default Socket Mode.");
-  if (enableWebui !== "true" && enableTelegram !== "true" && enableDiscord !== "true" && enableSlack !== "true") {
+  if (enableMatrix === "true" && (!matrixHomeserverUrl || !matrixAccessToken || !matrixUserId)) throw new Error("Matrix homeserver URL, access token, and bot user ID are required when Matrix is enabled.");
+  if (enableWebui !== "true" && enableTelegram !== "true" && enableDiscord !== "true" && enableSlack !== "true" && enableMatrix !== "true") {
     throw new Error("At least WebUI or one chat adapter must be enabled.");
   }
   if (!adminEmail) throw new Error("Admin email is required.");
@@ -931,6 +956,15 @@ async function commandInit(options) {
     "SLACK_SOCKET_MODE=true",
     "SLACK_MESSAGE_CONTENT_ENABLED=true",
     "SLACK_AUTO_SEND_ARTIFACTS=false",
+    `MATRIX_ENABLED=${enableMatrix}`,
+    `MATRIX_HOMESERVER_URL=${matrixHomeserverUrl}`,
+    `MATRIX_ACCESS_TOKEN=${matrixAccessToken}`,
+    `MATRIX_USER_ID=${matrixUserId}`,
+    `MATRIX_DEVICE_ID=${matrixDeviceId}`,
+    "MATRIX_AUTOJOIN_INVITES=true",
+    "MATRIX_MESSAGE_CONTENT_ENABLED=true",
+    "MATRIX_COMMAND_PREFIX=!nr",
+    "MATRIX_AUTO_SEND_ARTIFACTS=false",
     `NORDRELAY_CODEX_ENABLED=${enableCodex}`,
     `NORDRELAY_PI_ENABLED=${enablePi}`,
     `NORDRELAY_HERMES_ENABLED=${enableHermes}`,
@@ -963,8 +997,11 @@ async function commandInit(options) {
     displayName: adminName || adminEmail,
     password: adminPassword,
     telegramUserId: telegramUserId ? Number(telegramUserId) : undefined,
+    discordUserId: discordUserId || undefined,
     slackUserId: slackUserId || undefined,
     slackTeamId: slackTeamId || undefined,
+    matrixUserId: linkedMatrixUserId || undefined,
+    matrixHomeserver: linkedMatrixHomeserver || undefined,
   });
   console.log(`Wrote ${envPath}`);
   console.log(`Created admin user ${adminEmail}.`);
@@ -1337,6 +1374,8 @@ function parseUserFlags(argv) {
     else if (arg === "--discord-user-id") flags.discordUserId = requireValue(copy, ++i, arg);
     else if (arg === "--slack-user-id") flags.slackUserId = requireValue(copy, ++i, arg);
     else if (arg === "--slack-team-id") flags.slackTeamId = requireValue(copy, ++i, arg);
+    else if (arg === "--matrix-user-id") flags.matrixUserId = requireValue(copy, ++i, arg);
+    else if (arg === "--matrix-homeserver") flags.matrixHomeserver = requireValue(copy, ++i, arg);
     else if (arg === "--user-id") flags.userId = requireValue(copy, ++i, arg);
   }
   return flags;
@@ -1368,8 +1407,8 @@ async function commandUser(options) {
       ? ["admin"]
       : (flags.groups ? flags.groups.split(",").map((item) => item.trim()).filter(Boolean) : ["user"]);
     const created = flags.subcommand === "create-admin"
-      ? store.createAdmin({ email, displayName: name, password, telegramUserId: flags.telegramUserId, discordUserId: flags.discordUserId, slackUserId: flags.slackUserId, slackTeamId: flags.slackTeamId })
-      : store.createUser({ email, displayName: name, password, groupIds, telegramUserId: flags.telegramUserId, discordUserId: flags.discordUserId, slackUserId: flags.slackUserId, slackTeamId: flags.slackTeamId });
+      ? store.createAdmin({ email, displayName: name, password, telegramUserId: flags.telegramUserId, discordUserId: flags.discordUserId, slackUserId: flags.slackUserId, slackTeamId: flags.slackTeamId, matrixUserId: flags.matrixUserId, matrixHomeserver: flags.matrixHomeserver })
+      : store.createUser({ email, displayName: name, password, groupIds, telegramUserId: flags.telegramUserId, discordUserId: flags.discordUserId, slackUserId: flags.slackUserId, slackTeamId: flags.slackTeamId, matrixUserId: flags.matrixUserId, matrixHomeserver: flags.matrixHomeserver });
     console.log(`Created user ${created.user.email} (${created.groups.map((group) => group.name).join(", ")}).`);
     return;
   }
@@ -1415,6 +1454,17 @@ async function commandUser(options) {
     return;
   }
 
+  if (flags.subcommand === "link-matrix") {
+    const email = flags.email || await ask(null, "Email", "");
+    const matrixUserId = flags.matrixUserId || await ask(null, "Matrix user id", "");
+    const homeserver = flags.matrixHomeserver || await ask(null, "Matrix homeserver (optional)", "");
+    const user = store.getUserByEmail(email);
+    if (!user) throw new Error(`User not found: ${email}`);
+    store.linkMatrixUser(user.user.id, { matrixUserId, homeserver: homeserver || undefined });
+    console.log(`Linked Matrix user ${matrixUserId} to ${user.user.email}.`);
+    return;
+  }
+
   if (flags.subcommand === "link-code" || flags.subcommand === "telegram-link-code") {
     const email = flags.email || await ask(null, "Email", "");
     const user = store.getUserByEmail(email);
@@ -1445,7 +1495,17 @@ async function commandUser(options) {
     return;
   }
 
-  throw new Error("Usage: nordrelay user [list|create-admin|create|reset-password|link-telegram|link-discord|link-slack|link-code|telegram-link-code|discord-link-code|slack-link-code]");
+  if (flags.subcommand === "matrix-link-code") {
+    const email = flags.email || await ask(null, "Email", "");
+    const user = store.getUserByEmail(email);
+    if (!user) throw new Error(`User not found: ${email}`);
+    const code = store.createMatrixLinkCode(user.user.id);
+    console.log(`Matrix link code for ${user.user.email}: ${code.code}`);
+    console.log(`Expires: ${code.expiresAt}`);
+    return;
+  }
+
+  throw new Error("Usage: nordrelay user [list|create-admin|create|reset-password|link-telegram|link-discord|link-slack|link-matrix|link-code|telegram-link-code|discord-link-code|slack-link-code|matrix-link-code]");
 }
 
 async function commandDoctor(options) {
@@ -1465,10 +1525,12 @@ async function commandDoctor(options) {
   const telegramRequested = process.env.TELEGRAM_ENABLED !== "false";
   const discordRequested = process.env.DISCORD_ENABLED === "true";
   const slackRequested = process.env.SLACK_ENABLED === "true";
+  const matrixRequested = process.env.MATRIX_ENABLED === "true";
   const slackSocketMode = process.env.SLACK_SOCKET_MODE !== "false";
   const telegramUsable = telegramRequested && Boolean(process.env.TELEGRAM_BOT_TOKEN);
   const discordUsable = discordRequested && Boolean(process.env.DISCORD_BOT_TOKEN);
   const slackUsable = slackRequested && Boolean(process.env.SLACK_BOT_TOKEN) && (slackSocketMode ? Boolean(process.env.SLACK_APP_TOKEN) : Boolean(process.env.SLACK_SIGNING_SECRET));
+  const matrixUsable = matrixRequested && Boolean(process.env.MATRIX_HOMESERVER_URL) && Boolean(process.env.MATRIX_ACCESS_TOKEN) && Boolean(process.env.MATRIX_USER_ID);
   checks.push(check(
     "WebUI enabled",
     webUiEnabled,
@@ -1501,9 +1563,15 @@ async function commandDoctor(options) {
     "warn",
   ));
   checks.push(check(
+    "Matrix credentials",
+    !matrixRequested || matrixUsable,
+    matrixRequested ? (matrixUsable ? "configured" : "missing; Matrix adapter will be disabled") : "disabled",
+    "warn",
+  ));
+  checks.push(check(
     "Usable access surface",
-    webUiEnabled || telegramUsable || discordUsable || slackUsable,
-    [webUiEnabled ? "WebUI" : "", telegramUsable ? "Telegram" : "", discordUsable ? "Discord" : "", slackUsable ? "Slack" : ""].filter(Boolean).join(" and ") || "none",
+    webUiEnabled || telegramUsable || discordUsable || slackUsable || matrixUsable,
+    [webUiEnabled ? "WebUI" : "", telegramUsable ? "Telegram" : "", discordUsable ? "Discord" : "", slackUsable ? "Slack" : "", matrixUsable ? "Matrix" : ""].filter(Boolean).join(" and ") || "none",
     "fail",
     envValueFix(options.home, "NORDRELAY_WEBUI_ENABLED", "true", "Enable WebUI so at least one access surface is available."),
   ));
@@ -1514,6 +1582,7 @@ async function commandDoctor(options) {
   checks.push(check("Telegram access", true, "requires linked active users and enabled group chats"));
   checks.push(check("Discord access", true, "requires linked active users and enabled channels"));
   checks.push(check("Slack access", true, "requires linked active users and enabled channels"));
+  checks.push(check("Matrix access", true, "requires linked active users and enabled rooms"));
   const peerEnabled = process.env.NORDRELAY_PEER_ENABLED === "true";
   const peerTlsEnabled = process.env.NORDRELAY_PEER_TLS_ENABLED !== "false";
   const peerHost = process.env.NORDRELAY_PEER_HOST || "127.0.0.1";

@@ -74,7 +74,7 @@ export class ChannelMirrorRegistry {
 
   effectiveMirrorMode(
     contextKey: ChannelContextKey,
-    source: "telegram" | "discord" | "slack" | "web",
+    source: "telegram" | "discord" | "slack" | "matrix" | "web",
     preferences: BotPreferencesStore,
   ): Exclude<ChannelMirrorMode, "off"> | "off" {
     const configured = configuredMirrorMode(this.config, source);
@@ -101,17 +101,20 @@ export function activeSessionSourceForContextKey(contextKey: ChannelContextKey):
   if (channelId === "slack") {
     return "slack";
   }
+  if (channelId === "matrix") {
+    return "matrix";
+  }
   if (channelId === "web") {
     return "web";
   }
   return "cli";
 }
 
-export function isMirrorChannelSource(source: ActiveSessionSource): source is "telegram" | "discord" | "slack" | "web" {
-  return source === "telegram" || source === "discord" || source === "slack" || source === "web";
+export function isMirrorChannelSource(source: ActiveSessionSource): source is "telegram" | "discord" | "slack" | "matrix" | "web" {
+  return source === "telegram" || source === "discord" || source === "slack" || source === "matrix" || source === "web";
 }
 
-function configuredMirrorMode(config: ConnectorConfig, source: "telegram" | "discord" | "slack" | "web"): ChannelMirrorMode {
+function configuredMirrorMode(config: ConnectorConfig, source: "telegram" | "discord" | "slack" | "matrix" | "web"): ChannelMirrorMode {
   if (source === "telegram") {
     return config.telegramMirrorMode;
   }
@@ -120,6 +123,9 @@ function configuredMirrorMode(config: ConnectorConfig, source: "telegram" | "dis
   }
   if (source === "slack") {
     return config.slackMirrorMode;
+  }
+  if (source === "matrix") {
+    return config.matrixMirrorMode;
   }
   return config.webMirrorMode;
 }

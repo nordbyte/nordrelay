@@ -27,6 +27,7 @@ export interface GroupRecord extends GroupDefinition {
   telegramChatIds: number[];
   discordChannelIds: string[];
   slackChannelIds: string[];
+  matrixRoomIds: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -109,6 +110,31 @@ export interface SlackChannelAccessRecord {
   updatedAt: string;
 }
 
+export interface MatrixIdentityRecord {
+  id: string;
+  userId: string;
+  matrixUserId: string;
+  homeserver?: string;
+  displayName?: string;
+  active: boolean;
+  linkedAt: string;
+  updatedAt: string;
+}
+
+export interface MatrixRoomAccessRecord {
+  id: string;
+  roomId: string;
+  homeserver?: string;
+  title?: string;
+  canonicalAlias?: string;
+  type?: string;
+  enabled: boolean;
+  allowedGroupIds: string[];
+  artifactDelivery?: ArtifactDeliveryMode;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface WebSessionRecord {
   id: string;
   userId: string;
@@ -139,6 +165,13 @@ export interface SlackLinkCodeRecord {
   expiresAt: string;
 }
 
+export interface MatrixLinkCodeRecord {
+  code: string;
+  userId: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
 export interface AuthenticatedUser {
   user: UserRecord;
   groups: GroupRecord[];
@@ -153,12 +186,14 @@ export interface UserManagementSnapshot {
     telegramIdentities: TelegramIdentityRecord[];
     discordIdentities: DiscordIdentityRecord[];
     slackIdentities: SlackIdentityRecord[];
+    matrixIdentities: MatrixIdentityRecord[];
     webSessions: PublicWebSessionRecord[];
   }>;
   groups: GroupRecord[];
   telegramChats: TelegramChatAccessRecord[];
   discordChannels: DiscordChannelAccessRecord[];
   slackChannels: SlackChannelAccessRecord[];
+  matrixRooms: MatrixRoomAccessRecord[];
   adminConfigured: boolean;
 }
 
@@ -173,8 +208,11 @@ export interface PersistedUsers {
   discordChannels: DiscordChannelAccessRecord[];
   slackIdentities: SlackIdentityRecord[];
   slackChannels: SlackChannelAccessRecord[];
+  matrixIdentities: MatrixIdentityRecord[];
+  matrixRooms: MatrixRoomAccessRecord[];
   webSessions: WebSessionRecord[];
   telegramLinkCodes: TelegramLinkCodeRecord[];
   discordLinkCodes: DiscordLinkCodeRecord[];
   slackLinkCodes: SlackLinkCodeRecord[];
+  matrixLinkCodes: MatrixLinkCodeRecord[];
 }

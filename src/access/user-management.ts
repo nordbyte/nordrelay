@@ -15,6 +15,7 @@ import {
   normalizeDiscordId,
   normalizeEmail,
   normalizeGroupIds,
+  normalizeMatrixId,
   normalizeNumberList,
   normalizeArtifactDeliveryMode,
   normalizePayload,
@@ -41,6 +42,9 @@ import type {
   DiscordIdentityRecord,
   DiscordLinkCodeRecord,
   GroupRecord,
+  MatrixIdentityRecord,
+  MatrixLinkCodeRecord,
+  MatrixRoomAccessRecord,
   PersistedUsers,
   PublicWebSessionRecord,
   SlackChannelAccessRecord,
@@ -62,6 +66,9 @@ export type {
   DiscordIdentityRecord,
   DiscordLinkCodeRecord,
   GroupRecord,
+  MatrixIdentityRecord,
+  MatrixLinkCodeRecord,
+  MatrixRoomAccessRecord,
   PersistedUsers,
   PublicWebSessionRecord,
   SlackChannelAccessRecord,
@@ -108,6 +115,7 @@ export class UserStore {
         telegramIdentities: payload.telegramIdentities.filter((identity) => identity.userId === user.id),
         discordIdentities: payload.discordIdentities.filter((identity) => identity.userId === user.id),
         slackIdentities: payload.slackIdentities.filter((identity) => identity.userId === user.id),
+        matrixIdentities: payload.matrixIdentities.filter((identity) => identity.userId === user.id),
         webSessions: payload.webSessions
           .filter((session) => session.userId === user.id)
           .map(publicWebSession),
@@ -116,6 +124,7 @@ export class UserStore {
       telegramChats: payload.telegramChats,
       discordChannels: payload.discordChannels,
       slackChannels: payload.slackChannels,
+      matrixRooms: payload.matrixRooms,
       adminConfigured: payload.users.some((user) => user.active && this.groupIdsForUser(payload, user.id).includes(ADMIN_GROUP_ID)),
     };
   }
@@ -154,6 +163,8 @@ export class UserStore {
     discordUserId?: string;
     slackUserId?: string;
     slackTeamId?: string;
+    matrixUserId?: string;
+    matrixHomeserver?: string;
     preferences?: UserPreferencePatch;
   }): AuthenticatedUser {
     return this.mutatePayload((payload) => {
@@ -196,6 +207,12 @@ export class UserStore {
           teamId: input.slackTeamId,
         });
       }
+      if (input.matrixUserId !== undefined) {
+        this.upsertMatrixIdentityInPayload(payload, user.id, {
+          matrixUserId: input.matrixUserId,
+          homeserver: input.matrixHomeserver,
+        });
+      }
       return this.authenticatedUser(payload, user);
     });
   }
@@ -208,6 +225,8 @@ export class UserStore {
     discordUserId?: string;
     slackUserId?: string;
     slackTeamId?: string;
+    matrixUserId?: string;
+    matrixHomeserver?: string;
   }): AuthenticatedUser {
     return this.createUser({
       ...input,
@@ -461,6 +480,25 @@ export class UserStore {
     return user ? this.authenticatedUser(payload, user) : null;
   }
 
+  resolveMatrixUser(input: { matrixUserId?: string; homeserver?: string }): AuthenticatedUser | null {
+    const matrixUserId = normalizeMatrixId(input.matrixUserId);
+    if (!matrixUserId) {
+      return null;
+    }
+    const homeserver = normalizeMatrixId(input.homeserver);
+    const payload = this.readPayload();
+    const identity = payload.matrixIdentities.find((candidate) =>
+      candidate.matrixUserId === matrixUserId &&
+      candidate.active &&
+      (!homeserver || !candidate.homeserver || candidate.homeserver === homeserver)
+    );
+    if (!identity) {
+      return null;
+    }
+    const user = payload.users.find((candidate) => candidate.id === identity.userId && candidate.active);
+    return user ? this.authenticatedUser(payload, user) : null;
+  }
+
   linkTelegramUser(userId: string, input: {
     telegramUserId: number;
     username?: string;
@@ -529,6 +567,28 @@ export class UserStore {
     });
   }
 
+  linkMatrixUser(userId: string, input: {
+    matrixUserId: string;
+    homeserver?: string;
+    displayName?: string;
+  }): MatrixIdentityRecord {
+    return this.mutatePayload((payload) => {
+      const user = payload.users.find((candidate) => candidate.id === userId);
+      if (!user) {
+        throw new Error("User not found.");
+      }
+      return this.upsertMatrixIdentityInPayload(payload, userId, input);
+    });
+  }
+
+  unlinkMatrixIdentity(identityId: string): boolean {
+    return this.mutatePayload((payload) => {
+      const before = payload.matrixIdentities.length;
+      payload.matrixIdentities = payload.matrixIdentities.filter((identity) => identity.id !== identityId);
+      return payload.matrixIdentities.length !== before;
+    });
+  }
+
   createTelegramLinkCode(userId: string): TelegramLinkCodeRecord {
     return this.mutatePayload((payload) => {
       if (!payload.users.some((user) => user.id === userId && user.active)) {
@@ -579,6 +639,24 @@ export class UserStore {
         expiresAt: new Date(now + LINK_CODE_TTL_MS).toISOString(),
       };
       payload.slackLinkCodes.push(code);
+      return code;
+    });
+  }
+
+  createMatrixLinkCode(userId: string): MatrixLinkCodeRecord {
+    return this.mutatePayload((payload) => {
+      if (!payload.users.some((user) => user.id === userId && user.active)) {
+        throw new Error("Active user not found.");
+      }
+      const now = Date.now();
+      payload.matrixLinkCodes = payload.matrixLinkCodes.filter((code) => new Date(code.expiresAt).getTime() > now);
+      const code: MatrixLinkCodeRecord = {
+        code: randomLinkCode(),
+        userId,
+        createdAt: new Date(now).toISOString(),
+        expiresAt: new Date(now + LINK_CODE_TTL_MS).toISOString(),
+      };
+      payload.matrixLinkCodes.push(code);
       return code;
     });
   }
@@ -647,6 +725,28 @@ export class UserStore {
       }
       this.upsertSlackIdentityInPayload(payload, user.id, input);
       payload.slackLinkCodes = payload.slackLinkCodes.filter((candidate) => candidate.code !== normalized);
+      return this.authenticatedUser(payload, user);
+    });
+  }
+
+  consumeMatrixLinkCode(code: string, input: {
+    matrixUserId: string;
+    homeserver?: string;
+    displayName?: string;
+  }): AuthenticatedUser {
+    return this.mutatePayload((payload) => {
+      const normalized = code.trim().toUpperCase();
+      const now = Date.now();
+      const link = payload.matrixLinkCodes.find((candidate) => candidate.code === normalized && new Date(candidate.expiresAt).getTime() > now);
+      if (!link) {
+        throw new Error("Invalid or expired link code.");
+      }
+      const user = payload.users.find((candidate) => candidate.id === link.userId && candidate.active);
+      if (!user) {
+        throw new Error("Linked user is not active.");
+      }
+      this.upsertMatrixIdentityInPayload(payload, user.id, input);
+      payload.matrixLinkCodes = payload.matrixLinkCodes.filter((candidate) => candidate.code !== normalized);
       return this.authenticatedUser(payload, user);
     });
   }
@@ -821,6 +921,68 @@ export class UserStore {
     });
   }
 
+  registerMatrixRoom(input: {
+    homeserver?: string;
+    roomId: string;
+    title?: string;
+    canonicalAlias?: string;
+    type?: string;
+    enabled?: boolean;
+    allowedGroupIds?: string[];
+    artifactDelivery?: string;
+  }): MatrixRoomAccessRecord {
+    return this.mutatePayload((payload) => {
+      const now = new Date().toISOString();
+      const roomId = normalizeMatrixId(input.roomId);
+      if (!roomId) {
+        throw new Error("Matrix room id is required.");
+      }
+      const homeserver = normalizeMatrixId(input.homeserver);
+      const existing = payload.matrixRooms.find((room) => room.roomId === roomId && room.homeserver === homeserver);
+      const allowedGroupIds = normalizeGroupIds(payload, input.allowedGroupIds ?? [], null);
+      if (existing) {
+        existing.title = input.title ?? existing.title;
+        existing.canonicalAlias = input.canonicalAlias ?? existing.canonicalAlias;
+        existing.type = input.type ?? existing.type;
+        existing.enabled = input.enabled ?? existing.enabled;
+        existing.allowedGroupIds = allowedGroupIds;
+        existing.artifactDelivery = normalizeArtifactDeliveryMode(input.artifactDelivery) ?? existing.artifactDelivery;
+        existing.updatedAt = now;
+        return existing;
+      }
+      const room: MatrixRoomAccessRecord = {
+        id: randomId(),
+        homeserver,
+        roomId,
+        title: input.title,
+        canonicalAlias: input.canonicalAlias,
+        type: input.type,
+        enabled: input.enabled ?? true,
+        allowedGroupIds,
+        artifactDelivery: normalizeArtifactDeliveryMode(input.artifactDelivery),
+        createdAt: now,
+        updatedAt: now,
+      };
+      payload.matrixRooms.push(room);
+      return room;
+    });
+  }
+
+  updateMatrixRoom(id: string, patch: { enabled?: boolean; allowedGroupIds?: string[]; title?: string; artifactDelivery?: string | null }): MatrixRoomAccessRecord {
+    return this.mutatePayload((payload) => {
+      const room = payload.matrixRooms.find((candidate) => candidate.id === id);
+      if (!room) {
+        throw new Error("Matrix room not found.");
+      }
+      if (patch.enabled !== undefined) room.enabled = patch.enabled;
+      if (patch.title !== undefined) room.title = patch.title;
+      if (patch.allowedGroupIds !== undefined) room.allowedGroupIds = normalizeGroupIds(payload, patch.allowedGroupIds, null);
+      if (patch.artifactDelivery !== undefined) room.artifactDelivery = normalizeArtifactDeliveryMode(patch.artifactDelivery) ?? undefined;
+      room.updatedAt = new Date().toISOString();
+      return room;
+    });
+  }
+
   isTelegramChatAllowed(chatId: number | undefined, chatType: string | undefined, user: AuthenticatedUser): boolean {
     if (chatId === undefined) {
       return false;
@@ -882,6 +1044,27 @@ export class UserStore {
     return access.allowedGroupIds.some((groupId) => userGroupIds.has(groupId)) && this.canUseSlackChannel(user, channelId);
   }
 
+  isMatrixRoomAllowed(input: { homeserver?: string; roomId?: string; isDirectMessage?: boolean }, user: AuthenticatedUser): boolean {
+    const roomId = normalizeMatrixId(input.roomId);
+    if (!roomId) {
+      return false;
+    }
+    if (input.isDirectMessage) {
+      return this.canUseMatrixRoom(user, roomId);
+    }
+    const homeserver = normalizeMatrixId(input.homeserver);
+    const payload = this.readPayload();
+    const access = payload.matrixRooms.find((room) => room.roomId === roomId && (!room.homeserver || !homeserver || room.homeserver === homeserver));
+    if (!access?.enabled) {
+      return false;
+    }
+    if (access.allowedGroupIds.length === 0) {
+      return this.canUseMatrixRoom(user, roomId);
+    }
+    const userGroupIds = new Set(user.groups.map((group) => group.id));
+    return access.allowedGroupIds.some((groupId) => userGroupIds.has(groupId)) && this.canUseMatrixRoom(user, roomId);
+  }
+
   hasPermission(user: AuthenticatedUser | null | undefined, permission: Permission | null | undefined): boolean {
     return Boolean(permission && user?.permissions.includes(permission));
   }
@@ -925,6 +1108,14 @@ export class UserStore {
     return user.groups.some((group) => group.slackChannelIds.length === 0 || group.slackChannelIds.includes(normalized));
   }
 
+  canUseMatrixRoom(user: AuthenticatedUser | null | undefined, roomId: string | undefined): boolean {
+    const normalized = normalizeMatrixId(roomId);
+    if (!user || !normalized) {
+      return true;
+    }
+    return user.groups.some((group) => group.matrixRoomIds.length === 0 || group.matrixRoomIds.includes(normalized));
+  }
+
   createGroup(input: {
     name: string;
     description?: string;
@@ -934,6 +1125,7 @@ export class UserStore {
     telegramChatIds?: number[];
     discordChannelIds?: string[];
     slackChannelIds?: string[];
+    matrixRoomIds?: string[];
   }): GroupRecord {
     return this.mutatePayload((payload) => {
       const now = new Date().toISOString();
@@ -955,6 +1147,7 @@ export class UserStore {
         telegramChatIds: normalizeNumberList(input.telegramChatIds ?? []),
         discordChannelIds: normalizeStringList(input.discordChannelIds ?? []),
         slackChannelIds: normalizeStringList(input.slackChannelIds ?? []),
+        matrixRoomIds: normalizeStringList(input.matrixRoomIds ?? []),
         createdAt: now,
         updatedAt: now,
       };
@@ -972,6 +1165,7 @@ export class UserStore {
     telegramChatIds?: number[];
     discordChannelIds?: string[];
     slackChannelIds?: string[];
+    matrixRoomIds?: string[];
   }): GroupRecord {
     return this.mutatePayload((payload) => {
       const group = payload.groups.find((candidate) => candidate.id === id);
@@ -990,6 +1184,7 @@ export class UserStore {
       if (patch.telegramChatIds !== undefined) group.telegramChatIds = normalizeNumberList(patch.telegramChatIds);
       if (patch.discordChannelIds !== undefined) group.discordChannelIds = normalizeStringList(patch.discordChannelIds);
       if (patch.slackChannelIds !== undefined) group.slackChannelIds = normalizeStringList(patch.slackChannelIds);
+      if (patch.matrixRoomIds !== undefined) group.matrixRoomIds = normalizeStringList(patch.matrixRoomIds);
       group.updatedAt = new Date().toISOString();
       return group;
     });
@@ -1127,6 +1322,47 @@ export class UserStore {
       updatedAt: now,
     };
     payload.slackIdentities.push(identity);
+    return identity;
+  }
+
+  private upsertMatrixIdentityInPayload(payload: PersistedUsers, userId: string, input: {
+    matrixUserId: string;
+    homeserver?: string;
+    displayName?: string;
+  }): MatrixIdentityRecord {
+    const matrixUserId = normalizeMatrixId(input.matrixUserId);
+    if (!matrixUserId) {
+      throw new Error("Matrix user id is required.");
+    }
+    const homeserver = normalizeMatrixId(input.homeserver);
+    const now = new Date().toISOString();
+    for (const identity of payload.matrixIdentities) {
+      if (identity.matrixUserId === matrixUserId && (identity.homeserver ?? "") === (homeserver ?? "") && identity.userId !== userId) {
+        identity.active = false;
+      }
+    }
+    const existing = payload.matrixIdentities.find((identity) =>
+      identity.userId === userId &&
+      identity.matrixUserId === matrixUserId &&
+      (identity.homeserver ?? "") === (homeserver ?? "")
+    );
+    if (existing) {
+      existing.displayName = input.displayName ?? existing.displayName;
+      existing.active = true;
+      existing.updatedAt = now;
+      return existing;
+    }
+    const identity: MatrixIdentityRecord = {
+      id: randomId(),
+      userId,
+      matrixUserId,
+      homeserver,
+      displayName: input.displayName,
+      active: true,
+      linkedAt: now,
+      updatedAt: now,
+    };
+    payload.matrixIdentities.push(identity);
     return identity;
   }
 

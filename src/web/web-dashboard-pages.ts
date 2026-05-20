@@ -363,7 +363,7 @@ ${faviconLinks}
           </div>
           <div class="monitor-tab active" data-monitor-tab-panel="activity">
             <div class="monitor-tab-heading">
-              <div class="row"><select id="activitySource"><option value="all">All sources</option><option value="web">Web</option><option value="telegram">Telegram</option><option value="discord">Discord</option><option value="slack">Slack</option><option value="cli">CLI</option></select><select id="activityCategory"><option value="all">All categories</option><option value="prompt">Prompt</option><option value="session">Session</option><option value="queue">Queue</option><option value="agent-update">Agent update</option><option value="artifact">Artifact</option><option value="system">System</option><option value="auth">Auth</option><option value="security">Security</option><option value="tool">Tool</option></select><select id="activityStatus"><option value="all">All statuses</option><option value="queued">Queued</option><option value="running">Running</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="aborted">Aborted</option><option value="info">Info</option></select><input id="activityActor" placeholder="Actor"><input id="activityAgent" placeholder="Agent"><input id="activityThread" placeholder="Thread ID"><input id="activityWorkspace" placeholder="Workspace"><input id="activityType" placeholder="Type"><input id="activitySince" type="datetime-local"><input id="activityLimit" type="number" value="100" min="1" max="500"><button id="loadActivityBtn">Load activity</button><button id="exportActivityBtn" class="secondary">Export</button></div>
+              <div class="row"><select id="activitySource"><option value="all">All sources</option><option value="web">Web</option><option value="telegram">Telegram</option><option value="discord">Discord</option><option value="slack">Slack</option><option value="matrix">Matrix</option><option value="cli">CLI</option></select><select id="activityCategory"><option value="all">All categories</option><option value="prompt">Prompt</option><option value="session">Session</option><option value="queue">Queue</option><option value="agent-update">Agent update</option><option value="artifact">Artifact</option><option value="system">System</option><option value="auth">Auth</option><option value="security">Security</option><option value="tool">Tool</option></select><select id="activityStatus"><option value="all">All statuses</option><option value="queued">Queued</option><option value="running">Running</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="aborted">Aborted</option><option value="info">Info</option></select><input id="activityActor" placeholder="Actor"><input id="activityAgent" placeholder="Agent"><input id="activityThread" placeholder="Thread ID"><input id="activityWorkspace" placeholder="Workspace"><input id="activityType" placeholder="Type"><input id="activitySince" type="datetime-local"><input id="activityLimit" type="number" value="100" min="1" max="500"><button id="loadActivityBtn">Load activity</button><button id="exportActivityBtn" class="secondary">Export</button></div>
             </div>
             <div id="activityList" class="list"></div>
             <div id="activityPager" class="pager"></div>
@@ -483,6 +483,7 @@ ${faviconLinks}
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-access-tab="telegram">Telegram</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-access-tab="discord">Discord</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-access-tab="slack">Slack</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-access-tab="matrix">Matrix</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-access-tab="locks">Locks</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-access-tab="audit">Audit</button>
             </div>
@@ -494,7 +495,7 @@ ${faviconLinks}
                 <input id="userSearch" placeholder="Search users">
                 <select id="userStatusFilter"><option value="all">All statuses</option><option value="active">Active</option><option value="disabled">Disabled</option></select>
                 <select id="userGroupFilter"><option value="all">All groups</option></select>
-                <select id="userIdentityFilter"><option value="all">All identities</option><option value="telegram">Telegram linked</option><option value="discord">Discord linked</option><option value="slack">Slack linked</option><option value="web">Web sessions</option><option value="unlinked">No chat identity</option></select>
+                <select id="userIdentityFilter"><option value="all">All identities</option><option value="telegram">Telegram linked</option><option value="discord">Discord linked</option><option value="slack">Slack linked</option><option value="matrix">Matrix linked</option><option value="web">Web sessions</option><option value="unlinked">No chat identity</option></select>
               </div>
             </div>
             <div id="accessPanel" class="list user-list"></div>
@@ -528,6 +529,13 @@ ${faviconLinks}
             </div>
             <div id="slackChannelsList" class="list"></div>
           </div>
+          <div class="access-tab" data-access-tab-panel="matrix">
+            <div class="access-tab-heading">
+              <div class="row access-heading-actions"><button id="createMatrixRoomBtn" class="secondary">Add Matrix room</button></div>
+              <input id="matrixRoomSearch" placeholder="Search Matrix rooms">
+            </div>
+            <div id="matrixRoomsList" class="list"></div>
+          </div>
           <div class="access-tab" data-access-tab-panel="locks">
             <div class="access-tab-heading">
               <div class="row access-heading-actions"><button id="lockSessionBtn" class="secondary">Lock web session</button><button id="unlockSessionBtn" class="secondary">Unlock web session</button></div>
@@ -538,7 +546,7 @@ ${faviconLinks}
             <div class="access-tab-heading">
               <div class="row access-heading-actions"><button id="loadAuditBtn">Load audit</button><button id="exportAuditBtn" class="secondary">Export</button></div>
             </div>
-            <div class="row audit-filter-row"><select id="auditChannel"><option value="all">All channels</option><option value="web">Web</option><option value="telegram">Telegram</option><option value="discord">Discord</option><option value="slack">Slack</option></select><select id="auditCategory"><option value="all">All categories</option><option value="prompt">Prompt</option><option value="session">Session</option><option value="queue">Queue</option><option value="agent-update">Agent update</option><option value="artifact">Artifact</option><option value="system">System</option><option value="auth">Auth</option><option value="security">Security</option><option value="tool">Tool</option></select><select id="auditStatus"><option value="all">All statuses</option><option value="ok">OK</option><option value="failed">Failed</option><option value="denied">Denied</option></select><input id="auditActor" placeholder="Actor"><input id="auditAgent" placeholder="Agent"><input id="auditThread" placeholder="Thread ID"><input id="auditWorkspace" placeholder="Workspace"><input id="auditSince" type="datetime-local"><input id="auditLimit" type="number" value="50" min="1" max="500"></div>
+            <div class="row audit-filter-row"><select id="auditChannel"><option value="all">All channels</option><option value="web">Web</option><option value="telegram">Telegram</option><option value="discord">Discord</option><option value="slack">Slack</option><option value="matrix">Matrix</option></select><select id="auditCategory"><option value="all">All categories</option><option value="prompt">Prompt</option><option value="session">Session</option><option value="queue">Queue</option><option value="agent-update">Agent update</option><option value="artifact">Artifact</option><option value="system">System</option><option value="auth">Auth</option><option value="security">Security</option><option value="tool">Tool</option></select><select id="auditStatus"><option value="all">All statuses</option><option value="ok">OK</option><option value="failed">Failed</option><option value="denied">Denied</option></select><input id="auditActor" placeholder="Actor"><input id="auditAgent" placeholder="Agent"><input id="auditThread" placeholder="Thread ID"><input id="auditWorkspace" placeholder="Workspace"><input id="auditSince" type="datetime-local"><input id="auditLimit" type="number" value="50" min="1" max="500"></div>
             <div id="auditList" class="list"></div>
             <div id="auditPager" class="pager"></div>
           </div>

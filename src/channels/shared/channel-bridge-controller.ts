@@ -85,7 +85,7 @@ export function createChannelQueueStatusController<Key extends string, MessageId
 }
 
 export function createChannelActivityRecorder<Request extends ChannelBridgeRequestBase>(options: {
-  source: "telegram" | "discord" | "slack";
+  source: "telegram" | "discord" | "slack" | "matrix";
   workspace: string;
   activityStore: WebActivityStore;
   actorFor(request: Request): WebActivityActor;
@@ -103,7 +103,7 @@ export function createChannelActivityRecorder<Request extends ChannelBridgeReque
 }
 
 export function createChannelAuditRecorder<Request extends ChannelBridgeRequestBase>(options: {
-  channelId: "discord" | "slack";
+  channelId: "discord" | "slack" | "matrix";
   auditLog: { append(input: Omit<AuditEvent, "id" | "timestamp">): AuditEvent };
   actorFor(request: Request): WebActivityActor;
   actorIdFor(request: Request): string;

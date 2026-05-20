@@ -13,6 +13,9 @@ import type {
   DiscordIdentityRecord,
   DiscordLinkCodeRecord,
   GroupRecord,
+  MatrixIdentityRecord,
+  MatrixLinkCodeRecord,
+  MatrixRoomAccessRecord,
   PersistedUsers,
   SlackChannelAccessRecord,
   SlackIdentityRecord,
@@ -38,6 +41,7 @@ export function normalizePayload(payload: PersistedUsers | undefined): Persisted
       telegramChatIds: [],
       discordChannelIds: [],
       slackChannelIds: [],
+      matrixRoomIds: [],
       createdAt: now,
       updatedAt: now,
     });
@@ -53,6 +57,7 @@ export function normalizePayload(payload: PersistedUsers | undefined): Persisted
       telegramChatIds: normalizeNumberList(group.telegramChatIds),
       discordChannelIds: normalizeStringList(group.discordChannelIds),
       slackChannelIds: normalizeStringList(group.slackChannelIds),
+      matrixRoomIds: normalizeStringList(group.matrixRoomIds),
     });
   }
   const groups = Array.from(groupsById.values());
@@ -85,10 +90,17 @@ export function normalizePayload(payload: PersistedUsers | undefined): Persisted
       artifactDelivery: normalizeArtifactDeliveryMode(channel.artifactDelivery),
       allowedGroupIds: channel.allowedGroupIds.filter((groupId) => groupIds.has(groupId)),
     })),
+    matrixIdentities: (payload?.matrixIdentities ?? []).filter((item) => isMatrixIdentityRecord(item) && userIds.has(item.userId)),
+    matrixRooms: (payload?.matrixRooms ?? []).filter(isMatrixRoomAccessRecord).map((room) => ({
+      ...room,
+      artifactDelivery: normalizeArtifactDeliveryMode(room.artifactDelivery),
+      allowedGroupIds: room.allowedGroupIds.filter((groupId) => groupIds.has(groupId)),
+    })),
     webSessions: (payload?.webSessions ?? []).filter((item) => isWebSessionRecord(item) && userIds.has(item.userId)),
     telegramLinkCodes: (payload?.telegramLinkCodes ?? []).filter((item) => isTelegramLinkCodeRecord(item) && userIds.has(item.userId)),
     discordLinkCodes: (payload?.discordLinkCodes ?? []).filter((item) => isDiscordLinkCodeRecord(item) && userIds.has(item.userId)),
     slackLinkCodes: (payload?.slackLinkCodes ?? []).filter((item) => isSlackLinkCodeRecord(item) && userIds.has(item.userId)),
+    matrixLinkCodes: (payload?.matrixLinkCodes ?? []).filter((item) => isMatrixLinkCodeRecord(item) && userIds.has(item.userId)),
   };
 }
 
@@ -137,6 +149,11 @@ export function normalizeDiscordId(value: string | undefined | null): string | u
 }
 
 export function normalizeSlackId(value: string | undefined | null): string | undefined {
+  const normalized = String(value ?? "").trim();
+  return normalized || undefined;
+}
+
+export function normalizeMatrixId(value: string | undefined | null): string | undefined {
   const normalized = String(value ?? "").trim();
   return normalized || undefined;
 }
@@ -235,6 +252,18 @@ function isSlackChannelAccessRecord(value: unknown): value is SlackChannelAccess
     typeof candidate.enabled === "boolean" && Array.isArray(candidate.allowedGroupIds);
 }
 
+function isMatrixIdentityRecord(value: unknown): value is MatrixIdentityRecord {
+  const candidate = value as MatrixIdentityRecord;
+  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.userId === "string" &&
+    typeof candidate.matrixUserId === "string" && typeof candidate.active === "boolean";
+}
+
+function isMatrixRoomAccessRecord(value: unknown): value is MatrixRoomAccessRecord {
+  const candidate = value as MatrixRoomAccessRecord;
+  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.roomId === "string" &&
+    typeof candidate.enabled === "boolean" && Array.isArray(candidate.allowedGroupIds);
+}
+
 function isWebSessionRecord(value: unknown): value is WebSessionRecord {
   const candidate = value as WebSessionRecord;
   return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.userId === "string" &&
@@ -255,6 +284,12 @@ function isDiscordLinkCodeRecord(value: unknown): value is DiscordLinkCodeRecord
 
 function isSlackLinkCodeRecord(value: unknown): value is SlackLinkCodeRecord {
   const candidate = value as SlackLinkCodeRecord;
+  return Boolean(candidate) && typeof candidate.code === "string" && typeof candidate.userId === "string" &&
+    typeof candidate.expiresAt === "string";
+}
+
+function isMatrixLinkCodeRecord(value: unknown): value is MatrixLinkCodeRecord {
+  const candidate = value as MatrixLinkCodeRecord;
   return Boolean(candidate) && typeof candidate.code === "string" && typeof candidate.userId === "string" &&
     typeof candidate.expiresAt === "string";
 }

@@ -67,6 +67,23 @@ describe("loadConfig", () => {
     delete process.env.SLACK_NOTIFY_MODE;
     delete process.env.SLACK_QUIET_HOURS;
     delete process.env.SLACK_AUTO_SEND_ARTIFACTS;
+    delete process.env.MATRIX_ENABLED;
+    delete process.env.MATRIX_HOMESERVER_URL;
+    delete process.env.MATRIX_ACCESS_TOKEN;
+    delete process.env.MATRIX_USER_ID;
+    delete process.env.MATRIX_DEVICE_ID;
+    delete process.env.MATRIX_AUTOJOIN_INVITES;
+    delete process.env.MATRIX_ALLOWED_ROOM_IDS;
+    delete process.env.MATRIX_MESSAGE_CONTENT_ENABLED;
+    delete process.env.MATRIX_COMMAND_PREFIX;
+    delete process.env.MATRIX_SYNC_TIMEOUT_MS;
+    delete process.env.MATRIX_POLL_TIMEOUT_MS;
+    delete process.env.MATRIX_CLI_MIRROR_MODE;
+    delete process.env.MATRIX_CLI_MIRROR_MIN_UPDATE_MS;
+    delete process.env.MATRIX_NOTIFY_MODE;
+    delete process.env.MATRIX_QUIET_HOURS;
+    delete process.env.MATRIX_AUTO_SEND_ARTIFACTS;
+    delete process.env.MATRIX_ARTIFACT_DELIVERY;
     delete process.env.CODEX_API_KEY;
     delete process.env.CODEX_MODEL;
     delete process.env.CODEX_SYNC_INTERVAL_MS;
@@ -240,6 +257,23 @@ describe("loadConfig", () => {
       slackQuietHours: null,
       slackAutoSendArtifacts: false,
       slackArtifactDeliveryMode: "manual-only",
+      matrixEnabled: false,
+      matrixHomeserverUrl: undefined,
+      matrixAccessToken: undefined,
+      matrixUserId: undefined,
+      matrixDeviceId: undefined,
+      matrixAutojoinInvites: true,
+      matrixAllowedRoomIds: [],
+      matrixMessageContentEnabled: true,
+      matrixCommandPrefix: "!nr",
+      matrixSyncTimeoutMs: 30_000,
+      matrixPollTimeoutMs: 35_000,
+      matrixMirrorMode: "status",
+      matrixMirrorMinUpdateMs: 4_000,
+      matrixNotifyMode: "minimal",
+      matrixQuietHours: null,
+      matrixAutoSendArtifacts: false,
+      matrixArtifactDeliveryMode: "manual-only",
       workspace: process.cwd(),
       workspaceAllowedRoots: [],
       workspaceWarnRoots: [],
@@ -460,6 +494,23 @@ describe("loadConfig", () => {
     expect(config.slackNotifyMode).toBe("minimal");
     expect(config.slackQuietHours).toBeNull();
     expect(config.slackAutoSendArtifacts).toBe(false);
+    expect(config.matrixEnabled).toBe(false);
+    expect(config.matrixHomeserverUrl).toBeUndefined();
+    expect(config.matrixAccessToken).toBeUndefined();
+    expect(config.matrixUserId).toBeUndefined();
+    expect(config.matrixDeviceId).toBeUndefined();
+    expect(config.matrixAutojoinInvites).toBe(true);
+    expect(config.matrixAllowedRoomIds).toEqual([]);
+    expect(config.matrixMessageContentEnabled).toBe(true);
+    expect(config.matrixCommandPrefix).toBe("!nr");
+    expect(config.matrixSyncTimeoutMs).toBe(30_000);
+    expect(config.matrixPollTimeoutMs).toBe(35_000);
+    expect(config.matrixMirrorMode).toBe("status");
+    expect(config.matrixMirrorMinUpdateMs).toBe(4_000);
+    expect(config.matrixNotifyMode).toBe("minimal");
+    expect(config.matrixQuietHours).toBeNull();
+    expect(config.matrixAutoSendArtifacts).toBe(false);
+    expect(config.matrixArtifactDeliveryMode).toBe("manual-only");
     expect(config.maxFileSize).toBe(20 * 1024 * 1024);
     expect(config.artifactRetentionDays).toBe(7);
     expect(config.artifactMaxTurnDirs).toBe(30);
@@ -659,6 +710,47 @@ describe("loadConfig", () => {
     expect(config.slackAutoSendArtifacts).toBe(true);
   });
 
+  it("parses Matrix adapter settings", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.MATRIX_ENABLED = "true";
+    process.env.MATRIX_HOMESERVER_URL = "https://matrix.example.com/";
+    process.env.MATRIX_ACCESS_TOKEN = "matrix-token";
+    process.env.MATRIX_USER_ID = "@nordrelay:example.com";
+    process.env.MATRIX_DEVICE_ID = "DEVICE";
+    process.env.MATRIX_AUTOJOIN_INVITES = "false";
+    process.env.MATRIX_ALLOWED_ROOM_IDS = "!room-a:example.com,#alias:example.com";
+    process.env.MATRIX_MESSAGE_CONTENT_ENABLED = "false";
+    process.env.MATRIX_COMMAND_PREFIX = "!codex";
+    process.env.MATRIX_SYNC_TIMEOUT_MS = "25000";
+    process.env.MATRIX_POLL_TIMEOUT_MS = "31000";
+    process.env.MATRIX_CLI_MIRROR_MODE = "full";
+    process.env.MATRIX_CLI_MIRROR_MIN_UPDATE_MS = "2200";
+    process.env.MATRIX_NOTIFY_MODE = "all";
+    process.env.MATRIX_QUIET_HOURS = "23-6";
+    process.env.MATRIX_AUTO_SEND_ARTIFACTS = "true";
+    process.env.MATRIX_ARTIFACT_DELIVERY = "summary-with-actions";
+
+    const config = loadConfig();
+
+    expect(config.matrixEnabled).toBe(true);
+    expect(config.matrixHomeserverUrl).toBe("https://matrix.example.com");
+    expect(config.matrixAccessToken).toBe("matrix-token");
+    expect(config.matrixUserId).toBe("@nordrelay:example.com");
+    expect(config.matrixDeviceId).toBe("DEVICE");
+    expect(config.matrixAutojoinInvites).toBe(false);
+    expect(config.matrixAllowedRoomIds).toEqual(["!room-a:example.com", "#alias:example.com"]);
+    expect(config.matrixMessageContentEnabled).toBe(false);
+    expect(config.matrixCommandPrefix).toBe("!codex");
+    expect(config.matrixSyncTimeoutMs).toBe(25_000);
+    expect(config.matrixPollTimeoutMs).toBe(31_000);
+    expect(config.matrixMirrorMode).toBe("full");
+    expect(config.matrixMirrorMinUpdateMs).toBe(2_200);
+    expect(config.matrixNotifyMode).toBe("all");
+    expect(config.matrixQuietHours).toEqual({ startHour: 23, endHour: 6 });
+    expect(config.matrixAutoSendArtifacts).toBe(true);
+    expect(config.matrixArtifactDeliveryMode).toBe("summary-with-actions");
+  });
+
   it("allows Slack-only chat configuration when Telegram is disabled", () => {
     process.env.TELEGRAM_ENABLED = "false";
     process.env.SLACK_ENABLED = "true";
@@ -669,6 +761,31 @@ describe("loadConfig", () => {
 
     expect(config.telegramEnabled).toBe(false);
     expect(config.slackEnabled).toBe(true);
+  });
+
+  it("allows Matrix-only chat configuration when Telegram is disabled", () => {
+    process.env.TELEGRAM_ENABLED = "false";
+    process.env.MATRIX_ENABLED = "true";
+    process.env.MATRIX_HOMESERVER_URL = "https://matrix.example.com";
+    process.env.MATRIX_ACCESS_TOKEN = "matrix-token";
+    process.env.MATRIX_USER_ID = "@nordrelay:example.com";
+
+    const config = loadConfig();
+
+    expect(config.telegramEnabled).toBe(false);
+    expect(config.matrixEnabled).toBe(true);
+  });
+
+  it("disables requested Matrix without required credentials when Telegram is usable", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.MATRIX_ENABLED = "true";
+    process.env.MATRIX_HOMESERVER_URL = "https://matrix.example.com";
+
+    const config = loadConfig();
+
+    expect(config.telegramEnabled).toBe(true);
+    expect(config.matrixEnabled).toBe(false);
+    expect(config.adapterWarnings).toContain("Matrix disabled: MATRIX_ENABLED=true requires MATRIX_ACCESS_TOKEN.");
   });
 
   it("disables requested Slack without required tokens when Telegram is usable", () => {

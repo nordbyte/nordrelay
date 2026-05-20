@@ -59,6 +59,8 @@ export async function handleDashboardAccessRoute(
       discordUserId: optionalStringField(body, "discordUserId"),
       slackUserId: optionalStringField(body, "slackUserId"),
       slackTeamId: optionalStringField(body, "slackTeamId"),
+      matrixUserId: optionalStringField(body, "matrixUserId"),
+      matrixHomeserver: optionalStringField(body, "matrixHomeserver"),
       preferences: body.preferences && typeof body.preferences === "object" && !Array.isArray(body.preferences)
         ? { artifactDelivery: optionalStringField(body.preferences as Record<string, unknown>, "artifactDelivery") }
         : body.artifactDelivery !== undefined ? { artifactDelivery: optionalStringField(body, "artifactDelivery") } : undefined,
@@ -205,6 +207,35 @@ export async function handleDashboardAccessRoute(
     return true;
   }
 
+  const matrixLinkMatch = url.pathname.match(/^\/api\/users\/([^/]+)\/matrix$/);
+  if (matrixLinkMatch?.[1] && req.method === "POST") {
+    const body = await readJsonBody(req);
+    if (body.createCode === true) {
+      const userId = decodeURIComponent(matrixLinkMatch[1]);
+      const linkCode = users.createMatrixLinkCode(userId);
+      options.auditUserAction(authUser, "matrix_link_created", userId);
+      sendJson(res, 201, { linkCode });
+      return true;
+    }
+    const identity = users.linkMatrixUser(decodeURIComponent(matrixLinkMatch[1]), {
+      matrixUserId: stringField(body, "matrixUserId"),
+      homeserver: optionalStringField(body, "homeserver"),
+      displayName: optionalStringField(body, "displayName"),
+    });
+    options.auditUserAction(authUser, "matrix_linked", identity.matrixUserId);
+    sendJson(res, 201, { identity });
+    return true;
+  }
+
+  const matrixUnlinkMatch = url.pathname.match(/^\/api\/users\/[^/]+\/matrix\/([^/]+)$/);
+  if (matrixUnlinkMatch?.[1] && req.method === "DELETE") {
+    const identityId = decodeURIComponent(matrixUnlinkMatch[1]);
+    const removed = users.unlinkMatrixIdentity(identityId);
+    options.auditUserAction(authUser, "matrix_unlinked", identityId);
+    sendJson(res, 200, { removed });
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/groups") {
     sendJson(res, 200, { groups: users.listGroups() });
     return true;
@@ -221,6 +252,7 @@ export async function handleDashboardAccessRoute(
       telegramChatIds: arrayNumberField(body, "telegramChatIds"),
       discordChannelIds: arrayStringField(body, "discordChannelIds"),
       slackChannelIds: arrayStringField(body, "slackChannelIds"),
+      matrixRoomIds: arrayStringField(body, "matrixRoomIds"),
     });
     options.auditUserAction(authUser, "group_created", group.id);
     sendJson(res, 201, { group });
@@ -239,6 +271,7 @@ export async function handleDashboardAccessRoute(
       telegramChatIds: body.telegramChatIds === undefined ? undefined : arrayNumberField(body, "telegramChatIds"),
       discordChannelIds: body.discordChannelIds === undefined ? undefined : arrayStringField(body, "discordChannelIds"),
       slackChannelIds: body.slackChannelIds === undefined ? undefined : arrayStringField(body, "slackChannelIds"),
+      matrixRoomIds: body.matrixRoomIds === undefined ? undefined : arrayStringField(body, "matrixRoomIds"),
     });
     options.auditUserAction(authUser, "group_updated", group.id);
     sendJson(res, 200, { group });
@@ -346,6 +379,42 @@ export async function handleDashboardAccessRoute(
     });
     options.auditUserAction(authUser, "slack_channel_updated", channel.channelId);
     sendJson(res, 200, { channel });
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/matrix-rooms") {
+    sendJson(res, 200, { rooms: users.snapshot().matrixRooms });
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/matrix-rooms") {
+    const body = await readJsonBody(req);
+    const room = users.registerMatrixRoom({
+      homeserver: optionalStringField(body, "homeserver"),
+      roomId: stringField(body, "roomId"),
+      title: optionalStringField(body, "title"),
+      canonicalAlias: optionalStringField(body, "canonicalAlias"),
+      type: optionalStringField(body, "type"),
+      enabled: optionalBooleanField(body, "enabled") ?? true,
+      allowedGroupIds: arrayStringField(body, "allowedGroupIds"),
+      artifactDelivery: optionalStringField(body, "artifactDelivery"),
+    });
+    options.auditUserAction(authUser, "matrix_room_updated", room.roomId);
+    sendJson(res, 201, { room });
+    return true;
+  }
+
+  const matrixRoomMatch = url.pathname.match(/^\/api\/matrix-rooms\/([^/]+)$/);
+  if (matrixRoomMatch?.[1] && req.method === "PATCH") {
+    const body = await readJsonBody(req);
+    const room = users.updateMatrixRoom(decodeURIComponent(matrixRoomMatch[1]), {
+      enabled: optionalBooleanField(body, "enabled"),
+      title: optionalStringField(body, "title"),
+      allowedGroupIds: body.allowedGroupIds === undefined ? undefined : arrayStringField(body, "allowedGroupIds"),
+      artifactDelivery: body.artifactDelivery === undefined ? undefined : optionalStringField(body, "artifactDelivery") ?? null,
+    });
+    options.auditUserAction(authUser, "matrix_room_updated", room.roomId);
+    sendJson(res, 200, { room });
     return true;
   }
 

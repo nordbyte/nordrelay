@@ -13,6 +13,7 @@ import type { VoiceDiagnostics } from "../artifacts/voice.js";
 import type { AuditEvent } from "../access/audit-log.js";
 import type { CursorPageMeta } from "../core/pagination.js";
 import type { SlackDiagnostics } from "../channels/slack/slack-diagnostics.js";
+import type { MatrixDiagnostics } from "../channels/matrix/matrix-diagnostics.js";
 import type {
   WebActivityActor,
   WebActivityEvent,
@@ -52,7 +53,7 @@ export interface RelaySnapshot {
   workspaces: string[];
 }
 
-export type ActiveSessionSource = "web" | "telegram" | "discord" | "slack" | "cli";
+export type ActiveSessionSource = "web" | "telegram" | "discord" | "slack" | "matrix" | "cli";
 
 export interface ActiveSessionMirrorDto {
   source: Exclude<ActiveSessionSource, "cli">;
@@ -271,6 +272,7 @@ export interface WebDiagnosticsDto {
     externalMirror: ExternalMirrorState | null;
     agentDiagnostics: AgentDiagnostics;
     slackDiagnostics?: SlackDiagnostics;
+    matrixDiagnostics?: MatrixDiagnostics;
     voiceDiagnostics: VoiceDiagnostics;
   };
 }

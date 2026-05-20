@@ -46,9 +46,10 @@ function diagnosticsOverviewRows(d: any, h: any, s: any) {
   const warnings = h.state?.adapterWarnings || [];
   const mirror = d.runtime?.externalMirror;
   const slack = d.runtime?.slackDiagnostics;
+  const matrix = d.runtime?.matrixDiagnostics;
   const voice = d.runtime?.voiceDiagnostics;
   const voiceBackends = voice?.availableBackends?.length ? voice.availableBackends.join(' + ') : 'none';
-  return [['Health', h.state?.status, diagnosticsStatus(h.state?.status)], ['Queue', d.runtime?.queuePaused ? 'paused' : 'running', d.runtime?.queuePaused ? 'warn' : 'ok'], ['Runtime warnings', warnings.join(' | ') || 'none', warnings.length ? 'warn' : 'ok'], ['Agent', s.agentLabel || s.agentId || '-'], ['Thread', s.threadId], ['Workspace', s.workspace], ['Mirror', mirror ? 'active' : 'idle', mirror ? 'ok' : ''], ['Voice', voiceBackends, voice?.availableBackends?.length ? 'ok' : 'warn'], ['Slack', slack ? (slack.enabled ? 'enabled' : 'disabled') : 'not collected', slack ? (slack.enabled ? 'ok' : 'warn') : 'warn']];
+  return [['Health', h.state?.status, diagnosticsStatus(h.state?.status)], ['Queue', d.runtime?.queuePaused ? 'paused' : 'running', d.runtime?.queuePaused ? 'warn' : 'ok'], ['Runtime warnings', warnings.join(' | ') || 'none', warnings.length ? 'warn' : 'ok'], ['Agent', s.agentLabel || s.agentId || '-'], ['Thread', s.threadId], ['Workspace', s.workspace], ['Mirror', mirror ? 'active' : 'idle', mirror ? 'ok' : ''], ['Voice', voiceBackends, voice?.availableBackends?.length ? 'ok' : 'warn'], ['Slack', slack ? (slack.enabled ? 'enabled' : 'disabled') : 'not collected', slack ? (slack.enabled ? 'ok' : 'warn') : 'warn'], ['Matrix', matrix ? (matrix.enabled ? 'enabled' : 'disabled') : 'not collected', matrix ? (matrix.enabled ? 'ok' : 'warn') : 'warn']];
 }
 
 function diagnosticsRuntimeRows(d: any, h: any) {
@@ -78,6 +79,30 @@ function diagnosticsMirrorRows(mirror: any) {
 function diagnosticsSlackRows(slack: any) {
   if (!slack) return [['Status', 'not collected', 'warn']];
   return [['Enabled', slack.enabled ? 'yes' : 'no', slack.enabled ? 'ok' : 'warn'], ['Mode', slack.mode], ['Registered channels', slack.registeredChannels]].concat((slack.checks || []).map((x: any) => [x.label, diagnosticsText(x.detail), diagnosticsStatus(x.status)]), (slack.channelChecks || []).map((x: any) => ['Channel ' + x.channelId, diagnosticsText(x.detail), diagnosticsStatus(x.status)]));
+}
+
+function diagnosticsMatrixRows(matrix: any) {
+  if (!matrix) return [['Status', 'not collected', 'warn']];
+  const rate = matrix.rateLimit;
+  const rows = [
+    ['Enabled', matrix.enabled ? 'yes' : 'no', matrix.enabled ? 'ok' : 'warn'],
+    ['Configured', matrix.configured ? 'yes' : 'no', matrix.configured ? 'ok' : 'warn'],
+    ['Registered rooms', matrix.registeredRooms],
+  ];
+  if (matrix.auth) {
+    rows.push(['Whoami', matrix.auth.detail, matrix.auth.ok ? 'ok' : 'error']);
+  }
+  if (rate) {
+    rows.push(['Rate limit queued/running/retries/429', [rate.queued, rate.running, rate.retries, rate.rateLimitHits].join(' / ')]);
+  }
+  return rows.concat((matrix.checks || []).map((x: any) => [x.label, diagnosticsText(x.detail), diagnosticsStatus(x.status)]), (matrix.roomChecks || []).map((x: any) => ['Room ' + x.roomId, diagnosticsText(x.detail), diagnosticsStatus(x.status)]));
+}
+
+function diagnosticsChannelsHtml(d: any) {
+  return '<div class="metrics-grid diagnostics-grid">' +
+    metricKvCard('Slack Readiness', diagnosticsSlackRows(d.runtime?.slackDiagnostics)) +
+    metricKvCard('Matrix Readiness', diagnosticsMatrixRows(d.runtime?.matrixDiagnostics)) +
+    '</div>';
 }
 
 function diagnosticsVoiceStatus(status: any) {
@@ -148,7 +173,7 @@ function diagnosticsDoctorPanel(report: any) {
 function diagnosticsHtml(d: any, doctor: any = null) {
   const h = d.health || {};
   const s = d.snapshot?.session || {};
-  return diagnosticsTabPanel('overview', '<div class="metrics-grid diagnostics-grid diagnostics-overview-grid">' + metricKvCard('Overview', diagnosticsOverviewRows(d, h, s)) + metricKvCard('Runtime', diagnosticsRuntimeRows(d, h)) + '</div>') + diagnosticsTabPanel('runtime', diagnosticsPanelGrid('Runtime', diagnosticsRuntimeRows(d, h))) + diagnosticsTabPanel('agent', diagnosticsPanelGrid('Agent', diagnosticsAgentRows(s))) + diagnosticsTabPanel('state', diagnosticsPanelGrid('Agent State', diagnosticsAgentStateRows(d.runtime?.agentDiagnostics))) + diagnosticsTabPanel('versions', diagnosticsPanelGrid('CLI Versions', diagnosticsVersionRows(d.versionChecks || {}))) + diagnosticsTabPanel('channels', diagnosticsPanelGrid('Slack Readiness', diagnosticsSlackRows(d.runtime?.slackDiagnostics))) + diagnosticsTabPanel('voice', diagnosticsPanelGrid('Voice Backends', diagnosticsVoiceRows(d.runtime?.voiceDiagnostics))) + diagnosticsTabPanel('mirror', diagnosticsPanelGrid('External Mirror', diagnosticsMirrorRows(d.runtime?.externalMirror))) + diagnosticsDoctorPanel(doctor);
+  return diagnosticsTabPanel('overview', '<div class="metrics-grid diagnostics-grid diagnostics-overview-grid">' + metricKvCard('Overview', diagnosticsOverviewRows(d, h, s)) + metricKvCard('Runtime', diagnosticsRuntimeRows(d, h)) + '</div>') + diagnosticsTabPanel('runtime', diagnosticsPanelGrid('Runtime', diagnosticsRuntimeRows(d, h))) + diagnosticsTabPanel('agent', diagnosticsPanelGrid('Agent', diagnosticsAgentRows(s))) + diagnosticsTabPanel('state', diagnosticsPanelGrid('Agent State', diagnosticsAgentStateRows(d.runtime?.agentDiagnostics))) + diagnosticsTabPanel('versions', diagnosticsPanelGrid('CLI Versions', diagnosticsVersionRows(d.versionChecks || {}))) + diagnosticsTabPanel('channels', diagnosticsChannelsHtml(d)) + diagnosticsTabPanel('voice', diagnosticsPanelGrid('Voice Backends', diagnosticsVoiceRows(d.runtime?.voiceDiagnostics))) + diagnosticsTabPanel('mirror', diagnosticsPanelGrid('External Mirror', diagnosticsMirrorRows(d.runtime?.externalMirror))) + diagnosticsDoctorPanel(doctor);
 }
 
 function switchDiagnosticsTab(tab: string) {

@@ -14,6 +14,7 @@ export type ChannelCommandDefinition = {
   telegram?: boolean;
   discord?: boolean;
   slack?: boolean;
+  matrix?: boolean;
   discordOptions?: ChannelCommandOption[];
 };
 
@@ -118,6 +119,13 @@ export function discordHelpCommandList(): string {
 export function slackHelpCommandList(): string {
   return CHANNEL_COMMANDS
     .filter((entry) => entry.slack !== false && !["start", "help", "prompt"].includes(entry.name))
+    .map((entry) => `/${entry.name}`)
+    .join(", ");
+}
+
+export function matrixHelpCommandList(): string {
+  return CHANNEL_COMMANDS
+    .filter((entry) => entry.matrix !== false && !["start", "help", "prompt"].includes(entry.name))
     .map((entry) => `/${entry.name}`)
     .join(", ");
 }

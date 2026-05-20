@@ -1,4 +1,4 @@
-import type { AuthenticatedUser, DiscordChannelAccessRecord, SlackChannelAccessRecord, TelegramChatAccessRecord } from "../access/user-management.js";
+import type { AuthenticatedUser, DiscordChannelAccessRecord, MatrixRoomAccessRecord, SlackChannelAccessRecord, TelegramChatAccessRecord } from "../access/user-management.js";
 import type { ChannelId } from "../channels/shared/channel-adapter.js";
 import type { ConnectorConfig } from "../core/config.js";
 
@@ -27,7 +27,7 @@ export interface ArtifactDeliveryResolutionInput {
   config: ConnectorConfig;
   channelId: ChannelId;
   authUser?: AuthenticatedUser | null;
-  channelAccess?: TelegramChatAccessRecord | DiscordChannelAccessRecord | SlackChannelAccessRecord | null;
+  channelAccess?: TelegramChatAccessRecord | DiscordChannelAccessRecord | SlackChannelAccessRecord | MatrixRoomAccessRecord | null;
 }
 
 export function isArtifactDeliveryMode(value: unknown): value is ArtifactDeliveryMode {
@@ -65,5 +65,6 @@ function channelDefaultMode(config: ConnectorConfig, channelId: ChannelId): Arti
   if (channelId === "telegram") return config.telegramArtifactDeliveryMode;
   if (channelId === "discord") return config.discordArtifactDeliveryMode;
   if (channelId === "slack") return config.slackArtifactDeliveryMode;
+  if (channelId === "matrix") return config.matrixArtifactDeliveryMode;
   return config.artifactDeliveryMode;
 }

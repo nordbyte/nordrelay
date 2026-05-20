@@ -90,6 +90,15 @@ function renderProfileLinkedAccounts(profile){
       ['Status',identity.active?'active':'disabled'],
     ]));
   }
+  for(const identity of profile.matrixIdentities||[]){
+    rows.push(profileListItem('Matrix',[
+      ['User ID',identity.matrixUserId],
+      ['Homeserver',identity.homeserver||'-'],
+      ['Display name',identity.displayName||'-'],
+      ['Linked',fmtDate(identity.linkedAt)],
+      ['Status',identity.active?'active':'disabled'],
+    ]));
+  }
   box.innerHTML=rows.join('')||'<div class="item empty-state">No linked chat accounts.</div>';
 }
 

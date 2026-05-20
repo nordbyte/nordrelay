@@ -133,6 +133,33 @@ export function parseSlackContextKey(key: ChannelContextKey): { teamId?: string;
   };
 }
 
+export function matrixContextKey(input: { homeserver?: string | null; roomId: string; threadId?: string | null }): ChannelContextKey {
+  const homeserver = input.homeserver || "homeserver";
+  const thread = input.threadId && input.threadId !== input.roomId ? `:${encodeContextPart(input.threadId)}` : "";
+  return `matrix:${encodeContextPart(homeserver)}:${encodeContextPart(input.roomId)}${thread}`;
+}
+
+export function isMatrixContextKey(key: ChannelContextKey): boolean {
+  return /^matrix:[^:]+:[^:]+(?::[^:]+)?$/.test(key);
+}
+
+export function parseMatrixContextKey(key: ChannelContextKey): { homeserver?: string; roomId: string; threadId?: string } | null {
+  if (!isMatrixContextKey(key)) {
+    return null;
+  }
+  const [, homeserverRaw, roomRaw, threadRaw] = key.split(":");
+  const roomId = decodeContextPart(roomRaw ?? "");
+  if (!roomId) {
+    return null;
+  }
+  const homeserver = decodeContextPart(homeserverRaw ?? "");
+  return {
+    homeserver: homeserver === "homeserver" ? undefined : homeserver,
+    roomId,
+    threadId: threadRaw ? decodeContextPart(threadRaw) : undefined,
+  };
+}
+
 export function parseChannelContextKey(key: ChannelContextKey): ParsedChannelContextKey | null {
   const rawKey = String(key);
   if (isTelegramContextKey(rawKey as ChannelContextKey)) {
@@ -164,6 +191,16 @@ export function parseChannelContextKey(key: ChannelContextKey): ParsedChannelCon
       guildId: slack.teamId,
     };
   }
+  const matrix = parseMatrixContextKey(rawKey);
+  if (matrix) {
+    return {
+      channelId: "matrix",
+      contextKey: rawKey,
+      chatId: matrix.roomId,
+      topicId: matrix.threadId,
+      guildId: matrix.homeserver,
+    };
+  }
   if (rawKey.startsWith("web:")) {
     return {
       channelId: "web",
@@ -188,6 +225,18 @@ export function parseChannelContextKey(key: ChannelContextKey): ParsedChannelCon
     };
   }
   return null;
+}
+
+function encodeContextPart(value: string): string {
+  return Buffer.from(value, "utf8").toString("base64url");
+}
+
+function decodeContextPart(value: string): string {
+  try {
+    return Buffer.from(value, "base64url").toString("utf8");
+  } catch {
+    return "";
+  }
 }
 
 export function channelIdForContextKey(key: ChannelContextKey): ParsedChannelContextKey["channelId"] {

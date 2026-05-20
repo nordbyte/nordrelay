@@ -1,4 +1,4 @@
-export type SettingsWizardChannel = "telegram" | "discord" | "slack";
+export type SettingsWizardChannel = "telegram" | "discord" | "slack" | "matrix";
 
 export type SettingsWizardCheckStatus = "ok" | "warn" | "error";
 
@@ -24,7 +24,9 @@ export async function runSettingsWizardTest(
       ? await testTelegram(settings)
       : parsedChannel === "discord"
         ? await testDiscord(settings)
-        : await testSlack(settings);
+        : parsedChannel === "slack"
+          ? await testSlack(settings)
+          : await testMatrix(settings);
   return { channel: parsedChannel, checkedAt: new Date().toISOString(), checks };
 }
 
@@ -48,7 +50,7 @@ export function mergeSettingsWizardTestSettings(
 }
 
 function parseSettingsWizardChannel(value: string): SettingsWizardChannel {
-  if (value === "telegram" || value === "discord" || value === "slack") {
+  if (value === "telegram" || value === "discord" || value === "slack" || value === "matrix") {
     return value;
   }
   throw new Error("Invalid settings wizard channel.");
@@ -160,6 +162,56 @@ async function testSlack(settings: Record<string, string>): Promise<SettingsWiza
   return checks;
 }
 
+async function testMatrix(settings: Record<string, string>): Promise<SettingsWizardCheck[]> {
+  const homeserver = String(settings.MATRIX_HOMESERVER_URL ?? "").replace(/\/+$/, "");
+  const token = settings.MATRIX_ACCESS_TOKEN ?? "";
+  const userId = settings.MATRIX_USER_ID ?? "";
+  const prefix = settings.MATRIX_COMMAND_PREFIX || "!nr";
+  const checks: SettingsWizardCheck[] = [
+    {
+      label: "Matrix homeserver URL",
+      status: /^https?:\/\//.test(homeserver) ? "ok" : "error",
+      detail: homeserver || "MATRIX_HOMESERVER_URL is required.",
+    },
+    tokenCheck("Matrix access token", token, /^.{12,}$/),
+    {
+      label: "Matrix bot user ID",
+      status: isMatrixUserId(userId) ? "ok" : "error",
+      detail: isMatrixUserId(userId) ? "Full Matrix user id configured." : "Use a full Matrix user id such as @nordrelay:example.com.",
+    },
+    {
+      label: "Matrix command prefix",
+      status: prefix.trim() ? "ok" : "error",
+      detail: prefix || "!nr",
+    },
+    listCheck("Allowed Matrix rooms", settings.MATRIX_ALLOWED_ROOM_IDS, isMatrixRoomId),
+  ];
+
+  if (isUsableSecret(token, /^.{12,}$/) && /^https?:\/\//.test(homeserver)) {
+    checks.push(await fetchMatrixIdentity(homeserver, token, userId));
+  }
+  return checks;
+}
+
+async function fetchMatrixIdentity(homeserver: string, token: string, expectedUserId: string): Promise<SettingsWizardCheck> {
+  try {
+    const data = await fetchJson(`${homeserver}/_matrix/client/v3/account/whoami`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (typeof data.user_id === "string") {
+      const ok = !expectedUserId || data.user_id === expectedUserId;
+      return {
+        label: "Matrix API",
+        status: ok ? "ok" : "error",
+        detail: ok ? `Bot reachable as ${data.user_id}.` : `Token belongs to ${data.user_id}, expected ${expectedUserId}.`,
+      };
+    }
+    return { label: "Matrix API", status: "error", detail: String(data.error ?? data.description ?? "Matrix rejected the access token.") };
+  } catch (error) {
+    return { label: "Matrix API", status: "warn", detail: `Live check failed: ${errorText(error)}` };
+  }
+}
+
 function tokenCheck(label: string, value: string, pattern: RegExp): SettingsWizardCheck {
   if (!value) {
     return { label, status: "error", detail: "Required value is missing." };
@@ -253,6 +305,14 @@ function isSnowflake(value: string): boolean {
 
 function isSlackId(value: string): boolean {
   return /^[A-Z0-9]{2,64}$/.test(value);
+}
+
+function isMatrixUserId(value: string): boolean {
+  return /^@[^:\s]+:[^:\s]+(?:\.[^:\s]+)*$/.test(value);
+}
+
+function isMatrixRoomId(value: string): boolean {
+  return /^![^:\s]+:[^:\s]+(?:\.[^:\s]+)*$/.test(value);
 }
 
 function truthy(value: string | undefined): boolean {

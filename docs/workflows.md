@@ -3,7 +3,7 @@
 ## Text
 
 - Any non-command text message becomes a prompt for the selected agent.
-- While the selected agent works, Telegram shows `typing`.
+- While the selected agent works, supported chat adapters show typing or status activity.
 - Replies stream back into the same chat or topic.
 
 ## Photos
@@ -28,16 +28,16 @@
 
 ## Artifacts
 
-- For generated files that should be returned to Telegram, tell the selected agent to write them to:
+- For generated files that should be returned to a chat adapter, tell the selected agent to write them to:
 
 ```text
 <workspace>/.nordrelay/turns/<turn-id>/out/
 ```
 
 - The connector stores files in that directory and keeps them available for `/artifacts`.
-- Automatic artifact delivery is off by default. Configure `NORDRELAY_ARTIFACT_DELIVERY` or the channel-specific `TELEGRAM_ARTIFACT_DELIVERY`, `DISCORD_ARTIFACT_DELIVERY`, and `SLACK_ARTIFACT_DELIVERY` overrides to send summaries, files, ZIP bundles, images only, or nothing.
-- User preferences and registered Telegram/Discord/Slack channels can override artifact delivery in the WebUI.
-- Use `/artifacts delivery <mode>` in Telegram, Discord, or Slack to set the linked user's delivery preference. Use `default` to inherit the channel/system default.
+- Automatic artifact delivery is off by default. Configure `NORDRELAY_ARTIFACT_DELIVERY` or the channel-specific `TELEGRAM_ARTIFACT_DELIVERY`, `DISCORD_ARTIFACT_DELIVERY`, `SLACK_ARTIFACT_DELIVERY`, and `MATRIX_ARTIFACT_DELIVERY` overrides to send summaries, files, ZIP bundles, images only, or nothing.
+- User preferences and registered Telegram/Discord/Slack/Matrix channels can override artifact delivery in the WebUI.
+- Use `/artifacts delivery <mode>` in Telegram, Discord, Slack, or Matrix to set the linked user's delivery preference. Use `default` to inherit the channel/system default.
 - When automatic delivery or explicit `/artifacts` sending is used, image outputs are sent with previews where the channel supports it and other outputs are sent as files.
 - When more than five artifacts are sent, the connector tries to send one ZIP bundle instead of many separate files.
 - Use `/artifacts` to list recent artifact turns with inline Send/ZIP/Delete actions.
@@ -52,7 +52,7 @@
 
 ## Voice and Audio
 
-- Send a Telegram voice note or audio file.
+- Send a Telegram voice note or an audio file through Telegram, Discord, Slack, Matrix, or the WebUI.
 - The connector transcribes it, then sends the transcript to the selected agent.
 - Local transcription is tried first with `parakeet-coreml`, `faster-whisper`, or `cohere-transcribe` when installed.
 - OpenAI Whisper is used when `OPENAI_API_KEY` is set.

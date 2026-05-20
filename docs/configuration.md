@@ -56,13 +56,29 @@ Slack:
 - `SLACK_COMMAND`: slash command configured in Slack. Defaults to `/nordrelay`.
 - `SLACK_CLI_MIRROR_MODE`, `SLACK_CLI_MIRROR_MIN_UPDATE_MS`, `SLACK_NOTIFY_MODE`, `SLACK_QUIET_HOURS`, and `SLACK_AUTO_SEND_ARTIFACTS`: optional Slack-specific overrides for the channel-neutral defaults.
 
+Matrix:
+
+- `MATRIX_ENABLED`: starts the Matrix adapter. Defaults to `false`.
+- `MATRIX_HOMESERVER_URL`: Matrix homeserver base URL, for example `https://matrix.example.com`. Required for the Matrix adapter to start.
+- `MATRIX_ACCESS_TOKEN`: access token for the bot Matrix account. Required for the Matrix adapter to start.
+- `MATRIX_USER_ID`: full bot Matrix user id, for example `@nordrelay:example.com`. Required for the Matrix adapter to start.
+- `MATRIX_DEVICE_ID`: optional Matrix device id associated with the access token.
+- `MATRIX_AUTOJOIN_INVITES`: automatically joins rooms where the bot user is invited. Defaults to `true`.
+- `MATRIX_ALLOWED_ROOM_IDS`: optional Matrix room allow-list before user/group permissions are checked. Use room ids such as `!roomid:example.com`.
+- `MATRIX_MESSAGE_CONTENT_ENABLED`: reads regular Matrix text messages as prompts. Defaults to `true`.
+- `MATRIX_COMMAND_PREFIX`: text command prefix for Matrix clients, for example `!nr`. Slash-style messages such as `/session` are also recognized. Defaults to `!nr`.
+- `MATRIX_SYNC_TIMEOUT_MS`: long-poll timeout passed to Matrix `/sync`. Defaults to `30000`.
+- `MATRIX_POLL_TIMEOUT_MS`: HTTP timeout for each Matrix `/sync` request. Defaults to `35000`.
+- `MATRIX_CLI_MIRROR_MODE`, `MATRIX_CLI_MIRROR_MIN_UPDATE_MS`, `MATRIX_NOTIFY_MODE`, `MATRIX_QUIET_HOURS`, and `MATRIX_AUTO_SEND_ARTIFACTS`: optional Matrix-specific overrides for the channel-neutral defaults.
+- End-to-end encrypted Matrix rooms are not decrypted by NordRelay. Use unencrypted bot rooms or a bridge until Matrix E2EE support is added.
+
 User management:
 
-- Users, groups, Telegram identities, Telegram group-chat access, Discord identities, Discord channel access, Slack identities, Slack channel access, and web sessions are stored in `~/.nordrelay/users.json`.
-- Manage users in the WebUI Users page or with `nordrelay user list`, `create-admin`, `create`, `reset-password`, `link-telegram`, `link-discord`, `link-slack`, `link-code`, `discord-link-code`, and `slack-link-code`.
+- Users, groups, Telegram identities, Telegram group-chat access, Discord identities, Discord channel access, Slack identities, Slack channel access, Matrix identities, Matrix room access, and web sessions are stored in `~/.nordrelay/users.json`.
+- Manage users in the WebUI Users page or with `nordrelay user list`, `create-admin`, `create`, `reset-password`, `link-telegram`, `link-discord`, `link-slack`, `link-matrix`, `link-code`, `discord-link-code`, `slack-link-code`, and `matrix-link-code`.
 - Built-in groups are `admin`, `user`, and `readonly`.
 - Group permissions include `inspect`, `sessions.read`, `sessions.write`, `prompt.send`, `prompt.abort`, `files.read`, `files.write`, `settings.read`, `settings.write`, `auth.manage`, `diagnostics.read`, `logs.read`, `logs.clear`, `queue.read`, `queue.write`, `workflows.read`, `workflows.write`, `workflows.run`, `updates.run`, `system.restart`, `users.read`, `users.write`, `audit.read`, `peers.read`, `peers.write`, and `peers.connect`.
-- Custom groups can also restrict access to specific agent ids, workspace roots, Telegram chat ids, Discord channel ids, and Slack channel ids.
+- Custom groups can also restrict access to specific agent ids, workspace roots, Telegram chat ids, Discord channel ids, Slack channel ids, and Matrix room ids.
 
 Peers:
 
@@ -160,7 +176,7 @@ Telegram output:
 - `ENABLE_TELEGRAM_REACTIONS`: enables Telegram reactions when `true`.
 - `MAX_FILE_SIZE`: maximum inbound Telegram document size in bytes. Defaults to 20 MB.
 - `NORDRELAY_ARTIFACT_DELIVERY`: default artifact delivery mode for chat adapters. Supported values: `manual-only`, `summary`, `summary-with-actions`, `auto-files`, `auto-zip`, `images-only`, and `off`.
-- `TELEGRAM_ARTIFACT_DELIVERY`, `DISCORD_ARTIFACT_DELIVERY`, and `SLACK_ARTIFACT_DELIVERY`: optional channel-specific artifact delivery overrides.
+- `TELEGRAM_ARTIFACT_DELIVERY`, `DISCORD_ARTIFACT_DELIVERY`, `SLACK_ARTIFACT_DELIVERY`, and `MATRIX_ARTIFACT_DELIVERY`: optional channel-specific artifact delivery overrides.
 - `ARTIFACT_MAX_TOTAL_BYTES`: optional managed artifact storage quota in bytes. `0` disables quota enforcement.
 - `ARTIFACT_WARN_PERCENT`: warning threshold for the artifact quota. Defaults to `80`.
 - `ARTIFACT_RETENTION_DAYS`: artifact/inbox turn age before pruning. Defaults to `7`.
@@ -168,7 +184,7 @@ Telegram output:
 - `ARTIFACT_MAX_INBOX_DIRS`: maximum staged inbox directories to keep per workspace. Defaults to `30`.
 - `ARTIFACT_IGNORE_DIRS`: comma-separated extra directory names or relative paths ignored during workspace artifact scans.
 - `ARTIFACT_IGNORE_GLOBS`: comma-separated glob patterns ignored during workspace artifact scans.
-- `TELEGRAM_AUTO_SEND_ARTIFACTS`, `DISCORD_AUTO_SEND_ARTIFACTS`, and `SLACK_AUTO_SEND_ARTIFACTS`: compatibility booleans that map to artifact delivery defaults when the newer delivery mode is not set.
+- `TELEGRAM_AUTO_SEND_ARTIFACTS`, `DISCORD_AUTO_SEND_ARTIFACTS`, `SLACK_AUTO_SEND_ARTIFACTS`, and `MATRIX_AUTO_SEND_ARTIFACTS`: compatibility booleans that map to artifact delivery defaults when the newer delivery mode is not set.
 
 Workspace policy:
 

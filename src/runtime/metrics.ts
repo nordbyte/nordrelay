@@ -3,6 +3,7 @@ import { monitorEventLoopDelay } from "node:perf_hooks";
 import { getDiscordRateLimitMetrics } from "../channels/discord/discord-rate-limit.js";
 import type { UnifiedJobDto } from "./relay-runtime-types.js";
 import { getSlackRateLimitMetrics } from "../channels/slack/slack-rate-limit.js";
+import { getMatrixRateLimitMetrics } from "../channels/matrix/matrix-rate-limit.js";
 import { getTelegramRateLimitMetrics } from "../channels/telegram/telegram-rate-limit.js";
 import { getWebApiPerformanceMetrics } from "../web/web-performance.js";
 import type { WebActivityEvent } from "../web/web-state.js";
@@ -62,6 +63,7 @@ export interface RuntimeMetricsDto {
     telegram: ReturnType<typeof getTelegramRateLimitMetrics>;
     discord: ReturnType<typeof getDiscordRateLimitMetrics>;
     slack: ReturnType<typeof getSlackRateLimitMetrics>;
+    matrix: ReturnType<typeof getMatrixRateLimitMetrics>;
   };
   web: ReturnType<typeof getWebApiPerformanceMetrics>;
 }
@@ -84,6 +86,7 @@ export interface RuntimeMetricHistorySample {
     telegram: number;
     discord: number;
     slack: number;
+    matrix: number;
   };
 }
 
@@ -125,6 +128,7 @@ export function buildRuntimeMetrics(input: {
       telegram: getTelegramRateLimitMetrics(),
       discord: getDiscordRateLimitMetrics(),
       slack: getSlackRateLimitMetrics(),
+      matrix: getMatrixRateLimitMetrics(),
     },
     web: getWebApiPerformanceMetrics(),
   };
@@ -156,6 +160,7 @@ export function runtimeMetricHistorySample(metrics: RuntimeMetricsDto): RuntimeM
       telegram: Number(metrics.adapters.telegram?.rateLimitHits ?? 0),
       discord: Number(metrics.adapters.discord?.rateLimitHits ?? 0),
       slack: Number(metrics.adapters.slack?.rateLimitHits ?? 0),
+      matrix: Number(metrics.adapters.matrix?.rateLimitHits ?? 0),
     },
   };
 }

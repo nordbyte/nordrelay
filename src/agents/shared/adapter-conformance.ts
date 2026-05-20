@@ -107,9 +107,8 @@ export function buildAdapterConformanceMatrix(input: {
 }
 
 function commandNamesForChannel(id: ChannelDescriptor["id"]): string[] {
-  if (id === "telegram" || id === "discord" || id === "slack") {
+  if (id === "telegram" || id === "discord" || id === "slack" || id === "matrix") {
     return channelCatalogCommandNames(id as CommandTransport);
   }
   return [];
 }
-

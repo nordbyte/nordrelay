@@ -148,11 +148,13 @@ function isLocalAdminApi(path) {
     path === '/api/telegram-chats' ||
     path === '/api/discord-channels' ||
     path === '/api/slack-channels' ||
+    path === '/api/matrix-rooms' ||
     /^\/api\/users\//.test(path) ||
     /^\/api\/groups\//.test(path) ||
     /^\/api\/telegram-chats\//.test(path) ||
     /^\/api\/discord-channels\//.test(path) ||
-    /^\/api\/slack-channels\//.test(path);
+    /^\/api\/slack-channels\//.test(path) ||
+    /^\/api\/matrix-rooms\//.test(path);
 }
 
 function selectedPeerTarget() {

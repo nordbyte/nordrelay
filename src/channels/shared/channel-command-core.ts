@@ -1,7 +1,7 @@
 import { CHANNEL_COMMANDS } from "./channel-command-catalog.js";
 import { normalizeChannelCommandName } from "./channel-runtime.js";
 
-export type CommandTransport = "telegram" | "discord" | "slack";
+export type CommandTransport = "telegram" | "discord" | "slack" | "matrix";
 
 export type SharedChannelCommandHandler<TRequest> = (
   request: TRequest,
@@ -63,7 +63,8 @@ export function channelCatalogCommandNames(transport: CommandTransport): string[
     .filter((entry) => {
       if (transport === "telegram") return entry.telegram !== false;
       if (transport === "discord") return entry.discord !== false;
-      return entry.slack !== false;
+      if (transport === "slack") return entry.slack !== false;
+      return entry.matrix !== false;
     })
     .map((entry) => normalizeChannelCommandName(entry.name))
     .sort();

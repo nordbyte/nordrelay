@@ -10,6 +10,7 @@ import { createBot, registerCommands } from "./channels/telegram/bot.js";
 import { createDiscordBridge } from "./channels/discord/discord-bot.js";
 import { startDiscordBridgeOrDisable } from "./channels/discord/discord-startup.js";
 import { createSlackBridge } from "./channels/slack/slack-bot.js";
+import { createMatrixBridge } from "./channels/matrix/matrix-bot.js";
 import { checkAuthStatus } from "./agents/codex/codex-auth.js";
 import { describeCodexCli, resolveCodexCli } from "./agents/codex/codex-cli.js";
 import { checkClaudeCodeAuthStatus } from "./agents/claude-code/claude-code-auth.js";
@@ -39,6 +40,7 @@ let registry: SessionRegistry | undefined;
 let bot: ReturnType<typeof createBot> | undefined;
 let discordBridge: ReturnType<typeof createDiscordBridge> | undefined;
 let slackBridge: ReturnType<typeof createSlackBridge> | undefined;
+let matrixBridge: ReturnType<typeof createMatrixBridge> | undefined;
 let webhookServer: Server | undefined;
 let peerServer: PeerServerHandle | null | undefined;
 let peerHealthMonitor: PeerHealthMonitorHandle | undefined;
@@ -69,6 +71,8 @@ try {
   }
   slackBridge = createSlackBridge(config, registry);
   await slackBridge?.start();
+  matrixBridge = createMatrixBridge(config, registry);
+  await matrixBridge?.start();
   if (config.peerEnabled) {
     peerRuntime = new RelayRuntime(config);
     peerServer = await startPeerServer({ config, runtime: peerRuntime });
@@ -129,6 +133,7 @@ try {
   console.log(`Telegram: ${config.telegramEnabled ? config.telegramTransport : "disabled"}`);
   console.log(`Discord: ${config.discordEnabled ? "enabled" : "disabled"}`);
   console.log(`Slack: ${config.slackEnabled ? (config.slackSocketMode ? "socket-mode" : `http:${config.slackPort}`) : "disabled"}`);
+  console.log(`Matrix: ${config.matrixEnabled ? config.matrixHomeserverUrl : "disabled"}`);
   console.log(`Peers: ${peerServer ? peerServer.url : "disabled"}`);
   console.log(`Peer outbound relay: ${peerOutboundRelay ? "enabled" : "disabled"}`);
   await writeConnectorState({
@@ -148,6 +153,7 @@ try {
     telegramTransport: config.telegramTransport,
     discordEnabled: config.discordEnabled,
     slackEnabled: config.slackEnabled,
+    matrixEnabled: config.matrixEnabled,
     peerEnabled: config.peerEnabled,
     peerOutboundRelayEnabled: config.peerOutboundRelayEnabled,
     webuiEnabled: config.webuiEnabled,
@@ -218,6 +224,9 @@ const shutdown = (signal: NodeJS.Signals) => {
   });
   void slackBridge?.stop().catch((error) => {
     console.warn("Failed to stop Slack bridge:", error instanceof Error ? error.message : String(error));
+  });
+  void matrixBridge?.stop().catch((error) => {
+    console.warn("Failed to stop Matrix bridge:", error instanceof Error ? error.message : String(error));
   });
   webhookServer?.close();
   void peerServer?.close().catch((error) => {

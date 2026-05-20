@@ -40,6 +40,10 @@ export type AuditAction =
   | "slack_linked"
   | "slack_unlinked"
   | "slack_channel_updated"
+  | "matrix_link_created"
+  | "matrix_linked"
+  | "matrix_unlinked"
+  | "matrix_room_updated"
   | "peer_invite_created"
   | "peer_invite_deleted"
   | "peer_paired"
@@ -64,7 +68,7 @@ export interface AuditEvent {
   category?: WebActivityCategory;
   status: "ok" | "failed" | "denied";
   contextKey: ChannelContextKey;
-  channelId: "telegram" | "discord" | "slack" | "web";
+  channelId: "telegram" | "discord" | "slack" | "matrix" | "web";
   actor?: WebActivityActor;
   actorId?: number | string;
   actorRole?: string;

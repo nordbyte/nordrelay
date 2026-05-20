@@ -54,6 +54,7 @@ export type WebApiStaticPath =
   | "/api/locks"
   | "/api/logs"
   | "/api/logs/clear"
+  | "/api/matrix-rooms"
   | "/api/metrics"
   | "/api/metrics/history"
   | "/api/models"
@@ -118,6 +119,7 @@ export type WebApiDynamicPath =
   | `/api/groups/${string}`
   | `/api/jobs/${string}/action`
   | `/api/jobs/${string}/log`
+  | `/api/matrix-rooms/${string}`
   | `/api/peers/${string}`
   | `/api/peers/${string}/events`
   | `/api/peers/${string}/health`
@@ -152,6 +154,8 @@ export type WebApiDynamicPath =
   | `/api/users/${string}`
   | `/api/users/${string}/discord`
   | `/api/users/${string}/discord/${string}`
+  | `/api/users/${string}/matrix`
+  | `/api/users/${string}/matrix/${string}`
   | `/api/users/${string}/password`
   | `/api/users/${string}/sessions`
   | `/api/users/${string}/sessions/${string}`

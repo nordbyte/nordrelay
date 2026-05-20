@@ -48,6 +48,8 @@ const LOCAL_ONLY_ROUTE_PATHS = new Set([
   "/api/users/:id/discord/:identityId",
   "/api/users/:id/slack",
   "/api/users/:id/slack/:identityId",
+  "/api/users/:id/matrix",
+  "/api/users/:id/matrix/:identityId",
   "/api/groups",
   "/api/groups/:id",
   "/api/telegram-chats",
@@ -56,6 +58,8 @@ const LOCAL_ONLY_ROUTE_PATHS = new Set([
   "/api/discord-channels/:id",
   "/api/slack-channels",
   "/api/slack-channels/:id",
+  "/api/matrix-rooms",
+  "/api/matrix-rooms/:id",
   "/api/audit",
 ]);
 

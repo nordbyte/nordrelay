@@ -7,6 +7,7 @@ import {
   type PublicWebSessionRecord,
   type TelegramIdentityRecord,
   type DiscordIdentityRecord,
+  type MatrixIdentityRecord,
   type SlackIdentityRecord,
   type UserPreferences,
   type UserStore,
@@ -27,6 +28,7 @@ export interface WebProfileDto {
   telegramIdentities: TelegramIdentityRecord[];
   discordIdentities: DiscordIdentityRecord[];
   slackIdentities: SlackIdentityRecord[];
+  matrixIdentities: MatrixIdentityRecord[];
   webSessions: PublicWebSessionRecord[];
   currentSessionId?: string;
 }
@@ -111,6 +113,7 @@ function profileDto(users: UserStore, authUser: AuthenticatedUser, sessionToken?
       telegramIdentities: [],
       discordIdentities: [],
       slackIdentities: [],
+      matrixIdentities: [],
       webSessions: current ? [current] : [],
       currentSessionId: current?.id,
     };
@@ -122,6 +125,7 @@ function profileDto(users: UserStore, authUser: AuthenticatedUser, sessionToken?
     telegramIdentities,
     discordIdentities,
     slackIdentities,
+    matrixIdentities,
     webSessions,
     ...user
   } = entry;
@@ -132,6 +136,7 @@ function profileDto(users: UserStore, authUser: AuthenticatedUser, sessionToken?
     telegramIdentities,
     discordIdentities,
     slackIdentities,
+    matrixIdentities,
     webSessions,
     currentSessionId: current?.id,
   };

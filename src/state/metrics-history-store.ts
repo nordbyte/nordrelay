@@ -69,6 +69,7 @@ function normalizeSample(input: RuntimeMetricHistorySample): RuntimeMetricHistor
       telegram: number(input.rateLimitHits?.telegram),
       discord: number(input.rateLimitHits?.discord),
       slack: number(input.rateLimitHits?.slack),
+      matrix: number(input.rateLimitHits?.matrix),
     },
   };
 }

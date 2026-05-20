@@ -51,7 +51,7 @@ function applyPermissions(){
     ['#updateBtn','updates.run'],
     ['#clearLogsBtn','logs.clear'],
     ['#createTemplateBtn,#createWorkflowBtn','workflows.write'],
-    ['#createUserBtn,#createGroupBtn,#createChatBtn,#createDiscordChannelBtn,#createSlackChannelBtn','users.write'],
+    ['#createUserBtn,#createGroupBtn,#createChatBtn,#createDiscordChannelBtn,#createSlackChannelBtn,#createMatrixRoomBtn','users.write'],
     ['#createPeerInviteBtn,#addPeerBtn,[data-peer-edit],[data-peer-toggle],[data-peer-revoke],[data-peer-invite-delete]','peers.write'],
     ['#checkPeerReachabilityBtn,#discoverPeersBtn,#cancelPeerDiscoveryBtn,[data-peer-probe]','peers.connect'],
     ['#exportPeerIdentityBtn,#restorePeerIdentityBtn,#retryPeerRelayBtn,#drainPeerRelayBtn,[data-peer-repin],[data-peer-rotate],[data-peer-relay-cancel]','peers.write'],
@@ -64,7 +64,7 @@ function applyPermissions(){
     ['[data-del-art],#deleteSelectedArtifactsBtn','files.write'],
     ['[data-auth-login],[data-auth-logout]','auth.manage'],
     ['[data-update-agent],[data-update-send],[data-update-cancel],[data-update-delete-log]','updates.run'],
-    ['[data-user-edit],[data-user-toggle],[data-user-code],[data-user-link],[data-user-discord-code],[data-user-discord-link],[data-user-slack-code],[data-user-slack-link],[data-user-password],[data-user-revoke],[data-telegram-unlink],[data-discord-unlink],[data-slack-unlink],[data-group-edit],[data-chat-edit],[data-chat-toggle],[data-discord-channel-edit],[data-discord-channel-toggle],[data-slack-channel-edit],[data-slack-channel-toggle]','users.write'],
+    ['[data-user-edit],[data-user-toggle],[data-user-code],[data-user-link],[data-user-discord-code],[data-user-discord-link],[data-user-slack-code],[data-user-slack-link],[data-user-matrix-code],[data-user-matrix-link],[data-user-password],[data-user-revoke],[data-telegram-unlink],[data-discord-unlink],[data-slack-unlink],[data-matrix-unlink],[data-group-edit],[data-chat-edit],[data-chat-toggle],[data-discord-channel-edit],[data-discord-channel-toggle],[data-slack-channel-edit],[data-slack-channel-toggle],[data-matrix-room-edit],[data-matrix-room-toggle]','users.write'],
   ];
   disableMap.forEach(([selector,permission])=>document.querySelectorAll(selector).forEach(el=>{el.disabled=!can(permission);if(!can(permission))el.title='Permission required: '+permission}));
 }

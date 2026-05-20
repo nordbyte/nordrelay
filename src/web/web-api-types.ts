@@ -58,6 +58,8 @@ import type {
   DiscordChannelAccessRecord,
   DiscordIdentityRecord,
   GroupRecord,
+  MatrixIdentityRecord,
+  MatrixRoomAccessRecord,
   SlackChannelAccessRecord,
   SlackIdentityRecord,
   TelegramChatAccessRecord,
@@ -93,6 +95,7 @@ export interface WebProfileResponse {
   telegramIdentities: TelegramIdentityRecord[];
   discordIdentities: DiscordIdentityRecord[];
   slackIdentities: SlackIdentityRecord[];
+  matrixIdentities: MatrixIdentityRecord[];
   webSessions: PublicWebSession[];
   currentSessionId?: string;
 }
@@ -133,12 +136,14 @@ export interface WebUserManagementResponse {
     telegramIdentities: TelegramIdentityRecord[];
     discordIdentities: DiscordIdentityRecord[];
     slackIdentities: SlackIdentityRecord[];
+    matrixIdentities: MatrixIdentityRecord[];
     webSessions: PublicWebSession[];
   }>;
   groups: GroupRecord[];
   telegramChats: TelegramChatAccessRecord[];
   discordChannels: DiscordChannelAccessRecord[];
   slackChannels: SlackChannelAccessRecord[];
+  matrixRooms: MatrixRoomAccessRecord[];
   adminConfigured: boolean;
   permissions: Permission[];
 }
@@ -214,20 +219,23 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends `/api/workflows/${string}/run` | `/api/workflows/${string}/preview` ? { variables?: Record<string, string> } :
   P extends `/api/workflows/${string}` ? { name: string; description?: string; tags?: string[]; steps: WorkflowStep[]; schedule?: Workflow["schedule"]; scope?: "private" | "shared" } :
   P extends `/api/workflow-runs/${string}/rerun-failed` ? Record<string, never> :
-  P extends "/api/users" ? { email: string; displayName?: string; password: string; groupIds?: string[]; active?: boolean; telegramUserId?: number; discordUserId?: string; preferences?: { artifactDelivery?: string } } :
+  P extends "/api/users" ? { email: string; displayName?: string; password: string; groupIds?: string[]; active?: boolean; telegramUserId?: number; discordUserId?: string; slackUserId?: string; slackTeamId?: string; matrixUserId?: string; matrixHomeserver?: string; preferences?: { artifactDelivery?: string } } :
   P extends `/api/users/${string}/password` ? { password: string } :
   P extends `/api/users/${string}/telegram` ? { createCode?: boolean; telegramUserId?: number; username?: string } :
   P extends `/api/users/${string}/discord` ? { createCode?: boolean; discordUserId?: string; username?: string; globalName?: string } :
   P extends `/api/users/${string}/slack` ? { createCode?: boolean; slackUserId?: string; teamId?: string; username?: string; realName?: string } :
+  P extends `/api/users/${string}/matrix` ? { createCode?: boolean; matrixUserId?: string; homeserver?: string; displayName?: string } :
   P extends `/api/users/${string}` ? { email?: string; displayName?: string; active?: boolean; groupIds?: string[]; preferences?: { artifactDelivery?: string } } :
-  P extends "/api/groups" ? { name: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[]; discordChannelIds?: string[]; slackChannelIds?: string[] } :
-  P extends `/api/groups/${string}` ? { name?: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[]; discordChannelIds?: string[]; slackChannelIds?: string[] } :
+  P extends "/api/groups" ? { name: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[]; discordChannelIds?: string[]; slackChannelIds?: string[]; matrixRoomIds?: string[] } :
+  P extends `/api/groups/${string}` ? { name?: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[]; discordChannelIds?: string[]; slackChannelIds?: string[]; matrixRoomIds?: string[] } :
   P extends "/api/telegram-chats" ? { chatId: number; title?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :
   P extends `/api/telegram-chats/${string}` ? { title?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :
   P extends "/api/discord-channels" ? { guildId?: string; channelId: string; title?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :
   P extends `/api/discord-channels/${string}` ? { title?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :
   P extends "/api/slack-channels" ? { teamId?: string; channelId: string; title?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :
   P extends `/api/slack-channels/${string}` ? { title?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :
+  P extends "/api/matrix-rooms" ? { homeserver?: string; roomId: string; title?: string; canonicalAlias?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :
+  P extends `/api/matrix-rooms/${string}` ? { title?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :
   P extends "/api/locks" ? { ownerName?: string } :
   P extends "/api/auth/login" | "/api/auth/logout" ? { agentId?: AgentId } :
   P extends `/api/agent-update/${string}/input` ? { input: string } :
@@ -273,6 +281,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/telegram-chats" ? { chats: TelegramChatAccessRecord[] } :
   P extends "/api/discord-channels" ? { channels: DiscordChannelAccessRecord[] } :
   P extends "/api/slack-channels" ? { channels: SlackChannelAccessRecord[] } :
+  P extends "/api/matrix-rooms" ? { rooms: MatrixRoomAccessRecord[] } :
   P extends "/api/audit" ? { events: AuditEvent[]; pagination?: CursorPageDto<AuditEvent>["pagination"] } :
   P extends "/api/locks" ? { locks: SessionLock[]; lock?: SessionLock } :
   P extends "/api/auth/status" | "/api/auth/login" | "/api/auth/logout" ? WebAuthDto :
@@ -352,9 +361,12 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends `/api/users/${string}/discord/${string}` ? { removed: boolean } :
   P extends `/api/users/${string}/slack` ? { linkCode?: unknown; identity?: SlackIdentityRecord } :
   P extends `/api/users/${string}/slack/${string}` ? { removed: boolean } :
+  P extends `/api/users/${string}/matrix` ? { linkCode?: unknown; identity?: MatrixIdentityRecord } :
+  P extends `/api/users/${string}/matrix/${string}` ? { removed: boolean } :
   P extends `/api/users/${string}` ? { user: PublicUser; groups: GroupRecord[] } :
   P extends `/api/groups/${string}` ? { group: GroupRecord } :
   P extends `/api/telegram-chats/${string}` ? { chat: TelegramChatAccessRecord } :
   P extends `/api/discord-channels/${string}` ? { channel: DiscordChannelAccessRecord } :
   P extends `/api/slack-channels/${string}` ? { channel: SlackChannelAccessRecord } :
+  P extends `/api/matrix-rooms/${string}` ? { room: MatrixRoomAccessRecord } :
   Record<string, unknown>;

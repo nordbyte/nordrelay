@@ -254,7 +254,7 @@ function adapterCard(label,status,detail,tooltip='',settingsGroup=''){
   return '<div class="item adapter-overview-card"><div class="adapter-overview-header"><strong title="'+attr(tooltip)+'">'+esc(label)+' <span class="adapter-status '+esc(status)+'">'+esc(status)+'</span></strong>'+settingsButton+'</div>'+(detail?'<small>'+esc(detail)+'</small>':'')+'</div>';
 }
 function agentSettingsGroup(adapter){return ({codex:'Codex',pi:'Pi',hermes:'Hermes',openclaw:'OpenClaw','claude-code':'Claude Code'}[adapter?.id]||adapter?.label||'Agents')}
-function channelSettingsGroup(adapter){return ({telegram:'Telegram',discord:'Discord',slack:'Slack'}[adapter?.id]||adapter?.label||'Chat')}
+function channelSettingsGroup(adapter){return ({telegram:'Telegram',discord:'Discord',slack:'Slack',matrix:'Matrix'}[adapter?.id]||adapter?.label||'Chat')}
 function bindAdapterSettingsLinks(root:any=document){
   root.querySelectorAll?.('[data-settings-group]').forEach(button=>button.onclick=()=>{state.settingsGroup=button.dataset.settingsGroup||null;page('settings')});
 }

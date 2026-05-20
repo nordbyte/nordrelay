@@ -11,7 +11,7 @@ import { cursorPage, normalizeCursorLimit, type CursorPage } from "../core/pagin
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "../state/state-backend.js";
 
 export type WebChatRole = "user" | "agent" | "system" | "tool";
-export type WebActivitySource = "web" | "telegram" | "discord" | "slack" | "cli";
+export type WebActivitySource = "web" | "telegram" | "discord" | "slack" | "matrix" | "cli";
 export type WebActivityStatus = "queued" | "running" | "completed" | "failed" | "aborted" | "info";
 
 export interface WebChatMessage {
@@ -298,7 +298,7 @@ function isWebChatMessage(value: unknown): value is WebChatMessage {
     (candidate.meta === undefined || (Array.isArray(candidate.meta) && candidate.meta.every((item) => typeof item === "string"))) &&
     (candidate.key === undefined || typeof candidate.key === "string") &&
     ["user", "agent", "system", "tool"].includes(candidate.role) &&
-    ["web", "telegram", "discord", "slack", "cli"].includes(candidate.source);
+    ["web", "telegram", "discord", "slack", "matrix", "cli"].includes(candidate.source);
 }
 
 function isWebActivityEvent(value: unknown): value is WebActivityEvent {
@@ -309,7 +309,7 @@ function isWebActivityEvent(value: unknown): value is WebActivityEvent {
   return typeof candidate.id === "string" &&
     typeof candidate.timestamp === "string" &&
     typeof candidate.type === "string" &&
-    ["web", "telegram", "discord", "slack", "cli"].includes(candidate.source) &&
+    ["web", "telegram", "discord", "slack", "matrix", "cli"].includes(candidate.source) &&
     ["queued", "running", "completed", "failed", "aborted", "info"].includes(candidate.status);
 }
 

@@ -38,6 +38,7 @@ import { handleDashboardSessionRoute } from "./web-dashboard-session-routes.js";
 import { handleDashboardPeerRoute } from "./web-dashboard-peer-routes.js";
 import { handleDashboardProfileRoute } from "./web-dashboard-profile-routes.js";
 import { handleDashboardWorkflowRoute } from "./web-dashboard-workflow-routes.js";
+import { activeSettingsValues } from "./web-dashboard-settings-values.js";
 import { PeerDiscoveryJobManager } from "../peers/peer-discovery-jobs.js";
 import { applyAutostartSettings } from "../support/autostart.js";
 import { recordWebApiMetric } from "./web-performance.js";
@@ -394,7 +395,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   }
 
   if (req.method === "GET" && url.pathname === "/api/settings") {
-    sendJson(res, 200, await settings.snapshot(process.env, activeSettingsValues(config)));
+    sendJson(res, 200, await settings.snapshot(process.env, activeSettingsValues(config, options)));
     return;
   }
 
@@ -413,7 +414,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     const body = await readJsonBody(req);
     sendJson(res, 200, await runSettingsWizardTest(
       optionalStringField(body, "channel") ?? "",
-      mergeSettingsWizardTestSettings(activeSettingsValues(config), objectRecord(body?.settings)),
+      mergeSettingsWizardTestSettings(activeSettingsValues(config, options), objectRecord(body?.settings)),
     ));
     return;
   }
@@ -906,181 +907,6 @@ function parseAgentIdRequired(value: string) {
     throw new Error(`Invalid agent: ${value}`);
   }
   return value;
-}
-
-function optionalEnv(key: string): string | undefined {
-  const value = process.env[key]?.trim();
-  return value || undefined;
-}
-
-function activeSettingsValues(current: typeof config): Record<string, string | undefined> {
-  return {
-    NORDRELAY_WEBUI_ENABLED: boolValue(current.webuiEnabled),
-    NORDRELAY_AUTOSTART_ENABLED: boolValue(current.autostartEnabled),
-    NORDRELAY_WEBUI_AUTOSTART_ENABLED: boolValue(current.webuiAutostartEnabled),
-    TELEGRAM_ENABLED: boolValue(current.telegramEnabled),
-    TELEGRAM_BOT_TOKEN: current.telegramBotToken,
-    TELEGRAM_TRANSPORT: current.telegramTransport,
-    TELEGRAM_WEBHOOK_URL: current.telegramWebhookUrl,
-    TELEGRAM_WEBHOOK_HOST: current.telegramWebhookHost,
-    TELEGRAM_WEBHOOK_PORT: String(current.telegramWebhookPort),
-    TELEGRAM_WEBHOOK_PATH: current.telegramWebhookPath,
-    TELEGRAM_WEBHOOK_SECRET: current.telegramWebhookSecret,
-    DISCORD_ENABLED: boolValue(current.discordEnabled),
-    DISCORD_BOT_TOKEN: current.discordBotToken,
-    DISCORD_CLIENT_ID: current.discordClientId,
-    DISCORD_GUILD_IDS: current.discordGuildIds.join(","),
-    DISCORD_ALLOWED_GUILD_IDS: current.discordAllowedGuildIds.join(","),
-    DISCORD_ALLOWED_CHANNEL_IDS: current.discordAllowedChannelIds.join(","),
-    DISCORD_MESSAGE_CONTENT_ENABLED: boolValue(current.discordMessageContentEnabled),
-    DISCORD_COMMAND_MODE: current.discordCommandMode,
-    DISCORD_AUTO_REGISTER_COMMANDS: boolValue(current.discordAutoRegisterCommands),
-    DISCORD_CLI_MIRROR_MODE: current.discordMirrorMode === current.mirrorMode ? "" : current.discordMirrorMode,
-    DISCORD_CLI_MIRROR_MIN_UPDATE_MS: current.discordMirrorMinUpdateMs === current.mirrorMinUpdateMs ? "" : String(current.discordMirrorMinUpdateMs),
-    DISCORD_NOTIFY_MODE: current.discordNotifyMode === current.notifyMode ? "" : current.discordNotifyMode,
-    DISCORD_QUIET_HOURS: quietOverrideValue(current.discordQuietHours, current.quietHours),
-    DISCORD_AUTO_SEND_ARTIFACTS: current.discordAutoSendArtifacts === current.autoSendArtifacts ? "" : boolValue(current.discordAutoSendArtifacts),
-    SLACK_ENABLED: boolValue(current.slackEnabled),
-    SLACK_BOT_TOKEN: current.slackBotToken,
-    SLACK_APP_TOKEN: current.slackAppToken,
-    SLACK_SIGNING_SECRET: current.slackSigningSecret,
-    SLACK_SOCKET_MODE: boolValue(current.slackSocketMode),
-    SLACK_PORT: String(current.slackPort),
-    SLACK_ALLOWED_TEAM_IDS: current.slackAllowedTeamIds.join(","),
-    SLACK_ALLOWED_CHANNEL_IDS: current.slackAllowedChannelIds.join(","),
-    SLACK_MESSAGE_CONTENT_ENABLED: boolValue(current.slackMessageContentEnabled),
-    SLACK_COMMAND: current.slackCommand,
-    SLACK_CLI_MIRROR_MODE: current.slackMirrorMode === current.mirrorMode ? "" : current.slackMirrorMode,
-    SLACK_CLI_MIRROR_MIN_UPDATE_MS: current.slackMirrorMinUpdateMs === current.mirrorMinUpdateMs ? "" : String(current.slackMirrorMinUpdateMs),
-    SLACK_NOTIFY_MODE: current.slackNotifyMode === current.notifyMode ? "" : current.slackNotifyMode,
-    SLACK_QUIET_HOURS: quietOverrideValue(current.slackQuietHours, current.quietHours),
-    SLACK_AUTO_SEND_ARTIFACTS: current.slackAutoSendArtifacts === current.autoSendArtifacts ? "" : boolValue(current.slackAutoSendArtifacts),
-    NORDRELAY_CODEX_ENABLED: boolValue(current.codexEnabled),
-    NORDRELAY_PI_ENABLED: boolValue(current.piEnabled),
-    NORDRELAY_HERMES_ENABLED: boolValue(current.hermesEnabled),
-    NORDRELAY_OPENCLAW_ENABLED: boolValue(current.openClawEnabled),
-    NORDRELAY_CLAUDE_CODE_ENABLED: boolValue(current.claudeCodeEnabled),
-    NORDRELAY_DEFAULT_AGENT: current.defaultAgent,
-    CODEX_API_KEY: current.codexApiKey,
-    CODEX_CLI_PATH: optionalEnv("CODEX_CLI_PATH"),
-    CODEX_USE_BUNDLED_CLI: process.env.CODEX_USE_BUNDLED_CLI,
-    CODEX_MODEL: current.codexModel,
-    CODEX_SYNC_INTERVAL_MS: String(current.codexSyncIntervalMs),
-    CODEX_EXTERNAL_BUSY_CHECK_MS: String(current.codexExternalBusyCheckMs),
-    CODEX_EXTERNAL_BUSY_STALE_MS: String(current.codexExternalBusyStaleMs),
-    CODEX_SANDBOX_MODE: current.codexSandboxMode,
-    CODEX_APPROVAL_POLICY: current.codexApprovalPolicy,
-    CODEX_LAUNCH_PROFILES_JSON: optionalEnv("CODEX_LAUNCH_PROFILES_JSON"),
-    CODEX_DEFAULT_LAUNCH_PROFILE: current.defaultLaunchProfileId,
-    ENABLE_UNSAFE_LAUNCH_PROFILES: boolValue(current.enableUnsafeLaunchProfiles),
-    PI_CLI_PATH: current.piCliPath,
-    PI_SESSION_DIR: current.piSessionDir,
-    PI_DEFAULT_MODEL: current.piDefaultModel,
-    PI_DEFAULT_THINKING: current.piDefaultThinking,
-    PI_DEFAULT_PROFILE: current.piDefaultLaunchProfileId,
-    HERMES_CLI_PATH: current.hermesCliPath,
-    HERMES_HOME: current.hermesHome,
-    HERMES_STATE_DB_PATH: current.hermesStateDbPath,
-    HERMES_API_BASE_URL: current.hermesApiBaseUrl,
-    HERMES_API_KEY: current.hermesApiKey,
-    HERMES_DEFAULT_MODEL: current.hermesDefaultModel,
-    HERMES_DEFAULT_REASONING: current.hermesDefaultReasoning,
-    HERMES_DEFAULT_PROFILE: current.hermesDefaultLaunchProfileId,
-    OPENCLAW_GATEWAY_URL: current.openClawGatewayUrl,
-    OPENCLAW_CLI_PATH: current.openClawCliPath,
-    OPENCLAW_GATEWAY_TOKEN: current.openClawGatewayToken,
-    OPENCLAW_GATEWAY_PASSWORD: current.openClawGatewayPassword,
-    OPENCLAW_AGENT_ID: current.openClawAgentId,
-    OPENCLAW_HOME: current.openClawHome,
-    OPENCLAW_STATE_DIR: current.openClawStateDir,
-    OPENCLAW_DEFAULT_MODEL: current.openClawDefaultModel,
-    OPENCLAW_DEFAULT_THINKING: current.openClawDefaultThinking,
-    OPENCLAW_DEFAULT_PROFILE: current.openClawDefaultLaunchProfileId,
-    CLAUDE_CODE_CLI_PATH: current.claudeCodeCliPath,
-    CLAUDE_CONFIG_DIR: current.claudeCodeConfigDir,
-    CLAUDE_CODE_DEFAULT_MODEL: current.claudeCodeDefaultModel,
-    CLAUDE_CODE_DEFAULT_EFFORT: current.claudeCodeDefaultEffort,
-    CLAUDE_CODE_DEFAULT_PROFILE: current.claudeCodeDefaultLaunchProfileId,
-    CLAUDE_CODE_MAX_TURNS: String(current.claudeCodeMaxTurns),
-    CONNECTOR_LOG_FORMAT: current.logFormat,
-    TOOL_VERBOSITY: current.toolVerbosity,
-    SHOW_TURN_TOKEN_USAGE: boolValue(current.showTurnTokenUsage),
-    ENABLE_TELEGRAM_LOGIN: boolValue(current.enableTelegramLogin),
-    ENABLE_TELEGRAM_REACTIONS: boolValue(current.enableTelegramReactions),
-    TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS: String(current.telegramRateLimitMinIntervalMs),
-    TELEGRAM_EDIT_MIN_INTERVAL_MS: String(current.telegramEditMinIntervalMs),
-    NORDRELAY_CLI_MIRROR_MODE: current.mirrorMode,
-    NORDRELAY_CLI_MIRROR_MIN_UPDATE_MS: String(current.mirrorMinUpdateMs),
-    NORDRELAY_WEB_CLI_MIRROR_MODE: current.webMirrorMode === current.mirrorMode ? "" : current.webMirrorMode,
-    NORDRELAY_WEB_CLI_MIRROR_MIN_UPDATE_MS: current.webMirrorMinUpdateMs === current.mirrorMinUpdateMs ? "" : String(current.webMirrorMinUpdateMs),
-    NORDRELAY_NOTIFY_MODE: current.notifyMode,
-    NORDRELAY_QUIET_HOURS: quietValue(current.quietHours),
-    NORDRELAY_AUTO_SEND_ARTIFACTS: boolValue(current.autoSendArtifacts),
-    NORDRELAY_ARTIFACT_DELIVERY: current.artifactDeliveryMode,
-    TELEGRAM_CLI_MIRROR_MODE: current.telegramMirrorMode === current.mirrorMode ? "" : current.telegramMirrorMode,
-    TELEGRAM_CLI_MIRROR_MIN_UPDATE_MS: current.telegramMirrorMinUpdateMs === current.mirrorMinUpdateMs ? "" : String(current.telegramMirrorMinUpdateMs),
-    TELEGRAM_NOTIFY_MODE: current.telegramNotifyMode === current.notifyMode ? "" : current.telegramNotifyMode,
-    TELEGRAM_QUIET_HOURS: quietOverrideValue(current.telegramQuietHours, current.quietHours),
-    TELEGRAM_REDACT_PATTERNS: current.telegramRedactPatterns.join(","),
-    NORDRELAY_UPDATE_METHOD: process.env.NORDRELAY_UPDATE_METHOD || "auto",
-    MAX_FILE_SIZE: String(current.maxFileSize),
-    ARTIFACT_MAX_TOTAL_BYTES: String(current.artifactMaxTotalBytes),
-    ARTIFACT_WARN_PERCENT: String(current.artifactWarnPercent),
-    ARTIFACT_RETENTION_DAYS: String(current.artifactRetentionDays),
-    ARTIFACT_MAX_TURNS: String(current.artifactMaxTurnDirs),
-    ARTIFACT_MAX_INBOX_DIRS: String(current.artifactMaxInboxDirs),
-    ARTIFACT_IGNORE_DIRS: current.artifactIgnoreDirs.join(","),
-    ARTIFACT_IGNORE_GLOBS: current.artifactIgnoreGlobs.join(","),
-    TELEGRAM_AUTO_SEND_ARTIFACTS: current.telegramAutoSendArtifacts === current.autoSendArtifacts ? "" : boolValue(current.telegramAutoSendArtifacts),
-    TELEGRAM_ARTIFACT_DELIVERY: current.telegramArtifactDeliveryMode === current.artifactDeliveryMode ? "" : current.telegramArtifactDeliveryMode,
-    DISCORD_ARTIFACT_DELIVERY: current.discordArtifactDeliveryMode === current.artifactDeliveryMode ? "" : current.discordArtifactDeliveryMode,
-    SLACK_ARTIFACT_DELIVERY: current.slackArtifactDeliveryMode === current.artifactDeliveryMode ? "" : current.slackArtifactDeliveryMode,
-    WORKSPACE_ALLOWED_ROOTS: current.workspaceAllowedRoots.join(","),
-    WORKSPACE_WARN_ROOTS: current.workspaceWarnRoots.join(","),
-    NORDRELAY_STATE_BACKEND: current.stateBackend,
-    NORDRELAY_AUDIT_MAX_EVENTS: String(current.auditMaxEvents),
-    NORDRELAY_SESSION_LOCK_TTL_MS: String(current.sessionLockTtlMs),
-    NORDRELAY_DASHBOARD_CACHE_TTL_MS: String(current.dashboardCacheTtlMs),
-    NORDRELAY_ACTIVE_DISCOVERY_CACHE_TTL_MS: String(current.activeDiscoveryCacheTtlMs),
-    NORDRELAY_OPENCLAW_ACTIVE_DISCOVERY_CACHE_TTL_MS: String(current.openClawActiveDiscoveryCacheTtlMs),
-    NORDRELAY_UNIFIED_JOB_MAX_ITEMS: String(current.unifiedJobMaxItems),
-    NORDRELAY_VERSION_CACHE_TTL_MS: process.env.NORDRELAY_VERSION_CACHE_TTL_MS,
-    NORDRELAY_CLI_VERSION_CACHE_TTL_MS: process.env.NORDRELAY_CLI_VERSION_CACHE_TTL_MS,
-    VOICE_PREFERRED_BACKEND: current.voicePreferredBackend,
-    VOICE_DEFAULT_LANGUAGE: current.voiceDefaultLanguage,
-    VOICE_TRANSCRIBE_ONLY: boolValue(current.voiceTranscribeOnly),
-    FASTER_WHISPER_PYTHON: process.env.FASTER_WHISPER_PYTHON,
-    FASTER_WHISPER_MODEL: process.env.FASTER_WHISPER_MODEL,
-    FASTER_WHISPER_DEVICE: process.env.FASTER_WHISPER_DEVICE,
-    FASTER_WHISPER_COMPUTE_TYPE: process.env.FASTER_WHISPER_COMPUTE_TYPE,
-    FASTER_WHISPER_LANGUAGE: process.env.FASTER_WHISPER_LANGUAGE,
-    FASTER_WHISPER_TIMEOUT_MS: process.env.FASTER_WHISPER_TIMEOUT_MS,
-    COHERE_TRANSCRIBE_PYTHON: process.env.COHERE_TRANSCRIBE_PYTHON,
-    COHERE_TRANSCRIBE_MODEL: process.env.COHERE_TRANSCRIBE_MODEL,
-    COHERE_TRANSCRIBE_DEVICE: process.env.COHERE_TRANSCRIBE_DEVICE,
-    COHERE_TRANSCRIBE_DTYPE: process.env.COHERE_TRANSCRIBE_DTYPE,
-    COHERE_TRANSCRIBE_PUNCTUATION: process.env.COHERE_TRANSCRIBE_PUNCTUATION,
-    COHERE_TRANSCRIBE_MAX_NEW_TOKENS: process.env.COHERE_TRANSCRIBE_MAX_NEW_TOKENS,
-    COHERE_TRANSCRIBE_TIMEOUT_MS: process.env.COHERE_TRANSCRIBE_TIMEOUT_MS,
-    HF_TOKEN: process.env.HF_TOKEN,
-    NORDRELAY_DASHBOARD_HOST: options.host,
-    NORDRELAY_DASHBOARD_PORT: String(options.port),
-  };
-}
-
-function boolValue(value: boolean): string {
-  return value ? "true" : "false";
-}
-
-function quietValue(value: { startHour: number; endHour: number } | null | undefined): string {
-  return value ? `${value.startHour}-${value.endHour}` : "";
-}
-
-function quietOverrideValue(
-  channelValue: { startHour: number; endHour: number } | null | undefined,
-  defaultValue: { startHour: number; endHour: number } | null | undefined,
-): string {
-  return quietValue(channelValue) === quietValue(defaultValue) ? "" : quietValue(channelValue);
 }
 
 function requireArg(argv: string[], index: number, flag: string): string {

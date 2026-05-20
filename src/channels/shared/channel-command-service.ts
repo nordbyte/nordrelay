@@ -50,7 +50,7 @@ import {
 import { renderSessionInfoHTML, renderSessionInfoPlain } from "./session-format.js";
 import { getAvailableBackends } from "../../artifacts/voice.js";
 
-export type CommandChannelSource = "telegram" | "discord" | "slack" | "web";
+export type CommandChannelSource = "telegram" | "discord" | "slack" | "matrix" | "web";
 
 export interface ChannelPreferenceCommandOptions {
   source: CommandChannelSource;
@@ -411,6 +411,9 @@ export class ChannelCommandService {
     if (source === "slack") {
       return this.config.slackMirrorMode;
     }
+    if (source === "matrix") {
+      return this.config.matrixMirrorMode;
+    }
     return this.config.webMirrorMode;
   }
 
@@ -423,6 +426,9 @@ export class ChannelCommandService {
     }
     if (source === "slack") {
       return this.config.slackMirrorMinUpdateMs;
+    }
+    if (source === "matrix") {
+      return this.config.matrixMirrorMinUpdateMs;
     }
     return this.config.webMirrorMinUpdateMs;
   }
@@ -437,6 +443,9 @@ export class ChannelCommandService {
     if (source === "slack") {
       return this.config.slackNotifyMode;
     }
+    if (source === "matrix") {
+      return this.config.matrixNotifyMode;
+    }
     return this.config.notifyMode;
   }
 
@@ -449,6 +458,9 @@ export class ChannelCommandService {
     }
     if (source === "slack") {
       return this.config.slackQuietHours;
+    }
+    if (source === "matrix") {
+      return this.config.matrixQuietHours;
     }
     return this.config.quietHours;
   }

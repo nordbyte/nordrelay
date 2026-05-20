@@ -33,6 +33,10 @@ nordrelay init \
   --enable-discord \
   --discord-token "discord-bot-token" \
   --discord-client-id "discord-client-id" \
+  --enable-matrix \
+  --matrix-homeserver-url "https://matrix.example.com" \
+  --matrix-access-token "matrix-bot-access-token" \
+  --matrix-user-id "@nordrelay:example.com" \
   --admin-email you@example.com \
   --admin-name "Your Name" \
   --admin-password "replace-with-a-long-password" \
@@ -41,6 +45,7 @@ nordrelay init \
 
 `--telegram-user-id` is optional, but linking the first admin during setup is the fastest way to use Telegram immediately.
 Use `--discord-user-id <id>` with `nordrelay user create-admin` or `nordrelay user link-discord` to link Discord directly.
+Use `--matrix-user-id <@user:server>` with `nordrelay user create-admin` or `nordrelay user link-matrix` to link Matrix directly.
 
 Source checkout setup:
 
@@ -83,6 +88,16 @@ Create the Slack app:
 6. Link Slack from the WebUI, with `nordrelay user link-slack`, or by creating a Slack link code and sending `/link <code>` to the app.
 7. In Slack channels, run `/register_channel` once from an admin-linked Slack account.
 
+Create the Matrix bot user:
+
+1. Create or choose a dedicated Matrix account for NordRelay.
+2. Sign in with that bot account through a Matrix client or homeserver tooling and create an access token.
+3. Set `MATRIX_HOMESERVER_URL`, `MATRIX_ACCESS_TOKEN`, and `MATRIX_USER_ID`.
+4. Invite the bot user into each room that should use NordRelay. Keep `MATRIX_AUTOJOIN_INVITES=true` if the bot should join invites automatically.
+5. Link Matrix from the WebUI, with `nordrelay user link-matrix`, or by creating a Matrix link code and sending `/link <code>` or `!nr link <code>` to the bot.
+6. In Matrix rooms, run `/register_channel` or `!nr register_channel` once from an admin-linked Matrix account.
+7. Use unencrypted Matrix rooms for now; NordRelay does not decrypt Matrix E2EE rooms.
+
 Minimal private-bot `~/.nordrelay/nordrelay.env`:
 
 ```dotenv
@@ -93,6 +108,10 @@ DISCORD_CLIENT_ID=
 SLACK_ENABLED=false
 SLACK_BOT_TOKEN=
 SLACK_APP_TOKEN=
+MATRIX_ENABLED=false
+MATRIX_HOMESERVER_URL=
+MATRIX_ACCESS_TOKEN=
+MATRIX_USER_ID=
 NORDRELAY_CODEX_ENABLED=true
 NORDRELAY_PI_ENABLED=false
 NORDRELAY_HERMES_ENABLED=false
@@ -111,12 +130,15 @@ User and chat access management:
 - `nordrelay user link-telegram --email you@example.com --telegram-user-id 123456789` links a Telegram account directly.
 - `nordrelay user link-discord --email you@example.com --discord-user-id <your-discord-user-id>` links a Discord account directly.
 - `nordrelay user link-slack --email you@example.com --slack-user-id U123 --slack-team-id T123` links a Slack account directly.
+- `nordrelay user link-matrix --email you@example.com --matrix-user-id @you:example.com` links a Matrix account directly.
 - `nordrelay user link-code --email you@example.com` creates a short-lived Telegram code that the user sends as `/link <code>` to the Telegram bot.
 - `nordrelay user discord-link-code --email you@example.com` creates a short-lived Discord code that the user sends as `/link <code>` to the Discord bot.
 - `nordrelay user slack-link-code --email you@example.com` creates a short-lived Slack code that the user sends as `/link <code>` to the Slack app.
+- `nordrelay user matrix-link-code --email you@example.com` creates a short-lived Matrix code that the user sends as `/link <code>` or `!nr link <code>` to the Matrix bot.
 - Telegram group chats are disabled until an admin enables them from the WebUI or runs `/register_chat` inside the group.
 - Discord guild channels are disabled until an admin enables them from the WebUI or runs `/register_channel` inside the channel.
 - Slack channels are disabled until an admin enables them from the WebUI or runs `/register_channel` inside the channel.
+- Matrix rooms are disabled until an admin enables them from the WebUI or runs `/register_channel` inside the room.
 
 Peer setup:
 
@@ -152,7 +174,7 @@ nordrelay peer list
 nordrelay peer test <peer-id>
 ```
 
-Use `--workspace-aliases app=/srv/app,demo=/home/me/demo` on invites when a controller should be able to start remote sessions with short workspace names. Use the WebUI Peers page for the same invite, pair, enable/disable, test, alias, global-session, and revoke workflow. Use `/peers` from Telegram, Discord, or Slack to inspect paired nodes and `/target <peer-id>` or `/target local` to choose where subsequent prompts run. Workflow steps can also target paired peers from the WebUI workflow builder when the peer has `sessions.read`, `sessions.write`, and `prompt.send`.
+Use `--workspace-aliases app=/srv/app,demo=/home/me/demo` on invites when a controller should be able to start remote sessions with short workspace names. Use the WebUI Peers page for the same invite, pair, enable/disable, test, alias, global-session, and revoke workflow. Use `/peers` from Telegram, Discord, Slack, or Matrix to inspect paired nodes and `/target <peer-id>` or `/target local` to choose where subsequent prompts run. Workflow steps can also target paired peers from the WebUI workflow builder when the peer has `sessions.read`, `sessions.write`, and `prompt.send`.
 
 Codex authentication:
 
@@ -278,7 +300,7 @@ Runtime files:
 - Home override: `NORDRELAY_HOME=/custom/path`
 - Local dashboard: `nordrelay web --host 127.0.0.1 --port 31878`
 - `nordrelay start` and `nordrelay status` print the configured WebUI URL.
-- `NORDRELAY_WEBUI_ENABLED=true` allows a WebUI-only setup without Telegram, Discord, or Slack.
+- `NORDRELAY_WEBUI_ENABLED=true` allows a WebUI-only setup without Telegram, Discord, Slack, or Matrix.
 
 
 ## WebUI Dashboard
@@ -297,7 +319,7 @@ Open:
 http://127.0.0.1:31878/
 ```
 
-The dashboard is a second NordRelay client next to Telegram. It can:
+The dashboard is a second NordRelay client next to Telegram, Discord, Slack, and Matrix. It can:
 
 - Start a new Codex, Pi, Hermes, OpenClaw, or Claude Code session.
 - Start a new session from a modal with agent, workspace, workspace mode, model, reasoning/thinking, fast mode, and launch-profile choices.

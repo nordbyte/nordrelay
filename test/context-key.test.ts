@@ -7,9 +7,12 @@ import {
   isDiscordContextKey,
   isTelegramContextKey,
   isTopicContextKey,
+  isMatrixContextKey,
+  matrixContextKey,
   parseChannelContextKey,
   parseContextKey,
   parseDiscordContextKey,
+  parseMatrixContextKey,
   parseSlackContextKey,
   slackContextKey,
 } from "../src/channels/shared/context-key.js";
@@ -103,6 +106,18 @@ describe("context-key", () => {
     expect(isTelegramContextKey(key)).toBe(false);
   });
 
+  it("parses Matrix homeserver, room, and thread context keys", () => {
+    const key = matrixContextKey({ homeserver: "example.com", roomId: "!room:example.com", threadId: "$event:example.com" });
+
+    expect(isMatrixContextKey(key)).toBe(true);
+    expect(parseMatrixContextKey(key)).toEqual({
+      homeserver: "example.com",
+      roomId: "!room:example.com",
+      threadId: "$event:example.com",
+    });
+    expect(isTelegramContextKey(key)).toBe(false);
+  });
+
   it("parses channel context keys through the generic parser", () => {
     expect(parseChannelContextKey("-1003929308812:2")).toMatchObject({
       channelId: "telegram",
@@ -120,6 +135,13 @@ describe("context-key", () => {
       guildId: "T123",
       chatId: "C123",
       topicId: "1715790000.000100",
+    });
+    const matrixKey = matrixContextKey({ homeserver: "example.com", roomId: "!room:example.com", threadId: "$event:example.com" });
+    expect(parseChannelContextKey(matrixKey)).toMatchObject({
+      channelId: "matrix",
+      guildId: "example.com",
+      chatId: "!room:example.com",
+      topicId: "$event:example.com",
     });
     expect(parseChannelContextKey("web:dashboard")).toMatchObject({
       channelId: "web",

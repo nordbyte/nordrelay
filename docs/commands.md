@@ -4,7 +4,7 @@
 
 - `/start` shows welcome text and the selected launch profile.
 - `/help` shows the grouped command reference.
-- `/channels` shows available and planned messaging adapters.
+- `/channels` shows available messaging adapters.
 - `/agents` shows available and planned coding-agent adapters.
 - `/agent` selects the active agent for this Telegram context.
 - `/peers` shows configured NordRelay peer instances.
@@ -108,6 +108,22 @@ Slack supports the configured slash command and `/command` text messages for the
 - `/artifacts latest`, `/artifacts zip latest`, `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, `/artifacts quota`, `/artifacts cleanup preview|run`, `/artifacts delivery <mode>`, and `/artifacts delete <turn-id>` are available in Slack.
 - Unsafe launch profiles require explicit confirmation with `/launch <profile-id> confirm`; add `apply` to reattach the current idle thread immediately.
 - Slack does not support Telegram reactions or Telegram webhook transport; typing/status, message edits, attachments, files, DMs, channels, and threads are supported.
+
+
+## Matrix Commands
+
+Matrix supports `/command` messages and the configured text prefix, for example `!nr session`, for the shared command set. The primary differences from Telegram are:
+
+- `/register_channel` enables the current Matrix room or thread for NordRelay when the linked user has user-management permission.
+- `/prompt <text>` is available when regular message content is disabled.
+- `/link <code>` consumes Matrix link codes created in the WebUI or with `nordrelay user matrix-link-code`.
+- `/queue`, `/sessions`, `/agent`, `/model`, `/reasoning`, `/launch`, `/artifacts`, `/update`, and `/stop` send text-action fallbacks where the Matrix client has no universal inline button UI.
+- `/last [count]` resends the last agent reply for the active thread.
+- `/templates`, `/template <id> [{"variable":"value"}]`, `/workflows`, and `/workflow <id> [{"variable":"value"}]` use the shared prompt-template and workflow store.
+- `/peers` and `/target local|<peer-id>` use the same paired-instance target selection as Telegram, Discord, and Slack.
+- `/artifacts latest`, `/artifacts zip latest`, `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, `/artifacts quota`, `/artifacts cleanup preview|run`, `/artifacts delivery <mode>`, and `/artifacts delete <turn-id>` are available in Matrix.
+- Unsafe launch profiles require explicit confirmation with `/launch <profile-id> confirm`; add `apply` to reattach the current idle thread immediately.
+- Matrix does not support Telegram reactions or Telegram webhook transport. Typing, message edits, attachments, files, DMs, rooms, and threads are supported. End-to-end encrypted rooms are not decrypted.
 
 
 ## Command Examples

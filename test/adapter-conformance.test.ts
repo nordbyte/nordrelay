@@ -36,7 +36,7 @@ describe("adapter conformance matrix", () => {
 
   it("derives command coverage from the shared catalog for implemented chat transports", () => {
     const matrix = buildAdapterConformanceMatrix();
-    for (const transport of ["telegram", "discord", "slack"] as const) {
+    for (const transport of ["telegram", "discord", "slack", "matrix"] as const) {
       const channel = matrix.channels.find((candidate) => candidate.id === transport);
       expect(channel?.commands).toEqual(channelCatalogCommandNames(transport));
       expect(channel?.commands.length).toBeGreaterThan(20);
@@ -51,7 +51,7 @@ describe("adapter conformance matrix", () => {
   });
 
   it("keeps the shared dispatcher coverage check aligned with every implemented transport", async () => {
-    for (const transport of ["telegram", "discord", "slack"] as const) {
+    for (const transport of ["telegram", "discord", "slack", "matrix"] as const) {
       const dispatcher = createSharedChannelCommandDispatcher<{ called: string[] }>({
         transport,
         bindings: CHANNEL_COMMANDS

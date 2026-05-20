@@ -106,6 +106,23 @@ export interface ConnectorConfig {
   slackQuietHours: QuietHours | null;
   slackAutoSendArtifacts: boolean;
   slackArtifactDeliveryMode: ArtifactDeliveryMode;
+  matrixEnabled: boolean;
+  matrixHomeserverUrl?: string;
+  matrixAccessToken?: string;
+  matrixUserId?: string;
+  matrixDeviceId?: string;
+  matrixAutojoinInvites: boolean;
+  matrixAllowedRoomIds: string[];
+  matrixMessageContentEnabled: boolean;
+  matrixCommandPrefix: string;
+  matrixSyncTimeoutMs: number;
+  matrixPollTimeoutMs: number;
+  matrixMirrorMode: ChannelMirrorMode;
+  matrixMirrorMinUpdateMs: number;
+  matrixNotifyMode: ChannelNotifyMode;
+  matrixQuietHours: QuietHours | null;
+  matrixAutoSendArtifacts: boolean;
+  matrixArtifactDeliveryMode: ArtifactDeliveryMode;
   workspace: string;
   workspaceAllowedRoots: string[];
   workspaceWarnRoots: string[];
@@ -257,6 +274,21 @@ export function loadConfig(): ConnectorConfig {
   const slackMirrorMinUpdateMs = parseNonNegativeIntegerEnv(optionalString(process.env.SLACK_CLI_MIRROR_MIN_UPDATE_MS), mirrorMinUpdateMs, "SLACK_CLI_MIRROR_MIN_UPDATE_MS");
   const slackNotifyMode = parseNotifyMode(optionalString(process.env.SLACK_NOTIFY_MODE), notifyMode);
   const slackQuietHours = parseQuietHoursOverride(process.env.SLACK_QUIET_HOURS, quietHours);
+  const requestedMatrixEnabled = parseBooleanEnv(optionalString(process.env.MATRIX_ENABLED), false);
+  const matrixHomeserverUrl = normalizeBaseUrl(optionalString(process.env.MATRIX_HOMESERVER_URL));
+  const matrixAccessToken = optionalString(process.env.MATRIX_ACCESS_TOKEN);
+  const matrixUserId = optionalString(process.env.MATRIX_USER_ID);
+  const matrixDeviceId = optionalString(process.env.MATRIX_DEVICE_ID);
+  const matrixAutojoinInvites = parseBooleanEnv(optionalString(process.env.MATRIX_AUTOJOIN_INVITES), true);
+  const matrixAllowedRoomIds = parseOptionalStringList(optionalString(process.env.MATRIX_ALLOWED_ROOM_IDS));
+  const matrixMessageContentEnabled = parseBooleanEnv(optionalString(process.env.MATRIX_MESSAGE_CONTENT_ENABLED), true);
+  const matrixCommandPrefix = parseMatrixCommandPrefix(optionalString(process.env.MATRIX_COMMAND_PREFIX));
+  const matrixSyncTimeoutMs = parsePositiveIntegerEnv(optionalString(process.env.MATRIX_SYNC_TIMEOUT_MS), 30_000, "MATRIX_SYNC_TIMEOUT_MS");
+  const matrixPollTimeoutMs = parsePositiveIntegerEnv(optionalString(process.env.MATRIX_POLL_TIMEOUT_MS), 35_000, "MATRIX_POLL_TIMEOUT_MS");
+  const matrixMirrorMode = parseMirrorMode(optionalString(process.env.MATRIX_CLI_MIRROR_MODE), mirrorMode);
+  const matrixMirrorMinUpdateMs = parseNonNegativeIntegerEnv(optionalString(process.env.MATRIX_CLI_MIRROR_MIN_UPDATE_MS), mirrorMinUpdateMs, "MATRIX_CLI_MIRROR_MIN_UPDATE_MS");
+  const matrixNotifyMode = parseNotifyMode(optionalString(process.env.MATRIX_NOTIFY_MODE), notifyMode);
+  const matrixQuietHours = parseQuietHoursOverride(process.env.MATRIX_QUIET_HOURS, quietHours);
   const workspace = resolveWorkspace();
   const workspaceAllowedRoots = parsePathList(optionalString(process.env.WORKSPACE_ALLOWED_ROOTS));
   const workspaceWarnRoots = parsePathList(optionalString(process.env.WORKSPACE_WARN_ROOTS));
@@ -280,6 +312,7 @@ export function loadConfig(): ConnectorConfig {
   const telegramAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.TELEGRAM_AUTO_SEND_ARTIFACTS), autoSendArtifacts);
   const discordAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.DISCORD_AUTO_SEND_ARTIFACTS), autoSendArtifacts);
   const slackAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.SLACK_AUTO_SEND_ARTIFACTS), autoSendArtifacts);
+  const matrixAutoSendArtifacts = parseBooleanEnv(optionalString(process.env.MATRIX_AUTO_SEND_ARTIFACTS), autoSendArtifacts);
   const telegramArtifactDeliveryMode = parseArtifactDeliveryMode(
     optionalString(process.env.TELEGRAM_ARTIFACT_DELIVERY),
     optionalString(process.env.TELEGRAM_AUTO_SEND_ARTIFACTS) === undefined ? artifactDeliveryMode : artifactDeliveryModeFromAutoSend(telegramAutoSendArtifacts),
@@ -291,6 +324,10 @@ export function loadConfig(): ConnectorConfig {
   const slackArtifactDeliveryMode = parseArtifactDeliveryMode(
     optionalString(process.env.SLACK_ARTIFACT_DELIVERY),
     optionalString(process.env.SLACK_AUTO_SEND_ARTIFACTS) === undefined ? artifactDeliveryMode : artifactDeliveryModeFromAutoSend(slackAutoSendArtifacts),
+  );
+  const matrixArtifactDeliveryMode = parseArtifactDeliveryMode(
+    optionalString(process.env.MATRIX_ARTIFACT_DELIVERY),
+    optionalString(process.env.MATRIX_AUTO_SEND_ARTIFACTS) === undefined ? artifactDeliveryMode : artifactDeliveryModeFromAutoSend(matrixAutoSendArtifacts),
   );
   const codexEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_CODEX_ENABLED), true);
   const codexApiKey = optionalString(process.env.CODEX_API_KEY);
@@ -421,7 +458,20 @@ export function loadConfig(): ConnectorConfig {
     slackEnabled = false;
     adapterWarnings.push("Slack disabled: SLACK_SOCKET_MODE=false requires SLACK_SIGNING_SECRET.");
   }
-  if (!webuiEnabled && !telegramEnabled && !discordEnabled && !slackEnabled) {
+  let matrixEnabled = requestedMatrixEnabled;
+  if (matrixEnabled && !matrixHomeserverUrl) {
+    matrixEnabled = false;
+    adapterWarnings.push("Matrix disabled: MATRIX_ENABLED=true requires MATRIX_HOMESERVER_URL.");
+  }
+  if (matrixEnabled && !matrixAccessToken) {
+    matrixEnabled = false;
+    adapterWarnings.push("Matrix disabled: MATRIX_ENABLED=true requires MATRIX_ACCESS_TOKEN.");
+  }
+  if (matrixEnabled && !matrixUserId) {
+    matrixEnabled = false;
+    adapterWarnings.push("Matrix disabled: MATRIX_ENABLED=true requires MATRIX_USER_ID.");
+  }
+  if (!webuiEnabled && !telegramEnabled && !discordEnabled && !slackEnabled && !matrixEnabled) {
     const detail = adapterWarnings.length > 0 ? ` ${adapterWarnings.join(" ")}` : "";
     throw new Error(`At least WebUI or one usable chat adapter must be enabled.${detail}`);
   }
@@ -485,6 +535,23 @@ export function loadConfig(): ConnectorConfig {
     slackQuietHours,
     slackAutoSendArtifacts,
     slackArtifactDeliveryMode,
+    matrixEnabled,
+    matrixHomeserverUrl,
+    matrixAccessToken,
+    matrixUserId,
+    matrixDeviceId,
+    matrixAutojoinInvites,
+    matrixAllowedRoomIds,
+    matrixMessageContentEnabled,
+    matrixCommandPrefix,
+    matrixSyncTimeoutMs,
+    matrixPollTimeoutMs,
+    matrixMirrorMode,
+    matrixMirrorMinUpdateMs,
+    matrixNotifyMode,
+    matrixQuietHours,
+    matrixAutoSendArtifacts,
+    matrixArtifactDeliveryMode,
     workspace,
     workspaceAllowedRoots,
     workspaceWarnRoots,
@@ -659,6 +726,10 @@ function requireEnv(name: string): string {
 function optionalString(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function normalizeBaseUrl(value: string | undefined): string | undefined {
+  return value?.replace(/\/+$/, "");
 }
 
 function parseVoiceDefaultLanguage(value: string | undefined): string | undefined {
@@ -864,6 +935,11 @@ function parseDiscordCommandMode(raw: string | undefined): "slash" | "message" |
 function parseSlackCommand(raw: string | undefined): string {
   const normalized = raw?.trim() || "/nordrelay";
   return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
+
+function parseMatrixCommandPrefix(raw: string | undefined): string {
+  const normalized = raw?.trim() || "!nr";
+  return normalized || "!nr";
 }
 
 function parseWebhookPath(raw: string | undefined): string {

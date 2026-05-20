@@ -2,7 +2,7 @@
 
 ## Session Control
 
-- Independent coding-agent sessions per Telegram private chat, group chat, forum topic, Discord DM/channel/thread, Slack DM/channel/thread, WebUI, and peer target.
+- Independent coding-agent sessions per Telegram private chat, group chat, forum topic, Discord DM/channel/thread, Slack DM/channel/thread, Matrix DM/room/thread, WebUI, and peer target.
 - `/agent` switches a chat context between enabled agents such as Codex, Pi, Hermes, OpenClaw, and Claude Code.
 - Persistent channel context metadata in the active workspace under `.nordrelay/contexts.json`.
 - `/new` starts a fresh thread, with workspace selection when known workspaces are available.
@@ -18,14 +18,14 @@
 - Codex session usage is read from local rollout JSONL files, including context-used percent, total input/output tokens, 5h limit remaining, and weekly limit remaining.
 - `/handback` returns a ready-to-run CLI command for continuing in the native agent CLI.
 - `/retry` resends the last prompt for the current chat context.
-- Prompt templates and multi-step workflows can be created in the WebUI, previewed with variables, run locally or through a selected peer target, and started from Telegram, Discord, or Slack with `/template` and `/workflow`.
+- Prompt templates and multi-step workflows can be created in the WebUI, previewed with variables, run locally or through a selected peer target, and started from Telegram, Discord, Slack, or Matrix with `/template` and `/workflow`.
 - Workflow runs are tracked as unified jobs with step status, trace links, retry/cancel actions, and persisted run history under the active NordRelay state backend.
 - `/queue`, inline run/top/up/down/cancel buttons, `/cancel <queue-id>`, and `/clearqueue` manage queued prompts for a busy chat context.
 - `/queue later <minutes> <prompt>` schedules a prompt for later execution, and `/queue inspect <queue-id>` shows full queue metadata.
 - `/abort`, `/stop`, and the inline Abort button cancel the active agent turn.
 - Busy prompts are queued per chat context instead of being dropped.
 - If the attached thread is currently active in the local agent CLI, chat prompts are queued until that CLI task finishes.
-- Active Codex, Pi, Hermes, OpenClaw, and Claude Code CLI/API turns are mirrored into Telegram, Discord, Slack, and the WebUI with configurable `off`, `status`, `final`, or `full` modes.
+- Active Codex, Pi, Hermes, OpenClaw, and Claude Code CLI/API turns are mirrored into Telegram, Discord, Slack, Matrix, and the WebUI with configurable `off`, `status`, `final`, or `full` modes.
 - `/mirror` controls CLI mirroring per chat context; the WebUI chat also supports `/mirror [off|status|final|full]` and a Mirror mode picker.
 - Queues survive connector restarts and are resumed automatically when the external CLI turn becomes idle.
 - `/notify` controls completion/status notifications and quiet hours per chat context.
@@ -36,11 +36,11 @@
 - `/diagnostics` reports redacted runtime, config, user/group authorization, channel rate-limit, mirror, voice, session, queue, and progress details.
 - `/support` exports a redacted diagnostics ZIP with config, health, versions, agent paths, recent logs, audit events, update jobs, state backend, and OS/Node/npm info.
 - `/lock`, `/unlock`, and `/locks` provide a team write-lock for shared sessions so one user can operate while others watch.
-- `/audit` shows recent prompt, queue, lock, command, authentication, permission-denied, user, group, Telegram-link, Telegram-chat, Discord-link, Discord-channel, Slack-link, Slack-channel, and web-session audit events for admins.
+- `/audit` shows recent prompt, queue, lock, command, authentication, permission-denied, user, group, Telegram-link, Telegram-chat, Discord-link, Discord-channel, Slack-link, Slack-channel, Matrix-link, Matrix-room, and web-session audit events for admins.
 
 ## Isolated Session Worktrees
 
-- Set `NORDRELAY_SESSION_WORKSPACE_MODE=worktree` to create a dedicated Git worktree and branch for each new NordRelay-started session across WebUI, Telegram, Discord, and Slack.
+- Set `NORDRELAY_SESSION_WORKSPACE_MODE=worktree` to create a dedicated Git worktree and branch for each new NordRelay-started session across WebUI, Telegram, Discord, Slack, and Matrix.
 - The original repository remains unchanged while the session works in its own worktree path under `NORDRELAY_SESSION_WORKTREE_ROOT`.
 - Existing CLI-started sessions are treated as attached/manual sessions; NordRelay will not move a running native CLI process into a different worktree.
 - Use the WebUI Sessions → Worktrees tab to fork the current session, optionally copy pending tracked/untracked changes, preview diffs, commit a session worktree, update a clean worktree from its base branch, remove it, clean stale records, or merge selected committed worktrees into a generated integration worktree.
@@ -57,8 +57,10 @@
 - Telegram supports text, typing, streaming edits, inline buttons, files, photos, voice, forum topics, and polling/webhook transport.
 - Discord supports text, typing, streaming edits, buttons, files, photos, voice/audio transcription, guild channels, threads, DMs, message commands, and slash commands.
 - Slack supports text, typing/status, streaming edits, Block Kit buttons, files, images, audio transcription, channels, DMs, threads, Socket Mode, and HTTP Events mode.
+- Matrix supports text, typing, streaming edits, text-action fallbacks, files, images, audio transcription, rooms, DMs, threads, long-poll `/sync`, and optional auto-join for invites.
 - Slack startup and `/diagnostics` include readiness checks for token/transport configuration, registered channels, Slack API auth probes, channel visibility probes, file-upload readiness notes, and rate-limit counters.
-- `/channels` shows available and planned messaging adapters for Telegram, Discord, Slack, and Matrix.
+- Matrix startup and `/diagnostics` include homeserver/token/user checks, `whoami`, joined-room visibility, registered-room readiness, E2EE limitations, and rate-limit counters.
+- `/channels` shows available messaging adapters for Telegram, Discord, Slack, and Matrix.
 - Codex, Pi, Hermes, OpenClaw, and Claude Code are implemented as agent adapters.
 - `/agents` shows available/planned agent adapters and whether Codex, Pi, Hermes, OpenClaw, and Claude Code are enabled.
 - Agent and chat adapters expose a shared conformance matrix so command coverage and feature support can be tested and surfaced consistently.
@@ -72,8 +74,8 @@
 - Peer scopes restrict which remote WebUI/API actions are allowed, including read, prompt, queue, file, diagnostic, log, and session permissions.
 - Peer records can also restrict allowed agent ids, allowed workspace roots, and per-peer workspace aliases such as `app=/srv/app`.
 - The WebUI has a Peers page plus a local/remote target selector; dashboard pages, SSE streaming, queue actions, artifact downloads, health checks, and the global session browser proxy through the selected peer when allowed.
-- Telegram, Discord, and Slack expose `/peers` and `/target` so a linked user can choose whether prompts run locally or on a paired NordRelay instance.
-- Remote prompts stream text, tool status, turn completion, and errors back to the originating Telegram, Discord, or Slack context.
+- Telegram, Discord, Slack, and Matrix expose `/peers` and `/target` so a linked user can choose whether prompts run locally or on a paired NordRelay instance.
+- Remote prompts stream text, tool status, turn completion, and errors back to the originating Telegram, Discord, Slack, or Matrix context.
 
 ## Codex Runtime
 
@@ -177,7 +179,7 @@
 - Todo-list updates are rendered as a live plan/status message.
 - Generated artifacts from `.nordrelay/turns/<turn-id>/out/` are retained for manual retrieval with `/artifacts`.
 - Workspace files detected after mirrored Codex, Pi, Hermes, OpenClaw, or Claude Code CLI/API turns are indexed as `/artifacts` entries, even when automatic artifact delivery is disabled.
-- Automatic artifact summaries and file uploads are disabled by default; use `NORDRELAY_ARTIFACT_DELIVERY` plus Telegram/Discord/Slack overrides, per-user preferences, or per-channel settings to control delivery.
+- Automatic artifact summaries and file uploads are disabled by default; use `NORDRELAY_ARTIFACT_DELIVERY` plus Telegram/Discord/Slack/Matrix overrides, per-user preferences, or per-channel settings to control delivery.
 - Artifact delivery modes support manual-only, summary, summary with actions, auto-files, auto-zip, images-only, and off.
 - Artifact quota and cleanup tools show managed storage usage, warn/over-quota status, cleanup candidates, and retention/quota removals in the WebUI and `/artifacts quota|cleanup` commands.
 - The WebUI artifact preview supports text/image previews and Git diffs for workspace artifacts when Git can provide a diff.
@@ -185,7 +187,7 @@
 - Image artifacts are sent with Telegram previews; large multi-file outputs are bundled into one ZIP when possible.
 - `/artifacts` lists recent generated files and can resend the latest or a specific artifact turn.
 - `/artifacts` includes inline actions to resend, ZIP, or delete artifact turns.
-- `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, `/artifacts delivery <mode>`, `/artifacts quota`, `/artifacts cleanup preview|run`, and `/artifacts delete <turn-id>` filter, configure, inspect, and clean up artifacts from Telegram, Discord, and Slack.
+- `/artifacts images`, `/artifacts docs`, `/artifacts search <text>`, `/artifacts delivery <mode>`, `/artifacts quota`, `/artifacts cleanup preview|run`, and `/artifacts delete <turn-id>` filter, configure, inspect, and clean up artifacts from Telegram, Discord, Slack, and Matrix.
 - Old artifact and inbox turn directories are pruned automatically with configurable retention.
 - Optional Telegram message reactions can acknowledge work start and completion with `ENABLE_TELEGRAM_REACTIONS=true`.
 
@@ -209,11 +211,21 @@
 - Slack Block Kit buttons cover session picks, model/reasoning/launch picks, queue actions, artifact actions, update jobs, and abort where Slack component limits allow.
 - Slack slash/text commands mirror the shared command surface where Slack supports it: `/agent`, `/auth`, `/login`, `/logout`, `/session`, `/sessions`, `/new`, `/switch`, `/attach`, `/handback`, `/workspaces`, `/pin`, `/unpin`, `/pinned`, `/model`, `/reasoning`, `/fast`, `/launch`, `/launch_profiles`, `/queue`, `/stop`, `/retry`, `/sync`, `/progress`, `/activity`, `/audit`, `/artifacts`, `/logs`, `/version`, `/diagnostics`, `/restart`, `/update`, `/lock`, `/unlock`, `/mirror`, `/notify`, `/voice`, `/link`, `/whoami`, and `/register_channel`.
 
+## Matrix Input and Output
+
+- Enable Matrix with `MATRIX_ENABLED=true`, `MATRIX_HOMESERVER_URL`, `MATRIX_ACCESS_TOKEN`, and `MATRIX_USER_ID`.
+- `MATRIX_MESSAGE_CONTENT_ENABLED=true` lets regular Matrix messages become prompts. Set `MATRIX_COMMAND_PREFIX` such as `!nr` for clients that intercept slash-style messages.
+- Matrix DMs, rooms, and thread replies get independent NordRelay contexts.
+- Matrix attachments are staged like Telegram/Discord/Slack uploads; images are passed as image inputs and audio files are transcribed before prompting.
+- Matrix can send text-action fallbacks for session picks, model/reasoning/launch picks, queue actions, artifact actions, update jobs, and abort. Paste the shown action or use the equivalent slash/text command when the client has no button UI.
+- Matrix commands mirror the shared command surface where Matrix supports it: `/agent`, `/auth`, `/login`, `/logout`, `/session`, `/sessions`, `/new`, `/switch`, `/attach`, `/handback`, `/workspaces`, `/pin`, `/unpin`, `/pinned`, `/model`, `/reasoning`, `/fast`, `/launch`, `/launch_profiles`, `/queue`, `/stop`, `/retry`, `/sync`, `/progress`, `/activity`, `/audit`, `/artifacts`, `/logs`, `/version`, `/diagnostics`, `/restart`, `/update`, `/lock`, `/unlock`, `/mirror`, `/notify`, `/voice`, `/link`, `/whoami`, and `/register_channel`.
+- End-to-end encrypted Matrix rooms are not decrypted by NordRelay. Use an unencrypted bot room or an external bridge until Matrix E2EE support is added.
+
 ## Authentication and Safety
 
 - WebUI login is required for every dashboard page, API route, SSE stream, artifact download, and health endpoint.
-- Access is managed through NordRelay users, groups, permissions, web sessions, linked Telegram identities, linked Discord identities, and linked Slack identities.
-- Built-in groups are `Admin`, `User`, and `Read Only`; custom groups can be created in the WebUI and can restrict allowed agents, workspace roots, Telegram chats, Discord channels, and Slack channels.
+- Access is managed through NordRelay users, groups, permissions, web sessions, linked Telegram identities, linked Discord identities, linked Slack identities, and linked Matrix identities.
+- Built-in groups are `Admin`, `User`, and `Read Only`; custom groups can be created in the WebUI and can restrict allowed agents, workspace roots, Telegram chats, Discord channels, Slack channels, and Matrix rooms.
 - The last active admin cannot be disabled or demoted, and web sessions are revoked when passwords or group memberships change.
 - Admins can review and revoke active WebUI sessions from the Users page.
 - Telegram private chats require a linked active NordRelay user.
@@ -222,11 +234,13 @@
 - Discord guild channels and threads must be registered before use; admins can run `/register_channel` in the channel or enable channels in the WebUI.
 - Slack DMs require a linked active NordRelay user.
 - Slack channels and threads must be registered before use; admins can run `/register_channel` in the channel or enable channels in the WebUI.
+- Matrix DMs require a linked active NordRelay user.
+- Matrix rooms and threads must be registered before use; admins can run `/register_channel` in the room or enable rooms in the WebUI.
 - `/whoami` shows the linked NordRelay account and groups.
 - `/link <code>` links a Telegram account to a NordRelay user after a link code is created in the WebUI or with `nordrelay user link-code`.
-- `/link <code>` also links a Discord or Slack account when the code was created for that channel.
+- `/link <code>` also links a Discord, Slack, or Matrix account when the code was created for that channel.
 - WebUI login and chat-account link attempts are rate-limited to reduce brute-force risk.
-- User, group, Telegram-link, Telegram-chat, Discord-link, Discord-channel, Slack-link, Slack-channel, web-session, login, and permission-denied events are written to the audit log.
+- User, group, Telegram-link, Telegram-chat, Discord-link, Discord-channel, Slack-link, Slack-channel, Matrix-link, Matrix-room, web-session, login, and permission-denied events are written to the audit log.
 - `/auth` reports Codex authentication, Pi provider environment health, Hermes API Server reachability, OpenClaw Gateway reachability, or Claude Code CLI auth for the selected agent.
 - `/login` starts Telegram-managed CLI auth for Codex, Hermes, or Claude Code when enabled.
 - `/logout` signs out of CLI auth for Codex, Hermes, or Claude Code; Codex logout is disabled while `CODEX_API_KEY` is in use.
@@ -246,11 +260,11 @@
 - `/logs` renders redacted connector, NordRelay update, and agent update logs with local-time timestamps, levels, file path, last-modified time, and highlighted warnings/errors.
 - Logs can be emitted as timestamped plain text or JSON records with `CONNECTOR_LOG_FORMAT`.
 - Telegram sends/edits/documents are routed through a rate-limit queue that honors Telegram retry-after responses.
-- Mirror, notification, quiet-hour, and automatic artifact-delivery defaults are configured through channel-neutral `NORDRELAY_*` settings, with WebUI, Telegram, Discord, and Slack override keys when a channel should differ.
+- Mirror, notification, quiet-hour, and automatic artifact-delivery defaults are configured through channel-neutral `NORDRELAY_*` settings, with WebUI, Telegram, Discord, Slack, and Matrix override keys when a channel should differ.
 - The WebUI Tasks page includes a unified Jobs view for active WebUI turns, external CLI turns, queued prompts, agent update/install jobs, self-updates, and diagnostics bundle exports, with log, cancel, and retry actions where supported.
 - WebUI prompts, queued jobs, peer-proxied prompts, chat history, activity, audit events, and the Trace page share correlation IDs so a turn can be followed across transport, queue, agent execution, and diagnostics.
 - Unified Jobs are persisted across restarts and retain recent prompt, queue, update, connector-update, and support-bundle history for WebUI inspection.
-- The WebUI Metrics page reports queue state, active/completed/failed turns, job counts, average prompt duration, and Telegram/Discord/Slack rate-limit counters.
+- The WebUI Metrics page reports queue state, active/completed/failed turns, job counts, average prompt duration, and Telegram/Discord/Slack/Matrix rate-limit counters.
 - Expensive dashboard views such as version checks, adapter health, and diagnostics use a short stale-while-refresh server cache so the UI can render recent data while fresh checks run in the background.
 - Context metadata, queues, and preferences are written atomically with backup recovery.
 - Context metadata, queues, preferences, audit events, and locks can use JSON files or the optional SQLite state backend with `NORDRELAY_STATE_BACKEND=sqlite`.

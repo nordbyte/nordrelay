@@ -9,6 +9,8 @@ import { getConnectorHealth, getVersionChecks, readConnectorState } from "../sup
 import type { RuntimeSnapshotCache } from "./runtime-cache.js";
 import { collectSlackDiagnostics } from "../channels/slack/slack-diagnostics.js";
 import { getSlackRateLimitMetrics } from "../channels/slack/slack-rate-limit.js";
+import { collectMatrixDiagnostics } from "../channels/matrix/matrix-diagnostics.js";
+import { getMatrixRateLimitMetrics } from "../channels/matrix/matrix-rate-limit.js";
 import { cliHealthForAgent, versionCheckForAgent } from "./relay-runtime-helpers.js";
 import type {
   RelaySnapshot,
@@ -112,11 +114,16 @@ export class RelayDashboardService {
       this.options.snapshot(),
       this.options.getSession(),
     ]);
-    const [slackDiagnostics, voiceDiagnostics] = await Promise.all([
+    const [slackDiagnostics, matrixDiagnostics, voiceDiagnostics] = await Promise.all([
       collectSlackDiagnostics({
         config: this.options.config,
         timeoutMs: 2_500,
         rateLimit: getSlackRateLimitMetrics(),
+      }),
+      collectMatrixDiagnostics({
+        config: this.options.config,
+        timeoutMs: 2_500,
+        rateLimit: getMatrixRateLimitMetrics(),
       }),
       getVoiceDiagnostics({
         preferredBackend: this.options.config.voicePreferredBackend,
@@ -136,6 +143,7 @@ export class RelayDashboardService {
         externalMirror: this.options.externalMirror(),
         agentDiagnostics: getAgentDiagnostics(session, this.options.config),
         slackDiagnostics,
+        matrixDiagnostics,
         voiceDiagnostics,
       },
     };

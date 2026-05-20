@@ -91,6 +91,6 @@ function makeHistorySample(at: string, queueLength: number): RuntimeMetricHistor
     eventLoopP95Ms: null,
     webAverageMs: null,
     webMaxMs: null,
-    rateLimitHits: { telegram: 0, discord: 0, slack: 0 },
+    rateLimitHits: { telegram: 0, discord: 0, slack: 0, matrix: 0 },
   };
 }
