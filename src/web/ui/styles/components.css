@@ -368,6 +368,8 @@
 .artifact-diff-pre{max-height:min(58vh,620px);overflow:auto;margin-top:10px;padding:12px;border:1px solid var(--border-soft);border-radius:8px;background:var(--pre);color:var(--pre-text);font-size:13px;line-height:1.45;white-space:pre-wrap}
 .update-log{max-height:280px;min-height:90px;margin-top:10px;font-size:14px}
 .update-job-header{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.update-job-title{display:inline-flex;align-items:center;gap:7px;min-width:0}
+.update-job-spinner{display:inline-block;width:14px;height:14px;flex:0 0 14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
 .update-input{display:grid;grid-template-columns:1fr auto auto;gap:8px;margin-top:8px}
 .table-section-title{margin:0 0 8px;font-size:15px}
 .peer-invite-details{display:grid;gap:6px;margin:10px 0;padding:10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface)}
