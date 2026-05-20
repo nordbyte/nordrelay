@@ -149,7 +149,7 @@ export function getPiSessionDiagnostics(
   }
   const status = snapshot.activity.active ? "active" : snapshot.activity.stale ? "stale" : "idle";
   const reason = snapshot.activity.active
-    ? "latest Pi user turn has no assistant response yet"
+    ? "latest Pi turn has no terminal assistant response yet"
     : snapshot.activity.stale
       ? "open Pi turn exceeded stale timeout"
       : "latest Pi turn has a terminal response";
@@ -276,13 +276,10 @@ function readPiSessionSnapshot(
     const latestTool = [...parsed.events].reverse().find((event) => event.kind === "tool" && event.toolName);
     const latestTimestamp = parsed.latestTimestamp ?? fileStat.mtime;
     const activeStartedAt = latestUser?.timestamp ?? null;
-    const hasAssistantAfterUser = Boolean(
-      latestUser && latestAgent && latestAgent.lineNumber > latestUser.lineNumber,
-    );
     const terminalAfterUser = Boolean(
       latestUser && latestTerminal && latestTerminal.lineNumber > latestUser.lineNumber,
     );
-    const openTurn = Boolean(latestUser && !hasAssistantAfterUser && !terminalAfterUser);
+    const openTurn = Boolean(latestUser && !terminalAfterUser);
     const stale = openTurn && nowMs - latestTimestamp.getTime() > staleAfterMs;
     const active = openTurn && !stale;
     const turnId = latestUser?.turnId ?? latestTerminal?.turnId ?? null;
@@ -369,29 +366,47 @@ function parsePiActivityEvents(
           phase: null,
         });
       } else if (role === "assistant") {
+        const terminalStatus = message ? piAssistantTerminalStatus(message) : null;
         pushEvent(events, afterLine, {
           lineNumber,
           kind: "agent",
           timestamp,
           type,
           turnId: currentTurnId,
-          status: "completed",
+          status: terminalStatus,
           text,
           toolName: null,
           phase: null,
         });
-        pushEvent(events, afterLine, {
-          lineNumber,
-          kind: "task",
-          timestamp,
-          type: "turn",
-          turnId: currentTurnId,
-          status: "completed",
-          text: null,
-          toolName: null,
-          phase: null,
-        });
-      } else if (role === "tool") {
+
+        for (const toolName of extractToolCallNames(message)) {
+          pushEvent(events, afterLine, {
+            lineNumber,
+            kind: "tool",
+            timestamp,
+            type,
+            turnId: currentTurnId,
+            status: "started",
+            text: null,
+            toolName,
+            phase: null,
+          });
+        }
+
+        if (terminalStatus) {
+          pushEvent(events, afterLine, {
+            lineNumber,
+            kind: "task",
+            timestamp,
+            type: "turn",
+            turnId: currentTurnId,
+            status: terminalStatus,
+            text: null,
+            toolName: null,
+            phase: null,
+          });
+        }
+      } else if (role === "tool" || role === "toolResult") {
         pushEvent(events, afterLine, {
           lineNumber,
           kind: "tool",
@@ -400,7 +415,7 @@ function parsePiActivityEvents(
           turnId: currentTurnId,
           status: "finished",
           text,
-          toolName: stringValue(message?.name) ?? extractToolName(message) ?? "tool",
+          toolName: stringValue(message?.toolName) ?? stringValue(message?.name) ?? extractToolName(message) ?? "tool",
           phase: null,
         });
       }
@@ -570,6 +585,49 @@ function extractToolName(message: JsonObject | null): string | null {
   }
   const toolCall = objectValue(message.toolCall) ?? objectValue(message.tool_call);
   return stringValue(toolCall?.name) ?? stringValue(toolCall?.toolName) ?? stringValue(message.toolName);
+}
+
+function piAssistantTerminalStatus(message: JsonObject): "completed" | "failed" | null {
+  const stopReason = stringValue(message.stopReason)?.toLowerCase();
+  if (stopReason === "tooluse" || stopReason === "tool_use") {
+    return null;
+  }
+  if (stopReason && /error|fail/.test(stopReason)) {
+    return "failed";
+  }
+  if (stopReason) {
+    return "completed";
+  }
+  return extractToolCallNames(message).length > 0 ? null : "completed";
+}
+
+function extractToolCallNames(message: JsonObject | null): string[] {
+  if (!message) {
+    return [];
+  }
+  const names = new Set<string>();
+  const direct = objectValue(message.toolCall) ?? objectValue(message.tool_call);
+  const directName = stringValue(direct?.name) ?? stringValue(direct?.toolName);
+  if (directName) {
+    names.add(directName);
+  }
+  const content = message.content;
+  if (Array.isArray(content)) {
+    for (const part of content) {
+      const block = objectValue(part);
+      if (!block) {
+        continue;
+      }
+      const blockType = stringValue(block.type)?.toLowerCase();
+      if (blockType === "toolcall" || blockType === "tool_call") {
+        const name = stringValue(block.name) ?? stringValue(block.toolName);
+        if (name) {
+          names.add(name);
+        }
+      }
+    }
+  }
+  return [...names];
 }
 
 function summarizeTitle(text: string | null): string | null {
