@@ -5,6 +5,7 @@ dist/
 .agents/
 *.log
 .nordrelay/
+.repovista/
 workspace/
 coverage/
 sbom.json
