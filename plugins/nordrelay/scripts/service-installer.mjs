@@ -32,7 +32,31 @@ function parseServiceFlags(argv) {
     else if (arg === "--name") flags.name = requireValue(copy, ++i, arg);
     else if (arg === "--label") flags.label = requireValue(copy, ++i, arg);
   }
+  validateServiceFlags(flags);
   return flags;
+}
+
+function validateServiceFlags(flags) {
+  if (!["linux", "darwin", "win32"].includes(flags.platform)) {
+    throw new Error(`Unsupported service platform: ${flags.platform}`);
+  }
+  assertSafeServiceIdentifier(flags.name, "--name");
+  assertSafeServiceIdentifier(flags.label, "--label");
+}
+
+function assertSafeServiceIdentifier(value, flag) {
+  const text = String(value ?? "");
+  if (
+    !text ||
+    text.length > 128 ||
+    text.includes("/") ||
+    text.includes("\\") ||
+    text.includes("..") ||
+    path.basename(text) !== text ||
+    !/^[A-Za-z0-9_. -]+$/.test(text)
+  ) {
+    throw new Error(`${flag} must be a simple service identifier without path components.`);
+  }
 }
 
 function serviceRunArgs(options) {

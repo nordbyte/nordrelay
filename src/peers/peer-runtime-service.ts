@@ -866,12 +866,13 @@ export class PeerRuntimeService {
   }
 
   private canUseTemplate(peer: PeerRecord, template: PromptTemplate): boolean {
-    return (!template.defaultAgentId || this.canUseAgent(peer, template.defaultAgentId)) &&
+    return template.scope === "shared" &&
+      (!template.defaultAgentId || this.canUseAgent(peer, template.defaultAgentId)) &&
       this.workspaceAllowed(peer, template.defaultWorkspace);
   }
 
   private canUseWorkflow(peer: PeerRecord, workflow: Workflow): boolean {
-    return workflow.steps.every((step) => this.canUseWorkflowStep(peer, step));
+    return workflow.scope === "shared" && workflow.steps.every((step) => this.canUseWorkflowStep(peer, step));
   }
 
   private canUseWorkflowStep(peer: PeerRecord, step: WorkflowStep): boolean {
@@ -910,6 +911,12 @@ export class PeerRuntimeService {
   }
 
   private canUseWorkflowRun(peer: PeerRecord, runtime: RelayRuntime, run: WorkflowRun): boolean {
+    if (run.workflowSnapshot && !this.canUseWorkflow(peer, run.workflowSnapshot)) {
+      return false;
+    }
+    if (run.templateSnapshot && !this.canUseTemplate(peer, run.templateSnapshot)) {
+      return false;
+    }
     if (run.workflowId) {
       const workflow = runtime.workflowStore.getWorkflow(run.workflowId);
       return !workflow || this.canUseWorkflow(peer, workflow);

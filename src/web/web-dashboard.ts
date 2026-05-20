@@ -30,6 +30,8 @@ import {
   sendText,
   sendStaticFile,
   isRequestBodyTooLargeError,
+  isWebAccessDeniedError,
+  WebAccessDeniedError,
   registerWebResponseRequest,
 } from "./web-dashboard-http.js";
 import { renderDashboardApp, renderFirstRunSetupPage, renderLoginPage } from "./web-dashboard-pages.js";
@@ -77,7 +79,7 @@ if (firstRunSetupToken) {
   console.log(`NordRelay first-run setup token: ${firstRunSetupToken}`);
 }
 
-class AccessDeniedError extends Error {}
+class AccessDeniedError extends WebAccessDeniedError {}
 
 const server = createServer((req, res) => {
   registerWebResponseRequest(req, res);
@@ -92,7 +94,7 @@ const server = createServer((req, res) => {
     });
   });
   void handleRequest(req, res).catch((error) => {
-    const status = error instanceof AccessDeniedError ? 403 : isRequestBodyTooLargeError(error) ? 413 : 500;
+    const status = isWebAccessDeniedError(error) ? 403 : isRequestBodyTooLargeError(error) ? 413 : 500;
     sendJson(res, status, { error: friendlyErrorText(error) });
   });
 });

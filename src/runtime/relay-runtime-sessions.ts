@@ -666,6 +666,7 @@ export async function relayRuntimeNewSession(runtime: RelayRuntimeDelegate, opti
     runtime.ensureIdle(session);
     const requestedMode = options.workspaceMode ?? runtime.config.sessionWorkspaceMode;
     const sourceWorkspace = options.workspace ?? session.getInfo().workspace ?? runtime.config.workspace;
+    assertRuntimeWorkspaceAllowed(runtime, sourceWorkspace);
     let worktree: SessionWorktreeRecord | undefined;
     let effectiveWorkspace = options.workspace;
     if (requestedMode === "worktree") {
@@ -675,6 +676,8 @@ export async function relayRuntimeNewSession(runtime: RelayRuntimeDelegate, opti
         sourceWorkspace,
       });
       effectiveWorkspace = worktree.worktreePath;
+    } else if (effectiveWorkspace) {
+      assertRuntimeWorkspaceAllowed(runtime, effectiveWorkspace);
     }
     if (options.reasoningEffort) {
       const reasoningOptions = agentReasoningOptions(session.getInfo().agentId);
@@ -710,7 +713,12 @@ export async function relayRuntimeNewSession(runtime: RelayRuntimeDelegate, opti
 export async function relayRuntimeSwitchSession(runtime: RelayRuntimeDelegate, threadId: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
     const session = await runtime.getSession(true);
     runtime.ensureIdle(session);
+    const record = session.getSessionRecord(threadId);
+    if (record?.cwd) {
+      assertRuntimeWorkspaceAllowed(runtime, record.cwd);
+    }
     const info = await session.switchSession(threadId);
+    assertRuntimeWorkspaceAllowed(runtime, info.workspace);
     runtime.updateSession(session);
     runtime.broadcast({ type: "chat_history", messages: await runtime.chatHistory() });
     runtime.appendActivity({
@@ -728,6 +736,14 @@ export async function relayRuntimeSwitchSession(runtime: RelayRuntimeDelegate, t
 
 export async function relayRuntimeAttachSession(runtime: RelayRuntimeDelegate, threadId: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
     return runtime.switchSession(threadId, actor);
+  }
+
+function assertRuntimeWorkspaceAllowed(runtime: RelayRuntimeDelegate, workspace: string | undefined): void {
+    if (!workspace) return;
+    const policy = evaluateWorkspacePolicy(workspace, runtime.config);
+    if (!policy.allowed) {
+      throw new Error(policy.warning ?? `Workspace is outside WORKSPACE_ALLOWED_ROOTS: ${workspace}`);
+    }
   }
 
 export async function relayRuntimeSetModel(runtime: RelayRuntimeDelegate, model: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {

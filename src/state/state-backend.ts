@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-import { readJsonFileWithBackup, updateJsonFileAtomic, writeJsonFileAtomic } from "./persistence.js";
+import { assertSupportedStatePayload, readJsonFileWithBackup, StatePersistenceError, updateJsonFileAtomic, writeJsonFileAtomic } from "./persistence.js";
 
 export type StateBackendKind = "json" | "sqlite";
 
@@ -172,12 +172,17 @@ function readSqliteDocument<TValue>(db: SqliteDatabase, key: string): TValue | u
     return undefined;
   }
   try {
-    return JSON.parse(row.json) as TValue;
+    const value = JSON.parse(row.json) as TValue;
+    assertSupportedStatePayload(value, `sqlite:${key}`);
+    return value;
   } catch (error) {
-    console.warn(
-      `Failed to parse SQLite state document ${key}:`,
+    if (error instanceof StatePersistenceError) {
+      throw error;
+    }
+    throw new StatePersistenceError(
+      `Cannot read SQLite state document ${key}: ${error instanceof Error ? error.message : String(error)}`,
+      `sqlite:${key}`,
       error instanceof Error ? error.message : String(error),
     );
-    return undefined;
   }
 }

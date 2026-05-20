@@ -32,6 +32,7 @@ export interface SessionRegistryOptions {
 export class SessionRegistry {
   private readonly sessions = new Map<ChannelContextKey, AgentSessionService>();
   private readonly metadata = new Map<ChannelContextKey, ContextMetadata>();
+  private readonly deletedContextKeys = new Set<ChannelContextKey>();
   private readonly store: DocumentStore<ContextMetadata[]>;
   private onRemoveCallback?: (contextKey: ChannelContextKey) => void;
 
@@ -268,6 +269,7 @@ export class SessionRegistry {
     session?.dispose();
     this.sessions.delete(contextKey);
     this.metadata.delete(contextKey);
+    this.deletedContextKeys.add(contextKey);
     this.onRemoveCallback?.(contextKey);
     this.persistMetadata();
   }
@@ -281,8 +283,23 @@ export class SessionRegistry {
 
   private persistMetadata(): void {
     try {
-      const data = [...this.metadata.values()];
-      this.store.write(data);
+      const updates = [...this.metadata.values()];
+      const deleted = new Set(this.deletedContextKeys);
+      this.store.update((current) => {
+        const merged = new Map<ChannelContextKey, ContextMetadata>();
+        for (const entry of Array.isArray(current) ? current : []) {
+          if (entry.contextKey && !deleted.has(entry.contextKey)) {
+            merged.set(entry.contextKey, entry);
+          }
+        }
+        for (const entry of updates) {
+          if (entry.contextKey && !deleted.has(entry.contextKey)) {
+            merged.set(entry.contextKey, entry);
+          }
+        }
+        return [...merged.values()].sort((left, right) => right.updatedAt - left.updatedAt);
+      });
+      this.deletedContextKeys.clear();
     } catch (error) {
       console.warn(
         "Failed to persist context metadata:",
@@ -300,6 +317,9 @@ export class SessionRegistry {
       let pruned = false;
       for (const entry of data) {
         if (isPrunableMetadata(entry)) {
+          if (entry.contextKey) {
+            this.deletedContextKeys.add(entry.contextKey);
+          }
           pruned = true;
           continue;
         }

@@ -24,12 +24,23 @@ describe("release version guard", () => {
     expect(() => runGuard({
       GITHUB_EVENT_NAME: "workflow_dispatch",
       NORDRELAY_RELEASE_VERSION: packageVersion,
+      GITHUB_REF_TYPE: "branch",
+      GITHUB_REF_NAME: "main",
     })).not.toThrow();
 
     expect(() => runGuard({
       GITHUB_EVENT_NAME: "workflow_dispatch",
       NORDRELAY_RELEASE_VERSION: "0.0.0",
     })).toThrow(/does not match package\.json/);
+  });
+
+  it("rejects manual publish dispatches outside main", () => {
+    expect(() => runGuard({
+      GITHUB_EVENT_NAME: "workflow_dispatch",
+      NORDRELAY_RELEASE_VERSION: packageVersion,
+      GITHUB_REF_TYPE: "branch",
+      GITHUB_REF_NAME: "feature",
+    })).toThrow(/only allowed from the main branch/);
   });
 });
 

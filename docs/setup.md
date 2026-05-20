@@ -28,20 +28,27 @@ If `nordrelay init` returns `command not found`, check the postinstall warning p
 Non-interactive setup is also supported:
 
 ```bash
+printf '%s\n' '123456789:replace-me' > /tmp/nordrelay-telegram-token
+printf '%s\n' 'discord-bot-token' > /tmp/nordrelay-discord-token
+printf '%s\n' 'matrix-bot-access-token' > /tmp/nordrelay-matrix-token
+printf '%s\n' 'replace-with-a-long-password' > /tmp/nordrelay-admin-password
+
 nordrelay init \
-  --token 123456789:replace-me \
+  --token-file /tmp/nordrelay-telegram-token \
   --enable-discord \
-  --discord-token "discord-bot-token" \
+  --discord-token-file /tmp/nordrelay-discord-token \
   --discord-client-id "discord-client-id" \
   --enable-matrix \
   --matrix-homeserver-url "https://matrix.example.com" \
-  --matrix-access-token "matrix-bot-access-token" \
+  --matrix-access-token-file /tmp/nordrelay-matrix-token \
   --matrix-user-id "@nordrelay:example.com" \
   --admin-email you@example.com \
   --admin-name "Your Name" \
-  --admin-password "replace-with-a-long-password" \
+  --admin-password-file /tmp/nordrelay-admin-password \
   --telegram-user-id 123456789
 ```
+
+Prefer the `--*-file` secret flags or interactive prompts. Inline secret flags still work, but NordRelay warns because command-line values can end up in shell history and process lists.
 
 `--telegram-user-id` is optional, but linking the first admin during setup is the fastest way to use Telegram immediately.
 Use `--discord-user-id <id>` with `nordrelay user create-admin` or `nordrelay user link-discord` to link Discord directly.

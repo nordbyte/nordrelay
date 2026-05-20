@@ -7,6 +7,13 @@ export interface JsonReadResult<T> {
   error?: string;
 }
 
+export class StatePersistenceError extends Error {
+  constructor(message: string, readonly filePath: string, readonly causeDetail?: string) {
+    super(message);
+    this.name = "StatePersistenceError";
+  }
+}
+
 export function writeJsonFileAtomic(filePath: string, value: unknown): void {
   writeTextFileAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
@@ -41,34 +48,67 @@ export function writeTextFileAtomic(filePath: string, value: string): void {
 
 export function readJsonFileWithBackup<T>(filePath: string): JsonReadResult<T> {
   const primary = readJsonFile<T>(filePath);
-  if (primary.ok) {
+  const primaryReadError = primary.ok ? undefined : primary.error;
+  const primaryVersionError = primary.ok ? unsupportedVersionError(primary.value) : undefined;
+  if (primary.ok && !primaryVersionError) {
     return { value: primary.value, recoveredFromBackup: false };
+  }
+  if (primaryVersionError) {
+    preserveUnreadableState(filePath);
+    throw new StatePersistenceError(`Cannot read state file ${filePath}: ${primaryVersionError}`, filePath, primaryVersionError);
   }
 
   const backupPath = `${filePath}.bak`;
   const backup = readJsonFile<T>(backupPath);
-  if (backup.ok) {
+  const backupReadError = backup.ok ? undefined : backup.error;
+  const backupVersionError = backup.ok ? unsupportedVersionError(backup.value) : undefined;
+  if (backup.ok && !backupVersionError) {
     return {
       value: backup.value,
       recoveredFromBackup: true,
-      error: primary.error,
+      error: primaryReadError ?? primaryVersionError,
     };
   }
 
-  if (primary.error && existsSync(filePath)) {
-    const corruptPath = `${filePath}.corrupt-${Date.now()}`;
-    try {
-      copyFileSync(filePath, corruptPath);
-    } catch {
-      // Best-effort only. The original file remains untouched.
-    }
+  const error = primaryReadError ?? primaryVersionError ?? backupReadError ?? backupVersionError;
+  if (error && existsSync(filePath)) {
+    preserveUnreadableState(filePath);
+  }
+
+  if (error && existsSync(filePath)) {
+    throw new StatePersistenceError(`Cannot read state file ${filePath}: ${error}`, filePath, error);
   }
 
   return {
     value: undefined,
     recoveredFromBackup: false,
-    error: primary.error ?? backup.error,
+    error,
   };
+}
+
+function preserveUnreadableState(filePath: string): void {
+  const corruptPath = `${filePath}.corrupt-${Date.now()}`;
+  try {
+    copyFileSync(filePath, corruptPath);
+  } catch {
+    // Best-effort only. The original file remains untouched.
+  }
+}
+
+export function assertSupportedStatePayload(value: unknown, filePath: string): void {
+  const error = unsupportedVersionError(value);
+  if (error) {
+    throw new StatePersistenceError(`Cannot read state file ${filePath}: ${error}`, filePath, error);
+  }
+}
+
+function unsupportedVersionError(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value) || !("version" in value)) {
+    return undefined;
+  }
+  return (value as { version?: unknown }).version === 1
+    ? undefined
+    : `Unsupported state payload version: ${String((value as { version?: unknown }).version)}`;
 }
 
 function readJsonFile<T>(filePath: string): { ok: true; value: T } | { ok: false; error?: string } {

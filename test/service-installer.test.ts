@@ -23,6 +23,11 @@ describe("service installer specs", () => {
     });
   });
 
+  it("rejects service names and labels with path components", () => {
+    expect(() => parseServiceFlags(["install", "--name", "../nordrelay"])).toThrow(/simple service identifier/);
+    expect(() => parseServiceFlags(["install", "--label", "io.test/evil"])).toThrow(/simple service identifier/);
+  });
+
   it("builds deterministic systemd install content without writing files", () => {
     const spec = buildSystemdUserServiceSpec(options, { name: "nordrelay", start: false });
 

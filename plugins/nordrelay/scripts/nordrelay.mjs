@@ -77,6 +77,7 @@ function parseArgs(argv) {
     updateMethod: undefined,
     buildBeforeStart: false,
     fix: false,
+    secretArgWarnings: [],
   };
 
   for (let i = 0; i < copy.length; i += 1) {
@@ -94,23 +95,30 @@ function parseArgs(argv) {
     else if (arg === "--disable-webui") options.disableWebui = true;
     else if (arg === "--disable-autostart") options.disableAutostart = true;
     else if (arg === "--disable-webui-autostart") options.disableWebuiAutostart = true;
-    else if (arg === "--token") options.telegramBotToken = requireValue(copy, ++i, arg);
+    else if (arg === "--token") options.telegramBotToken = readSecretCliValue(options, copy, ++i, arg);
+    else if (arg === "--token-file") options.telegramBotToken = readSecretCliFile(copy, ++i, arg);
     else if (arg === "--disable-telegram") options.disableTelegram = true;
     else if (arg === "--enable-discord") options.enableDiscord = true;
-    else if (arg === "--discord-token") options.discordBotToken = requireValue(copy, ++i, arg);
+    else if (arg === "--discord-token") options.discordBotToken = readSecretCliValue(options, copy, ++i, arg);
+    else if (arg === "--discord-token-file") options.discordBotToken = readSecretCliFile(copy, ++i, arg);
     else if (arg === "--discord-client-id") options.discordClientId = requireValue(copy, ++i, arg);
     else if (arg === "--enable-slack") options.enableSlack = true;
-    else if (arg === "--slack-bot-token") options.slackBotToken = requireValue(copy, ++i, arg);
-    else if (arg === "--slack-app-token") options.slackAppToken = requireValue(copy, ++i, arg);
-    else if (arg === "--slack-signing-secret") options.slackSigningSecret = requireValue(copy, ++i, arg);
+    else if (arg === "--slack-bot-token") options.slackBotToken = readSecretCliValue(options, copy, ++i, arg);
+    else if (arg === "--slack-bot-token-file") options.slackBotToken = readSecretCliFile(copy, ++i, arg);
+    else if (arg === "--slack-app-token") options.slackAppToken = readSecretCliValue(options, copy, ++i, arg);
+    else if (arg === "--slack-app-token-file") options.slackAppToken = readSecretCliFile(copy, ++i, arg);
+    else if (arg === "--slack-signing-secret") options.slackSigningSecret = readSecretCliValue(options, copy, ++i, arg);
+    else if (arg === "--slack-signing-secret-file") options.slackSigningSecret = readSecretCliFile(copy, ++i, arg);
     else if (arg === "--enable-matrix") options.enableMatrix = true;
     else if (arg === "--matrix-homeserver-url") options.matrixHomeserverUrl = requireValue(copy, ++i, arg);
-    else if (arg === "--matrix-access-token") options.matrixAccessToken = requireValue(copy, ++i, arg);
+    else if (arg === "--matrix-access-token") options.matrixAccessToken = readSecretCliValue(options, copy, ++i, arg);
+    else if (arg === "--matrix-access-token-file") options.matrixAccessToken = readSecretCliFile(copy, ++i, arg);
     else if (arg === "--matrix-user-id") options.matrixUserId = requireValue(copy, ++i, arg);
     else if (arg === "--matrix-device-id") options.matrixDeviceId = requireValue(copy, ++i, arg);
     else if (arg === "--admin-email") options.adminEmail = requireValue(copy, ++i, arg);
     else if (arg === "--admin-name") options.adminName = requireValue(copy, ++i, arg);
-    else if (arg === "--admin-password") options.adminPassword = requireValue(copy, ++i, arg);
+    else if (arg === "--admin-password") options.adminPassword = readSecretCliValue(options, copy, ++i, arg);
+    else if (arg === "--admin-password-file") options.adminPassword = readSecretCliFile(copy, ++i, arg);
     else if (arg === "--telegram-user-id") options.telegramUserId = requireValue(copy, ++i, arg);
     else if (arg === "--discord-user-id") options.discordUserId = requireValue(copy, ++i, arg);
     else if (arg === "--slack-user-id") options.slackUserId = requireValue(copy, ++i, arg);
@@ -140,6 +148,24 @@ function requireValue(argv, index, flag) {
     throw new Error(`${flag} requires a value`);
   }
   return value;
+}
+
+function readSecretCliValue(options, argv, index, flag) {
+  options.secretArgWarnings.push(flag);
+  return requireValue(argv, index, flag);
+}
+
+function readSecretCliFile(argv, index, flag) {
+  const filePath = path.resolve(requireValue(argv, index, flag));
+  return fs.readFileSync(filePath, "utf8").trim();
+}
+
+function warnSecretArgUsage(options) {
+  const flags = [...new Set(options.secretArgWarnings ?? [])];
+  if (flags.length === 0) return;
+  console.warn(
+    `Warning: secret value flag(s) ${flags.join(", ")} can be visible in shell history and process lists. Prefer the matching --*-file flag or interactive prompts.`,
+  );
 }
 
 function envFlag(name) {
@@ -858,6 +884,7 @@ function quoteWindowsCmdArg(value) {
 
 async function commandInit(options) {
   await mkdirp(options.home);
+  warnSecretArgUsage(options);
   warnIfCliPathMissing();
   const envPath = path.join(options.home, "nordrelay.env");
   const userStore = await createUserStore(options.home);
@@ -2540,6 +2567,7 @@ function printHelp() {
   console.log("  --disable-autostart  Disable connector autostart during init");
   console.log("  --disable-webui-autostart");
   console.log("                       Disable WebUI autostart during init");
+  console.log("  --*-file <path>      Read init secrets from files instead of command-line values");
   console.log("  --help, -h           Show this help");
   console.log("  --version, -v        Show the installed version");
 }

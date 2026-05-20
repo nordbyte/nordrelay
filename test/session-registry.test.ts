@@ -621,6 +621,44 @@ describe("SessionRegistry", () => {
     ]);
   });
 
+  it("merges persisted metadata instead of overwriting unrelated contexts", async () => {
+    const config = createConfig();
+    const persistPath = path.join(config.workspace, ".nordrelay", "contexts.json");
+    mockFsState.files.set(persistPath, JSON.stringify([
+      {
+        contextKey: "telegram:1",
+        agentId: "codex",
+        threadId: "thread-existing",
+        workspace: "/workspace/existing",
+        workspaceMode: "shared",
+        updatedAt: 1,
+      },
+    ]));
+    const registry = new SessionRegistry(config, {
+      fileName: "web-contexts.json",
+      sqliteKey: "web-contexts",
+    });
+    const dashboardPath = path.join(config.workspace, ".nordrelay", "web-contexts.json");
+    mockFsState.files.set(dashboardPath, JSON.stringify([
+      {
+        contextKey: "web:other",
+        agentId: "codex",
+        threadId: "thread-other",
+        workspace: "/workspace/other",
+        workspaceMode: "shared",
+        updatedAt: 2,
+      },
+    ]));
+    const session = (await registry.getOrCreate("web:dashboard")) as any;
+
+    session.setInfo({ threadId: "thread-dashboard", workspace: "/workspace/dashboard" });
+    registry.updateMetadata("web:dashboard", session as any);
+
+    const saved = JSON.parse(mockFsState.files.get(dashboardPath) ?? "[]");
+    expect(saved.map((entry: { contextKey: string }) => entry.contextKey).sort()).toEqual(["web:dashboard", "web:other"]);
+    expect(mockFsState.files.get(persistPath)).toContain("thread-existing");
+  });
+
   it("supports separate metadata stores for dashboard contexts", async () => {
     const config = createConfig();
     const telegramPath = path.join(config.workspace, ".nordrelay", "contexts.json");

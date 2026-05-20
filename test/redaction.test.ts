@@ -33,6 +33,14 @@ describe("redaction", () => {
     expect(redactText("Authorization: Bearer custom-token-1234567890")).toBe("Authorization: [REDACTED]");
   });
 
+  it("redacts quoted secret values", () => {
+    configureRedaction([]);
+
+    expect(redactText('TELEGRAM_BOT_TOKEN="123456789:abcdefghijklmnopqrstuvwxyz123456"')).toBe("TELEGRAM_BOT_TOKEN=[REDACTED]");
+    expect(redactText("password: 'super-secret-value'")).toBe("password: [REDACTED]");
+    expect(redactText("Authorization: Bearer `custom-token-1234567890`")).toBe("Authorization: [REDACTED]");
+  });
+
   it("applies configured redaction patterns", () => {
     configureRedaction(["customer-[0-9]+"]);
 

@@ -6,10 +6,12 @@ const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url),
 const packageVersion = String(pkg.version ?? "").trim();
 const expectedTag = `v${packageVersion}`;
 const eventName = process.env.GITHUB_EVENT_NAME ?? "";
+const refName = process.env.GITHUB_REF_NAME ?? "";
+const refType = process.env.GITHUB_REF_TYPE ?? "";
 const releaseTag = firstNonEmpty(
   process.env.NORDRELAY_RELEASE_TAG,
   process.env.GITHUB_RELEASE_TAG,
-  process.env.GITHUB_REF_TYPE === "tag" ? process.env.GITHUB_REF_NAME : undefined,
+  refType === "tag" ? refName : undefined,
 );
 const requestedVersion = firstNonEmpty(
   process.env.NORDRELAY_RELEASE_VERSION,
@@ -27,6 +29,9 @@ if (eventName === "release" || releaseTag) {
 }
 
 if (eventName === "workflow_dispatch") {
+  if (refType && (refType !== "branch" || refName !== "main")) {
+    fail("workflow_dispatch publishes are only allowed from the main branch.");
+  }
   if (!requestedVersion) {
     fail("workflow_dispatch requires NORDRELAY_RELEASE_VERSION or INPUT_VERSION.");
   }

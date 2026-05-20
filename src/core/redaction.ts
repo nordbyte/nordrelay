@@ -1,12 +1,14 @@
 import { SECRET_KEYS } from "./config-metadata.js";
 
+const SECRET_VALUE_PATTERN = "(?:\"[^\"]*\"|'[^']*'|`[^`]*`|[^\\s\"'`]+)";
+
 const DEFAULT_SECRET_PATTERNS: RegExp[] = [
   /\b\d{6,}:[A-Za-z0-9_-]{24,}\b/g,
   /\bsk-[A-Za-z0-9_-]{20,}\b/g,
   secretKeysPattern(),
-  /\b[A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD|AUTHORIZATION)\s*=\s*[^\s"'`]+/gi,
-  /\bAuthorization\s*:\s*(?:Bearer\s+)?[^\s"'`]+/gi,
-  /\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password)\s*[:=]\s*[^\s"'`]+/gi,
+  new RegExp("\\b[A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD|AUTHORIZATION)\\s*=\\s*" + SECRET_VALUE_PATTERN, "gi"),
+  new RegExp("\\bAuthorization\\s*:\\s*(?:Bearer\\s+)?" + SECRET_VALUE_PATTERN, "gi"),
+  new RegExp("\\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password)\\s*[:=]\\s*" + SECRET_VALUE_PATTERN, "gi"),
 ];
 
 let configuredPatterns: RegExp[] = [];
@@ -55,7 +57,7 @@ function redactMatch(match: string): string {
 
 function secretKeysPattern(): RegExp {
   const keys = [...SECRET_KEYS].map(escapeRegExp).join("|");
-  return new RegExp("\\b(?:" + keys + ")\\s*[:=]\\s*[^\\s\"'`]+", "gi");
+  return new RegExp("\\b(?:" + keys + ")\\s*[:=]\\s*" + SECRET_VALUE_PATTERN, "gi");
 }
 
 function escapeRegExp(value: string): string {

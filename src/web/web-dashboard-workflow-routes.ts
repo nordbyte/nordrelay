@@ -1,7 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+import { ADMIN_GROUP_ID } from "../access/access-control.js";
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
-import type { PromptTemplate, Workflow, WorkflowStep, WorkflowStepCondition, WorkflowRetryPolicy, WorkflowSchedule, WorkflowTriggerKind } from "../state/workflow-store.js";
+import type { PromptTemplate, Workflow, WorkflowRun, WorkflowStep, WorkflowStepCondition, WorkflowRetryPolicy, WorkflowSchedule, WorkflowTriggerKind } from "../state/workflow-store.js";
 import type { AuthenticatedUser } from "../access/user-management.js";
 import type { WebActivityActor } from "./web-state.js";
 import {
@@ -11,6 +12,7 @@ import {
   readJsonBody,
   sendJson,
   stringField,
+  WebAccessDeniedError,
 } from "./web-dashboard-http.js";
 
 export interface DashboardWorkflowRouteOptions {
@@ -28,7 +30,7 @@ export async function handleDashboardWorkflowRoute(
   const service = options.runtime.workflowService;
 
   if (req.method === "GET" && url.pathname === "/api/templates") {
-    sendJson(res, 200, { templates: service.list().templates });
+    sendJson(res, 200, { templates: service.list().templates.filter((template) => canReadScopedWorkflowEntity(options.authUser, template)) });
     return true;
   }
 
@@ -40,7 +42,9 @@ export async function handleDashboardWorkflowRoute(
 
   if (req.method === "POST" && url.pathname === "/api/templates/import") {
     const body = await readJsonBody(req);
-    sendJson(res, 201, { template: service.importTemplate(importBody(body), options.activityActor) });
+    const template = service.importTemplate(importBody(body), options.activityActor);
+    assertCanWriteScopedWorkflowEntity(options.authUser, template);
+    sendJson(res, 201, { template });
     return true;
   }
 
@@ -51,31 +55,38 @@ export async function handleDashboardWorkflowRoute(
     const version = versionParam(templateHistoryMatch[3]);
     const action = templateHistoryMatch[4];
     if (req.method === "GET" && section === "versions" && !version && !action) {
+      assertCanReadTemplate(options, id);
       sendJson(res, 200, { versions: service.listTemplateVersions(id) });
       return true;
     }
     if (req.method === "GET" && section === "diff") {
+      assertCanReadTemplate(options, id);
       sendJson(res, 200, service.diffTemplateVersions(id, queryVersion(url, "from"), queryVersion(url, "to")));
       return true;
     }
     if (req.method === "GET" && section === "export") {
+      assertCanReadTemplate(options, id);
       sendJson(res, 200, service.exportTemplate(id, queryVersion(url, "version")));
       return true;
     }
     if (section === "versions" && version && req.method === "GET" && action === "export") {
+      assertCanReadTemplate(options, id);
       sendJson(res, 200, service.exportTemplate(id, version));
       return true;
     }
     if (section === "versions" && version && req.method === "POST" && action === "rollback") {
+      assertCanWriteTemplate(options, id);
       sendJson(res, 200, { template: service.restoreTemplateVersion(id, version, options.activityActor) });
       return true;
     }
     if (section === "versions" && version && req.method === "POST" && action === "preview") {
+      assertCanReadTemplate(options, id);
       const body = await readJsonBody(req);
       sendJson(res, 200, service.previewTemplateVersion(id, version, variableRecord(body?.variables)));
       return true;
     }
     if (section === "versions" && version && req.method === "POST" && action === "run") {
+      assertCanReadTemplate(options, id);
       const body = await readJsonBody(req);
       sendJson(res, 202, { run: await service.runTemplateVersion(id, version, variableRecord(body?.variables), options.activityActor) });
       return true;
@@ -87,20 +98,24 @@ export async function handleDashboardWorkflowRoute(
     const id = decodeURIComponent(templateMatch[1]);
     const action = templateMatch[2];
     if (req.method === "PUT" && !action) {
+      const existing = assertCanWriteTemplate(options, id);
       const body = await readJsonBody(req);
-      sendJson(res, 200, { template: service.saveTemplate({ ...parseTemplateBody(body, options.authUser.user.id), id }, options.activityActor) });
+      sendJson(res, 200, { template: service.saveTemplate({ ...parseTemplateBody(body, existing.ownerUserId ?? options.authUser.user.id), id }, options.activityActor) });
       return true;
     }
     if (req.method === "DELETE" && !action) {
+      assertCanWriteTemplate(options, id);
       sendJson(res, 200, service.deleteTemplate(id, options.activityActor));
       return true;
     }
     if (req.method === "POST" && action === "preview") {
+      assertCanReadTemplate(options, id);
       const body = await readJsonBody(req);
       sendJson(res, 200, service.previewTemplate(id, variableRecord(body?.variables)));
       return true;
     }
     if (req.method === "POST" && action === "run") {
+      assertCanReadTemplate(options, id);
       const body = await readJsonBody(req);
       sendJson(res, 202, { run: await service.runTemplate(id, variableRecord(body?.variables), options.activityActor) });
       return true;
@@ -109,7 +124,10 @@ export async function handleDashboardWorkflowRoute(
 
   if (req.method === "GET" && url.pathname === "/api/workflows") {
     const list = service.list();
-    sendJson(res, 200, { workflows: list.workflows, runs: list.runs.slice(0, numberParam(url, "runs", 100)) });
+    sendJson(res, 200, {
+      workflows: list.workflows.filter((workflow) => canReadScopedWorkflowEntity(options.authUser, workflow)),
+      runs: list.runs.filter((run) => canReadWorkflowRun(options, run)).slice(0, numberParam(url, "runs", 100)),
+    });
     return true;
   }
 
@@ -121,7 +139,9 @@ export async function handleDashboardWorkflowRoute(
 
   if (req.method === "POST" && url.pathname === "/api/workflows/import") {
     const body = await readJsonBody(req);
-    sendJson(res, 201, { workflow: service.importWorkflow(importBody(body), options.activityActor) });
+    const workflow = service.importWorkflow(importBody(body), options.activityActor);
+    assertCanWriteScopedWorkflowEntity(options.authUser, workflow);
+    sendJson(res, 201, { workflow });
     return true;
   }
 
@@ -130,18 +150,22 @@ export async function handleDashboardWorkflowRoute(
     const id = decodeURIComponent(workflowRunMatch[1]);
     const action = workflowRunMatch[2];
     if (req.method === "GET" && !action) {
+      assertCanReadWorkflowRun(options, id);
       sendJson(res, 200, { run: options.runtime.workflowStore.getRun(id) });
       return true;
     }
     if (req.method === "GET" && action === "report") {
+      assertCanReadWorkflowRun(options, id);
       sendJson(res, 200, service.runReport(id));
       return true;
     }
     if (req.method === "POST" && action === "cancel") {
+      assertCanWriteWorkflowRun(options, id);
       sendJson(res, 200, { run: await service.cancelRun(id, options.activityActor) });
       return true;
     }
     if (req.method === "POST" && action === "rerun-failed") {
+      assertCanWriteWorkflowRun(options, id);
       sendJson(res, 200, { run: service.rerunFromFailedStep(id, options.activityActor) });
       return true;
     }
@@ -154,31 +178,38 @@ export async function handleDashboardWorkflowRoute(
     const version = versionParam(workflowHistoryMatch[3]);
     const action = workflowHistoryMatch[4];
     if (req.method === "GET" && section === "versions" && !version && !action) {
+      assertCanReadWorkflow(options, id);
       sendJson(res, 200, { versions: service.listWorkflowVersions(id) });
       return true;
     }
     if (req.method === "GET" && section === "diff") {
+      assertCanReadWorkflow(options, id);
       sendJson(res, 200, service.diffWorkflowVersions(id, queryVersion(url, "from"), queryVersion(url, "to")));
       return true;
     }
     if (req.method === "GET" && section === "export") {
+      assertCanReadWorkflow(options, id);
       sendJson(res, 200, service.exportWorkflow(id, queryVersion(url, "version")));
       return true;
     }
     if (section === "versions" && version && req.method === "GET" && action === "export") {
+      assertCanReadWorkflow(options, id);
       sendJson(res, 200, service.exportWorkflow(id, version));
       return true;
     }
     if (section === "versions" && version && req.method === "POST" && action === "rollback") {
+      assertCanWriteWorkflow(options, id);
       sendJson(res, 200, { workflow: service.restoreWorkflowVersion(id, version, options.activityActor) });
       return true;
     }
     if (section === "versions" && version && req.method === "POST" && action === "preview") {
+      assertCanReadWorkflow(options, id);
       const body = await readJsonBody(req);
       sendJson(res, 200, service.previewWorkflowVersion(id, version, variableRecord(body?.variables)));
       return true;
     }
     if (section === "versions" && version && req.method === "POST" && action === "run") {
+      assertCanReadWorkflow(options, id);
       const body = await readJsonBody(req);
       sendJson(res, 202, { run: service.runWorkflowVersion(id, version, variableRecord(body?.variables), options.activityActor) });
       return true;
@@ -188,7 +219,9 @@ export async function handleDashboardWorkflowRoute(
   const workflowDryRunMatch = url.pathname.match(/^\/api\/workflows\/([^/]+)\/dry-run$/);
   if (workflowDryRunMatch?.[1] && req.method === "POST") {
     const body = await readJsonBody(req);
-    sendJson(res, 200, service.dryRunWorkflow(decodeURIComponent(workflowDryRunMatch[1]), variableRecord(body?.variables), versionParam(optionalStringField(objectRecord(body), "version"))));
+    const id = decodeURIComponent(workflowDryRunMatch[1]);
+    assertCanReadWorkflow(options, id);
+    sendJson(res, 200, service.dryRunWorkflow(id, variableRecord(body?.variables), versionParam(optionalStringField(objectRecord(body), "version"))));
     return true;
   }
 
@@ -197,10 +230,12 @@ export async function handleDashboardWorkflowRoute(
     const workflowId = decodeURIComponent(workflowTriggerMatch[1]);
     const triggerId = workflowTriggerMatch[2] ? decodeURIComponent(workflowTriggerMatch[2]) : undefined;
     if (req.method === "GET" && !triggerId) {
+      assertCanReadWorkflow(options, workflowId);
       sendJson(res, 200, { triggers: service.listWorkflowTriggers(workflowId) });
       return true;
     }
     if (req.method === "POST" && !triggerId) {
+      assertCanWriteWorkflow(options, workflowId);
       const body = await readJsonBody(req);
       sendJson(res, 201, service.createWorkflowTrigger(workflowId, {
         kind: parseTriggerKind(optionalStringField(body, "kind")),
@@ -210,6 +245,7 @@ export async function handleDashboardWorkflowRoute(
       return true;
     }
     if (req.method === "DELETE" && triggerId) {
+      assertCanWriteWorkflow(options, workflowId);
       sendJson(res, 200, service.deleteWorkflowTrigger(workflowId, triggerId, options.activityActor));
       return true;
     }
@@ -220,20 +256,24 @@ export async function handleDashboardWorkflowRoute(
     const id = decodeURIComponent(workflowMatch[1]);
     const action = workflowMatch[2];
     if (req.method === "PUT" && !action) {
+      const existing = assertCanWriteWorkflow(options, id);
       const body = await readJsonBody(req);
-      sendJson(res, 200, { workflow: service.saveWorkflow({ ...parseWorkflowBody(body, options.authUser.user.id), id }, options.activityActor) });
+      sendJson(res, 200, { workflow: service.saveWorkflow({ ...parseWorkflowBody(body, existing.ownerUserId ?? options.authUser.user.id), id }, options.activityActor) });
       return true;
     }
     if (req.method === "DELETE" && !action) {
+      assertCanWriteWorkflow(options, id);
       sendJson(res, 200, service.deleteWorkflow(id, options.activityActor));
       return true;
     }
     if (req.method === "POST" && action === "preview") {
+      assertCanReadWorkflow(options, id);
       const body = await readJsonBody(req);
       sendJson(res, 200, service.previewWorkflow(id, variableRecord(body?.variables)));
       return true;
     }
     if (req.method === "POST" && action === "run") {
+      assertCanReadWorkflow(options, id);
       const body = await readJsonBody(req);
       sendJson(res, 202, { run: service.runWorkflow(id, variableRecord(body?.variables), options.activityActor) });
       return true;
@@ -245,6 +285,87 @@ export async function handleDashboardWorkflowRoute(
 
 function parseTriggerKind(value: string | undefined): WorkflowTriggerKind {
   return value === "webhook" ? "webhook" : "api";
+}
+
+function isWorkflowAdmin(authUser: AuthenticatedUser): boolean {
+  return authUser.groups.some((group) => group.id === ADMIN_GROUP_ID);
+}
+
+function ownsWorkflowEntity(authUser: AuthenticatedUser, entity: Pick<PromptTemplate | Workflow, "ownerUserId">): boolean {
+  return Boolean(entity.ownerUserId && entity.ownerUserId === authUser.user.id);
+}
+
+export function canReadScopedWorkflowEntity(authUser: AuthenticatedUser, entity: Pick<PromptTemplate | Workflow, "scope" | "ownerUserId">): boolean {
+  return entity.scope === "shared" || ownsWorkflowEntity(authUser, entity) || isWorkflowAdmin(authUser);
+}
+
+function assertCanWriteScopedWorkflowEntity(authUser: AuthenticatedUser, entity: Pick<PromptTemplate | Workflow, "scope" | "ownerUserId">): void {
+  if (!canReadScopedWorkflowEntity(authUser, entity)) {
+    throw new WebAccessDeniedError("Access denied: workflow item is private to another user.");
+  }
+}
+
+function assertCanReadTemplate(options: DashboardWorkflowRouteOptions, id: string): PromptTemplate {
+  const template = options.runtime.workflowStore.getTemplate(id);
+  if (!template) throw new Error(`Template not found: ${id}`);
+  if (!canReadScopedWorkflowEntity(options.authUser, template)) {
+    throw new WebAccessDeniedError("Access denied: template is private to another user.");
+  }
+  return template;
+}
+
+function assertCanWriteTemplate(options: DashboardWorkflowRouteOptions, id: string): PromptTemplate {
+  const template = assertCanReadTemplate(options, id);
+  assertCanWriteScopedWorkflowEntity(options.authUser, template);
+  return template;
+}
+
+function assertCanReadWorkflow(options: DashboardWorkflowRouteOptions, id: string): Workflow {
+  const workflow = options.runtime.workflowStore.getWorkflow(id);
+  if (!workflow) throw new Error(`Workflow not found: ${id}`);
+  if (!canReadScopedWorkflowEntity(options.authUser, workflow)) {
+    throw new WebAccessDeniedError("Access denied: workflow is private to another user.");
+  }
+  return workflow;
+}
+
+function assertCanWriteWorkflow(options: DashboardWorkflowRouteOptions, id: string): Workflow {
+  const workflow = assertCanReadWorkflow(options, id);
+  assertCanWriteScopedWorkflowEntity(options.authUser, workflow);
+  return workflow;
+}
+
+function canReadWorkflowRun(options: DashboardWorkflowRouteOptions, run: WorkflowRun): boolean {
+  if (isWorkflowAdmin(options.authUser)) return true;
+  if (run.ownerUserId && run.ownerUserId === options.authUser.user.id) return true;
+  if (run.templateSnapshot && canReadScopedWorkflowEntity(options.authUser, run.templateSnapshot)) return true;
+  if (run.workflowSnapshot && canReadScopedWorkflowEntity(options.authUser, run.workflowSnapshot)) return true;
+  if (run.templateId) {
+    const template = options.runtime.workflowStore.getTemplate(run.templateId);
+    if (template && canReadScopedWorkflowEntity(options.authUser, template)) return true;
+  }
+  if (run.workflowId) {
+    const workflow = options.runtime.workflowStore.getWorkflow(run.workflowId);
+    if (workflow && canReadScopedWorkflowEntity(options.authUser, workflow)) return true;
+  }
+  return false;
+}
+
+function assertCanReadWorkflowRun(options: DashboardWorkflowRouteOptions, id: string) {
+  const run = options.runtime.workflowStore.getRun(id);
+  if (!run) throw new Error(`Workflow run not found: ${id}`);
+  if (!canReadWorkflowRun(options, run)) {
+    throw new WebAccessDeniedError("Access denied: workflow run is private to another user.");
+  }
+  return run;
+}
+
+function assertCanWriteWorkflowRun(options: DashboardWorkflowRouteOptions, id: string) {
+  const run = assertCanReadWorkflowRun(options, id);
+  if (!isWorkflowAdmin(options.authUser) && run.ownerUserId !== options.authUser.user.id) {
+    throw new WebAccessDeniedError("Access denied: workflow run is owned by another user.");
+  }
+  return run;
 }
 
 function importBody(body: unknown): unknown {

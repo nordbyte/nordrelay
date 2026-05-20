@@ -60,6 +60,15 @@ export function isRequestBodyTooLargeError(error: unknown): error is RequestBody
   return error instanceof RequestBodyTooLargeError;
 }
 
+export class WebAccessDeniedError extends Error {
+  readonly statusCode = 403;
+}
+
+export function isWebAccessDeniedError(error: unknown): error is WebAccessDeniedError {
+  return error instanceof WebAccessDeniedError ||
+    (typeof error === "object" && error !== null && "statusCode" in error && (error as { statusCode?: unknown }).statusCode === 403);
+}
+
 export async function readJsonBody(req: IncomingMessage, maxBytes = DEFAULT_JSON_BODY_LIMIT): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   let size = 0;
