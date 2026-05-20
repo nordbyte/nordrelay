@@ -138,6 +138,8 @@ export {
 
 export const WEB_CONTEXT_KEY = "web:dashboard";
 const ACTIVE_ACTIVITY_TTL_MS = 6 * 60 * 60 * 1000;
+const ACTIVE_DISCOVERY_CACHE_TTL_MS = 5_000;
+const ACTIVE_DISCOVERY_OPENCLAW_CACHE_TTL_MS = 30_000;
 const MAX_WEB_SESSION_PAGE_SIZE = 50;
 const MAX_CHAT_HISTORY = 250;
 
@@ -167,24 +169,16 @@ export async function relayRuntimeActiveSessions(runtime: RelayRuntimeDelegate):
       addActiveSession(active);
     }
 
-    for (const active of safeActiveSessionList(() => runtime.discoverActiveCodexSessions(knownContexts, preferences))) {
-      addActiveSession(active);
-    }
-
-    for (const active of safeActiveSessionList(() => relayRuntimeDiscoverActivePiSessions(runtime, knownContexts, preferences))) {
-      addActiveSession(active);
-    }
-
-    for (const active of safeActiveSessionList(() => relayRuntimeDiscoverActiveHermesSessions(runtime, knownContexts, preferences))) {
-      addActiveSession(active);
-    }
-
-    for (const active of safeActiveSessionList(() => relayRuntimeDiscoverActiveOpenClawSessions(runtime, knownContexts, preferences))) {
-      addActiveSession(active);
-    }
-
-    for (const active of safeActiveSessionList(() => relayRuntimeDiscoverActiveClaudeCodeSessions(runtime, knownContexts, preferences))) {
-      addActiveSession(active);
+    for (const discovered of await Promise.all([
+      cachedActiveDiscovery(runtime, "codex", ACTIVE_DISCOVERY_CACHE_TTL_MS, () => runtime.discoverActiveCodexSessions(knownContexts, preferences)),
+      cachedActiveDiscovery(runtime, "pi", ACTIVE_DISCOVERY_CACHE_TTL_MS, () => relayRuntimeDiscoverActivePiSessions(runtime, knownContexts, preferences)),
+      cachedActiveDiscovery(runtime, "hermes", ACTIVE_DISCOVERY_CACHE_TTL_MS, () => relayRuntimeDiscoverActiveHermesSessions(runtime, knownContexts, preferences)),
+      cachedActiveDiscovery(runtime, "openclaw", ACTIVE_DISCOVERY_OPENCLAW_CACHE_TTL_MS, () => relayRuntimeDiscoverActiveOpenClawSessions(runtime, knownContexts, preferences)),
+      cachedActiveDiscovery(runtime, "claude-code", ACTIVE_DISCOVERY_CACHE_TTL_MS, () => relayRuntimeDiscoverActiveClaudeCodeSessions(runtime, knownContexts, preferences)),
+    ])) {
+      for (const active of discovered) {
+        addActiveSession(active);
+      }
     }
 
     for (const meta of knownContexts) {
@@ -216,6 +210,19 @@ function safeActiveSession<T>(fn: () => T): T | null {
 function safeActiveSessionList<T>(fn: () => T[]): T[] {
     try {
       return fn();
+    } catch {
+      return [];
+    }
+  }
+
+async function cachedActiveDiscovery(
+  runtime: RelayRuntimeDelegate,
+  key: string,
+  ttlMs: number,
+  producer: () => ActiveSessionDto[],
+): Promise<ActiveSessionDto[]> {
+    try {
+      return (await runtime.cache.get<ActiveSessionDto[]>(`active-discovery:${key}`, ttlMs, async () => producer())).value;
     } catch {
       return [];
     }

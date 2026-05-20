@@ -86,6 +86,7 @@ export function relayRuntimeDiscoverActiveOpenClawSessions(runtime: RelayRuntime
       workspace: runtime.config.workspace,
       openClawAgentId: runtime.config.openClawAgentId,
       staleAfterMs: runtime.config.codexExternalBusyStaleMs,
+      timeoutMs: 1_500,
     }),
     knownContexts,
     preferences,

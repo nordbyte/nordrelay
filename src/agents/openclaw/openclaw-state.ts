@@ -18,6 +18,7 @@ export interface OpenClawStateOptions {
   openClawAgentId?: string;
   staleAfterMs?: number;
   nowMs?: number;
+  timeoutMs?: number;
   sessionsJson?: unknown;
 }
 
@@ -212,7 +213,7 @@ function readOpenClawSessionsJson(limit: number, options: OpenClawStateOptions):
   const args = ["sessions", "--all-agents", "--limit", String(Math.max(1, limit)), "--json"];
   const result = spawnSync(cliPath, args, {
     encoding: "utf8",
-    timeout: 5000,
+    timeout: options.timeoutMs ?? 5000,
     windowsHide: true,
     env: process.env,
   });
