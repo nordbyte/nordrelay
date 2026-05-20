@@ -1,5 +1,6 @@
 import type { AgentPromptInput } from "../../agents/shared/agent.js";
 import type { ConnectorConfig } from "../../core/config.js";
+import { CHANNEL_CAPABILITIES } from "./channel-capabilities.js";
 
 export type ChannelId = "telegram" | "discord" | "slack" | "matrix";
 
@@ -76,51 +77,6 @@ export interface ChannelDescriptor {
   notes?: string;
 }
 
-const TELEGRAM_CAPABILITIES: ChannelCapability[] = [
-  "text",
-  "streaming-edits",
-  "typing",
-  "inline-buttons",
-  "files",
-  "photos",
-  "voice",
-  "topics",
-  "webhooks",
-];
-
-const DISCORD_CAPABILITIES: ChannelCapability[] = [
-  "text",
-  "streaming-edits",
-  "typing",
-  "inline-buttons",
-  "files",
-  "photos",
-  "voice",
-  "topics",
-];
-
-const SLACK_CAPABILITIES: ChannelCapability[] = [
-  "text",
-  "streaming-edits",
-  "typing",
-  "inline-buttons",
-  "files",
-  "photos",
-  "voice",
-  "topics",
-  "webhooks",
-];
-
-const MATRIX_CAPABILITIES: ChannelCapability[] = [
-  "text",
-  "streaming-edits",
-  "typing",
-  "files",
-  "photos",
-  "voice",
-  "topics",
-];
-
 type ChannelDescriptorConfig = Pick<
   ConnectorConfig,
   | "adapterWarnings"
@@ -146,7 +102,7 @@ function adapterWarning(config: ChannelDescriptorConfig, label: "Telegram" | "Di
 export class TelegramChannelAdapter implements ChannelAdapter {
   readonly id = "telegram";
   readonly label = "Telegram";
-  readonly capabilities = new Set<ChannelCapability>(TELEGRAM_CAPABILITIES);
+  readonly capabilities = new Set<ChannelCapability>(CHANNEL_CAPABILITIES.telegram);
 
   describe(config?: ChannelDescriptorConfig): ChannelDescriptor {
     if (config) {
@@ -182,7 +138,7 @@ export class TelegramChannelAdapter implements ChannelAdapter {
 export class DiscordChannelAdapter implements ChannelAdapter {
   readonly id = "discord";
   readonly label = "Discord";
-  readonly capabilities = new Set<ChannelCapability>(DISCORD_CAPABILITIES);
+  readonly capabilities = new Set<ChannelCapability>(CHANNEL_CAPABILITIES.discord);
 
   describe(config?: ChannelDescriptorConfig): ChannelDescriptor {
     if (config) {
@@ -218,7 +174,7 @@ export class DiscordChannelAdapter implements ChannelAdapter {
 export class SlackChannelAdapter implements ChannelAdapter {
   readonly id = "slack";
   readonly label = "Slack";
-  readonly capabilities = new Set<ChannelCapability>(SLACK_CAPABILITIES);
+  readonly capabilities = new Set<ChannelCapability>(CHANNEL_CAPABILITIES.slack);
 
   describe(config?: ChannelDescriptorConfig): ChannelDescriptor {
     if (config) {
@@ -254,7 +210,7 @@ export class SlackChannelAdapter implements ChannelAdapter {
 export class MatrixChannelAdapter implements ChannelAdapter {
   readonly id = "matrix";
   readonly label = "Matrix";
-  readonly capabilities = new Set<ChannelCapability>(MATRIX_CAPABILITIES);
+  readonly capabilities = new Set<ChannelCapability>(CHANNEL_CAPABILITIES.matrix);
 
   describe(config?: ChannelDescriptorConfig): ChannelDescriptor {
     if (config) {

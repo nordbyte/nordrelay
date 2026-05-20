@@ -2,23 +2,21 @@ import { listAgentAdapterDescriptors, type AgentAdapterDescriptor } from "./agen
 import { agentFeatureStates, type AgentFeatureState } from "./agent-feature-matrix.js";
 import {
   listChannelDescriptors,
-  type ChannelCapability,
   type ChannelDescriptor,
 } from "../../channels/shared/channel-adapter.js";
 import {
+  CHANNEL_FEATURES,
+  channelActionStates,
+  channelFeatureStates,
+  type ChannelActionState,
+  type ChannelFeatureDefinition,
+  type ChannelFeatureState,
+} from "../../channels/shared/channel-capabilities.js";
+import {
   channelCatalogCommandNames,
+  channelCommandCoverage,
   type CommandTransport,
 } from "../../channels/shared/channel-command-core.js";
-
-export interface ChannelFeatureDefinition {
-  key: ChannelCapability;
-  label: string;
-  description: string;
-}
-
-export interface ChannelFeatureState extends ChannelFeatureDefinition {
-  supported: boolean;
-}
 
 export interface AgentAdapterConformance {
   id: AgentAdapterDescriptor["id"];
@@ -39,7 +37,16 @@ export interface ChannelAdapterConformance {
   features: ChannelFeatureState[];
   supported: string[];
   unsupported: string[];
+  actions: ChannelActionState[];
+  actionSupported: string[];
+  actionUnsupported: string[];
   commands: string[];
+  commandCoverage: {
+    advertised: string[];
+    implemented: string[];
+    missing: string[];
+    extra: string[];
+  };
   notes?: string;
 }
 
@@ -49,25 +56,7 @@ export interface AdapterConformanceMatrix {
   channels: ChannelAdapterConformance[];
 }
 
-export const CHANNEL_FEATURES: ChannelFeatureDefinition[] = [
-  { key: "text", label: "Text", description: "Send and receive plain text prompts and replies." },
-  { key: "streaming-edits", label: "Streaming edits", description: "Update an in-flight answer instead of sending only a final message." },
-  { key: "typing", label: "Typing/status", description: "Show activity while an agent turn is still running." },
-  { key: "inline-buttons", label: "Buttons", description: "Expose interactive choices for sessions, queue items, updates, artifacts, and aborts." },
-  { key: "files", label: "Files", description: "Receive or send generic files." },
-  { key: "photos", label: "Photos", description: "Receive image inputs for multimodal-capable agents." },
-  { key: "voice", label: "Voice", description: "Receive audio and run transcription before prompting." },
-  { key: "topics", label: "Threads/topics", description: "Keep independent contexts per topic, thread, forum topic, or equivalent channel scope." },
-  { key: "webhooks", label: "Webhooks", description: "Support inbound HTTP webhook/event delivery where the platform provides it." },
-];
-
-export function channelFeatureStates(capabilities: readonly ChannelCapability[]): ChannelFeatureState[] {
-  const supported = new Set(capabilities);
-  return CHANNEL_FEATURES.map((feature) => ({
-    ...feature,
-    supported: supported.has(feature.key),
-  }));
-}
+export { CHANNEL_FEATURES, channelFeatureStates, type ChannelFeatureDefinition, type ChannelFeatureState };
 
 export function buildAdapterConformanceMatrix(input: {
   agents?: AgentAdapterDescriptor[];
@@ -91,6 +80,9 @@ export function buildAdapterConformanceMatrix(input: {
     }),
     channels: channels.map((adapter) => {
       const features = channelFeatureStates(adapter.capabilities);
+      const actions = channelActionStates(adapter);
+      const commands = commandNamesForChannel(adapter.id);
+      const commandCoverage = commandCoverageForChannel(adapter.id, commands);
       return {
         id: adapter.id,
         label: adapter.label,
@@ -99,7 +91,11 @@ export function buildAdapterConformanceMatrix(input: {
         features,
         supported: features.filter((feature) => feature.supported).map((feature) => feature.key),
         unsupported: features.filter((feature) => !feature.supported).map((feature) => feature.key),
-        commands: commandNamesForChannel(adapter.id),
+        actions,
+        actionSupported: actions.filter((action) => action.supported).map((action) => action.key),
+        actionUnsupported: actions.filter((action) => !action.supported).map((action) => action.key),
+        commands,
+        commandCoverage,
         notes: adapter.notes,
       };
     }),
@@ -111,4 +107,14 @@ function commandNamesForChannel(id: ChannelDescriptor["id"]): string[] {
     return channelCatalogCommandNames(id as CommandTransport);
   }
   return [];
+}
+
+function commandCoverageForChannel(id: ChannelDescriptor["id"], implemented: string[]): ChannelAdapterConformance["commandCoverage"] {
+  if (id === "telegram" || id === "discord" || id === "slack" || id === "matrix") {
+    return channelCommandCoverage({
+      transport: id as CommandTransport,
+      implemented,
+    });
+  }
+  return { advertised: [], implemented: [], missing: [], extra: [] };
 }

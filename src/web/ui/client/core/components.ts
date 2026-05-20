@@ -13,7 +13,9 @@ function scheduleIncrementalRender(callback){if(typeof requestIdleCallback==='fu
 function cancelIncrementalRender(key){const active=state.incrementalRenders?.[key];if(active)active.cancelled=true}
 function renderIncrementalTable(target,items,options:any={}){
   const el=typeof target==='string'?document.getElementById(target):target;
-  const rows=Array.isArray(items)?items:[];
+  const sourceRows=Array.isArray(items)?items:[];
+  const maxRenderRows=Number(options.maxRenderRows||1000);
+  const rows=maxRenderRows>0?sourceRows.slice(0,maxRenderRows):sourceRows;
   if(!el)return;
   const key=options.key||el.id||'table';
   cancelIncrementalRender(key);
@@ -23,14 +25,17 @@ function renderIncrementalTable(target,items,options:any={}){
   const wrapClass=['data-table-wrap',options.wrapClass||''].filter(Boolean).join(' ');
   const tableClass=['data-table',options.tableClass||''].filter(Boolean).join(' ');
   const tableClassHtml=options.tableClassHtml||('class="'+attr(tableClass)+'"');
-  el.innerHTML='<div class="'+attr(wrapClass)+'"><table '+tableClassHtml+'><thead>'+options.headHtml+'</thead><tbody></tbody></table></div><small class="incremental-render-status" aria-live="polite"></small>';
+  const cappedNotice=rows.length<sourceRows.length?'<small class="incremental-render-status capped" aria-live="polite">Showing '+rows.length+' of '+sourceRows.length+' rows. Use pagination or filters to load the rest.</small>':'';
+  el.innerHTML='<div class="'+attr(wrapClass)+'"><table '+tableClassHtml+'><thead>'+options.headHtml+'</thead><tbody></tbody></table></div>'+cappedNotice+'<small class="incremental-render-status" aria-live="polite"></small>';
   const tbody=el.querySelector('tbody');
   const status=el.querySelector('.incremental-render-status');
   renderIncrementalRows(tbody,status,rows,options,token,el);
 }
 function renderIncrementalHtml(target,items,options:any={}){
   const el=typeof target==='string'?document.getElementById(target):target;
-  const rows=Array.isArray(items)?items:[];
+  const sourceRows=Array.isArray(items)?items:[];
+  const maxRenderRows=Number(options.maxRenderRows||1000);
+  const rows=maxRenderRows>0?sourceRows.slice(0,maxRenderRows):sourceRows;
   if(!el)return;
   const key=options.key||el.id||'list';
   cancelIncrementalRender(key);
@@ -38,14 +43,15 @@ function renderIncrementalHtml(target,items,options:any={}){
   state.incrementalRenders[key]=token;
   if(!rows.length){el.innerHTML=options.emptyHtml||uiEmpty(options.emptyText||'No entries.');options.onDone?.(el);return}
   const bodyTag=options.bodyTag||'div';
-  el.innerHTML=(options.prefixHtml||'')+'<'+bodyTag+' data-incremental-body></'+bodyTag+'>'+(options.suffixHtml||'')+'<small class="incremental-render-status" aria-live="polite"></small>';
+  const cappedNotice=rows.length<sourceRows.length?'<small class="incremental-render-status capped" aria-live="polite">Showing '+rows.length+' of '+sourceRows.length+' rows. Use pagination or filters to load the rest.</small>':'';
+  el.innerHTML=(options.prefixHtml||'')+'<'+bodyTag+' data-incremental-body></'+bodyTag+'>'+(options.suffixHtml||'')+cappedNotice+'<small class="incremental-render-status" aria-live="polite"></small>';
   const body=el.querySelector('[data-incremental-body]');
   const status=el.querySelector('.incremental-render-status');
   renderIncrementalRows(body,status,rows,options,token,el);
 }
 function renderIncrementalRows(body,status,rows,options,token,root){
   let index=0;
-  const batchSize=Math.max(1,Number(options.batchSize||75));
+  const batchSize=Math.max(1,Math.min(250,Number(options.batchSize||75)));
   const initialCount=Math.max(1,Number(options.initialCount||batchSize));
   const appendChunk=(count)=>{
     if(token.cancelled||!body)return;

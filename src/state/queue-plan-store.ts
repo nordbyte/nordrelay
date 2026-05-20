@@ -74,39 +74,60 @@ export class QueuePlanStore {
   }
 
   save(input: Partial<QueuePlan> & Pick<QueuePlan, "prompt">): QueuePlan {
-    const payload = this.payload();
     const now = new Date().toISOString();
     const id = normalizeId(input.id) || createQueuePlanId();
-    const existing = payload.plans.find((plan) => plan.id === id);
-    const plan = normalizePlan({
-      ...existing,
-      ...input,
-      id,
-      createdAt: existing?.createdAt ?? input.createdAt ?? now,
-      updatedAt: now,
+    let plan: QueuePlan;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const existing = payload.plans.find((candidate) => candidate.id === id);
+      plan = normalizePlan({
+        ...existing,
+        ...input,
+        id,
+        createdAt: existing?.createdAt ?? input.createdAt ?? now,
+        updatedAt: now,
+      });
+      payload.plans = upsertById(payload.plans, plan);
+      return payload;
     });
-    payload.plans = upsertById(payload.plans, plan);
-    this.store.write(payload);
-    return plan;
+    return plan!;
   }
 
   patch(id: string, patch: Partial<QueuePlan>): QueuePlan | null {
-    const existing = this.get(id);
-    if (!existing) return null;
-    return this.save({ ...existing, ...patch, id, updatedAt: patch.updatedAt ?? new Date().toISOString() });
+    let updated: QueuePlan | null = null;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const existing = payload.plans.find((plan) => plan.id === id);
+      if (!existing) return payload;
+      updated = normalizePlan({
+        ...existing,
+        ...patch,
+        id,
+        updatedAt: patch.updatedAt ?? new Date().toISOString(),
+      });
+      payload.plans = upsertById(payload.plans, updated);
+      return payload;
+    });
+    return updated;
   }
 
   delete(id: string): boolean {
-    const payload = this.payload();
-    const next = payload.plans.filter((plan) => plan.id !== id);
-    if (next.length === payload.plans.length) return false;
-    payload.plans = next;
-    this.store.write(payload);
-    return true;
+    let removed = false;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const next = payload.plans.filter((plan) => plan.id !== id);
+      removed = next.length !== payload.plans.length;
+      payload.plans = next;
+      return payload;
+    });
+    return removed;
   }
 
   private payload(): PersistedQueuePlanStore {
-    const payload = this.store.read();
+    return this.normalizePayload(this.store.read());
+  }
+
+  private normalizePayload(payload: PersistedQueuePlanStore | undefined): PersistedQueuePlanStore {
     if (!payload || payload.version !== 1) {
       return { version: 1, plans: [] };
     }

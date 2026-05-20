@@ -29,17 +29,22 @@ export class MetricsHistoryStore {
   }
 
   append(sample: RuntimeMetricHistorySample): RuntimeMetricHistorySample {
-    const payload = this.payload();
     const normalized = normalizeSample(sample);
-    payload.samples = [...payload.samples, normalized]
-      .sort((left, right) => Date.parse(left.at) - Date.parse(right.at))
-      .slice(-this.maxSamples);
-    this.store.write(payload);
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      payload.samples = [...payload.samples, normalized]
+        .sort((left, right) => Date.parse(left.at) - Date.parse(right.at))
+        .slice(-this.maxSamples);
+      return payload;
+    });
     return normalized;
   }
 
   private payload(): PersistedMetricsHistory {
-    const payload = this.store.read();
+    return this.normalizePayload(this.store.read());
+  }
+
+  private normalizePayload(payload: PersistedMetricsHistory | undefined): PersistedMetricsHistory {
     if (!payload || payload.version !== 1 || !Array.isArray(payload.samples)) {
       return { version: 1, samples: [] };
     }

@@ -42,38 +42,41 @@ export class BotPreferencesStore {
   }
 
   get(contextKey: ChannelContextKey): ContextPreferences {
+    this.load();
     return { ...(this.contexts.get(contextKey) ?? {}) };
   }
 
   update(contextKey: ChannelContextKey, patch: ContextPreferences): ContextPreferences {
-    const current = this.contexts.get(contextKey) ?? {};
-    const next = pruneEmptyPreferences({
-      ...current,
-      ...patch,
+    let updated: ContextPreferences = {};
+    const payload = this.store.update((current) => {
+      const payload = normalizePayload(current);
+      const previous = payload.contexts[contextKey] ?? {};
+      updated = pruneEmptyPreferences({
+        ...previous,
+        ...patch,
+      });
+      payload.contexts[contextKey] = updated;
+      return payload;
     });
-    this.contexts.set(contextKey, next);
-    this.persist();
-    return { ...next };
+    this.replaceContexts(payload);
+    return { ...updated };
   }
 
   clear(contextKey: ChannelContextKey): void {
-    this.contexts.delete(contextKey);
-    this.persist();
-  }
-
-  private persist(): void {
-    const payload: PersistedPreferences = {
-      version: 1,
-      contexts: Object.fromEntries(this.contexts.entries()),
-    };
-    this.store.write(payload);
+    const payload = this.store.update((current) => {
+      const payload = normalizePayload(current);
+      delete payload.contexts[contextKey];
+      return payload;
+    });
+    this.replaceContexts(payload);
   }
 
   private load(): void {
-    const payload = this.store.read();
-    if (!payload?.contexts || typeof payload.contexts !== "object") {
-      return;
-    }
+    this.replaceContexts(normalizePayload(this.store.read()));
+  }
+
+  private replaceContexts(payload: PersistedPreferences): void {
+    this.contexts.clear();
     for (const [contextKey, rawPreferences] of Object.entries(payload.contexts)) {
       const preferences = normalizePreferences(rawPreferences);
       if (preferences) {
@@ -81,6 +84,20 @@ export class BotPreferencesStore {
       }
     }
   }
+}
+
+function normalizePayload(payload: PersistedPreferences | undefined): PersistedPreferences {
+  if (!payload?.contexts || typeof payload.contexts !== "object") {
+    return { version: 1, contexts: {} };
+  }
+  return {
+    version: 1,
+    contexts: Object.fromEntries(
+      Object.entries(payload.contexts)
+        .map(([contextKey, preferences]) => [contextKey, normalizePreferences(preferences)] as const)
+        .filter((entry): entry is readonly [string, ContextPreferences] => Boolean(entry[1])),
+    ),
+  };
 }
 
 export function parseMirrorMode(value: string | undefined, fallback: TelegramMirrorMode): TelegramMirrorMode {

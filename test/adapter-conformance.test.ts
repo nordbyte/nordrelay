@@ -4,10 +4,8 @@ import {
   AGENT_IDS,
   type AgentCapabilities,
 } from "../src/agents/shared/agent.js";
-import {
-  CHANNEL_FEATURES,
-  buildAdapterConformanceMatrix,
-} from "../src/agents/shared/adapter-conformance.js";
+import { buildAdapterConformanceMatrix } from "../src/agents/shared/adapter-conformance.js";
+import { CHANNEL_ACTIONS, CHANNEL_FEATURES } from "../src/channels/shared/channel-capabilities.js";
 import { CHANNEL_COMMANDS } from "../src/channels/shared/channel-command-catalog.js";
 import {
   channelCatalogCommandNames,
@@ -31,6 +29,8 @@ describe("adapter conformance matrix", () => {
     for (const channel of matrix.channels) {
       expect(channel.features.map((feature) => feature.key)).toEqual(CHANNEL_FEATURES.map((feature) => feature.key));
       expect(channel.supported.length + channel.unsupported.length).toBe(channel.features.length);
+      expect(channel.actions.map((action) => action.key)).toEqual(CHANNEL_ACTIONS.map((action) => action.key));
+      expect(channel.actionSupported.length + channel.actionUnsupported.length).toBe(channel.actions.length);
     }
   });
 
@@ -39,6 +39,8 @@ describe("adapter conformance matrix", () => {
     for (const transport of ["telegram", "discord", "slack", "matrix"] as const) {
       const channel = matrix.channels.find((candidate) => candidate.id === transport);
       expect(channel?.commands).toEqual(channelCatalogCommandNames(transport));
+      expect(channel?.commandCoverage.missing).toEqual([]);
+      expect(channel?.commandCoverage.extra).toEqual([]);
       expect(channel?.commands.length).toBeGreaterThan(20);
     }
 

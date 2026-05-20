@@ -36,21 +36,25 @@ export class SessionLockStore {
   }
 
   get(contextKey: ChannelContextKey, now = Date.now()): SessionLock | null {
-    const payload = this.readPayload();
-    const lock = payload.locks[contextKey];
+    const lock = this.readPayload().locks[contextKey];
     if (!lock) {
       return null;
     }
-    if (lock.expiresAt && lock.expiresAt <= now) {
-      delete payload.locks[contextKey];
-      this.store.write(payload);
-      return null;
+    if (!lock.expiresAt || lock.expiresAt > now) {
+      return lock;
     }
-    return lock;
+    this.store.update((current) => {
+      const payload = normalizeLockPayload(current);
+      const currentLock = payload.locks[contextKey];
+      if (currentLock?.expiresAt && currentLock.expiresAt <= now) {
+        delete payload.locks[contextKey];
+      }
+      return payload;
+    });
+    return null;
   }
 
   set(contextKey: ChannelContextKey, owner: SessionLockOwner, ttlMs: number): SessionLock {
-    const payload = this.readPayload();
     const now = Date.now();
     const lock: SessionLock = {
       contextKey,
@@ -61,42 +65,55 @@ export class SessionLockStore {
       createdAt: now,
       expiresAt: ttlMs > 0 ? now + ttlMs : undefined,
     };
-    payload.locks[contextKey] = lock;
-    this.store.write(payload);
+    this.store.update((current) => {
+      const payload = normalizeLockPayload(current);
+      payload.locks[contextKey] = lock;
+      return payload;
+    });
     return lock;
   }
 
   clear(contextKey: ChannelContextKey): boolean {
-    const payload = this.readPayload();
-    const existed = Boolean(payload.locks[contextKey]);
-    delete payload.locks[contextKey];
-    this.store.write(payload);
+    let existed = false;
+    this.store.update((current) => {
+      const payload = normalizeLockPayload(current);
+      existed = Boolean(payload.locks[contextKey]);
+      delete payload.locks[contextKey];
+      return payload;
+    });
     return existed;
   }
 
   list(): SessionLock[] {
-    const payload = this.readPayload();
     const now = Date.now();
+    const payload = this.store.update((current) => {
+      const payload = normalizeLockPayload(current);
+      payload.locks = Object.fromEntries(
+        Object.values(payload.locks)
+          .filter((lock) => !lock.expiresAt || lock.expiresAt > now)
+          .map((lock) => [lock.contextKey, lock]),
+      );
+      return payload;
+    });
     const locks = Object.values(payload.locks).filter((lock) => !lock.expiresAt || lock.expiresAt > now);
-    if (locks.length !== Object.keys(payload.locks).length) {
-      payload.locks = Object.fromEntries(locks.map((lock) => [lock.contextKey, lock]));
-      this.store.write(payload);
-    }
     return locks.sort((left, right) => right.createdAt - left.createdAt);
   }
 
   private readPayload(): PersistedLocks {
-    const payload = this.store.read();
-    if (!payload || payload.version !== 1 || !payload.locks || typeof payload.locks !== "object") {
-      return { version: 1, locks: {} };
-    }
-    return {
-      version: 1,
-      locks: Object.fromEntries(
-        Object.entries(payload.locks).filter(([, lock]) => isSessionLock(lock)),
-      ),
-    };
+    return normalizeLockPayload(this.store.read());
   }
+}
+
+function normalizeLockPayload(payload: PersistedLocks | undefined): PersistedLocks {
+  if (!payload || payload.version !== 1 || !payload.locks || typeof payload.locks !== "object") {
+    return { version: 1, locks: {} };
+  }
+  return {
+    version: 1,
+    locks: Object.fromEntries(
+      Object.entries(payload.locks).filter(([, lock]) => isSessionLock(lock)),
+    ),
+  };
 }
 
 export function canWriteWithLock(

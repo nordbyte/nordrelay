@@ -9,7 +9,7 @@ import type { AgentUpdateOperation } from "../../agents/shared/agent-updates.js"
 import { enabledAgents } from "../../agents/shared/agent-factory.js";
 import { ensureOutDir } from "../../artifacts/artifacts.js";
 import { buildFileInstructions, outboxPath, stageFile, type StagedFile } from "../../artifacts/attachments.js";
-import { capabilitiesOf, filterActivityEvents, parseActivityOptions, renderPromptFailure, trimLine } from "../shared/bot-rendering.js";
+import { capabilitiesOf, filterActivityEvents, parseActivityOptions, trimLine } from "../shared/bot-rendering.js";
 import { parseAgentUpdateId, renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction } from "../shared/channel-actions.js";
 import type { ChannelContext } from "../shared/channel-adapter.js";
 import {
@@ -20,7 +20,7 @@ import {
 import { createChannelBridgeEnvironment } from "../shared/channel-bridge-environment.js";
 import { createSharedChannelCommandDispatcher } from "../shared/channel-command-core.js";
 import { matrixHelpCommandList } from "../shared/channel-command-catalog.js";
-import { createChannelPromptEngine } from "../shared/channel-prompt-engine.js";
+import { runChannelLocalPrompt } from "../shared/channel-local-prompt-runner.js";
 import { queueChannelPromptIfBusy } from "../shared/channel-prompt-queue.js";
 import { runChannelPeerPrompt } from "../shared/channel-peer-prompt.js";
 import { inferChannelMimeType } from "../shared/channel-attachments.js";
@@ -52,7 +52,7 @@ import { getMatrixRateLimitMetrics } from "./matrix-rate-limit.js";
 import { transcribeAudio, type TranscriptionBackend } from "../../artifacts/voice.js";
 import type { AuthenticatedUser, UserStore } from "../../access/user-management.js";
 import type { WebActivityActor } from "../../web/web-state.js";
-import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "../../core/workspace-policy.js";
+import { filterAllowedWorkspaces } from "../../core/workspace-policy.js";
 
 export { isUnauthenticatedMatrixCommandAllowed, permissionForMatrixAction, requiredPermissionForMatrixCommand } from "./matrix-command-surface.js";
 
@@ -352,88 +352,37 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
       return;
     }
 
-    const busyState = getBusyState(request.contextKey);
-    busyState.processing = true;
-    const engine = createChannelPromptEngine({
+    await runChannelLocalPrompt({
+      source: "matrix",
+      label: "Matrix",
+      config,
       runtime,
-      context: request.context,
-      contextKey: request.contextKey,
-      promptDescription: envelope.description,
-      abortAction: `matrix_abort:${request.contextKey}`,
-      trimMessage: trimMatrixMessage,
-      splitMessage: splitMatrixMessage,
+      request,
+      session,
+      envelope,
+      busyState: getBusyState(request.contextKey),
+      promptStore,
+      turnProgress,
+      artifactService,
+      abortActionPrefix: "matrix",
       editDebounceMs: EDIT_DEBOUNCE_MS,
       typingIntervalMs: TYPING_INTERVAL_MS,
-      toolVerbosity: config.toolVerbosity,
-      logPrefix: "Matrix",
-      onToolStart: (toolName) => appendActivity(request, { status: "running", type: "tool_started", prompt: envelope.description, detail: toolName, threadId: session.getInfo().threadId, workspace: session.getInfo().workspace, agentId: session.getInfo().agentId }),
-      onToolEnd: (isError) => appendActivity(request, { status: isError ? "failed" : "completed", type: isError ? "tool_failed" : "tool_completed", prompt: envelope.description, detail: "tool", threadId: session.getInfo().threadId, workspace: session.getInfo().workspace, agentId: session.getInfo().agentId }),
-    });
-    const progress = engine.progress;
-    turnProgress.set(request.contextKey, progress);
-    engine.start();
-
-    try {
-      const info = session.getInfo();
-      if ((info.capabilities ?? capabilitiesOf(info)).auth) {
-        const auth = await checkAgentAuthStatus(info);
-        if (!auth.authenticated) {
-          throw new Error(`${agentLabel(info.agentId)} is not authenticated: ${auth.detail}`);
+      trimMessage: trimMatrixMessage,
+      splitMessage: splitMatrixMessage,
+      actor: actorFor(request),
+      appendActivity,
+      audit,
+      checkAgentAuthStatus,
+      ensureActiveThread,
+      updateSession,
+      sendRecentArtifacts: async (startedAt, turnId) => {
+        const artifactPolicy = artifactPolicyForRequest(request);
+        if (artifactPolicy.sendSummary || artifactPolicy.autoSendFiles || artifactPolicy.autoSendZip) {
+          await sendRecentMatrixArtifacts(artifactDeps, request, session, startedAt, turnId, artifactPolicy);
         }
-      }
-      await ensureActiveThread(request, session);
-      const currentInfo = session.getInfo();
-      const workspacePolicy = evaluateWorkspacePolicy(currentInfo.workspace, config);
-      if (!workspacePolicy.allowed) {
-        throw new Error(workspacePolicy.warning ?? "Current workspace is blocked by policy.");
-      }
-
-      promptStore.setLastPrompt(request.contextKey, envelope);
-      appendActivity(request, { status: "running", type: "prompt_started", prompt: envelope.description, threadId: currentInfo.threadId, workspace: currentInfo.workspace, agentId: currentInfo.agentId });
-      audit(request, { action: "prompt_started", status: "ok", agentId: currentInfo.agentId, threadId: currentInfo.threadId, workspace: currentInfo.workspace, description: envelope.description });
-      await session.prompt(envelope.input, engine.callbacks);
-      updateSession(request, session);
-      progress.status = "completed";
-      progress.completedAt = Date.now();
-      progress.updatedAt = progress.completedAt;
-      await engine.finalize();
-      await artifactService.persistWorkspaceArtifactsForTurn(session.getInfo().workspace, engine.turnId, new Date(engine.startedAt), {
-        source: "matrix",
-        agentId: session.getInfo().agentId,
-        threadId: session.getInfo().threadId,
-        workspace: session.getInfo().workspace,
-        contextKey: request.contextKey,
-        correlationId: envelope.correlationId,
-        prompt: envelope.description,
-        actor: {
-          channel: "matrix",
-          id: request.authUser?.user.id,
-          label: request.authUser?.user.displayName || request.username || request.userId,
-          username: request.username,
-          channelUserId: request.userId,
-        },
-        turnStartedAt: new Date(engine.startedAt).toISOString(),
-      });
-      const artifactPolicy = artifactPolicyForRequest(request);
-      if (artifactPolicy.sendSummary || artifactPolicy.autoSendFiles || artifactPolicy.autoSendZip) {
-        await sendRecentMatrixArtifacts(artifactDeps, request, session, new Date(engine.startedAt), engine.turnId, artifactPolicy);
-      }
-      appendActivity(request, { status: "completed", type: "prompt_completed", prompt: envelope.description, threadId: session.getInfo().threadId, workspace: session.getInfo().workspace, agentId: session.getInfo().agentId, durationMs: Date.now() - engine.startedAt });
-      audit(request, { action: "prompt_completed", status: "ok", agentId: session.getInfo().agentId, threadId: session.getInfo().threadId, workspace: session.getInfo().workspace, description: envelope.description });
-    } catch (error) {
-      progress.status = "failed";
-      progress.completedAt = Date.now();
-      progress.updatedAt = progress.completedAt;
-      progress.error = friendlyErrorText(error);
-      const errorText = renderPromptFailure(engine.accumulatedText(), error);
-      await engine.fail(errorText);
-      appendActivity(request, { status: "failed", type: "prompt_failed", prompt: envelope.description, detail: friendlyErrorText(error), threadId: session.getInfo().threadId, workspace: session.getInfo().workspace, agentId: session.getInfo().agentId, durationMs: Date.now() - engine.startedAt });
-      audit(request, { action: "prompt_failed", status: "failed", agentId: session.getInfo().agentId, threadId: session.getInfo().threadId, workspace: session.getInfo().workspace, description: envelope.description, detail: friendlyErrorText(error) });
-    } finally {
-      engine.stop();
-      busyState.processing = false;
-      await drainQueue(request).catch((error) => console.error("Failed to drain Matrix queue:", error));
-    }
+      },
+      drainQueue: () => drainQueue(request),
+    });
   };
 
   const drainQueue = async (request: MatrixRequest): Promise<void> => {

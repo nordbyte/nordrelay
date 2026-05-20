@@ -68,6 +68,14 @@ ${dynamicPaths.map((item) => `  | \`${item}\``).join("\n")};
 export type WebApiKnownPath = WebApiStaticPath | WebApiDynamicPath;
 export type WebApiPath = WebApiKnownPath | (string & {});
 
+export type WebApiResponseByPath = {
+${staticPaths.map((item) => `  ${JSON.stringify(item)}: ServerWebApiClientResponse<${JSON.stringify(item)}>;`).join("\n")}
+};
+
+export type WebApiRequestBodyByPath = {
+${staticPaths.map((item) => `  ${JSON.stringify(item)}: ServerWebApiRequestBody<${JSON.stringify(item)}>;`).join("\n")}
+};
+
 export interface WebApiClientOptions<P extends WebApiPath = WebApiPath> {
   method?: WebApiMethod;
   query?: WebApiQuery;
@@ -76,9 +84,11 @@ export interface WebApiClientOptions<P extends WebApiPath = WebApiPath> {
 }
 
 export type WebApiRequestBody<P extends WebApiPath> =
+  P extends keyof WebApiRequestBodyByPath ? WebApiRequestBodyByPath[P] :
   P extends ServerWebApiPath ? ServerWebApiRequestBody<P> : Record<string, unknown>;
 
 export type WebApiClientResponse<P extends WebApiPath> =
+  P extends keyof WebApiResponseByPath ? WebApiResponseByPath[P] :
   P extends ServerWebApiPath ? ServerWebApiClientResponse<P> : unknown;
 `;
 

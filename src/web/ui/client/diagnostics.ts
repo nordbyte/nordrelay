@@ -24,7 +24,14 @@ if (exportDiagnosticsBundleBtn) exportDiagnosticsBundleBtn.onclick = () => safe(
   toast('Remote diagnostics bundle downloaded');
 });
 
-function diagnosticsStatus(value: any) {
+type DiagnosticsRow = [string, unknown, string?];
+type DiagnosticsRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): DiagnosticsRecord {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as DiagnosticsRecord : {};
+}
+
+function diagnosticsStatus(value: unknown) {
   const text = String(value || '').toLowerCase();
   if (['ready', 'healthy', 'ok', 'current', 'enabled', 'running', 'listening'].includes(text)) return 'ok';
   if (['failed', 'error', 'stopped', 'disabled'].includes(text)) return 'error';
@@ -32,80 +39,96 @@ function diagnosticsStatus(value: any) {
   return '';
 }
 
-function diagnosticsText(value: any) {
+function diagnosticsText(value: unknown) {
   if (value === null || value === undefined || value === '') return '-';
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
 }
 
-function diagnosticsVersionValue(v: any) {
-  return uiBadge(versionStatusLabel(v.status), versionStatusClass(v.status)) + ' <span class="diagnostics-inline-value">' + esc((v.installedLabel || '-') + ' / latest ' + (v.latestVersion || '-')) + '</span>';
+function diagnosticsVersionValue(v: DiagnosticsRecord) {
+  const status = String(v.status ?? '');
+  return uiBadge(versionStatusLabel(status), versionStatusClass(status)) + ' <span class="diagnostics-inline-value">' + esc((v.installedLabel || '-') + ' / latest ' + (v.latestVersion || '-')) + '</span>';
 }
 
-function diagnosticsOverviewRows(d: any, h: any, s: any) {
-  const warnings = h.state?.adapterWarnings || [];
-  const mirror = d.runtime?.externalMirror;
-  const slack = d.runtime?.slackDiagnostics;
-  const matrix = d.runtime?.matrixDiagnostics;
-  const voice = d.runtime?.voiceDiagnostics;
-  const voiceBackends = voice?.availableBackends?.length ? voice.availableBackends.join(' + ') : 'none';
-  return [['Health', h.state?.status, diagnosticsStatus(h.state?.status)], ['Queue', d.runtime?.queuePaused ? 'paused' : 'running', d.runtime?.queuePaused ? 'warn' : 'ok'], ['Runtime warnings', warnings.join(' | ') || 'none', warnings.length ? 'warn' : 'ok'], ['Agent', s.agentLabel || s.agentId || '-'], ['Thread', s.threadId], ['Workspace', s.workspace], ['Mirror', mirror ? 'active' : 'idle', mirror ? 'ok' : ''], ['Voice', voiceBackends, voice?.availableBackends?.length ? 'ok' : 'warn'], ['Slack', slack ? (slack.enabled ? 'enabled' : 'disabled') : 'not collected', slack ? (slack.enabled ? 'ok' : 'warn') : 'warn'], ['Matrix', matrix ? (matrix.enabled ? 'enabled' : 'disabled') : 'not collected', matrix ? (matrix.enabled ? 'ok' : 'warn') : 'warn']];
+function diagnosticsOverviewRows(d: DiagnosticsRecord, h: DiagnosticsRecord, s: DiagnosticsRecord): DiagnosticsRow[] {
+  const healthState = asRecord(h.state);
+  const runtime = asRecord(d.runtime);
+  const warnings = Array.isArray(healthState.adapterWarnings) ? healthState.adapterWarnings : [];
+  const mirror = runtime.externalMirror;
+  const slack = asRecord(runtime.slackDiagnostics);
+  const matrix = asRecord(runtime.matrixDiagnostics);
+  const voice = asRecord(runtime.voiceDiagnostics);
+  const availableVoiceBackends = Array.isArray(voice.availableBackends) ? voice.availableBackends : [];
+  const voiceBackends = availableVoiceBackends.length ? availableVoiceBackends.join(' + ') : 'none';
+  return [['Health', healthState.status, diagnosticsStatus(healthState.status)], ['Queue', runtime.queuePaused ? 'paused' : 'running', runtime.queuePaused ? 'warn' : 'ok'], ['Runtime warnings', warnings.join(' | ') || 'none', warnings.length ? 'warn' : 'ok'], ['Agent', s.agentLabel || s.agentId || '-'], ['Thread', s.threadId], ['Workspace', s.workspace], ['Mirror', mirror ? 'active' : 'idle', mirror ? 'ok' : ''], ['Voice', voiceBackends, availableVoiceBackends.length ? 'ok' : 'warn'], ['Slack', slack.enabled ? 'enabled' : 'disabled', slack.enabled ? 'ok' : 'warn'], ['Matrix', matrix.enabled ? 'enabled' : 'disabled', matrix.enabled ? 'ok' : 'warn']];
 }
 
-function diagnosticsRuntimeRows(d: any, h: any) {
-  return [['Status', h.state?.status, diagnosticsStatus(h.state?.status)], ['PID', h.state?.pid], ['App PID', h.state?.appPid], ['State file', h.stateFile], ['Log file', h.logFile], ['State backend', d.runtime?.stateBackend], ['Source workspace', d.runtime?.sourceWorkspace], ['Runtime warnings', (h.state?.adapterWarnings || []).join(' | ') || '-', (h.state?.adapterWarnings || []).length ? 'warn' : 'ok'], ['Queue', d.runtime?.queuePaused ? 'paused' : 'running', d.runtime?.queuePaused ? 'warn' : 'ok'], ['Uptime', h.uptimeSeconds !== undefined ? h.uptimeSeconds + 's' : '-']];
+function diagnosticsRuntimeRows(d: DiagnosticsRecord, h: DiagnosticsRecord): DiagnosticsRow[] {
+  const healthState = asRecord(h.state);
+  const runtime = asRecord(d.runtime);
+  const warnings = Array.isArray(healthState.adapterWarnings) ? healthState.adapterWarnings : [];
+  return [['Status', healthState.status, diagnosticsStatus(healthState.status)], ['PID', healthState.pid], ['App PID', healthState.appPid], ['State file', h.stateFile], ['Log file', h.logFile], ['State backend', runtime.stateBackend], ['Source workspace', runtime.sourceWorkspace], ['Runtime warnings', warnings.join(' | ') || '-', warnings.length ? 'warn' : 'ok'], ['Queue', runtime.queuePaused ? 'paused' : 'running', runtime.queuePaused ? 'warn' : 'ok'], ['Uptime', h.uptimeSeconds !== undefined ? h.uptimeSeconds + 's' : '-']];
 }
 
-function diagnosticsAgentRows(s: any) {
-  const caps = s.capabilities || {};
+function diagnosticsAgentRows(s: DiagnosticsRecord): DiagnosticsRow[] {
+  const caps = asRecord(s.capabilities);
   return [['Agent', s.agentLabel], ['Thread', s.threadId], ['Workspace', s.workspace], ['Model', s.model], ['Reasoning', s.reasoningEffort], ['Fast', caps.fastMode ? (s.fastMode ? 'on' : 'off') : 'n/a']];
 }
 
-function diagnosticsAgentStateRows(agentDiag: any) {
-  const lines = agentDiag?.lines || [];
-  return lines.length ? lines.map((x: any) => [x.label, diagnosticsText(x.value)]) : [['Status', 'not collected', 'warn']];
+function diagnosticsAgentStateRows(agentDiag: unknown): DiagnosticsRow[] {
+  const lines = Array.isArray(asRecord(agentDiag).lines) ? asRecord(agentDiag).lines as DiagnosticsRecord[] : [];
+  return lines.length ? lines.map((x) => [String(x.label ?? '-'), diagnosticsText(x.value)]) : [['Status', 'not collected', 'warn']];
 }
 
-function diagnosticsVersionRows(vc: any) {
-  const values: any[] = Object.values(vc || {});
-  return values.length ? values.map(v => [v.label, diagnosticsVersionValue(v), 'html']) : [['Status', 'not collected', 'warn']];
+function diagnosticsVersionRows(vc: unknown): DiagnosticsRow[] {
+  const values = Object.values(asRecord(vc)).map(asRecord);
+  return values.length ? values.map(v => [String(v.label ?? '-'), diagnosticsVersionValue(v), 'html']) : [['Status', 'not collected', 'warn']];
 }
 
-function diagnosticsMirrorRows(mirror: any) {
+function diagnosticsMirrorRows(mirror: unknown): DiagnosticsRow[] {
   if (!mirror) return [['Status', 'idle', 'ok']];
-  return Object.entries(mirror).map(([key, value]) => [key, diagnosticsText(value)]);
+  return Object.entries(asRecord(mirror)).map(([key, value]) => [key, diagnosticsText(value)]);
 }
 
-function diagnosticsSlackRows(slack: any) {
+function diagnosticsSlackRows(slack: unknown): DiagnosticsRow[] {
   if (!slack) return [['Status', 'not collected', 'warn']];
-  return [['Enabled', slack.enabled ? 'yes' : 'no', slack.enabled ? 'ok' : 'warn'], ['Mode', slack.mode], ['Registered channels', slack.registeredChannels]].concat((slack.checks || []).map((x: any) => [x.label, diagnosticsText(x.detail), diagnosticsStatus(x.status)]), (slack.channelChecks || []).map((x: any) => ['Channel ' + x.channelId, diagnosticsText(x.detail), diagnosticsStatus(x.status)]));
+  const record = asRecord(slack);
+  const checks = Array.isArray(record.checks) ? record.checks.map(asRecord) : [];
+  const channelChecks = Array.isArray(record.channelChecks) ? record.channelChecks.map(asRecord) : [];
+  const rows: DiagnosticsRow[] = [['Enabled', record.enabled ? 'yes' : 'no', record.enabled ? 'ok' : 'warn'], ['Mode', record.mode], ['Registered channels', record.registeredChannels]];
+  return rows.concat(checks.map((x): DiagnosticsRow => [String(x.label ?? '-'), diagnosticsText(x.detail), diagnosticsStatus(x.status)]), channelChecks.map((x): DiagnosticsRow => ['Channel ' + x.channelId, diagnosticsText(x.detail), diagnosticsStatus(x.status)]));
 }
 
-function diagnosticsMatrixRows(matrix: any) {
+function diagnosticsMatrixRows(matrix: unknown): DiagnosticsRow[] {
   if (!matrix) return [['Status', 'not collected', 'warn']];
-  const rate = matrix.rateLimit;
-  const rows = [
-    ['Enabled', matrix.enabled ? 'yes' : 'no', matrix.enabled ? 'ok' : 'warn'],
-    ['Configured', matrix.configured ? 'yes' : 'no', matrix.configured ? 'ok' : 'warn'],
-    ['Registered rooms', matrix.registeredRooms],
+  const record = asRecord(matrix);
+  const rate = asRecord(record.rateLimit);
+  const rows: DiagnosticsRow[] = [
+    ['Enabled', record.enabled ? 'yes' : 'no', record.enabled ? 'ok' : 'warn'],
+    ['Configured', record.configured ? 'yes' : 'no', record.configured ? 'ok' : 'warn'],
+    ['Registered rooms', record.registeredRooms],
   ];
-  if (matrix.auth) {
-    rows.push(['Whoami', matrix.auth.detail, matrix.auth.ok ? 'ok' : 'error']);
+  if (record.auth) {
+    const auth = asRecord(record.auth);
+    rows.push(['Whoami', auth.detail, auth.ok ? 'ok' : 'error']);
   }
-  if (rate) {
+  if (Object.keys(rate).length) {
     rows.push(['Rate limit queued/running/retries/429', [rate.queued, rate.running, rate.retries, rate.rateLimitHits].join(' / ')]);
   }
-  return rows.concat((matrix.checks || []).map((x: any) => [x.label, diagnosticsText(x.detail), diagnosticsStatus(x.status)]), (matrix.roomChecks || []).map((x: any) => ['Room ' + x.roomId, diagnosticsText(x.detail), diagnosticsStatus(x.status)]));
+  const checks = Array.isArray(record.checks) ? record.checks.map(asRecord) : [];
+  const roomChecks = Array.isArray(record.roomChecks) ? record.roomChecks.map(asRecord) : [];
+  return rows.concat(checks.map((x) => [String(x.label ?? '-'), diagnosticsText(x.detail), diagnosticsStatus(x.status)]), roomChecks.map((x) => ['Room ' + x.roomId, diagnosticsText(x.detail), diagnosticsStatus(x.status)]));
 }
 
-function diagnosticsChannelsHtml(d: any) {
+function diagnosticsChannelsHtml(d: DiagnosticsRecord) {
+  const runtime = asRecord(d.runtime);
   return '<div class="metrics-grid diagnostics-grid">' +
-    metricKvCard('Slack Readiness', diagnosticsSlackRows(d.runtime?.slackDiagnostics)) +
-    metricKvCard('Matrix Readiness', diagnosticsMatrixRows(d.runtime?.matrixDiagnostics)) +
+    metricKvCard('Slack Readiness', diagnosticsSlackRows(runtime.slackDiagnostics)) +
+    metricKvCard('Matrix Readiness', diagnosticsMatrixRows(runtime.matrixDiagnostics)) +
     '</div>';
 }
 
-function diagnosticsVoiceStatus(status: any) {
+function diagnosticsVoiceStatus(status: unknown) {
   if (status === 'available' || status === 'configured') return 'ok';
   if (status === 'error') return 'error';
   if (status === 'missing' || status === 'unconfigured') return 'warn';
@@ -116,64 +139,71 @@ function diagnosticsChip(text: string, status = 'ok') {
   return '<span class="chip ' + (status === 'error' ? 'error' : status === 'warn' ? 'warn' : 'ok') + '">' + esc(text) + '</span>';
 }
 
-function diagnosticsChipList(values: any[], status = 'ok') {
+function diagnosticsChipList(values: unknown[], status = 'ok') {
   const list = (values || []).filter(Boolean);
-  return list.length ? '<span class="diagnostics-chip-list">' + list.map(value => diagnosticsChip(value, status)).join('') + '</span>' : '<span class="metric-kv-number">none</span>';
+  return list.length ? '<span class="diagnostics-chip-list">' + list.map(value => diagnosticsChip(String(value), status)).join('') + '</span>' : '<span class="metric-kv-number">none</span>';
 }
 
-function diagnosticsVoiceBackendValue(backend: any) {
+function diagnosticsVoiceBackendValue(backend: DiagnosticsRecord) {
   const status = backend.status || 'unknown';
   const parts = [];
   if (backend.version) parts.push(backend.version);
   if (backend.path) parts.push('path ' + backend.path);
   if (backend.detail) parts.push(backend.detail);
   const detail = parts.filter(Boolean).join(' · ');
-  return '<span class="diagnostics-value-stack">' + diagnosticsChip(status, diagnosticsVoiceStatus(status)) + (detail ? '<span class="diagnostics-value-detail">' + esc(detail) + '</span>' : '') + '</span>';
+  return '<span class="diagnostics-value-stack">' + diagnosticsChip(String(status), diagnosticsVoiceStatus(status)) + (detail ? '<span class="diagnostics-value-detail">' + esc(detail) + '</span>' : '') + '</span>';
 }
 
-function diagnosticsVoiceRows(voice: any) {
+function diagnosticsVoiceRows(voice: unknown): DiagnosticsRow[] {
   if (!voice) return [['Status', 'not collected', 'warn']];
-  const available = voice.availableBackends || [];
-  const rows = [['Preferred backend', voice.preferredBackend || 'auto'], ['Default language', voice.defaultLanguage || 'auto'], ['Transcribe only', voice.transcribeOnly ? 'on' : 'off'], ['Available backends', diagnosticsChipList(available, available.length ? 'ok' : 'warn'), 'html']];
-  return rows.concat((voice.backends || []).map((backend: any) => [backend.label || backend.id, diagnosticsVoiceBackendValue(backend), 'html']));
+  const record = asRecord(voice);
+  const available = Array.isArray(record.availableBackends) ? record.availableBackends : [];
+  const rows: DiagnosticsRow[] = [['Preferred backend', record.preferredBackend || 'auto'], ['Default language', record.defaultLanguage || 'auto'], ['Transcribe only', record.transcribeOnly ? 'on' : 'off'], ['Available backends', diagnosticsChipList(available, available.length ? 'ok' : 'warn'), 'html']];
+  const backends = Array.isArray(record.backends) ? record.backends.map(asRecord) : [];
+  return rows.concat(backends.map((backend) => [String(backend.label || backend.id || '-'), diagnosticsVoiceBackendValue(backend), 'html']));
 }
 
 function diagnosticsTabPanel(id: string, html: string) {
   return '<div class="diagnostics-tab ' + (state.diagnosticsTab === id ? 'active' : '') + '" data-diagnostics-tab-panel="' + attr(id) + '">' + html + '</div>';
 }
 
-function diagnosticsPanelGrid(title: string, rows: any[]) {
+function diagnosticsPanelGrid(title: string, rows: DiagnosticsRow[]) {
   return '<div class="metrics-grid diagnostics-grid diagnostics-single-grid">' + metricKvCard(title, rows) + '</div>';
 }
 
-function doctorStatusBadge(item: any) {
+function doctorStatusBadge(item: DiagnosticsRecord) {
   if (item.ok) return uiBadge('pass', 'enabled');
   return uiBadge(item.status === 'fail' ? 'fail' : 'warn', item.status === 'fail' ? 'disabled' : 'planned');
 }
 
-function doctorFixButton(item: any) {
-  if (!item.fix?.safe || item.ok) return '-';
-  return '<div class="data-table-actions">' + uiButton(item.fix.label || 'Apply fix', { variant: 'secondary', mini: true, data: { doctorFix: item.fix.id }, disabled: !can('settings.write'), title: item.fix.summary || '' }) + '</div>';
+function doctorFixButton(item: DiagnosticsRecord) {
+  const fix = asRecord(item.fix);
+  if (!fix.safe || item.ok) return '-';
+  return '<div class="data-table-actions">' + uiButton(String(fix.label || 'Apply fix'), { variant: 'secondary', mini: true, data: { doctorFix: fix.id }, disabled: !can('settings.write'), title: fix.summary || '' }) + '</div>';
 }
 
-function doctorRow(item: any) {
+function doctorRow(item: DiagnosticsRecord) {
   return '<tr><td data-label="Check" class="primary-cell"><span class="truncate-cell" title="' + attr(item.name || item.id) + '">' + esc(item.name || item.id) + '</span></td><td data-label="Status" class="status-cell">' + doctorStatusBadge(item) + '</td><td data-label="Detail"><span class="truncate-cell" title="' + attr(item.detail || '') + '">' + esc(short(item.detail || '-', 220)) + '</span></td><td data-label="Fix" class="actions-cell">' + doctorFixButton(item) + '</td></tr>';
 }
 
-function diagnosticsDoctorPanel(report: any) {
+function diagnosticsDoctorPanel(report: unknown) {
   if (!report) return diagnosticsPanelGrid('Doctor', [['Status', 'not collected', 'warn']]);
-  if (report.error) return '<div class="metrics-grid diagnostics-grid diagnostics-single-grid">' + metricKvCard('Doctor', [['Error', report.error, 'error']]) + '</div>';
-  const summary = report.summary || {};
-  const header = '<div class="doctor-summary item"><strong>Setup doctor ' + uiBadge((summary.failed || 0) + ' failed', summary.failed ? 'disabled' : 'enabled') + ' ' + uiBadge((summary.warnings || 0) + ' warnings', summary.warnings ? 'planned' : 'enabled') + '</strong><small>' + esc('Env: ' + (report.envPath || '-') + ' | Home: ' + (report.home || '-')) + '</small><div class="row"><button type="button" class="secondary" data-doctor-reload>Reload doctor</button><button type="button" data-doctor-fix-all' + disabledAttr('settings.write') + '>Apply safe fixes</button></div></div>';
-  const rows = report.checks || [];
+  const record = asRecord(report);
+  if (record.error) return '<div class="metrics-grid diagnostics-grid diagnostics-single-grid">' + metricKvCard('Doctor', [['Error', record.error, 'error']]) + '</div>';
+  const summary = asRecord(record.summary);
+  const header = '<div class="doctor-summary item"><strong>Setup doctor ' + uiBadge((summary.failed || 0) + ' failed', summary.failed ? 'disabled' : 'enabled') + ' ' + uiBadge((summary.warnings || 0) + ' warnings', summary.warnings ? 'planned' : 'enabled') + '</strong><small>' + esc('Env: ' + (record.envPath || '-') + ' | Home: ' + (record.home || '-')) + '</small><div class="row"><button type="button" class="secondary" data-doctor-reload>Reload doctor</button><button type="button" data-doctor-fix-all' + disabledAttr('settings.write') + '>Apply safe fixes</button></div></div>';
+  const rows = Array.isArray(record.checks) ? record.checks.map(asRecord) : [];
   const table = rows.length ? '<div class="data-table-wrap"><table class="data-table diagnostics-doctor-table"><thead><tr><th>Check</th><th>Status</th><th>Detail</th><th class="actions-heading">Fix</th></tr></thead><tbody>' + rows.map(doctorRow).join('') + '</tbody></table></div>' : uiEmpty('No doctor checks.');
   return diagnosticsTabPanel('doctor', header + table);
 }
 
-function diagnosticsHtml(d: any, doctor: any = null) {
-  const h = d.health || {};
-  const s = d.snapshot?.session || {};
-  return diagnosticsTabPanel('overview', '<div class="metrics-grid diagnostics-grid diagnostics-overview-grid">' + metricKvCard('Overview', diagnosticsOverviewRows(d, h, s)) + metricKvCard('Runtime', diagnosticsRuntimeRows(d, h)) + '</div>') + diagnosticsTabPanel('runtime', diagnosticsPanelGrid('Runtime', diagnosticsRuntimeRows(d, h))) + diagnosticsTabPanel('agent', diagnosticsPanelGrid('Agent', diagnosticsAgentRows(s))) + diagnosticsTabPanel('state', diagnosticsPanelGrid('Agent State', diagnosticsAgentStateRows(d.runtime?.agentDiagnostics))) + diagnosticsTabPanel('versions', diagnosticsPanelGrid('CLI Versions', diagnosticsVersionRows(d.versionChecks || {}))) + diagnosticsTabPanel('channels', diagnosticsChannelsHtml(d)) + diagnosticsTabPanel('voice', diagnosticsPanelGrid('Voice Backends', diagnosticsVoiceRows(d.runtime?.voiceDiagnostics))) + diagnosticsTabPanel('mirror', diagnosticsPanelGrid('External Mirror', diagnosticsMirrorRows(d.runtime?.externalMirror))) + diagnosticsDoctorPanel(doctor);
+function diagnosticsHtml(input: unknown, doctor: unknown = null) {
+  const d = asRecord(input);
+  const h = asRecord(d.health);
+  const snapshot = asRecord(d.snapshot);
+  const runtime = asRecord(d.runtime);
+  const s = asRecord(snapshot.session);
+  return diagnosticsTabPanel('overview', '<div class="metrics-grid diagnostics-grid diagnostics-overview-grid">' + metricKvCard('Overview', diagnosticsOverviewRows(d, h, s)) + metricKvCard('Runtime', diagnosticsRuntimeRows(d, h)) + '</div>') + diagnosticsTabPanel('runtime', diagnosticsPanelGrid('Runtime', diagnosticsRuntimeRows(d, h))) + diagnosticsTabPanel('agent', diagnosticsPanelGrid('Agent', diagnosticsAgentRows(s))) + diagnosticsTabPanel('state', diagnosticsPanelGrid('Agent State', diagnosticsAgentStateRows(runtime.agentDiagnostics))) + diagnosticsTabPanel('versions', diagnosticsPanelGrid('CLI Versions', diagnosticsVersionRows(d.versionChecks || {}))) + diagnosticsTabPanel('channels', diagnosticsChannelsHtml(d)) + diagnosticsTabPanel('voice', diagnosticsPanelGrid('Voice Backends', diagnosticsVoiceRows(runtime.voiceDiagnostics))) + diagnosticsTabPanel('mirror', diagnosticsPanelGrid('External Mirror', diagnosticsMirrorRows(runtime.externalMirror))) + diagnosticsDoctorPanel(doctor);
 }
 
 function switchDiagnosticsTab(tab: string) {

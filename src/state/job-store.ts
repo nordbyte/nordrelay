@@ -31,19 +31,21 @@ export class UnifiedJobStore {
   }
 
   upsert(job: UnifiedJobDto): UnifiedJobDto {
-    const payload = this.readPayload();
     const normalized = normalizeJob(job);
-    const index = payload.jobs.findIndex((candidate) => candidate.id === normalized.id);
-    if (index >= 0) {
-      payload.jobs[index] = {
-        ...payload.jobs[index],
-        ...normalized,
-      };
-    } else {
-      payload.jobs.push(normalized);
-    }
-    payload.jobs = trimJobs(payload.jobs, this.maxJobs);
-    this.store.write(payload);
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const index = payload.jobs.findIndex((candidate) => candidate.id === normalized.id);
+      if (index >= 0) {
+        payload.jobs[index] = {
+          ...payload.jobs[index],
+          ...normalized,
+        };
+      } else {
+        payload.jobs.push(normalized);
+      }
+      payload.jobs = trimJobs(payload.jobs, this.maxJobs);
+      return payload;
+    });
     return normalized;
   }
 
@@ -51,49 +53,59 @@ export class UnifiedJobStore {
     if (jobs.length === 0) {
       return this.list();
     }
-    const payload = this.readPayload();
-    const byId = new Map(payload.jobs.map((job) => [job.id, job]));
-    for (const job of jobs) {
-      const normalized = normalizeJob(job);
-      byId.set(normalized.id, {
-        ...byId.get(normalized.id),
-        ...normalized,
-      });
-    }
-    payload.jobs = trimJobs([...byId.values()], this.maxJobs);
-    this.store.write(payload);
+    const payload = this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const byId = new Map(payload.jobs.map((job) => [job.id, job]));
+      for (const job of jobs) {
+        const normalized = normalizeJob(job);
+        byId.set(normalized.id, {
+          ...byId.get(normalized.id),
+          ...normalized,
+        });
+      }
+      payload.jobs = trimJobs([...byId.values()], this.maxJobs);
+      return payload;
+    });
     return payload.jobs;
   }
 
   patch(id: string, patch: Partial<UnifiedJobDto>): UnifiedJobDto | null {
-    const payload = this.readPayload();
-    const index = payload.jobs.findIndex((job) => job.id === id);
-    if (index < 0) {
-      return null;
-    }
-    payload.jobs[index] = normalizeJob({
-      ...payload.jobs[index],
-      ...patch,
-      id,
-      updatedAt: patch.updatedAt ?? new Date().toISOString(),
+    let updated: UnifiedJobDto | null = null;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const index = payload.jobs.findIndex((job) => job.id === id);
+      if (index < 0) {
+        return payload;
+      }
+      updated = normalizeJob({
+        ...payload.jobs[index],
+        ...patch,
+        id,
+        updatedAt: patch.updatedAt ?? new Date().toISOString(),
+      });
+      payload.jobs[index] = updated;
+      return payload;
     });
-    this.store.write(payload);
-    return payload.jobs[index];
+    return updated;
   }
 
   remove(id: string): boolean {
-    const payload = this.readPayload();
-    const next = payload.jobs.filter((job) => job.id !== id);
-    if (next.length === payload.jobs.length) {
-      return false;
-    }
-    payload.jobs = next;
-    this.store.write(payload);
-    return true;
+    let removed = false;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const next = payload.jobs.filter((job) => job.id !== id);
+      removed = next.length !== payload.jobs.length;
+      payload.jobs = next;
+      return payload;
+    });
+    return removed;
   }
 
   private readPayload(): PersistedUnifiedJobs {
-    const payload = this.store.read();
+    return this.normalizePayload(this.store.read());
+  }
+
+  private normalizePayload(payload: PersistedUnifiedJobs | undefined): PersistedUnifiedJobs {
     if (!payload || payload.version !== 1 || !Array.isArray(payload.jobs)) {
       return { version: 1, jobs: [] };
     }

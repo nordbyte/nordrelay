@@ -264,31 +264,39 @@ export class WorkflowStore {
   }
 
   saveTemplate(input: Partial<PromptTemplate> & Pick<PromptTemplate, "name" | "prompt">): PromptTemplate {
-    const payload = this.payload();
     const now = new Date().toISOString();
     const id = normalizeId(input.id) || randomId();
-    const existing = payload.templates.find((template) => template.id === id);
-    const template = normalizeTemplate({
-      ...existing,
-      ...input,
-      id,
-      createdAt: existing?.createdAt ?? input.createdAt ?? now,
-      updatedAt: now,
+    let template: PromptTemplate;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const existing = payload.templates.find((candidate) => candidate.id === id);
+      template = normalizeTemplate({
+        ...existing,
+        ...input,
+        id,
+        createdAt: existing?.createdAt ?? input.createdAt ?? now,
+        updatedAt: now,
+      });
+      payload.templates = upsertById(payload.templates, template);
+      payload.versions = appendVersion(payload.versions ?? [], "template", template, input.ownerUserId);
+      return payload;
     });
-    payload.templates = upsertById(payload.templates, template);
-    payload.versions = appendVersion(payload.versions ?? [], "template", template, input.ownerUserId);
-    this.store.write(payload);
-    return template;
+    return template!;
   }
 
   deleteTemplate(id: string): boolean {
-    const payload = this.payload();
-    const next = payload.templates.filter((template) => template.id !== id);
-    if (next.length === payload.templates.length) return false;
-    payload.templates = next;
-    payload.versions = (payload.versions ?? []).filter((version) => !(version.kind === "template" && version.entityId === id));
-    this.store.write(payload);
-    return true;
+    let removed = false;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const next = payload.templates.filter((template) => template.id !== id);
+      removed = next.length !== payload.templates.length;
+      payload.templates = next;
+      if (removed) {
+        payload.versions = (payload.versions ?? []).filter((version) => !(version.kind === "template" && version.entityId === id));
+      }
+      return payload;
+    });
+    return removed;
   }
 
   listWorkflows(): Workflow[] {
@@ -300,31 +308,39 @@ export class WorkflowStore {
   }
 
   saveWorkflow(input: Partial<Workflow> & Pick<Workflow, "name" | "steps">): Workflow {
-    const payload = this.payload();
     const now = new Date().toISOString();
     const id = normalizeId(input.id) || randomId();
-    const existing = payload.workflows.find((workflow) => workflow.id === id);
-    const workflow = normalizeWorkflow({
-      ...existing,
-      ...input,
-      id,
-      createdAt: existing?.createdAt ?? input.createdAt ?? now,
-      updatedAt: now,
+    let workflow: Workflow;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const existing = payload.workflows.find((candidate) => candidate.id === id);
+      workflow = normalizeWorkflow({
+        ...existing,
+        ...input,
+        id,
+        createdAt: existing?.createdAt ?? input.createdAt ?? now,
+        updatedAt: now,
+      });
+      payload.workflows = upsertById(payload.workflows, workflow);
+      payload.versions = appendVersion(payload.versions ?? [], "workflow", workflow, input.ownerUserId);
+      return payload;
     });
-    payload.workflows = upsertById(payload.workflows, workflow);
-    payload.versions = appendVersion(payload.versions ?? [], "workflow", workflow, input.ownerUserId);
-    this.store.write(payload);
-    return workflow;
+    return workflow!;
   }
 
   deleteWorkflow(id: string): boolean {
-    const payload = this.payload();
-    const next = payload.workflows.filter((workflow) => workflow.id !== id);
-    if (next.length === payload.workflows.length) return false;
-    payload.workflows = next;
-    payload.versions = (payload.versions ?? []).filter((version) => !(version.kind === "workflow" && version.entityId === id));
-    this.store.write(payload);
-    return true;
+    let removed = false;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const next = payload.workflows.filter((workflow) => workflow.id !== id);
+      removed = next.length !== payload.workflows.length;
+      payload.workflows = next;
+      if (removed) {
+        payload.versions = (payload.versions ?? []).filter((version) => !(version.kind === "workflow" && version.entityId === id));
+      }
+      return payload;
+    });
+    return removed;
   }
 
   listWorkflowTriggers(workflowId: string): WorkflowTrigger[] {
@@ -332,10 +348,6 @@ export class WorkflowStore {
   }
 
   createWorkflowTrigger(workflowId: string, input: Partial<WorkflowTrigger> = {}): WorkflowTriggerCreateResult {
-    const workflow = this.getWorkflow(workflowId);
-    if (!workflow) {
-      throw new Error(`Workflow not found: ${workflowId}`);
-    }
     const now = new Date().toISOString();
     const token = `nrt_${randomBytes(24).toString("base64url")}`;
     const trigger: WorkflowTrigger = normalizeWorkflowTrigger({
@@ -347,24 +359,48 @@ export class WorkflowStore {
       createdAt: now,
       updatedAt: now,
     });
-    const updated = this.saveWorkflow({
-      ...workflow,
-      triggers: [...(workflow.triggers ?? []), trigger],
+    let updated: Workflow | undefined;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const workflow = payload.workflows.find((candidate) => candidate.id === workflowId);
+      if (!workflow) {
+        throw new Error(`Workflow not found: ${workflowId}`);
+      }
+      updated = normalizeWorkflow({
+        ...workflow,
+        triggers: [...(workflow.triggers ?? []), trigger],
+        updatedAt: now,
+      });
+      payload.workflows = upsertById(payload.workflows, updated);
+      payload.versions = appendVersion(payload.versions ?? [], "workflow", updated, workflow.ownerUserId);
+      return payload;
     });
-    const saved = updated.triggers?.find((candidate) => candidate.id === trigger.id) ?? trigger;
-    return { workflow: updated, trigger: saved, token };
+    const updatedWorkflow = updated!;
+    const saved = updatedWorkflow.triggers?.find((candidate: WorkflowTrigger) => candidate.id === trigger.id) ?? trigger;
+    return { workflow: updatedWorkflow, trigger: saved, token };
   }
 
   deleteWorkflowTrigger(workflowId: string, triggerId: string): { workflow: Workflow; removed: boolean } {
-    const workflow = this.getWorkflow(workflowId);
-    if (!workflow) {
-      throw new Error(`Workflow not found: ${workflowId}`);
-    }
-    const nextTriggers = (workflow.triggers ?? []).filter((trigger) => trigger.id !== triggerId);
-    if (nextTriggers.length === (workflow.triggers ?? []).length) {
-      return { workflow, removed: false };
-    }
-    return { workflow: this.saveWorkflow({ ...workflow, triggers: nextTriggers }), removed: true };
+    let updated: Workflow | null = null;
+    let removed = false;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const workflow = payload.workflows.find((candidate) => candidate.id === workflowId);
+      if (!workflow) {
+        throw new Error(`Workflow not found: ${workflowId}`);
+      }
+      const nextTriggers = (workflow.triggers ?? []).filter((trigger) => trigger.id !== triggerId);
+      removed = nextTriggers.length !== (workflow.triggers ?? []).length;
+      if (!removed) {
+        updated = workflow;
+        return payload;
+      }
+      updated = normalizeWorkflow({ ...workflow, triggers: nextTriggers, updatedAt: new Date().toISOString() });
+      payload.workflows = upsertById(payload.workflows, updated);
+      payload.versions = appendVersion(payload.versions ?? [], "workflow", updated, workflow.ownerUserId);
+      return payload;
+    });
+    return { workflow: updated!, removed };
   }
 
   findWorkflowTriggerByToken(token: string): { workflow: Workflow; trigger: WorkflowTrigger } | null {
@@ -379,13 +415,22 @@ export class WorkflowStore {
   }
 
   markWorkflowTriggerUsed(workflowId: string, triggerId: string): Workflow | null {
-    const workflow = this.getWorkflow(workflowId);
-    if (!workflow) return null;
     const now = new Date().toISOString();
-    return this.saveWorkflow({
-      ...workflow,
-      triggers: (workflow.triggers ?? []).map((trigger) => trigger.id === triggerId ? { ...trigger, lastTriggeredAt: now, updatedAt: now } : trigger),
+    let updated: Workflow | null = null;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const workflow = payload.workflows.find((candidate) => candidate.id === workflowId);
+      if (!workflow) return payload;
+      const triggers = (workflow.triggers ?? []).map((trigger) => trigger.id === triggerId ? { ...trigger, lastTriggeredAt: now, updatedAt: now } : trigger);
+      if (!triggers.some((trigger) => trigger.id === triggerId)) {
+        updated = workflow;
+        return payload;
+      }
+      updated = normalizeWorkflow({ ...workflow, triggers, updatedAt: now });
+      payload.workflows = upsertById(payload.workflows, updated);
+      return payload;
     });
+    return updated;
   }
 
   listVersions(kind: WorkflowVersionKind, entityId: string): WorkflowVersionRecord[] {
@@ -473,12 +518,14 @@ export class WorkflowStore {
   }
 
   saveRun(input: WorkflowRun): WorkflowRun {
-    const payload = this.payload();
     const run = normalizeRun(input);
-    payload.runs = upsertById(payload.runs, run)
-      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
-      .slice(0, this.maxRuns);
-    this.store.write(payload);
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      payload.runs = upsertById(payload.runs, run)
+        .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+        .slice(0, this.maxRuns);
+      return payload;
+    });
     return run;
   }
 
@@ -508,7 +555,10 @@ export class WorkflowStore {
   }
 
   private payload(): PersistedWorkflowStore {
-    const payload = this.store.read();
+    return this.normalizePayload(this.store.read());
+  }
+
+  private normalizePayload(payload: PersistedWorkflowStore | undefined): PersistedWorkflowStore {
     if (!payload || payload.version !== 1) {
       return { version: 1, templates: [], workflows: [], runs: [], versions: [] };
     }

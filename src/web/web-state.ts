@@ -79,58 +79,67 @@ export class WebChatStore {
   }
 
   appendWithResult(input: Omit<WebChatMessage, "id" | "timestamp"> & { timestamp?: string }): { message: WebChatMessage; inserted: boolean } {
-    const payload = this.readPayload();
     const threadId = input.threadId || "pending";
-    const messages = payload.messagesByThread[threadId] ?? [];
-    const duplicate = findDuplicateWebChatMessage(messages, { ...input, threadId });
-    if (duplicate) {
-      return { message: duplicate, inserted: false };
-    }
-    const message: WebChatMessage = {
-      id: randomId(),
-      timestamp: input.timestamp ?? new Date().toISOString(),
-      ...input,
-      threadId,
-    };
-    messages.push(message);
-    if (messages.length > this.maxMessages) {
-      messages.splice(0, messages.length - this.maxMessages);
-    }
-    payload.messagesByThread[threadId] = messages;
-    this.store.write(payload);
-    return { message, inserted: true };
+    let result: { message: WebChatMessage; inserted: boolean };
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const messages = payload.messagesByThread[threadId] ?? [];
+      const duplicate = findDuplicateWebChatMessage(messages, { ...input, threadId });
+      if (duplicate) {
+        result = { message: duplicate, inserted: false };
+        return payload;
+      }
+      const message: WebChatMessage = {
+        id: randomId(),
+        timestamp: input.timestamp ?? new Date().toISOString(),
+        ...input,
+        threadId,
+      };
+      messages.push(message);
+      if (messages.length > this.maxMessages) {
+        messages.splice(0, messages.length - this.maxMessages);
+      }
+      payload.messagesByThread[threadId] = messages;
+      result = { message, inserted: true };
+      return payload;
+    });
+    return result!;
   }
 
   upsertByKey(input: Omit<WebChatMessage, "id" | "timestamp"> & { timestamp?: string; key: string }): { message: WebChatMessage; inserted: boolean; updated: boolean } {
-    const payload = this.readPayload();
     const threadId = input.threadId || "pending";
-    const messages = payload.messagesByThread[threadId] ?? [];
     const now = new Date().toISOString();
-    const existing = messages.find((message) => message.key === input.key);
-    if (existing) {
-      existing.role = input.role;
-      existing.text = input.text;
-      existing.source = input.source;
-      existing.correlationId = input.correlationId;
-      existing.turnId = input.turnId;
-      existing.timestamp = input.timestamp ?? now;
-      existing.key = input.key;
-      this.store.write(payload);
-      return { message: existing, inserted: false, updated: true };
-    }
-    const message: WebChatMessage = {
-      id: randomId(),
-      timestamp: input.timestamp ?? now,
-      ...input,
-      threadId,
-    };
-    messages.push(message);
-    if (messages.length > this.maxMessages) {
-      messages.splice(0, messages.length - this.maxMessages);
-    }
-    payload.messagesByThread[threadId] = messages;
-    this.store.write(payload);
-    return { message, inserted: true, updated: false };
+    let result: { message: WebChatMessage; inserted: boolean; updated: boolean };
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const messages = payload.messagesByThread[threadId] ?? [];
+      const existing = messages.find((message) => message.key === input.key);
+      if (existing) {
+        existing.role = input.role;
+        existing.text = input.text;
+        existing.source = input.source;
+        existing.correlationId = input.correlationId;
+        existing.turnId = input.turnId;
+        existing.timestamp = input.timestamp ?? now;
+        existing.key = input.key;
+        result = { message: existing, inserted: false, updated: true };
+        return payload;
+      }
+      const message: WebChatMessage = {
+        id: randomId(),
+        timestamp: input.timestamp ?? now,
+        ...input,
+        threadId,
+      };
+      messages.push(message);
+      if (messages.length > this.maxMessages) {
+        messages.splice(0, messages.length - this.maxMessages);
+      }
+      payload.messagesByThread[threadId] = messages;
+      result = { message, inserted: true, updated: false };
+      return payload;
+    });
+    return result!;
   }
 
   list(threadId: string | null | undefined, limit = 200): WebChatMessage[] {
@@ -151,16 +160,22 @@ export class WebChatStore {
   }
 
   clear(threadId: string | null | undefined): number {
-    const payload = this.readPayload();
     const key = threadId || "pending";
-    const count = payload.messagesByThread[key]?.length ?? 0;
-    delete payload.messagesByThread[key];
-    this.store.write(payload);
+    let count = 0;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      count = payload.messagesByThread[key]?.length ?? 0;
+      delete payload.messagesByThread[key];
+      return payload;
+    });
     return count;
   }
 
   private readPayload(): PersistedWebChat {
-    const payload = this.store.read();
+    return this.normalizePayload(this.store.read());
+  }
+
+  private normalizePayload(payload: PersistedWebChat | undefined): PersistedWebChat {
     if (!payload || payload.version !== 1 || !payload.messagesByThread || typeof payload.messagesByThread !== "object") {
       return { version: 1, messagesByThread: {} };
     }
@@ -190,18 +205,20 @@ export class WebActivityStore {
   }
 
   append(input: Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }): WebActivityEvent {
-    const payload = this.readPayload();
     const event: WebActivityEvent = {
       id: randomId(),
       timestamp: input.timestamp ?? new Date().toISOString(),
       ...input,
       category: input.category ?? activityCategoryForType(input.type),
     };
-    payload.events.push(event);
-    if (payload.events.length > this.maxEvents) {
-      payload.events.splice(0, payload.events.length - this.maxEvents);
-    }
-    this.store.write(payload);
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      payload.events.push(event);
+      if (payload.events.length > this.maxEvents) {
+        payload.events.splice(0, payload.events.length - this.maxEvents);
+      }
+      return payload;
+    });
     return event;
   }
 
@@ -275,7 +292,10 @@ export class WebActivityStore {
   }
 
   private readPayload(): PersistedWebActivity {
-    const payload = this.store.read();
+    return this.normalizePayload(this.store.read());
+  }
+
+  private normalizePayload(payload: PersistedWebActivity | undefined): PersistedWebActivity {
     if (!payload || payload.version !== 1 || !Array.isArray(payload.events)) {
       return { version: 1, events: [] };
     }

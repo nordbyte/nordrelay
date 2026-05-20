@@ -144,9 +144,13 @@ function renderAdapterConformance(matrix){
 }
 function conformanceCard(item,kind){
   const missing=(item.unsupported||[]).length;
-  const commands=kind==='channel'&&item.commands?'<small>'+esc('Commands: '+item.commands.length+(item.commands.length?' / '+short(item.commands.join(', '),180):''))+'</small>':'';
+  const coverage=item.commandCoverage||{};
+  const commandMissing=(coverage.missing||[]).length;
+  const actionMissing=(item.actionUnsupported||[]).length;
+  const commands=kind==='channel'&&item.commands?'<small>'+esc('Commands: '+item.commands.length+(commandMissing?' / '+commandMissing+' missing':'')+(item.commands.length?' / '+short(item.commands.join(', '),180):''))+'</small>':'';
+  const actions=kind==='channel'&&item.actions?'<small>'+esc('Runtime actions: '+(item.actionSupported||[]).length+' supported'+(actionMissing?' / '+actionMissing+' limited':''))+'</small>'+conformanceFeatureMatrix(item.actions||[]):'';
   const badge=missing===0?'enabled':(item.status==='planned'?'disabled':'planned');
-  return '<div class="item"><strong>'+esc(item.label)+' <span class="adapter-status '+badge+'">'+esc(missing===0?'complete':missing+' missing')+'</span></strong><small>'+esc('Status: '+item.status+(item.enabled===undefined?'':' / '+(item.enabled?'enabled':'disabled')))+'</small>'+commands+conformanceFeatureMatrix(item.features||[])+'</div>';
+  return '<div class="item"><strong>'+esc(item.label)+' <span class="adapter-status '+badge+'">'+esc(missing===0?'complete':missing+' missing')+'</span></strong><small>'+esc('Status: '+item.status+(item.enabled===undefined?'':' / '+(item.enabled?'enabled':'disabled')))+'</small>'+commands+conformanceFeatureMatrix(item.features||[])+actions+'</div>';
 }
 function conformanceFeatureMatrix(features){
   return '<div class="feature-matrix">'+(features||[]).map(f=>'<span class="feature-chip '+(f.supported?'supported':'unsupported')+'" title="'+attr(f.description||f.key)+'"><span>'+esc(f.label||f.key)+'</span><b>'+(f.supported?'✓':'-')+'</b></span>').join('')+'</div>';

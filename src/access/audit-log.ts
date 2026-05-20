@@ -115,7 +115,6 @@ export class AuditLogStore {
   }
 
   append(event: Omit<AuditEvent, "id" | "timestamp" | "channelId"> & { channelId?: AuditEvent["channelId"] }): AuditEvent {
-    const payload = this.readPayload();
     const next: AuditEvent = {
       id: randomUUID().replace(/-/g, "").slice(0, 12),
       timestamp: new Date().toISOString(),
@@ -123,11 +122,14 @@ export class AuditLogStore {
       category: event.category ?? auditCategoryForAction(event.action),
       channelId: event.channelId ?? "telegram",
     };
-    payload.events.push(next);
-    if (payload.events.length > this.maxEvents) {
-      payload.events.splice(0, payload.events.length - this.maxEvents);
-    }
-    this.store.write(payload);
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      payload.events.push(next);
+      if (payload.events.length > this.maxEvents) {
+        payload.events.splice(0, payload.events.length - this.maxEvents);
+      }
+      return payload;
+    });
     return next;
   }
 
@@ -174,7 +176,10 @@ export class AuditLogStore {
   }
 
   private readPayload(): PersistedAuditLog {
-    const payload = this.store.read();
+    return this.normalizePayload(this.store.read());
+  }
+
+  private normalizePayload(payload: PersistedAuditLog | undefined): PersistedAuditLog {
     if (!payload || payload.version !== 1 || !Array.isArray(payload.events)) {
       return { version: 1, events: [] };
     }
