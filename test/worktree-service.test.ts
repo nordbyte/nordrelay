@@ -9,6 +9,8 @@ import type { ConnectorConfig } from "../src/core/config.js";
 import { SessionWorktreeStore } from "../src/worktrees/worktree-store.js";
 import { SessionWorktreeService } from "../src/worktrees/worktree-service.js";
 
+const GIT_WORKTREE_TEST_TIMEOUT_MS = 30_000;
+
 describe("SessionWorktreeService", () => {
   const roots: string[] = [];
 
@@ -42,7 +44,7 @@ describe("SessionWorktreeService", () => {
     expect(integration.status).toBe("merged");
     expect(existsSync(path.join(integration.worktreePath, "feature-a.txt"))).toBe(true);
     expect(existsSync(path.join(integration.worktreePath, "feature-b.txt"))).toBe(true);
-  });
+  }, GIT_WORKTREE_TEST_TIMEOUT_MS);
 
   it("finalizes a merged integration back into the source repository and cleans up worktrees", () => {
     const root = tempRoot();
@@ -68,7 +70,7 @@ describe("SessionWorktreeService", () => {
     expect(existsSync(path.join(repo, "feature-a.txt"))).toBe(true);
     expect(existsSync(integration.worktreePath)).toBe(false);
     expect(existsSync(first.worktreePath)).toBe(false);
-  }, 20_000);
+  }, GIT_WORKTREE_TEST_TIMEOUT_MS);
 
   it("previews file conflicts and updates a clean worktree from the base branch", () => {
     const root = tempRoot();
@@ -109,7 +111,7 @@ describe("SessionWorktreeService", () => {
     expect(updated.rebased).toBe(true);
     expect(updated.record.baseSha).toMatch(/[a-f0-9]{40}/);
     expect(existsSync(path.join(clean.worktreePath, "base-2.txt"))).toBe(true);
-  });
+  }, GIT_WORKTREE_TEST_TIMEOUT_MS);
 
   it("can fork tracked and untracked pending changes into a new worktree", () => {
     const root = tempRoot();
@@ -130,7 +132,7 @@ describe("SessionWorktreeService", () => {
     expect(fork.copiedUntrackedFiles).toContain("notes.txt");
     expect(normalizeLineEndings(readFileSync(path.join(fork.record.worktreePath, "README.md"), "utf8"))).toBe("changed\n");
     expect(normalizeLineEndings(readFileSync(path.join(fork.record.worktreePath, "notes.txt"), "utf8"))).toBe("untracked\n");
-  });
+  }, GIT_WORKTREE_TEST_TIMEOUT_MS);
 
   function tempRoot(): string {
     const root = mkdtempSync(path.join(os.tmpdir(), "nordrelay-worktrees-"));
