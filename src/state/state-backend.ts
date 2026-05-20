@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-import { readJsonFileWithBackup, writeJsonFileAtomic } from "./persistence.js";
+import { readJsonFileWithBackup, updateJsonFileAtomic, writeJsonFileAtomic } from "./persistence.js";
 
 export type StateBackendKind = "json" | "sqlite";
 
@@ -11,6 +11,7 @@ export interface DocumentStore<TValue> {
   filePath: string;
   read(): TValue | undefined;
   write(value: TValue): void;
+  update(updater: (current: TValue | undefined) => TValue): TValue;
   close?(): void;
 }
 
@@ -96,6 +97,9 @@ function createJsonDocumentStore<TValue>(options: DocumentStoreOptions): Documen
     write(value) {
       writeJsonFileAtomic(filePath, value);
     },
+    update(updater) {
+      return updateJsonFileAtomic(filePath, updater);
+    },
   };
 }
 
@@ -129,19 +133,7 @@ function createSqliteDocumentStore<TValue>(options: DocumentStoreOptions): Docum
     kind: "sqlite",
     filePath,
     read() {
-      const row = db.prepare("SELECT json FROM documents WHERE key = ?").get(options.sqliteKey) as { json?: unknown } | undefined;
-      if (typeof row?.json !== "string") {
-        return undefined;
-      }
-      try {
-        return JSON.parse(row.json) as TValue;
-      } catch (error) {
-        console.warn(
-          `Failed to parse SQLite state document ${options.sqliteKey}:`,
-          error instanceof Error ? error.message : String(error),
-        );
-        return undefined;
-      }
+      return readSqliteDocument<TValue>(db, options.sqliteKey);
     },
     write(value) {
       db.prepare([
@@ -149,8 +141,43 @@ function createSqliteDocumentStore<TValue>(options: DocumentStoreOptions): Docum
         "ON CONFLICT(key) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at",
       ].join(" ")).run(options.sqliteKey, JSON.stringify(value), new Date().toISOString());
     },
+    update(updater) {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const next = updater(readSqliteDocument<TValue>(db, options.sqliteKey));
+        db.prepare([
+          "INSERT INTO documents (key, json, updated_at) VALUES (?, ?, ?)",
+          "ON CONFLICT(key) DO UPDATE SET json = excluded.json, updated_at = excluded.updated_at",
+        ].join(" ")).run(options.sqliteKey, JSON.stringify(next), new Date().toISOString());
+        db.exec("COMMIT");
+        return next;
+      } catch (error) {
+        try {
+          db.exec("ROLLBACK");
+        } catch {
+          // Ignore rollback failures and surface the original error.
+        }
+        throw error;
+      }
+    },
     close() {
       db.close();
     },
   };
+}
+
+function readSqliteDocument<TValue>(db: SqliteDatabase, key: string): TValue | undefined {
+  const row = db.prepare("SELECT json FROM documents WHERE key = ?").get(key) as { json?: unknown } | undefined;
+  if (typeof row?.json !== "string") {
+    return undefined;
+  }
+  try {
+    return JSON.parse(row.json) as TValue;
+  } catch (error) {
+    console.warn(
+      `Failed to parse SQLite state document ${key}:`,
+      error instanceof Error ? error.message : String(error),
+    );
+    return undefined;
+  }
 }

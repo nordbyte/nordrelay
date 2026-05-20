@@ -1,0 +1,47 @@
+#!/usr/bin/env node
+import { readFileSync } from "node:fs";
+import process from "node:process";
+
+const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const packageVersion = String(pkg.version ?? "").trim();
+const expectedTag = `v${packageVersion}`;
+const eventName = process.env.GITHUB_EVENT_NAME ?? "";
+const releaseTag = firstNonEmpty(
+  process.env.NORDRELAY_RELEASE_TAG,
+  process.env.GITHUB_RELEASE_TAG,
+  process.env.GITHUB_REF_TYPE === "tag" ? process.env.GITHUB_REF_NAME : undefined,
+);
+const requestedVersion = firstNonEmpty(
+  process.env.NORDRELAY_RELEASE_VERSION,
+  process.env.INPUT_VERSION,
+);
+
+if (!packageVersion) {
+  fail("package.json does not define a version.");
+}
+
+if (eventName === "release" || releaseTag) {
+  if (releaseTag !== expectedTag) {
+    fail(`Release tag ${releaseTag || "(missing)"} does not match package.json version ${packageVersion}; expected ${expectedTag}.`);
+  }
+}
+
+if (eventName === "workflow_dispatch") {
+  if (!requestedVersion) {
+    fail("workflow_dispatch requires NORDRELAY_RELEASE_VERSION or INPUT_VERSION.");
+  }
+  if (requestedVersion !== packageVersion) {
+    fail(`Requested version ${requestedVersion} does not match package.json version ${packageVersion}.`);
+  }
+}
+
+console.log(`Release version verified: ${expectedTag}`);
+
+function firstNonEmpty(...values) {
+  return values.map((value) => String(value ?? "").trim()).find(Boolean);
+}
+
+function fail(message) {
+  console.error(message);
+  process.exit(1);
+}

@@ -55,5 +55,6 @@ export function renderWorkspacePolicyLine(workspace: string, config: WorkspacePo
 }
 
 function isPathInside(candidate: string, root: string): boolean {
-  return candidate === root || candidate.startsWith(`${root}${path.sep}`);
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }

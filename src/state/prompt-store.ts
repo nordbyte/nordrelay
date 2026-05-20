@@ -30,6 +30,12 @@ interface PersistedPromptStore {
   pausedContexts?: ChannelContextKey[];
 }
 
+interface PromptStoreState {
+  lastPrompts: Map<ChannelContextKey, PromptEnvelope>;
+  queues: Map<ChannelContextKey, QueuedPrompt[]>;
+  pausedContexts: Set<ChannelContextKey>;
+}
+
 export class PromptStore {
   private readonly store: DocumentStore<PersistedPromptStore>;
   private lastPrompts = new Map<ChannelContextKey, PromptEnvelope>();
@@ -43,71 +49,79 @@ export class PromptStore {
       sqliteKey: "prompts",
       backend,
     });
-    this.load();
+    this.refresh();
   }
 
   setLastPrompt(contextKey: ChannelContextKey, prompt: PromptEnvelope): void {
-    this.lastPrompts.set(contextKey, prompt);
-    this.persist();
+    this.updateState((state) => {
+      state.lastPrompts.set(contextKey, prompt);
+    });
   }
 
   getLastPrompt(contextKey: ChannelContextKey): PromptEnvelope | undefined {
+    this.refresh();
     return this.lastPrompts.get(contextKey);
   }
 
   enqueue(contextKey: ChannelContextKey, prompt: PromptEnvelope, options: { notBefore?: number } = {}): QueuedPrompt {
-    const item: QueuedPrompt = {
-      ...prompt,
-      id: createQueueId(),
-      contextKey,
-      createdAt: Date.now(),
-      notBefore: options.notBefore,
-    };
-    const queue = this.queues.get(contextKey) ?? [];
-    queue.push(item);
-    this.queues.set(contextKey, queue);
-    this.persist();
-    return item;
+    return this.updateState((state) => {
+      const item: QueuedPrompt = {
+        ...prompt,
+        id: createQueueId(),
+        contextKey,
+        createdAt: Date.now(),
+        notBefore: options.notBefore,
+      };
+      const queue = state.queues.get(contextKey) ?? [];
+      queue.push(item);
+      state.queues.set(contextKey, queue);
+      return item;
+    });
   }
 
   enqueueFront(contextKey: ChannelContextKey, prompt: QueuedPrompt): void {
-    const queue = this.queues.get(contextKey) ?? [];
-    queue.unshift(prompt);
-    this.queues.set(contextKey, queue);
-    this.persist();
+    this.updateState((state) => {
+      const queue = (state.queues.get(contextKey) ?? []).filter((item) => item.id !== prompt.id);
+      queue.unshift({ ...prompt, updatedAt: Date.now() });
+      state.queues.set(contextKey, queue);
+    });
   }
 
   dequeue(contextKey: ChannelContextKey): QueuedPrompt | undefined {
-    const queue = this.queues.get(contextKey);
-    if (!queue || queue.length === 0) {
-      return undefined;
-    }
-    const now = Date.now();
-    const index = queue.findIndex((queued) => !queued.notBefore || queued.notBefore <= now);
-    if (index === -1) {
-      return undefined;
-    }
-    const [item] = queue.splice(index, 1);
-    if (!queue || queue.length === 0) {
-      this.queues.delete(contextKey);
-    }
-    if (item) {
-      item.attempts = (item.attempts ?? 0) + 1;
-      item.updatedAt = Date.now();
-    }
-    this.persist();
-    return item;
+    return this.updateState((state) => {
+      const queue = state.queues.get(contextKey);
+      if (!queue || queue.length === 0) {
+        return undefined;
+      }
+      const now = Date.now();
+      const index = queue.findIndex((queued) => !queued.notBefore || queued.notBefore <= now);
+      if (index === -1) {
+        return undefined;
+      }
+      const [item] = queue.splice(index, 1);
+      if (queue.length === 0) {
+        state.queues.delete(contextKey);
+      }
+      if (item) {
+        item.attempts = (item.attempts ?? 0) + 1;
+        item.updatedAt = Date.now();
+      }
+      return item;
+    });
   }
 
   list(contextKey: ChannelContextKey): QueuedPrompt[] {
+    this.refresh();
     return [...(this.queues.get(contextKey) ?? [])];
   }
 
   get(contextKey: ChannelContextKey, id: string): QueuedPrompt | undefined {
+    this.refresh();
     return this.queues.get(contextKey)?.find((item) => item.id === id);
   }
 
   nextRunnableAt(contextKey: ChannelContextKey): number | null {
+    this.refresh();
     const timestamps = (this.queues.get(contextKey) ?? [])
       .map((item) => item.notBefore)
       .filter((value): value is number => typeof value === "number")
@@ -116,144 +130,147 @@ export class PromptStore {
   }
 
   listContextKeys(): ChannelContextKey[] {
+    this.refresh();
     return [...new Set([...this.queues.keys(), ...this.pausedContexts])];
   }
 
   remove(contextKey: ChannelContextKey, id: string): QueuedPrompt | undefined {
-    const queue = this.queues.get(contextKey);
-    if (!queue) {
-      return undefined;
-    }
+    return this.updateState((state) => {
+      const queue = state.queues.get(contextKey);
+      if (!queue) {
+        return undefined;
+      }
 
-    const index = queue.findIndex((item) => item.id === id);
-    if (index === -1) {
-      return undefined;
-    }
+      const index = queue.findIndex((item) => item.id === id);
+      if (index === -1) {
+        return undefined;
+      }
 
-    const [removed] = queue.splice(index, 1);
-    if (queue.length === 0) {
-      this.queues.delete(contextKey);
-    }
-    this.persist();
-    return removed;
+      const [removed] = queue.splice(index, 1);
+      if (queue.length === 0) {
+        state.queues.delete(contextKey);
+      }
+      return removed;
+    });
   }
 
   moveToTop(contextKey: ChannelContextKey, id: string): QueuedPrompt | undefined {
-    const queue = this.queues.get(contextKey);
-    if (!queue) {
-      return undefined;
-    }
+    return this.updateState((state) => {
+      const queue = state.queues.get(contextKey);
+      if (!queue) {
+        return undefined;
+      }
 
-    const index = queue.findIndex((item) => item.id === id);
-    if (index === -1) {
-      return undefined;
-    }
+      const index = queue.findIndex((item) => item.id === id);
+      if (index === -1) {
+        return undefined;
+      }
 
-    const [item] = queue.splice(index, 1);
-    queue.unshift(item);
-    this.persist();
-    return item;
+      const [item] = queue.splice(index, 1);
+      item.updatedAt = Date.now();
+      queue.unshift(item);
+      return item;
+    });
   }
 
   moveUp(contextKey: ChannelContextKey, id: string): QueuedPrompt | undefined {
-    const queue = this.queues.get(contextKey);
-    if (!queue) {
-      return undefined;
-    }
-    const index = queue.findIndex((item) => item.id === id);
-    if (index <= 0) {
-      return queue[index];
-    }
-    const [item] = queue.splice(index, 1);
-    queue.splice(index - 1, 0, item);
-    item.updatedAt = Date.now();
-    this.persist();
-    return item;
+    return this.updateState((state) => {
+      const queue = state.queues.get(contextKey);
+      if (!queue) {
+        return undefined;
+      }
+      const index = queue.findIndex((item) => item.id === id);
+      if (index <= 0) {
+        return queue[index];
+      }
+      const [item] = queue.splice(index, 1);
+      queue.splice(index - 1, 0, item);
+      item.updatedAt = Date.now();
+      return item;
+    });
   }
 
   moveDown(contextKey: ChannelContextKey, id: string): QueuedPrompt | undefined {
-    const queue = this.queues.get(contextKey);
-    if (!queue) {
-      return undefined;
-    }
-    const index = queue.findIndex((item) => item.id === id);
-    if (index === -1) {
-      return undefined;
-    }
-    if (index >= queue.length - 1) {
-      return queue[index];
-    }
-    const [item] = queue.splice(index, 1);
-    queue.splice(index + 1, 0, item);
-    item.updatedAt = Date.now();
-    this.persist();
-    return item;
+    return this.updateState((state) => {
+      const queue = state.queues.get(contextKey);
+      if (!queue) {
+        return undefined;
+      }
+      const index = queue.findIndex((item) => item.id === id);
+      if (index === -1) {
+        return undefined;
+      }
+      if (index >= queue.length - 1) {
+        return queue[index];
+      }
+      const [item] = queue.splice(index, 1);
+      queue.splice(index + 1, 0, item);
+      item.updatedAt = Date.now();
+      return item;
+    });
   }
 
   markFailed(contextKey: ChannelContextKey, item: QueuedPrompt, error: string): void {
-    item.lastError = error;
-    item.updatedAt = Date.now();
-    this.enqueueFront(contextKey, item);
+    this.updateState((state) => {
+      const queue = (state.queues.get(contextKey) ?? []).filter((queued) => queued.id !== item.id);
+      queue.unshift({ ...item, lastError: error, updatedAt: Date.now() });
+      state.queues.set(contextKey, queue);
+    });
   }
 
   clear(contextKey: ChannelContextKey): number {
-    const count = this.queues.get(contextKey)?.length ?? 0;
-    this.queues.delete(contextKey);
-    this.persist();
-    return count;
+    return this.updateState((state) => {
+      const count = state.queues.get(contextKey)?.length ?? 0;
+      state.queues.delete(contextKey);
+      return count;
+    });
   }
 
   pause(contextKey: ChannelContextKey): void {
-    this.pausedContexts.add(contextKey);
-    this.persist();
+    this.updateState((state) => {
+      state.pausedContexts.add(contextKey);
+    });
   }
 
   resume(contextKey: ChannelContextKey): void {
-    this.pausedContexts.delete(contextKey);
-    this.persist();
+    this.updateState((state) => {
+      state.pausedContexts.delete(contextKey);
+    });
   }
 
   isPaused(contextKey: ChannelContextKey): boolean {
+    this.refresh();
     return this.pausedContexts.has(contextKey);
   }
 
-  private persist(): void {
+  private updateState<TResult>(mutator: (state: PromptStoreState) => TResult): TResult {
+    let result: TResult;
     try {
-      const payload: PersistedPromptStore = {
-        lastPrompts: Object.fromEntries(this.lastPrompts.entries()),
-        queues: Object.fromEntries(this.queues.entries()),
-        pausedContexts: [...this.pausedContexts],
-      };
-      this.store.write(payload);
+      const payload = this.store.update((current) => {
+        const state = stateFromPayload(current);
+        result = mutator(state);
+        return payloadFromState(state);
+      });
+      this.applyState(stateFromPayload(payload));
+      return result!;
     } catch (error) {
       console.warn("Failed to persist prompt store:", error instanceof Error ? error.message : String(error));
+      throw error;
     }
   }
 
-  private load(): void {
+  private refresh(): void {
     try {
-      const payload = this.store.read();
-      if (!payload) {
-        return;
-      }
-      for (const [contextKey, prompt] of Object.entries(payload.lastPrompts ?? {})) {
-        if (isPromptEnvelope(prompt)) {
-          this.lastPrompts.set(contextKey, prompt);
-        }
-      }
-      for (const [contextKey, queue] of Object.entries(payload.queues ?? {})) {
-        if (Array.isArray(queue)) {
-          this.queues.set(contextKey, queue.filter(isQueuedPrompt));
-        }
-      }
-      if (Array.isArray(payload.pausedContexts)) {
-        this.pausedContexts = new Set(
-          payload.pausedContexts.filter((contextKey): contextKey is string => typeof contextKey === "string"),
-        );
-      }
+      this.applyState(stateFromPayload(this.store.read()));
     } catch (error) {
       console.warn("Failed to load prompt store:", error instanceof Error ? error.message : String(error));
     }
+  }
+
+  private applyState(state: PromptStoreState): void {
+    this.lastPrompts = state.lastPrompts;
+    this.queues = state.queues;
+    this.pausedContexts = state.pausedContexts;
   }
 }
 
@@ -329,6 +346,44 @@ export function ensurePromptCorrelationId<T extends PromptEnvelope>(prompt: T): 
 
 function createQueueId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 8);
+}
+
+function stateFromPayload(payload: PersistedPromptStore | undefined): PromptStoreState {
+  const state: PromptStoreState = {
+    lastPrompts: new Map(),
+    queues: new Map(),
+    pausedContexts: new Set(),
+  };
+  if (!payload) {
+    return state;
+  }
+  for (const [contextKey, prompt] of Object.entries(payload.lastPrompts ?? {})) {
+    if (isPromptEnvelope(prompt)) {
+      state.lastPrompts.set(contextKey, prompt);
+    }
+  }
+  for (const [contextKey, queue] of Object.entries(payload.queues ?? {})) {
+    if (Array.isArray(queue)) {
+      const items = queue.filter(isQueuedPrompt);
+      if (items.length > 0) {
+        state.queues.set(contextKey, items);
+      }
+    }
+  }
+  if (Array.isArray(payload.pausedContexts)) {
+    state.pausedContexts = new Set(
+      payload.pausedContexts.filter((contextKey): contextKey is string => typeof contextKey === "string"),
+    );
+  }
+  return state;
+}
+
+function payloadFromState(state: PromptStoreState): PersistedPromptStore {
+  return {
+    lastPrompts: Object.fromEntries(state.lastPrompts.entries()),
+    queues: Object.fromEntries([...state.queues.entries()].filter(([, queue]) => queue.length > 0)),
+    pausedContexts: [...state.pausedContexts],
+  };
 }
 
 function isPromptEnvelope(value: unknown): value is PromptEnvelope {

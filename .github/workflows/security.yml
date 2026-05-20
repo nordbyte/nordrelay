@@ -28,7 +28,11 @@ jobs:
       - name: Install Gitleaks
         run: |
           set -euo pipefail
-          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o gitleaks.tar.gz
+          artifact="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSLO "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${artifact}"
+          curl -fsSLO "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep " ${artifact}$" "gitleaks_${GITLEAKS_VERSION}_checksums.txt" | sha256sum -c -
+          mv "${artifact}" gitleaks.tar.gz
           tar -xzf gitleaks.tar.gz gitleaks
           sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
           gitleaks version
@@ -49,7 +53,7 @@ jobs:
           persist-credentials: false
 
       - name: Run TruffleHog
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@v3.95.3
         with:
           path: ./
           extra_args: --only-verified

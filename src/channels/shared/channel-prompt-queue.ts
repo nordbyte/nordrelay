@@ -20,6 +20,9 @@ export async function queueChannelPromptIfBusy<Request extends ChannelBridgeRequ
   const item = options.fromQueue && isQueuedPrompt(options.envelope)
     ? options.envelope
     : options.promptStore.enqueue(options.request.contextKey, options.envelope);
+  if (options.fromQueue && isQueuedPrompt(options.envelope)) {
+    options.promptStore.enqueueFront(options.request.contextKey, options.envelope);
+  }
   const position = options.promptStore.list(options.request.contextKey).findIndex((queued) => queued.id === item.id) + 1;
   const text = options.busy.kind === "external"
     ? `Queued prompt ${item.id} at position ${position}. The ${options.busy.agentLabel} session is still active and is processing a previous task.`

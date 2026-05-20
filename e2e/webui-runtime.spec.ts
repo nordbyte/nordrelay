@@ -7,6 +7,7 @@ import type { AddressInfo } from "node:net";
 
 import { expect, test } from "@playwright/test";
 
+import { READONLY_GROUP_ID } from "../src/access/access-control.js";
 import { UserStore } from "../src/access/user-management.js";
 
 test.describe("NordRelay WebUI runtime", () => {
@@ -76,6 +77,35 @@ test.describe("NordRelay WebUI runtime", () => {
     }));
     expect(firstEvent).toBe("snapshot");
   });
+
+  test("rejects mutating API requests without CSRF or required permissions", async ({ page }) => {
+    expect(runtime).toBeDefined();
+    const server = runtime!;
+
+    const adminLogin = await page.request.post(`${server.baseUrl}/api/auth`, {
+      data: { email: server.email, password: server.password },
+    });
+    expect(adminLogin.status()).toBe(200);
+
+    const missingCsrf = await page.request.patch(`${server.baseUrl}/api/settings`, {
+      data: { settings: { NORDRELAY_WEBUI_ENABLED: "true" } },
+    });
+    expect(missingCsrf.status()).toBe(403);
+    expect(await missingCsrf.json()).toMatchObject({ error: "Invalid CSRF token." });
+
+    const readonlyLogin = await page.request.post(`${server.baseUrl}/api/auth`, {
+      data: { email: server.readonlyEmail, password: server.readonlyPassword },
+    });
+    expect(readonlyLogin.status()).toBe(200);
+    const readonlyAuth = await readonlyLogin.json() as { csrfToken: string };
+    expect(readonlyAuth.csrfToken).toBeTruthy();
+
+    const forbidden = await page.request.patch(`${server.baseUrl}/api/settings`, {
+      headers: { "x-nordrelay-csrf": readonlyAuth.csrfToken },
+      data: { settings: { NORDRELAY_WEBUI_ENABLED: "true" } },
+    });
+    expect(forbidden.status()).toBe(403);
+  });
 });
 
 type RuntimeServer = {
@@ -83,6 +113,8 @@ type RuntimeServer = {
   home: string;
   email: string;
   password: string;
+  readonlyEmail: string;
+  readonlyPassword: string;
   close: () => Promise<void>;
 };
 
@@ -91,7 +123,16 @@ async function startRuntimeServer(): Promise<RuntimeServer> {
   const workspace = path.join(home, "workspace");
   const email = "runtime-admin@example.com";
   const password = "runtime-password-123";
-  new UserStore(home).createAdmin({ email, displayName: "Runtime Admin", password });
+  const readonlyEmail = "runtime-readonly@example.com";
+  const readonlyPassword = "runtime-readonly-password-123";
+  const users = new UserStore(home);
+  users.createAdmin({ email, displayName: "Runtime Admin", password });
+  users.createUser({
+    email: readonlyEmail,
+    displayName: "Runtime Readonly",
+    password: readonlyPassword,
+    groupIds: [READONLY_GROUP_ID],
+  });
 
   const port = await freePort();
   const child = spawn(process.execPath, [
@@ -148,6 +189,8 @@ async function startRuntimeServer(): Promise<RuntimeServer> {
     home,
     email,
     password,
+    readonlyEmail,
+    readonlyPassword,
     close: async () => {
       await stopChild(child);
       removeHome(home);

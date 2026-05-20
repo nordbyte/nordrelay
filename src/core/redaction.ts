@@ -1,7 +1,11 @@
+import { SECRET_KEYS } from "./config-metadata.js";
+
 const DEFAULT_SECRET_PATTERNS: RegExp[] = [
   /\b\d{6,}:[A-Za-z0-9_-]{24,}\b/g,
   /\bsk-[A-Za-z0-9_-]{20,}\b/g,
-  /\b(?:OPENAI|CODEX|TELEGRAM|ANTHROPIC|GITHUB|GITLAB|NPM)_[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)\s*=\s*[^\s"'`]+/gi,
+  secretKeysPattern(),
+  /\b[A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD|AUTHORIZATION)\s*=\s*[^\s"'`]+/gi,
+  /\bAuthorization\s*:\s*(?:Bearer\s+)?[^\s"'`]+/gi,
   /\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password)\s*[:=]\s*[^\s"'`]+/gi,
 ];
 
@@ -47,4 +51,13 @@ function redactMatch(match: string): string {
     return `${separator[1]}[REDACTED]`;
   }
   return "[REDACTED]";
+}
+
+function secretKeysPattern(): RegExp {
+  const keys = [...SECRET_KEYS].map(escapeRegExp).join("|");
+  return new RegExp("\\b(?:" + keys + ")\\s*[:=]\\s*[^\\s\"'`]+", "gi");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

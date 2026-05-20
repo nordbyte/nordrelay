@@ -28,8 +28,10 @@ const routeMetrics = new Map<string, WebApiRouteMetric & { totalMs: number }>();
 const MAX_RECENT = 200;
 
 export function recordWebApiMetric(sample: Omit<WebApiMetricSample, "at"> & { at?: string }): void {
+  const path = routeKey(sample.path);
   const next: WebApiMetricSample = {
     ...sample,
+    path,
     durationMs: Math.max(0, Math.round(sample.durationMs)),
     at: sample.at ?? new Date().toISOString(),
   };
@@ -37,12 +39,12 @@ export function recordWebApiMetric(sample: Omit<WebApiMetricSample, "at"> & { at
   if (recent.length > MAX_RECENT) {
     recent.splice(0, recent.length - MAX_RECENT);
   }
-  const key = `${next.method} ${routeKey(next.path)}`;
+  const key = `${next.method} ${next.path}`;
   const existing = routeMetrics.get(key);
   if (!existing) {
     routeMetrics.set(key, {
       method: next.method,
-      path: routeKey(next.path),
+      path: next.path,
       count: 1,
       averageMs: next.durationMs,
       maxMs: next.durationMs,
@@ -80,6 +82,7 @@ function routeKey(path: string): string {
     .replace(/\/api\/peers\/[^/]+\/health$/, "/api/peers/:id/health")
     .replace(/\/api\/peers\/[^/]+\/repin$/, "/api/peers/:id/repin")
     .replace(/\/api\/peers\/[^/]+\/rotate$/, "/api/peers/:id/rotate")
+    .replace(/\/api\/workflow-triggers\/[^/]+\/run$/, "/api/workflow-triggers/:token/run")
     .replace(/\/api\/agent-update\/[^/]+\/(log|input|cancel)$/, "/api/agent-update/:id/$1")
     .replace(/\/api\/jobs\/[^/]+\/(log|action)$/, "/api/jobs/:id/$1")
     .replace(/\/api\/trace$/, "/api/trace")

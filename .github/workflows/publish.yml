@@ -5,6 +5,11 @@ on:
     types:
       - published
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version to publish. Must match package.json."
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -16,14 +21,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  version-guard:
+    name: Verify release version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Verify package version matches release
+        env:
+          GITHUB_RELEASE_TAG: ${{ github.event.release.tag_name }}
+          NORDRELAY_RELEASE_VERSION: ${{ inputs.version }}
+        run: node scripts/verify-release-version.mjs
+
   verify:
     name: Verify package
+    needs:
+      - version-guard
     uses: ./.github/workflows/reusable-verify.yml
 
   npm:
     name: npmjs.com
     runs-on: ubuntu-latest
     needs:
+      - version-guard
       - verify
     timeout-minutes: 15
 
@@ -64,6 +89,7 @@ jobs:
     name: GitHub Packages
     runs-on: ubuntu-latest
     needs:
+      - version-guard
       - verify
     timeout-minutes: 15
 

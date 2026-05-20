@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { MetricsHistoryStore } from "../src/state/metrics-history-store.js";
 import { buildRuntimeMetrics, runtimeMetricHistorySample, type RuntimeMetricHistorySample } from "../src/runtime/metrics.js";
-import { recordWebApiMetric } from "../src/web/web-performance.js";
+import { getWebApiPerformanceMetrics, recordWebApiMetric } from "../src/web/web-performance.js";
 
 describe("runtime metrics", () => {
   it("includes process, memory, cpu, and event-loop observability", () => {
@@ -73,6 +73,25 @@ describe("runtime metrics", () => {
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
+  });
+
+  it("redacts workflow trigger tokens from web API metrics", () => {
+    const secret = "nrt_super_secret_trigger";
+    recordWebApiMetric({
+      method: "POST",
+      path: `/api/workflow-triggers/${secret}/run`,
+      statusCode: 202,
+      durationMs: 5,
+      at: "2026-05-15T10:05:00.000Z",
+    });
+
+    const metrics = getWebApiPerformanceMetrics();
+    const serialized = JSON.stringify(metrics);
+
+    expect(serialized).not.toContain(secret);
+    expect(metrics.recent[0]?.path).toBe("/api/workflow-triggers/:token/run");
+    expect(metrics.slowest.some((sample) => sample.path === "/api/workflow-triggers/:token/run")).toBe(true);
+    expect(metrics.routes.some((route) => route.path === "/api/workflow-triggers/:token/run")).toBe(true);
   });
 });
 

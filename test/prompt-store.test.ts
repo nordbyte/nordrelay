@@ -106,6 +106,41 @@ describe("PromptStore", () => {
     }
   });
 
+  it("preserves independent queue writes from multiple JSON store instances", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "prompt-store-"));
+    try {
+      const first = new PromptStore(workspace);
+      const second = new PromptStore(workspace);
+
+      const queuedA = first.enqueue("ctx-a", toPromptEnvelope("from first"));
+      const queuedB = second.enqueue("ctx-b", toPromptEnvelope("from second"));
+
+      const loaded = new PromptStore(workspace);
+      expect(loaded.list("ctx-a").map((item) => item.id)).toEqual([queuedA.id]);
+      expect(loaded.list("ctx-b").map((item) => item.id)).toEqual([queuedB.id]);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("requeues an in-flight queued prompt without duplicating it", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "prompt-store-"));
+    try {
+      const store = new PromptStore(workspace);
+      const queued = store.enqueue("ctx", toPromptEnvelope("queued"));
+      const next = store.dequeue("ctx");
+      expect(next?.id).toBe(queued.id);
+
+      store.enqueueFront("ctx", next!);
+      store.enqueueFront("ctx", next!);
+
+      expect(store.list("ctx").map((item) => item.id)).toEqual([queued.id]);
+      expect(store.list("ctx")[0]?.attempts).toBe(1);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("recovers persisted prompts from the atomic-write backup", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "prompt-store-"));
     try {
