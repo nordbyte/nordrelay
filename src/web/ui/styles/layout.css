@@ -251,6 +251,7 @@ input[type=file]{display:none}
 .tabs button{background:var(--surface);color:var(--text);border-color:var(--border);min-height:34px;height:34px;line-height:1}
 .tabs button.active{background:var(--accent);color:white;border-color:var(--accent)}
 .pager{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;color:var(--muted)}
+#logPager>span{font-size:14px}
 .pager-actions{display:flex;gap:8px}
 .pager button:disabled{opacity:.45;cursor:not-allowed}
 pre{white-space:pre-wrap;word-break:break-word;background:var(--pre);color:var(--pre-text);border-radius:8px;padding:14px;overflow:auto}
