@@ -105,14 +105,20 @@ async function loadActiveSessions(options:any={}){
   }
 }
 function startActiveSessionsRefresh(){
+  startActiveSessionDurationCounter();
   if(state.activeSessionsTimer)return;
   state.activeSessionsTimer=setInterval(()=>{if(state.currentPage==='overview')safe(()=>loadActiveSessions({fresh:true}));else stopActiveSessionsRefresh()},5000);
 }
 function stopActiveSessionsRefresh(){
-  if(!state.activeSessionsTimer)return;
-  clearInterval(state.activeSessionsTimer);
+  if(state.activeSessionsTimer)clearInterval(state.activeSessionsTimer);
   state.activeSessionsTimer=null;
+  stopActiveSessionDurationCounter();
 }
+function activeSessionDurationMs(s){const started=Date.parse(s.startedAt||'');if(Number.isFinite(started))return Math.max(0,Date.now()-started);return Number.isFinite(Number(s.durationMs))?Number(s.durationMs):0}
+function activeSessionDurationHtml(s){const started=Date.parse(s.startedAt||'');const attrs=Number.isFinite(started)?' data-active-duration-started="'+attr(String(started))+'"':'';return '<span class="active-session-duration"'+attrs+'>'+esc(fmtDuration(activeSessionDurationMs(s)))+'</span>'}
+function updateActiveSessionDurationCounters(){document.querySelectorAll('[data-active-duration-started]').forEach(el=>{const started=Number(el.dataset.activeDurationStarted);if(Number.isFinite(started))el.textContent=fmtDuration(Math.max(0,Date.now()-started))})}
+function startActiveSessionDurationCounter(){updateActiveSessionDurationCounters();if(state.activeSessionDurationTimer)return;state.activeSessionDurationTimer=setInterval(()=>{if(state.currentPage!=='overview'){stopActiveSessionDurationCounter();return}updateActiveSessionDurationCounters()},1000)}
+function stopActiveSessionDurationCounter(){if(state.activeSessionDurationTimer)clearInterval(state.activeSessionDurationTimer);state.activeSessionDurationTimer=null}
 function updateActiveSessionsCount(items:any=undefined){
   const sessions=Array.isArray(items)?items:(Array.isArray(state.activeSessions?.sessions)?state.activeSessions.sessions:[]);
   const count=sessions.length;
@@ -136,6 +142,7 @@ function renderActiveSessions(items){
   document.querySelectorAll('[data-active-switch]').forEach(b=>b.onclick=()=>safe(async()=>{if(!can('sessions.write')){toast('Permission required: sessions.write');return}const agentId=b.dataset.activeAgent;const threadId=b.dataset.activeSwitch;if(agentId&&state.snapshot?.session?.agentId!==agentId){await api('/api/agent',{method:'POST',body:{agentId}})}if(threadId){await api('/api/sessions/switch',{method:'POST',body:{threadId}})}toast('Session switched');await loadBootstrap();page('chat')}));
   document.querySelectorAll('[data-active-detail]').forEach(b=>b.onclick=()=>safe(async()=>{const agentId=b.dataset.activeAgent;const threadId=b.dataset.activeDetail;if(agentId&&state.snapshot?.session?.agentId!==agentId){await api('/api/agent',{method:'POST',body:{agentId}});await loadBootstrap()}if(threadId)await loadSessionDetail(threadId)}));
   applyPermissions();
+  startActiveSessionDurationCounter();
 }
 function activeSessionCard(s){
   const processOnly=isProcessOnlyActiveSession(s);
@@ -147,9 +154,9 @@ function activeSessionCard(s){
   const queue=s.queueLength?(' · '+s.queueLength+' queued'+(s.queuePaused?' paused':'')):'';
   const sourceLabel=activeSourceLabel(s.source);
   const mirrors=(s.mirrorChannels||[]).map(m=>activeSourceLabel(m.source)+' '+m.mode+(m.queueLength?' · '+m.queueLength+' queued'+(m.queuePaused?' paused':''):'')).join(', ');
-  const meta=['Source '+sourceLabel,s.workspace,fmtDuration(s.durationMs),tool&&tool!=='-'?'tool '+tool:''].filter(Boolean).join(' | ');
+  const meta=[esc('Source '+sourceLabel),s.workspace?esc(s.workspace):'',activeSessionDurationHtml(s),tool&&tool!=='-'?esc('tool '+tool):''].filter(Boolean).join(' | ');
   const mirrorLine=mirrors?'<small>Mirroring: '+esc(mirrors)+'</small>':(s.source==='cli'?'<small>Mirroring: none</small>':'');
-  return '<div class="item active-session-item"><strong>'+esc(s.agentLabel||s.agentId||'Agent')+' <span class="adapter-status enabled">'+esc(s.status)+'</span></strong><small>'+threadDisplay+esc(queue)+'</small><small>'+esc(meta)+'</small>'+mirrorLine+prompt+'<div class="row"><button data-active-switch="'+attr(thread)+'" data-active-agent="'+attr(s.agentId||'')+'" '+(!s.threadId?'disabled ':'')+disabledAttr('sessions.write')+'>Switch</button><button class="secondary" data-active-detail="'+attr(thread)+'" data-active-agent="'+attr(s.agentId||'')+'" '+(!s.threadId?'disabled ':'')+'>Details</button></div></div>';
+  return '<div class="item active-session-item"><strong>'+esc(s.agentLabel||s.agentId||'Agent')+' <span class="adapter-status enabled">'+esc(s.status)+'</span></strong><small>'+threadDisplay+esc(queue)+'</small><small>'+meta+'</small>'+mirrorLine+prompt+'<div class="row"><button data-active-switch="'+attr(thread)+'" data-active-agent="'+attr(s.agentId||'')+'" '+(!s.threadId?'disabled ':'')+disabledAttr('sessions.write')+'>Switch</button><button class="secondary" data-active-detail="'+attr(thread)+'" data-active-agent="'+attr(s.agentId||'')+'" '+(!s.threadId?'disabled ':'')+'>Details</button></div></div>';
 }
 function isProcessOnlyActiveSession(s){
   return !s.threadId&&String(s.contextKey||'').startsWith('process:codex:');
