@@ -13,7 +13,7 @@ async function loadSettings(){
 }
 const settingsCategoryDefinitions=[
   {id:'agents',label:'Agents',groups:['Agents','Codex','Pi','Hermes','OpenClaw','Claude Code']},
-  {id:'chat',label:'Chat',groups:['Telegram','Discord','Slack']},
+  {id:'chat',label:'Chat',groups:['Telegram','Discord','Slack','Matrix']},
   {id:'operations',label:'Operations',groups:['Operations','Artifacts','Peers','Voice']},
   {id:'workspace',label:'Workspace',groups:['Workspace']},
   {id:'dashboard',label:'Dashboard',groups:['Dashboard']},

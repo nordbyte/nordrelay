@@ -75,6 +75,12 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".activity-table th:nth-child(8)");
   });
 
+  it("groups Matrix settings with the other chat adapters", () => {
+    const settingsPanelSource = readFileSync("src/web/ui/client/settings-panel.ts", "utf8");
+
+    expect(settingsPanelSource).toContain("{id:'chat',label:'Chat',groups:['Telegram','Discord','Slack','Matrix']}");
+  });
+
   it("includes workflow templates and workflow runs in the WebUI", () => {
     const js = dashboardJs();
     const css = dashboardCss();
