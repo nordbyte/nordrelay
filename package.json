@@ -62,7 +62,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:all": "npm test && npm run test:e2e",
-    "webui:check": "tsc -p tsconfig.webui.json && tsc -p tsconfig.webui.client.json"
+    "webui:check": "tsc -p tsconfig.webui.json && tsc -p tsconfig.webui.client.json && node scripts/check-webui-client-types.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.141",

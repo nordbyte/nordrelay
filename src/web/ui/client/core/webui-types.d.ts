@@ -1,0 +1,413 @@
+type WebuiTimer = ReturnType<typeof setTimeout>;
+type WebuiInterval = ReturnType<typeof setInterval>;
+type WebuiRecord = Record<string, unknown>;
+type WebuiRows = readonly (readonly unknown[])[];
+
+interface WebuiPager {
+  page?: number;
+  pageSize?: number;
+  cursor?: string | null;
+  nextCursor?: string | null;
+  hasNext?: boolean;
+  total?: number;
+  reset(): void;
+  render(meta?: WebuiRecord | null): void;
+}
+
+interface WebuiModelOption {
+  slug?: string;
+  displayName?: string;
+  contextWindow?: number;
+  supportsImages?: boolean;
+  supportsThinking?: boolean;
+}
+
+interface WebuiLaunchProfile {
+  id?: string;
+  label?: string;
+  behavior?: string;
+  unsafe?: boolean;
+}
+
+interface WebuiCapabilities {
+  modelSelection?: boolean;
+  reasoningSelection?: boolean;
+  launchProfiles?: boolean;
+  fastMode?: boolean;
+  [key: string]: unknown;
+}
+
+interface WebuiControls extends WebuiRecord {
+  models?: WebuiModelOption[];
+  reasoningOptions?: string[];
+  launchProfiles?: WebuiLaunchProfile[];
+  workspaces?: string[];
+  capabilities?: WebuiCapabilities;
+  reasoningLabel?: string;
+}
+
+interface WebuiSessionSnapshot extends WebuiRecord {
+  agentId?: string;
+  agentLabel?: string;
+  threadId?: string;
+  workspace?: string;
+  model?: string;
+  reasoning?: string;
+  fastMode?: boolean;
+}
+
+interface WebuiSnapshot extends WebuiRecord {
+  session?: WebuiSessionSnapshot | null;
+  workspaces?: string[];
+}
+
+interface WebuiAuth extends WebuiRecord {
+  csrfToken?: string;
+  permissions?: string[];
+}
+
+interface WebuiBootstrap extends WebuiRecord {
+  auth?: WebuiAuth | null;
+  controls?: WebuiControls;
+  enabledAgents?: string[];
+  status?: { snapshot?: WebuiSnapshot };
+}
+
+interface WebuiAccessGroup extends WebuiRecord {
+  id: string;
+  name?: string;
+  description?: string;
+  permissions?: string[];
+  system?: boolean;
+  agentIds?: string[];
+  workspaceRoots?: string[];
+  matrixRoomIds?: string[];
+}
+
+interface WebuiChannelRecord extends WebuiRecord {
+  id?: string;
+  title?: string;
+  channelId: string;
+  guildId?: string;
+  teamId?: string;
+  roomId?: string;
+  type?: string;
+  enabled?: boolean;
+  allowedGroupIds?: string[];
+}
+
+interface WebuiUserRecord extends WebuiRecord {
+  id: string;
+  email?: string;
+  displayName?: string;
+  active?: boolean;
+  groups?: WebuiAccessGroup[];
+  webSessions?: WebuiRecord[];
+}
+
+interface WebuiUserManagement extends WebuiRecord {
+  users?: WebuiUserRecord[];
+  groups?: WebuiAccessGroup[];
+  permissions?: string[];
+  telegramChats?: WebuiChannelRecord[];
+  discordChannels?: WebuiChannelRecord[];
+  slackChannels?: WebuiChannelRecord[];
+  matrixRooms?: WebuiChannelRecord[];
+}
+
+interface WebuiActorRecord extends WebuiRecord {
+  id?: string | number;
+  label?: string;
+  username?: string;
+  channel?: string;
+  channelUserId?: string | number;
+}
+
+interface WebuiAuditEvent extends WebuiRecord {
+  actor?: WebuiActorRecord;
+  actorId?: string | number;
+  timestamp?: string;
+  channelId?: string;
+  status?: string;
+  category?: string;
+  action?: string;
+  contextKey?: string;
+  agentId?: string;
+  threadId?: string;
+  workspace?: string;
+  description?: string;
+  detail?: string;
+}
+
+interface WebuiActiveSession extends WebuiRecord {
+  agentId?: string;
+  threadId?: string;
+  workspace?: string;
+  status?: string;
+  source?: string;
+  startedAt?: string;
+  prompt?: string;
+}
+
+interface WebuiActiveSessionsState extends WebuiRecord {
+  sessions?: WebuiActiveSession[];
+}
+
+interface WebuiPeerRecord extends WebuiRecord {
+  id: string;
+  name?: string;
+  url?: string;
+  enabled?: boolean;
+  nodeId?: string;
+  fingerprint?: string;
+  tlsFingerprint?: string;
+  trustStatus?: string;
+  allowedAgents?: string[];
+}
+
+interface WebuiPeerState extends WebuiRecord {
+  peers?: WebuiPeerRecord[];
+  readiness?: { warnings?: string[] };
+  invitations?: WebuiRecord[];
+}
+
+interface WebuiPeerProbeResult extends WebuiRecord {
+  peerName?: string;
+  probe?: {
+    ok?: boolean;
+    status?: string;
+    url?: string;
+    latencyMs?: number;
+    statusCode?: number;
+    tlsFingerprint?: string;
+    detail?: string;
+  };
+  readiness?: WebuiRecord;
+  type?: string;
+  peerId?: string;
+}
+
+interface WebuiPeerTarget extends WebuiRecord {
+  id: string;
+  name: string;
+  agents: string[];
+  snapshot?: WebuiSnapshot | null;
+  loading?: boolean;
+  error?: string;
+}
+
+interface WebuiIncrementalRenderToken {
+  cancelled?: boolean;
+}
+
+interface WebuiSettingsWizardState extends WebuiRecord {
+  home?: boolean;
+  channel?: string;
+  step?: number;
+  values?: Record<string, string>;
+  errors?: string[];
+  testResult?: unknown;
+}
+
+interface WebuiWorkflowBuilderStep extends WebuiRecord {
+  _uid?: string;
+  id?: string;
+  name?: string;
+  templateId?: string;
+  workflowId?: string;
+}
+
+interface WebuiWorkflowBuilderState extends WebuiRecord {
+  workflowId?: string;
+  steps?: WebuiWorkflowBuilderStep[];
+}
+
+interface WebuiQueuePlannerState extends WebuiRecord {
+  plans?: WebuiRecord[];
+}
+
+interface WebuiWorktreesState extends WebuiRecord {
+  integrations?: WebuiRecord[];
+  records?: WebuiRecord[];
+}
+
+interface WebuiArtifactFile extends WebuiRecord {
+  name: string;
+  relativePath: string;
+  sizeBytes: number;
+  safeStatus?: string;
+  safeWarnings?: string[];
+}
+
+interface WebuiArtifactReport extends WebuiRecord {
+  turnId: string;
+  artifacts?: WebuiArtifactFile[];
+  fileCount?: number;
+  totalSizeBytes?: number;
+  updatedAt?: string;
+  provenance?: WebuiRecord;
+  source?: string;
+}
+
+interface WebuiSettingRecord extends WebuiRecord {
+  key?: string;
+  group?: string;
+  help?: string;
+  configured?: boolean;
+  value?: string;
+  effectiveValue?: string;
+  kind?: string;
+  options?: string[];
+}
+
+interface WebuiAccessFilters {
+  query: string;
+  status: string;
+  group: string;
+  identity: string;
+}
+
+interface DashboardState {
+  snapshot: WebuiSnapshot | null;
+  controls: WebuiControls | null;
+  newSessionControls: WebuiControls | null;
+  enabledAgents: string[];
+  auth: WebuiAuth | null;
+  profile: WebuiRecord | null;
+  csrfToken: string | null;
+  permissions: string[];
+  settings: WebuiSettingRecord[];
+  settingsDraft: Record<string, string>;
+  settingsErrors: Record<string, unknown>;
+  settingsSearch: string;
+  settingsOpenCategories: Record<string, boolean>;
+  currentPage: string;
+  settingsGroup: string | null;
+  settingsWizard: WebuiSettingsWizardState | null;
+  accessTab: string;
+  adapterTab: string;
+  peerTab: string;
+  workflowTab: string;
+  queueTab: string;
+  sessionTab: string;
+  monitorTab: string;
+  diagnosticsTab: string;
+  queuePlanner: WebuiQueuePlannerState | null;
+  workflowTemplates: WebuiRecord[];
+  workflows: WebuiRecord[];
+  workflowRuns: WebuiRecord[];
+  logsPlain: string;
+  logTimer: WebuiTimer | null;
+  logSearchTimer?: WebuiTimer | null;
+  toastTimer: WebuiTimer | null;
+  stickyToastActive: boolean;
+  stickyToastText: string;
+  cliStatusActive: boolean;
+  webMirror: WebuiRecord | null;
+  selectedArtifactTurns: Set<string>;
+  mediaRecorder: MediaRecorder | null;
+  recordedChunks: Blob[];
+  events: EventSource | null;
+  reconnectTimer: WebuiTimer | null;
+  notifications: boolean;
+  completionSound: boolean;
+  completionSoundAudioContext: AudioContext | null;
+  completionSoundArmedKey: string | null;
+  toolTooltipTimer: WebuiTimer | null;
+  toolTooltipTarget: Element | null;
+  toolsVisible: boolean;
+  themePreference: string | null;
+  agentUpdateJobs: WebuiRecord[];
+  versionRequestId: number;
+  sessionsRequestId: number;
+  sessionAgeTimer: WebuiInterval | null;
+  activityAgeTimer: WebuiInterval | null;
+  chatWorkingTimer: WebuiInterval | null;
+  chatHistoryRequestId: number;
+  chatRenderVersion: number;
+  activeSessions: WebuiActiveSessionsState | null;
+  activeSessionsTimer: WebuiInterval | null;
+  activeSessionDurationTimer: WebuiInterval | null;
+  activeSessionsLoading: boolean;
+  localTurnThreadId: string | null;
+  localTurnAgentId: string | null;
+  localTurnStartedAt: string | null;
+  peers: WebuiPeerState | null;
+  peerRelay: WebuiRecord | null;
+  peerInviteSecrets: Record<string, { code: string; command: string }>;
+  peerProbeResult: WebuiPeerProbeResult | null;
+  peerDiscoveryJobs: WebuiRecord[];
+  incrementalRenders: Record<string, WebuiIncrementalRenderToken>;
+  selectedPeer: string;
+  activePeerDiscoveryJobId?: string;
+  peerTargets?: WebuiPeerTarget[];
+  adapterConformance?: WebuiRecord | null;
+  activityEvents?: WebuiRecord[];
+  auditEvents?: WebuiAuditEvent[];
+  logsEntries?: WebuiRecord[];
+  chatMessages?: WebuiRecord[];
+  artifactReports?: WebuiArtifactReport[];
+  artifactUsage?: WebuiRecord | null;
+  artifactSearchTimer?: WebuiTimer | null;
+  metricsAutoRefresh?: boolean;
+  metricsHistory?: WebuiRecord[];
+  metricsLastData?: WebuiRecord | null;
+  metricsLastUpdatedAt?: number | null;
+  metricsTab?: string;
+  localBootstrap?: WebuiBootstrap | null;
+  userManagement?: WebuiUserManagement | null;
+  userFilters?: WebuiAccessFilters;
+  userPage?: number;
+  userPageSize?: number;
+  activeUserDetailId?: string;
+  userDetailAudit?: Record<string, WebuiRecord[]>;
+  workflowBuilder?: WebuiWorkflowBuilderState | null;
+  worktrees?: WebuiWorktreesState | null;
+  worktreeConflictResolutions?: WebuiRecord[];
+  compactControlOutsideBound?: boolean;
+  templatePickerOutsideBound?: boolean;
+}
+
+interface AdminDialogOptions {
+  submitText?: string;
+  afterSubmit?: () => unknown | Promise<unknown>;
+  reloadAccess?: boolean;
+}
+
+interface UiButtonOptions {
+  className?: string;
+  attrs?: string;
+  permission?: string;
+  icon?: string;
+  title?: unknown;
+  summary?: string;
+  disabled?: boolean;
+  variant?: string;
+  mini?: boolean;
+  data?: Record<string, unknown>;
+}
+
+interface UiCardOptions {
+  badge?: { text: string; status?: string } | null;
+  className?: string;
+}
+
+interface UiItemOptions {
+  badge?: { text: string; status?: string } | null;
+  rows?: WebuiRows;
+  actions?: string;
+}
+
+interface RenderIncrementalOptions<T> {
+  key: string;
+  emptyText?: string;
+  emptyHtml?: string;
+  bodyTag?: string;
+  tableClass?: string;
+  tableClassHtml?: string;
+  headHtml?: string;
+  renderItem: (item: T, index?: number) => string;
+  initialCount?: number;
+  batchSize?: number;
+  onDone?: (root?: Element | Document) => void;
+}
