@@ -50,6 +50,8 @@ export type ArtifactSafeFilePolicy = "off" | "warn" | "block";
 export interface ConnectorConfig {
   adapterWarnings?: string[];
   webuiEnabled: boolean;
+  autostartEnabled: boolean;
+  webuiAutostartEnabled: boolean;
   telegramEnabled: boolean;
   telegramBotToken: string;
   telegramRateLimitMinIntervalMs: number;
@@ -200,6 +202,8 @@ export function loadConfig(): ConnectorConfig {
 
   const adapterWarnings: string[] = [];
   const webuiEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_WEBUI_ENABLED), true);
+  const autostartEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_AUTOSTART_ENABLED), false);
+  const webuiAutostartEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_WEBUI_AUTOSTART_ENABLED), false);
   const requestedTelegramEnabled = parseBooleanEnv(optionalString(process.env.TELEGRAM_ENABLED), true);
   const telegramBotToken = optionalString(process.env.TELEGRAM_BOT_TOKEN) ?? "";
   const telegramRateLimitMinIntervalMs = parseNonNegativeIntegerEnv(optionalString(process.env.TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS), 80, "TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS");
@@ -425,6 +429,8 @@ export function loadConfig(): ConnectorConfig {
   return {
     adapterWarnings,
     webuiEnabled,
+    autostartEnabled,
+    webuiAutostartEnabled,
     telegramEnabled,
     telegramBotToken,
     telegramRateLimitMinIntervalMs,

@@ -39,6 +39,7 @@ import { handleDashboardPeerRoute } from "./web-dashboard-peer-routes.js";
 import { handleDashboardProfileRoute } from "./web-dashboard-profile-routes.js";
 import { handleDashboardWorkflowRoute } from "./web-dashboard-workflow-routes.js";
 import { PeerDiscoveryJobManager } from "../peers/peer-discovery-jobs.js";
+import { applyAutostartSettings } from "../support/autostart.js";
 import { recordWebApiMetric } from "./web-performance.js";
 import { createCspNonce, isMutatingWebApiRequest, requiresWebCsrf } from "./web-dashboard-security.js";
 import { consumeRateLimit, resetRateLimit, type RateLimitBucket } from "./web-rate-limit.js";
@@ -399,7 +400,12 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
 
   if (req.method === "PATCH" && url.pathname === "/api/settings") {
     const body = await readJsonBody(req);
-    sendJson(res, 200, await settings.update(objectRecord(body?.settings)));
+    const patch = objectRecord(body?.settings);
+    const result = await settings.update(patch);
+    if (result.errors.length === 0) {
+      result.errors.push(...await applyAutostartSettings(patch, result.changedKeys, { home: options.home, runtimeRoot: process.env.NORDRELAY_SOURCE_ROOT }));
+    }
+    sendJson(res, 200, result);
     return;
   }
 
@@ -910,6 +916,8 @@ function optionalEnv(key: string): string | undefined {
 function activeSettingsValues(current: typeof config): Record<string, string | undefined> {
   return {
     NORDRELAY_WEBUI_ENABLED: boolValue(current.webuiEnabled),
+    NORDRELAY_AUTOSTART_ENABLED: boolValue(current.autostartEnabled),
+    NORDRELAY_WEBUI_AUTOSTART_ENABLED: boolValue(current.webuiAutostartEnabled),
     TELEGRAM_ENABLED: boolValue(current.telegramEnabled),
     TELEGRAM_BOT_TOKEN: current.telegramBotToken,
     TELEGRAM_TRANSPORT: current.telegramTransport,
@@ -1033,6 +1041,8 @@ function activeSettingsValues(current: typeof config): Record<string, string | u
     NORDRELAY_AUDIT_MAX_EVENTS: String(current.auditMaxEvents),
     NORDRELAY_SESSION_LOCK_TTL_MS: String(current.sessionLockTtlMs),
     NORDRELAY_DASHBOARD_CACHE_TTL_MS: String(current.dashboardCacheTtlMs),
+    NORDRELAY_ACTIVE_DISCOVERY_CACHE_TTL_MS: String(current.activeDiscoveryCacheTtlMs),
+    NORDRELAY_OPENCLAW_ACTIVE_DISCOVERY_CACHE_TTL_MS: String(current.openClawActiveDiscoveryCacheTtlMs),
     NORDRELAY_UNIFIED_JOB_MAX_ITEMS: String(current.unifiedJobMaxItems),
     NORDRELAY_VERSION_CACHE_TTL_MS: process.env.NORDRELAY_VERSION_CACHE_TTL_MS,
     NORDRELAY_CLI_VERSION_CACHE_TTL_MS: process.env.NORDRELAY_CLI_VERSION_CACHE_TTL_MS,

@@ -5,6 +5,8 @@
 Dashboard:
 
 - `NORDRELAY_WEBUI_ENABLED`: allows the local WebUI dashboard to start and counts as a valid access surface. Defaults to `true`.
+- `NORDRELAY_AUTOSTART_ENABLED`: manages user-level autostart for the NordRelay connector from the WebUI Settings page. Defaults to `false`.
+- `NORDRELAY_WEBUI_AUTOSTART_ENABLED`: manages user-level autostart for the WebUI dashboard from the WebUI Settings page. Defaults to `false`; the WebUI autostart starts the connector when needed.
 
 Telegram:
 

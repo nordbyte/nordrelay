@@ -14,6 +14,8 @@ describe("loadConfig", () => {
     process.chdir(tempDir);
     process.env = { ...originalEnv };
     delete process.env.NORDRELAY_WEBUI_ENABLED;
+    delete process.env.NORDRELAY_AUTOSTART_ENABLED;
+    delete process.env.NORDRELAY_WEBUI_AUTOSTART_ENABLED;
     delete process.env.TELEGRAM_ENABLED;
     delete process.env.TELEGRAM_BOT_TOKEN;
     delete process.env.TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS;
@@ -182,6 +184,8 @@ describe("loadConfig", () => {
     expect(config).toEqual({
       adapterWarnings: [],
       webuiEnabled: true,
+      autostartEnabled: false,
+      webuiAutostartEnabled: false,
       telegramEnabled: true,
       telegramBotToken: "bot-token",
       telegramRateLimitMinIntervalMs: 80,
@@ -356,6 +360,8 @@ describe("loadConfig", () => {
     const config = loadConfig();
 
     expect(config.codexApiKey).toBeUndefined();
+    expect(config.autostartEnabled).toBe(false);
+    expect(config.webuiAutostartEnabled).toBe(false);
     expect(config.codexEnabled).toBe(true);
     expect(config.piEnabled).toBe(false);
     expect(config.defaultAgent).toBe("codex");
@@ -523,6 +529,17 @@ describe("loadConfig", () => {
     process.env.VOICE_DEFAULT_LANGUAGE = "DE";
 
     expect(loadConfig().voiceDefaultLanguage).toBe("de");
+  });
+
+  it("parses autostart settings", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.NORDRELAY_AUTOSTART_ENABLED = "true";
+    process.env.NORDRELAY_WEBUI_AUTOSTART_ENABLED = "true";
+
+    const config = loadConfig();
+
+    expect(config.autostartEnabled).toBe(true);
+    expect(config.webuiAutostartEnabled).toBe(true);
   });
 
   it("parses webhook transport settings", () => {

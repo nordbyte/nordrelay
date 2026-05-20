@@ -1765,6 +1765,17 @@ async function commandForeground(options) {
   const launchWorkspace = resolveLaunchWorkspace();
   process.chdir(RUNTIME_ROOT);
 
+  if (!process.env.NORDRELAY_WRAPPER_PID) {
+    await withLifecycleLock(pidFileLock(options.pidFile), async () => {
+      const currentPid = await readPid(options.pidFile);
+      if (currentPid && currentPid !== process.pid && await isManagedConnectorPid(options, currentPid)) {
+        console.log(`NordRelay connector already running with PID ${currentPid}.`);
+        process.exit(0);
+      }
+      await writePidAtomic(options.pidFile, process.pid);
+    });
+  }
+
   await writeJsonAtomic(options.stateFile, {
     status: "starting",
     pid: process.pid,

@@ -30,6 +30,12 @@ nordrelay service uninstall
 
 The service runs `nordrelay service-run`, which starts the connector and WebUI together. Use `--no-start` to only write/register the service without starting it immediately. Use `--host` and `--port` during install when the WebUI should bind to a non-default endpoint.
 
+WebUI-managed autostart:
+
+- `Settings -> Dashboard -> Auto-start NordRelay` creates or removes the connector autostart entry.
+- `Settings -> Dashboard -> Auto-start WebUI` creates or removes the dashboard autostart entry. The WebUI entry runs `nordrelay web`, so it starts the connector when needed.
+- Linux uses systemd user services, macOS uses LaunchAgents, and Windows uses Task Scheduler. These are user-level entries and run when the user session starts.
+
 Docker Compose:
 
 ```bash
