@@ -1,0 +1,135 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+import { CODEX_AGENT_CAPABILITIES, type AgentSessionService } from "../src/agents/shared/agent.js";
+import { ChannelTurnService } from "../src/channels/shared/channel-turn-service.js";
+import { toPromptEnvelope } from "../src/state/prompt-store.js";
+import { WebChatStore, type WebActivityEvent } from "../src/web/web-state.js";
+import type { AuditEvent } from "../src/access/audit-log.js";
+import type { RelayArtifactService } from "../src/runtime/relay-artifact-service.js";
+import type { RelayEvent, WebTaskDto } from "../src/runtime/relay-runtime-types.js";
+
+describe("ChannelTurnService", () => {
+  it("stores full prompt text and separate attachment metadata for web chat", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-turn-chat-"));
+    try {
+      const chatStore = new WebChatStore(workspace, "json", 10);
+      const events: RelayEvent[] = [];
+      let progress: WebTaskDto | null = null;
+      let currentTurnStartedAt = Date.now();
+      let accumulatedText = "";
+      const longPrompt = "Schau dir das beigefügte Bild an und prüfe, warum die Diagnostics Seite an dieser Stelle falsch dargestellt wird.";
+      const envelope = toPromptEnvelope({
+        text: longPrompt,
+        imagePaths: ["/tmp/screenshot.png"],
+        stagedFileInstructions: "Attached files are available on disk.",
+      });
+
+      const service = new ChannelTurnService({
+        source: "web",
+        contextKey: "web:dashboard",
+        chatStore,
+        artifactService: {
+          persistWorkspaceArtifactsForTurn: async () => undefined,
+        } as unknown as RelayArtifactService,
+        checkAuth: async () => ({ authenticated: true, detail: "ok" }),
+        ensureActiveThread: async () => undefined,
+        updateSession: () => undefined,
+        appendActivity: (input) => ({ id: "activity", timestamp: new Date().toISOString(), ...input }) as WebActivityEvent,
+        appendAudit: (input) => ({ id: "audit", timestamp: new Date().toISOString(), channelId: "web", ...input }) as AuditEvent,
+        broadcast: (event) => events.push(event),
+        chatHistory: async () => chatStore.list("thread-1"),
+        setLastPrompt: () => undefined,
+        getCurrentProgress: () => progress,
+        setCurrentProgress: (next) => { progress = next; },
+        setCurrentTurn: (_id, startedAt, text) => {
+          currentTurnStartedAt = startedAt ?? Date.now();
+          accumulatedText = text ?? "";
+        },
+        getCurrentTurnStartedAt: () => currentTurnStartedAt,
+        getAccumulatedText: () => accumulatedText,
+        setAccumulatedText: (text) => { accumulatedText = text; },
+      });
+
+      await service.run(fakeSession(), envelope);
+
+      const userMessage = chatStore.list("thread-1").find((message) => message.role === "user");
+      expect(userMessage).toMatchObject({
+        text: longPrompt,
+        meta: ["1 image", "staged file input"],
+      });
+      const turnStart = events.find((event) => event.type === "turn_start");
+      expect(turnStart).toMatchObject({
+        prompt: expect.stringContaining("1 image"),
+        text: longPrompt,
+        meta: ["1 image", "staged file input"],
+      });
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+});
+
+function fakeSession(): AgentSessionService {
+  return {
+    getInfo: () => ({
+      agentId: "codex",
+      agentLabel: "Codex",
+      threadId: "thread-1",
+      workspace: "/repo",
+      launchProfileId: "default",
+      launchProfileLabel: "Default",
+      launchProfileBehavior: "workspace-write / never",
+      sandboxMode: "workspace-write",
+      approvalPolicy: "never",
+      fastMode: false,
+      unsafeLaunch: false,
+      capabilities: { ...CODEX_AGENT_CAPABILITIES, auth: false },
+    }),
+    isProcessing: () => false,
+    getActiveThreadId: () => "thread-1",
+    hasActiveThread: () => true,
+    getCurrentWorkspace: () => "/repo",
+    prompt: async (_input, callbacks) => {
+      callbacks.onTextDelta("done");
+      callbacks.onAgentEnd();
+    },
+    abort: async () => undefined,
+    newThread: async () => fakeSession().getInfo(),
+    resumeThread: async () => fakeSession().getInfo(),
+    switchSession: async () => fakeSession().getInfo(),
+    listAllSessions: () => [],
+    listWorkspaces: () => ["/repo"],
+    refreshModels: async () => undefined,
+    listModels: () => [],
+    listLaunchProfiles: () => [],
+    getSessionRecord: () => null,
+    setModel: (slug) => slug,
+    setModelForCurrentSession: (slug) => ({ ok: true, message: slug }),
+    setReasoningEffort: () => undefined,
+    setReasoningEffortForCurrentSession: (effort) => ({ ok: true, message: effort }),
+    setLaunchProfile: (profileId) => ({
+      id: profileId,
+      label: profileId,
+      behavior: "workspace-write / never",
+      sandboxMode: "workspace-write",
+      approvalPolicy: "never",
+      unsafe: false,
+    }),
+    setFastMode: (enabled) => ({ enabled, message: enabled ? "on" : "off" }),
+    getSelectedLaunchProfile: () => ({
+      id: "default",
+      label: "Default",
+      behavior: "workspace-write / never",
+      sandboxMode: "workspace-write",
+      approvalPolicy: "never",
+      unsafe: false,
+    }),
+    syncFromAgentState: () => ({ ok: true, changed: false, message: "ok" }),
+    handback: () => ({ ok: true, message: "ok" }),
+    dispose: () => undefined,
+  } as AgentSessionService;
+}

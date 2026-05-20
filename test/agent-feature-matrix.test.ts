@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { CODEX_AGENT_CAPABILITIES, PI_AGENT_CAPABILITIES } from "../src/agent.js";
-import { agentFeatureStates, formatAgentFeatureSummaryPlain } from "../src/agent-feature-matrix.js";
+import { CODEX_AGENT_CAPABILITIES, PI_AGENT_CAPABILITIES } from "../src/agents/shared/agent.js";
+import { agentFeatureStates, formatAgentFeatureSummaryPlain } from "../src/agents/shared/agent-feature-matrix.js";
 
 describe("agent feature matrix", () => {
   it("renders supported and unsupported feature summaries", () => {

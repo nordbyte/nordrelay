@@ -4,9 +4,9 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { BotPreferencesStore } from "../src/bot-preferences.js";
-import { ChannelCommandService } from "../src/channel-command-service.js";
-import type { ConnectorConfig } from "../src/config.js";
+import { BotPreferencesStore } from "../src/state/bot-preferences.js";
+import { ChannelCommandService } from "../src/channels/shared/channel-command-service.js";
+import type { ConnectorConfig } from "../src/core/config.js";
 
 describe("ChannelCommandService preference commands", () => {
   let workspace: string;
@@ -25,6 +25,8 @@ describe("ChannelCommandService preference commands", () => {
       discordMirrorMinUpdateMs: 7000,
       discordNotifyMode: "all",
       discordQuietHours: null,
+      webMirrorMode: "final",
+      webMirrorMinUpdateMs: 3000,
       voicePreferredBackend: "auto",
       voiceDefaultLanguage: undefined,
       voiceTranscribeOnly: false,
@@ -48,6 +50,20 @@ describe("ChannelCommandService preference commands", () => {
     expect(preferencesStore.get("discord:guild:channel").mirrorMode).toBe("status");
     expect(response.plain).toContain("CLI mirroring: status");
     expect(response.plain).toContain("Minimum update interval: 7000 ms");
+  });
+
+  it("updates WebUI mirror mode with WebUI defaults", () => {
+    const response = service.renderMirrorPreference({
+      source: "web",
+      contextKey: "web:dashboard",
+      argument: "",
+      preferencesStore,
+      cliMirrorSupported: true,
+      agentLabel: "Codex",
+    });
+
+    expect(response.plain).toContain("CLI mirroring: final");
+    expect(response.plain).toContain("Minimum update interval: 3000 ms");
   });
 
   it("handles notify quiet hours consistently across channels", () => {

@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { permissionForCommand } from "../src/access-control.js";
+import { permissionForCommand } from "../src/access/access-control.js";
 import {
   discordCommands,
   isUnauthenticatedDiscordCommandAllowed,
   requiredPermissionForDiscordCommand,
-} from "../src/discord-command-surface.js";
-import { CHANNEL_COMMANDS } from "../src/channel-command-catalog.js";
+} from "../src/channels/discord/discord-command-surface.js";
+import { CHANNEL_COMMANDS } from "../src/channels/shared/channel-command-catalog.js";
 import {
   isUnauthenticatedSlackCommandAllowed,
   requiredPermissionForSlackCommand,
-} from "../src/slack-command-surface.js";
-import { TELEGRAM_COMMANDS } from "../src/telegram-command-menu.js";
+} from "../src/channels/slack/slack-command-surface.js";
+import { TELEGRAM_COMMANDS } from "../src/channels/telegram/telegram-command-menu.js";
 
 const DISCORD_ONLY_COMMANDS = new Set(["prompt"]);
 const SLACK_ONLY_COMMANDS = new Set(["prompt"]);

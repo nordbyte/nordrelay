@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { UnifiedJobStore } from "../src/job-store.js";
-import type { UnifiedJobDto } from "../src/relay-runtime-types.js";
+import { UnifiedJobStore } from "../src/state/job-store.js";
+import type { UnifiedJobDto } from "../src/runtime/relay-runtime-types.js";
 
 const tmpDirs: string[] = [];
 

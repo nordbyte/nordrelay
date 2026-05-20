@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { InMemoryChannelRuntime, ChannelCommandRouter, deliverChannelAction, parseChannelCommand } from "../src/channel-runtime.js";
-import { actionFromDiscordCustomId, discordActionId, discordMessageText, splitDiscordMessage } from "../src/discord-channel-runtime.js";
-import { actionFromSlackActionId, slackActionId, slackMessageText, splitSlackMessage } from "../src/slack-channel-runtime.js";
+import { InMemoryChannelRuntime, ChannelCommandRouter, deliverChannelAction, parseChannelCommand } from "../src/channels/shared/channel-runtime.js";
+import { actionFromDiscordCustomId, discordActionId, discordMessageText, splitDiscordMessage } from "../src/channels/discord/discord-channel-runtime.js";
+import { actionFromSlackActionId, slackActionId, slackMessageText, splitSlackMessage } from "../src/channels/slack/slack-channel-runtime.js";
 
 describe("channel runtime abstraction", () => {
   it("parses channel commands independently from Telegram", () => {

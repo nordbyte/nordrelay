@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { WebActivityStore, WebChatStore } from "../src/web-state.js";
+import { WebActivityStore, WebChatStore } from "../src/web/web-state.js";
 
 describe("web dashboard state stores", () => {
   it("persists chat messages per thread", () => {
@@ -15,6 +15,7 @@ describe("web dashboard state stores", () => {
         threadId: "thread-a",
         role: "user",
         text: "hello",
+        meta: ["1 image", "staged file input"],
         source: "web",
       });
       store.append({
@@ -25,10 +26,103 @@ describe("web dashboard state stores", () => {
       });
 
       const reloaded = new WebChatStore(workspace, "json", 5);
-      expect(reloaded.list("thread-a")).toMatchObject([{ text: "hello", source: "web" }]);
+      expect(reloaded.list("thread-a")).toMatchObject([{ text: "hello", meta: ["1 image", "staged file input"], source: "web" }]);
       expect(reloaded.list("thread-b")).toMatchObject([{ text: "other", source: "cli" }]);
       expect(reloaded.clear("thread-a")).toBe(1);
       expect(reloaded.list("thread-a")).toEqual([]);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("deduplicates repeated chat messages for the same turn", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-web-chat-dedupe-"));
+    try {
+      const store = new WebChatStore(workspace, "json", 10);
+      const first = store.appendWithResult({
+        threadId: "thread-a",
+        role: "user",
+        text: "same prompt",
+        source: "cli",
+        turnId: "turn-1",
+        timestamp: "2026-05-15T16:23:03.000Z",
+      });
+      const second = store.appendWithResult({
+        threadId: "thread-a",
+        role: "user",
+        text: "same prompt",
+        source: "cli",
+        turnId: "turn-1",
+        timestamp: "2026-05-15T16:23:03.000Z",
+      });
+
+      expect(first.inserted).toBe(true);
+      expect(second.inserted).toBe(false);
+      expect(second.message.id).toBe(first.message.id);
+      expect(store.list("thread-a")).toHaveLength(1);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("deduplicates CLI mirror finals already included in a channel response", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-web-chat-mirror-dedupe-"));
+    try {
+      const store = new WebChatStore(workspace, "json", 10);
+      const finalText = [
+        "Empfohlene Prioritaeten",
+        "1. Command Palette fuer schnelle Navigation.",
+        "2. Workflow Engine mit Approval Steps.",
+        "3. Peer Scheduler fuer entfernte Hosts.",
+      ].join("\n");
+      store.append({
+        threadId: "thread-a",
+        role: "agent",
+        text: `Ich pruefe die Codebase.\n${finalText}`,
+        source: "web",
+        turnId: "web-turn",
+        timestamp: "2026-05-17T10:17:32.000Z",
+      });
+      const mirrored = store.appendWithResult({
+        threadId: "thread-a",
+        role: "agent",
+        text: finalText,
+        source: "cli",
+        turnId: "cli-turn",
+        timestamp: "2026-05-17T10:17:35.000Z",
+      });
+
+      expect(mirrored.inserted).toBe(false);
+      expect(store.list("thread-a")).toHaveLength(1);
+      expect(store.list("thread-a")[0]).toMatchObject({ source: "web" });
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("upserts keyed chat messages for live status rows", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-web-chat-upsert-"));
+    try {
+      const store = new WebChatStore(workspace, "json", 10);
+      const first = store.upsertByKey({
+        threadId: "thread-a",
+        role: "system",
+        text: "running 1s",
+        source: "cli",
+        key: "status:turn-1",
+      });
+      const second = store.upsertByKey({
+        threadId: "thread-a",
+        role: "system",
+        text: "running 2s",
+        source: "cli",
+        key: "status:turn-1",
+      });
+
+      expect(first.inserted).toBe(true);
+      expect(second.updated).toBe(true);
+      expect(second.message.id).toBe(first.message.id);
+      expect(store.list("thread-a")).toMatchObject([{ text: "running 2s", key: "status:turn-1" }]);
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
@@ -78,6 +172,28 @@ describe("web dashboard state stores", () => {
       expect(store.list({ actor: "ricardo@example.com" })[0]?.source).toBe("telegram");
       expect(store.list({ actor: "123456789" })[0]?.source).toBe("telegram");
       expect(store.list({ agentId: "codex", threadId: "thread-a", workspace: "/repo/a", type: "tool" })[0]?.source).toBe("cli");
+      const firstPage = store.listPage({ limit: 1 });
+      expect(firstPage.items).toHaveLength(1);
+      expect(firstPage.pagination.hasNext).toBe(true);
+      const secondPage = store.listPage({ limit: 1, cursor: firstPage.pagination.nextCursor ?? undefined });
+      expect(secondPage.items).toHaveLength(1);
+      expect(secondPage.items[0]?.id).not.toBe(firstPage.items[0]?.id);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("finds chat and activity events by correlation id", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-web-trace-"));
+    try {
+      const chat = new WebChatStore(workspace, "json", 10);
+      const activity = new WebActivityStore(workspace, "json", 10);
+      chat.append({ threadId: "thread-a", role: "user", text: "trace me", source: "web", correlationId: "cid-1" });
+      chat.append({ threadId: "thread-a", role: "agent", text: "other", source: "web", correlationId: "cid-2" });
+      activity.append({ source: "web", status: "running", type: "prompt_started", threadId: "thread-a", correlationId: "cid-1" });
+
+      expect(chat.findByCorrelationId("cid-1")).toMatchObject([{ text: "trace me" }]);
+      expect(activity.findByCorrelationId("cid-1")).toMatchObject([{ type: "prompt_started" }]);
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }

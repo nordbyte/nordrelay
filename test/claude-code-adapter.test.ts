@@ -4,14 +4,14 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { resolveClaudeCodeCli } from "../src/claude-code-cli.js";
-import { findClaudeCodeLaunchProfile, listClaudeCodeLaunchProfiles } from "../src/claude-code-launch.js";
+import { resolveClaudeCodeCli } from "../src/agents/claude-code/claude-code-cli.js";
+import { findClaudeCodeLaunchProfile, listClaudeCodeLaunchProfiles } from "../src/agents/claude-code/claude-code-launch.js";
 import {
   getClaudeCodeSessionActivity,
   getClaudeCodeSessionDiagnostics,
   getClaudeCodeSessionSnapshot,
   listClaudeCodeSessions,
-} from "../src/claude-code-state.js";
+} from "../src/agents/claude-code/claude-code-state.js";
 
 describe("claude-code adapter support", () => {
   it("prefers explicit Claude Code CLI paths and falls back to bundled runtime", () => {

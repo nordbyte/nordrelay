@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { installConsoleLogger } from "../src/logger.js";
+import { installConsoleLogger } from "../src/core/logger.js";
 
 describe("logger", () => {
   it("emits timestamped text records by default", () => {

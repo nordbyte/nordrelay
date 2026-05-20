@@ -5,12 +5,13 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { listAgentAdapterDescriptors } from "../src/agent-adapter.js";
-import { TelegramChannelAdapter, listChannelDescriptors, type ChannelInboundMessage } from "../src/channel-adapter.js";
-import { ChannelCommandRouter, InMemoryChannelRuntime, deliverChannelAction } from "../src/channel-runtime.js";
-import { AuditLogStore } from "../src/audit-log.js";
-import { SessionLockStore, canWriteWithLock } from "../src/session-locks.js";
-import { createDocumentStore } from "../src/state-backend.js";
+import { listAgentAdapterDescriptors } from "../src/agents/shared/agent-adapter.js";
+import { TelegramChannelAdapter, listChannelDescriptors, type ChannelInboundMessage } from "../src/channels/shared/channel-adapter.js";
+import { ChannelCommandRouter, InMemoryChannelRuntime, deliverChannelAction } from "../src/channels/shared/channel-runtime.js";
+import { AuditLogStore } from "../src/access/audit-log.js";
+import { SessionLockStore, canWriteWithLock } from "../src/access/session-locks.js";
+import { createDocumentStore } from "../src/state/state-backend.js";
+import type { ConnectorConfig } from "../src/core/config.js";
 
 const require = createRequire(import.meta.url);
 const sqliteAvailable = (() => {
@@ -54,6 +55,38 @@ describe("adapter and e2e harness primitives", () => {
       else process.env.DISCORD_ENABLED = previousDiscord;
       if (previousDiscordToken === undefined) delete process.env.DISCORD_BOT_TOKEN;
       else process.env.DISCORD_BOT_TOKEN = previousDiscordToken;
+    }
+  });
+
+  it("uses resolved config for channel enabled state when available", () => {
+    const previousTelegram = process.env.TELEGRAM_ENABLED;
+    const previousTelegramToken = process.env.TELEGRAM_BOT_TOKEN;
+    process.env.TELEGRAM_ENABLED = "false";
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    try {
+      const channels = listChannelDescriptors({
+        telegramEnabled: true,
+        telegramBotToken: "configured-token",
+        telegramTransport: "polling",
+        discordEnabled: false,
+        discordBotToken: undefined,
+        slackEnabled: false,
+        slackBotToken: undefined,
+        slackAppToken: undefined,
+        slackSocketMode: true,
+        adapterWarnings: [],
+      } as ConnectorConfig);
+
+      expect(channels.find((channel) => channel.id === "telegram")).toMatchObject({
+        status: "available",
+        enabled: true,
+        notes: "Telegram bot runtime is enabled (polling).",
+      });
+    } finally {
+      if (previousTelegram === undefined) delete process.env.TELEGRAM_ENABLED;
+      else process.env.TELEGRAM_ENABLED = previousTelegram;
+      if (previousTelegramToken === undefined) delete process.env.TELEGRAM_BOT_TOKEN;
+      else process.env.TELEGRAM_BOT_TOKEN = previousTelegramToken;
     }
   });
 

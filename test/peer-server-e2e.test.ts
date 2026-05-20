@@ -4,12 +4,14 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { loadOrCreatePeerIdentity } from "../src/peer-identity.js";
-import { pairPeer, RemoteRelayClient } from "../src/peer-client.js";
-import { startPeerServer, type PeerServerHandle } from "../src/peer-server.js";
-import { PeerStore } from "../src/peer-store.js";
-import type { ConnectorConfig } from "../src/config.js";
-import type { RelayRuntime } from "../src/relay-runtime.js";
+import { loadOrCreatePeerIdentity } from "../src/peers/peer-identity.js";
+import { createPairingSignaturePayload, signPeerPayload } from "../src/peers/peer-identity.js";
+import { signPeerRequest } from "../src/peers/peer-auth.js";
+import { pairPeer, RemoteRelayClient } from "../src/peers/peer-client.js";
+import { startPeerServer, type PeerServerHandle } from "../src/peers/peer-server.js";
+import { PeerStore } from "../src/peers/peer-store.js";
+import type { ConnectorConfig } from "../src/core/config.js";
+import type { RelayRuntime } from "../src/runtime/relay-runtime.js";
 
 const tmpDirs: string[] = [];
 const handles: PeerServerHandle[] = [];
@@ -65,6 +67,153 @@ describe("peer server pairing", () => {
     const identity = loadOrCreatePeerIdentity(home, "same-node");
     await expect(pairPeer({ url: handle!.url, code: invite.code }, identity, store)).rejects.toThrow(/itself/);
   });
+
+  it("stores the current public URL TLS fingerprint for bidirectional pairing", async () => {
+    const serverHome = tmpHome();
+    const clientHome = tmpHome();
+    const serverStore = new PeerStore(serverHome);
+    const invite = serverStore.createInvitation({ scopes: ["inspect"] });
+    const serverHandle = await startPeerServer({
+      config: peerConfig(serverHome, { tls: true, name: "server" }),
+      runtime: fakeRuntime(),
+      home: serverHome,
+    });
+    const clientHandle = await startPeerServer({
+      config: peerConfig(clientHome, { tls: true, name: "client" }),
+      runtime: fakeRuntime(),
+      home: clientHome,
+    });
+    handles.push(serverHandle!, clientHandle!);
+
+    const clientIdentity = loadOrCreatePeerIdentity(clientHome, "client");
+    serverStore.upsertPeer({
+      name: "client",
+      url: clientHandle!.url,
+      nodeId: clientIdentity.public.nodeId,
+      publicKey: clientIdentity.public.publicKey,
+      fingerprint: clientIdentity.public.fingerprint,
+      tlsFingerprint: "00:00:00",
+      secret: "old-secret",
+      direction: "inbound",
+      scopes: ["inspect"],
+    });
+
+    const clientStore = new PeerStore(clientHome);
+    const paired = await pairPeer({
+      url: serverHandle!.url,
+      code: invite.code,
+      publicUrl: clientHandle!.url,
+    }, clientIdentity, clientStore);
+
+    const storedOnServer = serverStore.get(clientIdentity.public.nodeId);
+    expect(storedOnServer?.tlsFingerprint).toBe(clientHandle!.tlsFingerprint);
+    expect(storedOnServer?.direction).toBe("bidirectional");
+
+    const reverseProbe = await new RemoteRelayClient(clientStore).rpc(paired.peer.id, "peer.probe");
+    expect(reverseProbe).toMatchObject({ ok: true, status: "reachable" });
+  });
+
+  it("rejects replayed signed peer RPC requests", async () => {
+    const serverHome = tmpHome();
+    const clientHome = tmpHome();
+    const serverStore = new PeerStore(serverHome);
+    const invite = serverStore.createInvitation({ scopes: ["inspect"] });
+    const handle = await startPeerServer({
+      config: peerConfig(serverHome),
+      runtime: fakeRuntime(),
+      home: serverHome,
+    });
+    handles.push(handle!);
+
+    const clientIdentity = loadOrCreatePeerIdentity(clientHome, "client");
+    const clientStore = new PeerStore(clientHome);
+    const paired = await pairPeer({ url: handle!.url, code: invite.code }, clientIdentity, clientStore);
+    const peer = clientStore.get(paired.peer.id);
+    expect(peer).not.toBeNull();
+
+    const bodyText = JSON.stringify({ protocolVersion: 1, type: "peer.ping" });
+    const signed = signPeerRequest(peer!, "POST", "/peer/rpc", bodyText);
+    const first = await fetch(`${handle!.url}/peer/rpc`, { method: "POST", headers: signed.headers, body: bodyText });
+    const second = await fetch(`${handle!.url}/peer/rpc`, { method: "POST", headers: signed.headers, body: bodyText });
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(403);
+    await expect(second.json()).resolves.toMatchObject({ error: expect.stringMatching(/Replay/i) });
+  });
+
+  it("rejects RPC from disabled peers", async () => {
+    const serverHome = tmpHome();
+    const clientHome = tmpHome();
+    const serverStore = new PeerStore(serverHome);
+    const invite = serverStore.createInvitation({ scopes: ["inspect"] });
+    const handle = await startPeerServer({
+      config: peerConfig(serverHome),
+      runtime: fakeRuntime(),
+      home: serverHome,
+    });
+    handles.push(handle!);
+
+    const clientIdentity = loadOrCreatePeerIdentity(clientHome, "client");
+    const clientStore = new PeerStore(clientHome);
+    const paired = await pairPeer({ url: handle!.url, code: invite.code }, clientIdentity, clientStore);
+    serverStore.updatePeer(clientIdentity.public.nodeId, { enabled: false });
+
+    await expect(new RemoteRelayClient(clientStore).rpc(paired.peer.id, "peer.ping")).rejects.toThrow(/disabled/i);
+  });
+
+  it("rejects stale pairing requests before consuming the invite", async () => {
+    const serverHome = tmpHome();
+    const clientHome = tmpHome();
+    const serverStore = new PeerStore(serverHome);
+    const invite = serverStore.createInvitation({ scopes: ["inspect"] });
+    const handle = await startPeerServer({
+      config: peerConfig(serverHome),
+      runtime: fakeRuntime(),
+      home: serverHome,
+    });
+    handles.push(handle!);
+
+    const clientIdentity = loadOrCreatePeerIdentity(clientHome, "client");
+    const timestamp = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const signaturePayload = createPairingSignaturePayload(clientIdentity.public.nodeId, timestamp, invite.code);
+    const response = await fetch(`${handle!.url}/peer/pair`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        code: invite.code,
+        identity: clientIdentity.public,
+        timestamp,
+        signature: signPeerPayload(clientIdentity.privateKey, signaturePayload),
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: expect.stringMatching(/clock skew/i) });
+    expect(serverStore.listPublic().length).toBe(0);
+  });
+
+  it("denies web proxy calls outside the peer scopes", async () => {
+    const serverHome = tmpHome();
+    const clientHome = tmpHome();
+    const serverStore = new PeerStore(serverHome);
+    const invite = serverStore.createInvitation({ scopes: ["inspect"] });
+    const handle = await startPeerServer({
+      config: peerConfig(serverHome),
+      runtime: fakeRuntime(),
+      home: serverHome,
+    });
+    handles.push(handle!);
+
+    const clientIdentity = loadOrCreatePeerIdentity(clientHome, "client");
+    const clientStore = new PeerStore(clientHome);
+    const paired = await pairPeer({ url: handle!.url, code: invite.code }, clientIdentity, clientStore);
+
+    await expect(new RemoteRelayClient(clientStore).webProxy(paired.peer.id, {
+      method: "POST",
+      path: "/api/prompt",
+      body: { text: "should be denied" },
+    })).rejects.toThrow(/access denied|permission denied/i);
+  });
 });
 
 function tmpHome(): string {
@@ -73,14 +222,14 @@ function tmpHome(): string {
   return dir;
 }
 
-function peerConfig(workspace: string): ConnectorConfig {
+function peerConfig(workspace: string, options: { tls?: boolean; name?: string } = {}): ConnectorConfig {
   return {
     peerEnabled: true,
-    peerName: "server",
+    peerName: options.name ?? "server",
     peerHost: "127.0.0.1",
     peerPort: 0,
-    peerTlsEnabled: false,
-    peerRequireTls: false,
+    peerTlsEnabled: options.tls ?? false,
+    peerRequireTls: options.tls ?? false,
     workspace,
     stateBackend: "json",
     codexEnabled: true,

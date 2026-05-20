@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CODEX_AGENT_CAPABILITIES, PI_AGENT_CAPABILITIES } from "../src/agent.js";
+import { CODEX_AGENT_CAPABILITIES, PI_AGENT_CAPABILITIES } from "../src/agents/shared/agent.js";
 import {
   logTailRequests,
   parseAgentUpdateId,
@@ -9,7 +9,7 @@ import {
   renderAgentsAction,
   renderChannelsAction,
   renderQueueListAction,
-} from "../src/channel-actions.js";
+} from "../src/channels/shared/channel-actions.js";
 
 describe("channel-independent command actions", () => {
   it("renders channel and agent adapter summaries without Telegram primitives", () => {

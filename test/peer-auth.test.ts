@@ -2,8 +2,8 @@ import type { IncomingMessage } from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import { PeerNonceCache, signPeerRequest, verifyPeerRequest } from "../src/peer-auth.js";
-import type { PeerRecord } from "../src/peer-types.js";
+import { PeerNonceCache, signPeerRequest, verifyPeerRequest } from "../src/peers/peer-auth.js";
+import type { PeerRecord } from "../src/peers/peer-types.js";
 
 describe("peer request authentication", () => {
   it("accepts signed requests and rejects nonce replay", () => {

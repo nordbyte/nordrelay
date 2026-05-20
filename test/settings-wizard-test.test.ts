@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { mergeSettingsWizardTestSettings, runSettingsWizardTest } from "../src/settings-wizard-test.js";
+import { mergeSettingsWizardTestSettings, runSettingsWizardTest } from "../src/core/settings-wizard-test.js";
 
 describe("settings wizard test checks", () => {
   it("keeps existing secrets for live checks when the WebUI submits masked values", () => {

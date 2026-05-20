@@ -7,7 +7,7 @@ import type { AddressInfo } from "node:net";
 
 import { expect, test } from "@playwright/test";
 
-import { UserStore } from "../src/user-management.js";
+import { UserStore } from "../src/access/user-management.js";
 
 test.describe("NordRelay WebUI runtime", () => {
   let runtime: RuntimeServer | undefined;
@@ -97,7 +97,7 @@ async function startRuntimeServer(): Promise<RuntimeServer> {
   const child = spawn(process.execPath, [
     "--import",
     "tsx",
-    "src/web-dashboard.ts",
+    "src/web/web-dashboard.ts",
     "--host",
     "127.0.0.1",
     "--port",

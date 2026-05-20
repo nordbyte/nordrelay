@@ -5,7 +5,7 @@ import {
   renderHelpMessage,
   renderWelcomeFirstTime,
   renderWelcomeReturning,
-} from "../src/bot-ui.js";
+} from "../src/channels/telegram/bot-ui.js";
 
 describe("bot-ui", () => {
   describe("renderHelpMessage", () => {
@@ -37,10 +37,10 @@ describe("bot-ui", () => {
       expect(plain).toContain("/support");
     });
 
-    it("lists all 46 commands", () => {
+    it("lists all 50 commands", () => {
       const { plain } = renderHelpMessage();
       const commandMatches = plain.match(/\/\w+/g) ?? [];
-      expect(commandMatches.length).toBe(46);
+      expect(commandMatches.length).toBe(50);
     });
 
     it("returns valid HTML with bold tags", () => {

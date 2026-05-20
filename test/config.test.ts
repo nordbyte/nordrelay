@@ -1,8 +1,8 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 
-import { loadConfig } from "../src/config.js";
+import { loadConfig } from "../src/core/config.js";
 
 describe("loadConfig", () => {
   const originalEnv = process.env;
@@ -13,12 +13,15 @@ describe("loadConfig", () => {
     tempDir = mkdtempSync(path.join(tmpdir(), "nordrelay-config-"));
     process.chdir(tempDir);
     process.env = { ...originalEnv };
+    delete process.env.NORDRELAY_WEBUI_ENABLED;
     delete process.env.TELEGRAM_ENABLED;
     delete process.env.TELEGRAM_BOT_TOKEN;
     delete process.env.TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS;
     delete process.env.TELEGRAM_EDIT_MIN_INTERVAL_MS;
     delete process.env.NORDRELAY_CLI_MIRROR_MODE;
     delete process.env.NORDRELAY_CLI_MIRROR_MIN_UPDATE_MS;
+    delete process.env.NORDRELAY_WEB_CLI_MIRROR_MODE;
+    delete process.env.NORDRELAY_WEB_CLI_MIRROR_MIN_UPDATE_MS;
     delete process.env.NORDRELAY_NOTIFY_MODE;
     delete process.env.NORDRELAY_QUIET_HOURS;
     delete process.env.NORDRELAY_AUTO_SEND_ARTIFACTS;
@@ -79,6 +82,9 @@ describe("loadConfig", () => {
     delete process.env.ARTIFACT_RETENTION_DAYS;
     delete process.env.ARTIFACT_MAX_TURNS;
     delete process.env.ARTIFACT_MAX_INBOX_DIRS;
+    delete process.env.ARTIFACT_MAX_TOTAL_BYTES;
+    delete process.env.ARTIFACT_WARN_PERCENT;
+    delete process.env.ARTIFACT_SAFE_FILE_POLICY;
     delete process.env.ARTIFACT_IGNORE_DIRS;
     delete process.env.ARTIFACT_IGNORE_GLOBS;
     delete process.env.TELEGRAM_AUTO_SEND_ARTIFACTS;
@@ -112,9 +118,26 @@ describe("loadConfig", () => {
     delete process.env.OPENCLAW_DEFAULT_PROFILE;
     delete process.env.WORKSPACE_ALLOWED_ROOTS;
     delete process.env.WORKSPACE_WARN_ROOTS;
+    delete process.env.NORDRELAY_WORKSPACE;
+    delete process.env.NORDRELAY_SOURCE_ROOT;
     delete process.env.NORDRELAY_STATE_BACKEND;
+    delete process.env.NORDRELAY_SESSION_WORKSPACE_MODE;
+    delete process.env.NORDRELAY_SESSION_WORKTREE_ROOT;
+    delete process.env.NORDRELAY_SESSION_WORKTREE_BRANCH_PREFIX;
     delete process.env.NORDRELAY_AUDIT_MAX_EVENTS;
     delete process.env.NORDRELAY_SESSION_LOCK_TTL_MS;
+    delete process.env.NORDRELAY_PEER_ENABLED;
+    delete process.env.NORDRELAY_PEER_NAME;
+    delete process.env.NORDRELAY_PEER_HOST;
+    delete process.env.NORDRELAY_PEER_PORT;
+    delete process.env.NORDRELAY_PEER_PUBLIC_URL;
+    delete process.env.NORDRELAY_PEER_TLS_ENABLED;
+    delete process.env.NORDRELAY_PEER_REQUIRE_TLS;
+    delete process.env.NORDRELAY_PEER_DISCOVERY_TIMEOUT_MS;
+    delete process.env.NORDRELAY_PEER_HEALTH_CHECK_MS;
+    delete process.env.NORDRELAY_PEER_OUTBOUND_RELAY_ENABLED;
+    delete process.env.NORDRELAY_PEER_OUTBOUND_RELAY_PEERS;
+    delete process.env.NORDRELAY_PEER_OUTBOUND_RELAY_POLL_MS;
     delete process.env.ENABLE_TELEGRAM_LOGIN;
     delete process.env.ENABLE_TELEGRAM_REACTIONS;
     delete process.env.VOICE_PREFERRED_BACKEND;
@@ -130,8 +153,20 @@ describe("loadConfig", () => {
     vi.restoreAllMocks();
   });
 
-  it("throws when no usable chat adapter is configured", () => {
-    expect(() => loadConfig()).toThrow("At least one usable chat adapter must be enabled");
+  it("throws when no usable access surface is configured", () => {
+    process.env.NORDRELAY_WEBUI_ENABLED = "false";
+
+    expect(() => loadConfig()).toThrow("At least WebUI or one usable chat adapter must be enabled");
+  });
+
+  it("allows a WebUI-only setup without chat adapters", () => {
+    const config = loadConfig();
+
+    expect(config.webuiEnabled).toBe(true);
+    expect(config.telegramEnabled).toBe(false);
+    expect(config.discordEnabled).toBe(false);
+    expect(config.slackEnabled).toBe(false);
+    expect(config.adapterWarnings).toContain("Telegram disabled: TELEGRAM_BOT_TOKEN is missing.");
   });
 
   it("parses a valid config correctly", () => {
@@ -146,15 +181,19 @@ describe("loadConfig", () => {
 
     expect(config).toEqual({
       adapterWarnings: [],
+      webuiEnabled: true,
       telegramEnabled: true,
       telegramBotToken: "bot-token",
       telegramRateLimitMinIntervalMs: 80,
       telegramEditMinIntervalMs: 1_200,
       mirrorMode: "status",
       mirrorMinUpdateMs: 4_000,
+      webMirrorMode: "status",
+      webMirrorMinUpdateMs: 4_000,
       notifyMode: "minimal",
       quietHours: null,
       autoSendArtifacts: false,
+      artifactDeliveryMode: "manual-only",
       telegramMirrorMode: "status",
       telegramMirrorMinUpdateMs: 4_000,
       telegramNotifyMode: "minimal",
@@ -180,6 +219,7 @@ describe("loadConfig", () => {
       discordNotifyMode: "minimal",
       discordQuietHours: null,
       discordAutoSendArtifacts: false,
+      discordArtifactDeliveryMode: "manual-only",
       slackEnabled: false,
       slackBotToken: undefined,
       slackAppToken: undefined,
@@ -195,17 +235,25 @@ describe("loadConfig", () => {
       slackNotifyMode: "minimal",
       slackQuietHours: null,
       slackAutoSendArtifacts: false,
+      slackArtifactDeliveryMode: "manual-only",
       workspace: process.cwd(),
       workspaceAllowedRoots: [],
       workspaceWarnRoots: [],
+      sessionWorkspaceMode: "shared",
+      sessionWorktreeRoot: path.join(homedir(), ".nordrelay", "worktrees"),
+      sessionWorktreeBranchPrefix: "nr/session",
       stateBackend: "json",
       maxFileSize: 20 * 1024 * 1024,
       artifactRetentionDays: 7,
       artifactMaxTurnDirs: 30,
       artifactMaxInboxDirs: 30,
+      artifactMaxTotalBytes: 0,
+      artifactWarnPercent: 80,
+      artifactSafeFilePolicy: "warn",
       artifactIgnoreDirs: [],
       artifactIgnoreGlobs: [],
       telegramAutoSendArtifacts: false,
+      telegramArtifactDeliveryMode: "manual-only",
       codexEnabled: true,
       codexApiKey: "secret-key",
       codexModel: "o3",
@@ -273,12 +321,17 @@ describe("loadConfig", () => {
       claudeCodeDefaultLaunchProfileId: "default",
       claudeCodeMaxTurns: 100,
       peerEnabled: false,
+      peerHealthCheckMs: 60_000,
+      peerDiscoveryTimeoutMs: 650,
       peerName: undefined,
       peerHost: "127.0.0.1",
       peerPort: 31979,
       peerPublicUrl: undefined,
       peerTlsEnabled: true,
       peerRequireTls: true,
+      peerOutboundRelayEnabled: false,
+      peerOutboundRelayPeerIds: [],
+      peerOutboundRelayPollMs: 1000,
       defaultAgent: "codex",
       toolVerbosity: "all",
       logFormat: "text",
@@ -291,6 +344,8 @@ describe("loadConfig", () => {
       auditMaxEvents: 1000,
       sessionLockTtlMs: 1_800_000,
       dashboardCacheTtlMs: 10_000,
+      activeDiscoveryCacheTtlMs: 5_000,
+      openClawActiveDiscoveryCacheTtlMs: 30_000,
       unifiedJobMaxItems: 1000,
     });
   });
@@ -343,6 +398,9 @@ describe("loadConfig", () => {
     expect(config.peerPublicUrl).toBeUndefined();
     expect(config.peerTlsEnabled).toBe(true);
     expect(config.peerRequireTls).toBe(true);
+    expect(config.peerOutboundRelayEnabled).toBe(false);
+    expect(config.peerOutboundRelayPeerIds).toEqual([]);
+    expect(config.peerOutboundRelayPollMs).toBe(1000);
     expect(config.codexModel).toBeUndefined();
     expect(config.codexSyncIntervalMs).toBe(10_000);
     expect(config.codexExternalBusyCheckMs).toBe(5_000);
@@ -351,6 +409,8 @@ describe("loadConfig", () => {
     expect(config.telegramEditMinIntervalMs).toBe(1_200);
     expect(config.mirrorMode).toBe("status");
     expect(config.mirrorMinUpdateMs).toBe(4_000);
+    expect(config.webMirrorMode).toBe("status");
+    expect(config.webMirrorMinUpdateMs).toBe(4_000);
     expect(config.notifyMode).toBe("minimal");
     expect(config.quietHours).toBeNull();
     expect(config.autoSendArtifacts).toBe(false);
@@ -398,6 +458,9 @@ describe("loadConfig", () => {
     expect(config.artifactRetentionDays).toBe(7);
     expect(config.artifactMaxTurnDirs).toBe(30);
     expect(config.artifactMaxInboxDirs).toBe(30);
+    expect(config.artifactMaxTotalBytes).toBe(0);
+    expect(config.artifactWarnPercent).toBe(80);
+    expect(config.artifactSafeFilePolicy).toBe("warn");
     expect(config.artifactIgnoreDirs).toEqual([]);
     expect(config.artifactIgnoreGlobs).toEqual([]);
     expect(config.telegramAutoSendArtifacts).toBe(false);
@@ -405,6 +468,8 @@ describe("loadConfig", () => {
     expect(config.auditMaxEvents).toBe(1000);
     expect(config.sessionLockTtlMs).toBe(1_800_000);
     expect(config.dashboardCacheTtlMs).toBe(10_000);
+    expect(config.activeDiscoveryCacheTtlMs).toBe(5_000);
+    expect(config.openClawActiveDiscoveryCacheTtlMs).toBe(30_000);
     expect(config.unifiedJobMaxItems).toBe(1000);
     expect(config.codexSandboxMode).toBe("workspace-write");
     expect(config.codexApprovalPolicy).toBe("never");
@@ -444,6 +509,20 @@ describe("loadConfig", () => {
     expect(config.workspaceAllowedRoots).toEqual([]);
     expect(config.workspaceWarnRoots).toEqual([]);
     expect(config.workspace).toBe(process.cwd());
+    expect(config.sessionWorkspaceMode).toBe("shared");
+    expect(config.sessionWorktreeRoot).toBe(path.join(homedir(), ".nordrelay", "worktrees"));
+    expect(config.sessionWorktreeBranchPrefix).toBe("nr/session");
+  });
+
+  it("treats auto voice language as backend auto-detect", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.VOICE_DEFAULT_LANGUAGE = "auto";
+
+    expect(loadConfig().voiceDefaultLanguage).toBeUndefined();
+
+    process.env.VOICE_DEFAULT_LANGUAGE = "DE";
+
+    expect(loadConfig().voiceDefaultLanguage).toBe("de");
   });
 
   it("parses webhook transport settings", () => {
@@ -476,6 +555,9 @@ describe("loadConfig", () => {
     process.env.NORDRELAY_PEER_PUBLIC_URL = "https://workstation.example:31980";
     process.env.NORDRELAY_PEER_TLS_ENABLED = "false";
     process.env.NORDRELAY_PEER_REQUIRE_TLS = "false";
+    process.env.NORDRELAY_PEER_OUTBOUND_RELAY_ENABLED = "true";
+    process.env.NORDRELAY_PEER_OUTBOUND_RELAY_PEERS = "peer-a,node-b";
+    process.env.NORDRELAY_PEER_OUTBOUND_RELAY_POLL_MS = "1500";
 
     const config = loadConfig();
 
@@ -486,9 +568,13 @@ describe("loadConfig", () => {
     expect(config.peerPublicUrl).toBe("https://workstation.example:31980");
     expect(config.peerTlsEnabled).toBe(false);
     expect(config.peerRequireTls).toBe(false);
+    expect(config.peerOutboundRelayEnabled).toBe(true);
+    expect(config.peerOutboundRelayPeerIds).toEqual(["peer-a", "node-b"]);
+    expect(config.peerOutboundRelayPollMs).toBe(1500);
   });
 
-  it("disables Telegram when webhook transport has no URL and no other chat adapter is usable", () => {
+  it("throws when webhook Telegram has no URL and no other access surface is usable", () => {
+    process.env.NORDRELAY_WEBUI_ENABLED = "false";
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
     process.env.TELEGRAM_TRANSPORT = "webhook";
 
@@ -672,6 +758,26 @@ describe("loadConfig", () => {
     expect(config.workspace).toBe("/workspace");
   });
 
+  it("honors NORDRELAY_WORKSPACE even when the runtime source root is the cwd", () => {
+    const workspace = path.join(tempDir, "selected-workspace");
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.NORDRELAY_WORKSPACE = workspace;
+    process.env.NORDRELAY_SOURCE_ROOT = tempDir;
+
+    const config = loadConfig();
+
+    expect(config.workspace).toBe(workspace);
+  });
+
+  it("does not use the runtime source root as workspace when launched from a package directory", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "bot-token";
+    process.env.NORDRELAY_SOURCE_ROOT = tempDir;
+
+    const config = loadConfig();
+
+    expect(config.workspace).toBe(homedir());
+  });
+
   it("parses MAX_FILE_SIZE when configured", () => {
     process.env.TELEGRAM_BOT_TOKEN = "bot-token";
     process.env.MAX_FILE_SIZE = String(5 * 1024 * 1024);
@@ -715,6 +821,8 @@ describe("loadConfig", () => {
     expect(config.autoSendArtifacts).toBe(true);
     expect(config.telegramMirrorMode).toBe("full");
     expect(config.telegramMirrorMinUpdateMs).toBe(9000);
+    expect(config.webMirrorMode).toBe("full");
+    expect(config.webMirrorMinUpdateMs).toBe(9000);
     expect(config.telegramNotifyMode).toBe("all");
     expect(config.telegramQuietHours).toEqual({ startHour: 22, endHour: 7 });
     expect(config.telegramAutoSendArtifacts).toBe(true);

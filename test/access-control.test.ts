@@ -8,8 +8,8 @@ import {
   permissionForCallbackData,
   permissionForCommand,
   permissionForWebRequest,
-} from "../src/access-control.js";
-import { WEB_API_ROUTE_DEFINITIONS } from "../src/web-api-contract.js";
+} from "../src/access/access-control.js";
+import { WEB_API_ROUTE_DEFINITIONS, routeForWebRequest } from "../src/web/web-api-contract.js";
 
 describe("access-control", () => {
   it("maps commands to granular permissions", () => {
@@ -57,15 +57,29 @@ describe("access-control", () => {
     expect(permissionForWebRequest("POST", "/api/prompt")).toBe("prompt.send");
     expect(permissionForWebRequest("GET", "/api/queue")).toBe("queue.read");
     expect(permissionForWebRequest("POST", "/api/queue")).toBe("queue.write");
+    expect(permissionForWebRequest("GET", "/api/queue/plans")).toBe("queue.plan.read");
+    expect(permissionForWebRequest("POST", "/api/queue/plans")).toBe("queue.plan.write");
+    expect(permissionForWebRequest("POST", "/api/queue/plans/plan-1/approve")).toBe("queue.plan.approve");
+    expect(permissionForWebRequest("POST", "/api/queue/plans/plan-1/enqueue")).toBe("queue.plan.approve");
     expect(permissionForWebRequest("GET", "/api/jobs")).toBe("inspect");
+    expect(permissionForWebRequest("GET", "/api/trace")).toBe("sessions.read");
     expect(permissionForWebRequest("GET", "/api/metrics")).toBe("inspect");
     expect(permissionForWebRequest("GET", "/api/peers")).toBe("peers.read");
     expect(permissionForWebRequest("POST", "/api/peers")).toBe("peers.write");
     expect(permissionForWebRequest("POST", "/api/peers/invite")).toBe("peers.write");
     expect(permissionForWebRequest("POST", "/api/peers/pair")).toBe("peers.write");
+    expect(permissionForWebRequest("GET", "/api/peers/discover")).toBe("peers.connect");
+    expect(permissionForWebRequest("POST", "/api/peers/discovery-jobs")).toBe("peers.connect");
+    expect(permissionForWebRequest("POST", "/api/peers/discovery-jobs/job-1/cancel")).toBe("peers.connect");
+    expect(permissionForWebRequest("GET", "/api/peers/discovery-jobs/job-1/log")).toBe("peers.connect");
+    expect(permissionForWebRequest("GET", "/api/peers/identity/backup")).toBe("peers.write");
+    expect(permissionForWebRequest("POST", "/api/peers/identity/restore")).toBe("peers.write");
     expect(permissionForWebRequest("DELETE", "/api/peers/invitations/invite-1")).toBe("peers.write");
     expect(permissionForWebRequest("GET", "/api/peers/global-sessions")).toBe("sessions.read");
+    expect(permissionForWebRequest("POST", "/api/peers/abc/repin")).toBe("peers.write");
+    expect(permissionForWebRequest("POST", "/api/peers/abc/rotate")).toBe("peers.write");
     expect(permissionForWebRequest("GET", "/api/peers/abc/health")).toBe("peers.connect");
+    expect(routeForWebRequest("GET", "/api/peers/abc/health")?.path).toBe("/api/peers/:id/health");
     expect(permissionForWebRequest("POST", "/api/peers/abc/proxy")).toBe("peers.connect");
     expect(permissionForWebRequest("GET", "/api/peers/abc/events")).toBe("peers.connect");
     expect(permissionForWebRequest("POST", "/api/jobs/queue%3Aabc/action")).toBe("inspect");
@@ -90,6 +104,8 @@ describe("access-control", () => {
     expect(admin?.permissions).toEqual(ALL_PERMISSIONS);
     expect(user?.permissions).toContain("prompt.send");
     expect(user?.permissions).toContain("queue.write");
+    expect(user?.permissions).toContain("queue.plan.write");
+    expect(user?.permissions).not.toContain("queue.plan.approve");
     expect(user?.permissions).not.toContain("users.write");
     expect(readonly?.permissions).toContain("sessions.read");
     expect(readonly?.permissions).not.toContain("prompt.send");

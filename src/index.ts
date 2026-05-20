@@ -1,32 +1,39 @@
 import { createServer, type Server } from "node:http";
 import { mkdir, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 import { webhookCallback } from "grammy";
 
-import { agentLabel, type AgentId } from "./agent.js";
-import { createBot, registerCommands } from "./bot.js";
-import { createDiscordBridge } from "./discord-bot.js";
-import { createSlackBridge } from "./slack-bot.js";
-import { checkAuthStatus } from "./codex-auth.js";
-import { describeCodexCli, resolveCodexCli } from "./codex-cli.js";
-import { checkClaudeCodeAuthStatus } from "./claude-code-auth.js";
-import { describeClaudeCodeCli, resolveClaudeCodeCli } from "./claude-code-cli.js";
-import { findLaunchProfile, formatLaunchProfileBehavior } from "./codex-launch.js";
-import { enabledAgents } from "./agent-factory.js";
-import { loadConfig, type ConnectorConfig } from "./config.js";
-import { checkHermesAuthStatus } from "./hermes-auth.js";
-import { describeHermesCli, resolveHermesCli } from "./hermes-cli.js";
-import { checkOpenClawAuthStatus } from "./openclaw-auth.js";
-import { describeOpenClawCli, resolveOpenClawCli } from "./openclaw-cli.js";
-import { installConsoleLogger } from "./logger.js";
-import { checkPiAuthStatus } from "./pi-auth.js";
-import { describePiCli, resolvePiCli } from "./pi-cli.js";
-import { startPeerServer, type PeerServerHandle } from "./peer-server.js";
-import { RelayRuntime } from "./relay-runtime.js";
-import { configureRedaction } from "./redaction.js";
-import { SessionRegistry } from "./session-registry.js";
-import { UserStore } from "./user-management.js";
+import { agentLabel, type AgentId } from "./agents/shared/agent.js";
+import { createBot, registerCommands } from "./channels/telegram/bot.js";
+import { createDiscordBridge } from "./channels/discord/discord-bot.js";
+import { startDiscordBridgeOrDisable } from "./channels/discord/discord-startup.js";
+import { createSlackBridge } from "./channels/slack/slack-bot.js";
+import { checkAuthStatus } from "./agents/codex/codex-auth.js";
+import { describeCodexCli, resolveCodexCli } from "./agents/codex/codex-cli.js";
+import { checkClaudeCodeAuthStatus } from "./agents/claude-code/claude-code-auth.js";
+import { describeClaudeCodeCli, resolveClaudeCodeCli } from "./agents/claude-code/claude-code-cli.js";
+import { findLaunchProfile, formatLaunchProfileBehavior } from "./agents/codex/codex-launch.js";
+import { enabledAgents } from "./agents/shared/agent-factory.js";
+import { loadConfig, type ConnectorConfig } from "./core/config.js";
+import { checkHermesAuthStatus } from "./agents/hermes/hermes-auth.js";
+import { describeHermesCli, resolveHermesCli } from "./agents/hermes/hermes-cli.js";
+import { checkOpenClawAuthStatus } from "./agents/openclaw/openclaw-auth.js";
+import { describeOpenClawCli, resolveOpenClawCli } from "./agents/openclaw/openclaw-cli.js";
+import { installConsoleLogger } from "./core/logger.js";
+import { friendlyErrorText } from "./core/error-messages.js";
+import { resolveDashboardEnvPath, SettingsService } from "./core/settings-service.js";
+import { checkPiAuthStatus } from "./agents/pi/pi-auth.js";
+import { describePiCli, resolvePiCli } from "./agents/pi/pi-cli.js";
+import { startPeerHealthMonitor, type PeerHealthMonitorHandle } from "./peers/peer-health-monitor.js";
+import { startPeerOutboundRelay, type PeerOutboundRelayHandle } from "./peers/peer-outbound-relay.js";
+import { startPeerServer, type PeerServerHandle } from "./peers/peer-server.js";
+import { RelayRuntime } from "./runtime/relay-runtime.js";
+import { configureRedaction } from "./core/redaction.js";
+import { SessionRegistry } from "./state/session-registry.js";
+import { UserStore } from "./access/user-management.js";
+import { createSessionWorktreeStore, SessionWorktreeService } from "./worktrees/worktree-service.js";
 
 let registry: SessionRegistry | undefined;
 let bot: ReturnType<typeof createBot> | undefined;
@@ -34,6 +41,8 @@ let discordBridge: ReturnType<typeof createDiscordBridge> | undefined;
 let slackBridge: ReturnType<typeof createSlackBridge> | undefined;
 let webhookServer: Server | undefined;
 let peerServer: PeerServerHandle | null | undefined;
+let peerHealthMonitor: PeerHealthMonitorHandle | undefined;
+let peerOutboundRelay: PeerOutboundRelayHandle | null | undefined;
 let peerRuntime: RelayRuntime | undefined;
 let runtimeConfig: ConnectorConfig | undefined;
 
@@ -42,26 +51,40 @@ try {
   runtimeConfig = config;
   configureRedaction(config.telegramRedactPatterns);
   installConsoleLogger(config.logFormat);
-  registry = new SessionRegistry(config);
+  const worktreeService = new SessionWorktreeService(config, createSessionWorktreeStore(config));
+  registry = new SessionRegistry(config, { worktreeService });
   if (config.telegramEnabled) {
     bot = createBot(config, registry);
     await registerCommands(bot);
   }
+  const requestedDiscordEnabled = config.discordEnabled;
   discordBridge = createDiscordBridge(config, registry);
-  await discordBridge?.start();
+  discordBridge = await startDiscordBridgeOrDisable(config, discordBridge);
+  if (requestedDiscordEnabled && !config.discordEnabled) {
+    try {
+      await persistDiscordDisabledSetting();
+    } catch (error) {
+      config.adapterWarnings = [...(config.adapterWarnings ?? []), `Failed to persist DISCORD_ENABLED=false: ${friendlyErrorText(error)}`];
+    }
+  }
   slackBridge = createSlackBridge(config, registry);
   await slackBridge?.start();
   if (config.peerEnabled) {
     peerRuntime = new RelayRuntime(config);
     peerServer = await startPeerServer({ config, runtime: peerRuntime });
   }
+  if (config.peerOutboundRelayEnabled) {
+    peerRuntime ??= new RelayRuntime(config);
+    peerOutboundRelay = startPeerOutboundRelay({ config, runtime: peerRuntime });
+  }
+  peerHealthMonitor = startPeerHealthMonitor({ config });
 
   console.log("NordRelay running");
   const userStore = new UserStore();
   if (userStore.hasAdminUser()) {
     console.log("User management: admin user configured");
   } else {
-    console.warn("Warning: no NordRelay admin user exists. Run `nordrelay user create-admin` to enable WebUI and Telegram access.");
+    console.warn("Warning: no NordRelay admin user exists. Run `nordrelay user create-admin` to enable WebUI and chat-adapter access.");
   }
   const authStatus = await checkDefaultAgentAuth(config);
   console.log(`Auth (${agentLabel(config.defaultAgent)}): ${authStatus.authenticated ? "authenticated" : "not authenticated"} (${authStatus.method})`);
@@ -102,10 +125,12 @@ try {
     }
   }
   console.log("Session mode: per chat context");
+  console.log(`WebUI: ${config.webuiEnabled ? "enabled" : "disabled"}`);
   console.log(`Telegram: ${config.telegramEnabled ? config.telegramTransport : "disabled"}`);
   console.log(`Discord: ${config.discordEnabled ? "enabled" : "disabled"}`);
   console.log(`Slack: ${config.slackEnabled ? (config.slackSocketMode ? "socket-mode" : `http:${config.slackPort}`) : "disabled"}`);
   console.log(`Peers: ${peerServer ? peerServer.url : "disabled"}`);
+  console.log(`Peer outbound relay: ${peerOutboundRelay ? "enabled" : "disabled"}`);
   await writeConnectorState({
     status: "ready",
     pid: Number(process.env.NORDRELAY_WRAPPER_PID) || process.pid,
@@ -124,6 +149,8 @@ try {
     discordEnabled: config.discordEnabled,
     slackEnabled: config.slackEnabled,
     peerEnabled: config.peerEnabled,
+    peerOutboundRelayEnabled: config.peerOutboundRelayEnabled,
+    webuiEnabled: config.webuiEnabled,
     peerUrl: peerServer?.url,
     peerTlsFingerprint: peerServer?.tlsFingerprint,
     adapterWarnings: config.adapterWarnings ?? [],
@@ -169,6 +196,14 @@ async function checkDefaultAgentAuth(config: ConnectorConfig): Promise<{
   return checkAuthStatus(config.codexApiKey);
 }
 
+async function persistDiscordDisabledSetting(): Promise<void> {
+  const home = process.env.NORDRELAY_HOME || path.join(os.homedir(), ".nordrelay");
+  const result = await new SettingsService(resolveDashboardEnvPath(home)).update({ DISCORD_ENABLED: "false" });
+  if (result.errors.length > 0) {
+    throw new Error(result.errors.map((error) => `${error.key}: ${error.message}`).join("; "));
+  }
+}
+
 let shuttingDown = false;
 const shutdown = (signal: NodeJS.Signals) => {
   if (shuttingDown) {
@@ -188,6 +223,8 @@ const shutdown = (signal: NodeJS.Signals) => {
   void peerServer?.close().catch((error) => {
     console.warn("Failed to stop peer server:", error instanceof Error ? error.message : String(error));
   });
+  peerHealthMonitor?.close();
+  peerOutboundRelay?.close();
 
   setTimeout(() => {
     registry?.disposeAll();

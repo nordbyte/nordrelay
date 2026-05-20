@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 
-import { createDefaultLaunchProfile, createLaunchProfile } from "../src/codex-launch.js";
-import type { ConnectorConfig } from "../src/config.js";
+import { createDefaultLaunchProfile, createLaunchProfile } from "../src/agents/codex/codex-launch.js";
+import type { ConnectorConfig } from "../src/core/config.js";
 
 const mockCodexState = vi.hoisted(() => {
   const getThread = vi.fn();
@@ -98,7 +98,7 @@ vi.mock("@openai/codex-sdk", () => ({
   Codex: mockState.Codex,
 }));
 
-vi.mock("../src/codex-state.js", () => ({
+vi.mock("../src/agents/codex/codex-state.js", () => ({
   getThread: mockCodexState.getThread,
   getThreadUsage: mockCodexState.getThreadUsage,
   listThreads: mockCodexState.listThreads,
@@ -106,12 +106,12 @@ vi.mock("../src/codex-state.js", () => ({
   listModels: mockCodexState.listModels,
 }));
 
-vi.mock("../src/codex-config.js", () => ({
+vi.mock("../src/agents/codex/codex-config.js", () => ({
   readCodexFastMode: mockCodexConfig.readCodexFastMode,
   writeCodexFastMode: mockCodexConfig.writeCodexFastMode,
 }));
 
-import { CodexSessionService } from "../src/codex-session.js";
+import { CodexSessionService } from "../src/agents/codex/codex-session.js";
 
 describe("CodexSessionService", () => {
   const usage = {
@@ -284,7 +284,7 @@ describe("CodexSessionService", () => {
     });
   });
 
-  it("includes persisted Codex usage when a thread id is available", async () => {
+  it("includes persisted Codex usage only when requested", async () => {
     mockCodexState.getThreadUsage.mockReturnValue({
       contextWindow: 1000,
       contextUsedPercent: 30,
@@ -310,7 +310,10 @@ describe("CodexSessionService", () => {
       resumeThreadId: "thread-usage",
     });
 
-    expect(service.getInfo().codexUsage).toEqual(expect.objectContaining({
+    expect(service.getInfo().codexUsage).toBeUndefined();
+    expect(mockCodexState.getThreadUsage).not.toHaveBeenCalled();
+
+    expect(service.getInfo({ includeUsage: true }).codexUsage).toEqual(expect.objectContaining({
       contextUsedPercent: 30,
       contextWindow: 1000,
     }));
@@ -353,6 +356,39 @@ describe("CodexSessionService", () => {
     expect(secondThread.options.sandboxMode).toBe("read-only");
     expect(service.getInfo()).toEqual({
       threadId: null,
+      workspace: "/workspace/base",
+      model: "o3",
+      launchProfileId: "readonly",
+      launchProfileLabel: "Read Only",
+      launchProfileBehavior: "read-only / never",
+      sandboxMode: "read-only",
+      approvalPolicy: "never",
+      fastMode: true,
+      unsafeLaunch: false,
+    });
+  });
+
+  it("setLaunchProfileForCurrentSession reattaches an idle active thread with the requested profile", async () => {
+    const service = await CodexSessionService.create(createConfig(), {
+      resumeThreadId: "thread-launch",
+    });
+
+    const result = service.setLaunchProfileForCurrentSession("readonly");
+    const codexInstance = mockState.codexInstances.at(-1);
+
+    expect(result).toEqual({
+      value: "readonly",
+      appliedToActiveThread: true,
+    });
+    expect(codexInstance.resumeThread).toHaveBeenLastCalledWith("thread-launch", {
+      model: "o3",
+      sandboxMode: "read-only",
+      workingDirectory: "/workspace/base",
+      approvalPolicy: "never",
+      skipGitRepoCheck: true,
+    });
+    expect(service.getInfo()).toEqual({
+      threadId: "thread-launch",
       workspace: "/workspace/base",
       model: "o3",
       launchProfileId: "readonly",
@@ -451,7 +487,7 @@ describe("CodexSessionService", () => {
     }));
   });
 
-  it("reports attached no-approval Codex threads as fast even when the default is off", async () => {
+  it("does not report attached no-approval Codex threads as fast when the Codex default is off", async () => {
     mockCodexConfig.readCodexFastMode.mockReturnValue(false);
     const service = await CodexSessionService.create(createConfig(), {
       resumeThreadId: "thread-full-access",
@@ -472,7 +508,7 @@ describe("CodexSessionService", () => {
     expect(service.getInfo()).toEqual(expect.objectContaining({
       launchProfileId: "attached-thread",
       approvalPolicy: "never",
-      fastMode: true,
+      fastMode: false,
       unsafeLaunch: true,
     }));
   });

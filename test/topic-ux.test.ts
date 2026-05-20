@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { contextKeyFromMessage } from "../src/context-key.js";
+import { contextKeyFromMessage } from "../src/channels/shared/context-key.js";
 
 describe("topic-native workspace UX", () => {
   describe("context key isolation", () => {

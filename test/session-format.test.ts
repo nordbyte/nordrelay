@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import type { CodexSessionInfo } from "../src/codex-session.js";
+import type { CodexSessionInfo } from "../src/agents/codex/codex-session.js";
 import {
   formatFileSize,
   renderLaunchSummaryPlain,
   renderSessionInfoHTML,
   renderSessionInfoPlain,
   renderSessionUsageRows,
-} from "../src/session-format.js";
+} from "../src/channels/shared/session-format.js";
 
 describe("session-format", () => {
   const baseInfo: CodexSessionInfo = {

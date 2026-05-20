@@ -6,16 +6,16 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   canSendSystemMessagesToSlackContext,
-} from "../src/slack-bot.js";
+} from "../src/channels/slack/slack-bot.js";
 import {
   isUnauthenticatedSlackCommandAllowed,
   parseSlackMessageCommand,
   permissionForSlackAction,
   requiredPermissionForSlackCommand,
-} from "../src/slack-command-surface.js";
-import { CHANNEL_COMMANDS } from "../src/channel-command-catalog.js";
-import { slackContextKey } from "../src/context-key.js";
-import { UserStore } from "../src/user-management.js";
+} from "../src/channels/slack/slack-command-surface.js";
+import { CHANNEL_COMMANDS } from "../src/channels/shared/channel-command-catalog.js";
+import { slackContextKey } from "../src/channels/shared/context-key.js";
+import { UserStore } from "../src/access/user-management.js";
 
 describe("Slack security boundaries", () => {
   let home: string;

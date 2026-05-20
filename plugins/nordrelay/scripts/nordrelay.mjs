@@ -6,8 +6,15 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import readline from "node:readline/promises";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  buildLaunchdServiceSpec,
+  buildSystemdUserServiceSpec,
+  buildWindowsTaskServiceSpec,
+  parseServiceFlags,
+  serviceInstallSpec,
+} from "./service-installer.mjs";
 
 const FALLBACK_VERSION = "0.3.1";
 const require = createRequire(import.meta.url);
@@ -18,6 +25,8 @@ const DEFAULT_MARKETPLACE_ROOT = path.resolve(PLUGIN_ROOT, "../..");
 const RUNTIME_ROOT = findRuntimeRoot();
 const VERSION = readRuntimePackageVersion() || FALLBACK_VERSION;
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
+const LIFECYCLE_LOCK_TIMEOUT_MS = 10000;
+const LIFECYCLE_LOCK_STALE_MS = 60000;
 
 function nowIso() {
   return new Date().toISOString();
@@ -29,6 +38,15 @@ function readRuntimePackageVersion() {
     return typeof pkg.version === "string" && pkg.version.trim() ? pkg.version.trim() : null;
   } catch {
     return null;
+  }
+}
+
+function isMainScript(argvPath) {
+  if (!argvPath) return false;
+  try {
+    return fs.realpathSync.native(argvPath) === fs.realpathSync.native(SCRIPT_PATH);
+  } catch {
+    return path.resolve(argvPath) === SCRIPT_PATH;
   }
 }
 
@@ -58,6 +76,7 @@ function parseArgs(argv) {
     restartAfterUpdate: true,
     updateMethod: undefined,
     buildBeforeStart: false,
+    fix: false,
   };
 
   for (let i = 0; i < copy.length; i += 1) {
@@ -69,8 +88,10 @@ function parseArgs(argv) {
     else if (arg === "--port") options.port = Number.parseInt(requireValue(copy, ++i, arg), 10);
     else if (arg === "--method") options.updateMethod = requireValue(copy, ++i, arg);
     else if (arg === "--build") options.buildBeforeStart = true;
+    else if (arg === "--fix") options.fix = true;
     else if (arg === "--no-restart") options.restartAfterUpdate = false;
     else if (arg === "--restart") options.restartAfterUpdate = true;
+    else if (arg === "--disable-webui") options.disableWebui = true;
     else if (arg === "--token") options.telegramBotToken = requireValue(copy, ++i, arg);
     else if (arg === "--disable-telegram") options.disableTelegram = true;
     else if (arg === "--enable-discord") options.enableDiscord = true;
@@ -121,13 +142,21 @@ async function mkdirp(dir) {
 }
 
 function loadEnvFiles(home) {
-  const envPath = process.env.NORDRELAY_ENV_FILE
-    ? path.resolve(process.env.NORDRELAY_ENV_FILE)
-    : path.join(home, "nordrelay.env");
-
+  const envPath = resolveEnvPath(home);
   loadEnvFile(envPath);
 
   normalizeEnvAliases();
+}
+
+function resolveEnvPath(home) {
+  return process.env.NORDRELAY_ENV_FILE
+    ? path.resolve(process.env.NORDRELAY_ENV_FILE)
+    : path.join(home, "nordrelay.env");
+}
+
+function resolveLaunchWorkspace() {
+  const configured = process.env.NORDRELAY_WORKSPACE?.trim();
+  return path.resolve(configured || process.cwd());
 }
 
 function loadEnvFile(envPath) {
@@ -185,6 +214,16 @@ function isProcessRunning(pid) {
   }
 }
 
+function readProcessCommandLine(pid) {
+  if (!pid || process.platform !== "linux") return null;
+  try {
+    const raw = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8");
+    return raw.split("\0").filter(Boolean).join(" ");
+  } catch {
+    return null;
+  }
+}
+
 async function readPid(pidFile) {
   try {
     const value = Number.parseInt((await fsp.readFile(pidFile, "utf8")).trim(), 10);
@@ -192,6 +231,84 @@ async function readPid(pidFile) {
   } catch {
     return null;
   }
+}
+
+async function writePidAtomic(pidFile, pid) {
+  await mkdirp(path.dirname(pidFile));
+  const tmp = `${pidFile}.${process.pid}.tmp`;
+  await fsp.writeFile(tmp, `${pid}\n`);
+  await fsp.rename(tmp, pidFile);
+}
+
+async function isLifecycleLockStale(lockFile) {
+  try {
+    const stat = await fsp.stat(lockFile);
+    if (Date.now() - stat.mtimeMs > LIFECYCLE_LOCK_STALE_MS) {
+      return true;
+    }
+    const text = await fsp.readFile(lockFile, "utf8").catch(() => "");
+    const pid = Number.parseInt(text.trim(), 10);
+    return Number.isFinite(pid) && !isProcessRunning(pid);
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    return true;
+  }
+}
+
+async function withLifecycleLock(lockFile, task) {
+  await mkdirp(path.dirname(lockFile));
+  const deadline = Date.now() + LIFECYCLE_LOCK_TIMEOUT_MS;
+  let handle = null;
+  for (;;) {
+    try {
+      handle = await fsp.open(lockFile, "wx");
+      await handle.writeFile(`${process.pid}\n`);
+      break;
+    } catch (error) {
+      if (error?.code !== "EEXIST") {
+        throw error;
+      }
+      if (await isLifecycleLockStale(lockFile)) {
+        await fsp.rm(lockFile, { force: true });
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for lifecycle lock ${lockFile}`);
+      }
+      await sleep(100);
+    }
+  }
+
+  try {
+    return await task();
+  } finally {
+    await handle?.close().catch(() => {});
+    await fsp.rm(lockFile, { force: true });
+  }
+}
+
+function pidFileLock(pidFile) {
+  return `${pidFile}.lock`;
+}
+
+async function isManagedConnectorPid(options, pid) {
+  if (!isProcessRunning(pid)) return false;
+  const state = await readJson(options.stateFile, {});
+  const commandLine = readProcessCommandLine(pid);
+  if (commandLine) {
+    return commandLine.includes(SCRIPT_PATH) && commandLine.includes(" foreground");
+  }
+  return Number(state?.pid) === pid && state?.status !== "stopped";
+}
+
+async function isManagedWebPid(options, pid) {
+  if (!isProcessRunning(pid)) return false;
+  const state = await readWebState(options);
+  const commandLine = readProcessCommandLine(pid);
+  if (commandLine) {
+    return commandLine.includes(RUNTIME_ROOT) && commandLine.includes("web-dashboard");
+  }
+  return Number(state?.pid) === pid && state?.status !== "stopped";
 }
 
 async function readWebState(options) {
@@ -203,7 +320,7 @@ async function readWebPid(options) {
 }
 
 async function isWebDashboardRunning(options) {
-  return isProcessRunning(await readWebPid(options));
+  return await isManagedWebPid(options, await readWebPid(options));
 }
 
 async function writeWebState(options, patch) {
@@ -227,6 +344,10 @@ function resolveDashboardEndpoint(options, settings = {}) {
   return { host, port };
 }
 
+function isWebUiEnabled() {
+  return process.env.NORDRELAY_WEBUI_ENABLED !== "false";
+}
+
 function formatDashboardUrl(endpoint) {
   const host = endpoint.host || "127.0.0.1";
   const displayHost = host === "0.0.0.0" || host === "" ? "127.0.0.1" : host === "::" ? "::1" : host;
@@ -235,74 +356,88 @@ function formatDashboardUrl(endpoint) {
   return `http://${formattedHost}:${endpoint.port}/${bindHint}`;
 }
 
+async function webDashboardHint(options, webUiEnabled) {
+  if (!webUiEnabled) {
+    return "(disabled by NORDRELAY_WEBUI_ENABLED=false)";
+  }
+  const webPid = await readWebPid(options);
+  return await isManagedWebPid(options, webPid) ? `(running with PID ${webPid})` : "(run `nordrelay web` to start it)";
+}
+
 async function commandStart(options, settings = {}) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
+  warnIfCliPathMissing();
   await prepareRuntimeForLaunch(options);
   const dashboard = resolveDashboardEndpoint(options);
+  const webUiEnabled = isWebUiEnabled();
 
-  const currentPid = await readPid(options.pidFile);
-  if (isProcessRunning(currentPid)) {
-    console.log(`Already running with PID ${currentPid}`);
-    await commandStatus(options);
-    return;
-  }
-
-  await writeJsonAtomic(options.stateFile, {
-    status: "starting",
-    pid: null,
-    updatedAt: nowIso(),
-    logFile: options.logFile,
-  });
-
-  const logFd = fs.openSync(options.logFile, "a");
-  const child = spawn(process.execPath, [SCRIPT_PATH, "foreground", ...runtimeForwardFlags(options.rawFlags)], {
-    cwd: RUNTIME_ROOT,
-    detached: true,
-    env: process.env,
-    stdio: ["ignore", logFd, logFd],
-  });
-  child.unref();
-  fs.closeSync(logFd);
-
-  await fsp.writeFile(options.pidFile, `${child.pid}\n`);
-
-  const state = await waitForState(options.stateFile, child.pid, 8000);
-  if (state?.status === "ready") {
-    console.log(`Started ${APP_NAME} ${VERSION} with PID ${child.pid}`);
-    console.log(`Workspace: ${state.workspace || "-"}`);
-    console.log(`Mode: ${state.sessionMode || "per Telegram context"}`);
-    if (!settings.skipWebHint) {
-      const webPid = await readWebPid(options);
-      const webHint = isProcessRunning(webPid) ? `(running with PID ${webPid})` : "(run `nordrelay web` to start it)";
-      console.log(`WebUI: ${formatDashboardUrl(dashboard)} ${webHint}`);
+  await withLifecycleLock(pidFileLock(options.pidFile), async () => {
+    const currentPid = await readPid(options.pidFile);
+    if (await isManagedConnectorPid(options, currentPid)) {
+      console.log(`Already running with PID ${currentPid}`);
+      await commandStatus(options);
+      return;
     }
-    console.log(`Log: ${options.logFile}`);
-    return;
-  }
-
-  if (state?.status === "error") {
-    if (!isProcessRunning(child.pid)) {
+    if (currentPid) {
       await fsp.rm(options.pidFile, { force: true });
     }
-    console.log(`Startup failed. Log: ${options.logFile}`);
-    console.log(state.error || await readStartupError(options.logFile) || "Unknown error");
-    process.exitCode = 1;
-    return;
-  }
 
-  console.log(`Started ${APP_NAME} ${VERSION} with PID ${child.pid}`);
-  if (!settings.skipWebHint) {
-    const webPid = await readWebPid(options);
-    const webHint = isProcessRunning(webPid) ? `(running with PID ${webPid})` : "(run `nordrelay web` to start it)";
-    console.log(`WebUI: ${formatDashboardUrl(dashboard)} ${webHint}`);
-  }
-  console.log(`Startup is still in progress. Log: ${options.logFile}`);
+    await writeJsonAtomic(options.stateFile, {
+      status: "starting",
+      pid: null,
+      updatedAt: nowIso(),
+      logFile: options.logFile,
+    });
+
+    const logFd = fs.openSync(options.logFile, "a");
+    const child = spawn(process.execPath, [SCRIPT_PATH, "foreground", ...runtimeForwardFlags(options.rawFlags)], {
+      cwd: RUNTIME_ROOT,
+      detached: true,
+      env: {
+        ...process.env,
+        NORDRELAY_WORKSPACE: resolveLaunchWorkspace(),
+      },
+      stdio: ["ignore", logFd, logFd],
+    });
+    child.unref();
+    fs.closeSync(logFd);
+
+    await writePidAtomic(options.pidFile, child.pid);
+
+    const state = await waitForState(options.stateFile, child.pid, 8000);
+    if (state?.status === "ready") {
+      console.log(`Started ${APP_NAME} ${VERSION} with PID ${child.pid}`);
+      console.log(`Workspace: ${state.workspace || "-"}`);
+      console.log(`Mode: ${state.sessionMode || "per Telegram context"}`);
+      if (!settings.skipWebHint) {
+        console.log(`WebUI: ${formatDashboardUrl(dashboard)} ${await webDashboardHint(options, webUiEnabled)}`);
+      }
+      console.log(`Log: ${options.logFile}`);
+      return;
+    }
+
+    if (state?.status === "error") {
+      if (!isProcessRunning(child.pid)) {
+        await fsp.rm(options.pidFile, { force: true });
+      }
+      console.log(`Startup failed. Log: ${options.logFile}`);
+      console.log(state.error || await readStartupError(options.logFile) || "Unknown error");
+      process.exitCode = 1;
+      return;
+    }
+
+    console.log(`Started ${APP_NAME} ${VERSION} with PID ${child.pid}`);
+    if (!settings.skipWebHint) {
+      console.log(`WebUI: ${formatDashboardUrl(dashboard)} ${await webDashboardHint(options, webUiEnabled)}`);
+    }
+    console.log(`Startup is still in progress. Log: ${options.logFile}`);
+  });
 }
 
 async function ensureConnectorStartedForWeb(options) {
   const currentPid = await readPid(options.pidFile);
-  if (isProcessRunning(currentPid)) {
+  if (await isManagedConnectorPid(options, currentPid)) {
     console.log(`NordRelay connector already running with PID ${currentPid}.`);
     return;
   }
@@ -332,7 +467,7 @@ async function waitForState(stateFile, pid, timeoutMs) {
 
 async function stopWebDashboard(options, settings = {}) {
   const pid = await readWebPid(options);
-  if (!isProcessRunning(pid)) {
+  if (!(await isManagedWebPid(options, pid))) {
     await fsp.rm(options.webPidFile, { force: true });
     const state = await readWebState(options);
     if (state.status === "running" || state.status === "starting") {
@@ -376,7 +511,7 @@ async function commandStop(options, settings = {}) {
     await stopWebDashboard(options);
   }
   const pid = await readPid(options.pidFile);
-  if (!isProcessRunning(pid)) {
+  if (!(await isManagedConnectorPid(options, pid))) {
     console.log("Connector is not running.");
     await fsp.rm(options.pidFile, { force: true });
     return;
@@ -404,8 +539,9 @@ async function commandStatus(options) {
   const webPid = await readWebPid(options);
   const state = await readJson(options.stateFile, {});
   const webState = await readWebState(options);
-  const running = isProcessRunning(pid);
-  const webRunning = isProcessRunning(webPid);
+  const running = await isManagedConnectorPid(options, pid);
+  const webRunning = await isManagedWebPid(options, webPid);
+  const webUiEnabled = isWebUiEnabled();
   const webStatus = webRunning ? "running" : webState.status === "running" || webState.status === "starting" ? "stale" : webState.status || "stopped";
   if (!webRunning && (webState.status === "running" || webState.status === "starting")) {
     await fsp.rm(options.webPidFile, { force: true });
@@ -413,6 +549,7 @@ async function commandStatus(options) {
   }
   console.log(`Status: ${state.status || (running ? "running" : "stopped")}`);
   console.log(`PID: ${pid || "-"} (${running ? "running" : "not running"})`);
+  console.log(`WebUI enabled: ${webUiEnabled ? "yes" : "no"}`);
   console.log(`WebUI PID: ${webPid || "-"} (${webRunning ? "running" : "not running"})`);
   console.log(`Workspace: ${state.workspace || "-"}`);
   console.log(`Mode: ${state.sessionMode || "per Telegram context"}`);
@@ -431,6 +568,46 @@ async function commandStatus(options) {
   if (state.error) console.log(`Error: ${state.error}`);
 }
 
+function cliPathDiagnostics() {
+  const resolved = findExecutable(APP_NAME);
+  const globalBin = resolveNpmGlobalBinDir();
+  const candidate = globalBin ? path.join(globalBin, process.platform === "win32" ? `${APP_NAME}.cmd` : APP_NAME) : null;
+  const pathContainsGlobalBin = globalBin ? pathListIncludes(globalBin) : false;
+  const expected = [candidate, SCRIPT_PATH].filter(Boolean);
+  const resolvedKnown = Boolean(resolved && expected.some((item) => pathsEqualOrLinked(resolved, item)));
+  const hint = globalBin
+    ? process.platform === "win32"
+      ? `Add ${globalBin} to PATH and reopen the terminal.`
+      : `Add ${globalBin} to PATH, for example: export PATH="${globalBin}:$PATH"`
+    : "Ensure the npm global bin directory is on PATH.";
+  return {
+    ok: Boolean(resolved),
+    resolved,
+    globalBin,
+    pathContainsGlobalBin,
+    expected: candidate,
+    resolvedKnown,
+    detail: resolved
+      ? resolvedKnown
+        ? resolved
+        : `${resolved} (different command target; current wrapper: ${SCRIPT_PATH})`
+      : `not found on PATH${globalBin ? `; npm global bin: ${globalBin}` : ""}`,
+    hint,
+  };
+}
+
+function warnIfCliPathMissing() {
+  if (envFlag("NORDRELAY_SUPPRESS_PATH_WARNING")) {
+    return;
+  }
+  const diagnostics = cliPathDiagnostics();
+  if (diagnostics.ok) {
+    return;
+  }
+  console.warn(`Warning: \`${APP_NAME}\` is not available on PATH.`);
+  console.warn(`Hint: ${diagnostics.hint}`);
+}
+
 async function commandUpdate(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
@@ -439,7 +616,7 @@ async function commandUpdate(options) {
   await mkdirp(path.dirname(updateLog));
   const log = fs.createWriteStream(updateLog, { flags: "a" });
   const sourceRoot = RUNTIME_ROOT;
-  const wasRunning = isProcessRunning(await readPid(options.pidFile));
+  const wasRunning = await isManagedConnectorPid(options, await readPid(options.pidFile));
   const summary = method === "npm"
     ? "Install latest @nordbyte/nordrelay with npm, verify the CLI, and restart if the connector is running."
     : "Pull origin/main, install dependencies, run check, tests, build, and restart if the connector is running.";
@@ -671,6 +848,7 @@ function quoteWindowsCmdArg(value) {
 
 async function commandInit(options) {
   await mkdirp(options.home);
+  warnIfCliPathMissing();
   const envPath = path.join(options.home, "nordrelay.env");
   const userStore = await createUserStore(options.home);
   if (fs.existsSync(envPath) && !options.force) {
@@ -679,6 +857,7 @@ async function commandInit(options) {
     return;
   }
 
+  const enableWebui = options.disableWebui ? "false" : await askChoice(null, "Enable WebUI", "true");
   const enableTelegram = options.disableTelegram ? "false" : await askChoice(null, "Enable Telegram", "true");
   const telegramBotToken = enableTelegram === "true"
     ? options.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || await ask(null, "Telegram bot token", "")
@@ -717,7 +896,9 @@ async function commandInit(options) {
   if (enableDiscord === "true" && !discordBotToken) throw new Error("Discord bot token is required when Discord is enabled.");
   if (enableSlack === "true" && !slackBotToken) throw new Error("Slack bot token is required when Slack is enabled.");
   if (enableSlack === "true" && !slackAppToken) throw new Error("Slack app-level token is required for default Socket Mode.");
-  if (enableTelegram !== "true" && enableDiscord !== "true" && enableSlack !== "true") throw new Error("At least one chat adapter must be enabled.");
+  if (enableWebui !== "true" && enableTelegram !== "true" && enableDiscord !== "true" && enableSlack !== "true") {
+    throw new Error("At least WebUI or one chat adapter must be enabled.");
+  }
   if (!adminEmail) throw new Error("Admin email is required.");
   if (!adminPassword) throw new Error("Admin password is required.");
   if (enableCodex !== "true" && enablePi !== "true" && enableHermes !== "true" && enableOpenClaw !== "true" && enableClaudeCode !== "true") throw new Error("At least one agent must be enabled.");
@@ -734,6 +915,7 @@ async function commandInit(options) {
   const lines = [
     "# NordRelay local runtime config.",
     "# Keep this file private; it contains bot credentials.",
+    `NORDRELAY_WEBUI_ENABLED=${enableWebui}`,
     `TELEGRAM_ENABLED=${enableTelegram}`,
     `TELEGRAM_BOT_TOKEN=${telegramBotToken}`,
     `DISCORD_ENABLED=${enableDiscord}`,
@@ -790,7 +972,7 @@ async function commandInit(options) {
 }
 
 async function createUserStore(home) {
-  const modulePath = path.join(RUNTIME_ROOT, "dist", "user-management.js");
+  const modulePath = path.join(RUNTIME_ROOT, "dist", "access", "user-management.js");
   if (!fs.existsSync(modulePath)) {
     throw new Error(`Missing user management runtime. Run \`npm run build\` in ${RUNTIME_ROOT}.`);
   }
@@ -805,12 +987,12 @@ async function peerModules() {
     "peer-client.js",
   ];
   for (const file of required) {
-    const modulePath = path.join(RUNTIME_ROOT, "dist", file);
+    const modulePath = path.join(RUNTIME_ROOT, "dist", "peers", file);
     if (!fs.existsSync(modulePath)) {
       throw new Error(`Missing peer runtime. Run \`npm run build\` in ${RUNTIME_ROOT}.`);
     }
   }
-  const [store, identity, client] = await Promise.all(required.map((file) => import(pathToFileURL(path.join(RUNTIME_ROOT, "dist", file)).href)));
+  const [store, identity, client] = await Promise.all(required.map((file) => import(pathToFileURL(path.join(RUNTIME_ROOT, "dist", "peers", file)).href)));
   return { store, identity, client };
 }
 
@@ -818,7 +1000,7 @@ function parsePeerFlags(argv) {
   const copy = [...argv];
   const subcommand = copy[0] && !copy[0].startsWith("-") ? copy.shift() : "list";
   const flags = { subcommand, url: undefined };
-  if (["add", "test", "check", "revoke"].includes(subcommand) && copy[0] && !copy[0].startsWith("-")) {
+  if (["add", "test", "check", "revoke", "trust", "rotate"].includes(subcommand) && copy[0] && !copy[0].startsWith("-")) {
     flags.url = copy.shift();
     flags.id = flags.url;
   }
@@ -881,6 +1063,7 @@ async function commandPeer(options) {
       if (peer.lastSeenAt) console.log(`  Last seen: ${peer.lastSeenAt}`);
       if (peer.lastLatencyMs !== undefined) console.log(`  Latency: ${peer.lastLatencyMs}ms`);
       if (peer.remoteVersion) console.log(`  Remote version: ${peer.remoteVersion}`);
+      if (peer.trustStatus) console.log(`  Trust: ${peer.trustStatus}${peer.trustWarnings?.length ? ` (${peer.trustWarnings.join("; ")})` : ""}`);
       if (peer.lastError) console.log(`  Last error: ${peer.lastError}`);
     }
     return;
@@ -915,16 +1098,19 @@ async function commandPeer(options) {
   if (flags.subcommand === "add") {
     const url = flags.url || await ask(null, "Peer URL", "");
     const code = flags.code || await ask(null, "Pairing code", "");
+    const configuredPublicUrl = process.env.NORDRELAY_PEER_ENABLED === "true" ? process.env.NORDRELAY_PEER_PUBLIC_URL : undefined;
+    const publicUrl = flags.publicUrl || configuredPublicUrl;
     const result = await clientMod.pairPeer({
       url,
       code,
       name: flags.name,
-      publicUrl: flags.publicUrl,
+      publicUrl,
     }, identity, store);
     console.log(`Added peer ${result.peer.name} (${result.peer.id}).`);
     console.log(`Node: ${result.peer.nodeId}`);
     console.log(`Fingerprint: ${result.peer.fingerprint}`);
     if (result.tlsFingerprint) console.log(`TLS fingerprint: ${result.tlsFingerprint}`);
+    if (publicUrl) console.log(`Shared public URL: ${publicUrl}`);
     return;
   }
 
@@ -954,7 +1140,187 @@ async function commandPeer(options) {
     return;
   }
 
-  throw new Error("Usage: nordrelay peer [identity|list|invite|add|test|check|revoke]");
+  if (flags.subcommand === "trust") {
+    const id = flags.id || await ask(null, "Peer id", "");
+    const peer = store.get(id);
+    if (!peer?.url) throw new Error("Peer URL is required before TLS trust can be updated.");
+    const probe = await clientMod.checkPeerIdentityEndpoint(peer.url, { timeoutMs: 5000 });
+    if (!probe.ok || !probe.identity) throw new Error(`Peer identity could not be verified: ${probe.detail}`);
+    if (probe.identity.nodeId !== peer.nodeId || probe.identity.publicKey !== peer.publicKey || probe.identity.fingerprint !== peer.fingerprint) {
+      throw new Error("Peer identity changed. Re-pair this peer instead of trusting the TLS fingerprint.");
+    }
+    const updated = store.updatePeerTlsFingerprint(peer.id, probe.tlsFingerprint);
+    console.log(`Trusted TLS fingerprint for ${updated.name}: ${updated.tlsFingerprint || "-"}`);
+    return;
+  }
+
+  if (flags.subcommand === "rotate") {
+    const id = flags.id || await ask(null, "Peer id", "");
+    const url = process.env.NORDRELAY_PEER_PUBLIC_URL || `${process.env.NORDRELAY_PEER_TLS_ENABLED === "false" ? "http" : "https"}://${process.env.NORDRELAY_PEER_HOST || "127.0.0.1"}:${process.env.NORDRELAY_PEER_PORT || "31979"}`;
+    const created = store.createRotationInvitation(id, { expiresInMs: Number.isFinite(flags.expiresMinutes) ? flags.expiresMinutes * 60 * 1000 : undefined });
+    console.log(`Rotation invite for ${created.peer.name} (${created.peer.id}).`);
+    console.log(`Pairing code: ${created.code}`);
+    console.log(`Expires: ${created.invitation.expiresAt}`);
+    console.log(`Command: nordrelay peer add ${url} --code ${created.code}`);
+    return;
+  }
+
+  throw new Error("Usage: nordrelay peer [identity|list|invite|add|test|check|trust|rotate|revoke]");
+}
+
+async function commandService(options) {
+  await mkdirp(options.home);
+  loadEnvFiles(options.home);
+  warnIfCliPathMissing();
+  const flags = parseServiceFlags(options.rawFlags);
+  const specOptions = { ...options, scriptPath: SCRIPT_PATH };
+
+  if (flags.subcommand === "install") {
+    if (flags.dryRun) {
+      printServiceInstallDryRun(specOptions, flags);
+      return;
+    }
+    if (flags.platform === "darwin") {
+      await installLaunchdService(specOptions, flags);
+      return;
+    }
+    if (flags.platform === "win32") {
+      await installWindowsTask(specOptions, flags);
+      return;
+    }
+    await installSystemdUserService(specOptions, flags);
+    return;
+  }
+
+  if (flags.subcommand === "uninstall" || flags.subcommand === "remove") {
+    if (flags.platform === "darwin") {
+      await uninstallLaunchdService(flags);
+      return;
+    }
+    if (flags.platform === "win32") {
+      await uninstallWindowsTask(flags);
+      return;
+    }
+    await uninstallSystemdUserService(flags);
+    return;
+  }
+
+  if (flags.subcommand === "status") {
+    await commandServiceStatus(flags);
+    return;
+  }
+
+  throw new Error("Usage: nordrelay service [install|uninstall|status] [--no-start] [--name <name>] [--label <label>]");
+}
+
+async function installSystemdUserService(options, flags) {
+  const spec = buildSystemdUserServiceSpec(options, flags);
+  const unitDir = path.dirname(spec.path);
+  const unitPath = spec.path;
+  await mkdirp(unitDir);
+  await fsp.writeFile(unitPath, spec.content);
+  console.log(`Installed systemd user service: ${unitPath}`);
+  for (const command of spec.commands) {
+    runPlatformCommand(command.command, command.args, command.label, command.settings);
+  }
+  console.log(`Status: nordrelay service status`);
+}
+
+async function uninstallSystemdUserService(flags) {
+  runPlatformCommand("systemctl", ["--user", "disable", "--now", `${flags.name}.service`], `Disable ${flags.name}.service`);
+  const unitPath = path.join(os.homedir(), ".config", "systemd", "user", `${flags.name}.service`);
+  await fsp.rm(unitPath, { force: true });
+  runPlatformCommand("systemctl", ["--user", "daemon-reload"], "Reload systemd user units");
+  console.log(`Removed systemd user service: ${unitPath}`);
+}
+
+async function installLaunchdService(options, flags) {
+  const spec = buildLaunchdServiceSpec(options, flags);
+  const launchAgentsDir = path.dirname(spec.path);
+  const plistPath = spec.path;
+  await mkdirp(launchAgentsDir);
+  await fsp.writeFile(plistPath, spec.content);
+  console.log(`Installed launchd service: ${plistPath}`);
+  for (const command of spec.commands) {
+    runPlatformCommand(command.command, command.args, command.label, command.settings);
+  }
+  if (!flags.start) {
+    const domain = launchdDomain();
+    console.log(`Start later with: launchctl bootstrap ${domain} ${plistPath}`);
+  }
+}
+
+async function uninstallLaunchdService(flags) {
+  const plistPath = path.join(os.homedir(), "Library", "LaunchAgents", `${flags.label}.plist`);
+  const domain = `gui/${process.getuid?.() ?? ""}`;
+  runPlatformCommand("launchctl", ["bootout", domain, plistPath], `Unload ${flags.label}`, { allowFailure: true });
+  await fsp.rm(plistPath, { force: true });
+  console.log(`Removed launchd service: ${plistPath}`);
+}
+
+async function installWindowsTask(options, flags) {
+  const spec = buildWindowsTaskServiceSpec(options, flags);
+  for (const command of spec.commands) {
+    runPlatformCommand(command.command, command.args, command.label, command.settings);
+  }
+  console.log(`Installed Windows task: ${flags.name}`);
+}
+
+async function uninstallWindowsTask(flags) {
+  runPlatformCommand("schtasks", ["/Delete", "/F", "/TN", flags.name], `Delete Windows task ${flags.name}`, { allowFailure: true });
+  console.log(`Removed Windows task: ${flags.name}`);
+}
+
+async function commandServiceStatus(flags) {
+  if (process.platform === "darwin") {
+    const domain = `gui/${process.getuid?.() ?? ""}`;
+    runPlatformCommand("launchctl", ["print", `${domain}/${flags.label}`], `launchd status ${flags.label}`, { allowFailure: true });
+    return;
+  }
+  if (process.platform === "win32") {
+    runPlatformCommand("schtasks", ["/Query", "/TN", flags.name], `Windows task status ${flags.name}`, { allowFailure: true });
+    return;
+  }
+  runPlatformCommand("systemctl", ["--user", "status", `${flags.name}.service`, "--no-pager"], `systemd user status ${flags.name}.service`, { allowFailure: true });
+}
+
+function printServiceInstallDryRun(options, flags) {
+  const spec = serviceInstallSpec(options, flags);
+  console.log(`Service install dry-run (${spec.platform})`);
+  console.log(`Target: ${spec.path}`);
+  if (spec.content) {
+    console.log("--- file content ---");
+    console.log(spec.content.trimEnd());
+  }
+  console.log("--- commands ---");
+  for (const command of spec.commands) {
+    console.log(formatCommand(command.command, command.args));
+  }
+}
+
+function launchdDomain() {
+  return `gui/${process.getuid?.() ?? ""}`;
+}
+
+function runPlatformCommand(command, args, label, settings = {}) {
+  const resolved = findExecutable(command);
+  if (!resolved) {
+    console.log(`${label}: ${command} not found. Run this step manually if this platform service manager is available.`);
+    return false;
+  }
+  const useShell = isWindowsShellScript(resolved);
+  console.log(`${label}: ${formatCommand(resolved, args)}`);
+  const result = spawnSync(useShell ? formatShellCommand(resolved, args) : resolved, useShell ? [] : args, {
+    cwd: RUNTIME_ROOT,
+    env: process.env,
+    shell: useShell,
+    stdio: "inherit",
+    windowsHide: false,
+  });
+  if (result.status !== 0 && !settings.allowFailure) {
+    throw new Error(`${label} failed with exit code ${result.status ?? "unknown"}`);
+  }
+  return result.status === 0;
 }
 
 function parseUserFlags(argv) {
@@ -1089,6 +1455,13 @@ async function commandDoctor(options) {
   const userSnapshot = userStore?.snapshot();
   const checks = [];
   checks.push(check("Node.js >= 22", Number.parseInt(process.versions.node.split(".")[0], 10) >= 22, process.version));
+  const cliPath = cliPathDiagnostics();
+  const cliPathFix = cliPath.globalBin ? pathFix(cliPath.globalBin) : hintFix(cliPath.hint);
+  checks.push(check("NordRelay CLI on PATH", cliPath.ok, cliPath.ok ? cliPath.detail : `${cliPath.detail}; ${cliPath.hint}`, "warn", cliPathFix));
+  if (cliPath.globalBin) {
+    checks.push(check("npm global bin on PATH", cliPath.pathContainsGlobalBin, cliPath.globalBin, "warn", pathFix(cliPath.globalBin)));
+  }
+  const webUiEnabled = isWebUiEnabled();
   const telegramRequested = process.env.TELEGRAM_ENABLED !== "false";
   const discordRequested = process.env.DISCORD_ENABLED === "true";
   const slackRequested = process.env.SLACK_ENABLED === "true";
@@ -1097,38 +1470,46 @@ async function commandDoctor(options) {
   const discordUsable = discordRequested && Boolean(process.env.DISCORD_BOT_TOKEN);
   const slackUsable = slackRequested && Boolean(process.env.SLACK_BOT_TOKEN) && (slackSocketMode ? Boolean(process.env.SLACK_APP_TOKEN) : Boolean(process.env.SLACK_SIGNING_SECRET));
   checks.push(check(
+    "WebUI enabled",
+    webUiEnabled,
+    webUiEnabled ? "enabled" : "disabled by NORDRELAY_WEBUI_ENABLED=false",
+    "warn",
+    envValueFix(options.home, "NORDRELAY_WEBUI_ENABLED", "true", "Enable the WebUI in the local env file."),
+  ));
+  checks.push(check(
     "Telegram bot token",
     !telegramRequested || telegramUsable,
     telegramRequested ? (telegramUsable ? "configured" : "missing; Telegram adapter will be disabled") : "disabled",
-    telegramRequested && !discordUsable && !slackUsable ? "fail" : "warn",
+    "warn",
   ));
   checks.push(check(
     "Discord bot token",
     !discordRequested || discordUsable,
     discordRequested ? (discordUsable ? "configured" : "missing; Discord adapter will be disabled") : "disabled",
-    discordRequested && !telegramUsable && !slackUsable ? "fail" : "warn",
+    "warn",
   ));
   checks.push(check(
     "Slack bot token",
     !slackRequested || Boolean(process.env.SLACK_BOT_TOKEN),
     slackRequested ? (process.env.SLACK_BOT_TOKEN ? "configured" : "missing; Slack adapter will be disabled") : "disabled",
-    slackRequested && !telegramUsable && !discordUsable ? "fail" : "warn",
+    "warn",
   ));
   checks.push(check(
     slackSocketMode ? "Slack app token" : "Slack signing secret",
     !slackRequested || slackUsable,
     slackRequested ? (slackUsable ? "configured" : `missing; ${slackSocketMode ? "Socket Mode requires SLACK_APP_TOKEN" : "HTTP mode requires SLACK_SIGNING_SECRET"}`) : "disabled",
-    slackRequested && !telegramUsable && !discordUsable ? "fail" : "warn",
+    "warn",
   ));
   checks.push(check(
-    "Usable chat adapter",
-    telegramUsable || discordUsable || slackUsable,
-    [telegramUsable ? "Telegram" : "", discordUsable ? "Discord" : "", slackUsable ? "Slack" : ""].filter(Boolean).join(" and ") || "none",
+    "Usable access surface",
+    webUiEnabled || telegramUsable || discordUsable || slackUsable,
+    [webUiEnabled ? "WebUI" : "", telegramUsable ? "Telegram" : "", discordUsable ? "Discord" : "", slackUsable ? "Slack" : ""].filter(Boolean).join(" and ") || "none",
     "fail",
+    envValueFix(options.home, "NORDRELAY_WEBUI_ENABLED", "true", "Enable WebUI so at least one access surface is available."),
   ));
-  checks.push(check("Discord client ID", !discordUsable || Boolean(process.env.DISCORD_CLIENT_ID), discordUsable ? (process.env.DISCORD_CLIENT_ID ? "configured" : "missing; slash command auto-registration disabled") : "disabled", "warn"));
-  checks.push(check("User store", Boolean(userStore), userStore ? userStore.filePath : "missing runtime", userStore ? "pass" : "fail"));
-  checks.push(check("Admin user", Boolean(userSnapshot?.adminConfigured), userSnapshot?.adminConfigured ? "configured" : "missing"));
+  checks.push(check("Discord client ID", !discordUsable || Boolean(process.env.DISCORD_CLIENT_ID), discordUsable ? (process.env.DISCORD_CLIENT_ID ? "configured" : "missing; slash command auto-registration disabled") : "disabled", "warn", hintFix("Set DISCORD_CLIENT_ID from the Discord Developer Portal.")));
+  checks.push(check("User store", Boolean(userStore), userStore ? userStore.filePath : "missing runtime", userStore ? "pass" : "fail", runtimeBuildFix()));
+  checks.push(check("Admin user", Boolean(userSnapshot?.adminConfigured), userSnapshot?.adminConfigured ? "configured" : "missing", "fail", hintFix("Run `nordrelay user create-admin` to create the first admin.")));
   checks.push(check("WebUI login", true, "required for every dashboard request"));
   checks.push(check("Telegram access", true, "requires linked active users and enabled group chats"));
   checks.push(check("Discord access", true, "requires linked active users and enabled channels"));
@@ -1137,33 +1518,39 @@ async function commandDoctor(options) {
   const peerTlsEnabled = process.env.NORDRELAY_PEER_TLS_ENABLED !== "false";
   const peerHost = process.env.NORDRELAY_PEER_HOST || "127.0.0.1";
   checks.push(check("Peer server", peerEnabled, peerEnabled ? `${peerHost}:${process.env.NORDRELAY_PEER_PORT || "31979"}` : "disabled", "warn"));
-  checks.push(check("Peer TLS", !peerEnabled || peerTlsEnabled || isLoopbackName(peerHost), peerTlsEnabled ? "enabled" : "plaintext loopback only", peerEnabled ? "fail" : "warn"));
+  checks.push(check("Peer TLS", !peerEnabled || peerTlsEnabled || isLoopbackName(peerHost), peerTlsEnabled ? "enabled" : "plaintext loopback only", peerEnabled ? "fail" : "warn", envValueFix(options.home, "NORDRELAY_PEER_TLS_ENABLED", "true", "Enable TLS for non-loopback peer traffic.")));
   checks.push(check("Codex enabled flag", process.env.NORDRELAY_CODEX_ENABLED !== "false", `NORDRELAY_CODEX_ENABLED=${process.env.NORDRELAY_CODEX_ENABLED ?? "true"}`));
   checks.push(check("Pi enabled flag", process.env.NORDRELAY_PI_ENABLED === "true" || process.env.NORDRELAY_PI_ENABLED === undefined, `NORDRELAY_PI_ENABLED=${process.env.NORDRELAY_PI_ENABLED ?? "false"}`, process.env.NORDRELAY_PI_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("Hermes enabled flag", process.env.NORDRELAY_HERMES_ENABLED === "true", `NORDRELAY_HERMES_ENABLED=${process.env.NORDRELAY_HERMES_ENABLED ?? "false"}`, process.env.NORDRELAY_HERMES_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("OpenClaw enabled flag", process.env.NORDRELAY_OPENCLAW_ENABLED === "true", `NORDRELAY_OPENCLAW_ENABLED=${process.env.NORDRELAY_OPENCLAW_ENABLED ?? "false"}`, process.env.NORDRELAY_OPENCLAW_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("Claude Code enabled flag", process.env.NORDRELAY_CLAUDE_CODE_ENABLED === "true", `NORDRELAY_CLAUDE_CODE_ENABLED=${process.env.NORDRELAY_CLAUDE_CODE_ENABLED ?? "false"}`, process.env.NORDRELAY_CLAUDE_CODE_ENABLED === "true" ? "pass" : "warn"));
-  checks.push(check("Codex CLI", Boolean(findExecutable(process.env.CODEX_CLI_PATH || "codex")), process.env.CODEX_CLI_PATH || findExecutable("codex") || "not found", process.env.NORDRELAY_CODEX_ENABLED === "false" ? "warn" : "fail"));
-  checks.push(check("Pi CLI", Boolean(findExecutable(process.env.PI_CLI_PATH || "pi")), process.env.PI_CLI_PATH || findExecutable("pi") || "not found", process.env.NORDRELAY_PI_ENABLED === "true" ? "fail" : "warn"));
-  checks.push(check("Hermes CLI", Boolean(findExecutable(process.env.HERMES_CLI_PATH || "hermes")), process.env.HERMES_CLI_PATH || findExecutable("hermes") || "not found", process.env.NORDRELAY_HERMES_ENABLED === "true" ? "fail" : "warn"));
-  checks.push(check("OpenClaw CLI", Boolean(findExecutable(process.env.OPENCLAW_CLI_PATH || "openclaw")), process.env.OPENCLAW_CLI_PATH || findExecutable("openclaw") || "not found", process.env.NORDRELAY_OPENCLAW_ENABLED === "true" ? "fail" : "warn"));
-  checks.push(check("Claude Code CLI", Boolean(findExecutable(process.env.CLAUDE_CODE_CLI_PATH || "claude")), process.env.CLAUDE_CODE_CLI_PATH || findExecutable("claude") || "SDK bundled runtime", "warn"));
+  checks.push(check("Codex CLI", Boolean(findExecutable(process.env.CODEX_CLI_PATH || "codex")), process.env.CODEX_CLI_PATH || findExecutable("codex") || "not found", process.env.NORDRELAY_CODEX_ENABLED === "false" ? "warn" : "fail", hintFix("Install Codex CLI or set CODEX_CLI_PATH to its executable.")));
+  checks.push(check("Pi CLI", Boolean(findExecutable(process.env.PI_CLI_PATH || "pi")), process.env.PI_CLI_PATH || findExecutable("pi") || "not found", process.env.NORDRELAY_PI_ENABLED === "true" ? "fail" : "warn", hintFix("Install Pi CLI or set PI_CLI_PATH to its executable.")));
+  checks.push(check("Hermes CLI", Boolean(findExecutable(process.env.HERMES_CLI_PATH || "hermes")), process.env.HERMES_CLI_PATH || findExecutable("hermes") || "not found", process.env.NORDRELAY_HERMES_ENABLED === "true" ? "fail" : "warn", hintFix("Install Hermes CLI or set HERMES_CLI_PATH to its executable.")));
+  checks.push(check("OpenClaw CLI", Boolean(findExecutable(process.env.OPENCLAW_CLI_PATH || "openclaw")), process.env.OPENCLAW_CLI_PATH || findExecutable("openclaw") || "not found", process.env.NORDRELAY_OPENCLAW_ENABLED === "true" ? "fail" : "warn", hintFix("Install OpenClaw CLI or set OPENCLAW_CLI_PATH to its executable.")));
+  checks.push(check("Claude Code CLI", Boolean(findExecutable(process.env.CLAUDE_CODE_CLI_PATH || "claude")), process.env.CLAUDE_CODE_CLI_PATH || findExecutable("claude") || "SDK bundled runtime", "warn", hintFix("Install Claude Code CLI or set CLAUDE_CODE_CLI_PATH to its executable.")));
   const hermesApiCheck = await checkHermesApiServer();
   checks.push(check("Hermes API Server", hermesApiCheck.ok, hermesApiCheck.detail, process.env.NORDRELAY_HERMES_ENABLED === "true" ? "fail" : "warn"));
   const openClawGatewayCheck = await checkOpenClawGateway();
   checks.push(check("OpenClaw Gateway", openClawGatewayCheck.ok, openClawGatewayCheck.detail, process.env.NORDRELAY_OPENCLAW_ENABLED === "true" ? "fail" : "warn"));
-  checks.push(check("ffmpeg", Boolean(findExecutable("ffmpeg")), findExecutable("ffmpeg") || "not found", "warn"));
+  checks.push(check("ffmpeg", Boolean(findExecutable("ffmpeg")), findExecutable("ffmpeg") || "not found", "warn", hintFix("Install ffmpeg with your OS package manager to enable voice conversion.")));
   const stateBackendCheck = validateStateBackend();
-  checks.push(check("State backend", stateBackendCheck.ok, stateBackendCheck.detail));
-  checks.push(check("Runtime entry", Boolean(await resolveRuntimeEntry()), RUNTIME_ROOT));
+  checks.push(check("State backend", stateBackendCheck.ok, stateBackendCheck.detail, "fail", hintFix("Use NORDRELAY_STATE_BACKEND=json or install/rebuild better-sqlite3 for sqlite.")));
+  checks.push(check("Runtime entry", Boolean(await resolveRuntimeEntry()), RUNTIME_ROOT, "fail", runtimeBuildFix()));
 
   for (const item of checks) {
     console.log(`${item.icon} ${item.name}: ${item.detail}`);
+    if (!item.ok && item.fix?.summary) console.log(`   Fix: ${item.fix.summary}`);
   }
 
   const failed = checks.filter((item) => item.status === "fail" && !item.ok);
   const warned = checks.filter((item) => item.status === "warn" && !item.ok);
   console.log(`\nSummary: ${failed.length} failed, ${warned.length} warnings.`);
+  if (options.fix) {
+    await runDoctorFixes(checks);
+  } else if ([...failed, ...warned].some((item) => item.fix?.apply)) {
+    console.log("Run `nordrelay doctor --fix` to apply safe local fixes.");
+  }
   if (failed.length > 0) process.exitCode = 1;
 }
 
@@ -1242,22 +1629,30 @@ async function checkOpenClawGateway() {
 async function commandWeb(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
+  if (!isWebUiEnabled()) {
+    throw new Error("WebUI is disabled by NORDRELAY_WEBUI_ENABLED=false. Set it to true or rerun `nordrelay init --force` to enable the dashboard.");
+  }
+  warnIfCliPathMissing();
   await prepareRuntimeForLaunch(options);
   await ensureConnectorStartedForWeb(options);
   await startWebDashboard(options, { detached: false });
+}
+
+async function commandServiceRun(options) {
+  await mkdirp(options.home);
+  loadEnvFiles(options.home);
+  await prepareRuntimeForLaunch(options);
+  if (!isWebUiEnabled()) {
+    return commandForeground(options);
+  }
+  await ensureConnectorStartedForWeb(options);
+  await startWebDashboard(options, { detached: false, stopConnectorOnExit: true });
 }
 
 async function startWebDashboard(options, settings = {}) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
   const { host, port } = resolveDashboardEndpoint(options, { strict: true });
-  const currentPid = await readWebPid(options);
-  if (isProcessRunning(currentPid)) {
-    console.log(`NordRelay dashboard already running with PID ${currentPid}.`);
-    console.log(`NordRelay dashboard: ${formatDashboardUrl({ host, port })}`);
-    return;
-  }
-  await fsp.rm(options.webPidFile, { force: true });
   const entry = await resolveWebRuntimeEntry();
   if (!entry) {
     throw new Error(`Missing dashboard runtime. Run \`npm install\` and \`npm run build\` in ${RUNTIME_ROOT}.`);
@@ -1267,33 +1662,54 @@ async function startWebDashboard(options, settings = {}) {
     ...process.env,
     NORDRELAY_HOME: options.home,
     NORDRELAY_SOURCE_ROOT: RUNTIME_ROOT,
+    NORDRELAY_WORKSPACE: resolveLaunchWorkspace(),
     NORDRELAY_DASHBOARD_HOST: host,
     NORDRELAY_DASHBOARD_PORT: String(port),
   };
-  await writeWebState(options, {
-    status: "starting",
-    pid: null,
-    host,
-    port,
-    url: formatDashboardUrl({ host, port }),
+  let child = null;
+  let stdio = null;
+  let alreadyRunning = false;
+  await withLifecycleLock(pidFileLock(options.webPidFile), async () => {
+    const currentPid = await readWebPid(options);
+    if (await isManagedWebPid(options, currentPid)) {
+      console.log(`NordRelay dashboard already running with PID ${currentPid}.`);
+      console.log(`NordRelay dashboard: ${formatDashboardUrl({ host, port })}`);
+      alreadyRunning = true;
+      return;
+    }
+    if (currentPid) {
+      await fsp.rm(options.webPidFile, { force: true });
+    }
+
+    await writeWebState(options, {
+      status: "starting",
+      pid: null,
+      host,
+      port,
+      url: formatDashboardUrl({ host, port }),
+    });
+    stdio = settings.detached
+      ? ["ignore", fs.openSync(options.webLogFile, "a"), fs.openSync(options.webLogFile, "a")]
+      : "inherit";
+    child = spawn(entry.command, [...entry.args, "--host", host, "--port", String(port), "--home", options.home], {
+      cwd: RUNTIME_ROOT,
+      env,
+      detached: Boolean(settings.detached),
+      stdio,
+    });
+    await writePidAtomic(options.webPidFile, child.pid);
+    await writeWebState(options, {
+      status: "running",
+      pid: child.pid,
+      host,
+      port,
+      url: formatDashboardUrl({ host, port }),
+    });
   });
-  const stdio = settings.detached
-    ? ["ignore", fs.openSync(options.webLogFile, "a"), fs.openSync(options.webLogFile, "a")]
-    : "inherit";
-  const child = spawn(entry.command, [...entry.args, "--host", host, "--port", String(port), "--home", options.home], {
-    cwd: RUNTIME_ROOT,
-    env,
-    detached: Boolean(settings.detached),
-    stdio,
-  });
-  await fsp.writeFile(options.webPidFile, `${child.pid}\n`);
-  await writeWebState(options, {
-    status: "running",
-    pid: child.pid,
-    host,
-    port,
-    url: formatDashboardUrl({ host, port }),
-  });
+
+  if (alreadyRunning || !child) {
+    return;
+  }
 
   if (settings.detached) {
     child.unref();
@@ -1332,6 +1748,9 @@ async function startWebDashboard(options, settings = {}) {
     exitCode: exit.code,
     signal: exit.signal,
   });
+  if (settings.stopConnectorOnExit) {
+    await commandStop(options, { keepWeb: true });
+  }
   if (exit.signal) {
     process.kill(process.pid, exit.signal);
     return;
@@ -1343,6 +1762,7 @@ async function commandForeground(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
   await prepareRuntimeForLaunch(options);
+  const launchWorkspace = resolveLaunchWorkspace();
   process.chdir(RUNTIME_ROOT);
 
   await writeJsonAtomic(options.stateFile, {
@@ -1369,6 +1789,7 @@ async function commandForeground(options) {
     ...process.env,
     NORDRELAY_HOME: options.home,
     NORDRELAY_SOURCE_ROOT: RUNTIME_ROOT,
+    NORDRELAY_WORKSPACE: launchWorkspace,
     NORDRELAY_STATE_FILE: options.stateFile,
     NORDRELAY_WRAPPER_PID: String(process.pid),
     NORDRELAY_DROP_PENDING_UPDATES: options.dropPendingUpdates ? "1" : "0",
@@ -1483,7 +1904,7 @@ function runtimeBuildStatus() {
   ]);
   const distTargets = [
     path.join(RUNTIME_ROOT, "dist", "index.js"),
-    path.join(RUNTIME_ROOT, "dist", "web-dashboard.js"),
+    path.join(RUNTIME_ROOT, "dist", "web", "web-dashboard.js"),
     path.join(RUNTIME_ROOT, "dist", "webui-assets", "dashboard.js"),
     path.join(RUNTIME_ROOT, "dist", "webui-assets", "dashboard.css"),
   ];
@@ -1580,12 +2001,12 @@ async function runInteractiveStep(label, command, args, settings = {}) {
 }
 
 async function resolveWebRuntimeEntry() {
-  const distEntry = path.join(RUNTIME_ROOT, "dist", "web-dashboard.js");
+  const distEntry = path.join(RUNTIME_ROOT, "dist", "web", "web-dashboard.js");
   if (fs.existsSync(distEntry)) {
     return { command: process.execPath, args: [distEntry] };
   }
 
-  const tsEntry = path.join(RUNTIME_ROOT, "src", "web-dashboard.ts");
+  const tsEntry = path.join(RUNTIME_ROOT, "src", "web", "web-dashboard.ts");
   const tsxBin = path.join(RUNTIME_ROOT, "node_modules", ".bin", process.platform === "win32" ? "tsx.cmd" : "tsx");
   if (fs.existsSync(tsEntry) && fs.existsSync(tsxBin)) {
     return { command: tsxBin, args: [tsEntry] };
@@ -1694,14 +2115,139 @@ async function askChoice(rl, label, defaultValue) {
   return value || defaultValue;
 }
 
-function check(name, ok, detail, status = "fail") {
+function check(name, ok, detail, status = "fail", fix = null) {
   return {
     name,
     ok,
     detail,
     status,
+    fix,
     icon: ok ? "✅" : status === "warn" ? "⚠️" : "❌",
   };
+}
+
+function hintFix(summary) {
+  return summary ? { summary } : null;
+}
+
+function envValueFix(home, key, value, summary) {
+  return {
+    id: `env:${key}`,
+    summary: `${summary} (${key}=${value})`,
+    apply: async () => {
+      const envPath = await writeEnvValue(home, key, value);
+      process.env[key] = value;
+      return `Set ${key}=${value} in ${envPath}`;
+    },
+  };
+}
+
+function pathFix(dir) {
+  const profilePath = resolveShellProfilePath();
+  if (!profilePath) {
+    return hintFix(`Add ${dir} to PATH for your shell.`);
+  }
+  return {
+    id: `path:${dir}`,
+    summary: `Add ${dir} to PATH in ${profilePath}.`,
+    apply: async () => addPathToShellProfile(profilePath, dir),
+  };
+}
+
+function runtimeBuildFix() {
+  if (!isSourceRuntime()) {
+    return hintFix("Reinstall NordRelay or run `npm install -g @nordbyte/nordrelay`.");
+  }
+  return {
+    id: "runtime-build",
+    summary: "Build the local source runtime with npm.",
+    apply: async () => {
+      await buildRuntime();
+      return "Built local source runtime.";
+    },
+  };
+}
+
+async function runDoctorFixes(checks) {
+  const seen = new Set();
+  const fixable = checks.filter((item) => {
+    if (item.ok || typeof item.fix?.apply !== "function") return false;
+    const id = item.fix.id || item.fix.summary || item.name;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+  if (!fixable.length) {
+    console.log("\nNo automatic fixes are available for the current findings.");
+    return;
+  }
+  console.log("\nAuto-fixes:");
+  for (const item of fixable) {
+    try {
+      const message = await item.fix.apply();
+      console.log(`✅ ${item.name}: ${message}`);
+    } catch (error) {
+      console.log(`❌ ${item.name}: ${error instanceof Error ? error.message : String(error)}`);
+      process.exitCode = 1;
+    }
+  }
+  console.log("\nRun `nordrelay doctor` again to verify the updated setup.");
+}
+
+async function writeEnvValue(home, key, value) {
+  const envPath = resolveEnvPath(home);
+  await mkdirp(path.dirname(envPath));
+  let text = "";
+  try {
+    text = await fsp.readFile(envPath, "utf8");
+  } catch {
+    text = "# NordRelay local runtime config.\n";
+  }
+  const lines = text.split(/\r?\n/);
+  const pattern = new RegExp(`^(?:export\\s+)?${escapeRegExp(key)}\\s*=`);
+  let updated = false;
+  const next = lines.map((line) => {
+    if (!pattern.test(line.trim())) return line;
+    updated = true;
+    return `${key}=${value}`;
+  });
+  if (!updated) {
+    if (next.length && next[next.length - 1] !== "") next.push("");
+    next.push(`${key}=${value}`);
+  }
+  await fsp.writeFile(envPath, `${next.join("\n").replace(/\n+$/, "")}\n`, { mode: 0o600 });
+  await fsp.chmod(envPath, 0o600).catch(() => {});
+  return envPath;
+}
+
+function resolveShellProfilePath() {
+  if (process.platform === "win32") return null;
+  const home = os.homedir();
+  const shell = path.basename(process.env.SHELL || "");
+  if (shell === "zsh") return path.join(home, ".zprofile");
+  if (shell === "bash") return path.join(home, ".bashrc");
+  return path.join(home, ".profile");
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function addPathToShellProfile(profilePath, dir) {
+  await mkdirp(path.dirname(profilePath));
+  let text = "";
+  try {
+    text = await fsp.readFile(profilePath, "utf8");
+  } catch {}
+  if (text.includes(dir)) return `${dir} is already mentioned in ${profilePath}`;
+  const block = [
+    "",
+    "# Added by nordrelay doctor --fix",
+    `case ":$PATH:" in *":${dir}:"*) ;; *) export PATH="${dir}:$PATH" ;; esac`,
+    "",
+  ].join("\n");
+  await fsp.appendFile(profilePath, block, "utf8");
+  return `Added ${dir} to ${profilePath}. Open a new shell or source the profile.`;
 }
 
 function findExecutable(command, pathValue = process.env.PATH, pathextValue = process.env.PATHEXT) {
@@ -1709,7 +2255,7 @@ function findExecutable(command, pathValue = process.env.PATH, pathextValue = pr
   if (command.includes(path.sep) && fs.existsSync(command)) return command;
   const paths = (pathValue || "").split(path.delimiter);
   const extensions = process.platform === "win32"
-    ? ["", ...(pathextValue || ".COM;.EXE;.BAT;.CMD").split(";")]
+    ? windowsExecutableExtensions(pathextValue)
     : [""];
   for (const dir of paths) {
     for (const extension of extensions) {
@@ -1718,6 +2264,79 @@ function findExecutable(command, pathValue = process.env.PATH, pathextValue = pr
     }
   }
   return null;
+}
+
+function resolveNpmGlobalBinDir(env = process.env) {
+  const prefix = resolveNpmGlobalPrefix(env);
+  if (!prefix) {
+    return null;
+  }
+  return process.platform === "win32" ? prefix : path.join(prefix, "bin");
+}
+
+function resolveNpmGlobalPrefix(env = process.env) {
+  if (env.npm_config_prefix) {
+    return path.resolve(env.npm_config_prefix);
+  }
+  const npm = resolveNpmSpawnCommand(env);
+  if (!npm) {
+    return null;
+  }
+  const command = npm.shell
+    ? formatShellCommand(npm.command, [...npm.argsPrefix, "prefix", "-g"])
+    : npm.command;
+  const args = npm.shell ? [] : [...npm.argsPrefix, "prefix", "-g"];
+  const result = spawnSync(command, args, {
+    cwd: os.homedir(),
+    env,
+    shell: npm.shell,
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 5000,
+  });
+  if (result.status !== 0) {
+    return null;
+  }
+  const prefix = String(result.stdout || "").trim().split(/\r?\n/).at(-1)?.trim();
+  return prefix ? path.resolve(prefix) : null;
+}
+
+function pathListIncludes(directory, pathValue = process.env.PATH) {
+  const normalized = normalizePathForCompare(directory);
+  return (pathValue || "")
+    .split(path.delimiter)
+    .filter(Boolean)
+    .some((entry) => normalizePathForCompare(entry) === normalized);
+}
+
+function pathsEqualOrLinked(left, right) {
+  if (!left || !right) {
+    return false;
+  }
+  const normalizedLeft = normalizePathForCompare(left);
+  const normalizedRight = normalizePathForCompare(right);
+  if (normalizedLeft === normalizedRight) {
+    return true;
+  }
+  try {
+    return normalizePathForCompare(fs.realpathSync(left)) === normalizePathForCompare(fs.realpathSync(right));
+  } catch {
+    return false;
+  }
+}
+
+function normalizePathForCompare(value) {
+  const resolved = path.resolve(value || "");
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+function windowsExecutableExtensions(pathextValue) {
+  const pathext = (pathextValue || ".COM;.EXE;.BAT;.CMD")
+    .split(";")
+    .map((extension) => extension.trim())
+    .filter(Boolean)
+    .map((extension) => extension.startsWith(".") ? extension : `.${extension}`);
+  return [...new Set([...pathext, ""])];
 }
 
 function isWindowsShellScript(filePath) {
@@ -1734,7 +2353,8 @@ function validateStateBackend() {
   if (backend !== "sqlite") return { ok: false, detail: `Invalid NORDRELAY_STATE_BACKEND=${backend}` };
   try {
     const Database = require("better-sqlite3");
-    const filePath = path.join(process.cwd(), ".nordrelay", "state.sqlite");
+    const workspace = path.resolve(process.env.NORDRELAY_WORKSPACE || process.cwd());
+    const filePath = path.join(workspace, ".nordrelay", "state.sqlite");
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const db = new Database(filePath);
     db.exec([
@@ -1749,7 +2369,7 @@ function validateStateBackend() {
   } catch (error) {
     return {
       ok: false,
-      detail: `NORDRELAY_STATE_BACKEND=sqlite failed: ${error instanceof Error ? error.message : String(error)}`,
+      detail: `NORDRELAY_STATE_BACKEND=sqlite is configured but unavailable: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }
@@ -1780,7 +2400,8 @@ function printHelp() {
   console.log("  init                 Create local config and first admin user");
   console.log("  user                 Manage users, groups, and channel links");
   console.log("  peer                 Manage secure NordRelay peer federation");
-  console.log("  doctor               Validate the local setup");
+  console.log("  service              Install, remove, or inspect the OS service");
+  console.log("  doctor [--fix]       Validate the local setup and apply safe fixes");
   console.log("  web, dashboard       Start the WebUI and connector");
   console.log("  start                Start the connector");
   console.log("  stop                 Stop the connector and WebUI");
@@ -1794,8 +2415,11 @@ function printHelp() {
   console.log("  --home <path>        Runtime home directory");
   console.log("  --host <host>        WebUI bind host");
   console.log("  --port <port>        WebUI port");
+  console.log("  service install --dry-run [--platform linux|darwin|win32]");
   console.log("  --build              Build source runtime before start/web/restart");
+  console.log("  --fix                Apply safe local fixes during doctor");
   console.log("  --force              Overwrite existing config during init");
+  console.log("  --disable-webui      Disable the WebUI during init");
   console.log("  --help, -h           Show this help");
   console.log("  --version, -v        Show the installed version");
 }
@@ -1812,6 +2436,7 @@ async function main() {
   if (options.command === "init") return commandInit(options);
   if (options.command === "user") return commandUser(options);
   if (options.command === "peer") return commandPeer(options);
+  if (options.command === "service") return commandService(options);
   if (options.command === "doctor") return commandDoctor(options);
   if (options.command === "update") return commandUpdate(options);
   if (options.command === "web" || options.command === "dashboard") return commandWeb(options);
@@ -1828,18 +2453,29 @@ async function main() {
     return;
   }
   if (options.command === "foreground") return commandForeground(options);
+  if (options.command === "service-run") return commandServiceRun(options);
   if (options.command === "--version" || options.command === "version") {
     console.log(`${APP_NAME} ${VERSION}`);
     return;
   }
 
   console.error(`Unknown command: ${options.command}`);
-  console.error("Usage: nordrelay [init|user|peer|doctor|web|start|stop|restart|status|update|foreground|version]");
+  console.error("Usage: nordrelay [init|user|peer|service|doctor|web|start|stop|restart|status|update|foreground|version]");
   console.error("Run `nordrelay --help` for details.");
   process.exitCode = 2;
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+export {
+  buildLaunchdServiceSpec,
+  buildSystemdUserServiceSpec,
+  buildWindowsTaskServiceSpec,
+  parseServiceFlags,
+  serviceInstallSpec,
+};
+
+if (isMainScript(process.argv[1])) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

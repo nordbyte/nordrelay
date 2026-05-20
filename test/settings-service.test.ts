@@ -5,8 +5,8 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { renderEnvExample } from "../src/config-metadata.js";
-import { maskSecret, resolveDashboardEnvPath, SETTING_DEFINITIONS, SettingsService } from "../src/settings-service.js";
+import { renderEnvExample } from "../src/core/config-metadata.js";
+import { maskSecret, resolveDashboardEnvPath, SETTING_DEFINITIONS, SettingsService } from "../src/core/settings-service.js";
 
 describe("SettingsService", () => {
   it("masks secrets and writes changed settings", async () => {

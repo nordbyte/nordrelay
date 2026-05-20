@@ -6,7 +6,7 @@ vi.mock("node:child_process", () => ({
   execFile: mockExecFile,
 }));
 
-import { checkAuthStatus, clearAuthCache, startLogin, startLogout } from "../src/codex-auth.js";
+import { checkAuthStatus, clearAuthCache, startLogin, startLogout } from "../src/agents/codex/codex-auth.js";
 
 // Helper to make mockExecFile call its callback with success
 function mockExecSuccess(stdout: string, stderr = ""): void {

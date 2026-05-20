@@ -10,58 +10,6 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Node.js ${{ matrix.node }} (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        node:
-          - 22
-          - 24
-        os:
-          - ubuntu-latest
-          - windows-latest
-          - macos-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Typecheck
-        run: npm run check
-
-      - name: Test
-        run: npm test
-
-      - name: Build
-        run: npm run build
-
-      - name: Install Playwright browsers (Linux)
-        if: runner.os == 'Linux'
-        run: npx playwright install --with-deps chromium
-
-      - name: Install Playwright browsers
-        if: runner.os != 'Linux'
-        run: npx playwright install chromium
-
-      - name: WebUI browser tests
-        run: npm run test:e2e
-
-      - name: Security audit
-        run: npm run security:audit
-
-      - name: Package dry run
-        run: npm pack --dry-run
-
-      - name: Fresh global install smoke
-        run: node scripts/fresh-install-smoke.mjs
+  verify:
+    name: Verify
+    uses: ./.github/workflows/reusable-verify.yml

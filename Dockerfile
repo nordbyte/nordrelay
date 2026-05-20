@@ -11,7 +11,7 @@ COPY . .
 RUN npm run build
 
 RUN adduser -D -u 1001 nordrelay \
-  && mkdir -p /workspace /home/nordrelay/.codex \
+  && mkdir -p /workspace /home/nordrelay/.nordrelay \
   && chown -R nordrelay:nordrelay /workspace /home/nordrelay
 
 USER nordrelay

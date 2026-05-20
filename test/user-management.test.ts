@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { ADMIN_GROUP_ID, ALL_PERMISSIONS, READONLY_GROUP_ID, USER_GROUP_ID } from "../src/access-control.js";
-import { publicUserSnapshot, UserStore } from "../src/user-management.js";
+import { ADMIN_GROUP_ID, ALL_PERMISSIONS, READONLY_GROUP_ID, USER_GROUP_ID } from "../src/access/access-control.js";
+import { publicUserSnapshot, UserStore } from "../src/access/user-management.js";
 
 describe("UserStore", () => {
   let home: string;
@@ -51,6 +51,33 @@ describe("UserStore", () => {
     expect(snapshot.users[0]).not.toHaveProperty("passwordHash");
     expect(snapshot.users[0]).not.toHaveProperty("passwordSalt");
     expect(snapshot.users[0].webSessions[0]).not.toHaveProperty("tokenHash");
+  });
+
+  it("stores profile preferences and keeps the current session when changing own password", () => {
+    const user = store.createUser({
+      email: "profile@example.com",
+      displayName: "Profile User",
+      password: "password123",
+      groupIds: [USER_GROUP_ID],
+    });
+    const current = store.createWebSession(user.user.id);
+    const other = store.createWebSession(user.user.id);
+
+    const updated = store.updateProfile(user.user.id, {
+      displayName: "Updated Profile",
+      preferences: { theme: "dark" },
+    });
+    expect(updated.user.displayName).toBe("Updated Profile");
+    expect(updated.user.preferences?.theme).toBe("dark");
+    expect(publicUserSnapshot(store.snapshot()).users[0].preferences?.theme).toBe("dark");
+
+    expect(() => store.changePassword(user.user.id, "wrong", "new-password-123", current.session.id)).toThrow("Current password is incorrect.");
+    store.changePassword(user.user.id, "password123", "new-password-123", current.session.id);
+
+    expect(store.verifyPassword("profile@example.com", "password123")).toBeNull();
+    expect(store.verifyPassword("profile@example.com", "new-password-123")?.user.id).toBe(user.user.id);
+    expect(store.resolveWebSession(current.token)?.user.id).toBe(user.user.id);
+    expect(store.resolveWebSession(other.token)).toBeNull();
   });
 
   it("links Telegram users with expiring link codes", () => {

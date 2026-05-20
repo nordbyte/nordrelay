@@ -3,18 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   AGENT_IDS,
   type AgentCapabilities,
-} from "../src/agent.js";
+} from "../src/agents/shared/agent.js";
 import {
   CHANNEL_FEATURES,
   buildAdapterConformanceMatrix,
-} from "../src/adapter-conformance.js";
-import { CHANNEL_COMMANDS } from "../src/channel-command-catalog.js";
+} from "../src/agents/shared/adapter-conformance.js";
+import { CHANNEL_COMMANDS } from "../src/channels/shared/channel-command-catalog.js";
 import {
   channelCatalogCommandNames,
   channelCommandCoverage,
   createSharedChannelCommandDispatcher,
-} from "../src/channel-command-core.js";
-import { TELEGRAM_COMMANDS } from "../src/telegram-command-menu.js";
+} from "../src/channels/shared/channel-command-core.js";
+import { TELEGRAM_COMMANDS } from "../src/channels/telegram/telegram-command-menu.js";
 
 describe("adapter conformance matrix", () => {
   it("reports one feature row for every agent and channel capability", () => {

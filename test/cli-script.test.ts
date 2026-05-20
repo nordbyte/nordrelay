@@ -18,8 +18,27 @@ describe("nordrelay CLI script", () => {
 
     expect(source).toContain("async function commandUpdate");
     expect(source).toContain('options.command === "update"');
-    expect(source).toContain("nordrelay [init|user|peer|doctor|web|start|stop|restart|status|update|foreground|version]");
+    expect(source).toContain("nordrelay [init|user|peer|service|doctor|web|start|stop|restart|status|update|foreground|version]");
     expect(source).toContain("@nordbyte/nordrelay@latest");
+  });
+
+  it("treats WebUI as a first-class init access surface", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain('arg === "--disable-webui"');
+    expect(source).toContain('await askChoice(null, "Enable WebUI", "true")');
+    expect(source).toContain("NORDRELAY_WEBUI_ENABLED");
+    expect(source).toContain("At least WebUI or one chat adapter must be enabled.");
+  });
+
+  it("supports doctor auto-fix hints and safe local fixes", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain('arg === "--fix"');
+    expect(source).toContain("async function runDoctorFixes");
+    expect(source).toContain("function envValueFix");
+    expect(source).toContain("doctor [--fix]");
+    expect(source).toContain("Run `nordrelay doctor --fix` to apply safe local fixes.");
   });
 
   it("supports source builds before launches and restart", () => {
@@ -33,11 +52,56 @@ describe("nordrelay CLI script", () => {
     expect(source).toContain('console.log("  --build');
   });
 
+  it("passes the launch workspace into detached runtime and WebUI processes", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain("function resolveLaunchWorkspace()");
+    expect(source).toContain("NORDRELAY_WORKSPACE: resolveLaunchWorkspace()");
+    expect(source).toContain("const launchWorkspace = resolveLaunchWorkspace()");
+    expect(source).toContain("NORDRELAY_WORKSPACE: launchWorkspace");
+  });
+
   it("handles --help before the foreground default", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
 
     expect(source).toContain('copy[0] === "--help" || copy[0] === "-h"');
     expect(source).toContain("function printHelp()");
     expect(source).toContain('if (options.command === "help")');
+  });
+
+  it("runs through npm bin symlinks", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain("function isMainScript");
+    expect(source).toContain("fs.realpathSync.native(argvPath)");
+    expect(source).toContain("if (isMainScript(process.argv[1]))");
+  });
+
+  it("loads built user and peer runtimes from their dist subdirectories", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain('path.join(RUNTIME_ROOT, "dist", "access", "user-management.js")');
+    expect(source).toContain('path.join(RUNTIME_ROOT, "dist", "peers", file)');
+    expect(source).not.toContain('path.join(RUNTIME_ROOT, "dist", "user-management.js")');
+    expect(source).not.toContain('path.join(RUNTIME_ROOT, "dist", file)');
+  });
+
+  it("guards connector and web lifecycle pid files with locks and process identity checks", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain("async function withLifecycleLock");
+    expect(source).toContain("function pidFileLock");
+    expect(source).toContain("async function isManagedConnectorPid");
+    expect(source).toContain("async function isManagedWebPid");
+    expect(source).toContain("await withLifecycleLock(pidFileLock(options.pidFile)");
+    expect(source).toContain("await withLifecycleLock(pidFileLock(options.webPidFile)");
+    expect(source).toContain("await writePidAtomic(options.pidFile, child.pid)");
+    expect(source).toContain("await writePidAtomic(options.webPidFile, child.pid)");
+  });
+
+  it("prevents TypeScript emits after type errors", () => {
+    const tsconfig = JSON.parse(readFileSync("tsconfig.json", "utf8"));
+
+    expect(tsconfig.compilerOptions.noEmitOnError).toBe(true);
   });
 });

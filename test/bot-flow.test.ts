@@ -4,10 +4,10 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createBot } from "../src/bot.js";
-import { createDefaultLaunchProfile } from "../src/codex-launch.js";
-import type { ConnectorConfig } from "../src/config.js";
-import { UserStore } from "../src/user-management.js";
+import { createBot } from "../src/channels/telegram/bot.js";
+import { createDefaultLaunchProfile } from "../src/agents/codex/codex-launch.js";
+import type { ConnectorConfig } from "../src/core/config.js";
+import { UserStore } from "../src/access/user-management.js";
 
 const mockCodexState = vi.hoisted(() => ({
   getThread: vi.fn(() => null),
@@ -105,7 +105,7 @@ const mockOperations = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock("../src/codex-auth.js", () => ({
+vi.mock("../src/agents/codex/codex-auth.js", () => ({
   checkAuthStatus: vi.fn(async () => ({
     authenticated: true,
     method: "api-key",
@@ -116,15 +116,15 @@ vi.mock("../src/codex-auth.js", () => ({
   startLogout: vi.fn(),
 }));
 
-vi.mock("../src/codex-state.js", () => ({
+vi.mock("../src/agents/codex/codex-state.js", () => ({
   getThread: mockCodexState.getThread,
   getThreadActivity: mockCodexState.getThreadActivity,
   getThreadActivityLog: mockCodexState.getThreadActivityLog,
   getThreadRolloutSnapshot: mockCodexState.getThreadRolloutSnapshot,
 }));
 
-vi.mock("../src/operations.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/operations.js")>();
+vi.mock("../src/support/operations.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/support/operations.js")>();
   return {
     ...actual,
     getConnectorHealth: mockOperations.getConnectorHealth,

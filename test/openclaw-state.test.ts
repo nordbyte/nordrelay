@@ -7,7 +7,7 @@ import {
   getOpenClawSessionDiagnostics,
   listOpenClawSessions,
   listOpenClawWorkspaces,
-} from "../src/openclaw-state.js";
+} from "../src/agents/openclaw/openclaw-state.js";
 
 describe("openclaw-state", () => {
   it("parses OpenClaw sessions, activity, diagnostics, and workspaces", () => {

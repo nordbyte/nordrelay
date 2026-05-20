@@ -1,4 +1,4 @@
-import { formatToolSummaryLine, formatTurnUsageLine, summarizeToolName } from "../src/bot.js";
+import { formatToolSummaryLine, formatTurnUsageLine, summarizeToolName } from "../src/channels/telegram/bot.js";
 
 describe("tool summary formatting", () => {
   it("normalizes raw tool names into compact summary categories", () => {

@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { ConnectorConfig } from "../src/config.js";
+import type { ConnectorConfig } from "../src/core/config.js";
 import {
   getAgentUpdateLogPath,
   getConnectorLogPath,
@@ -12,8 +12,8 @@ import {
   type ConnectorHealth,
   type VersionCheck,
   type VersionChecks,
-} from "../src/operations.js";
-import { createSupportBundle } from "../src/support-bundle.js";
+} from "../src/support/operations.js";
+import { createSupportBundle } from "../src/support/support-bundle.js";
 
 const originalHome = process.env.NORDRELAY_HOME;
 let tempHome: string | null = null;

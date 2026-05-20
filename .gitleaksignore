@@ -1,0 +1,3 @@
+# False positives: historical E2E mock Discord user IDs, replaced in current tests.
+497af96530e3c7c5eb4ceb232136c019f438e537:e2e/webui-dashboard.spec.ts:discord-client-id:395
+aa60697f8091713ae0d794dc85176bc1e4222043:e2e/webui-dashboard.spec.ts:discord-client-id:982

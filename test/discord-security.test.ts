@@ -9,11 +9,12 @@ import {
   isUnauthenticatedDiscordCommandAllowed,
   permissionForDiscordAction,
   requiredPermissionForDiscordCommand,
-} from "../src/discord-bot.js";
-import { discordCommands, parseDiscordMessageCommand } from "../src/discord-command-surface.js";
-import { discordContextKey } from "../src/context-key.js";
-import { USER_GROUP_ID } from "../src/access-control.js";
-import { UserStore } from "../src/user-management.js";
+} from "../src/channels/discord/discord-bot.js";
+import { discordCommands, parseDiscordMessageCommand } from "../src/channels/discord/discord-command-surface.js";
+import { capDiscordCommandReplyChunks, renderDiscordSessionPageAction, renderDiscordSessionList } from "../src/channels/discord/discord-sessions.js";
+import { discordContextKey } from "../src/channels/shared/context-key.js";
+import { USER_GROUP_ID } from "../src/access/access-control.js";
+import { UserStore } from "../src/access/user-management.js";
 
 describe("Discord security boundaries", () => {
   let home: string;
@@ -86,6 +87,7 @@ describe("Discord security boundaries", () => {
     expect(permissionForDiscordAction("discord_queue_cancel:ctx:abc")).toBe("queue.write");
     expect(permissionForDiscordAction("discord_peer_queue_cancel:peer:abc")).toBe("queue.write");
     expect(permissionForDiscordAction("discord_abort:ctx")).toBe("prompt.abort");
+    expect(permissionForDiscordAction("discord_sessions_page:pick:next")).toBe("sessions.read");
     expect(permissionForDiscordAction("discord_artifact_send:ctx:turn")).toBe("files.read");
     expect(permissionForDiscordAction("discord_artifact_delete:ctx:turn")).toBe("files.write");
     expect(permissionForDiscordAction("agent-update:cancel:job")).toBe("updates.run");
@@ -111,5 +113,50 @@ describe("Discord security boundaries", () => {
     ]) {
       expect(names.has(command)).toBe(true);
     }
+  });
+
+  it("truncates Discord session lists and command replies to prevent message floods", () => {
+    const longPrompt = "old session message ".repeat(500);
+    const rendered = renderDiscordSessionList("Sessions", [{
+      id: "019e20f7-e05b-7df3-8c1c-80d1f99850ab",
+      title: longPrompt,
+      cwd: `/workspace/${"deep-path/".repeat(80)}`,
+      firstUserMessage: longPrompt,
+    }]);
+
+    expect(rendered).toContain("Sessions:");
+    expect(rendered).toContain("old session message");
+    expect(rendered.length).toBeLessThan(500);
+    expect(rendered).not.toContain(longPrompt);
+
+    const capped = capDiscordCommandReplyChunks(Array.from({ length: 100 }, (_, index) => `chunk-${index}`), 5);
+    expect(capped).toHaveLength(5);
+    expect(capped[4]).toContain("Output truncated");
+    expect(capped.join("\n")).not.toContain("chunk-99");
+  });
+
+  it("renders paginated Discord session controls within component limits", () => {
+    const records = Array.from({ length: 50 }, (_, index) => ({
+      id: `thread-${index + 1}`,
+      title: `Session ${index + 1}`,
+      cwd: `/workspace/project-${index + 1}`,
+      firstUserMessage: `Prompt ${index + 1}`,
+    }));
+
+    const first = renderDiscordSessionPageAction("Sessions", records, "pick123", 0, 10);
+    expect(first.text).toContain("Sessions (1-10 of 50, page 1/5):");
+    expect(first.text).toContain("1. Session 1");
+    expect(first.text).not.toContain("11. Session 11");
+    expect(first.buttons.length).toBeLessThanOrEqual(5);
+    expect(first.buttons.flat()).toContainEqual({ label: "Next", action: "discord_sessions_page:pick123:next" });
+    expect(first.buttons.flat()).not.toContainEqual({ label: "Previous", action: "discord_sessions_page:pick123:prev" });
+    expect(first.buttons.flat()).toContainEqual({ label: "Session 10", action: "discord_pick:pick123:9" });
+
+    const second = renderDiscordSessionPageAction("Sessions", records, "pick123", 1, 10);
+    expect(second.text).toContain("Sessions (11-20 of 50, page 2/5):");
+    expect(second.buttons.flat()).toContainEqual({ label: "Previous", action: "discord_sessions_page:pick123:prev" });
+    expect(second.buttons.flat()).toContainEqual({ label: "Refresh", action: "discord_sessions_page:pick123:refresh" });
+    expect(second.buttons.flat()).toContainEqual({ label: "Next", action: "discord_sessions_page:pick123:next" });
+    expect(second.buttons.flat()).toContainEqual({ label: "Session 11", action: "discord_pick:pick123:10" });
   });
 });

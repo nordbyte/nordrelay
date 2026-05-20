@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createChannelPromptEngine } from "../src/channel-prompt-engine.js";
-import { InMemoryChannelRuntime } from "../src/channel-runtime.js";
+import { createChannelPromptEngine } from "../src/channels/shared/channel-prompt-engine.js";
+import { InMemoryChannelRuntime } from "../src/channels/shared/channel-runtime.js";
 
 describe("channel prompt engine", () => {
   const context = { channelId: "discord" as const, chatId: "room-1", userId: "user-1" };

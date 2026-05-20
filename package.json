@@ -1,6 +1,6 @@
 {
   "name": "@nordbyte/nordrelay",
-  "version": "0.7.0",
+  "version": "0.9.0",
   "description": "Remote control plane for coding agents across messaging channels.",
   "type": "module",
   "author": "Ricardo",
@@ -34,7 +34,8 @@
   "files": [
     "dist/",
     "plugins/",
-    "launchd/",
+    "scripts/postinstall.mjs",
+    "scripts/launchd-start.sh",
     ".env.example",
     "Dockerfile",
     "docker-compose.yml"
@@ -43,14 +44,16 @@
     "api:check": "node --import tsx scripts/generate-web-api-routes.mjs --check",
     "api:generate": "node --import tsx scripts/generate-web-api-routes.mjs",
     "build": "node scripts/clean-dist.mjs && npm run api:generate && tsc && node scripts/build-web-assets.mjs",
-    "check": "node --check plugins/nordrelay/scripts/nordrelay.mjs && npm run api:check && tsc --noEmit && npm run webui:check && node scripts/build-web-assets.mjs --check && node --import tsx scripts/generate-env-example.mjs --check",
+    "check": "node --check plugins/nordrelay/scripts/nordrelay.mjs && node --check plugins/nordrelay/scripts/service-installer.mjs && npm run api:check && tsc --noEmit && npm run webui:check && node scripts/build-web-assets.mjs --check && node --import tsx scripts/generate-env-example.mjs --check && npm run size:check",
     "dev": "tsx src/index.ts",
     "env:check": "node --import tsx scripts/generate-env-example.mjs --check",
     "env:generate": "node --import tsx scripts/generate-env-example.mjs",
     "foreground": "node plugins/nordrelay/scripts/nordrelay.mjs foreground",
+    "postinstall": "node scripts/postinstall.mjs",
     "prepack": "npm run build",
     "prepublishOnly": "npm run check && npm test && npm run build",
     "security:audit": "npm audit --audit-level=high",
+    "size:check": "node scripts/check-module-size.mjs",
     "sbom": "npm sbom --json > sbom.json",
     "status": "node plugins/nordrelay/scripts/nordrelay.mjs status",
     "start": "node plugins/nordrelay/scripts/nordrelay.mjs start",
@@ -58,7 +61,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:all": "npm test && npm run test:e2e",
-    "webui:check": "tsc -p tsconfig.webui.json"
+    "webui:check": "tsc -p tsconfig.webui.json && tsc -p tsconfig.webui.client.json"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.141",

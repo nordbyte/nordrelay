@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { OpenClawGatewayClient } from "../src/openclaw-gateway.js";
+import { OpenClawGatewayClient } from "../src/agents/openclaw/openclaw-gateway.js";
 
 describe("openclaw-gateway", () => {
   it("connects, streams agent events, and returns the final response", async () => {
