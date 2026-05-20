@@ -130,7 +130,7 @@ function buildSystemdAutostartSpec(
   options: AutostartOptions,
 ): AutostartSpec {
   const descriptor = TARGETS[target];
-  const unitPath = path.join(userHome(options), ".config", "systemd", "user", `${descriptor.linuxName}.service`);
+  const unitPath = path.posix.join(userHome(options), ".config", "systemd", "user", `${descriptor.linuxName}.service`);
   if (action === "uninstall") {
     return {
       action,
@@ -185,7 +185,7 @@ function buildLaunchdAutostartSpec(
   options: AutostartOptions,
 ): AutostartSpec {
   const descriptor = TARGETS[target];
-  const plistPath = path.join(userHome(options), "Library", "LaunchAgents", `${descriptor.launchdLabel}.plist`);
+  const plistPath = path.posix.join(userHome(options), "Library", "LaunchAgents", `${descriptor.launchdLabel}.plist`);
   const domain = launchdDomain();
   if (action === "uninstall") {
     return {
@@ -292,7 +292,10 @@ function commandParts(target: AutostartTarget, options: AutostartOptions): strin
 
 function nordrelayScriptPath(options: AutostartOptions): string {
   const root = options.runtimeRoot ?? process.env.NORDRELAY_SOURCE_ROOT ?? process.cwd();
-  return path.join(root, "plugins", "nordrelay", "scripts", "nordrelay.mjs");
+  if ((options.platform ?? process.platform) === "win32") {
+    return path.win32.join(root, "plugins", "nordrelay", "scripts", "nordrelay.mjs");
+  }
+  return path.posix.join(root, "plugins", "nordrelay", "scripts", "nordrelay.mjs");
 }
 
 function userHome(options: AutostartOptions): string {
@@ -335,7 +338,7 @@ function launchdPlist(label: string, commandPartsValue: string[], home: string, 
   const programArguments = commandPartsValue
     .map((value) => `    <string>${xmlEscape(value)}</string>`)
     .join("\n");
-  const logPath = path.join(home, logFile);
+  const logPath = path.posix.join(home, logFile);
   return [
     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
     "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">",
