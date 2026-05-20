@@ -77,8 +77,8 @@ describe("nordrelay CLI script", () => {
 
   it("starts the WebUI command as a detached background process", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
-    const commandWeb = source.match(/async function commandWeb[\s\S]*?\n}\n\nasync function commandServiceRun/)?.[0] ?? "";
-    const commandServiceRun = source.match(/async function commandServiceRun[\s\S]*?\n}\n\nasync function startWebDashboard/)?.[0] ?? "";
+    const commandWeb = source.match(/async function commandWeb[\s\S]*?\r?\n}\r?\n\r?\nasync function commandServiceRun/)?.[0] ?? "";
+    const commandServiceRun = source.match(/async function commandServiceRun[\s\S]*?\r?\n}\r?\n\r?\nasync function startWebDashboard/)?.[0] ?? "";
 
     expect(commandWeb).toContain("await startWebDashboard(options, { detached: true })");
     expect(commandServiceRun).toContain("await startWebDashboard(options, { detached: false, stopConnectorOnExit: true })");
