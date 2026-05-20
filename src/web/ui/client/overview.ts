@@ -90,14 +90,15 @@ function launchPermissionsText(session){
   const profile=(state.controls?.launchProfiles||[]).find(p=>p.id===selectedLaunch);
   return profile?.behavior||session.launchProfileBehavior||session.nextLaunchProfileBehavior||'-';
 }
-async function loadActiveSessions(){
+async function loadActiveSessions(options:any={}){
   const box=document.getElementById('activeSessions');
   if(!box)return;
   if(!can('sessions.read')){updateActiveSessionsCount([]);box.innerHTML='<div class="item">Permission required: sessions.read</div>';return}
   if(state.activeSessionsLoading)return;
   state.activeSessionsLoading=true;
   try{
-    const data=await api('/api/active-sessions');
+    const fresh=options.fresh??state.currentPage==='overview';
+    const data=fresh?await api('/api/active-sessions',{query:{fresh:true}}):await api('/api/active-sessions');
     renderActiveSessions(data.sessions||[]);
   }finally{
     state.activeSessionsLoading=false;
@@ -105,7 +106,7 @@ async function loadActiveSessions(){
 }
 function startActiveSessionsRefresh(){
   if(state.activeSessionsTimer)return;
-  state.activeSessionsTimer=setInterval(()=>{if(state.currentPage==='overview')safe(loadActiveSessions);else stopActiveSessionsRefresh()},5000);
+  state.activeSessionsTimer=setInterval(()=>{if(state.currentPage==='overview')safe(()=>loadActiveSessions({fresh:true}));else stopActiveSessionsRefresh()},5000);
 }
 function stopActiveSessionsRefresh(){
   if(!state.activeSessionsTimer)return;

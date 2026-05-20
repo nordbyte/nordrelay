@@ -85,6 +85,7 @@ import {
 } from "../web/web-state.js";
 import type {
   ActiveSessionDto,
+  ActiveSessionsOptions,
   ActiveSessionsDto,
   ArtifactCleanupDto,
   ArtifactDiffDto,
@@ -120,6 +121,7 @@ import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "../core/worksp
 
 export type {
   ActiveSessionDto,
+  ActiveSessionsOptions,
   ActiveSessionsDto,
   ArtifactCleanupDto,
   ArtifactDiffDto,
@@ -524,8 +526,8 @@ export class RelayRuntime {
     return relayRuntimeJobAction(this, id, action, actor);
   }
 
-  async activeSessions(): Promise<ActiveSessionsDto> {
-    return relayRuntimeActiveSessions(this);
+  async activeSessions(options: ActiveSessionsOptions = {}): Promise<ActiveSessionsDto> {
+    return relayRuntimeActiveSessions(this, options);
   }
 
   async metrics(): Promise<RuntimeMetricsDto> {

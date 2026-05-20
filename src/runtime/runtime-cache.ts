@@ -4,6 +4,10 @@ export interface RuntimeCacheSnapshot<T> {
   stale: boolean;
 }
 
+export interface RuntimeCacheGetOptions {
+  staleWhileRefresh?: boolean;
+}
+
 interface RuntimeCacheEntry<T> {
   value?: T;
   refreshedAt: number;
@@ -27,6 +31,7 @@ export class RuntimeSnapshotCache {
     key: string,
     ttlMs: number,
     producer?: () => Promise<T>,
+    options: RuntimeCacheGetOptions = {},
   ): Promise<RuntimeCacheSnapshot<T>> {
     if (producer) {
       this.register(key, producer);
@@ -58,6 +63,14 @@ export class RuntimeSnapshotCache {
           .finally(() => {
             entry.refresh = undefined;
           });
+      }
+      if (options.staleWhileRefresh === false) {
+        const value = await entry.refresh;
+        return {
+          value,
+          refreshedAt: new Date(entry.refreshedAt).toISOString(),
+          stale: false,
+        };
       }
       return {
         value: entry.value as T,

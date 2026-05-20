@@ -76,6 +76,7 @@ import {
 import type {
   ActiveSessionDto,
   ActiveSessionMirrorDto,
+  ActiveSessionsOptions,
   ActiveSessionsDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
@@ -141,7 +142,7 @@ const ACTIVE_ACTIVITY_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_WEB_SESSION_PAGE_SIZE = 50;
 const MAX_CHAT_HISTORY = 250;
 
-export async function relayRuntimeActiveSessions(runtime: RelayRuntimeDelegate): Promise<ActiveSessionsDto> {
+export async function relayRuntimeActiveSessions(runtime: RelayRuntimeDelegate, options: ActiveSessionsOptions = {}): Promise<ActiveSessionsDto> {
     const sessions = new Map<string, ActiveSessionDto>();
     const knownContexts = safeActiveSessionList(() => runtime.listKnownContextMetadata());
     const preferences = new BotPreferencesStore(runtime.config.workspace, runtime.config.stateBackend);
@@ -168,11 +169,11 @@ export async function relayRuntimeActiveSessions(runtime: RelayRuntimeDelegate):
     }
 
     for (const discovered of await Promise.all([
-      cachedActiveDiscovery(runtime, "codex", runtime.config.activeDiscoveryCacheTtlMs, () => runtime.discoverActiveCodexSessions(knownContexts, preferences)),
-      cachedActiveDiscovery(runtime, "pi", runtime.config.activeDiscoveryCacheTtlMs, () => relayRuntimeDiscoverActivePiSessions(runtime, knownContexts, preferences)),
-      cachedActiveDiscovery(runtime, "hermes", runtime.config.activeDiscoveryCacheTtlMs, () => relayRuntimeDiscoverActiveHermesSessions(runtime, knownContexts, preferences)),
-      cachedActiveDiscovery(runtime, "openclaw", runtime.config.openClawActiveDiscoveryCacheTtlMs, () => relayRuntimeDiscoverActiveOpenClawSessions(runtime, knownContexts, preferences)),
-      cachedActiveDiscovery(runtime, "claude-code", runtime.config.activeDiscoveryCacheTtlMs, () => relayRuntimeDiscoverActiveClaudeCodeSessions(runtime, knownContexts, preferences)),
+      cachedActiveDiscovery(runtime, "codex", runtime.config.activeDiscoveryCacheTtlMs, () => runtime.discoverActiveCodexSessions(knownContexts, preferences), options),
+      cachedActiveDiscovery(runtime, "pi", runtime.config.activeDiscoveryCacheTtlMs, () => relayRuntimeDiscoverActivePiSessions(runtime, knownContexts, preferences), options),
+      cachedActiveDiscovery(runtime, "hermes", runtime.config.activeDiscoveryCacheTtlMs, () => relayRuntimeDiscoverActiveHermesSessions(runtime, knownContexts, preferences), options),
+      cachedActiveDiscovery(runtime, "openclaw", runtime.config.openClawActiveDiscoveryCacheTtlMs, () => relayRuntimeDiscoverActiveOpenClawSessions(runtime, knownContexts, preferences), options),
+      cachedActiveDiscovery(runtime, "claude-code", runtime.config.activeDiscoveryCacheTtlMs, () => relayRuntimeDiscoverActiveClaudeCodeSessions(runtime, knownContexts, preferences), options),
     ])) {
       for (const active of discovered) {
         addActiveSession(active);
@@ -218,9 +219,12 @@ async function cachedActiveDiscovery(
   key: string,
   ttlMs: number,
   producer: () => ActiveSessionDto[],
+  options: ActiveSessionsOptions = {},
 ): Promise<ActiveSessionDto[]> {
     try {
-      return (await runtime.cache.get<ActiveSessionDto[]>(`active-discovery:${key}`, ttlMs, async () => producer())).value;
+      return (await runtime.cache.get<ActiveSessionDto[]>(`active-discovery:${key}`, ttlMs, async () => producer(), {
+        staleWhileRefresh: !options.fresh,
+      })).value;
     } catch {
       return [];
     }
