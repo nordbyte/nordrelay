@@ -180,6 +180,8 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   exact("/api/logs/clear", ["POST"], "logs.clear"),
   exact("/api/diagnostics", ["GET"], "diagnostics.read"),
   exact("/api/diagnostics/bundle", ["GET"], "diagnostics.read"),
+  exact("/api/doctor", ["GET"], "diagnostics.read"),
+  exact("/api/doctor/fix", ["POST"], "settings.write"),
   exact("/api/runtime/restart", ["POST"], "system.restart"),
 ] as const satisfies readonly WebApiRouteDefinition[];
 

@@ -139,6 +139,8 @@ function shouldProxyApi(path) {
 function isLocalAdminApi(path) {
   return path === '/api/permissions' ||
     path === '/api/settings' ||
+    path === '/api/doctor' ||
+    path === '/api/doctor/fix' ||
     path === '/api/audit' ||
     path === '/api/locks' ||
     path === '/api/users' ||

@@ -325,6 +325,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   if (await handleDashboardRuntimeRoute(req, res, url, {
     runtime,
     users,
+    home: options.home,
     authUser,
     parseAgentIdRequired,
     assertScopedAgent,

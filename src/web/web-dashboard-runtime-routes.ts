@@ -5,6 +5,7 @@ import type { AgentId } from "../agents/shared/agent.js";
 import type { ActiveSessionsDto, RelayRuntime, WebTasksDto } from "../runtime/relay-runtime.js";
 import type { AuthenticatedUser, UserStore } from "../access/user-management.js";
 import type { WebActivityActor } from "./web-state.js";
+import { applyDoctorFixes, collectDoctorReport } from "../support/doctor.js";
 import {
   numberParam,
   optionalStringField,
@@ -19,6 +20,7 @@ import {
 export interface DashboardRuntimeRouteOptions {
   runtime: RelayRuntime;
   users: UserStore;
+  home: string;
   authUser: AuthenticatedUser;
   parseAgentIdRequired: (value: string) => AgentId;
   assertScopedAgent: (authUser: AuthenticatedUser, agentId?: AgentId) => void;
@@ -184,6 +186,19 @@ export async function handleDashboardRuntimeRoute(
   if (req.method === "GET" && url.pathname === "/api/diagnostics") {
     await options.assertCurrentSessionScope(authUser);
     sendJson(res, 200, await runtime.diagnostics());
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/doctor") {
+    sendJson(res, 200, await collectDoctorReport(runtime.config, options.home));
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/doctor/fix") {
+    const body = await readJsonBody(req);
+    const rawFixIds = Array.isArray(body.fixIds) ? body.fixIds : [];
+    const fixIds = rawFixIds.map((value) => String(value)).filter(Boolean);
+    sendJson(res, 200, await applyDoctorFixes(runtime.config, options.home, fixIds));
     return true;
   }
 

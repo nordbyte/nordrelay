@@ -152,6 +152,8 @@ declare function renderChatMessages(value?: any): void;
 declare var renderDiscordChannels: (...args: any[]) => any;
 declare function renderHeaderTargetMenu(snapshot: any): void;
 declare var renderChatWorkingIndicator: (...args: any[]) => any;
+declare function renderIncrementalHtml(target: any, items: any[], options?: any): void;
+declare function renderIncrementalTable(target: any, items: any[], options?: any): void;
 declare var renderQueue: (...args: any[]) => any;
 declare function renderSessionControls(value?: any): void;
 declare function renderSettings(): void;

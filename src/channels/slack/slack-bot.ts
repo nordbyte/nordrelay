@@ -31,6 +31,7 @@ import { deliverChannelAction } from "../shared/channel-runtime.js";
 import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
 import { createChannelExternalMirrorController } from "../shared/channel-external-mirror-controller.js";
 import { monitorChannelExternalContexts } from "../shared/channel-external-monitor.js";
+import { configureChannelRuntime, createTextQueueStatusAdapter } from "../shared/channel-runtime-bootstrap.js";
 import { getLastAgentMessageText, parseLastAgentMessageOptions } from "../shared/last-agent-message.js";
 import { channelTemplatePrompt, channelWorkflowPrompts, parseChannelWorkflowArgument, renderChannelTemplateList, renderChannelWorkflowList } from "../shared/channel-workflow-commands.js";
 import type { LoginResult } from "../../agents/codex/codex-auth.js";
@@ -40,7 +41,7 @@ import { friendlyErrorText } from "../../core/error-messages.js";
 import { spawnConnectorRestart, spawnSelfUpdate } from "../../support/operations.js";
 import { toPromptEnvelope, type PromptEnvelope } from "../../state/prompt-store.js";
 import { resolveArtifactDeliveryPolicy, type ArtifactDeliveryMode } from "../../artifacts/artifact-delivery.js";
-import { configureRedaction, redactText } from "../../core/redaction.js";
+import { redactText } from "../../core/redaction.js";
 import { renderSessionInfoPlain } from "../shared/session-format.js";
 import { canWriteWithLock } from "../../access/session-locks.js";
 import { SessionRegistry } from "../../state/session-registry.js";
@@ -75,7 +76,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     return null;
   }
 
-  configureRedaction(config.telegramRedactPatterns);
+  configureChannelRuntime(config);
 
   const app = new App({
     token: config.slackBotToken,
@@ -85,12 +86,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
   });
   const runtime = new SlackBotChannelRuntime(app.client as WebClient);
   const env = createChannelBridgeEnvironment<ChannelContextKey, BusyState, string, SlackExternalMirrorState>(config, {
-    queueStatus: {
-      send: async (_contextKey, context, text) => (await runtime.sendMessage(context, { text, fallbackText: text })).messageId,
-      edit: async (_contextKey, context, messageId, text) => {
-        await runtime.editMessage(context, messageId, { text, fallbackText: text });
-      },
-    },
+    queueStatus: createTextQueueStatusAdapter(runtime),
   });
   const {
     promptStore,

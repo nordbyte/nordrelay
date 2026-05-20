@@ -45,6 +45,8 @@ export type WebApiStaticPath =
   | "/api/diagnostics"
   | "/api/diagnostics/bundle"
   | "/api/discord-channels"
+  | "/api/doctor"
+  | "/api/doctor/fix"
   | "/api/groups"
   | "/api/handback"
   | "/api/health"

@@ -45,6 +45,7 @@ import { deliverChannelAction } from "../shared/channel-runtime.js";
 import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
 import { createChannelExternalMirrorController } from "../shared/channel-external-mirror-controller.js";
 import { monitorChannelExternalContexts } from "../shared/channel-external-monitor.js";
+import { configureChannelRuntime } from "../shared/channel-runtime-bootstrap.js";
 import { createChannelTurnLifecycle, createChannelTypingLoop } from "../shared/channel-turn-lifecycle.js";
 import {
   agentLabel,
@@ -76,7 +77,7 @@ import { contextKeyFromCtx, isTelegramContextKey, isTopicContextKey, parseContex
 import { friendlyErrorText } from "../../core/error-messages.js";
 import { escapeHTML } from "../../core/format.js";
 import { toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "../../state/prompt-store.js";
-import { configureRedaction, redactText } from "../../core/redaction.js";
+import { redactText } from "../../core/redaction.js";
 import { canWriteWithLock } from "../../access/session-locks.js";
 import {
   renderSessionInfoHTML,
@@ -194,7 +195,7 @@ type ExternalMirrorState = TelegramExternalMirrorState;
 type QueueStatusState = TelegramQueueStatusState;
 
 export function createBot(config: ConnectorConfig, registry: SessionRegistry): Bot<Context> {
-  configureRedaction(config.telegramRedactPatterns);
+  configureChannelRuntime(config);
   telegramRateLimiter.configure({
     minIntervalMs: config.telegramRateLimitMinIntervalMs,
     editMinIntervalMs: config.telegramEditMinIntervalMs,

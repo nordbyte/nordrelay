@@ -6,6 +6,7 @@ import type { AgentUpdateJobSnapshot } from "../agents/shared/agent-updates.js";
 import type { AuditEvent } from "../access/audit-log.js";
 import type { ChannelDescriptor } from "../channels/shared/channel-adapter.js";
 import type { ClearLogResult, ConnectorHealth, ConnectorRuntimeState, FormattedLogTail, SelfUpdateResult, VersionChecks } from "../support/operations.js";
+import type { DoctorFixResponse, DoctorReport } from "../support/doctor.js";
 import type { PeerDiscoveryJobSnapshot, PeerDiscoveryResult, PeerIdentityBackup, PeerRelayQueueSnapshot, PeerSnapshot, PublicPeerRecord } from "../peers/peer-types.js";
 import type { PeerOutboundRelaySnapshot } from "../peers/peer-outbound-relay.js";
 import type { RuntimeMetricHistorySample, RuntimeMetricsDto } from "../runtime/metrics.js";
@@ -196,6 +197,7 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/peers/identity/restore" ? { backup: PeerIdentityBackup } :
   P extends `/api/peers/${string}/rotate` ? { expiresMinutes?: number } :
   P extends "/api/logs/clear" ? { target?: "connector" | "update" | "agent-updates" } :
+  P extends "/api/doctor/fix" ? { fixIds?: string[] } :
   P extends "/api/settings" ? { settings: Record<string, string | null | undefined> } :
   P extends "/api/templates" ? { name: string; prompt: string; description?: string; tags?: string[]; variables?: PromptTemplate["variables"]; scope?: "private" | "shared"; defaultAgentId?: AgentId; defaultWorkspace?: string; defaultModel?: string; defaultReasoning?: string; defaultLaunchProfile?: string } :
   P extends "/api/templates/import" ? { bundle: unknown } :
@@ -340,6 +342,8 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/logs/clear" ? ClearLogResult :
   P extends "/api/diagnostics" ? WebDiagnosticsDto :
   P extends "/api/diagnostics/bundle" ? never :
+  P extends "/api/doctor" ? DoctorReport :
+  P extends "/api/doctor/fix" ? DoctorFixResponse :
   P extends `/api/users/${string}/sessions` ? { sessions?: PublicWebSession[]; revoked?: number } :
   P extends `/api/users/${string}/password` ? { ok: boolean } :
   P extends `/api/users/${string}/telegram` ? { linkCode?: unknown; identity?: TelegramIdentityRecord } :
