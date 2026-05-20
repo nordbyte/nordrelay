@@ -90,10 +90,6 @@ export interface ActiveSessionsDto {
   updatedAt: string;
 }
 
-export interface ActiveSessionsOptions {
-  fresh?: boolean;
-}
-
 export interface QueueItemDto {
   id: string;
   description: string;

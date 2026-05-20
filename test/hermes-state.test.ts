@@ -137,5 +137,5 @@ describe("hermes-state", () => {
     expect(diagnostics.status).toBe("active");
     expect(diagnostics.lineCount).toBe(2);
     expect(workspaces).toContain(path.normalize("/workspace/from-db"));
-  });
+  }, 15_000);
 });

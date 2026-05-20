@@ -57,7 +57,7 @@ import type {
   WorktreeIntegrationPreview,
 } from "../worktrees/worktree-types.js";
 import type {
-  ActiveSessionDto, ActiveSessionsOptions, ActiveSessionsDto,
+  ActiveSessionDto, ActiveSessionsDto,
   ArtifactPreviewDto,
   ArtifactReportDto,
   ArtifactUsageDto,
@@ -152,7 +152,7 @@ export interface RelayRuntimeDelegate {
   jobs(options?: { limit?: number; cursor?: string }): Promise<UnifiedJobsDto>;
   jobLog(id: string): Promise<{ job: UnifiedJobDto | null; plain: string }>;
   jobAction(id: string, action: "cancel" | "retry", actor?: WebActivityActor): Promise<UnifiedJobsDto>;
-  activeSessions(options?: ActiveSessionsOptions): Promise<ActiveSessionsDto>;
+  activeSessions(): Promise<ActiveSessionsDto>;
   metrics(): Promise<RuntimeMetricsDto>; metricsHistory(limit?: number): RuntimeMetricHistorySample[];
   audit(options?: number | AuditListOptions): AuditEvent[];
   auditPage(options?: AuditListOptions): CursorPageDto<AuditEvent>;

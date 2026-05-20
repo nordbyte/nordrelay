@@ -155,7 +155,7 @@ export async function handleDashboardRuntimeRoute(
   }
 
   if (req.method === "GET" && url.pathname === "/api/active-sessions") {
-    sendJson(res, 200, options.scopedActiveSessions(authUser, await runtime.activeSessions({ fresh: booleanParam(url, "fresh") })));
+    sendJson(res, 200, options.scopedActiveSessions(authUser, await runtime.activeSessions()));
     return true;
   }
 
@@ -215,11 +215,6 @@ export async function handleDashboardRuntimeRoute(
   }
 
   return false;
-}
-
-function booleanParam(url: URL, key: string): boolean {
-  const value = url.searchParams.get(key);
-  return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
 function permissionForJobAction(id: string, action: "cancel" | "retry"): Permission {

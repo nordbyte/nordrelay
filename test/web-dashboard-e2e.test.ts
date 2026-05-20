@@ -407,7 +407,6 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("metricHtml('Agent / Model'");
     expect(js).toContain("function sessionAgentModelText");
     expect(js).toContain("/api/active-sessions");
-    expect(js).toContain("query:{fresh:true}");
     expect(js).toContain("active_sessions_update");
     expect(js).toContain("function renderChatWorkingIndicator");
     expect(js).toContain("Working...");
@@ -422,7 +421,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".active-sessions-count");
     expect(css).toContain(".nav-badge{");
     expect(js).toContain("state.activeSessionsTimer=setInterval");
-    expect(js).toContain("safe(()=>loadActiveSessions({fresh:true}))");
+    expect(js).toContain("safe(loadActiveSessions)");
     expect(js).toContain("Prompt unavailable for process scan.");
     expect(js).toContain("Codex exec process");
   });

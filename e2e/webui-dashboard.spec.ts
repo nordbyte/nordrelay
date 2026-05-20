@@ -786,11 +786,11 @@ test.describe("NordRelay WebUI", () => {
     const wizardRequest = mock.requests.find((request) => request.path === "/api/settings" && request.method === "PATCH" && JSON.stringify(request.body).includes("TELEGRAM_BOT_TOKEN"));
     expect(wizardRequest?.body).toMatchObject({
       settings: {
-        TELEGRAM_ENABLED: "true",
-        TELEGRAM_TRANSPORT: "polling",
         TELEGRAM_BOT_TOKEN: "123456789:AABCDEFGHIJKLMNOPQRSTUVXYZ123456",
       },
     });
+    expect(wizardRequest?.body.settings).not.toHaveProperty("TELEGRAM_ENABLED");
+    expect(wizardRequest?.body.settings).not.toHaveProperty("TELEGRAM_TRANSPORT");
   });
 
   test("treats configured masked Telegram secrets as present in setup wizard status", async ({ page }) => {

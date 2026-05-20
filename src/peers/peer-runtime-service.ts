@@ -139,7 +139,7 @@ export class PeerRuntimeService {
     }
     if (method === "GET" && path === "/api/metrics") return runtime.metrics();
     if (method === "GET" && path === "/api/metrics/history") return { samples: runtime.metricsHistory(numberValue(query.limit, 240)) };
-    if (method === "GET" && path === "/api/active-sessions") return this.scopedActiveSessions(peer, await runtime.activeSessions({ fresh: booleanValue(query.fresh) }));
+    if (method === "GET" && path === "/api/active-sessions") return this.scopedActiveSessions(peer, await runtime.activeSessions());
     if (method === "GET" && path === "/api/adapters/health") {
       return { adapters: (await runtime.adapterHealth()).filter((adapter) => this.canUseAgent(peer, adapter.id)) };
     }
@@ -1094,11 +1094,6 @@ function requiredString(value: unknown, key: string): string {
 function numberValue(value: unknown, fallback: number): number {
   const parsed = typeof value === "number" ? value : Number(stringValue(value));
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
-}
-
-function booleanValue(value: unknown): boolean {
-  const text = stringValue(value).toLowerCase();
-  return text === "1" || text === "true" || text === "yes" || text === "on";
 }
 
 function optionalNumberValue(value: unknown): number | undefined {
