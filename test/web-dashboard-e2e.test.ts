@@ -399,7 +399,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(readFileSync("src/runtime/relay-external-activity-monitor.ts", "utf8")).toContain("message.source === \"cli\"");
     expect(css).toContain(".active-sessions-count");
     expect(css).toContain(".nav-badge{");
-    expect(js).not.toContain("activeSessionsTimer=setInterval");
+    expect(js).toContain("state.activeSessionsTimer=setInterval");
+    expect(js).toContain("Prompt unavailable for process scan.");
+    expect(js).toContain("Codex exec process");
   });
 
   it("renders compact chat lists and copy controls for chat messages", () => {
