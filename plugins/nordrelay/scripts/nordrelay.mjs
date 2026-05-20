@@ -92,6 +92,8 @@ function parseArgs(argv) {
     else if (arg === "--no-restart") options.restartAfterUpdate = false;
     else if (arg === "--restart") options.restartAfterUpdate = true;
     else if (arg === "--disable-webui") options.disableWebui = true;
+    else if (arg === "--disable-autostart") options.disableAutostart = true;
+    else if (arg === "--disable-webui-autostart") options.disableWebuiAutostart = true;
     else if (arg === "--token") options.telegramBotToken = requireValue(copy, ++i, arg);
     else if (arg === "--disable-telegram") options.disableTelegram = true;
     else if (arg === "--enable-discord") options.enableDiscord = true;
@@ -866,6 +868,10 @@ async function commandInit(options) {
   }
 
   const enableWebui = options.disableWebui ? "false" : await askChoice(null, "Enable WebUI", "true");
+  const enableAutostart = options.disableAutostart ? "false" : await askChoice(null, "Enable NordRelay autostart", "true");
+  const enableWebuiAutostart = enableWebui === "true"
+    ? (options.disableWebuiAutostart ? "false" : await askChoice(null, "Enable WebUI autostart", "true"))
+    : "false";
   const enableTelegram = options.disableTelegram ? "false" : await askChoice(null, "Enable Telegram", "true");
   const telegramBotToken = enableTelegram === "true"
     ? options.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || await ask(null, "Telegram bot token", "")
@@ -941,6 +947,8 @@ async function commandInit(options) {
     "# NordRelay local runtime config.",
     "# Keep this file private; it contains bot credentials.",
     `NORDRELAY_WEBUI_ENABLED=${enableWebui}`,
+    `NORDRELAY_AUTOSTART_ENABLED=${enableAutostart}`,
+    `NORDRELAY_WEBUI_AUTOSTART_ENABLED=${enableWebuiAutostart}`,
     `TELEGRAM_ENABLED=${enableTelegram}`,
     `TELEGRAM_BOT_TOKEN=${telegramBotToken}`,
     `DISCORD_ENABLED=${enableDiscord}`,
@@ -1005,6 +1013,10 @@ async function commandInit(options) {
   });
   console.log(`Wrote ${envPath}`);
   console.log(`Created admin user ${adminEmail}.`);
+  await applyInitialAutostartSettings(options, {
+    NORDRELAY_AUTOSTART_ENABLED: enableAutostart,
+    NORDRELAY_WEBUI_AUTOSTART_ENABLED: enableWebuiAutostart,
+  });
   console.log("Run `nordrelay doctor` to validate the setup.");
 }
 
@@ -1015,6 +1027,31 @@ async function createUserStore(home) {
   }
   const mod = await import(pathToFileURL(modulePath).href);
   return new mod.UserStore(home);
+}
+
+async function applyInitialAutostartSettings(options, patch) {
+  const enabledKeys = Object.entries(patch)
+    .filter(([, value]) => value === "true")
+    .map(([key]) => key);
+  if (!enabledKeys.length) {
+    console.log("Autostart disabled.");
+    return;
+  }
+  const modulePath = path.join(RUNTIME_ROOT, "dist", "support", "autostart.js");
+  if (!fs.existsSync(modulePath)) {
+    console.warn("⚠️ Autostart was requested, but the autostart runtime is missing. Run `npm run build` and configure it from Settings.");
+    return;
+  }
+  const mod = await import(pathToFileURL(modulePath).href);
+  const errors = await mod.applyAutostartSettings(patch, enabledKeys, { home: options.home, runtimeRoot: RUNTIME_ROOT });
+  if (errors.length) {
+    for (const error of errors) {
+      console.warn(`⚠️ Autostart setup failed for ${error.key}: ${error.message}`);
+    }
+    console.warn("Autostart settings were written to the env file; fix the reported issue or use the WebUI Settings page to retry.");
+    return;
+  }
+  console.log(`Autostart enabled: ${enabledKeys.join(", ")}`);
 }
 
 async function peerModules() {
@@ -2500,6 +2537,9 @@ function printHelp() {
   console.log("  --fix                Apply safe local fixes during doctor");
   console.log("  --force              Overwrite existing config during init");
   console.log("  --disable-webui      Disable the WebUI during init");
+  console.log("  --disable-autostart  Disable connector autostart during init");
+  console.log("  --disable-webui-autostart");
+  console.log("                       Disable WebUI autostart during init");
   console.log("  --help, -h           Show this help");
   console.log("  --version, -v        Show the installed version");
 }

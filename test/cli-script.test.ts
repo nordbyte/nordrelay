@@ -27,8 +27,22 @@ describe("nordrelay CLI script", () => {
 
     expect(source).toContain('arg === "--disable-webui"');
     expect(source).toContain('await askChoice(null, "Enable WebUI", "true")');
+    expect(source).toContain('await askChoice(null, "Enable NordRelay autostart", "true")');
+    expect(source).toContain('await askChoice(null, "Enable WebUI autostart", "true")');
     expect(source).toContain("NORDRELAY_WEBUI_ENABLED");
+    expect(source).toContain("NORDRELAY_AUTOSTART_ENABLED");
+    expect(source).toContain("NORDRELAY_WEBUI_AUTOSTART_ENABLED");
     expect(source).toContain("At least WebUI or one chat adapter must be enabled.");
+  });
+
+  it("configures init autostart entries from the selected settings", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain('arg === "--disable-autostart"');
+    expect(source).toContain('arg === "--disable-webui-autostart"');
+    expect(source).toContain("async function applyInitialAutostartSettings");
+    expect(source).toContain('path.join(RUNTIME_ROOT, "dist", "support", "autostart.js")');
+    expect(source).toContain("mod.applyAutostartSettings");
   });
 
   it("supports doctor auto-fix hints and safe local fixes", () => {
