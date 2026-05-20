@@ -280,6 +280,45 @@ describe("voice transcription", () => {
     expect(JSON.stringify(diagnostics)).not.toContain("sk-test");
   });
 
+  it("keeps dashboard voice diagnostics light until explicitly refreshed", async () => {
+    _setImportHook(async () => {
+      const error = new Error("Cannot find package 'parakeet-coreml'") as Error & { code?: string };
+      error.code = "ERR_MODULE_NOT_FOUND";
+      throw error;
+    });
+    const commands: string[] = [];
+    _setCommandHook(async (command, args) => {
+      commands.push(command === "ffmpeg" ? "ffmpeg" : String(args[1] ?? ""));
+      if (command === "ffmpeg") {
+        return { code: 0, signal: null, stdout: "ffmpeg version test\n", stderr: "" };
+      }
+      if (args[1] === "import faster_whisper") {
+        return { code: 0, signal: null, stdout: "", stderr: "" };
+      }
+      return { code: 0, signal: null, stdout: JSON.stringify({ ok: true, torch: "2.9.0", transformers: "5.4.0" }), stderr: "" };
+    });
+
+    const light = await getVoiceDiagnostics({ includeHeavyChecks: false });
+
+    expect(commands).toEqual(["ffmpeg"]);
+    expect(light.heavyChecks).toBe(false);
+    expect(light.backends.map((backend) => [backend.id, backend.status])).toContainEqual([
+      "faster-whisper",
+      "not_collected",
+    ]);
+    expect(light.backends.map((backend) => [backend.id, backend.status])).toContainEqual([
+      "cohere-transcribe",
+      "not_collected",
+    ]);
+
+    commands.length = 0;
+    const refreshed = await getVoiceDiagnostics({ forceRefresh: true });
+
+    expect(refreshed.heavyChecks).toBe(true);
+    expect(commands).toContain("import faster_whisper");
+    expect(commands.some((item) => item.includes("CohereAsrForConditionalGeneration"))).toBe(true);
+  });
+
   it("allows empty transcripts without throwing", async () => {
     _setDecodeHook(async () => new Float32Array(100));
     _setImportHook(async () => ({

@@ -183,6 +183,7 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   exact("/api/logs", ["GET"], "logs.read"),
   exact("/api/logs/clear", ["POST"], "logs.clear"),
   exact("/api/diagnostics", ["GET"], "diagnostics.read"),
+  exact("/api/diagnostics/voice/refresh", ["POST"], "diagnostics.read"),
   exact("/api/diagnostics/bundle", ["GET"], "diagnostics.read"),
   exact("/api/doctor", ["GET"], "diagnostics.read"),
   exact("/api/doctor/fix", ["POST"], "settings.write"),

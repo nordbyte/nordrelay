@@ -44,6 +44,7 @@ export type WebApiStaticPath =
   | "/api/dashboard/logout"
   | "/api/diagnostics"
   | "/api/diagnostics/bundle"
+  | "/api/diagnostics/voice/refresh"
   | "/api/discord-channels"
   | "/api/doctor"
   | "/api/doctor/fix"
@@ -215,6 +216,7 @@ export type WebApiResponseByPath = {
   "/api/dashboard/logout": ServerWebApiClientResponse<"/api/dashboard/logout">;
   "/api/diagnostics": ServerWebApiClientResponse<"/api/diagnostics">;
   "/api/diagnostics/bundle": ServerWebApiClientResponse<"/api/diagnostics/bundle">;
+  "/api/diagnostics/voice/refresh": ServerWebApiClientResponse<"/api/diagnostics/voice/refresh">;
   "/api/discord-channels": ServerWebApiClientResponse<"/api/discord-channels">;
   "/api/doctor": ServerWebApiClientResponse<"/api/doctor">;
   "/api/doctor/fix": ServerWebApiClientResponse<"/api/doctor/fix">;
@@ -313,6 +315,7 @@ export type WebApiRequestBodyByPath = {
   "/api/dashboard/logout": ServerWebApiRequestBody<"/api/dashboard/logout">;
   "/api/diagnostics": ServerWebApiRequestBody<"/api/diagnostics">;
   "/api/diagnostics/bundle": ServerWebApiRequestBody<"/api/diagnostics/bundle">;
+  "/api/diagnostics/voice/refresh": ServerWebApiRequestBody<"/api/diagnostics/voice/refresh">;
   "/api/discord-channels": ServerWebApiRequestBody<"/api/discord-channels">;
   "/api/doctor": ServerWebApiRequestBody<"/api/doctor">;
   "/api/doctor/fix": ServerWebApiRequestBody<"/api/doctor/fix">;

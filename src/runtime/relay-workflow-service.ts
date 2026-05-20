@@ -26,6 +26,7 @@ import type { UnifiedJobDto, WorkflowDryRunDto, WorkflowPreviewDto } from "./rel
 
 export interface RelayWorkflowServiceOptions {
   store: WorkflowStore;
+  schedulerEnabled?: boolean;
   getSession(deferThreadStart: boolean): Promise<AgentSessionService>;
   newSession(options?: {
     agentId?: AgentId;
@@ -53,9 +54,13 @@ const MAX_SUBFLOW_DEPTH = 5;
 
 export class RelayWorkflowService {
   private readonly activeRuns = new Set<string>();
-  private readonly scheduleTimer: NodeJS.Timeout;
+  private readonly scheduleTimer: NodeJS.Timeout | null;
 
   constructor(private readonly options: RelayWorkflowServiceOptions) {
+    if (options.schedulerEnabled === false) {
+      this.scheduleTimer = null;
+      return;
+    }
     this.scheduleTimer = setInterval(() => this.runDueSchedules(), WORKFLOW_SCHEDULE_POLL_MS);
     this.scheduleTimer.unref?.();
     const recoveryTimer = setTimeout(() => this.recoverInterruptedRuns(), 250);
@@ -63,7 +68,9 @@ export class RelayWorkflowService {
   }
 
   dispose(): void {
-    clearInterval(this.scheduleTimer);
+    if (this.scheduleTimer) {
+      clearInterval(this.scheduleTimer);
+    }
   }
 
   list(): { templates: PromptTemplate[]; workflows: Workflow[]; runs: WorkflowRun[] } {

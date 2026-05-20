@@ -17,7 +17,7 @@ export interface TranscriptionOptions {
   fasterWhisperModel?: string;
 }
 
-export type VoiceBackendStatus = "available" | "missing" | "configured" | "unconfigured" | "error";
+export type VoiceBackendStatus = "available" | "missing" | "configured" | "unconfigured" | "error" | "not_collected";
 
 export interface VoiceBackendDiagnostic {
   id: "ffmpeg" | TranscriptionBackend;
@@ -34,6 +34,10 @@ export interface VoiceDiagnostics {
   transcribeOnly: boolean;
   availableBackends: TranscriptionBackend[];
   backends: VoiceBackendDiagnostic[];
+  refreshedAt: string;
+  stale: boolean;
+  heavyChecks: boolean;
+  cacheTtlMs: number;
 }
 
 export interface VoiceDiagnosticsOptions {
@@ -41,6 +45,9 @@ export interface VoiceDiagnosticsOptions {
   defaultLanguage?: string | null;
   transcribeOnly?: boolean;
   fasterWhisperPython?: string;
+  forceRefresh?: boolean;
+  includeHeavyChecks?: boolean;
+  cacheTtlMs?: number;
 }
 
 // Minimal interface for the parakeet-coreml engine instance.
@@ -92,6 +99,7 @@ print(json.dumps({
 }))
 `;
 const COHERE_TRANSCRIBE_MODEL_DEFAULT = "CohereLabs/cohere-transcribe-03-2026";
+const VOICE_DIAGNOSTICS_CACHE_TTL_MS = 10 * 60 * 1000;
 const COHERE_TRANSCRIBE_CHECK_SCRIPT = `
 import json
 import sys
@@ -189,6 +197,8 @@ let _runCommand: CommandRunner = runCommand;
 let _engine: ParakeetEngine | null = null;
 let _fasterWhisperAvailable: boolean | undefined;
 let _cohereTranscribeAvailable: boolean | undefined;
+let _voiceDiagnosticsCache: { key: string; value: VoiceDiagnostics; refreshedAt: number } | undefined;
+let _voiceDiagnosticsRefresh: { key: string; promise: Promise<VoiceDiagnostics> } | undefined;
 
 type CommandResult = {
   code: number | null;
@@ -215,6 +225,8 @@ export function _setCommandHook(hook: CommandRunner): void {
   _runCommand = hook;
   _fasterWhisperAvailable = undefined;
   _cohereTranscribeAvailable = undefined;
+  _voiceDiagnosticsCache = undefined;
+  _voiceDiagnosticsRefresh = undefined;
 }
 
 export function _resetImportHook(): void {
@@ -224,6 +236,8 @@ export function _resetImportHook(): void {
   _engine = null;
   _fasterWhisperAvailable = undefined;
   _cohereTranscribeAvailable = undefined;
+  _voiceDiagnosticsCache = undefined;
+  _voiceDiagnosticsRefresh = undefined;
 }
 
 export async function transcribeAudio(filePath: string, options: TranscriptionOptions = {}): Promise<TranscriptionResult> {
@@ -279,11 +293,65 @@ export async function getAvailableBackends(): Promise<TranscriptionBackend[]> {
 }
 
 export async function getVoiceDiagnostics(options: VoiceDiagnosticsOptions = {}): Promise<VoiceDiagnostics> {
+  const includeHeavyChecks = options.includeHeavyChecks ?? true;
+  const cacheTtlMs = options.cacheTtlMs ?? VOICE_DIAGNOSTICS_CACHE_TTL_MS;
+  const key = voiceDiagnosticsCacheKey(options);
+  const now = Date.now();
+
+  if (!options.forceRefresh && _voiceDiagnosticsCache?.key === key && now - _voiceDiagnosticsCache.refreshedAt <= cacheTtlMs) {
+    return withVoiceDiagnosticsCacheState(_voiceDiagnosticsCache.value, {
+      cacheTtlMs,
+      heavyChecks: _voiceDiagnosticsCache.value.heavyChecks,
+      refreshedAt: _voiceDiagnosticsCache.refreshedAt,
+      stale: false,
+    });
+  }
+
+  if (!includeHeavyChecks) {
+    if (_voiceDiagnosticsCache?.key === key && _voiceDiagnosticsCache.value.heavyChecks) {
+      return withVoiceDiagnosticsCacheState(_voiceDiagnosticsCache.value, {
+        cacheTtlMs,
+        heavyChecks: true,
+        refreshedAt: _voiceDiagnosticsCache.refreshedAt,
+        stale: true,
+      });
+    }
+    return collectVoiceDiagnostics(options, false, cacheTtlMs);
+  }
+
+  if (!options.forceRefresh && _voiceDiagnosticsRefresh?.key === key) {
+    return _voiceDiagnosticsRefresh.promise;
+  }
+
+  const promise = collectVoiceDiagnostics(options, true, cacheTtlMs)
+    .then((diagnostics) => {
+      _voiceDiagnosticsCache = { key, value: diagnostics, refreshedAt: Date.now() };
+      return withVoiceDiagnosticsCacheState(diagnostics, {
+        cacheTtlMs,
+        heavyChecks: true,
+        refreshedAt: _voiceDiagnosticsCache.refreshedAt,
+        stale: false,
+      });
+    })
+    .finally(() => {
+      if (_voiceDiagnosticsRefresh?.key === key) {
+        _voiceDiagnosticsRefresh = undefined;
+      }
+    });
+  _voiceDiagnosticsRefresh = { key, promise };
+  return promise;
+}
+
+async function collectVoiceDiagnostics(
+  options: VoiceDiagnosticsOptions,
+  includeHeavyChecks: boolean,
+  cacheTtlMs: number,
+): Promise<VoiceDiagnostics> {
   const [ffmpeg, parakeet, fasterWhisper, cohereTranscribe] = await Promise.all([
     inspectFfmpeg(),
     inspectParakeet(),
-    inspectFasterWhisper(options.fasterWhisperPython),
-    inspectCohereTranscribe(),
+    includeHeavyChecks ? inspectFasterWhisper(options.fasterWhisperPython) : inspectCachedFasterWhisper(options.fasterWhisperPython),
+    includeHeavyChecks ? inspectCohereTranscribe() : inspectCachedCohereTranscribe(),
   ]);
   const openai = inspectOpenAI();
   const availableBackends = [parakeet, fasterWhisper, cohereTranscribe, openai]
@@ -297,6 +365,10 @@ export async function getVoiceDiagnostics(options: VoiceDiagnosticsOptions = {})
     transcribeOnly: Boolean(options.transcribeOnly),
     availableBackends,
     backends: [ffmpeg, parakeet, fasterWhisper, cohereTranscribe, openai],
+    refreshedAt: new Date().toISOString(),
+    stale: false,
+    heavyChecks: includeHeavyChecks,
+    cacheTtlMs,
   };
 }
 
@@ -558,6 +630,29 @@ function resolveCohereTranscribePython(): string {
   return process.env.COHERE_TRANSCRIBE_PYTHON?.trim() || resolveFasterWhisperPython();
 }
 
+function voiceDiagnosticsCacheKey(options: VoiceDiagnosticsOptions): string {
+  return JSON.stringify({
+    preferredBackend: options.preferredBackend ?? "auto",
+    defaultLanguage: options.defaultLanguage?.trim() || null,
+    transcribeOnly: Boolean(options.transcribeOnly),
+    fasterWhisperPython: options.fasterWhisperPython?.trim() || resolveFasterWhisperPython(),
+    cohereTranscribePython: resolveCohereTranscribePython(),
+  });
+}
+
+function withVoiceDiagnosticsCacheState(
+  diagnostics: VoiceDiagnostics,
+  state: { cacheTtlMs: number; heavyChecks: boolean; refreshedAt: number; stale: boolean },
+): VoiceDiagnostics {
+  return {
+    ...diagnostics,
+    cacheTtlMs: state.cacheTtlMs,
+    heavyChecks: state.heavyChecks,
+    refreshedAt: new Date(state.refreshedAt).toISOString(),
+    stale: state.stale,
+  };
+}
+
 function hasOpenAIApiKey(): boolean {
   return Boolean(process.env.OPENAI_API_KEY?.trim());
 }
@@ -621,6 +716,7 @@ async function inspectFasterWhisper(pythonOverride?: string): Promise<VoiceBacke
     stderr: error instanceof Error ? error.message : String(error),
   }));
   if (result.code !== 0) {
+    _fasterWhisperAvailable = false;
     return {
       id: "faster-whisper",
       label: "faster-whisper",
@@ -629,11 +725,41 @@ async function inspectFasterWhisper(pythonOverride?: string): Promise<VoiceBacke
       path: python,
     };
   }
+  _fasterWhisperAvailable = true;
   return {
     id: "faster-whisper",
     label: "faster-whisper",
     status: "available",
     detail: "Local Python transcription backend is installed.",
+    path: python,
+  };
+}
+
+function inspectCachedFasterWhisper(pythonOverride?: string): VoiceBackendDiagnostic {
+  const python = pythonOverride?.trim() || resolveFasterWhisperPython();
+  if (_fasterWhisperAvailable === true) {
+    return {
+      id: "faster-whisper",
+      label: "faster-whisper",
+      status: "available",
+      detail: "Cached availability from a previous voice backend check.",
+      path: python,
+    };
+  }
+  if (_fasterWhisperAvailable === false) {
+    return {
+      id: "faster-whisper",
+      label: "faster-whisper",
+      status: "missing",
+      detail: "Cached unavailable state from a previous voice backend check.",
+      path: python,
+    };
+  }
+  return {
+    id: "faster-whisper",
+    label: "faster-whisper",
+    status: "not_collected",
+    detail: "Not checked automatically. Use Refresh voice backends to run the Python import probe.",
     path: python,
   };
 }
@@ -651,6 +777,7 @@ async function inspectCohereTranscribe(): Promise<VoiceBackendDiagnostic> {
   }));
   const payload = parseJsonLine(result.stdout) as { ok?: unknown; torch?: unknown; transformers?: unknown; error?: unknown } | null;
   if (result.code !== 0 || payload?.ok !== true) {
+    _cohereTranscribeAvailable = false;
     return {
       id: "cohere-transcribe",
       label: "Cohere Transcribe",
@@ -662,6 +789,7 @@ async function inspectCohereTranscribe(): Promise<VoiceBackendDiagnostic> {
     };
   }
   const model = process.env.COHERE_TRANSCRIBE_MODEL?.trim() || COHERE_TRANSCRIBE_MODEL_DEFAULT;
+  _cohereTranscribeAvailable = true;
   const versions = [
     typeof payload.transformers === "string" ? `transformers ${payload.transformers}` : "",
     typeof payload.torch === "string" ? `torch ${payload.torch}` : "",
@@ -683,6 +811,35 @@ function inspectOpenAI(): VoiceBackendDiagnostic {
     detail: hasOpenAIApiKey()
       ? "OPENAI_API_KEY is configured for cloud transcription."
       : "OPENAI_API_KEY is not configured.",
+  };
+}
+
+function inspectCachedCohereTranscribe(): VoiceBackendDiagnostic {
+  const python = resolveCohereTranscribePython();
+  if (_cohereTranscribeAvailable === true) {
+    return {
+      id: "cohere-transcribe",
+      label: "Cohere Transcribe",
+      status: "available",
+      detail: "Cached availability from a previous voice backend check.",
+      path: python,
+    };
+  }
+  if (_cohereTranscribeAvailable === false) {
+    return {
+      id: "cohere-transcribe",
+      label: "Cohere Transcribe",
+      status: "missing",
+      detail: "Cached unavailable state from a previous voice backend check.",
+      path: python,
+    };
+  }
+  return {
+    id: "cohere-transcribe",
+    label: "Cohere Transcribe",
+    status: "not_collected",
+    detail: "Not checked automatically because this imports torch/transformers. Use Refresh voice backends to run the probe.",
+    path: python,
   };
 }
 

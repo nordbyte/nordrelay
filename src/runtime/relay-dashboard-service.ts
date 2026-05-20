@@ -3,7 +3,7 @@ import { enabledAgents } from "../agents/shared/agent-factory.js";
 import { listAgentAdapterDescriptors } from "../agents/shared/agent-adapter.js";
 import type { ConnectorConfig } from "../core/config.js";
 import { friendlyErrorText } from "../core/error-messages.js";
-import { getVoiceDiagnostics } from "../artifacts/voice.js";
+import { getVoiceDiagnostics, type VoiceDiagnostics } from "../artifacts/voice.js";
 import { getAgentDiagnostics } from "../agents/shared/agent-activity.js";
 import { getConnectorHealth, getVersionChecks, readConnectorState } from "../support/operations.js";
 import type { RuntimeSnapshotCache } from "./runtime-cache.js";
@@ -29,6 +29,8 @@ export interface RelayDashboardServiceOptions {
   queuePaused: () => boolean;
   externalMirror: () => WebDiagnosticsDto["runtime"]["externalMirror"];
   authStatus: (agentId?: AgentId) => Promise<WebAuthDto>;
+  backgroundRefreshEnabled?: boolean;
+  isActive?: () => boolean;
   cliPathOptions: () => {
     piCliPath?: string;
     hermesCliPath?: string;
@@ -48,7 +50,12 @@ export class RelayDashboardService {
   }
 
   startBackgroundRefresh(): void {
-    this.options.cache.warm(this.keys);
+    if (this.options.backgroundRefreshEnabled === false) {
+      return;
+    }
+    if (this.isActive()) {
+      this.options.cache.warm(this.keys);
+    }
     const ttlMs = this.options.config.dashboardCacheTtlMs;
     if (ttlMs <= 0 || this.warmTimers.length > 0) {
       return;
@@ -56,8 +63,16 @@ export class RelayDashboardService {
     const diagnosticsIntervalMs = Math.max(5_000, ttlMs);
     const slowIntervalMs = Math.max(30_000, ttlMs * 6);
     this.warmTimers = [
-      setInterval(() => this.options.cache.warm(["diagnostics"]), diagnosticsIntervalMs),
-      setInterval(() => this.options.cache.warm(["version", "adapterHealth"]), slowIntervalMs),
+      setInterval(() => {
+        if (this.isActive()) {
+          this.options.cache.warm(["diagnostics"]);
+        }
+      }, diagnosticsIntervalMs),
+      setInterval(() => {
+        if (this.isActive()) {
+          this.options.cache.warm(["version", "adapterHealth"]);
+        }
+      }, slowIntervalMs),
     ];
     this.warmTimers.forEach((timer) => timer.unref?.());
   }
@@ -73,6 +88,13 @@ export class RelayDashboardService {
 
   async diagnostics(): Promise<WebDiagnosticsDto> {
     return this.cached<WebDiagnosticsDto>("diagnostics");
+  }
+
+  async refreshVoiceDiagnostics(): Promise<VoiceDiagnostics> {
+    const diagnostics = await this.produceVoiceDiagnostics(true);
+    this.options.cache.invalidate("diagnostics");
+    this.options.cache.warm(["diagnostics"]);
+    return diagnostics;
   }
 
   async adapterHealth(): Promise<WebAdapterHealthDto[]> {
@@ -125,12 +147,7 @@ export class RelayDashboardService {
         timeoutMs: 2_500,
         rateLimit: getMatrixRateLimitMetrics(),
       }),
-      getVoiceDiagnostics({
-        preferredBackend: this.options.config.voicePreferredBackend,
-        defaultLanguage: this.options.config.voiceDefaultLanguage ?? null,
-        transcribeOnly: this.options.config.voiceTranscribeOnly,
-        fasterWhisperPython: process.env.FASTER_WHISPER_PYTHON,
-      }),
+      this.produceVoiceDiagnostics(false),
     ]);
     return {
       health,
@@ -147,6 +164,21 @@ export class RelayDashboardService {
         voiceDiagnostics,
       },
     };
+  }
+
+  private async produceVoiceDiagnostics(forceRefresh: boolean): Promise<VoiceDiagnostics> {
+    return getVoiceDiagnostics({
+      preferredBackend: this.options.config.voicePreferredBackend,
+      defaultLanguage: this.options.config.voiceDefaultLanguage ?? null,
+      transcribeOnly: this.options.config.voiceTranscribeOnly,
+      fasterWhisperPython: process.env.FASTER_WHISPER_PYTHON,
+      forceRefresh,
+      includeHeavyChecks: forceRefresh,
+    });
+  }
+
+  private isActive(): boolean {
+    return this.options.isActive?.() ?? true;
   }
 
   private async produceAdapterHealth(): Promise<WebAdapterHealthDto[]> {

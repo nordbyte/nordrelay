@@ -131,7 +131,7 @@ function diagnosticsChannelsHtml(d: DiagnosticsRecord) {
 function diagnosticsVoiceStatus(status: unknown) {
   if (status === 'available' || status === 'configured') return 'ok';
   if (status === 'error') return 'error';
-  if (status === 'missing' || status === 'unconfigured') return 'warn';
+  if (status === 'missing' || status === 'unconfigured' || status === 'not_collected') return 'warn';
   return '';
 }
 
@@ -158,9 +158,15 @@ function diagnosticsVoiceRows(voice: unknown): DiagnosticsRow[] {
   if (!voice) return [['Status', 'not collected', 'warn']];
   const record = asRecord(voice);
   const available = Array.isArray(record.availableBackends) ? record.availableBackends : [];
-  const rows: DiagnosticsRow[] = [['Preferred backend', record.preferredBackend || 'auto'], ['Default language', record.defaultLanguage || 'auto'], ['Transcribe only', record.transcribeOnly ? 'on' : 'off'], ['Available backends', diagnosticsChipList(available, available.length ? 'ok' : 'warn'), 'html']];
+  const refreshed = record.refreshedAt ? fmtDate(record.refreshedAt) : '-';
+  const mode = record.heavyChecks ? (record.stale ? 'cached/stale' : 'checked') : 'light';
+  const rows: DiagnosticsRow[] = [['Preferred backend', record.preferredBackend || 'auto'], ['Default language', record.defaultLanguage || 'auto'], ['Transcribe only', record.transcribeOnly ? 'on' : 'off'], ['Diagnostics mode', mode, record.stale ? 'warn' : 'ok'], ['Refreshed', refreshed], ['Available backends', diagnosticsChipList(available, available.length ? 'ok' : 'warn'), 'html']];
   const backends = Array.isArray(record.backends) ? record.backends.map(asRecord) : [];
   return rows.concat(backends.map((backend) => [String(backend.label || backend.id || '-'), diagnosticsVoiceBackendValue(backend), 'html']));
+}
+
+function diagnosticsVoicePanel(voice: unknown) {
+  return diagnosticsTabPanel('voice', '<div class="diagnostics-tab-heading"><div></div><div class="row diagnostics-heading-actions"><button type="button" class="secondary" data-voice-refresh>Refresh voice backends</button></div></div>' + diagnosticsPanelGrid('Voice Backends', diagnosticsVoiceRows(voice)));
 }
 
 function diagnosticsTabPanel(id: string, html: string) {
@@ -203,7 +209,7 @@ function diagnosticsHtml(input: unknown, doctor: unknown = null) {
   const snapshot = asRecord(d.snapshot);
   const runtime = asRecord(d.runtime);
   const s = asRecord(snapshot.session);
-  return diagnosticsTabPanel('overview', '<div class="metrics-grid diagnostics-grid diagnostics-overview-grid">' + metricKvCard('Overview', diagnosticsOverviewRows(d, h, s)) + metricKvCard('Runtime', diagnosticsRuntimeRows(d, h)) + '</div>') + diagnosticsTabPanel('runtime', diagnosticsPanelGrid('Runtime', diagnosticsRuntimeRows(d, h))) + diagnosticsTabPanel('agent', diagnosticsPanelGrid('Agent', diagnosticsAgentRows(s))) + diagnosticsTabPanel('state', diagnosticsPanelGrid('Agent State', diagnosticsAgentStateRows(runtime.agentDiagnostics))) + diagnosticsTabPanel('versions', diagnosticsPanelGrid('CLI Versions', diagnosticsVersionRows(d.versionChecks || {}))) + diagnosticsTabPanel('channels', diagnosticsChannelsHtml(d)) + diagnosticsTabPanel('voice', diagnosticsPanelGrid('Voice Backends', diagnosticsVoiceRows(runtime.voiceDiagnostics))) + diagnosticsTabPanel('mirror', diagnosticsPanelGrid('External Mirror', diagnosticsMirrorRows(runtime.externalMirror))) + diagnosticsDoctorPanel(doctor);
+  return diagnosticsTabPanel('overview', '<div class="metrics-grid diagnostics-grid diagnostics-overview-grid">' + metricKvCard('Overview', diagnosticsOverviewRows(d, h, s)) + metricKvCard('Runtime', diagnosticsRuntimeRows(d, h)) + '</div>') + diagnosticsTabPanel('runtime', diagnosticsPanelGrid('Runtime', diagnosticsRuntimeRows(d, h))) + diagnosticsTabPanel('agent', diagnosticsPanelGrid('Agent', diagnosticsAgentRows(s))) + diagnosticsTabPanel('state', diagnosticsPanelGrid('Agent State', diagnosticsAgentStateRows(runtime.agentDiagnostics))) + diagnosticsTabPanel('versions', diagnosticsPanelGrid('CLI Versions', diagnosticsVersionRows(d.versionChecks || {}))) + diagnosticsTabPanel('channels', diagnosticsChannelsHtml(d)) + diagnosticsVoicePanel(runtime.voiceDiagnostics) + diagnosticsTabPanel('mirror', diagnosticsPanelGrid('External Mirror', diagnosticsMirrorRows(runtime.externalMirror))) + diagnosticsDoctorPanel(doctor);
 }
 
 function switchDiagnosticsTab(tab: string) {
@@ -226,6 +232,15 @@ function bindDiagnosticsTabs() {
 }
 
 function bindDoctorButtons() {
+  document.querySelectorAll('[data-voice-refresh]').forEach(b => b.onclick = () => safe(async () => {
+    if (!can('diagnostics.read')) { toast('Permission required: diagnostics.read'); return; }
+    const button = b as HTMLButtonElement;
+    button.disabled = true;
+    button.textContent = 'Refreshing...';
+    await api('/api/diagnostics/voice/refresh', { method: 'POST' });
+    toast('Voice backend diagnostics refreshed');
+    await loadDiagnostics();
+  }));
   document.querySelectorAll('[data-doctor-reload]').forEach(b => b.onclick = () => safe(loadDiagnostics));
   document.querySelectorAll('[data-doctor-fix]').forEach(b => b.onclick = () => safe(async () => {
     if (!can('settings.write')) { toast('Permission required: settings.write'); return; }

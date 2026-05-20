@@ -106,7 +106,7 @@ async function loadActiveSessions(){
 function startActiveSessionsRefresh(){
   startActiveSessionDurationCounter();
   if(state.activeSessionsTimer)return;
-  state.activeSessionsTimer=setInterval(()=>{if(state.currentPage==='overview')safe(loadActiveSessions);else stopActiveSessionsRefresh()},5000);
+  state.activeSessionsTimer=setInterval(()=>{if(state.currentPage==='overview'){if(!document.hidden)safe(loadActiveSessions)}else stopActiveSessionsRefresh()},5000);
 }
 function stopActiveSessionsRefresh(){
   if(state.activeSessionsTimer)clearInterval(state.activeSessionsTimer);

@@ -251,7 +251,7 @@ function setMetricsAutoRefresh(enabled){
 }
 function ensureMetricsAutoRefresh(){
   if(state.metricsAutoRefresh&&!metricsAutoRefreshTimer){
-    metricsAutoRefreshTimer=setInterval(()=>{if(state.currentPage==='metrics')safe(()=>loadMetrics({silent:true}))},5000);
+    metricsAutoRefreshTimer=setInterval(()=>{if(state.currentPage==='metrics'&&!document.hidden)safe(()=>loadMetrics({silent:true}))},5000);
   }
   if(!state.metricsAutoRefresh&&metricsAutoRefreshTimer){
     clearInterval(metricsAutoRefreshTimer);

@@ -166,6 +166,7 @@ const WEB_API_CLIENT_ROUTE_RULES = [
   { path: "/api/logs", methods: ['GET'] },
   { path: "/api/logs/clear", methods: ['POST'] },
   { path: "/api/diagnostics", methods: ['GET'] },
+  { path: "/api/diagnostics/voice/refresh", methods: ['POST'] },
   { path: "/api/diagnostics/bundle", methods: ['GET'] },
   { path: "/api/doctor", methods: ['GET'] },
   { path: "/api/doctor/fix", methods: ['POST'] },

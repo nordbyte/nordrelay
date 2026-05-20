@@ -68,6 +68,7 @@ import type {
   WebSessionRecord,
 } from "../access/user-management.js";
 import type { WebActivityEvent, WebChatMessage } from "./web-state.js";
+import type { VoiceDiagnostics } from "../artifacts/voice.js";
 
 export type WebApiMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 export type WebApiQueryValue = string | number | boolean | null | undefined;
@@ -350,6 +351,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/logs" ? FormattedLogTail :
   P extends "/api/logs/clear" ? ClearLogResult :
   P extends "/api/diagnostics" ? WebDiagnosticsDto :
+  P extends "/api/diagnostics/voice/refresh" ? VoiceDiagnostics :
   P extends "/api/diagnostics/bundle" ? never :
   P extends "/api/doctor" ? DoctorReport :
   P extends "/api/doctor/fix" ? DoctorFixResponse :

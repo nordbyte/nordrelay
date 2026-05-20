@@ -112,7 +112,7 @@ declare function loadHeaderTargetCandidates(local: any): Promise<void>;
 declare var loadChatHistory: (...args: any[]) => Promise<any>;
 declare function loadDiagnostics(): Promise<void>;
 declare function loadLogs(reset?: boolean): Promise<void>;
-declare function loadMetrics(): Promise<void>;
+declare function loadMetrics(options?: { silent?: boolean }): Promise<void>;
 declare function loadMirrorPreference(): Promise<void>;
 declare function setMirrorPreference(argument: string): Promise<any>;
 declare function createWebCorrelationId(): string;

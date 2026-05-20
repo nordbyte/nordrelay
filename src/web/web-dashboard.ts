@@ -62,7 +62,7 @@ const config = loadConfig();
 if (!config.webuiEnabled) {
   throw new Error("WebUI is disabled by NORDRELAY_WEBUI_ENABLED=false.");
 }
-const runtime = new RelayRuntime(config);
+const runtime = new RelayRuntime(config, { backgroundServices: false });
 const settings = new SettingsService(resolveDashboardEnvPath(options.home));
 const users = new UserStore(options.home);
 const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);

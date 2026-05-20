@@ -150,6 +150,10 @@ export class PeerRuntimeService {
       });
     }
     if (method === "GET" && path === "/api/diagnostics") return this.scopedDiagnostics(peer, await runtime.diagnostics());
+    if (method === "POST" && path === "/api/diagnostics/voice/refresh") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      return runtime.refreshVoiceDiagnostics();
+    }
     if (method === "GET" && path === "/api/diagnostics/bundle") {
       await this.assertCurrentSessionScope(peer, runtime);
       const bundle = await runtime.supportBundle(remoteActor);

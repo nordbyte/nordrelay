@@ -189,6 +189,12 @@ export async function handleDashboardRuntimeRoute(
     return true;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/diagnostics/voice/refresh") {
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, await runtime.refreshVoiceDiagnostics());
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/doctor") {
     sendJson(res, 200, await collectDoctorReport(runtime.config, options.home));
     return true;

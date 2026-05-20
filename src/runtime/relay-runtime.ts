@@ -72,7 +72,7 @@ import { SessionRegistry, type ContextMetadata } from "../state/session-registry
 import { createSessionWorktreeStore, SessionWorktreeService } from "../worktrees/worktree-service.js";
 import type { SessionWorktreeDiffSnapshot, SessionWorktreeRecord, SessionWorktreeUpdateResult, WorktreeCleanupResult, WorktreeDashboardSnapshot, WorktreeFinalizeIntegrationOptions, WorktreeFinalizeIntegrationResult, WorktreeIntegrationOptions, WorktreeIntegrationPatchExport, WorktreeIntegrationRun, WorktreeIntegrationPreview } from "../worktrees/worktree-types.js";
 import { createSupportBundle, type SupportBundleResult } from "../support/support-bundle.js";
-import { transcribeAudio, type TranscriptionBackend } from "../artifacts/voice.js";
+import { transcribeAudio, type TranscriptionBackend, type VoiceDiagnostics } from "../artifacts/voice.js";
 import {
   WebActivityStore,
   WebChatStore,
@@ -286,6 +286,7 @@ export interface RelayRuntimeOptions {
   contextKey?: ChannelContextKey;
   registryFileName?: string;
   registrySqliteKey?: string;
+  backgroundServices?: boolean;
 }
 
 export class RelayRuntime {
@@ -324,8 +325,10 @@ export class RelayRuntime {
   accumulatedText = "";
   currentTurnStartedAt = 0;
   currentProgress: WebTaskDto | null = null;
+  private readonly backgroundServicesEnabled: boolean;
 
   constructor(readonly config: ConnectorConfig, options: RelayRuntimeOptions = {}) {
+    this.backgroundServicesEnabled = options.backgroundServices ?? true;
     this.contextKey = options.contextKey ?? WEB_CONTEXT_KEY;
     this.worktreeService = new SessionWorktreeService(config, createSessionWorktreeStore(config));
     this.registry = new SessionRegistry(config, {
@@ -378,6 +381,8 @@ export class RelayRuntime {
       queuePaused: () => this.queueService.isPaused(),
       externalMirror: () => this.externalActivityMonitor.snapshot(),
       authStatus: (agentId) => this.authStatus(agentId),
+      backgroundRefreshEnabled: this.backgroundServicesEnabled,
+      isActive: () => this.subscribers.size > 0,
       cliPathOptions: () => this.cliPathOptions(),
     });
     this.dashboardService.startBackgroundRefresh();
@@ -386,11 +391,13 @@ export class RelayRuntime {
         .then((metrics) => this.metricsHistoryStore.append(runtimeMetricHistorySample(metrics)))
         .catch((error) => this.broadcastStatus(`Failed to record metrics history: ${friendlyErrorText(error)}`, "warn"));
     };
-    const initialMetricsTimer = setTimeout(recordMetricsHistory, 2_000);
-    initialMetricsTimer.unref?.();
-    this.metricsHistoryTimer = setInterval(recordMetricsHistory, 60_000);
-    this.metricsHistoryTimer.unref?.();
-    if (config.codexExternalBusyCheckMs > 0) {
+    if (this.backgroundServicesEnabled) {
+      const initialMetricsTimer = setTimeout(recordMetricsHistory, 2_000);
+      initialMetricsTimer.unref?.();
+      this.metricsHistoryTimer = setInterval(recordMetricsHistory, 60_000);
+      this.metricsHistoryTimer.unref?.();
+    }
+    if (this.backgroundServicesEnabled && config.codexExternalBusyCheckMs > 0) {
       this.externalMonitor = startAdaptiveExternalMonitor({
         baseMs: config.codexExternalBusyCheckMs,
         run: () => this.externalActivityMonitor.monitorSafe(),
@@ -426,6 +433,7 @@ export class RelayRuntime {
     });
     this.workflowService = new RelayWorkflowService({
       store: this.workflowStore,
+      schedulerEnabled: this.backgroundServicesEnabled,
       getSession: (deferThreadStart) => this.getSession(deferThreadStart),
       newSession: (input, actor) => this.newSession(input, actor),
       setAgent: (agentId, actor) => this.setAgent(agentId, actor),
@@ -498,6 +506,10 @@ export class RelayRuntime {
 
   async diagnostics(): Promise<WebDiagnosticsDto> {
     return relayRuntimeDiagnostics(this);
+  }
+
+  async refreshVoiceDiagnostics(): Promise<VoiceDiagnostics> {
+    return this.dashboardService.refreshVoiceDiagnostics();
   }
 
   async adapterHealth(): Promise<WebAdapterHealthDto[]> {

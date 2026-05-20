@@ -39,6 +39,7 @@ const corePaths: Array<[WebHttpMethod, string]> = [
   ["GET", "/api/adapters/health"],
   ["GET", "/api/adapters/conformance"],
   ["GET", "/api/diagnostics"],
+  ["POST", "/api/diagnostics/voice/refresh"],
   ["GET", "/api/diagnostics/bundle"],
   ["GET", "/api/control-options"],
   ["GET", "/api/locks"],
