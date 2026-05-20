@@ -58,7 +58,7 @@
 - Discord supports text, typing, streaming edits, buttons, files, photos, voice/audio transcription, guild channels, threads, DMs, message commands, and slash commands.
 - Slack supports text, typing/status, streaming edits, Block Kit buttons, files, images, audio transcription, channels, DMs, threads, Socket Mode, and HTTP Events mode.
 - Slack startup and `/diagnostics` include readiness checks for token/transport configuration, registered channels, Slack API auth probes, channel visibility probes, file-upload readiness notes, and rate-limit counters.
-- `/channels` shows available and planned messaging adapters for Telegram, Discord, Slack, WhatsApp, and Matrix.
+- `/channels` shows available and planned messaging adapters for Telegram, Discord, Slack, and Matrix.
 - Codex, Pi, Hermes, OpenClaw, and Claude Code are implemented as agent adapters.
 - `/agents` shows available/planned agent adapters and whether Codex, Pi, Hermes, OpenClaw, and Claude Code are enabled.
 - Agent and chat adapters expose a shared conformance matrix so command coverage and feature support can be tested and surfaced consistently.

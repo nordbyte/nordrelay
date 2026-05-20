@@ -44,7 +44,7 @@ describe("adapter and e2e harness primitives", () => {
       const channels = listChannelDescriptors();
       expect(channels.find((channel) => channel.id === "telegram")).toMatchObject({ status: "available", enabled: true });
       expect(channels.find((channel) => channel.id === "discord")).toMatchObject({ status: "available", enabled: true });
-      expect(channels.find((channel) => channel.id === "whatsapp")?.status).toBe("planned");
+      expect(channels.find((channel) => channel.id === "matrix")?.status).toBe("planned");
       expect(new TelegramChannelAdapter().capabilities.has("typing")).toBe(true);
     } finally {
       if (previousTelegram === undefined) delete process.env.TELEGRAM_ENABLED;

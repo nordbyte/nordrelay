@@ -1,7 +1,7 @@
 import type { AgentPromptInput } from "../../agents/shared/agent.js";
 import type { ConnectorConfig } from "../../core/config.js";
 
-export type ChannelId = "telegram" | "discord" | "whatsapp" | "slack" | "matrix";
+export type ChannelId = "telegram" | "discord" | "slack" | "matrix";
 
 export type ChannelCapability =
   | "text"
@@ -112,13 +112,6 @@ const SLACK_CAPABILITIES: ChannelCapability[] = [
 ];
 
 const PLANNED_CHANNELS: ChannelDescriptor[] = [
-  {
-    id: "whatsapp",
-    label: "WhatsApp",
-    capabilities: ["text", "typing", "files", "photos", "voice", "webhooks"],
-    status: "planned",
-    notes: "Requires a WhatsApp Business provider integration.",
-  },
   {
     id: "matrix",
     label: "Matrix",
