@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
+import { resolveCodexDir } from "./codex-home.js";
+
 const FAST_OPT_OUT_RE = /^(\s*fast_default_opt_out\s*=\s*)(true|false)(\s*(?:#.*)?)$/m;
 const NOTICE_HEADER_RE = /^(\[notice\]\s*)$/m;
 
@@ -63,6 +65,6 @@ export function writeCodexFastMode(enabled: boolean): void {
 }
 
 function getCodexConfigPath(): string | null {
-  const home = process.env.HOME;
-  return home ? path.join(home, ".codex", "config.toml") : null;
+  const codexDir = resolveCodexDir();
+  return codexDir ? path.join(codexDir, "config.toml") : null;
 }

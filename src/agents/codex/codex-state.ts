@@ -1,6 +1,7 @@
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
+import { resolveCodexDir } from "./codex-home.js";
 import {
   isCodexApprovalPolicy,
   isCodexSandboxMode,
@@ -96,6 +97,8 @@ export interface CodexRolloutSnapshot {
 const ROLLOUT_CACHE_MAX_EVENTS = 200;
 const USAGE_TAIL_INITIAL_BYTES = 1024 * 1024;
 const USAGE_TAIL_MAX_BYTES = 16 * 1024 * 1024;
+const WINDOWS_EXTENDED_PATH_PREFIX = "\\\\?\\";
+const WINDOWS_EXTENDED_UNC_PREFIX = "\\\\?\\UNC\\";
 
 type CachedRolloutSnapshot = {
   byteOffset: number;
@@ -280,9 +283,10 @@ export function listWorkspaces(): string[] {
       `);
 
       const rows = query.all() as WorkspaceRow[];
-      return rows
-        .map((row) => (typeof row.cwd === "string" ? row.cwd : ""))
-        .filter(Boolean);
+      return Array.from(new Set(rows
+        .map((row) => (typeof row.cwd === "string" ? normalizeCodexWorkspacePath(row.cwd) : ""))
+        .filter(Boolean)))
+        .sort();
     }) ?? []
   );
 }
@@ -777,7 +781,7 @@ function mapThreadRow(row: ThreadRow): CodexThreadRecord {
   return {
     id: typeof row.id === "string" ? row.id : String(row.id ?? ""),
     title: typeof row.title === "string" ? row.title : "",
-    cwd: typeof row.cwd === "string" ? row.cwd : "",
+    cwd: typeof row.cwd === "string" ? normalizeCodexWorkspacePath(row.cwd) : "",
     model: typeof row.model === "string" ? row.model : null,
     reasoningEffort: typeof row.reasoning_effort === "string" ? row.reasoning_effort : null,
     sandboxMode: parseSandboxPolicy(row.sandbox_policy),
@@ -786,6 +790,16 @@ function mapThreadRow(row: ThreadRow): CodexThreadRecord {
     updatedAt: fromUnixSeconds(row.updated_at),
     firstUserMessage: typeof row.first_user_message === "string" ? row.first_user_message : "",
   };
+}
+
+function normalizeCodexWorkspacePath(value: string): string {
+  if (value.startsWith(WINDOWS_EXTENDED_UNC_PREFIX)) {
+    return `\\\\${value.slice(WINDOWS_EXTENDED_UNC_PREFIX.length)}`;
+  }
+  if (value.startsWith(WINDOWS_EXTENDED_PATH_PREFIX)) {
+    return value.slice(WINDOWS_EXTENDED_PATH_PREFIX.length);
+  }
+  return value;
 }
 
 function parseApprovalMode(value: unknown): CodexApprovalPolicy | null {
@@ -866,8 +880,7 @@ function withDatabase<T>(fn: (db: DatabaseInstance) => T): T | null {
 }
 
 function getCodexDir(): string | null {
-  const home = process.env.HOME?.trim();
-  return home ? path.join(home, ".codex") : null;
+  return resolveCodexDir();
 }
 
 function getModelsCachePath(): string | null {

@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readCodexFastMode, writeCodexFastMode } from "../src/agents/codex/codex-config.js";
 
 describe("codex-config", () => {
+  const originalCodexHome = process.env.CODEX_HOME;
   const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
   let home: string;
   let configPath: string;
 
@@ -16,6 +18,7 @@ describe("codex-config", () => {
     configPath = path.join(home, ".codex", "config.toml");
     mkdirSync(path.dirname(configPath), { recursive: true });
     process.env.HOME = home;
+    delete process.env.CODEX_HOME;
   });
 
   afterEach(() => {
@@ -24,6 +27,16 @@ describe("codex-config", () => {
       delete process.env.HOME;
     } else {
       process.env.HOME = originalHome;
+    }
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = originalUserProfile;
+    }
+    if (originalCodexHome === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = originalCodexHome;
     }
   });
 
@@ -67,5 +80,15 @@ describe("codex-config", () => {
     writeCodexFastMode(true);
 
     expect(readFileSync(configPath, "utf8")).toBe("[notice]\nfast_default_opt_out = false\n");
+  });
+
+  it("uses USERPROFILE for the Codex config path when HOME is not set", () => {
+    delete process.env.HOME;
+    process.env.USERPROFILE = home;
+    rmSync(configPath, { force: true });
+
+    writeCodexFastMode(false);
+
+    expect(readFileSync(configPath, "utf8")).toBe("[notice]\nfast_default_opt_out = true\n");
   });
 });

@@ -27,7 +27,9 @@ type LoadOptions = {
   openThrows?: boolean;
 };
 
+const originalCodexHome = process.env.CODEX_HOME;
 const originalHome = process.env.HOME;
+const originalUserProfile = process.env.USERPROFILE;
 
 afterEach(() => {
   vi.doUnmock("node:fs");
@@ -38,6 +40,16 @@ afterEach(() => {
     delete process.env.HOME;
   } else {
     process.env.HOME = originalHome;
+  }
+  if (originalUserProfile === undefined) {
+    delete process.env.USERPROFILE;
+  } else {
+    process.env.USERPROFILE = originalUserProfile;
+  }
+  if (originalCodexHome === undefined) {
+    delete process.env.CODEX_HOME;
+  } else {
+    process.env.CODEX_HOME = originalCodexHome;
   }
 });
 
@@ -50,6 +62,7 @@ async function loadCodexState(options: LoadOptions = {}) {
   const stats = options.stats ?? {};
   const threads = options.threads ?? [];
   process.env.HOME = home;
+  delete process.env.CODEX_HOME;
 
   vi.resetModules();
 
@@ -175,6 +188,24 @@ describe("codex-state", () => {
     expect(state.findLatestDatabase()).toBe(newer);
   });
 
+  it("findLatestDatabase falls back to USERPROFILE when HOME is not set", async () => {
+    const home = "C:\\Users\\tester";
+    const codexDir = path.join(home, ".codex");
+    const databasePath = path.join(codexDir, "state_win.sqlite");
+    const state = await loadCodexState({
+      home,
+      files: ["state_win.sqlite"],
+      stats: {
+        [databasePath]: 100,
+      },
+    });
+
+    delete process.env.HOME;
+    process.env.USERPROFILE = home;
+
+    expect(state.findLatestDatabase()).toBe(databasePath);
+  });
+
   it("listThreads returns an empty array when better-sqlite3 is unavailable", async () => {
     const state = await loadCodexState({ betterSqliteAvailable: false, files: ["state_main.sqlite"] });
 
@@ -292,6 +323,35 @@ describe("codex-state", () => {
     });
 
     expect(state.listWorkspaces()).toEqual(["/workspace/a", "/workspace/z"]);
+  });
+
+  it("normalizes Windows extended-length workspace paths", async () => {
+    const state = await loadCodexState({
+      files: ["state_main.sqlite"],
+      threads: [
+        {
+          id: "thread-1",
+          title: "One",
+          cwd: "\\\\?\\C:\\repo",
+          model: "o3",
+          created_at: 1,
+          updated_at: 2,
+          first_user_message: "one",
+        },
+        {
+          id: "thread-2",
+          title: "Two",
+          cwd: "C:\\repo",
+          model: "o3",
+          created_at: 1,
+          updated_at: 3,
+          first_user_message: "two",
+        },
+      ],
+    });
+
+    expect(state.listThreads(2).map((thread) => thread.cwd)).toEqual(["C:\\repo", "C:\\repo"]);
+    expect(state.listWorkspaces()).toEqual(["C:\\repo"]);
   });
 
   it("listModels parses models_cache.json and filters hidden models", async () => {
