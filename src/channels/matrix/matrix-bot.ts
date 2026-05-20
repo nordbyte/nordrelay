@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { ADMIN_GROUP_ID, type Permission } from "../../access/access-control.js";
-import { agentLabel, agentReasoningLabel, agentReasoningOptions, type AgentId, type AgentPromptInput, type AgentSessionInfo, type AgentSessionService } from "../../agents/shared/agent.js";
+import { agentLabel, agentReasoningLabel, agentReasoningOptions, type AgentId, type AgentPromptInput, type AgentSessionInfo, type AgentSessionService, type AgentThreadRecord } from "../../agents/shared/agent.js";
 import { getAgentActivityLog, getExternalSnapshotForSession } from "../../agents/shared/agent-activity.js";
 import { hostAgentLoginCommand, hostAgentLogoutCommand } from "../../agents/shared/agent-auth-commands.js";
 import { listAgentAdapterDescriptors } from "../../agents/shared/agent-adapter.js";
@@ -9,7 +9,7 @@ import type { AgentUpdateOperation } from "../../agents/shared/agent-updates.js"
 import { enabledAgents } from "../../agents/shared/agent-factory.js";
 import { ensureOutDir } from "../../artifacts/artifacts.js";
 import { buildFileInstructions, outboxPath, stageFile, type StagedFile } from "../../artifacts/attachments.js";
-import { capabilitiesOf, filterActivityEvents, parseActivityOptions, trimLine } from "../shared/bot-rendering.js";
+import { capabilitiesOf, filterActivityEvents, filterSessions, orderPinnedSessions, parseActivityOptions, trimLine } from "../shared/bot-rendering.js";
 import { parseAgentUpdateId, renderAgentUpdateJobAction, renderAgentUpdateJobsAction, renderAgentUpdateLogAction, renderAgentUpdatePickerAction, renderQueueListAction } from "../shared/channel-actions.js";
 import type { ChannelContext } from "../shared/channel-adapter.js";
 import {
@@ -45,6 +45,7 @@ import { SessionRegistry } from "../../state/session-registry.js";
 import { createMatrixArtifactCommandHandler, sendRecentMatrixArtifacts } from "./matrix-artifacts.js";
 import { MatrixBotChannelRuntime, splitMatrixMessage, trimMatrixMessage } from "./matrix-channel-runtime.js";
 import { MatrixClient } from "./matrix-client.js";
+import { MATRIX_SESSION_PAGE_SIZE, renderMatrixSessionPageAction, type MatrixSessionListRecord, type MatrixSessionPageSource, type MatrixSessionPageState } from "./matrix-sessions.js";
 import type { MatrixAttachment, MatrixBridge, MatrixBusyReason, MatrixBusyState, MatrixExternalMirrorState, MatrixMessageEvent, MatrixPickState, MatrixRequest } from "./matrix-types.js";
 import { isUnauthenticatedMatrixCommandAllowed, parseMatrixMessageCommand, permissionForMatrixAction, requiredPermissionForMatrixCommand } from "./matrix-command-surface.js";
 import { collectMatrixDiagnostics } from "./matrix-diagnostics.js";
@@ -52,7 +53,7 @@ import { getMatrixRateLimitMetrics } from "./matrix-rate-limit.js";
 import { transcribeAudio, type TranscriptionBackend } from "../../artifacts/voice.js";
 import type { AuthenticatedUser, UserStore } from "../../access/user-management.js";
 import type { WebActivityActor } from "../../web/web-state.js";
-import { filterAllowedWorkspaces } from "../../core/workspace-policy.js";
+import { evaluateWorkspacePolicy, filterAllowedWorkspaces, renderWorkspacePolicyLine } from "../../core/workspace-policy.js";
 
 export { isUnauthenticatedMatrixCommandAllowed, permissionForMatrixAction, requiredPermissionForMatrixCommand } from "./matrix-command-surface.js";
 
@@ -113,6 +114,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
   const artifactPolicyForRequest = (request: MatrixRequest) => resolveArtifactDeliveryPolicy({ config, channelId: "matrix", authUser: request.authUser, channelAccess: request.isDirectMessage ? null : userStore.snapshot().matrixRooms.find((room) => room.roomId === request.roomId && (!room.homeserver || !request.homeserver || room.homeserver === request.homeserver)) ?? null });
   const artifactPolicyForContext = (context: ChannelContext) => resolveArtifactDeliveryPolicy({ config, channelId: "matrix", channelAccess: userStore.snapshot().matrixRooms.find((room) => room.roomId === context.chatId) ?? null });
   const picks = new Map<string, PickState>();
+  const sessionPages = new Map<string, MatrixSessionPageState>();
   const queueStatusMessages = env.queueStatusMessages!;
   let externalMonitor: NodeJS.Timeout | undefined;
   let externalMonitorRunning = false;
@@ -657,14 +659,23 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
 
   const commandSessions = async (request: MatrixRequest, query: string): Promise<void> => {
     const session = await getSession(request, { deferThreadStart: true });
-    const records = session.listAllSessions(50).filter((record) => !query.trim() || [record.id, record.title, record.cwd, record.firstUserMessage].some((value) => value?.toLowerCase().includes(query.toLowerCase()))).slice(0, 10);
-    if (records.length === 0) {
-      await reply(request, "No sessions found.");
+    const requestedThread = query.trim() ? session.getSessionRecord(query.trim()) : null;
+    if (requestedThread) {
+      await commandSwitch(request, query);
       return;
     }
-    const pickId = createPick("session", records.map((record) => record.id));
-    await reply(request, ["Sessions:", ...records.map((record, index) => `${index + 1}. ${record.title || record.id}\n   ${record.id}\n   ${record.cwd || "-"}`)].join("\n"), {
-      buttons: records.map((record, index) => [{ label: trimLine(record.title || record.id, 70), action: `matrix_pick:${pickId}:${index}` }]),
+    const records = listMatrixSessionRecords(request, session, query);
+    if (records.length === 0) {
+      await reply(request, query.trim() ? `No threads found matching "${query.trim()}".` : "No recent threads found.");
+      return;
+    }
+    const pickId = createSessionPage("sessions", request.contextKey, query, records, session);
+    const rendered = renderMatrixSessionPageAction(query.trim() ? "Matching threads" : "Recent threads", records, pickId, {
+      activeThreadId: session.getInfo().threadId,
+      pinnedThreadIds: registry.listPinnedThreadIds(request.contextKey),
+    });
+    await reply(request, rendered.text, {
+      buttons: rendered.buttons,
     });
   };
 
@@ -689,11 +700,22 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
       await reply(request, "Usage: `/switch <thread-id>`");
       return;
     }
+    if (getBusyReason(request.contextKey).busy) {
+      await reply(request, "Cannot switch sessions while a prompt is running.");
+      return;
+    }
     const session = await getSession(request, { deferThreadStart: true });
+    const requestedThread = session.getSessionRecord(threadId.trim());
+    const workspacePolicy = evaluateWorkspacePolicy(requestedThread?.cwd ?? session.getCurrentWorkspace(), config);
+    if (!workspacePolicy.allowed) {
+      await reply(request, `Failed: ${workspacePolicy.warning ?? "Thread workspace blocked by policy."}`);
+      return;
+    }
     const info = await session.switchSession(threadId.trim());
     updateSession(request, session);
     appendActivity(request, { status: "info", type: "session_switch", threadId: info.threadId, workspace: info.workspace, agentId: info.agentId });
-    await reply(request, `Switched session.\n\n${renderSessionInfoPlain(info)}`);
+    const policyLine = renderWorkspacePolicyLine(info.workspace, config);
+    await reply(request, ["Switched session.", policyLine, "", renderSessionInfoPlain(info)].filter((line): line is string => Boolean(line)).join("\n"));
   };
 
   const commandModel = async (request: MatrixRequest, argument: string): Promise<void> => {
@@ -1055,15 +1077,18 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
 
   const commandPinned = async (request: MatrixRequest): Promise<void> => {
     const session = await getSession(request, { deferThreadStart: true });
-    const pinned = registry.listPinnedThreadIds(request.contextKey);
-    const records = pinned.map((threadId) => session.getSessionRecord(threadId)).filter((record): record is NonNullable<ReturnType<AgentSessionService["getSessionRecord"]>> => Boolean(record));
+    const records = listPinnedSessionRecords(request, session);
     if (records.length === 0) {
       await reply(request, "No pinned threads.");
       return;
     }
-    const pickId = createPick("session", records.map((record) => record.id));
-    await reply(request, [`Pinned threads (${records.length}):`, ...records.map((record, index) => `${index + 1}. ${record.title || record.id}\n   ${record.id}\n   ${record.cwd || "-"}`)].join("\n"), {
-      buttons: records.map((record, index) => [{ label: trimLine(record.title || record.id, 75), action: `matrix_pick:${pickId}:${index}` }]),
+    const pickId = createSessionPage("pinned", request.contextKey, "", records, session);
+    const rendered = renderMatrixSessionPageAction("Pinned threads", records, pickId, {
+      activeThreadId: session.getInfo().threadId,
+      pinnedThreadIds: registry.listPinnedThreadIds(request.contextKey),
+    });
+    await reply(request, rendered.text, {
+      buttons: rendered.buttons,
     });
   };
 
@@ -1193,6 +1218,11 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
   };
 
   const handleButtonAction = async (request: MatrixRequest, action: string): Promise<void> => {
+    const sessionPageMatch = action.match(/^matrix_sessions_page:([^:]+):(prev|next|refresh)$/);
+    if (sessionPageMatch?.[1] && sessionPageMatch[2]) {
+      await commandSessionPage(request, sessionPageMatch[1], sessionPageMatch[2] as "prev" | "next" | "refresh");
+      return;
+    }
     const pickMatch = action.match(/^matrix_pick:([^:]+):(\d+)$/);
     if (pickMatch?.[1]) {
       const pick = picks.get(pickMatch[1]);
@@ -1241,6 +1271,69 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
     if (abortMatch?.[1] === request.contextKey) {
       await commandAbort(request);
     }
+  };
+
+  const listMatrixSessionRecords = (request: MatrixRequest, session: AgentSessionService, query: string): MatrixSessionListRecord[] => {
+    const pinnedThreadIds = registry.listPinnedThreadIds(request.contextKey);
+    return orderPinnedSessions(
+      filterSessions(session.listAllSessions(100), query)
+        .filter((record) => evaluateWorkspacePolicy(record.cwd, config).allowed),
+      pinnedThreadIds,
+    ).slice(0, 50);
+  };
+
+  const listPinnedSessionRecords = (request: MatrixRequest, session: AgentSessionService): MatrixSessionListRecord[] =>
+    registry.listPinnedThreadIds(request.contextKey)
+      .map((threadId) => session.getSessionRecord(threadId))
+      .filter((record): record is AgentThreadRecord => Boolean(record))
+      .filter((record) => evaluateWorkspacePolicy(record.cwd, config).allowed);
+
+  const refreshSessionPageRecords = async (request: MatrixRequest, state: MatrixSessionPageState): Promise<MatrixSessionListRecord[]> => {
+    const session = await getSession(request, { deferThreadStart: true });
+    state.activeThreadId = session.getInfo().threadId;
+    state.pinnedThreadIds = registry.listPinnedThreadIds(request.contextKey);
+    return state.source === "pinned" ? listPinnedSessionRecords(request, session) : listMatrixSessionRecords(request, session, state.query);
+  };
+
+  const commandSessionPage = async (request: MatrixRequest, pickId: string, action: "prev" | "next" | "refresh"): Promise<void> => {
+    const state = sessionPages.get(pickId);
+    if (!state || state.contextKey !== request.contextKey) {
+      await reply(request, "Selection expired. Run `/sessions` again.", { ephemeral: true });
+      return;
+    }
+    if (action === "refresh") {
+      const refreshed = await refreshSessionPageRecords(request, state);
+      state.records = refreshed;
+      const pick = picks.get(pickId);
+      if (pick) pick.values = refreshed.map((record) => record.id);
+    } else {
+      state.page += action === "next" ? 1 : -1;
+    }
+    const rendered = renderMatrixSessionPageAction(state.source === "pinned" ? "Pinned threads" : (state.query.trim() ? "Matching threads" : "Recent threads"), state.records, pickId, {
+      page: state.page,
+      pageSize: state.pageSize,
+      activeThreadId: state.activeThreadId,
+      pinnedThreadIds: state.pinnedThreadIds,
+    });
+    state.page = rendered.page;
+    await reply(request, rendered.text, { buttons: rendered.buttons });
+  };
+
+  const createSessionPage = (source: MatrixSessionPageSource, contextKey: ChannelContextKey, query: string, records: MatrixSessionListRecord[], session: AgentSessionService): string => {
+    const id = createPick("session", records.map((record) => record.id));
+    sessionPages.set(id, {
+      contextKey,
+      source,
+      query,
+      records,
+      activeThreadId: session.getInfo().threadId,
+      pinnedThreadIds: registry.listPinnedThreadIds(contextKey),
+      page: 0,
+      pageSize: MATRIX_SESSION_PAGE_SIZE,
+      createdAt: Date.now(),
+    });
+    setTimeout(() => sessionPages.delete(id), 10 * 60 * 1000).unref?.();
+    return id;
   };
 
   const createPick = (kind: PickState["kind"], values: string[]): string => {

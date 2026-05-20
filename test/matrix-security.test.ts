@@ -71,6 +71,7 @@ describe("Matrix security boundaries", () => {
     expect(permissionForMatrixAction("matrix_queue_cancel:ctx:abc")).toBe("queue.write");
     expect(permissionForMatrixAction("matrix_peer_queue_cancel:peer:abc")).toBe("queue.write");
     expect(permissionForMatrixAction("matrix_abort:ctx")).toBe("prompt.abort");
+    expect(permissionForMatrixAction("matrix_sessions_page:pick:next")).toBe("sessions.read");
     expect(permissionForMatrixAction("matrix_artifact_send:ctx:turn")).toBe("files.read");
     expect(permissionForMatrixAction("matrix_artifact_delete:ctx:turn")).toBe("files.write");
     expect(permissionForMatrixAction("agent-update:cancel:job")).toBe("updates.run");

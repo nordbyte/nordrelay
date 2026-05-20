@@ -67,6 +67,7 @@ export function isUnauthenticatedMatrixCommandAllowed(command: string): boolean 
 export function permissionForMatrixAction(action: string): Permission | null {
   if (action.startsWith("matrix_queue_") || action.startsWith("matrix_peer_queue_")) return "queue.write";
   if (action.startsWith("matrix_abort:")) return "prompt.abort";
+  if (action.startsWith("matrix_sessions_page:")) return "sessions.read";
   if (action.startsWith("matrix_pick:")) return "sessions.write";
   if (action.startsWith("matrix_artifact_delete:")) return "files.write";
   if (action.startsWith("matrix_artifact_")) return "files.read";
