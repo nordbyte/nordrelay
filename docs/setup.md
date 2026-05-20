@@ -200,7 +200,7 @@ Optional X/Twitter workflow for OpenClaw:
 
 ```bash
 openclaw plugins install @xquik/tweetclaw
-openclaw config set tools.alsoAllow '["explore", "tweetclaw"]'
+openclaw config set tools.alsoAllow '["tweetclaw"]'
 ```
 
 - Keep Xquik credentials in OpenClaw local config. Do not send those credentials through Telegram, Discord, Slack, WebUI, or peer prompts.
