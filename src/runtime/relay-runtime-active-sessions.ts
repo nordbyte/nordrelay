@@ -19,7 +19,6 @@ import {
   type AgentSessionInfo,
   type AgentSessionInfoOptions,
   type AgentSessionService,
-  type AgentThreadRecord,
 } from "../agents/shared/agent.js";
 import { getExternalSnapshotForSession } from "../agents/shared/agent-activity.js";
 import { listAgentAdapterDescriptors } from "../agents/shared/agent-adapter.js";
@@ -31,8 +30,6 @@ import { ChannelCommandService } from "../channels/shared/channel-command-servic
 import { ChannelTurnService } from "../channels/shared/channel-turn-service.js";
 import { activeSessionSourceForContextKey, ChannelMirrorRegistry } from "../channels/shared/channel-mirror-registry.js";
 import type { LoginResult } from "../agents/codex/codex-auth.js";
-import { listThreads as listCodexThreads } from "../agents/codex/codex-state.js";
-import { listPiSessions } from "../agents/pi/pi-state.js";
 import type { ConnectorConfig } from "../core/config.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import { friendlyErrorText } from "../core/error-messages.js";
@@ -101,6 +98,13 @@ import type {
 export type { RuntimeMetricsDto } from "./metrics.js";
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "../core/workspace-policy.js";
 import type { RelayRuntimeDelegate } from "./relay-runtime-delegate.js";
+import {
+  relayRuntimeDiscoverActiveClaudeCodeSessions,
+  relayRuntimeDiscoverActiveCodexSessions,
+  relayRuntimeDiscoverActiveHermesSessions,
+  relayRuntimeDiscoverActiveOpenClawSessions,
+  relayRuntimeDiscoverActivePiSessions,
+} from "./relay-runtime-active-discovery.js";
 export type {
   ActiveSessionDto,
   ActiveSessionsDto,
@@ -123,9 +127,16 @@ export type {
   WebTaskDto,
   WebTasksDto,
 } from "./relay-runtime-types.js";
+export {
+  relayRuntimeDiscoverActiveClaudeCodeSessions,
+  relayRuntimeDiscoverActiveCodexSessions,
+  relayRuntimeDiscoverActiveHermesSessions,
+  relayRuntimeDiscoverActiveOpenClawSessions,
+  relayRuntimeDiscoverActivePiSessions,
+  relayRuntimeDiscoverActiveRecordedAgentSessions,
+} from "./relay-runtime-active-discovery.js";
 
 export const WEB_CONTEXT_KEY = "web:dashboard";
-const ACTIVE_CODEX_DISCOVERY_LIMIT = 200;
 const ACTIVE_ACTIVITY_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_WEB_SESSION_PAGE_SIZE = 50;
 const MAX_CHAT_HISTORY = 250;
@@ -161,6 +172,18 @@ export async function relayRuntimeActiveSessions(runtime: RelayRuntimeDelegate):
     }
 
     for (const active of safeActiveSessionList(() => relayRuntimeDiscoverActivePiSessions(runtime, knownContexts, preferences))) {
+      addActiveSession(active);
+    }
+
+    for (const active of safeActiveSessionList(() => relayRuntimeDiscoverActiveHermesSessions(runtime, knownContexts, preferences))) {
+      addActiveSession(active);
+    }
+
+    for (const active of safeActiveSessionList(() => relayRuntimeDiscoverActiveOpenClawSessions(runtime, knownContexts, preferences))) {
+      addActiveSession(active);
+    }
+
+    for (const active of safeActiveSessionList(() => relayRuntimeDiscoverActiveClaudeCodeSessions(runtime, knownContexts, preferences))) {
       addActiveSession(active);
     }
 
@@ -282,75 +305,6 @@ export function relayRuntimeDiscoverRunningConnectorSessions(runtime: RelayRunti
         queuePaused: runtime.promptStore.isPaused(event.contextKey),
         detail: event.actor?.label ? `Started by ${event.actor.label}` : undefined,
       });
-    }
-    return active;
-  }
-
-export function relayRuntimeDiscoverActiveCodexSessions(runtime: RelayRuntimeDelegate, knownContexts: ContextMetadata[], preferences: BotPreferencesStore): ActiveSessionDto[] {
-    if (!runtime.config.codexEnabled || !enabledAgents(runtime.config).includes("codex")) {
-      return [];
-    }
-
-    const capabilities = runtime.capabilitiesForAgent("codex");
-    if (!capabilities.externalActivity) {
-      return [];
-    }
-
-    const active: ActiveSessionDto[] = [];
-    const nowMs = Date.now();
-    const staleAfterMs = runtime.config.codexExternalBusyStaleMs;
-    for (const thread of listCodexThreads(ACTIVE_CODEX_DISCOVERY_LIMIT)) {
-      if (staleAfterMs > 0 && nowMs - thread.updatedAt.getTime() > staleAfterMs) {
-        continue;
-      }
-      const meta: ContextMetadata = {
-        contextKey: `cli:codex:${thread.id}`,
-        agentId: "codex",
-        threadId: thread.id,
-        workspace: thread.cwd,
-        model: thread.model ?? undefined,
-        reasoningEffort: thread.reasoningEffort ?? undefined,
-        updatedAt: thread.updatedAt.getTime(),
-      };
-      const session = runtime.externalActiveSession(meta, knownContexts, preferences);
-      if (session) {
-        active.push(session);
-      }
-    }
-    return active;
-  }
-
-export function relayRuntimeDiscoverActivePiSessions(runtime: RelayRuntimeDelegate, knownContexts: ContextMetadata[], preferences: BotPreferencesStore): ActiveSessionDto[] {
-    if (!runtime.config.piEnabled || !enabledAgents(runtime.config).includes("pi")) {
-      return [];
-    }
-
-    const capabilities = runtime.capabilitiesForAgent("pi");
-    if (!capabilities.externalActivity) {
-      return [];
-    }
-
-    const active: ActiveSessionDto[] = [];
-    const nowMs = Date.now();
-    const staleAfterMs = runtime.config.codexExternalBusyStaleMs;
-    for (const record of listPiSessions(ACTIVE_CODEX_DISCOVERY_LIMIT, { sessionDir: runtime.config.piSessionDir })) {
-      if (staleAfterMs > 0 && nowMs - record.updatedAt.getTime() > staleAfterMs) {
-        continue;
-      }
-      const meta: ContextMetadata = {
-        contextKey: `cli:pi:${record.id}`,
-        agentId: "pi",
-        threadId: record.id,
-        workspace: record.cwd,
-        model: record.model ?? undefined,
-        reasoningEffort: record.reasoningEffort ?? undefined,
-        sessionPath: record.sessionPath,
-        updatedAt: record.updatedAt.getTime(),
-      };
-      const session = runtime.externalActiveSession(meta, knownContexts, preferences);
-      if (session) {
-        active.push(session);
-      }
     }
     return active;
   }
