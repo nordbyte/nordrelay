@@ -1741,7 +1741,7 @@ async function commandWeb(options) {
   warnIfCliPathMissing();
   await prepareRuntimeForLaunch(options);
   await ensureConnectorStartedForWeb(options);
-  await startWebDashboard(options, { detached: false });
+  await startWebDashboard(options, { detached: true });
 }
 
 async function commandServiceRun(options) {
@@ -2519,7 +2519,7 @@ function printHelp() {
   console.log("  peer                 Manage secure NordRelay peer federation");
   console.log("  service              Install, remove, or inspect the OS service");
   console.log("  doctor [--fix]       Validate the local setup and apply safe fixes");
-  console.log("  web, dashboard       Start the WebUI and connector");
+  console.log("  web, dashboard       Start the WebUI and connector in the background");
   console.log("  start                Start the connector");
   console.log("  stop                 Stop the connector and WebUI");
   console.log("  restart              Restart the connector");
