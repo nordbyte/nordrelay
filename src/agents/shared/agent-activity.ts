@@ -91,7 +91,7 @@ export function getExternalActivityForSession(
       });
     }
     if (info.agentId === "claude-code") {
-      return getClaudeCodeSessionActivity(threadId, {
+      return getClaudeCodeSessionActivity(info.sessionPath ?? threadId, {
         configDir: config.claudeCodeConfigDir,
         workspace: info.workspace,
         staleAfterMs: config.codexExternalBusyStaleMs,
@@ -195,7 +195,7 @@ function readExternalSnapshot(
     });
   }
   if (info.agentId === "claude-code") {
-    return getClaudeCodeSessionSnapshot(threadId, {
+    return getClaudeCodeSessionSnapshot(info.sessionPath ?? threadId, {
       configDir: config.claudeCodeConfigDir,
       workspace: info.workspace,
       afterLine: options.afterLine,
@@ -269,7 +269,7 @@ export function getAgentActivityLog(
     });
   }
   if (info.agentId === "claude-code") {
-    return getClaudeCodeSessionActivityLog(threadId, limit, {
+    return getClaudeCodeSessionActivityLog(info.sessionPath ?? threadId, limit, {
       configDir: config.claudeCodeConfigDir,
       workspace: info.workspace,
     });
@@ -346,7 +346,7 @@ export function getAgentDiagnostics(
     };
   }
   if (info.agentId === "claude-code") {
-    const diagnostics = getClaudeCodeSessionDiagnostics(info.threadId, {
+    const diagnostics = getClaudeCodeSessionDiagnostics(info.sessionPath ?? info.threadId, {
       configDir: config.claudeCodeConfigDir,
       workspace: info.workspace,
       staleAfterMs: config.codexExternalBusyStaleMs,
