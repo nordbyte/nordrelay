@@ -28,8 +28,9 @@ nav button.active,nav button:hover{background:color-mix(in srgb,var(--accent) 35
 .nav-section-toggle.active{color:var(--sidebar-text)}
 .nav-section-toggle.active,.nav-section-toggle:hover{background:color-mix(in srgb,var(--accent) 24%,transparent)}
 main{min-width:0;display:flex;flex-direction:column}
-header{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;gap:16px;align-items:center;min-height:var(--dashboard-header-height);padding:16px 22px;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+header{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;gap:16px;align-items:center;min-height:var(--dashboard-header-height);padding:12px 22px;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
 .header-title{min-width:0;flex:1}
+header h1{line-height:1.1}
 h1{font-size:24px;margin:0}
 h2{font-size:16px;margin:0 0 12px}
 .active-sessions-count{color:var(--muted);font-weight:650}
