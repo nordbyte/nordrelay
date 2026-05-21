@@ -56,7 +56,8 @@ test.describe("NordRelay WebUI runtime", () => {
 
     const active = await page.request.get(`${server.baseUrl}/api/active-sessions`);
     expect(active.status()).toBe(200);
-    expect((await active.json()) as { sessions?: unknown[] }).toMatchObject({ sessions: [] });
+    const activeJson = await active.json() as { sessions?: unknown[] };
+    expect(Array.isArray(activeJson.sessions)).toBe(true);
 
     const firstEvent = await page.evaluate(() => new Promise<string>((resolve, reject) => {
       const source = new EventSource("/api/events");

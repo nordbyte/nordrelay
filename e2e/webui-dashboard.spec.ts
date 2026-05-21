@@ -194,6 +194,7 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator('#tasksList [data-trace-id="cid-job-1"]')).toBeVisible();
 
     await navigateDashboard(page, "Trace");
+    await page.locator('[data-monitor-filter-toggle="trace"]').click();
     await page.locator("#traceCorrelationId").fill("cid-job-1");
     await page.locator("#loadTraceBtn").click();
     await expect(page.locator("#traceDetail .trace-table")).toBeVisible();
