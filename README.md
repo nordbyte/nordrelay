@@ -3,7 +3,7 @@
 
 NordRelay is a secure remote control plane for coding agents. It connects Codex, Pi, Hermes, OpenClaw, and Claude Code sessions to Telegram, Discord, Slack, Matrix, the WebUI, and trusted peer nodes, with streaming replies, file/photo/voice input, queues, artifacts, user permissions, and multi-host control.
 
-Use the README for the first install and quick start. Full feature, command, configuration, deployment, and architecture details live in [docs/](docs/).
+Use the README for the first install and quick start. Full documentation is available at [nordrelay.io](https://nordrelay.io/) and in [docs/](docs/).
 
 ## Quick Start
 
@@ -69,7 +69,7 @@ A minimal Telegram + Codex configuration looks like this:
 ```dotenv
 NORDRELAY_WEBUI_ENABLED=true
 TELEGRAM_ENABLED=true
-TELEGRAM_BOT_TOKEN=123456789:replace-me
+TELEGRAM_BOT_TOKEN=<bot-token>
 DISCORD_ENABLED=false
 SLACK_ENABLED=false
 MATRIX_ENABLED=false
@@ -114,7 +114,7 @@ Chat adapters share the core command set:
 /diagnostics
 ```
 
-See [Commands](docs/commands.md) for the complete Telegram, Discord, Slack, Matrix, queue, artifact, mirror, update, and diagnostic command reference.
+See [Chat commands](docs/reference/chat-commands.md) and the [CLI reference](docs/commands/index.md) for the complete command reference.
 
 ## What NordRelay Provides
 
@@ -134,14 +134,15 @@ See [Commands](docs/commands.md) for the complete Telegram, Discord, Slack, Matr
 
 | Topic | Link |
 | --- | --- |
-| Full feature list and adapter capabilities | [docs/features.md](docs/features.md) |
-| First-run setup, users, running modes, and WebUI | [docs/setup.md](docs/setup.md) |
-| Telegram, Discord, Slack, Matrix, and WebUI commands | [docs/commands.md](docs/commands.md) |
-| Files, photos, voice, transcription, and artifacts | [docs/workflows.md](docs/workflows.md) |
-| Environment variables and launch profiles | [docs/configuration.md](docs/configuration.md) |
-| Security notes and troubleshooting | [docs/security-troubleshooting.md](docs/security-troubleshooting.md) |
-| Deployment with npm, foreground, Docker, launchd, and systemd | [docs/deployment.md](docs/deployment.md) |
-| Codebase architecture and module map | [docs/architecture.md](docs/architecture.md) |
+| Full documentation site | [nordrelay.io](https://nordrelay.io/) |
+| Installation and quickstart | [docs/start/install.md](docs/start/install.md) |
+| WebUI | [docs/start/webui.md](docs/start/webui.md) |
+| Agents | [docs/guides/agents.md](docs/guides/agents.md) |
+| Chat adapters | [docs/guides/chat-adapters.md](docs/guides/chat-adapters.md) |
+| Workflows | [docs/guides/workflows.md](docs/guides/workflows.md) |
+| Configuration and settings | [docs/reference/configuration.md](docs/reference/configuration.md) |
+| CLI command reference | [docs/commands/index.md](docs/commands/index.md) |
+| Architecture | [docs/internals/architecture.md](docs/internals/architecture.md) |
 | Public security policy | [SECURITY.md](SECURITY.md) |
 | Contribution guide | [CONTRIBUTING.md](CONTRIBUTING.md) |
 

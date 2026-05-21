@@ -257,7 +257,7 @@ export async function readFormattedLogTail(linesOrOptions: number | FormattedLog
       scannedLineCount: rawLines.length,
       totalLineCount: filtered.length,
       truncated,
-      updatedAt: stats.mtime,
+      updatedAt: stats?.mtime ?? null,
       entries: page.map((entry, index) => ({ ...entry, line: pageLines[index] ?? "" })),
       pagination: {
         limit: boundedLines,

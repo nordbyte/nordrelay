@@ -1,0 +1,33 @@
+# Remote and session workflows
+
+NordRelay can operate sessions started from the WebUI, a chat adapter, an external CLI, or a trusted peer.
+
+## Start in the WebUI
+
+Open **Chat**, choose a node and agent, then create a new session. The modal lets you select workspace mode and the workspace path when supported.
+
+## Attach to existing sessions
+
+Use **Sessions** or `/sessions` in chat to switch to a known thread. NordRelay tracks metadata such as agent, workspace, model, reasoning, launch profile, activity, queue, and mirror preferences.
+
+## External CLI sessions
+
+NordRelay can discover active CLI sessions and show them under **Overview**. If a CLI turn is active, the WebUI can show `Working...`, queue new prompts, mirror output, and surface approval prompts where supported.
+
+## Queue when busy
+
+If a session is already processing a prompt, a new prompt is queued instead of colliding with the running turn. Queue entries can be cancelled, reordered, paused, resumed, or promoted depending on the surface.
+
+## Worktree isolation
+
+Set:
+
+```dotenv
+NORDRELAY_SESSION_WORKSPACE_MODE=worktree
+```
+
+New sessions can receive their own Git worktree and branch. This allows several sessions to work on the same repository without seeing each other's incomplete edits. Use the WebUI worktree integration view to inspect and merge completed work.
+
+## Peered sessions
+
+When peer federation is enabled, a local WebUI can list and control sessions from trusted nodes. Peer access is scoped by the invitation and stored peer permissions.

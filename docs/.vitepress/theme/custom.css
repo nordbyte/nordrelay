@@ -1,0 +1,60 @@
+:root {
+  --vp-c-brand-1: #147a5c;
+  --vp-c-brand-2: #1a936f;
+  --vp-c-brand-3: #22b486;
+  --vp-c-brand-soft: rgba(34, 180, 134, 0.14);
+  --vp-button-brand-bg: #147a5c;
+  --vp-button-brand-hover-bg: #1a936f;
+  --vp-button-brand-active-bg: #0f654d;
+  --vp-home-hero-name-color: #147a5c;
+}
+
+.dark {
+  --vp-c-brand-1: #68d9ad;
+  --vp-c-brand-2: #38c18f;
+  --vp-c-brand-3: #1a936f;
+  --vp-c-brand-soft: rgba(104, 217, 173, 0.16);
+}
+
+.VPDoc h1 {
+  letter-spacing: 0;
+}
+
+.VPDoc table code,
+.VPDoc li code,
+.VPDoc p code {
+  white-space: nowrap;
+}
+
+.VPNavBarTitle .logo {
+  border-radius: 4px;
+}
+
+.vp-doc .custom-block.tip {
+  border-color: var(--vp-c-brand-2);
+}
+
+.nordrelay-home-image {
+  display: block;
+  width: min(100%, 780px);
+  margin: 24px 0 28px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+}
+
+.nordrelay-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.nordrelay-card {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--vp-c-bg-soft);
+}
+
+.nordrelay-card h3 {
+  margin-top: 0;
+}
