@@ -26,7 +26,17 @@ import { createSharedChannelCommandDispatcher } from "../shared/channel-command-
 import { slackHelpCommandList } from "../shared/channel-command-catalog.js";
 import { runChannelLocalPrompt } from "../shared/channel-local-prompt-runner.js";
 import { queueChannelPromptIfBusy } from "../shared/channel-prompt-queue.js";
+import { createChannelPeerMirrorController } from "../shared/channel-peer-mirror.js";
 import { runChannelPeerPrompt } from "../shared/channel-peer-prompt.js";
+import {
+  listTargetPeerSessions,
+  parseRemoteSessionChoice,
+  remoteSessionChoiceValue,
+  renderTargetPeerMirrorPreference,
+  renderTargetPeerSession,
+  selectedTargetPeerId,
+  switchTargetPeerSession,
+} from "../shared/channel-peer-sessions.js";
 import { inferChannelMimeType } from "../shared/channel-attachments.js";
 import { deliverChannelAction } from "../shared/channel-runtime.js";
 import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
@@ -125,6 +135,11 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
   const picks = new Map<string, PickState>();
   const queueStatusMessages = env.queueStatusMessages!;
 
+  const slackContextForKey = (contextKey: ChannelContextKey): ChannelContext | null => {
+    const parsed = parseSlackContextKey(contextKey);
+    return parsed ? { channelId: "slack", chatId: parsed.channelId, ...(parsed.threadTs ? { topicId: parsed.threadTs } : {}) } : null;
+  };
+
   const getBusyState = (contextKey: ChannelContextKey): BusyState => busyStates.get(contextKey);
 
   const actorFor = (request: SlackRequest): WebActivityActor => ({
@@ -147,6 +162,16 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     auditLog,
     actorFor,
     actorIdFor: (request) => request.userId,
+  });
+
+  const peerMirrorController = createChannelPeerMirrorController({
+    label: "Slack",
+    runtime,
+    preferencesStore,
+    remoteClient,
+    contextForKey: slackContextForKey,
+    defaultMirrorMode: () => config.slackMirrorMode,
+    mirrorMinUpdateMs: EDIT_DEBOUNCE_MS,
   });
 
   const hasPermission = createChannelPermissionChecker<SlackRequest>(userStore);
@@ -514,7 +539,10 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
       { names: ["start", "help"], handler: (request) => commandHelp(request) },
       { names: ["channels"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderChannels()).then(() => {}) },
       { names: ["peers"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderPeers()).then(() => {}) },
-      { names: ["target"], handler: (request, argument) => deliverChannelAction(runtime, request.context, commandService.renderTargetPreference({ source: "slack", contextKey: request.contextKey, argument, preferencesStore })).then(() => {}) },
+      { names: ["target"], handler: async (request, argument) => {
+        await deliverChannelAction(runtime, request.context, commandService.renderTargetPreference({ source: "slack", contextKey: request.contextKey, argument, preferencesStore }));
+        peerMirrorController.sync(request.contextKey, request.context);
+      } },
       { names: ["agents"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderAgents()).then(() => {}) },
       { names: ["agent"], handler: (request, argument) => commandAgent(request, argument) },
       { names: ["auth"], handler: (request) => commandAuth(request) },
@@ -673,11 +701,47 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
   };
 
   const commandSession = async (request: SlackRequest): Promise<void> => {
+    const remoteRendered = await renderTargetPeerSession({
+      contextKey: request.contextKey,
+      preferencesStore,
+      remoteClient,
+      actor: actorFor(request),
+    }).catch(async (error) => {
+      await reply(request, `Remote session failed: ${friendlyErrorText(error)}`);
+      return null;
+    });
+    if (remoteRendered) {
+      await deliverChannelAction(runtime, request.context, remoteRendered);
+      return;
+    }
     const session = await getSession(request, { deferThreadStart: true });
     await reply(request, `Slack session:\n${renderSessionInfoPlain(session.getInfo({ includeUsage: true }))}`);
   };
 
   const commandSessions = async (request: SlackRequest, query: string): Promise<void> => {
+    const remote = await listTargetPeerSessions({
+      contextKey: request.contextKey,
+      preferencesStore,
+      remoteClient,
+      actor: actorFor(request),
+      query,
+      limit: 50,
+    }).catch(async (error) => {
+      await reply(request, `Remote sessions failed: ${friendlyErrorText(error)}`);
+      return null;
+    });
+    if (remote) {
+      const records = remote.sessions.slice(0, 10);
+      if (records.length === 0) {
+        await reply(request, "No remote sessions found.");
+        return;
+      }
+      const pickId = createPick("session", records.map((record) => remoteSessionChoiceValue(remote.peerId, record.id)));
+      await reply(request, [`Remote sessions on ${remote.peerLabel}:`, ...records.map((record, index) => `${index + 1}. ${record.title || record.id}\n   ${record.id}\n   ${record.cwd || "-"}`)].join("\n"), {
+        buttons: records.map((record, index) => [{ label: trimLine(record.title || record.id, 70), action: `slack_pick:${pickId}:${index}` }]),
+      });
+      return;
+    }
     const session = await getSession(request, { deferThreadStart: true });
     const records = session.listAllSessions(50).filter((record) => !query.trim() || [record.id, record.title, record.cwd, record.firstUserMessage].some((value) => value?.toLowerCase().includes(query.toLowerCase()))).slice(0, 10);
     if (records.length === 0) {
@@ -709,6 +773,27 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
   const commandSwitch = async (request: SlackRequest, threadId: string): Promise<void> => {
     if (!threadId.trim()) {
       await reply(request, "Usage: `/switch <thread-id>`");
+      return;
+    }
+    const remoteChoice = parseRemoteSessionChoice(threadId.trim());
+    if (remoteChoice) {
+      preferencesStore.update(request.contextKey, { targetPeerId: remoteChoice.peerId });
+    }
+    if (remoteChoice || selectedTargetPeerId(preferencesStore, request.contextKey)) {
+      const switched = await switchTargetPeerSession({
+        contextKey: request.contextKey,
+        preferencesStore,
+        remoteClient,
+        actor: actorFor(request),
+        threadId: remoteChoice?.threadId ?? threadId.trim(),
+      }).catch(async (error) => {
+        await reply(request, `Remote switch failed: ${friendlyErrorText(error)}`);
+        return null;
+      });
+      if (switched) {
+        peerMirrorController.sync(request.contextKey, request.context);
+        await reply(request, `Switched remote session on ${switched.peerLabel}.\n\n${renderSessionInfoPlain(switched.info)}`);
+      }
       return;
     }
     const session = await getSession(request, { deferThreadStart: true });
@@ -1106,6 +1191,22 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
   };
 
   const commandMirror = async (request: SlackRequest, argument: string): Promise<void> => {
+    const remoteResponse = await renderTargetPeerMirrorPreference({
+      source: "slack",
+      contextKey: request.contextKey,
+      argument,
+      preferencesStore,
+      remoteClient,
+      actor: actorFor(request),
+    }).catch(async (error) => {
+      await reply(request, `Remote mirror failed: ${friendlyErrorText(error)}`);
+      return null;
+    });
+    if (remoteResponse) {
+      await deliverChannelAction(runtime, request.context, remoteResponse.response);
+      peerMirrorController.sync(request.contextKey, request.context);
+      return;
+    }
     const session = await getSession(request, { deferThreadStart: true });
     const info = session.getInfo();
     await deliverChannelAction(runtime, request.context, commandService.renderMirrorPreference({ source: "slack", contextKey: request.contextKey, argument, preferencesStore, cliMirrorSupported: capabilitiesOf(info).cliMirror, agentLabel: info.agentLabel }));
@@ -1316,10 +1417,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
         const parsed = parseSlackContextKey(contextKey);
         return Boolean(parsed && isSlackTeamAllowed(config, parsed.teamId) && isSlackChannelAllowedByEnv(config, parsed.channelId));
       },
-      contextForKey: (contextKey) => {
-        const parsed = parseSlackContextKey(contextKey);
-        return parsed ? { channelId: "slack", chatId: parsed.channelId, ...(parsed.threadTs ? { topicId: parsed.threadTs } : {}) } : null;
-      },
+      contextForKey: slackContextForKey,
       previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
       mirrorSnapshot: mirrorExternalSnapshot,
       updateQueueStatus: updateQueueStatusMessage,
@@ -1370,9 +1468,11 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
         }
       }).catch((error) => console.warn("Slack diagnostics failed:", friendlyErrorText(error)));
       externalMonitor.start();
+      peerMirrorController.startStoredContexts();
     },
     async stop() {
       externalMonitor.stop();
+      peerMirrorController.closeAll();
       agentUpdates.cancelAll();
       await (app as unknown as { stop(): Promise<void> }).stop();
     },

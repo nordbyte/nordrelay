@@ -9,6 +9,7 @@ import type { ChannelCommandService } from "../shared/channel-command-service.js
 import type { ConnectorConfig } from "../../core/config.js";
 import type { TelegramContextKey } from "../shared/context-key.js";
 import { escapeHTML } from "../../core/format.js";
+import { renderTargetPeerMirrorPreference, type RemotePeerWebClient } from "../shared/channel-peer-sessions.js";
 import {
   evaluateWorkspacePolicy,
   filterAllowedWorkspaces,
@@ -23,6 +24,8 @@ export interface TelegramPreferenceCommandOptions {
   commandService: ChannelCommandService;
   preferencesStore: BotPreferencesStore;
   getContextSession: GetTelegramContextSession;
+  remoteClient?: RemotePeerWebClient;
+  onMirrorChanged?: (contextKey: TelegramContextKey) => void;
 }
 
 export function registerTelegramPreferenceCommands(options: TelegramPreferenceCommandOptions): void {
@@ -32,12 +35,28 @@ export function registerTelegramPreferenceCommands(options: TelegramPreferenceCo
       return;
     }
     const { contextKey, session } = contextSession;
+    const argument = (ctx.message?.text ?? "").replace(/^\/mirror(?:@\w+)?\s*/i, "").trim();
+    const remoteResponse = await renderTargetPeerMirrorPreference({
+      source: "telegram",
+      contextKey,
+      argument,
+      preferencesStore: options.preferencesStore,
+      remoteClient: options.remoteClient,
+    }).catch(async (error) => {
+      const text = `Remote mirror failed: ${error instanceof Error ? error.message : String(error)}`;
+      await safeReply(ctx, escapeHTML(text), { fallbackText: text });
+      return null;
+    });
+    if (remoteResponse) {
+      await safeReply(ctx, remoteResponse.response.html, { fallbackText: remoteResponse.response.plain });
+      options.onMirrorChanged?.(contextKey);
+      return;
+    }
     if (!capabilitiesOf(session.getInfo()).cliMirror) {
       const text = `CLI mirroring is not supported for ${labelOf(session.getInfo())} yet.`;
       await safeReply(ctx, escapeHTML(text), { fallbackText: text });
       return;
     }
-    const argument = (ctx.message?.text ?? "").replace(/^\/mirror(?:@\w+)?\s*/i, "").trim();
     const response = options.commandService.renderMirrorPreference({
       source: "telegram",
       contextKey,
@@ -47,6 +66,7 @@ export function registerTelegramPreferenceCommands(options: TelegramPreferenceCo
       agentLabel: labelOf(session.getInfo()),
     });
     await safeReply(ctx, response.html, { fallbackText: response.plain });
+    options.onMirrorChanged?.(contextKey);
   });
 
   options.bot.command("notify", async (ctx) => {

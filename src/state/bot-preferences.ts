@@ -46,6 +46,14 @@ export class BotPreferencesStore {
     return { ...(this.contexts.get(contextKey) ?? {}) };
   }
 
+  list(): Array<{ contextKey: ChannelContextKey; preferences: ContextPreferences }> {
+    this.load();
+    return [...this.contexts.entries()].map(([contextKey, preferences]) => ({
+      contextKey,
+      preferences: { ...preferences },
+    }));
+  }
+
   update(contextKey: ChannelContextKey, patch: ContextPreferences): ContextPreferences {
     let updated: ContextPreferences = {};
     const payload = this.store.update((current) => {

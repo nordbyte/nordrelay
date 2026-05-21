@@ -23,7 +23,17 @@ import { createSharedChannelCommandDispatcher } from "../shared/channel-command-
 import { matrixHelpCommandList } from "../shared/channel-command-catalog.js";
 import { runChannelLocalPrompt } from "../shared/channel-local-prompt-runner.js";
 import { queueChannelPromptIfBusy } from "../shared/channel-prompt-queue.js";
+import { createChannelPeerMirrorController } from "../shared/channel-peer-mirror.js";
 import { runChannelPeerPrompt } from "../shared/channel-peer-prompt.js";
+import {
+  listTargetPeerSessions,
+  parseRemoteSessionChoice,
+  remoteSessionChoiceValue,
+  renderTargetPeerMirrorPreference,
+  renderTargetPeerSession,
+  selectedTargetPeerId,
+  switchTargetPeerSession,
+} from "../shared/channel-peer-sessions.js";
 import { inferChannelMimeType } from "../shared/channel-attachments.js";
 import { deliverChannelAction } from "../shared/channel-runtime.js";
 import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
@@ -131,6 +141,11 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
   const sessionPages = new Map<string, MatrixSessionPageState>();
   const queueStatusMessages = env.queueStatusMessages!;
 
+  const matrixContextForKey = (contextKey: ChannelContextKey): ChannelContext | null => {
+    const parsed = parseMatrixContextKey(contextKey);
+    return parsed ? { channelId: "matrix", chatId: parsed.roomId, ...(parsed.threadId ? { topicId: parsed.threadId } : {}) } : null;
+  };
+
   const getBusyState = (contextKey: ChannelContextKey): BusyState => busyStates.get(contextKey);
 
   const actorFor = (request: MatrixRequest): WebActivityActor => ({
@@ -153,6 +168,16 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
     auditLog,
     actorFor,
     actorIdFor: (request) => request.userId,
+  });
+
+  const peerMirrorController = createChannelPeerMirrorController({
+    label: "Matrix",
+    runtime,
+    preferencesStore,
+    remoteClient,
+    contextForKey: matrixContextForKey,
+    defaultMirrorMode: () => config.matrixMirrorMode,
+    mirrorMinUpdateMs: EDIT_DEBOUNCE_MS,
   });
 
   const hasPermission = createChannelPermissionChecker<MatrixRequest>(userStore);
@@ -520,7 +545,10 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
       { names: ["start", "help"], handler: (request) => commandHelp(request) },
       { names: ["channels"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderChannels()).then(() => {}) },
       { names: ["peers"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderPeers()).then(() => {}) },
-      { names: ["target"], handler: (request, argument) => deliverChannelAction(runtime, request.context, commandService.renderTargetPreference({ source: "matrix", contextKey: request.contextKey, argument, preferencesStore })).then(() => {}) },
+      { names: ["target"], handler: async (request, argument) => {
+        await deliverChannelAction(runtime, request.context, commandService.renderTargetPreference({ source: "matrix", contextKey: request.contextKey, argument, preferencesStore }));
+        peerMirrorController.sync(request.contextKey, request.context);
+      } },
       { names: ["agents"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderAgents()).then(() => {}) },
       { names: ["agent"], handler: (request, argument) => commandAgent(request, argument) },
       { names: ["auth"], handler: (request) => commandAuth(request) },
@@ -679,11 +707,56 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
   };
 
   const commandSession = async (request: MatrixRequest): Promise<void> => {
+    const remoteRendered = await renderTargetPeerSession({
+      contextKey: request.contextKey,
+      preferencesStore,
+      remoteClient,
+      actor: actorFor(request),
+    }).catch(async (error) => {
+      await reply(request, `Remote session failed: ${friendlyErrorText(error)}`);
+      return null;
+    });
+    if (remoteRendered) {
+      await deliverChannelAction(runtime, request.context, remoteRendered);
+      return;
+    }
     const session = await getSession(request, { deferThreadStart: true });
     await reply(request, `Matrix session:\n${renderSessionInfoPlain(session.getInfo({ includeUsage: true }))}`);
   };
 
   const commandSessions = async (request: MatrixRequest, query: string): Promise<void> => {
+    const remote = await listTargetPeerSessions({
+      contextKey: request.contextKey,
+      preferencesStore,
+      remoteClient,
+      actor: actorFor(request),
+      query,
+      limit: 50,
+    }).catch(async (error) => {
+      await reply(request, `Remote sessions failed: ${friendlyErrorText(error)}`);
+      return null;
+    });
+    if (remote) {
+      const records = remote.sessions;
+      if (records.length === 0) {
+        await reply(request, query.trim() ? `No remote threads found matching "${query.trim()}".` : "No remote threads found.");
+        return;
+      }
+      const pickId = createSessionPage(
+        "sessions",
+        request.contextKey,
+        query,
+        records,
+        undefined,
+        records.map((record) => remoteSessionChoiceValue(remote.peerId, record.id)),
+      );
+      const rendered = renderMatrixSessionPageAction(`Remote threads · ${remote.peerLabel}`, records, pickId, {
+        activeThreadId: remote.activeThreadId,
+        pinnedThreadIds: [],
+      });
+      await reply(request, rendered.text, { buttons: rendered.buttons });
+      return;
+    }
     const session = await getSession(request, { deferThreadStart: true });
     const requestedThread = query.trim() ? session.getSessionRecord(query.trim()) : null;
     if (requestedThread) {
@@ -724,6 +797,27 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
   const commandSwitch = async (request: MatrixRequest, threadId: string): Promise<void> => {
     if (!threadId.trim()) {
       await reply(request, "Usage: `/switch <thread-id>`");
+      return;
+    }
+    const remoteChoice = parseRemoteSessionChoice(threadId.trim());
+    if (remoteChoice) {
+      preferencesStore.update(request.contextKey, { targetPeerId: remoteChoice.peerId });
+    }
+    if (remoteChoice || selectedTargetPeerId(preferencesStore, request.contextKey)) {
+      const switched = await switchTargetPeerSession({
+        contextKey: request.contextKey,
+        preferencesStore,
+        remoteClient,
+        actor: actorFor(request),
+        threadId: remoteChoice?.threadId ?? threadId.trim(),
+      }).catch(async (error) => {
+        await reply(request, `Remote switch failed: ${friendlyErrorText(error)}`);
+        return null;
+      });
+      if (switched) {
+        peerMirrorController.sync(request.contextKey, request.context);
+        await reply(request, `Switched remote session on ${switched.peerLabel}.\n\n${renderSessionInfoPlain(switched.info)}`);
+      }
       return;
     }
     if (getBusyReason(request.contextKey).busy) {
@@ -1135,6 +1229,22 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
   };
 
   const commandMirror = async (request: MatrixRequest, argument: string): Promise<void> => {
+    const remoteResponse = await renderTargetPeerMirrorPreference({
+      source: "matrix",
+      contextKey: request.contextKey,
+      argument,
+      preferencesStore,
+      remoteClient,
+      actor: actorFor(request),
+    }).catch(async (error) => {
+      await reply(request, `Remote mirror failed: ${friendlyErrorText(error)}`);
+      return null;
+    });
+    if (remoteResponse) {
+      await deliverChannelAction(runtime, request.context, remoteResponse.response);
+      peerMirrorController.sync(request.contextKey, request.context);
+      return;
+    }
     const session = await getSession(request, { deferThreadStart: true });
     const info = session.getInfo();
     await deliverChannelAction(runtime, request.context, commandService.renderMirrorPreference({ source: "matrix", contextKey: request.contextKey, argument, preferencesStore, cliMirrorSupported: capabilitiesOf(info).cliMirror, agentLabel: info.agentLabel }));
@@ -1351,10 +1461,13 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
       return;
     }
     if (action === "refresh") {
-      const refreshed = await refreshSessionPageRecords(request, state);
-      state.records = refreshed;
       const pick = picks.get(pickId);
-      if (pick) pick.values = refreshed.map((record) => record.id);
+      const isRemotePage = pick?.values.some((value) => Boolean(parseRemoteSessionChoice(value)));
+      if (!isRemotePage) {
+        const refreshed = await refreshSessionPageRecords(request, state);
+        state.records = refreshed;
+        if (pick) pick.values = refreshed.map((record) => record.id);
+      }
     } else {
       state.page += action === "next" ? 1 : -1;
     }
@@ -1368,15 +1481,15 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
     await reply(request, rendered.text, { buttons: rendered.buttons });
   };
 
-  const createSessionPage = (source: MatrixSessionPageSource, contextKey: ChannelContextKey, query: string, records: MatrixSessionListRecord[], session: AgentSessionService): string => {
-    const id = createPick("session", records.map((record) => record.id));
+  const createSessionPage = (source: MatrixSessionPageSource, contextKey: ChannelContextKey, query: string, records: MatrixSessionListRecord[], session?: AgentSessionService, values?: string[]): string => {
+    const id = createPick("session", values ?? records.map((record) => record.id));
     sessionPages.set(id, {
       contextKey,
       source,
       query,
       records,
-      activeThreadId: session.getInfo().threadId,
-      pinnedThreadIds: registry.listPinnedThreadIds(contextKey),
+      activeThreadId: session?.getInfo().threadId,
+      pinnedThreadIds: session ? registry.listPinnedThreadIds(contextKey) : [],
       page: 0,
       pageSize: MATRIX_SESSION_PAGE_SIZE,
       createdAt: Date.now(),
@@ -1406,10 +1519,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
         const parsed = parseMatrixContextKey(contextKey);
         return Boolean(parsed && isMatrixHomeserverAllowed(config, parsed.homeserver) && isMatrixRoomAllowedByEnv(config, parsed.roomId));
       },
-      contextForKey: (contextKey) => {
-        const parsed = parseMatrixContextKey(contextKey);
-        return parsed ? { channelId: "matrix", chatId: parsed.roomId, ...(parsed.threadId ? { topicId: parsed.threadId } : {}) } : null;
-      },
+      contextForKey: matrixContextForKey,
       previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
       mirrorSnapshot: mirrorExternalSnapshot,
       updateQueueStatus: updateQueueStatusMessage,
@@ -1442,10 +1552,12 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
         }
       }).catch((error) => console.warn("Matrix diagnostics failed:", friendlyErrorText(error)));
       externalMonitor.start();
+      peerMirrorController.startStoredContexts();
     },
     async stop() {
       syncLoop.stop();
       externalMonitor.stop();
+      peerMirrorController.closeAll();
       agentUpdates.cancelAll();
     },
   };

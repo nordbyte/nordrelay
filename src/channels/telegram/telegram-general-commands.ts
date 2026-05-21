@@ -38,6 +38,7 @@ export interface TelegramGeneralCommandOptions {
   replyChannelAction: (ctx: Context, rendered: ChannelActionResponse) => Promise<void>;
   commandService: ChannelCommandService;
   preferencesStore: BotPreferencesStore;
+  onTargetChanged?: (contextKey: TelegramContextKey) => void;
 }
 
 export function registerTelegramGeneralCommands(options: TelegramGeneralCommandOptions): void {
@@ -98,6 +99,7 @@ export function registerTelegramGeneralCommands(options: TelegramGeneralCommandO
       argument: ctx.match?.toString() ?? "",
       preferencesStore: options.preferencesStore,
     }));
+    options.onTargetChanged?.(contextSession.contextKey);
   });
 
   options.bot.command("restart", async (ctx) => {

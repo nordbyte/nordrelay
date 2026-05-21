@@ -40,6 +40,7 @@ import { buildArtifactActionsKeyboard } from "../shared/bot-rendering.js";
 import type { ChannelContext } from "../shared/channel-adapter.js";
 import { createChannelActivityRecorder } from "../shared/channel-bridge-controller.js";
 import { createChannelBridgeEnvironment } from "../shared/channel-bridge-environment.js";
+import { createChannelPeerMirrorController } from "../shared/channel-peer-mirror.js";
 import { runChannelPeerPrompt } from "../shared/channel-peer-prompt.js";
 import { deliverChannelAction } from "../shared/channel-runtime.js";
 import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
@@ -119,6 +120,7 @@ import { registerTelegramDiagnosticsCommands } from "./telegram-diagnostics-comm
 import { registerTelegramGeneralCommands } from "./telegram-general-commands.js";
 import { registerTelegramLastCommand } from "./telegram-last-command.js";
 import { registerTelegramOperationalCommands } from "./telegram-operational-commands.js";
+import { handleTargetPeerSessionCallback, handleTargetPeerSessionsCommand, replyTargetPeerSession } from "./telegram-peer-session-commands.js";
 import { registerTelegramPreferenceCommands } from "./telegram-preference-commands.js";
 import {
   createQueuedPromptCancelKeyboard,
@@ -312,6 +314,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     contextBusy.delete(key);
     turnProgress.delete(key);
     externalMirrors.delete(key);
+    peerMirrorController.close(key);
     queueStatusMessages.delete(key);
     const externalQueueTimer = externalQueueTimers.get(key);
     if (externalQueueTimer) {
@@ -447,6 +450,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
   const getEffectiveMirrorMode = (contextKey: TelegramContextKey): TelegramMirrorMode =>
     getPreferences(contextKey).mirrorMode ?? config.telegramMirrorMode;
+
+  const peerMirrorController = createChannelPeerMirrorController({ label: "Telegram", runtime: telegramChannelRuntime, preferencesStore, remoteClient, contextForKey: (contextKey) => isTelegramContextKey(contextKey) ? telegramChannelContextFromKey(contextKey as TelegramContextKey) : null, defaultMirrorMode: () => config.telegramMirrorMode, mirrorMinUpdateMs: config.telegramEditMinIntervalMs });
 
   const getEffectiveNotifyMode = (contextKey: TelegramContextKey): TelegramNotifyMode =>
     getPreferences(contextKey).notifyMode ?? config.telegramNotifyMode;
@@ -2136,6 +2141,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     replyChannelAction,
     commandService,
     preferencesStore,
+    onTargetChanged: (contextKey) => peerMirrorController.sync(contextKey, telegramChannelContextFromKey(contextKey)),
   });
 
   registerTelegramAgentCommands({
@@ -2168,6 +2174,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     commandService,
     preferencesStore,
     getContextSession,
+    remoteClient,
+    onMirrorChanged: (contextKey) => peerMirrorController.sync(contextKey, telegramChannelContextFromKey(contextKey)),
   });
 
   registerTelegramDiagnosticsCommands({
@@ -2407,6 +2415,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const { contextKey, session } = contextSession;
+    if (await replyTargetPeerSession({ ctx, contextKey, preferencesStore, remoteClient, actor: telegramActivityActor(ctx) })) return;
     const info = session.getInfo({ includeUsage: true });
     const contextLabel = isTopicContext(contextKey) ? "Topic session" : "Chat session";
     const policyLine = renderWorkspacePolicyLine(info.workspace, config);
@@ -2786,6 +2795,19 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
     const rawText = ctx.message?.text ?? "";
     const threadId = rawText.replace(/^\/(?:sessions|switch)(?:@\w+)?\s*/, "").trim();
+    if (await handleTargetPeerSessionsCommand({
+      ctx,
+      contextKey,
+      rawText,
+      preferencesStore,
+      remoteClient,
+      actor: telegramActivityActor(ctx),
+      pendingSessionPicks,
+      pendingSessionButtons,
+      syncPeerMirror: (key) => peerMirrorController.sync(key, telegramChannelContextFromKey(key)),
+    })) {
+      return;
+    }
 
     const requestedThread = threadId ? session.getSessionRecord(threadId) : null;
     if (threadId && requestedThread) {
@@ -3272,11 +3294,28 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
     const { contextKey, session } = contextSession;
     const threadIds = pendingSessionPicks.get(contextKey);
-    const threadId = threadIds?.[index];
-    if (!threadId) {
+    const threadChoice = threadIds?.[index];
+    if (!threadChoice) {
       await ctx.answerCallbackQuery({ text: "Session expired, run /sessions again" });
       return;
     }
+    if (await handleTargetPeerSessionCallback({
+      ctx,
+      bot,
+      chatId,
+      messageId,
+      contextKey,
+      threadChoice,
+      preferencesStore,
+      remoteClient,
+      actor: telegramActivityActor(ctx),
+      syncPeerMirror: (key) => peerMirrorController.sync(key, telegramChannelContextFromKey(key)),
+    })) {
+      pendingSessionPicks.delete(contextKey);
+      pendingSessionButtons.delete(contextKey);
+      return;
+    }
+    const threadId = threadChoice;
     const threadRecord = session.getSessionRecord(threadId);
     const workspacePolicy = evaluateWorkspacePolicy(threadRecord?.cwd ?? session.getCurrentWorkspace(), config);
     if (!workspacePolicy.allowed) {
@@ -4012,6 +4051,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const message = error.error instanceof Error ? error.error.message : String(error.error);
     console.error("Telegram bot error:", message);
   });
+
+  peerMirrorController.startStoredContexts();
 
   return bot;
 }
