@@ -394,7 +394,7 @@
 .log-line.ERROR{color:var(--danger);font-weight:700}
 .log-line.WARN{color:#8a6a12;font-weight:700}
 .tool-tooltip{position:fixed;z-index:60;display:none;max-width:220px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--pre);color:var(--pre-text);font-size:12px;box-shadow:var(--shadow);pointer-events:none}
-.footer-connection-value.connection-ok{color:#1e754e}
+.footer-connection-value.connection-ok{color:var(--accent)}
 .footer-connection-value.connection-warn{color:#8a6a12}
 .footer-connection-value.connection-error{color:var(--danger)}
 .adapter-overview-card{content-visibility:visible}
@@ -427,7 +427,7 @@
 .peer-warning{display:grid;gap:4px;margin:10px 0;padding:10px;border:1px solid #d9c27a;border-radius:8px;background:var(--warn);color:#8a6a12}
 .peer-warning small{color:#8a6a12}
 .peer-probe-result{margin-top:10px;padding:10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface)}
-.peer-probe-result.ok{border-color:#8ed0aa;background:color-mix(in srgb,var(--accent-soft) 45%,var(--surface))}
+.peer-probe-result.ok{border-color:color-mix(in srgb,var(--accent) 48%,var(--border));background:color-mix(in srgb,var(--accent-soft) 45%,var(--surface))}
 .peer-probe-result.warn{border-color:#d9c27a;background:var(--warn)}
 .peer-health-history{margin:8px 0;padding:8px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface)}
 .peer-health-history summary{cursor:pointer;font-weight:700;color:var(--muted)}
