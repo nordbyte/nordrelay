@@ -148,6 +148,7 @@ export interface ConnectorConfig {
   codexExternalBusyCheckMs: number;
   codexExternalBusyStaleMs: number;
   codexExternalApprovalControl: boolean;
+  codexExternalApprovalSudoHelper: boolean;
   codexSandboxMode: CodexSandboxMode;
   codexApprovalPolicy: CodexApprovalPolicy;
   launchProfiles: CodexLaunchProfile[];
@@ -345,6 +346,7 @@ export function loadConfig(): ConnectorConfig {
     "CODEX_EXTERNAL_BUSY_STALE_MS",
   );
   const codexExternalApprovalControl = parseBooleanEnv(optionalString(process.env.CODEX_EXTERNAL_APPROVAL_CONTROL), false);
+  const codexExternalApprovalSudoHelper = parseBooleanEnv(optionalString(process.env.CODEX_EXTERNAL_APPROVAL_SUDO_HELPER), false);
   const codexSandboxMode = parseSandboxMode(optionalString(process.env.CODEX_SANDBOX_MODE));
   const codexApprovalPolicy = parseApprovalPolicy(optionalString(process.env.CODEX_APPROVAL_POLICY));
   const enableUnsafeLaunchProfiles = parseBooleanEnv(
@@ -579,6 +581,7 @@ export function loadConfig(): ConnectorConfig {
     codexExternalBusyCheckMs,
     codexExternalBusyStaleMs,
     codexExternalApprovalControl,
+    codexExternalApprovalSudoHelper,
     codexSandboxMode,
     codexApprovalPolicy,
     launchProfiles,

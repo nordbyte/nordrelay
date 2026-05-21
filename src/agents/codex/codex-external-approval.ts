@@ -59,7 +59,10 @@ export function respondToCodexExternalApproval(
     };
   }
 
-  const injected = injectChoiceIntoTty(target.ttyPath, choice);
+  let injected = injectChoiceIntoTty(target.ttyPath, choice);
+  if (!injected.ok && config.codexExternalApprovalSudoHelper && isPermissionDenied(injected.message)) {
+    injected = injectChoiceIntoTty(target.ttyPath, choice, true);
+  }
   if (!injected.ok) {
     return {
       ok: false,
@@ -159,7 +162,7 @@ function readTiocstiStatus(): string | null {
   }
 }
 
-function injectChoiceIntoTty(ttyPath: string, choice: AgentApprovalChoice): { ok: boolean; message: string } {
+function injectChoiceIntoTty(ttyPath: string, choice: AgentApprovalChoice, useSudo = false): { ok: boolean; message: string } {
   const script = [
     "import os, sys, termios, fcntl",
     "tty, choice = sys.argv[1], sys.argv[2]",
@@ -171,7 +174,9 @@ function injectChoiceIntoTty(ttyPath: string, choice: AgentApprovalChoice): { ok
     "finally:",
     "    os.close(fd)",
   ].join("\n");
-  const result = spawnSync("python3", ["-c", script, ttyPath, choice], {
+  const command = useSudo ? "sudo" : "python3";
+  const args = useSudo ? ["-n", "python3", "-c", script, ttyPath, choice] : ["-c", script, ttyPath, choice];
+  const result = spawnSync(command, args, {
     encoding: "utf8",
     timeout: 3_000,
     windowsHide: true,
@@ -183,10 +188,14 @@ function injectChoiceIntoTty(ttyPath: string, choice: AgentApprovalChoice): { ok
     const stderr = result.stderr?.trim();
     return {
       ok: false,
-      message: stderr ? `Failed to send approval input to Codex CLI: ${stderr}` : "Failed to send approval input to Codex CLI.",
+      message: stderr ? `Failed to send approval input to Codex CLI${useSudo ? " with sudo helper" : ""}: ${stderr}` : `Failed to send approval input to Codex CLI${useSudo ? " with sudo helper" : ""}.`,
     };
   }
   return { ok: true, message: approvalChoiceLabel(choice) };
+}
+
+function isPermissionDenied(message: string): boolean {
+  return /Operation not permitted|PermissionError|EPERM|EACCES|permission denied/i.test(message);
 }
 
 function approvalChoiceLabel(choice: AgentApprovalChoice): string {
