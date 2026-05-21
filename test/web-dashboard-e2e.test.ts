@@ -401,6 +401,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("nordrelayActiveSessionsTarget");
     expect(js).toContain("function activeSessionsTargetItems");
     expect(js).toContain("compactControlMenu('activeSessionsNode',''");
+    expect(js).toContain('data-control-menu="activeSessionsNode"] .control-menu-list');
+    expect(js).toContain("if(openList&&!openList.hidden)return");
     expect(js).toContain("apiPeer(target.id,'/api/active-sessions')");
     expect(js).toContain("label:'All nodes'");
     expect(js).toContain("function activeSessionDurationHtml");

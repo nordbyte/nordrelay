@@ -116,6 +116,8 @@ function renderActiveSessionsTargetMenu(){
   const items=activeSessionsTargetItems();
   normalizeActiveSessionsTarget();
   if(items.length<=1){mount.innerHTML='';return}
+  const openList=mount.querySelector('[data-control-menu="activeSessionsNode"] .control-menu-list');
+  if(openList&&!openList.hidden)return;
   const selected=items.find(item=>item.value===state.activeSessionsTarget)||items.find(item=>item.value==='local')||items[0];
   mount.innerHTML=compactControlMenu('activeSessionsNode','',selected.value,selected.label,items,'sessions.read');
   bindCompactControlMenus();
