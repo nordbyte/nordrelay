@@ -34,6 +34,17 @@ nordrelay peer add https://host.example:31979 --code <pairing-code>
 
 NordRelay stores the peer identity, node fingerprint, and TLS fingerprint.
 
+## Use peers from chat
+
+Approved chat users can switch a chat context between the local node and trusted peers:
+
+```text
+/nodes
+/sessions
+```
+
+`/nodes` opens the node picker. After choosing a peer, `/sessions` lists sessions from that peer for the currently selected agent. Use `/target local` to switch the chat context back to the local node.
+
 ## Check reachability
 
 ```bash

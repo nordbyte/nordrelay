@@ -54,9 +54,12 @@ After linking a user and registering a channel or room, try:
 
 ```text
 /help
+/nodes
 /session
 /sessions
 ```
+
+Use `/nodes` when this chat should control a trusted peer node instead of the local NordRelay instance. After selecting a node, `/sessions` shows sessions for that node and the currently selected agent.
 
 ## Stop
 

@@ -51,6 +51,17 @@ Most chat adapters support the same commands:
 
 See [Chat commands](/reference/chat-commands) for the current shared command list.
 
+## Local and peer nodes
+
+Use `/nodes` to choose where this chat context should operate:
+
+- `Local node`: sessions and prompts run on the NordRelay instance that received the chat message
+- peer node: sessions and prompts are forwarded to a trusted NordRelay peer with the required peer scopes
+
+After selecting a node, `/sessions` lists only sessions for that node and the current agent. The `/sessions` response includes the selected node and agent in the heading.
+
+Use `/target local` or `/target <peer-id>` when you want to switch directly without opening the picker.
+
 ## Mirroring
 
 Mirror mode controls how activity from an external CLI session is sent into chat:

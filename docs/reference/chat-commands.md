@@ -43,6 +43,25 @@ Telegram, Discord, Slack, and Matrix share the same core command behavior where 
 
 Some adapters expose limited unauthenticated link or registration commands, such as channel registration or link-code flows. Normal commands require a linked NordRelay user and registered channel context.
 
+## Node selection
+
+Use `/nodes` when the chat context should switch between the local NordRelay node and a trusted peer node. NordRelay shows the local node plus selectable peers as buttons where the adapter supports interactive actions.
+
+```text
+/nodes
+```
+
+After a node is selected, `/sessions` lists sessions for that node and the currently selected agent. The response header includes the node name and agent so it is clear whether you are browsing local or peer sessions.
+
+Use `/target` for direct selection when you already know the peer name, peer ID, or node ID:
+
+```text
+/target local
+/target <peer-id>
+```
+
+Selecting a peer requires the chat user to have peer access permissions and the peer to expose the needed scopes, including session read/write and prompt access.
+
 ## Matrix prefix
 
 Matrix text commands use the configured prefix:
