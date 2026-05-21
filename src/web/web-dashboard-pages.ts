@@ -146,7 +146,7 @@ ${faviconLinks}
     <main>
       <header>
         <div class="header-title">
-          <h1 id="pageTitle">Overview</h1>
+          <h1 id="pageTitle" class="page-title-heading">Overview</h1>
           <div id="sessionLine" class="header-target-line">Loading session...</div>
         </div>
         <div class="header-actions">

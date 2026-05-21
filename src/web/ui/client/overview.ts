@@ -11,6 +11,7 @@ async function loadBootstrap(){
   state.controls = data.controls;
   state.enabledAgents = data.enabledAgents || [];
   mergeHeaderTargetBootstrap(state.selectedPeer||'local',data);
+  renderPageTitle();
   applyPermissions();
   await refreshChatMirrorPreferenceForBootstrap();
   renderSnapshot(state.snapshot);

@@ -31,6 +31,8 @@ main{min-width:0;display:flex;flex-direction:column}
 header{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;gap:16px;align-items:center;min-height:var(--dashboard-header-height);padding:12px 22px;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
 .header-title{min-width:0;flex:1}
 header h1{line-height:1.1}
+.page-title-heading{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+.page-node-badge{display:inline-flex;align-items:center;max-width:min(280px,45vw);min-height:22px;padding:2px 8px;border:1px solid color-mix(in srgb,var(--accent) 36%,var(--border));border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:750;line-height:1;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 h1{font-size:24px;margin:0}
 h2{font-size:16px;margin:0 0 12px}
 .active-sessions-count{color:var(--muted);font-weight:650;margin-left:5px}

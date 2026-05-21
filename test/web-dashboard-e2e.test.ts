@@ -226,6 +226,26 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("if(name==='sessions'){await loadSessions(true,options.agentId);if(state.sessionTab==='worktrees')await loadWorktrees()}");
   });
 
+  it("shows the selected remote node in page headers outside local administration pages", () => {
+    const js = dashboardJs();
+    const css = dashboardCss();
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    const runtimeSource = readFileSync("src/web/ui/client/core/runtime.ts", "utf8");
+
+    expect(pageSource).toContain('id="pageTitle" class="page-title-heading"');
+    expect(runtimeSource).toContain("const LOCAL_ONLY_PAGES=new Set(['access','settings','peers'])");
+    expect(runtimeSource).toContain("function availableNodeCount()");
+    expect(runtimeSource).toContain("function pageUsesSelectedPeer");
+    expect(runtimeSource).toContain("function selectedNodeBadgeHtml");
+    expect(runtimeSource).toContain("peerId==='local'||availableNodeCount()<2");
+    expect(runtimeSource).toContain("headerTargetName(peerId)");
+    expect(js).toContain("function renderPageTitle");
+    expect(js).toContain("renderPageTitle(name)");
+    expect(js).toContain("renderPageTitle()");
+    expect(css).toContain(".page-title-heading{display:flex;align-items:center;gap:8px");
+    expect(css).toContain(".page-node-badge{display:inline-flex;align-items:center");
+  });
+
   it("shows compact relative age for sessions and keeps absolute time in the tooltip", () => {
     const js = dashboardJs();
     const css = dashboardCss();
