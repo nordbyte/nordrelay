@@ -95,7 +95,7 @@ const ACTIVE_SESSIONS_TARGET_STORAGE_KEY='nordrelayActiveSessionsTarget';
 function activeSessionsPeerOptions(){return (state.peers?.peers||[]).filter(peer=>peer?.enabled!==false&&peer?.id&&peer?.url)}
 function activeSessionsTargetItems(){
   const peers=activeSessionsPeerOptions();
-  const items:any[]=[{value:'local',label:'Local node',kind:'local'}];
+  const items:WebuiRecord[]=[{value:'local',label:'Local node',kind:'local'}];
   if(peers.length)items.unshift({value:'all',label:'All nodes',kind:'all'});
   peers.forEach(peer=>items.push({value:peer.id,label:peer.name||peer.url||peer.id,kind:'peer',peer}));
   return items;
@@ -176,7 +176,7 @@ function activeSessionDurationHtml(s){const started=Date.parse(s.startedAt||'');
 function updateActiveSessionDurationCounters(){document.querySelectorAll('[data-active-duration-started]').forEach(el=>{const started=Number(el.dataset.activeDurationStarted);if(Number.isFinite(started))el.textContent=fmtDuration(Math.max(0,Date.now()-started))})}
 function startActiveSessionDurationCounter(){updateActiveSessionDurationCounters();if(state.activeSessionDurationTimer)return;state.activeSessionDurationTimer=setInterval(()=>{if(state.currentPage!=='overview'){stopActiveSessionDurationCounter();return}updateActiveSessionDurationCounters()},1000)}
 function stopActiveSessionDurationCounter(){if(state.activeSessionDurationTimer)clearInterval(state.activeSessionDurationTimer);state.activeSessionDurationTimer=null}
-function updateActiveSessionsCount(items:any=undefined){
+function updateActiveSessionsCount(items:WebuiActiveSession[]|number|undefined=undefined){
   const sessions=Array.isArray(items)?items:(Array.isArray(state.activeSessions?.sessions)?state.activeSessions.sessions:[]);
   const count=sessions.length;
   const approvalRequired=sessions.some(session=>Boolean(session?.approvalRequired));
@@ -359,7 +359,7 @@ function adapterCard(label,status,detail,tooltip='',settingsGroup=''){
 }
 function agentSettingsGroup(adapter){return ({codex:'Codex',pi:'Pi',hermes:'Hermes',openclaw:'OpenClaw','claude-code':'Claude Code'}[adapter?.id]||adapter?.label||'Agents')}
 function channelSettingsGroup(adapter){return ({telegram:'Telegram',discord:'Discord',slack:'Slack',matrix:'Matrix'}[adapter?.id]||adapter?.label||'Chat')}
-function bindAdapterSettingsLinks(root:any=document){
+function bindAdapterSettingsLinks(root:Element|Document=document){
   root.querySelectorAll?.('[data-settings-group]').forEach(button=>button.onclick=()=>{state.settingsGroup=button.dataset.settingsGroup||null;page('settings')});
 }
 const agentFeatureDefs=[

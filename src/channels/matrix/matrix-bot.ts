@@ -29,12 +29,13 @@ import { deliverChannelAction } from "../shared/channel-runtime.js";
 import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
 import { createChannelExternalMirrorController } from "../shared/channel-external-mirror-controller.js";
 import { monitorChannelExternalContexts } from "../shared/channel-external-monitor.js";
+import { createChannelExternalMonitorLoop } from "../shared/channel-external-monitor-loop.js";
 import { configureChannelRuntime, createTextQueueStatusAdapter } from "../shared/channel-runtime-bootstrap.js";
 import { getLastAgentMessageText, parseLastAgentMessageOptions } from "../shared/last-agent-message.js";
 import { channelTemplatePrompt, channelWorkflowPrompts, parseChannelWorkflowArgument, renderChannelTemplateList, renderChannelWorkflowList } from "../shared/channel-workflow-commands.js";
 import type { LoginResult } from "../../agents/codex/codex-auth.js";
 import type { ConnectorConfig } from "../../core/config.js";
-import { isMatrixContextKey, parseMatrixContextKey, matrixContextKey, type ChannelContextKey } from "../shared/context-key.js";
+import { isMatrixContextKey, parseMatrixContextKey, type ChannelContextKey } from "../shared/context-key.js";
 import { friendlyErrorText } from "../../core/error-messages.js";
 import { spawnConnectorRestart, spawnSelfUpdate } from "../../support/operations.js";
 import { toPromptEnvelope, type PromptEnvelope } from "../../state/prompt-store.js";
@@ -47,16 +48,28 @@ import { createMatrixArtifactCommandHandler, sendRecentMatrixArtifacts } from ".
 import { MatrixBotChannelRuntime, splitMatrixMessage, trimMatrixMessage } from "./matrix-channel-runtime.js";
 import { MatrixClient } from "./matrix-client.js";
 import { MATRIX_SESSION_PAGE_SIZE, renderMatrixSessionPageAction, type MatrixSessionListRecord, type MatrixSessionPageSource, type MatrixSessionPageState } from "./matrix-sessions.js";
+import { createMatrixSyncLoop } from "./matrix-sync-loop.js";
 import type { MatrixAttachment, MatrixBridge, MatrixBusyReason, MatrixBusyState, MatrixExternalMirrorState, MatrixMessageEvent, MatrixPickState, MatrixRequest } from "./matrix-types.js";
+import {
+  canSendSystemMessagesToMatrixContext,
+  isMatrixHomeserverAllowed,
+  isMatrixRoomAllowedByEnv,
+  matrixAttachmentsFromEvent,
+  matrixEventText,
+  matrixHomeserverFromUserId,
+  matrixRequestFromMessage,
+  stripMatrixMention,
+} from "./matrix-request-context.js";
 import { isUnauthenticatedMatrixCommandAllowed, parseMatrixMessageCommand, permissionForMatrixAction, requiredPermissionForMatrixCommand } from "./matrix-command-surface.js";
 import { collectMatrixDiagnostics } from "./matrix-diagnostics.js";
 import { getMatrixRateLimitMetrics } from "./matrix-rate-limit.js";
 import { transcribeAudio, type TranscriptionBackend } from "../../artifacts/voice.js";
-import type { AuthenticatedUser, UserStore } from "../../access/user-management.js";
+import type { AuthenticatedUser } from "../../access/user-management.js";
 import type { WebActivityActor } from "../../web/web-state.js";
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces, renderWorkspacePolicyLine } from "../../core/workspace-policy.js";
 
 export { isUnauthenticatedMatrixCommandAllowed, permissionForMatrixAction, requiredPermissionForMatrixCommand } from "./matrix-command-surface.js";
+export { canSendSystemMessagesToMatrixContext } from "./matrix-request-context.js";
 
 const EDIT_DEBOUNCE_MS = 1500;
 const TYPING_INTERVAL_MS = 4500;
@@ -117,8 +130,6 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
   const picks = new Map<string, PickState>();
   const sessionPages = new Map<string, MatrixSessionPageState>();
   const queueStatusMessages = env.queueStatusMessages!;
-  let externalMonitor: NodeJS.Timeout | undefined;
-  let externalMonitorRunning = false;
 
   const getBusyState = (contextKey: ChannelContextKey): BusyState => busyStates.get(contextKey);
 
@@ -190,7 +201,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
     }
     request.authUser = authUser;
 
-    if (!isMatrixHomeserverAllowed(request.homeserver) || !isMatrixRoomAllowedByEnv(request.roomId)) {
+    if (!isMatrixHomeserverAllowed(config, request.homeserver) || !isMatrixRoomAllowedByEnv(config, request.roomId)) {
       audit(request, {
         action: "permission_denied",
         status: "denied",
@@ -1204,7 +1215,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
 
   const handleMessage = async (event: MatrixMessageEvent): Promise<void> => {
     if (event.sender === config.matrixUserId) return;
-    const request = requestFromMessage(event);
+    const request = matrixRequestFromMessage(event, { homeserverName: client.homeserverName(), botUserId: config.matrixUserId });
     const text = stripMatrixMention(matrixEventText(event)).trim();
     const attachments = matrixAttachmentsFromEvent(event);
     const actionPermission = permissionForMatrixAction(text);
@@ -1381,87 +1392,41 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
     return id;
   };
 
-  const monitorExternalContexts = async (): Promise<void> => {
-    if (externalMonitorRunning) {
-      return;
-    }
-    externalMonitorRunning = true;
-    try {
-      await monitorChannelExternalContexts({
-        config,
-        registry,
-        promptStore,
-        isContextKey: isMatrixContextKey,
-        canSendSystemMessages: (contextKey) => canSendSystemMessagesToMatrixContext(userStore, contextKey),
-        shouldMonitorContext: (contextKey) => (preferencesStore.get(contextKey).mirrorMode ?? config.matrixMirrorMode) !== "off",
-        isAllowed: (contextKey) => {
-          const parsed = parseMatrixContextKey(contextKey);
-          return Boolean(parsed && isMatrixHomeserverAllowed(parsed.homeserver) && isMatrixRoomAllowedByEnv(parsed.roomId));
-        },
-        contextForKey: (contextKey) => {
-          const parsed = parseMatrixContextKey(contextKey);
-          return parsed ? { channelId: "matrix", chatId: parsed.roomId, ...(parsed.threadId ? { topicId: parsed.threadId } : {}) } : null;
-        },
-        previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
-        mirrorSnapshot: mirrorExternalSnapshot,
-        updateQueueStatus: updateQueueStatusMessage,
-        drainQueue: async (contextKey, context) => {
-          const parsed = parseMatrixContextKey(contextKey);
-          if (!parsed) return;
-          await drainQueue({ contextKey, context, userId: "system", roomId: parsed.roomId, homeserver: parsed.homeserver, isDirectMessage: false, source: "system" });
-        },
-      });
-    } finally {
-      externalMonitorRunning = false;
-    }
-  };
+  const externalMonitor = createChannelExternalMonitorLoop({
+    label: "Matrix",
+    intervalMs: config.codexExternalBusyCheckMs,
+    run: () => monitorChannelExternalContexts({
+      config,
+      registry,
+      promptStore,
+      isContextKey: isMatrixContextKey,
+      canSendSystemMessages: (contextKey) => canSendSystemMessagesToMatrixContext(userStore, contextKey),
+      shouldMonitorContext: (contextKey) => (preferencesStore.get(contextKey).mirrorMode ?? config.matrixMirrorMode) !== "off",
+      isAllowed: (contextKey) => {
+        const parsed = parseMatrixContextKey(contextKey);
+        return Boolean(parsed && isMatrixHomeserverAllowed(config, parsed.homeserver) && isMatrixRoomAllowedByEnv(config, parsed.roomId));
+      },
+      contextForKey: (contextKey) => {
+        const parsed = parseMatrixContextKey(contextKey);
+        return parsed ? { channelId: "matrix", chatId: parsed.roomId, ...(parsed.threadId ? { topicId: parsed.threadId } : {}) } : null;
+      },
+      previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
+      mirrorSnapshot: mirrorExternalSnapshot,
+      updateQueueStatus: updateQueueStatusMessage,
+      drainQueue: async (contextKey, context) => {
+        const parsed = parseMatrixContextKey(contextKey);
+        if (!parsed) return;
+        await drainQueue({ contextKey, context, userId: "system", roomId: parsed.roomId, homeserver: parsed.homeserver, isDirectMessage: false, source: "system" });
+      },
+    }),
+  });
 
-  let running = false;
-  let syncToken: string | undefined;
-
-  const syncLoop = async (): Promise<void> => {
-    while (running) {
-      try {
-        const response = await client.sync(syncToken);
-        syncToken = response.next_batch ?? syncToken;
-        if (config.matrixAutojoinInvites) {
-          for (const roomId of Object.keys(response.rooms?.invite ?? {})) {
-            await client.joinRoom(roomId).catch((error) => {
-              console.warn(`Failed to join Matrix invite ${roomId}: ${friendlyErrorText(error)}`);
-            });
-          }
-        }
-        for (const [roomId, room] of Object.entries(response.rooms?.join ?? {})) {
-          for (const event of room.timeline?.events ?? []) {
-            if (event.type !== "m.room.message" || !event.event_id || !event.sender) {
-              continue;
-            }
-            await handleMessage({
-              ...event,
-              type: "m.room.message",
-              event_id: event.event_id,
-              room_id: event.room_id || roomId,
-              sender: event.sender,
-              content: event.content ?? {},
-            } as MatrixMessageEvent).catch((error) => {
-              console.error("Failed to handle Matrix message:", friendlyErrorText(error));
-            });
-          }
-        }
-      } catch (error) {
-        if (running) {
-          console.warn(`Matrix sync failed: ${friendlyErrorText(error)}`);
-          await delay(5_000);
-        }
-      }
-    }
-  };
+  const syncLoop = createMatrixSyncLoop({ client, config, handleMessage });
 
   return {
     client,
     async start() {
-      running = true;
-      void syncLoop();
+      syncLoop.start();
       console.log(`Matrix bot ready (${config.matrixHomeserverUrl}).`);
       void collectMatrixDiagnostics({
         config,
@@ -1476,106 +1441,12 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
           console.warn(`Matrix ${room.status}: room ${room.roomId}: ${room.detail}`);
         }
       }).catch((error) => console.warn("Matrix diagnostics failed:", friendlyErrorText(error)));
-      externalMonitor = setInterval(() => {
-        void monitorExternalContexts().catch((error) => console.error("Failed to monitor Matrix external activity:", error));
-      }, config.codexExternalBusyCheckMs);
-      externalMonitor.unref?.();
+      externalMonitor.start();
     },
     async stop() {
-      running = false;
-      if (externalMonitor) clearInterval(externalMonitor);
+      syncLoop.stop();
+      externalMonitor.stop();
       agentUpdates.cancelAll();
     },
   };
-
-  function requestFromMessage(event: MatrixMessageEvent): MatrixRequest {
-    const homeserver = client.homeserverName() ?? matrixHomeserverFromUserId(config.matrixUserId ?? event.sender);
-    const userHomeserver = matrixHomeserverFromUserId(event.sender);
-    const threadId = matrixThreadId(event);
-    return {
-      contextKey: matrixContextKey({ homeserver, roomId: event.room_id, threadId }),
-      context: { channelId: "matrix", chatId: event.room_id, ...(threadId ? { topicId: threadId } : {}), userId: event.sender, username: event.sender },
-      userId: event.sender,
-      username: event.sender,
-      homeserver,
-      userHomeserver,
-      roomId: event.room_id,
-      roomName: event.room_id,
-      isDirectMessage: false,
-      source: "message",
-    };
-  }
-
-  function isMatrixHomeserverAllowed(_homeserver: string | undefined): boolean {
-    return true;
-  }
-
-  function isMatrixRoomAllowedByEnv(roomId: string): boolean {
-    return config.matrixAllowedRoomIds.length === 0 || config.matrixAllowedRoomIds.includes(roomId);
-  }
-}
-
-export function canSendSystemMessagesToMatrixContext(userStore: UserStore, contextKey: ChannelContextKey): boolean {
-  if (!userStore.hasAdminUser()) {
-    return false;
-  }
-  const parsed = parseMatrixContextKey(contextKey);
-  if (!parsed) {
-    return false;
-  }
-  return userStore.snapshot().matrixRooms.some((room) =>
-    room.enabled &&
-    room.roomId === parsed.roomId &&
-    (!room.homeserver || !parsed.homeserver || room.homeserver === parsed.homeserver)
-  );
-}
-
-function stripMatrixMention(text: string): string {
-  return text.replace(/^<@[^>]+>\s*/, "");
-}
-
-function matrixEventText(event: MatrixMessageEvent): string {
-  const msgtype = event.content?.msgtype;
-  if (msgtype && !["m.text", "m.notice"].includes(msgtype)) {
-    return "";
-  }
-  return typeof event.content?.body === "string" ? event.content.body : "";
-}
-
-function matrixAttachmentsFromEvent(event: MatrixMessageEvent): MatrixAttachment[] {
-  const content = event.content ?? {};
-  const msgtype = content.msgtype;
-  const url = typeof content.url === "string" ? content.url : "";
-  if (!url || !["m.file", "m.image", "m.audio", "m.video"].includes(String(msgtype))) {
-    return [];
-  }
-  const name = typeof content.filename === "string"
-    ? content.filename
-    : typeof content.body === "string" && content.body.trim()
-      ? content.body.trim()
-      : `${event.event_id}`;
-  return [{
-    id: event.event_id,
-    name,
-    mxcUri: url,
-    mimeType: content.info?.mimetype,
-    size: content.info?.size,
-  }];
-}
-
-function matrixThreadId(event: MatrixMessageEvent): string | undefined {
-  const relation = event.content?.["m.relates_to"];
-  if (relation?.rel_type === "m.thread" && relation.event_id) {
-    return relation.event_id;
-  }
-  return relation?.["m.in_reply_to"]?.event_id;
-}
-
-function matrixHomeserverFromUserId(userId: string): string | undefined {
-  const match = userId.match(/^@[^:]+:(.+)$/);
-  return match?.[1];
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

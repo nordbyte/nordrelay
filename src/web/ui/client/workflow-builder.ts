@@ -1,6 +1,6 @@
 function workflowBuilderUid(){return 'step_'+Math.random().toString(36).slice(2,9)}
 function workflowStepSource(step){return step.type==='workflow'||step.workflowId?'workflow':step.templateId?'template':'prompt'}
-function workflowBuilderStep(step:any={},index=0){
+function workflowBuilderStep(step:WebuiWorkflowBuilderStep={},index=0){
   return {
     _uid: step._uid||workflowBuilderUid(),
     id: step.id||'',

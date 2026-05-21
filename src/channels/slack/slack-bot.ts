@@ -32,12 +32,13 @@ import { deliverChannelAction } from "../shared/channel-runtime.js";
 import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
 import { createChannelExternalMirrorController } from "../shared/channel-external-mirror-controller.js";
 import { monitorChannelExternalContexts } from "../shared/channel-external-monitor.js";
+import { createChannelExternalMonitorLoop } from "../shared/channel-external-monitor-loop.js";
 import { configureChannelRuntime, createTextQueueStatusAdapter } from "../shared/channel-runtime-bootstrap.js";
 import { getLastAgentMessageText, parseLastAgentMessageOptions } from "../shared/last-agent-message.js";
 import { channelTemplatePrompt, channelWorkflowPrompts, parseChannelWorkflowArgument, renderChannelTemplateList, renderChannelWorkflowList } from "../shared/channel-workflow-commands.js";
 import type { LoginResult } from "../../agents/codex/codex-auth.js";
 import type { ConnectorConfig } from "../../core/config.js";
-import { isSlackContextKey, parseSlackContextKey, slackContextKey, type ChannelContextKey } from "../shared/context-key.js";
+import { isSlackContextKey, parseSlackContextKey, type ChannelContextKey } from "../shared/context-key.js";
 import { friendlyErrorText } from "../../core/error-messages.js";
 import { spawnConnectorRestart, spawnSelfUpdate } from "../../support/operations.js";
 import { toPromptEnvelope, type PromptEnvelope } from "../../state/prompt-store.js";
@@ -49,15 +50,27 @@ import { SessionRegistry } from "../../state/session-registry.js";
 import { createSlackArtifactCommandHandler, sendRecentSlackArtifacts } from "./slack-artifacts.js";
 import { SlackBotChannelRuntime, actionFromSlackActionId, splitSlackMessage, trimSlackMessage } from "./slack-channel-runtime.js";
 import type { SlackActionBody, SlackBoltApp, SlackBridge, SlackBusyReason, SlackBusyState, SlackExternalMirrorState, SlackPickState, SlackRequest, SlackSlashCommandPayload } from "./slack-types.js";
+import {
+  canSendSystemMessagesToSlackContext,
+  isSlackChannelAllowedByEnv,
+  isSlackTeamAllowed,
+  slackRequestFromAction,
+  slackRequestFromMessage,
+  slackRequestFromSlashCommand,
+  stripSlackMention,
+  type SlackFile,
+  type SlackMessageEvent,
+} from "./slack-request-context.js";
 import { isUnauthenticatedSlackCommandAllowed, parseSlackMessageCommand, parseSlackSlashCommand, permissionForSlackAction, requiredPermissionForSlackCommand } from "./slack-command-surface.js";
 import { collectSlackDiagnostics } from "./slack-diagnostics.js";
 import { getSlackRateLimitMetrics } from "./slack-rate-limit.js";
 import { transcribeAudio, type TranscriptionBackend } from "../../artifacts/voice.js";
-import type { AuthenticatedUser, UserStore } from "../../access/user-management.js";
+import type { AuthenticatedUser } from "../../access/user-management.js";
 import type { WebActivityActor } from "../../web/web-state.js";
 import { filterAllowedWorkspaces } from "../../core/workspace-policy.js";
 
 export { isUnauthenticatedSlackCommandAllowed, permissionForSlackAction, requiredPermissionForSlackCommand } from "./slack-command-surface.js";
+export { canSendSystemMessagesToSlackContext } from "./slack-request-context.js";
 
 const EDIT_DEBOUNCE_MS = 1500;
 const TYPING_INTERVAL_MS = 4500;
@@ -111,8 +124,6 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
   const artifactPolicyForContext = (context: ChannelContext) => resolveArtifactDeliveryPolicy({ config, channelId: "slack", channelAccess: userStore.snapshot().slackChannels.find((channel) => channel.channelId === context.chatId) ?? null });
   const picks = new Map<string, PickState>();
   const queueStatusMessages = env.queueStatusMessages!;
-  let externalMonitor: NodeJS.Timeout | undefined;
-  let externalMonitorRunning = false;
 
   const getBusyState = (contextKey: ChannelContextKey): BusyState => busyStates.get(contextKey);
 
@@ -184,7 +195,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     }
     request.authUser = authUser;
 
-    if (!isSlackTeamAllowed(request.teamId) || !isSlackChannelAllowedByEnv(request.channelId)) {
+    if (!isSlackTeamAllowed(config, request.teamId) || !isSlackChannelAllowedByEnv(config, request.channelId)) {
       audit(request, {
         action: "permission_denied",
         status: "denied",
@@ -1183,7 +1194,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
 
   const handleMessage = async (event: SlackMessageEvent): Promise<void> => {
     if (event.bot_id || event.subtype === "bot_message") return;
-    const request = requestFromMessage(event);
+    const request = slackRequestFromMessage(event);
     const text = stripSlackMention(event.text ?? "").trim();
     const parsed = parseSlackMessageCommand(text);
     if (parsed) {
@@ -1205,7 +1216,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
   };
 
   const handleSlashCommand = async (payload: SlackSlashCommandPayload, respond?: (message: unknown) => Promise<unknown>): Promise<void> => {
-    const request = requestFromSlashCommand(payload, respond);
+    const request = slackRequestFromSlashCommand(payload, respond);
     const parsed = parseSlackSlashCommand(payload.text ?? "");
     await handleCommand(request, parsed.command, parsed.argument);
   };
@@ -1291,40 +1302,34 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     return id;
   };
 
-  const monitorExternalContexts = async (): Promise<void> => {
-    if (externalMonitorRunning) {
-      return;
-    }
-    externalMonitorRunning = true;
-    try {
-      await monitorChannelExternalContexts({
-        config,
-        registry,
-        promptStore,
-        isContextKey: isSlackContextKey,
-        canSendSystemMessages: (contextKey) => canSendSystemMessagesToSlackContext(userStore, contextKey),
-        shouldMonitorContext: (contextKey) => (preferencesStore.get(contextKey).mirrorMode ?? config.slackMirrorMode) !== "off",
-        isAllowed: (contextKey) => {
-          const parsed = parseSlackContextKey(contextKey);
-          return Boolean(parsed && isSlackTeamAllowed(parsed.teamId) && isSlackChannelAllowedByEnv(parsed.channelId));
-        },
-        contextForKey: (contextKey) => {
-          const parsed = parseSlackContextKey(contextKey);
-          return parsed ? { channelId: "slack", chatId: parsed.channelId, ...(parsed.threadTs ? { topicId: parsed.threadTs } : {}) } : null;
-        },
-        previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
-        mirrorSnapshot: mirrorExternalSnapshot,
-        updateQueueStatus: updateQueueStatusMessage,
-        drainQueue: async (contextKey, context) => {
-          const parsed = parseSlackContextKey(contextKey);
-          if (!parsed) return;
-          await drainQueue({ contextKey, context, userId: "system", channelId: parsed.channelId, teamId: parsed.teamId, isDirectMessage: false, source: "system" });
-        },
-      });
-    } finally {
-      externalMonitorRunning = false;
-    }
-  };
+  const externalMonitor = createChannelExternalMonitorLoop({
+    label: "Slack",
+    intervalMs: config.codexExternalBusyCheckMs,
+    run: () => monitorChannelExternalContexts({
+      config,
+      registry,
+      promptStore,
+      isContextKey: isSlackContextKey,
+      canSendSystemMessages: (contextKey) => canSendSystemMessagesToSlackContext(userStore, contextKey),
+      shouldMonitorContext: (contextKey) => (preferencesStore.get(contextKey).mirrorMode ?? config.slackMirrorMode) !== "off",
+      isAllowed: (contextKey) => {
+        const parsed = parseSlackContextKey(contextKey);
+        return Boolean(parsed && isSlackTeamAllowed(config, parsed.teamId) && isSlackChannelAllowedByEnv(config, parsed.channelId));
+      },
+      contextForKey: (contextKey) => {
+        const parsed = parseSlackContextKey(contextKey);
+        return parsed ? { channelId: "slack", chatId: parsed.channelId, ...(parsed.threadTs ? { topicId: parsed.threadTs } : {}) } : null;
+      },
+      previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
+      mirrorSnapshot: mirrorExternalSnapshot,
+      updateQueueStatus: updateQueueStatusMessage,
+      drainQueue: async (contextKey, context) => {
+        const parsed = parseSlackContextKey(contextKey);
+        if (!parsed) return;
+        await drainQueue({ contextKey, context, userId: "system", channelId: parsed.channelId, teamId: parsed.teamId, isDirectMessage: false, source: "system" });
+      },
+    }),
+  });
 
   (app as unknown as SlackBoltApp).event("message", async ({ event }) => {
     await handleMessage(event as SlackMessageEvent);
@@ -1341,7 +1346,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     const actionId = String(action.action_id ?? "");
     const parsedAction = actionFromSlackActionId(actionId);
     if (!parsedAction) return;
-    const request = requestFromAction(body as SlackActionBody, respond);
+    const request = slackRequestFromAction(body as SlackActionBody, respond);
     if (!await authenticate(request, permissionForSlackAction(parsedAction))) return;
     await handleButtonAction(request, parsedAction);
   });
@@ -1364,114 +1369,12 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
           console.warn(`Slack ${channel.status}: channel ${channel.channelId}: ${channel.detail}`);
         }
       }).catch((error) => console.warn("Slack diagnostics failed:", friendlyErrorText(error)));
-      externalMonitor = setInterval(() => {
-        void monitorExternalContexts().catch((error) => console.error("Failed to monitor Slack external activity:", error));
-      }, config.codexExternalBusyCheckMs);
-      externalMonitor.unref?.();
+      externalMonitor.start();
     },
     async stop() {
-      if (externalMonitor) clearInterval(externalMonitor);
+      externalMonitor.stop();
       agentUpdates.cancelAll();
       await (app as unknown as { stop(): Promise<void> }).stop();
     },
   };
-
-  function requestFromMessage(event: SlackMessageEvent): SlackRequest {
-    const threadTs = event.thread_ts && event.thread_ts !== event.ts ? event.thread_ts : undefined;
-    return {
-      contextKey: slackContextKey({ teamId: event.team, channelId: event.channel, threadTs }),
-      context: { channelId: "slack", chatId: event.channel, ...(threadTs ? { topicId: threadTs } : {}), userId: event.user, username: event.username },
-      userId: event.user ?? "unknown",
-      username: event.username,
-      teamId: event.team,
-      channelId: event.channel,
-      channelName: event.channel,
-      isDirectMessage: event.channel_type === "im" || event.channel.startsWith("D"),
-      source: "message",
-    };
-  }
-
-  function requestFromSlashCommand(command: SlackSlashCommandPayload, respond?: (message: unknown) => Promise<unknown>): SlackRequest {
-    return {
-      contextKey: slackContextKey({ teamId: command.team_id, channelId: command.channel_id }),
-      context: { channelId: "slack", chatId: command.channel_id, userId: command.user_id, username: command.user_name },
-      userId: command.user_id,
-      username: command.user_name,
-      teamId: command.team_id,
-      channelId: command.channel_id,
-      channelName: command.channel_name,
-      isDirectMessage: command.channel_name === "directmessage" || command.channel_id.startsWith("D"),
-      source: "slash",
-      respond,
-    };
-  }
-
-  function requestFromAction(body: SlackActionBody, respond?: (message: unknown) => Promise<unknown>): SlackRequest {
-    const channelId = body.channel?.id ?? "";
-    const teamId = body.team?.id;
-    const threadTs = body.message?.thread_ts && body.message.thread_ts !== body.message?.ts ? body.message.thread_ts : undefined;
-    return {
-      contextKey: slackContextKey({ teamId, channelId, threadTs }),
-      context: { channelId: "slack", chatId: channelId, ...(threadTs ? { topicId: threadTs } : {}), userId: body.user?.id, username: body.user?.username },
-      userId: body.user?.id ?? "unknown",
-      username: body.user?.username,
-      teamId,
-      channelId,
-      channelName: body.channel?.name,
-      isDirectMessage: channelId.startsWith("D"),
-      source: "action",
-      respond,
-    };
-  }
-
-  function isSlackTeamAllowed(teamId: string | undefined): boolean {
-    return !teamId || config.slackAllowedTeamIds.length === 0 || config.slackAllowedTeamIds.includes(teamId);
-  }
-
-  function isSlackChannelAllowedByEnv(channelId: string): boolean {
-    return config.slackAllowedChannelIds.length === 0 || config.slackAllowedChannelIds.includes(channelId);
-  }
-}
-
-export function canSendSystemMessagesToSlackContext(userStore: UserStore, contextKey: ChannelContextKey): boolean {
-  if (!userStore.hasAdminUser()) {
-    return false;
-  }
-  const parsed = parseSlackContextKey(contextKey);
-  if (!parsed) {
-    return false;
-  }
-  return userStore.snapshot().slackChannels.some((channel) =>
-    channel.enabled &&
-    channel.channelId === parsed.channelId &&
-    (channel.teamId ?? "") === (parsed.teamId ?? "")
-  );
-}
-
-interface SlackFile {
-  id?: string;
-  name?: string;
-  size?: number | string;
-  mimetype?: string;
-  url_private?: string;
-  url_private_download?: string;
-}
-
-interface SlackMessageEvent {
-  type?: string;
-  subtype?: string;
-  bot_id?: string;
-  team?: string;
-  channel: string;
-  channel_type?: string;
-  user?: string;
-  username?: string;
-  text?: string;
-  ts?: string;
-  thread_ts?: string;
-  files?: SlackFile[];
-}
-
-function stripSlackMention(text: string): string {
-  return text.replace(/^<@[^>]+>\s*/, "");
 }

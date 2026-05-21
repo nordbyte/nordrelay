@@ -2,6 +2,8 @@ type WebuiTimer = ReturnType<typeof setTimeout>;
 type WebuiInterval = ReturnType<typeof setInterval>;
 type WebuiRecord = Record<string, unknown>;
 type WebuiRows = readonly (readonly unknown[])[];
+type WebApiPath = import("./api-client-types.js").WebApiPath;
+type WebApiClientOptions<P extends WebApiPath = WebApiPath> = import("./api-client-types.js").WebApiClientOptions<P>;
 
 interface WebuiPager {
   page?: number;
@@ -150,6 +152,15 @@ interface WebuiActiveSession extends WebuiRecord {
   approvalRequired?: WebuiRecord | null;
 }
 
+interface WebuiChatMessage extends WebuiRecord {
+  source?: string;
+  timestamp?: string;
+  text?: string;
+  meta?: WebuiRecord[];
+  actions?: WebuiRecord[];
+  actionResolution?: WebuiRecord | null;
+}
+
 interface WebuiActiveSessionsState extends WebuiRecord {
   sessions?: WebuiActiveSession[];
 }
@@ -197,6 +208,24 @@ interface WebuiPeerTarget extends WebuiRecord {
   error?: string;
 }
 
+interface WebuiHeaderSessionRecord extends WebuiRecord {
+  id: string;
+  title?: string;
+  firstUserMessage?: string;
+  cwd?: string;
+  model?: string;
+  updatedAt?: string;
+}
+
+interface WebuiHeaderTarget extends WebuiRecord {
+  id: string;
+  name: string;
+  agents: string[];
+  snapshot?: WebuiSnapshot | null;
+  loading?: boolean;
+  error?: string;
+}
+
 interface WebuiIncrementalRenderToken {
   cancelled?: boolean;
 }
@@ -214,8 +243,36 @@ interface WebuiWorkflowBuilderStep extends WebuiRecord {
   _uid?: string;
   id?: string;
   name?: string;
+  source?: string;
+  type?: string;
+  prompt?: string;
   templateId?: string;
   workflowId?: string;
+  condition?: {
+    variable?: string;
+    operator?: string;
+    value?: string;
+  };
+  retryPolicy?: {
+    maxAttempts?: number;
+    delayMs?: number;
+  };
+  conditionVariable?: string;
+  conditionOperator?: string;
+  conditionValue?: string;
+  retryAttempts?: number;
+  retryDelayMs?: number;
+  agentId?: string;
+  workspace?: string;
+  workspaceMode?: string;
+  model?: string;
+  reasoningEffort?: string;
+  launchProfileId?: string;
+  sessionMode?: string;
+  threadId?: string;
+  target?: string;
+  requiresApproval?: boolean;
+  continueOnError?: boolean;
 }
 
 interface WebuiWorkflowBuilderState extends WebuiRecord {
@@ -259,6 +316,44 @@ interface WebuiSettingRecord extends WebuiRecord {
   effectiveValue?: string;
   kind?: string;
   options?: string[];
+}
+
+type WebuiSettingsGroupMap = Record<string, WebuiSettingRecord[]>;
+type WebuiStringMap = Record<string, string>;
+
+interface WebuiToastOptions {
+  duration?: number;
+  sticky?: boolean;
+}
+
+interface WebuiPersistOptions {
+  persist?: boolean;
+}
+
+interface WebuiReloadPageOptions {
+  agentId?: string;
+}
+
+interface WebuiLoadVersionOptions {
+  quiet?: boolean;
+  refreshJobs?: boolean;
+}
+
+interface WebuiChatScrollOptions {
+  force?: boolean;
+}
+
+interface WebuiAppendMessageOptions extends WebuiRecord {
+  meta?: WebuiRecord[];
+  forceScroll?: boolean;
+}
+
+interface WebuiRenderChatOptions {
+  forceScroll?: boolean;
+}
+
+interface WebuiLoadChatHistoryOptions extends WebuiRenderChatOptions {
+  skipIfRendered?: boolean;
 }
 
 interface WebuiAccessFilters {
@@ -399,18 +494,27 @@ interface UiItemOptions {
   badge?: { text: string; status?: string } | null;
   rows?: WebuiRows;
   actions?: string;
+  body?: string;
+  className?: string;
+  title?: unknown;
+  titleHtml?: string;
 }
 
 interface RenderIncrementalOptions<T> {
   key: string;
   emptyText?: string;
   emptyHtml?: string;
+  prefixHtml?: string;
+  suffixHtml?: string;
   bodyTag?: string;
   tableClass?: string;
   tableClassHtml?: string;
+  wrapClass?: string;
   headHtml?: string;
   renderItem: (item: T, index?: number) => string;
   initialCount?: number;
   batchSize?: number;
+  maxRenderRows?: number;
+  onBatch?: (root: Element | Document, rendered: number, total: number) => void;
   onDone?: (root?: Element | Document) => void;
 }

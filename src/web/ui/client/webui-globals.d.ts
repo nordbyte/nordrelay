@@ -1,6 +1,8 @@
 interface Element {
   __rawText?: string;
   __meta?: WebuiRecord[];
+  __actions?: WebuiRecord[];
+  __actionResolution?: WebuiRecord | null;
   checked?: boolean;
   close?: () => void;
   dataset: DOMStringMap;
@@ -34,6 +36,8 @@ interface EventTarget {
 interface HTMLElement {
   __rawText?: string;
   __meta?: WebuiRecord[];
+  __actions?: WebuiRecord[];
+  __actionResolution?: WebuiRecord | null;
 }
 
 interface Window {

@@ -1,22 +1,22 @@
-function localHeaderTarget(local: any) {
+function localHeaderTarget(local: WebuiBootstrap): WebuiHeaderTarget {
   return { id: 'local', name: 'Local node', agents: local.enabledAgents || [], snapshot: local.status?.snapshot || null, loading: false, error: '' };
 }
 
 function headerTargetName(peerId: string) {
   if (peerId === 'local') return 'Local node';
-  const peer = (state.peers?.peers || []).find((p: any) => p.id === peerId);
+  const peer = (state.peers?.peers || []).find((p: WebuiPeerRecord) => p.id === peerId);
   return peer?.name || peerId;
 }
 
-function applyHeaderPeerSnapshot(peers: any, local = state.localBootstrap) {
+function applyHeaderPeerSnapshot(peers: WebuiPeerState | null, local = state.localBootstrap) {
   const localTarget = localHeaderTarget(local || { enabledAgents: state.enabledAgents || [], status: { snapshot: state.snapshot } });
   state.peers = peers;
-  const available = (peers?.peers || []).filter((p: any) => p.enabled && p.url);
-  if (state.selectedPeer !== 'local' && !available.some((p: any) => p.id === state.selectedPeer)) state.selectedPeer = 'local';
-  state.peerTargets = [localTarget].concat(available.map((p: any) => ({ id: p.id, name: p.name, agents: p.allowedAgents || [], snapshot: null, loading: true, error: '' })));
+  const available = (peers?.peers || []).filter((p: WebuiPeerRecord) => p.enabled && p.url);
+  if (state.selectedPeer !== 'local' && !available.some((p: WebuiPeerRecord) => p.id === state.selectedPeer)) state.selectedPeer = 'local';
+  state.peerTargets = [localTarget].concat(available.map((p: WebuiPeerRecord) => ({ id: p.id, name: p.name || p.id, agents: p.allowedAgents || [], snapshot: null, loading: true, error: '' })));
 }
 
-async function loadHeaderTargetCandidates(local: any) {
+async function loadHeaderTargetCandidates(local: WebuiBootstrap) {
   const localTarget = localHeaderTarget(local);
   if (!can('peers.read')) {
     state.selectedPeer = 'local';
@@ -32,25 +32,25 @@ async function loadHeaderTargetCandidates(local: any) {
   }
 }
 
-function mergeHeaderTargetBootstrap(peerId: string, bootstrap: any) {
+function mergeHeaderTargetBootstrap(peerId: string, bootstrap: WebuiBootstrap) {
   const targets = state.peerTargets || [];
-  const index = targets.findIndex((t: any) => t.id === peerId);
+  const index = targets.findIndex((t: WebuiHeaderTarget) => t.id === peerId);
   const entry = { id: peerId, name: headerTargetName(peerId), agents: bootstrap.enabledAgents || [], snapshot: bootstrap.status?.snapshot || null, loading: false, error: '' };
   if (index >= 0) targets[index] = { ...targets[index], ...entry };
   else targets.push(entry);
   state.peerTargets = targets;
 }
 
-async function refreshRemoteHeaderTargets(local: any, selectedData: any) {
+async function refreshRemoteHeaderTargets(local: WebuiBootstrap, selectedData: WebuiBootstrap) {
   if (!can('peers.read')) return;
-  const targets = (state.peerTargets || []).filter((t: any) => t.id !== 'local');
+  const targets = (state.peerTargets || []).filter((t: WebuiHeaderTarget) => t.id !== 'local');
   if (!targets.length) return;
-  await Promise.all(targets.map(async (target: any) => {
+  await Promise.all(targets.map(async (target: WebuiHeaderTarget) => {
     try {
       const bootstrap = state.selectedPeer === target.id ? selectedData : await apiPeer(target.id, '/api/bootstrap');
       mergeHeaderTargetBootstrap(target.id, bootstrap);
     } catch (error) {
-      const current = (state.peerTargets || []).find((t: any) => t.id === target.id);
+      const current = (state.peerTargets || []).find((t: WebuiHeaderTarget) => t.id === target.id);
       if (current) { current.loading = false; current.error = error instanceof Error ? error.message : String(error); }
     }
   }));
@@ -64,7 +64,7 @@ function renderHeaderTargetMenu(s = state.snapshot) {
   const thread = session.threadId || '';
   const summary = [session.agentLabel || session.agentId || 'Agent', session.model || 'default', thread ? shortMiddle(thread) : 'not started'].join(' / ');
   const targets = state.peerTargets && state.peerTargets.length ? state.peerTargets : [{ id: state.selectedPeer || 'local', name: headerTargetName(state.selectedPeer || 'local'), agents: state.enabledAgents || [], snapshot: s, loading: false, error: '' }];
-  const groups = targets.map((target: any) => headerTargetGroupHtml(target, session)).join('');
+  const groups = targets.map((target: WebuiHeaderTarget) => headerTargetGroupHtml(target, session)).join('');
   line.innerHTML = '<div class="compact-control header-target-menu" data-header-target-menu><button type="button" id="headerTargetBtn" class="control-menu-button header-target-button" aria-haspopup="menu" aria-expanded="false" title="' + attr('Target: ' + headerTargetName(state.selectedPeer || 'local')) + '">' + esc(summary) + '</button><div class="control-menu-list header-target-list" role="menu" hidden>' + groups + '</div></div>' + (thread ? headerThreadCopyButton(thread) : '');
   bindHeaderTargetMenu(line);
   bindUiCopyButtons(line);
@@ -74,7 +74,7 @@ function headerThreadCopyButton(thread: string) {
   return '<button type="button" class="copy-id header-thread-copy" data-copy-value="' + attr(thread) + '" data-copy-label="Thread ID copied" title="Copy thread ID" aria-label="Copy thread ID"><span class="copy-icon" aria-hidden="true"></span></button>';
 }
 
-function headerTargetGroupHtml(target: any, currentSession: any) {
+function headerTargetGroupHtml(target: WebuiHeaderTarget, currentSession: WebuiSessionSnapshot) {
   const selectedPeer = (state.selectedPeer || 'local') === target.id;
   const agents = target.agents || [];
   const selectedAgent = target.snapshot?.session?.agentId || currentSession.agentId;
@@ -83,7 +83,7 @@ function headerTargetGroupHtml(target: any, currentSession: any) {
   return '<div class="header-target-peer" data-target-peer="' + attr(target.id) + '"><div class="header-target-peer-title"><strong>' + esc(target.name || target.id) + '</strong>' + (selectedPeer ? '<span class="chip">selected peer</span>' : '') + (status ? '<small>' + esc(status) + '</small>' : '') + '</div>' + agentButtons + '</div>';
 }
 
-function headerTargetAgentHtml(target: any, agent: string, selected: boolean) {
+function headerTargetAgentHtml(target: WebuiHeaderTarget, agent: string, selected: boolean) {
   const snapshot = target.snapshot?.session;
   const model = snapshot && snapshot.agentId === agent ? (snapshot.model || 'default') : '';
   const thread = snapshot && snapshot.agentId === agent && snapshot.threadId ? shortMiddle(snapshot.threadId) : '';
@@ -124,7 +124,7 @@ function bindHeaderTargetMenu(root: ParentNode = document) {
   }, event));
 }
 
-async function headerTargetRequest(peerId: string, requestPath: any, options: any = {}) {
+async function headerTargetRequest(peerId: string, requestPath: WebApiPath, options: WebApiClientOptions = {}) {
   return peerId === 'local' ? api(requestPath, { ...options, local: true }) : apiPeer(peerId, requestPath, options);
 }
 
@@ -189,12 +189,12 @@ async function loadHeaderTargetSessionsPage(panel: HTMLElement, peerId: string, 
   }
 }
 
-function renderHeaderTargetSessions(peerId: string, agentId: string, sessions: any[], hasNext = false, nextPage = 2) {
+function renderHeaderTargetSessions(peerId: string, agentId: string, sessions: WebuiHeaderSessionRecord[], hasNext = false, nextPage = 2) {
   if (!sessions.length) return '<div class="header-target-session-state">No recent sessions.</div>';
   return renderHeaderTargetSessionItems(peerId, agentId, sessions) + headerTargetLoadMoreHtml(peerId, agentId, hasNext, nextPage);
 }
 
-function renderHeaderTargetSessionItems(peerId: string, agentId: string, sessions: any[]) {
+function renderHeaderTargetSessionItems(peerId: string, agentId: string, sessions: WebuiHeaderSessionRecord[]) {
   return sessions.slice(0, 5).map(session => {
     const title = session.title || session.firstUserMessage || session.id;
     const meta = [shortMiddle(session.id), session.model || '', session.cwd || '', session.updatedAt ? fmtSessionAge(session.updatedAt) + ' ago' : ''].filter(Boolean).join(' · ');

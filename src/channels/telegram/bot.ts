@@ -45,6 +45,7 @@ import { deliverChannelAction } from "../shared/channel-runtime.js";
 import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
 import { createChannelExternalMirrorController } from "../shared/channel-external-mirror-controller.js";
 import { monitorChannelExternalContexts } from "../shared/channel-external-monitor.js";
+import { createChannelExternalMonitorLoop } from "../shared/channel-external-monitor-loop.js";
 import { configureChannelRuntime } from "../shared/channel-runtime-bootstrap.js";
 import { createChannelTurnLifecycle, createChannelTypingLoop } from "../shared/channel-turn-lifecycle.js";
 import {
@@ -126,6 +127,11 @@ import {
 import { registerTelegramSupportCommands } from "./telegram-support-command.js";
 import { registerTelegramUpdateCommands } from "./telegram-update-commands.js";
 import { registerTelegramWorkflowCommands } from "./telegram-workflow-commands.js";
+import {
+  canSendSystemMessagesToTelegramContext,
+  telegramChannelContextFromKey,
+  telegramSystemContext,
+} from "./telegram-context.js";
 import {
   appendWithCap,
   authHelpText,
@@ -267,7 +273,29 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const drainingQueues = new Set<TelegramContextKey>();
   const externalQueueTimers = new Map<TelegramContextKey, NodeJS.Timeout>();
   const queueStatusMessages = new Map<TelegramContextKey, QueueStatusState>();
-  let externalMonitorRunning = false;
+  const externalMonitor = createChannelExternalMonitorLoop({
+    label: "Telegram",
+    intervalMs: config.codexExternalBusyCheckMs,
+    run: () => monitorChannelExternalContexts({
+      config,
+      registry,
+      promptStore,
+      isContextKey: isTelegramContextKey,
+      canSendSystemMessages: (contextKey) => canSendSystemMessagesToTelegramContext(userStore, contextKey as TelegramContextKey),
+      shouldMonitorContext: (contextKey) => getEffectiveMirrorMode(contextKey as TelegramContextKey) !== "off",
+      contextForKey: (contextKey) => telegramChannelContextFromKey(contextKey as TelegramContextKey),
+      previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
+      mirrorSnapshot: async (contextKey, _context, session, snapshot) => {
+        const parsed = parseContextKey(contextKey);
+        await mirrorExternalSnapshot(contextKey, parsed.chatId, session, snapshot);
+      },
+      updateQueueStatus: (contextKey, _context, text) => updateQueueStatusMessage(contextKey, text),
+      drainQueue: async (contextKey, _context, session) => {
+        const parsed = parseContextKey(contextKey);
+        await drainQueuedPrompts(telegramSystemContext(bot, contextKey), contextKey, parsed.chatId, session);
+      },
+    }),
+  });
   const syncInterval = config.codexSyncIntervalMs > 0
     ? setInterval(() => {
         try {
@@ -278,17 +306,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       }, config.codexSyncIntervalMs)
     : undefined;
   syncInterval?.unref?.();
-  const externalMonitorInterval = setInterval(() => {
-    void monitorExternalContexts().catch((error) => {
-      console.error("Failed to monitor external agent activity:", error);
-    });
-  }, config.codexExternalBusyCheckMs);
-  externalMonitorInterval.unref?.();
-  setTimeout(() => {
-    void monitorExternalContexts().catch((error) => {
-      console.error("Failed to run initial external agent monitor:", error);
-    });
-  }, 0).unref?.();
+  externalMonitor.start();
 
   registry.onRemove((key) => {
     contextBusy.delete(key);
@@ -508,20 +526,11 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     });
   };
 
-  const createSystemContext = (contextKey: TelegramContextKey): Context => {
-    const parsed = parseContextKey(contextKey);
-    return {
-      api: bot.api,
-      chat: { id: parsed.chatId, type: "private" },
-      message: parsed.messageThreadId ? { message_thread_id: parsed.messageThreadId } : undefined,
-    } as unknown as Context;
-  };
-
   const updateQueueStatusMessage = async (
     contextKey: TelegramContextKey,
     text: string,
   ): Promise<void> => {
-    if (!canSendSystemMessagesToContext(contextKey)) {
+    if (!canSendSystemMessagesToTelegramContext(userStore, contextKey)) {
       return;
     }
     const parsed = parseContextKey(contextKey);
@@ -561,47 +570,6 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     return item;
   };
 
-  const monitorExternalContexts = async (): Promise<void> => {
-    if (externalMonitorRunning) {
-      return;
-    }
-    externalMonitorRunning = true;
-    try {
-      await monitorChannelExternalContexts({
-        config,
-        registry,
-        promptStore,
-        isContextKey: isTelegramContextKey,
-        canSendSystemMessages: canSendSystemMessagesToContext,
-        shouldMonitorContext: (contextKey) => getEffectiveMirrorMode(contextKey as TelegramContextKey) !== "off",
-        contextForKey: channelContextFromTelegramKey,
-        previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
-        mirrorSnapshot: async (contextKey, _context, session, snapshot) => {
-          const parsed = parseContextKey(contextKey);
-          await mirrorExternalSnapshot(contextKey, parsed.chatId, session, snapshot);
-        },
-        updateQueueStatus: (contextKey, _context, text) => updateQueueStatusMessage(contextKey, text),
-        drainQueue: async (contextKey, _context, session) => {
-          const parsed = parseContextKey(contextKey);
-          await drainQueuedPrompts(createSystemContext(contextKey), contextKey, parsed.chatId, session);
-        },
-      });
-    } finally {
-      externalMonitorRunning = false;
-    }
-  };
-
-  const canSendSystemMessagesToContext = (contextKey: TelegramContextKey): boolean => {
-    if (!userStore.hasAdminUser()) {
-      return false;
-    }
-    const parsed = parseContextKey(contextKey);
-    if (parsed.chatId > 0) {
-      return Boolean(userStore.resolveTelegramUser(parsed.chatId));
-    }
-    return userStore.snapshot().telegramChats.some((chat) => chat.chatId === parsed.chatId && chat.enabled);
-  };
-
   const deliverCliGeneratedArtifacts = async (
     contextKey: TelegramContextKey,
     chatId: TelegramChatId,
@@ -610,7 +578,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     turnId: string | null,
     messageThreadId?: number,
   ): Promise<void> => {
-    if (!canSendSystemMessagesToContext(contextKey)) {
+    if (!canSendSystemMessagesToTelegramContext(userStore, contextKey)) {
       return;
     }
     await deliverChannelCliArtifacts({
@@ -631,15 +599,6 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       sendArtifact: (artifact) => sendArtifactFileByApi(bot.api, chatId, artifact, messageThreadId).then(() => {}),
       appendActivity,
     });
-  };
-
-  const channelContextFromTelegramKey = (contextKey: TelegramContextKey): ChannelContext => {
-    const parsed = parseContextKey(contextKey);
-    return {
-      channelId: "telegram",
-      chatId: String(parsed.chatId),
-      ...(parsed.messageThreadId ? { topicId: String(parsed.messageThreadId) } : {}),
-    };
   };
 
   const externalMirrorController = createChannelExternalMirrorController<number>({
@@ -732,7 +691,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     _chatId: TelegramChatId,
     session: AgentSessionService,
     snapshot: AgentExternalSnapshot,
-  ): Promise<void> => externalMirrorController.mirror(contextKey, channelContextFromTelegramKey(contextKey), session, snapshot);
+  ): Promise<void> => externalMirrorController.mirror(contextKey, telegramChannelContextFromKey(contextKey), session, snapshot);
 
   const scheduleExternalQueueDrain = (
     ctx: Context,
@@ -750,7 +709,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         if (promptStore.list(contextKey).length === 0) {
           return;
         }
-        if (!canSendSystemMessagesToContext(contextKey)) {
+        if (!canSendSystemMessagesToTelegramContext(userStore, contextKey)) {
           return;
         }
 
@@ -997,7 +956,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       }
       pendingApprovals.delete(approvalId);
       getBusyState(contextKey).approving = false;
-      if (!canSendSystemMessagesToContext(contextKey)) {
+      if (!canSendSystemMessagesToTelegramContext(userStore, contextKey)) {
         return;
       }
       const parsed = parseContextKey(contextKey);
@@ -1115,7 +1074,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     prompt: AgentPromptInput | PromptEnvelope,
     options: { fromQueue?: boolean; approved?: boolean } = {},
   ): Promise<void> => {
-    if (!canSendSystemMessagesToContext(contextKey)) {
+    if (!canSendSystemMessagesToTelegramContext(userStore, contextKey)) {
       return;
     }
     const parsed = parseContextKey(contextKey);
@@ -1819,7 +1778,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     if (drainingQueues.has(contextKey)) {
       return;
     }
-    if (!canSendSystemMessagesToContext(contextKey)) {
+    if (!canSendSystemMessagesToTelegramContext(userStore, contextKey)) {
       return;
     }
 
@@ -2059,13 +2018,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     pendingMediaGroups.delete(key);
 
     try {
-      if (!canSendSystemMessagesToContext(pending.contextKey)) {
+      if (!canSendSystemMessagesToTelegramContext(userStore, pending.contextKey)) {
         return;
       }
       await processMediaGroup(pending);
     } catch (error) {
       console.error("Failed to process media group:", error);
-      if (!canSendSystemMessagesToContext(pending.contextKey)) {
+      if (!canSendSystemMessagesToTelegramContext(userStore, pending.contextKey)) {
         return;
       }
       await safeReply(pending.ctx, `<b>Failed to process media group:</b> ${escapeHTML(friendlyErrorText(error))}`, {
@@ -2075,7 +2034,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   };
 
   const processMediaGroup = async (pending: PendingMediaGroup): Promise<void> => {
-    if (!canSendSystemMessagesToContext(pending.contextKey)) {
+    if (!canSendSystemMessagesToTelegramContext(userStore, pending.contextKey)) {
       return;
     }
     const busyState = getBusyState(pending.contextKey);
@@ -2130,7 +2089,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     if (stagedFiles.length === 0) {
-      if (!canSendSystemMessagesToContext(pending.contextKey)) {
+      if (!canSendSystemMessagesToTelegramContext(userStore, pending.contextKey)) {
         return;
       }
       const text = skippedCount > 0 ? "No media group files could be staged." : "Media group was empty.";
@@ -2138,7 +2097,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
 
-    if (!canSendSystemMessagesToContext(pending.contextKey)) {
+    if (!canSendSystemMessagesToTelegramContext(userStore, pending.contextKey)) {
       return;
     }
     const receivedText = `Received ${stagedFiles.length} media group file${stagedFiles.length === 1 ? "" : "s"}${skippedCount > 0 ? ` (${skippedCount} skipped)` : ""}.`;

@@ -2,7 +2,7 @@ if(state.metricsTab===undefined)state.metricsTab='overview';
 if(state.metricsAutoRefresh===undefined)state.metricsAutoRefresh=localStorage.getItem('nordrelayMetricsAutoRefresh')==='true';
 let metricsAutoRefreshTimer=null;
 let metricsAgeTimer=null;
-async function loadMetrics(options:any={}){
+async function loadMetrics(options:{silent?:boolean}={}){
   if(!options.silent)setLoading('metricsPanel','Loading metrics...');
   const [d,history]=await Promise.all([
     api('/api/metrics'),

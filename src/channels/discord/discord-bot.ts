@@ -6,10 +6,8 @@ import {
   Partials,
   REST,
   Routes,
-  type ChatInputCommandInteraction,
   type Interaction,
   type Message,
-  type MessageComponentInteraction,
   type User,
 } from "discord.js";
 
@@ -41,15 +39,23 @@ import { deliverChannelAction } from "../shared/channel-runtime.js";
 import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
 import { createChannelExternalMirrorController } from "../shared/channel-external-mirror-controller.js";
 import { monitorChannelExternalContexts } from "../shared/channel-external-monitor.js";
+import { createChannelExternalMonitorLoop } from "../shared/channel-external-monitor-loop.js";
 import { configureChannelRuntime, createTextQueueStatusAdapter } from "../shared/channel-runtime-bootstrap.js";
 import { getLastAgentMessageText, parseLastAgentMessageOptions } from "../shared/last-agent-message.js";
 import { channelTemplatePrompt, channelWorkflowPrompts, parseChannelWorkflowArgument, renderChannelTemplateList, renderChannelWorkflowList } from "../shared/channel-workflow-commands.js";
 import type { ChannelContext } from "../shared/channel-adapter.js";
 import type { LoginResult } from "../../agents/codex/codex-auth.js";
 import type { ConnectorConfig } from "../../core/config.js";
-import { discordContextKey, isDiscordContextKey, parseDiscordContextKey, type ChannelContextKey } from "../shared/context-key.js";
+import { isDiscordContextKey, parseDiscordContextKey, type ChannelContextKey } from "../shared/context-key.js";
 import { DiscordBotChannelRuntime, actionFromDiscordCustomId, discordActionRows, splitDiscordMessage, trimDiscordMessage } from "./discord-channel-runtime.js";
 import type { DiscordBridge, DiscordBusyReason, DiscordBusyState, DiscordExternalMirrorState, DiscordPickState, DiscordRequest } from "./discord-types.js";
+import {
+  canSendSystemMessagesToDiscordContext,
+  discordRequestFromInteraction,
+  discordRequestFromMessage,
+  isDiscordChannelAllowedByEnv,
+  isDiscordGuildAllowed,
+} from "./discord-request-context.js";
 import { createDiscordArtifactCommandHandler, sendRecentDiscordArtifacts } from "./discord-artifacts.js";
 import { argumentFromDiscordInteraction, discordCommands, isUnauthenticatedDiscordCommandAllowed, parseDiscordMessageCommand, permissionForDiscordAction, requiredPermissionForDiscordCommand } from "./discord-command-surface.js";
 import { discordRateLimiter, getDiscordRateLimitMetrics } from "./discord-rate-limit.js";
@@ -63,11 +69,12 @@ import { canWriteWithLock } from "../../access/session-locks.js";
 import { SessionRegistry } from "../../state/session-registry.js";
 import { transcribeAudio, type TranscriptionBackend } from "../../artifacts/voice.js";
 import { filterAllowedWorkspaces } from "../../core/workspace-policy.js";
-import type { AuthenticatedUser, UserStore } from "../../access/user-management.js";
+import type { AuthenticatedUser } from "../../access/user-management.js";
 import type { WebActivityActor } from "../../web/web-state.js";
 import { capDiscordCommandReplyChunks, DISCORD_SESSION_PAGE_SIZE, renderDiscordSessionPageAction, type DiscordSessionListRecord, type DiscordSessionPageSource, type DiscordSessionPageState } from "./discord-sessions.js";
 
 export { isUnauthenticatedDiscordCommandAllowed, permissionForDiscordAction, requiredPermissionForDiscordCommand } from "./discord-command-surface.js";
+export { canSendSystemMessagesToDiscordContext } from "./discord-request-context.js";
 
 const EDIT_DEBOUNCE_MS = 1500;
 const TYPING_INTERVAL_MS = 4500;
@@ -129,8 +136,6 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
   const sessionPages = new Map<string, DiscordSessionPageState>();
   const responseOwners = new Map<string, ChannelContextKey>();
   const queueStatusMessages = env.queueStatusMessages!;
-  let externalMonitor: NodeJS.Timeout | undefined;
-  let externalMonitorRunning = false;
 
   const getBusyState = (contextKey: ChannelContextKey): BusyState => busyStates.get(contextKey);
 
@@ -217,7 +222,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     }
     request.authUser = authUser;
 
-    if (!isDiscordGuildAllowed(request.guildId) || !isDiscordChannelAllowedByEnv(request.channelId)) {
+    if (!isDiscordGuildAllowed(config, request.guildId) || !isDiscordChannelAllowedByEnv(config, request.channelId)) {
       audit(request, {
         action: "permission_denied",
         status: "denied",
@@ -1352,7 +1357,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
 
   const handleMessage = async (message: Message): Promise<void> => {
     if (message.author.bot) return;
-    const request = requestFromMessage(message);
+    const request = discordRequestFromMessage(message);
     const text = message.content.trim();
     const parsed = parseDiscordMessageCommand(text);
     if (parsed) {
@@ -1377,7 +1382,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
   const handleInteraction = async (interaction: Interaction): Promise<void> => {
     if (interaction.isChatInputCommand()) {
       if (config.discordCommandMode === "message") return;
-      const request = requestFromInteraction(interaction);
+      const request = discordRequestFromInteraction(interaction);
       const argument = argumentFromDiscordInteraction(interaction);
       await handleCommand(request, interaction.commandName, argument);
       return;
@@ -1388,7 +1393,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     }
     const action = actionFromDiscordCustomId(interaction.customId);
     if (!action) return;
-    const request = requestFromInteraction(interaction);
+    const request = discordRequestFromInteraction(interaction);
     if (!await authenticate(request, permissionForDiscordAction(action))) return;
     await handleButtonAction(request, action);
   };
@@ -1519,49 +1524,45 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     return id;
   };
 
-  const monitorExternalContexts = async (): Promise<void> => {
-    if (externalMonitorRunning) return;
-    externalMonitorRunning = true;
-    try {
-      await monitorChannelExternalContexts({
-        config,
-        registry,
-        promptStore,
-        isContextKey: isDiscordContextKey,
-        canSendSystemMessages: (contextKey) => canSendSystemMessagesToDiscordContext(userStore, contextKey),
-        shouldMonitorContext: (contextKey) => (preferencesStore.get(contextKey).mirrorMode ?? config.discordMirrorMode) !== "off",
-        isAllowed: (contextKey) => {
-          const parsed = parseDiscordContextKey(contextKey);
-          if (!parsed) return false;
-          return isDiscordGuildAllowed(parsed.guildId?.startsWith("dm-") ? undefined : parsed.guildId) && isDiscordChannelAllowedByEnv(parsed.channelId);
-        },
-        contextForKey: (contextKey) => {
-          const parsed = parseDiscordContextKey(contextKey);
-          if (!parsed) return null;
-          return { channelId: "discord", chatId: parsed.threadId ?? parsed.channelId, ...(parsed.threadId ? { topicId: parsed.threadId } : {}) };
-        },
-        previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
-        mirrorSnapshot: mirrorExternalSnapshot,
-        updateQueueStatus: updateQueueStatusMessage,
-        drainQueue: async (contextKey, context) => {
-          const parsed = parseDiscordContextKey(contextKey);
-          if (!parsed) return;
-          const systemRequest: DiscordRequest = {
-            contextKey,
-            context,
-            user: { id: "system", username: "system", bot: true } as User,
-            channelId: parsed.threadId ?? parsed.channelId,
-            guildId: parsed.guildId,
-            isDirectMessage: !parsed.guildId || parsed.guildId.startsWith("dm-"),
-            source: "message",
-          };
-          await drainQueue(systemRequest);
-        },
-      });
-    } finally {
-      externalMonitorRunning = false;
-    }
-  };
+  const externalMonitor = createChannelExternalMonitorLoop({
+    label: "Discord",
+    intervalMs: config.codexExternalBusyCheckMs,
+    run: () => monitorChannelExternalContexts({
+      config,
+      registry,
+      promptStore,
+      isContextKey: isDiscordContextKey,
+      canSendSystemMessages: (contextKey) => canSendSystemMessagesToDiscordContext(userStore, contextKey),
+      shouldMonitorContext: (contextKey) => (preferencesStore.get(contextKey).mirrorMode ?? config.discordMirrorMode) !== "off",
+      isAllowed: (contextKey) => {
+        const parsed = parseDiscordContextKey(contextKey);
+        if (!parsed) return false;
+        return isDiscordGuildAllowed(config, parsed.guildId?.startsWith("dm-") ? undefined : parsed.guildId) && isDiscordChannelAllowedByEnv(config, parsed.channelId);
+      },
+      contextForKey: (contextKey) => {
+        const parsed = parseDiscordContextKey(contextKey);
+        if (!parsed) return null;
+        return { channelId: "discord", chatId: parsed.threadId ?? parsed.channelId, ...(parsed.threadId ? { topicId: parsed.threadId } : {}) };
+      },
+      previousLastLine: (contextKey) => externalMirrors.get(contextKey)?.lastLine,
+      mirrorSnapshot: mirrorExternalSnapshot,
+      updateQueueStatus: updateQueueStatusMessage,
+      drainQueue: async (contextKey, context) => {
+        const parsed = parseDiscordContextKey(contextKey);
+        if (!parsed) return;
+        const systemRequest: DiscordRequest = {
+          contextKey,
+          context,
+          user: { id: "system", username: "system", bot: true } as User,
+          channelId: parsed.threadId ?? parsed.channelId,
+          guildId: parsed.guildId,
+          isDirectMessage: !parsed.guildId || parsed.guildId.startsWith("dm-"),
+          source: "message",
+        };
+        await drainQueue(systemRequest);
+      },
+    }),
+  });
 
   const registerSlashCommands = async (): Promise<void> => {
     if (!config.discordClientId || !config.discordAutoRegisterCommands || config.discordCommandMode === "message" || !config.discordBotToken) {
@@ -1601,93 +1602,12 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     client,
     async start() {
       await client.login(config.discordBotToken);
-      externalMonitor = setInterval(() => {
-        void monitorExternalContexts().catch((error) => console.error("Failed to monitor Discord external activity:", error));
-      }, config.codexExternalBusyCheckMs);
-      externalMonitor.unref?.();
+      externalMonitor.start();
     },
     async stop() {
-      if (externalMonitor) clearInterval(externalMonitor);
+      externalMonitor.stop();
       agentUpdates.cancelAll();
       await client.destroy();
     },
   };
-
-  function requestFromMessage(message: Message): DiscordRequest {
-    const threadId = message.channel.isThread() ? message.channel.id : undefined;
-    const parentId = message.channel.isThread() ? message.channel.parentId ?? message.channel.id : message.channel.id;
-    const channelName = "name" in message.channel && typeof message.channel.name === "string" ? message.channel.name : undefined;
-    const guildKey = message.guildId ?? `dm-${message.author.id}`;
-    return {
-      contextKey: discordContextKey({ guildId: guildKey, channelId: parentId, threadId }),
-      context: {
-        channelId: "discord",
-        chatId: threadId ?? parentId,
-        ...(threadId ? { topicId: threadId } : {}),
-        userId: message.author.id,
-        username: message.author.username,
-      },
-      user: message.author,
-      username: message.author.username,
-      guildId: message.guildId ?? undefined,
-      channelId: parentId,
-      channelName,
-      isDirectMessage: !message.guildId,
-      source: "message",
-      message,
-    };
-  }
-
-  function requestFromInteraction(interaction: ChatInputCommandInteraction | MessageComponentInteraction): DiscordRequest {
-    const channel = interaction.channel;
-    const threadId = channel?.isThread() ? channel.id : undefined;
-    const parentId = channel?.isThread() ? channel.parentId ?? channel.id : interaction.channelId;
-    const channelName = channel && "name" in channel && typeof channel.name === "string" ? channel.name : undefined;
-    const guildKey = interaction.guildId ?? `dm-${interaction.user.id}`;
-    return {
-      contextKey: discordContextKey({ guildId: guildKey, channelId: parentId, threadId }),
-      context: {
-        channelId: "discord",
-        chatId: threadId ?? parentId,
-        ...(threadId ? { topicId: threadId } : {}),
-        userId: interaction.user.id,
-        username: interaction.user.username,
-      },
-      user: interaction.user,
-      username: interaction.user.username,
-      guildId: interaction.guildId ?? undefined,
-      channelId: parentId,
-      channelName,
-      isDirectMessage: !interaction.guildId,
-      source: "interaction",
-      interaction,
-    };
-  }
-
-  function isDiscordGuildAllowed(guildId: string | undefined): boolean {
-    return !guildId || config.discordAllowedGuildIds.length === 0 || config.discordAllowedGuildIds.includes(guildId);
-  }
-
-  function isDiscordChannelAllowedByEnv(channelId: string): boolean {
-    return config.discordAllowedChannelIds.length === 0 || config.discordAllowedChannelIds.includes(channelId);
-  }
-}
-
-export function canSendSystemMessagesToDiscordContext(userStore: UserStore, contextKey: ChannelContextKey): boolean {
-  if (!userStore.hasAdminUser()) {
-    return false;
-  }
-  const parsed = parseDiscordContextKey(contextKey);
-  if (!parsed) {
-    return false;
-  }
-  if (!parsed.guildId || parsed.guildId.startsWith("dm-")) {
-    const userId = parsed.guildId?.startsWith("dm-") ? parsed.guildId.slice(3) : undefined;
-    return Boolean(userId && userStore.resolveDiscordUser(userId));
-  }
-  return userStore.snapshot().discordChannels.some((channel) =>
-    channel.enabled &&
-    channel.channelId === parsed.channelId &&
-    (channel.guildId ?? "") === (parsed.guildId ?? "")
-  );
 }

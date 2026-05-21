@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
@@ -42,15 +42,27 @@ for (const source of expectedSources) {
 const adminMarker = read("src/web/ui/client/admin.ts").trim();
 assert(adminMarker.length < 120, "src/web/ui/client/admin.ts should remain a split-module marker only.");
 
-for (const file of [
-  "src/web/ui/client/core/runtime.ts",
-  "src/web/ui/client/admin-core.ts",
-  "src/web/ui/client/admin-monitor.ts",
-  "src/web/ui/client/admin-access.ts",
-  "src/web/ui/client/admin-logs.ts",
-  "src/web/ui/client/admin-adapters.ts",
-  "src/web/ui/client/admin-version.ts",
-  "src/web/ui/client/admin-peers.ts",
-]) {
-  assert(!read(file).includes("@ts-nocheck"), `${file} must not disable TypeScript checking.`);
+for (const file of clientSourceFiles("src/web/ui/client")) {
+  const source = read(file);
+  assert(!source.includes("@ts-nocheck"), `${file} must not disable TypeScript checking.`);
+  assert(!/\bany\b/.test(source), `${file} must not use explicit any. Add a WebUI DTO or use unknown.`);
+}
+
+function clientSourceFiles(dir) {
+  const files = [];
+  for (const entry of readdirSync(join(root, dir), { withFileTypes: true })) {
+    const relative = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      files.push(...clientSourceFiles(relative));
+      continue;
+    }
+    if (!/\.(?:ts|js|d\.ts)$/.test(entry.name)) {
+      continue;
+    }
+    if (relative.endsWith("/api-routes.generated.js")) {
+      continue;
+    }
+    files.push(relative);
+  }
+  return files.sort();
 }

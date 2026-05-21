@@ -49,8 +49,8 @@ async function loadQueue(){
   if(planner)renderQueuePlanner(planner);
 }
 
-async function loadQueuePlanner(options={}){
-  const queueOptions:any=options;
+async function loadQueuePlanner(options:WebuiRecord={}){
+  const queueOptions=options;
   if(!can('queue.plan.read'))return;
   setLoading('queuePlannerBoard','Loading planned prompts...');
   setLoading('queueProgressBoard','Loading in-progress prompts...');
@@ -81,8 +81,8 @@ function renderQueueKanban(data){
     const items=(columns[status]||[]).filter(queuePlanMatches);
     return '<div class="queue-kanban-column" data-plan-drop="'+attr(status)+'"><h3><span>'+esc(label)+'</span><span>'+items.length+'</span></h3><div class="list">'+(items.map(queuePlanCard).join('')||uiEmpty('No prompts.'))+'</div></div>';
   }).join('');
-  bindQueuePlanButtons(/** @type {any} */ (target));
-  bindQueuePlanDrag(/** @type {any} */ (target));
+  bindQueuePlanButtons(target);
+  bindQueuePlanDrag(target);
   bindUiCopyButtons(target);
   bindUiTraceButtons(target);
 }
@@ -95,7 +95,7 @@ function renderQueueProgress(data){
   const runtime=(data.inProgress||[]).map(task=>'<div class="item queue-plan-card"><strong>'+esc(task.agentLabel||task.agentId||'Agent')+' '+uiBadge(task.status,task.status==='failed'?'disabled':'planned')+'</strong><small>'+esc(short(task.prompt||task.detail||'Running prompt',220))+'</small><small>'+esc([task.source,task.threadId||'pending',task.workspace,fmtDuration(task.durationMs)].filter(Boolean).join(' | '))+'</small>'+(task.correlationId?'<small>'+uiTraceControls(task.correlationId)+'</small>':'')+'</div>').join('');
   target.innerHTML='<div class="queue-kanban-column"><h3><span>Planned prompts</span><span>'+((data.columns?.in_progress||[]).length)+'</span></h3><div class="list">'+(planned||uiEmpty('No planned prompt is running.'))+'</div></div>'+
     '<div class="queue-kanban-column"><h3><span>Runtime activity</span><span>'+((data.inProgress||[]).length)+'</span></h3><div class="list">'+(runtime||uiEmpty('No runtime task is currently running.'))+'</div></div>';
-  bindQueuePlanButtons(/** @type {any} */ (target));
+  bindQueuePlanButtons(target);
   bindUiCopyButtons(target);
   bindUiTraceButtons(target);
 }
@@ -120,7 +120,7 @@ function queuePlanCard(plan){
 function queuePlanStatusLabel(status){return String(status||'draft').replace('_',' ')}
 function queuePlanStatusClass(status){if(status==='done')return'enabled';if(status==='failed'||status==='aborted'||status==='archived')return'disabled';if(status==='queued'||status==='in_progress')return'planned';return'planned'}
 
-function bindQueuePlanButtons(root:any=document){
+function bindQueuePlanButtons(root:Element|Document=document){
   root.querySelectorAll('[data-plan-edit]').forEach(b=>b.onclick=()=>openQueuePlanDialog((state.queuePlanner?.plans||[]).find(p=>p.id===b.dataset.planEdit)));
   root.querySelectorAll('[data-plan-delete]').forEach(b=>b.onclick=()=>safe(async()=>{if(!can('queue.plan.write')){toast('Permission required: queue.plan.write');return}if(confirm('Delete planned prompt '+b.dataset.planDelete+'?')){const r=await api('/api/queue/plans/'+encodeURIComponent(b.dataset.planDelete),{method:'DELETE'});renderQueuePlanner(r.snapshot);toast(r.removed?'Plan deleted':'Plan not found')}}));
   root.querySelectorAll('[data-plan-move]').forEach(b=>b.onclick=()=>safe(()=>moveQueuePlan(b.dataset.planMove,b.dataset.planStatus)));
@@ -129,13 +129,13 @@ function bindQueuePlanButtons(root:any=document){
   root.querySelectorAll('[data-q]').forEach(b=>b.onclick=()=>safe(async()=>{if(!can('queue.write')){toast('Permission required: queue.write');return}const r=await api('/api/queue',{method:'POST',body:JSON.stringify({action:b.dataset.q,id:b.dataset.id})});renderQueue(r.queue,r.paused);await loadQueuePlanner()}));
 }
 
-function bindQueuePlanDrag(root:any=document){
+function bindQueuePlanDrag(root:Element|Document=document){
   let dragged=null;
-  root.querySelectorAll('[data-plan-id]').forEach(card=>{
+  root.querySelectorAll<HTMLElement>('[data-plan-id]').forEach(card=>{
     card.ondragstart=()=>{if(!can('queue.plan.write'))return;dragged=card.dataset.planId;card.classList.add('dragging')};
     card.ondragend=()=>card.classList.remove('dragging');
   });
-  root.querySelectorAll('[data-plan-drop]').forEach(column=>{
+  root.querySelectorAll<HTMLElement>('[data-plan-drop]').forEach(column=>{
     column.ondragover=e=>{if(can('queue.plan.write')){e.preventDefault();column.classList.add('drag-over')}};
     column.ondragleave=()=>column.classList.remove('drag-over');
     column.ondrop=e=>safe(async()=>{e.preventDefault();column.classList.remove('drag-over');if(!dragged)return;await moveQueuePlan(dragged,column.dataset.planDrop)});

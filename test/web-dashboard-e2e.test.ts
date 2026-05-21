@@ -164,7 +164,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('id="queueProgressBoard"');
     expect(js).toContain("function loadQueue");
     expect(js).toContain("function renderQueueKanban");
-    expect(js).toContain("loadQueuePlanner(options={})");
+    expect(js).toContain("loadQueuePlanner(options:WebuiRecord={})");
     expect(js).toContain("setLoading('queuePlannerBoard','Loading planned prompts...')");
     expect(js).toContain("loadQueuePlanner({notify:true})");
     expect(js).toContain("/api/queue/plans");
