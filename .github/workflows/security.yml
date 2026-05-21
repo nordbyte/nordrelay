@@ -56,7 +56,6 @@ jobs:
         uses: trufflesecurity/trufflehog@37b77001d0174ebec2fcca2bd83ff83a6d45a3ab # v3.95.3
         with:
           path: ./
-          extra_args: --only-verified
 
   secrets:
     name: Secret scan

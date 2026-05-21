@@ -9,8 +9,10 @@ import { describe, expect, it } from "vitest";
 import { WEB_API_ROUTE_DEFINITIONS } from "../src/web/web-api-contract.js";
 import { requiresWebCsrf } from "../src/web/web-dashboard-security.js";
 import {
+  isInvalidJsonBodyError,
   isRequestBodyTooLargeError,
   minifyHtml,
+  parseCookies,
   readJsonBody,
   registerWebResponseRequest,
   sendJson,
@@ -33,6 +35,17 @@ describe("web dashboard HTTP helpers", () => {
     await expect(readJsonBody(req as never, 1024)).resolves.toEqual({ value: 42 });
   });
 
+  it("rejects malformed JSON request bodies as 400-compatible errors", async () => {
+    const req = Readable.from([Buffer.from("{broken")]);
+
+    await expect(readJsonBody(req as never, 1024)).rejects.toSatisfy(isInvalidJsonBodyError);
+  });
+
+  it("ignores malformed cookie values instead of throwing", () => {
+    expect(() => parseCookies("nr_session=%E0%A4%A; theme=dark")).not.toThrow();
+    expect(parseCookies("nr_session=%E0%A4%A; theme=dark")).toEqual({ theme: "dark" });
+  });
+
   it("uses nonce-based CSP without unsafe inline allowances", () => {
     const csp = webSecurityHeaders("abc123")["content-security-policy"];
 
@@ -50,7 +63,7 @@ describe("web dashboard HTTP helpers", () => {
   it("requires CSRF for every mutating Web API route", () => {
     for (const route of WEB_API_ROUTE_DEFINITIONS) {
       for (const method of route.methods) {
-        const expected = method !== "GET";
+        const expected = method !== "GET" && route.auth !== "anonymous-token";
         expect(requiresWebCsrf(method, route.path), `${method} ${route.path}`).toBe(expected);
       }
     }

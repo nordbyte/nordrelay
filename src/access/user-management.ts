@@ -1076,6 +1076,10 @@ export class UserStore {
     return user.groups.some((group) => group.agentIds.length === 0 || group.agentIds.includes(agentId));
   }
 
+  canUseAgentStrict(user: AuthenticatedUser | null | undefined, agentId: string | undefined): boolean {
+    return Boolean(user && agentId && this.canUseAgent(user, agentId));
+  }
+
   canUseWorkspace(user: AuthenticatedUser | null | undefined, workspace: string | undefined): boolean {
     if (!user || !workspace) {
       return true;
@@ -1083,6 +1087,10 @@ export class UserStore {
     const normalizedWorkspace = normalizeWorkspacePath(workspace);
     return user.groups.some((group) => group.workspaceRoots.length === 0 ||
       group.workspaceRoots.some((root) => isPathInside(normalizedWorkspace, normalizeWorkspacePath(root))));
+  }
+
+  canUseWorkspaceStrict(user: AuthenticatedUser | null | undefined, workspace: string | undefined): boolean {
+    return Boolean(user && workspace && this.canUseWorkspace(user, workspace));
   }
 
   canUseTelegramChat(user: AuthenticatedUser | null | undefined, chatId: number | undefined): boolean {

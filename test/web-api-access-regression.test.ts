@@ -6,6 +6,9 @@ import { WEB_API_ROUTE_DEFINITIONS, type WebHttpMethod } from "../src/web/web-ap
 describe("WebUI API access regressions", () => {
   it("denies every known route when the required permission is missing", () => {
     for (const route of WEB_API_ROUTE_DEFINITIONS) {
+      if (route.auth === "anonymous-token") {
+        continue;
+      }
       for (const method of route.methods) {
         const path = samplePath(route);
         const required = permissionForWebRequest(method, path);
@@ -17,6 +20,9 @@ describe("WebUI API access regressions", () => {
 
   it("allows every known route when the required permission is present", () => {
     for (const route of WEB_API_ROUTE_DEFINITIONS) {
+      if (route.auth === "anonymous-token") {
+        continue;
+      }
       for (const method of route.methods) {
         const path = samplePath(route);
         const required = permissionForWebRequest(method, path);
@@ -28,6 +34,7 @@ describe("WebUI API access regressions", () => {
   it("denies unknown routes and unsupported methods by default", () => {
     expect(simulateDashboardGate("GET", "/api/not-real", ALL_PERMISSIONS)).toBe(403);
     expect(simulateDashboardGate("DELETE", "/api/prompt", ALL_PERMISSIONS)).toBe(403);
+    expect(permissionForWebRequest("POST", "/api/workflow-triggers/sample-token/run")).toBeNull();
   });
 });
 

@@ -73,6 +73,8 @@ describe("WorkflowStore", () => {
       });
       expect(channelTemplatePrompt(config, template.id, { area: "chat", repo: "nordrelay" }).prompt).toBe("Fix chat in nordrelay.");
       expect(channelWorkflowPrompts(config, workflow.id, { area: "runtime", repo: "nordrelay" })[0]?.prompt).toBe("Fix runtime in nordrelay.");
+      expect(() => channelTemplatePrompt(config, template.id, { area: "chat" })).toThrow(/missing required variable\(s\): repo/);
+      expect(() => channelWorkflowPrompts(config, workflow.id, { area: "runtime" })).toThrow(/missing required variable\(s\): repo/);
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
@@ -209,10 +211,15 @@ describe("WorkflowStore", () => {
         expect(dryRun.valid).toBe(true);
         expect(dryRun.prompts[0]?.prompt).toBe("Deploy api to staging.");
 
+        expect(() => service.runWorkflow(workflow.id, {})).toThrow(/missing required variable\(s\): service/);
+
         const trigger = service.createWorkflowTrigger(workflow.id, { kind: "webhook", name: "Deploy webhook" });
         expect(trigger.token).toMatch(/^nrt_/);
         expect(trigger.trigger.tokenHash).not.toBe(trigger.token);
         expect(store.findWorkflowTriggerByToken(trigger.token)?.trigger.id).toBe(trigger.trigger.id);
+
+        await expect(service.runWorkflowTriggerToken(trigger.token, { env: "prod" })).rejects.toThrow(/missing required variable\(s\): service/);
+        expect(store.getWorkflow(workflow.id)?.triggers?.[0]?.lastTriggeredAt).toBeUndefined();
 
         const run = await service.runWorkflowTriggerToken(trigger.token, { service: "worker", env: "prod" });
         expect(run.status).toBe("queued");

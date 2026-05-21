@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 export interface JsonReadResult<T> {
@@ -14,35 +14,68 @@ export class StatePersistenceError extends Error {
   }
 }
 
-export function writeJsonFileAtomic(filePath: string, value: unknown): void {
-  writeTextFileAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`);
+const PRIVATE_DIR_MODE = 0o700;
+const PRIVATE_FILE_MODE = 0o600;
+
+export function writeJsonFileAtomic(filePath: string, value: unknown, options: WriteTextFileAtomicOptions = {}): void {
+  writeTextFileAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`, options);
 }
 
 export function updateJsonFileAtomic<T>(filePath: string, updater: (current: T | undefined) => T): T {
   return withJsonFileLock(filePath, () => {
-    const current = readJsonFileWithBackup<T>(filePath).value;
-    const next = updater(current);
-    writeJsonFileAtomic(filePath, next);
+    const read = readJsonFileWithBackup<T>(filePath);
+    const next = updater(read.value);
+    writeJsonFileAtomic(filePath, next, { preserveExistingBackup: read.recoveredFromBackup });
     return next;
   });
 }
 
-export function writeTextFileAtomic(filePath: string, value: string): void {
+export interface WriteTextFileAtomicOptions {
+  preserveExistingBackup?: boolean;
+}
+
+export function writeTextFileAtomic(filePath: string, value: string, options: WriteTextFileAtomicOptions = {}): void {
   const dir = path.dirname(filePath);
-  mkdirSync(dir, { recursive: true });
+  ensurePrivateDir(dir);
 
   const backupPath = `${filePath}.bak`;
   const tempPath = path.join(dir, `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`);
 
   try {
-    if (existsSync(filePath)) {
+    writeFileSync(tempPath, value, { encoding: "utf8", mode: PRIVATE_FILE_MODE });
+    chmodPrivateFile(tempPath);
+    if (existsSync(filePath) && !options.preserveExistingBackup) {
       copyFileSync(filePath, backupPath);
+      chmodPrivateFile(backupPath);
+    } else if (options.preserveExistingBackup && existsSync(backupPath)) {
+      chmodPrivateFile(backupPath);
     }
-    writeFileSync(tempPath, value, "utf8");
     renameSync(tempPath, filePath);
+    chmodPrivateFile(filePath);
   } catch (error) {
     rmSync(tempPath, { force: true });
     throw error;
+  }
+}
+
+export function ensurePrivateDir(dir: string): void {
+  mkdirSync(dir, { recursive: true, mode: PRIVATE_DIR_MODE });
+  chmodPrivateDir(dir);
+}
+
+export function chmodPrivateFile(filePath: string): void {
+  try {
+    chmodSync(filePath, PRIVATE_FILE_MODE);
+  } catch {
+    // Best effort on filesystems/platforms that do not support POSIX modes.
+  }
+}
+
+function chmodPrivateDir(dir: string): void {
+  try {
+    chmodSync(dir, PRIVATE_DIR_MODE);
+  } catch {
+    // Best effort on filesystems/platforms that do not support POSIX modes.
   }
 }
 
@@ -128,7 +161,7 @@ function readJsonFile<T>(filePath: string): { ok: true; value: T } | { ok: false
 
 function withJsonFileLock<T>(filePath: string, fn: () => T): T {
   const dir = path.dirname(filePath);
-  mkdirSync(dir, { recursive: true });
+  ensurePrivateDir(dir);
   const lockPath = `${filePath}.lock`;
   const deadline = Date.now() + 10_000;
   while (true) {

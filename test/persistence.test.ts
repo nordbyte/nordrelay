@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -31,6 +31,32 @@ describe("state persistence", () => {
 
     expect(() => readJsonFileWithBackup(filePath)).toThrow(/Unsupported state payload version/);
     expect(existsSync(filePath)).toBe(true);
+  });
+
+  it("preserves the valid backup when updating from backup recovery", () => {
+    const filePath = tempStateFile();
+    writeFileSync(filePath, "{broken", "utf8");
+    writeFileSync(`${filePath}.bak`, JSON.stringify({ version: 1, items: ["backup"] }), "utf8");
+
+    const next = updateJsonFileAtomic<{ version: 1; items: string[] }>(filePath, (current) => ({
+      version: 1,
+      items: [...(current?.items ?? []), "next"],
+    }));
+
+    expect(next).toEqual({ version: 1, items: ["backup", "next"] });
+    expect(JSON.parse(readFileSync(filePath, "utf8"))).toEqual({ version: 1, items: ["backup", "next"] });
+    expect(JSON.parse(readFileSync(`${filePath}.bak`, "utf8"))).toEqual({ version: 1, items: ["backup"] });
+  });
+
+  it("writes state files with private file permissions where supported", () => {
+    const filePath = tempStateFile();
+
+    updateJsonFileAtomic(filePath, () => ({ version: 1, items: ["private"] }));
+
+    if (process.platform !== "win32") {
+      expect(statSync(filePath).mode & 0o777).toBe(0o600);
+      expect(statSync(path.dirname(filePath)).mode & 0o777).toBe(0o700);
+    }
   });
 });
 

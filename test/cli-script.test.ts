@@ -85,6 +85,14 @@ describe("nordrelay CLI script", () => {
     expect(source).toContain("Start the WebUI and connector in the background");
   });
 
+  it("validates dashboard ports before launch", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain("function isValidPort(port)");
+    expect(source).toContain("port >= 1 && port <= 65535");
+    expect(source).toContain("Dashboard port must be an integer between 1 and 65535.");
+  });
+
   it("handles --help before the foreground default", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
 

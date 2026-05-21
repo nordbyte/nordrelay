@@ -254,8 +254,12 @@ describe("UserStore", () => {
 
     expect(store.canUseAgent(user, "codex")).toBe(true);
     expect(store.canUseAgent(user, "pi")).toBe(false);
+    expect(store.canUseAgentStrict(user, "codex")).toBe(true);
+    expect(store.canUseAgentStrict(user, undefined)).toBe(false);
     expect(store.canUseWorkspace(user, path.join(home, "repo"))).toBe(true);
     expect(store.canUseWorkspace(user, path.join(tmpdir(), "other"))).toBe(false);
+    expect(store.canUseWorkspaceStrict(user, path.join(home, "repo"))).toBe(true);
+    expect(store.canUseWorkspaceStrict(user, undefined)).toBe(false);
     expect(store.canUseTelegramChat(user, -100)).toBe(true);
     expect(store.canUseTelegramChat(user, -101)).toBe(false);
     expect(store.canUseDiscordChannel(user, "123")).toBe(true);

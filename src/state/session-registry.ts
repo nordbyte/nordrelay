@@ -333,8 +333,11 @@ export class SessionRegistry {
       if (pruned) {
         this.persistMetadata();
       }
-    } catch {
-      // Silently ignore load errors.
+    } catch (error) {
+      console.warn(
+        "Failed to load persisted context metadata:",
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 

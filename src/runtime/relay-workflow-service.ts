@@ -4,6 +4,8 @@ import type { PromptEnvelope } from "../state/prompt-store.js";
 import { createCorrelationId, toPromptEnvelope } from "../state/prompt-store.js";
 import {
   extractTemplateVariables,
+  assertRequiredTemplateVariables,
+  missingRequiredTemplateVariables,
   renderTemplateText,
   type PromptTemplate,
   type Workflow,
@@ -221,9 +223,7 @@ export class RelayWorkflowService {
       ? this.previewWorkflowVersion(id, versionNumber, variables)
       : this.previewWorkflow(id, variables);
     const defs = this.workflowVariableDefinitions(workflow);
-    const missingVariables = defs
-      .filter((variable) => variable.required && !Object.prototype.hasOwnProperty.call(variables, variable.name) && !variable.defaultValue)
-      .map((variable) => variable.name);
+    const missingVariables = missingRequiredTemplateVariables(defs, variables);
     const warnings: string[] = [];
     if (!workflow.steps.length) warnings.push("Workflow has no steps.");
     const approvalSteps = workflow.steps.filter((step) => step.requiresApproval).length;
@@ -274,6 +274,9 @@ export class RelayWorkflowService {
     if (!match.trigger.enabled) {
       throw new Error("Workflow trigger is disabled.");
     }
+    const version = this.options.store.latestVersion("workflow", match.workflow.id);
+    const workflowForRun = (version?.snapshot as Workflow | undefined) ?? match.workflow;
+    this.assertWorkflowRequiredVariables(workflowForRun, variables);
     this.options.store.markWorkflowTriggerUsed(match.workflow.id, match.trigger.id);
     const actor: WebActivityActor = {
       channel: "system",
@@ -281,7 +284,7 @@ export class RelayWorkflowService {
       label: `Workflow trigger: ${match.trigger.name}`,
     };
     this.record("workflow_trigger_run", "queued", `${match.workflow.name}: ${match.trigger.name}`, actor);
-    return this.queueWorkflowRun(match.workflow, variables, actor, this.options.store.latestVersion("workflow", match.workflow.id)?.version, this.options.store.latestVersion("workflow", match.workflow.id)?.snapshot as Workflow | undefined);
+    return this.queueWorkflowRun(workflowForRun, variables, actor, version?.version, version?.snapshot as Workflow | undefined);
   }
 
   async runTemplate(id: string, variables: Record<string, string> = {}, actor?: WebActivityActor): Promise<WorkflowRun> {
@@ -302,6 +305,7 @@ export class RelayWorkflowService {
     templateVersion?: number,
     templateSnapshot?: PromptTemplate,
   ): Promise<WorkflowRun> {
+    assertRequiredTemplateVariables(template.variables, variables, template.name);
     const prompt = renderPromptTemplate(template, variables);
     const now = new Date().toISOString();
     const run: WorkflowRun = this.options.store.saveRun({
@@ -423,6 +427,7 @@ export class RelayWorkflowService {
     if (workflow.steps.length === 0) {
       throw new Error("Workflow has no steps.");
     }
+    this.assertWorkflowRequiredVariables(workflow, variables);
     const now = new Date().toISOString();
     const run = this.options.store.saveRun({
       id: createRunId(),
@@ -781,6 +786,7 @@ export class RelayWorkflowService {
     if (depth >= MAX_SUBFLOW_DEPTH) throw new Error("Workflow subflow depth limit reached.");
     if (!step.workflowId) throw new Error(`Workflow step ${step.name} has no subflow.`);
     const workflow = this.requireWorkflow(step.workflowId);
+    this.assertWorkflowRequiredVariables(workflow, variables);
     const version = this.options.store.latestVersion("workflow", workflow.id);
     const now = new Date().toISOString();
     const run = this.options.store.saveRun({
@@ -870,6 +876,10 @@ export class RelayWorkflowService {
       }
     }
     return [...variables.values()];
+  }
+
+  private assertWorkflowRequiredVariables(workflow: Workflow, variables: Record<string, string>): void {
+    assertRequiredTemplateVariables(this.workflowVariableDefinitions(workflow), variables, workflow.name);
   }
 
   private failRun(run: WorkflowRun, error: unknown, actor?: WebActivityActor): WorkflowRun {

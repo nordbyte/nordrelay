@@ -47,7 +47,14 @@ export function parseCookies(cookieHeader: string): Record<string, string> {
   const cookies: Record<string, string> = {};
   for (const part of cookieHeader.split(";")) {
     const [key, ...valueParts] = part.trim().split("=");
-    if (key) cookies[key] = decodeURIComponent(valueParts.join("=") ?? "");
+    if (!key) {
+      continue;
+    }
+    try {
+      cookies[key] = decodeURIComponent(valueParts.join("=") ?? "");
+    } catch {
+      // Malformed cookie values should not turn auth/session checks into 500s.
+    }
   }
   return cookies;
 }
@@ -58,6 +65,14 @@ export class RequestBodyTooLargeError extends Error {
 
 export function isRequestBodyTooLargeError(error: unknown): error is RequestBodyTooLargeError {
   return error instanceof RequestBodyTooLargeError;
+}
+
+export class InvalidJsonBodyError extends Error {
+  readonly statusCode = 400;
+}
+
+export function isInvalidJsonBodyError(error: unknown): error is InvalidJsonBodyError {
+  return error instanceof InvalidJsonBodyError;
 }
 
 export class WebAccessDeniedError extends Error {
@@ -84,7 +99,12 @@ export async function readJsonBody(req: IncomingMessage, maxBytes = DEFAULT_JSON
   if (!text) {
     return {};
   }
-  return JSON.parse(text) as Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch (error) {
+    throw new InvalidJsonBodyError(`Invalid JSON request body: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 export function sendJson(res: ServerResponse, status: number, value: unknown): void {

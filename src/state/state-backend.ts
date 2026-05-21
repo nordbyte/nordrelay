@@ -1,8 +1,7 @@
 import { createRequire } from "node:module";
-import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-import { assertSupportedStatePayload, readJsonFileWithBackup, StatePersistenceError, updateJsonFileAtomic, writeJsonFileAtomic } from "./persistence.js";
+import { assertSupportedStatePayload, chmodPrivateFile, ensurePrivateDir, readJsonFileWithBackup, StatePersistenceError, updateJsonFileAtomic, writeJsonFileAtomic } from "./persistence.js";
 
 export type StateBackendKind = "json" | "sqlite";
 
@@ -65,8 +64,9 @@ export function checkStateBackendAvailability(
   const filePath = stateBackendPath(workspace, "sqlite");
   let db: SqliteDatabase | undefined;
   try {
-    mkdirSync(path.dirname(filePath), { recursive: true });
+    ensurePrivateDir(path.dirname(filePath));
     db = new Database(filePath);
+    chmodPrivateFile(filePath);
     db.exec("SELECT 1");
     return { ok: true, detail: `SQLite state backend is available at ${filePath}.` };
   } catch (error) {
@@ -114,8 +114,9 @@ function createSqliteDocumentStore<TValue>(options: DocumentStoreOptions): Docum
   const filePath = stateBackendPath(options.workspace, "sqlite");
   let db: SqliteDatabase;
   try {
-    mkdirSync(path.dirname(filePath), { recursive: true });
+    ensurePrivateDir(path.dirname(filePath));
     db = new Database(filePath);
+    chmodPrivateFile(filePath);
     db.exec([
       "CREATE TABLE IF NOT EXISTS documents (",
       "key TEXT PRIMARY KEY,",

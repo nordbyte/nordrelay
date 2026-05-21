@@ -1232,6 +1232,7 @@ describe("loadConfig", () => {
     expect(config.codexExternalBusyStaleMs).toBe(300_000);
     expect(config.logFormat).toBe("text");
     expect(warnSpy).toHaveBeenCalledTimes(9);
+    expect(warnSpy.mock.calls.flat().join("\n")).not.toMatch(/unsafe|sometimes|loud|xml|nope/);
   });
 
   it("parses explicit launch profiles and default selection", () => {
@@ -1308,7 +1309,7 @@ describe("loadConfig", () => {
     ]);
     process.env.CODEX_DEFAULT_LAUNCH_PROFILE = "missing";
 
-    expect(() => loadConfig()).toThrow("Unknown CODEX_DEFAULT_LAUNCH_PROFILE: missing");
+    expect(() => loadConfig()).toThrow("Unknown CODEX_DEFAULT_LAUNCH_PROFILE.");
   });
 
   it("throws when unsafe extra launch profiles are configured without enabling them", () => {

@@ -584,6 +584,30 @@ export function renderTemplateText(text: string, variables: Record<string, strin
   return text.replace(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*\}\}/g, (_match, name: string) => variables[name] ?? "");
 }
 
+export function missingRequiredTemplateVariables(
+  definitions: PromptTemplateVariable[],
+  variables: Record<string, string>,
+): string[] {
+  return definitions
+    .filter((variable) =>
+      variable.required !== false &&
+      variable.defaultValue === undefined &&
+      !Object.prototype.hasOwnProperty.call(variables, variable.name)
+    )
+    .map((variable) => variable.name);
+}
+
+export function assertRequiredTemplateVariables(
+  definitions: PromptTemplateVariable[],
+  variables: Record<string, string>,
+  label = "Workflow",
+): void {
+  const missing = missingRequiredTemplateVariables(definitions, variables);
+  if (missing.length > 0) {
+    throw new Error(`${label} is missing required variable(s): ${missing.join(", ")}`);
+  }
+}
+
 function normalizeTemplate(input: Partial<PromptTemplate> & Pick<PromptTemplate, "id" | "name" | "prompt">): PromptTemplate {
   const now = new Date().toISOString();
   const variables = input.variables?.length ? input.variables : extractTemplateVariables(input.prompt);

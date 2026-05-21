@@ -25,6 +25,8 @@ const DEFAULT_MARKETPLACE_ROOT = path.resolve(PLUGIN_ROOT, "../..");
 const RUNTIME_ROOT = findRuntimeRoot();
 const VERSION = readRuntimePackageVersion() || FALLBACK_VERSION;
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
+const PRIVATE_DIR_MODE = 0o700;
+const PRIVATE_FILE_MODE = 0o600;
 const LIFECYCLE_LOCK_TIMEOUT_MS = 10000;
 const LIFECYCLE_LOCK_STALE_MS = 60000;
 
@@ -234,10 +236,13 @@ async function readJson(filePath, fallback = null) {
 }
 
 async function writeJsonAtomic(filePath, payload) {
-  await mkdirp(path.dirname(filePath));
+  await fsp.mkdir(path.dirname(filePath), { recursive: true, mode: PRIVATE_DIR_MODE });
+  await fsp.chmod(path.dirname(filePath), PRIVATE_DIR_MODE).catch(() => {});
   const tmp = `${filePath}.${process.pid}.tmp`;
-  await fsp.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`);
+  await fsp.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { mode: PRIVATE_FILE_MODE });
+  await fsp.chmod(tmp, PRIVATE_FILE_MODE).catch(() => {});
   await fsp.rename(tmp, filePath);
+  await fsp.chmod(filePath, PRIVATE_FILE_MODE).catch(() => {});
 }
 
 function isProcessRunning(pid) {
@@ -370,14 +375,18 @@ async function writeWebState(options, patch) {
 function resolveDashboardEndpoint(options, settings = {}) {
   const host = options.host || process.env.NORDRELAY_DASHBOARD_HOST || "127.0.0.1";
   const rawPort = options.port ?? Number.parseInt(process.env.NORDRELAY_DASHBOARD_PORT || "31878", 10);
-  if (!Number.isFinite(rawPort) || rawPort <= 0) {
+  if (!isValidPort(rawPort)) {
     if (settings.strict) {
-      throw new Error("Dashboard port must be a positive number.");
+      throw new Error("Dashboard port must be an integer between 1 and 65535.");
     }
     return { host, port: 31878 };
   }
   const port = rawPort;
   return { host, port };
+}
+
+function isValidPort(port) {
+  return Number.isInteger(port) && port >= 1 && port <= 65535;
 }
 
 function isWebUiEnabled() {

@@ -61,6 +61,8 @@ vi.mock("node:fs", () => ({
   mkdirSync: vi.fn((targetPath: string) => {
     mockFsState.directories.add(targetPath);
   }),
+  chmodSync: vi.fn(),
+  statSync: vi.fn(() => ({ mtimeMs: Date.now() })),
   readFileSync: vi.fn((targetPath: string) => {
     const content = mockFsState.files.get(targetPath);
     if (content === undefined) {
@@ -619,6 +621,21 @@ describe("SessionRegistry", () => {
         updatedAt: expect.any(Number),
       },
     ]);
+  });
+
+  it("warns when persisted metadata cannot be loaded", () => {
+    const config = createConfig();
+    const persistPath = path.join(config.workspace, ".nordrelay", "contexts.json");
+    mockFsState.files.set(persistPath, "{broken");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const registry = new SessionRegistry(config);
+
+    expect(registry.listContexts()).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(
+      "Failed to load persisted context metadata:",
+      expect.stringContaining("Cannot read state file"),
+    );
   });
 
   it("merges persisted metadata instead of overwriting unrelated contexts", async () => {

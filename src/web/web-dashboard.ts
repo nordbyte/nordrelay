@@ -30,6 +30,7 @@ import {
   sendText,
   sendStaticFile,
   isRequestBodyTooLargeError,
+  isInvalidJsonBodyError,
   isWebAccessDeniedError,
   WebAccessDeniedError,
   registerWebResponseRequest,
@@ -57,6 +58,7 @@ const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 const WEB_API_MUTATION_LIMIT = 240;
 const WEB_API_MUTATION_WINDOW_MS = 60_000;
 const WEB_API_MUTATION_BLOCK_MS = 60_000;
+const WORKFLOW_TRIGGER_BODY_LIMIT_BYTES = 256 * 1024;
 
 const options = parseOptions(process.argv.slice(2));
 loadEnvFile(resolveDashboardEnvPath(options.home));
@@ -94,7 +96,13 @@ const server = createServer((req, res) => {
     });
   });
   void handleRequest(req, res).catch((error) => {
-    const status = isWebAccessDeniedError(error) ? 403 : isRequestBodyTooLargeError(error) ? 413 : 500;
+    const status = isWebAccessDeniedError(error)
+      ? 403
+      : isRequestBodyTooLargeError(error)
+        ? 413
+        : isInvalidJsonBodyError(error)
+          ? 400
+          : 500;
     sendJson(res, status, { error: friendlyErrorText(error) });
   });
 });
@@ -278,7 +286,7 @@ async function handleWorkflowTriggerRun(req: IncomingMessage, res: ServerRespons
     sendJson(res, 429, { error: "Too many workflow trigger requests. Try again later.", retryAfterMs: limited.retryAfterMs });
     return;
   }
-  const body = await readJsonBody(req).catch((): Record<string, unknown> => ({}));
+  const body = await readJsonBody(req, WORKFLOW_TRIGGER_BODY_LIMIT_BYTES);
   const variables = Object.fromEntries(
     Object.entries(objectRecord(body?.variables)).map(([key, value]) => [key, String(value ?? "")]),
   );
@@ -643,8 +651,8 @@ function parseOptions(argv: string[]): DashboardOptions {
     else if (arg === "--port") port = Number.parseInt(requireArg(argv, ++index, arg), 10);
     else if (arg === "--home") home = requireArg(argv, ++index, arg);
   }
-  if (!Number.isFinite(port) || port <= 0) {
-    throw new Error("Dashboard port must be a positive number.");
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error("Dashboard port must be an integer between 1 and 65535.");
   }
   return { host, port, home };
 }
@@ -839,7 +847,7 @@ function canUseSession(authUser: AuthenticatedUser, session: { agentId?: string;
     : typeof session.cwd === "string"
       ? session.cwd
       : undefined;
-  return users.canUseAgent(authUser, agentId) && users.canUseWorkspace(authUser, workspace);
+  return users.canUseAgentStrict(authUser, agentId) && users.canUseWorkspaceStrict(authUser, workspace);
 }
 
 function assertAgentUpdateJobScope(authUser: AuthenticatedUser, id: string): void {
@@ -866,14 +874,18 @@ function assertSessionDetailScope(authUser: AuthenticatedUser, threadId: string,
 }
 
 function assertScopedAgent(authUser: AuthenticatedUser, agentId: string | undefined): void {
-  if (!users.canUseAgent(authUser, agentId)) {
-    throw new AccessDeniedError(`Access denied: agent ${agentId} is outside your group scope.`);
+  if (!users.canUseAgentStrict(authUser, agentId)) {
+    throw new AccessDeniedError(agentId
+      ? `Access denied: agent ${agentId} is outside your group scope.`
+      : "Access denied: session agent is missing or outside your group scope.");
   }
 }
 
 function assertScopedWorkspace(authUser: AuthenticatedUser, workspace: string | undefined): void {
-  if (!users.canUseWorkspace(authUser, workspace)) {
-    throw new AccessDeniedError(`Access denied: workspace ${workspace} is outside your group scope.`);
+  if (!users.canUseWorkspaceStrict(authUser, workspace)) {
+    throw new AccessDeniedError(workspace
+      ? `Access denied: workspace ${workspace} is outside your group scope.`
+      : "Access denied: session workspace is missing or outside your group scope.");
   }
 }
 

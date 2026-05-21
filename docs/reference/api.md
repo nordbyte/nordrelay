@@ -33,13 +33,13 @@ The WebUI uses internal HTTP and SSE endpoints. They are part of the local dashb
 | --- | --- |
 | `/api/sessions` | Session listing and details |
 | `/api/prompt` | Submit prompts |
-| `/api/upload` | Upload attachments |
+| `/api/prompt/upload` | Upload attachments |
 | `/api/abort` | Abort active work |
 | `/api/stop` | Stop active work |
 | `/api/retry` | Retry prompt/message |
 | `/api/sync` | Sync selected session state |
-| `/api/chat-history` | WebUI chat history |
-| `/api/mirror` | Mirror settings |
+| `/api/chat/history` | WebUI chat history |
+| `/api/chat/mirror` | Mirror settings |
 
 ## Administration
 
@@ -47,7 +47,10 @@ The WebUI uses internal HTTP and SSE endpoints. They are part of the local dashb
 | --- | --- |
 | `/api/users` | User management |
 | `/api/groups` | Group management |
-| `/api/channels` | Registered chat channels and rooms |
+| `/api/telegram-chats` | Registered Telegram chats |
+| `/api/discord-channels` | Registered Discord channels |
+| `/api/slack-channels` | Registered Slack channels |
+| `/api/matrix-rooms` | Registered Matrix rooms |
 | `/api/audit` | Audit events |
 | `/api/locks` | User lock state |
 | `/api/settings` | Runtime settings |
@@ -66,6 +69,7 @@ The WebUI uses internal HTTP and SSE endpoints. They are part of the local dashb
 | `/api/logs` | Logs |
 | `/api/artifacts` | Artifact listing and actions |
 | `/api/workflows` | Workflow and template management |
+| `/api/workflow-triggers/:token/run` | Token-authenticated workflow trigger webhook |
 | `/api/peers` | Peer management and proxying |
 
 Use the generated route and type files in `src/web/` when integrating with the internal WebUI contract.

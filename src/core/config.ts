@@ -784,7 +784,7 @@ function parseBooleanEnv(raw: string | undefined, defaultValue: boolean): boolea
     return false;
   }
 
-  console.warn(`Invalid boolean env value: "${raw}". Falling back to ${defaultValue}.`);
+  console.warn(`Invalid boolean env value. Falling back to ${defaultValue}.`);
   return defaultValue;
 }
 
@@ -795,7 +795,7 @@ function parseMaxFileSize(raw: string | undefined): number {
 
   const parsed = Number(raw);
   if (Number.isNaN(parsed) || parsed <= 0) {
-    console.warn(`Invalid MAX_FILE_SIZE value: "${raw}". Falling back to 20 MB.`);
+    console.warn("Invalid MAX_FILE_SIZE value. Falling back to 20 MB.");
     return 20 * 1024 * 1024;
   }
 
@@ -809,7 +809,7 @@ function parsePositiveNumberEnv(raw: string | undefined, defaultValue: number, e
 
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    console.warn(`Invalid ${envName} value: "${raw}". Falling back to ${defaultValue}.`);
+    console.warn(`Invalid ${envName} value. Falling back to ${defaultValue}.`);
     return defaultValue;
   }
 
@@ -828,7 +828,7 @@ function parseNonNegativeIntegerEnv(raw: string | undefined, defaultValue: numbe
 
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed < 0) {
-    console.warn(`Invalid ${envName} value: "${raw}". Falling back to ${defaultValue}.`);
+    console.warn(`Invalid ${envName} value. Falling back to ${defaultValue}.`);
     return defaultValue;
   }
 
@@ -841,7 +841,7 @@ function parsePercentEnv(raw: string | undefined, defaultValue: number, envName:
   }
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
-    console.warn(`Invalid ${envName} value: "${raw}". Falling back to ${defaultValue}.`);
+    console.warn(`Invalid ${envName} value. Falling back to ${defaultValue}.`);
     return defaultValue;
   }
   return parsed;
@@ -850,7 +850,7 @@ function parsePercentEnv(raw: string | undefined, defaultValue: number, envName:
 function parseArtifactSafeFilePolicy(raw: string | undefined): ArtifactSafeFilePolicy {
   if (!raw) return "warn";
   if (raw === "off" || raw === "warn" || raw === "block") return raw;
-  console.warn(`Invalid ARTIFACT_SAFE_FILE_POLICY value: "${raw}". Expected off, warn, or block. Falling back to "warn".`);
+  console.warn('Invalid ARTIFACT_SAFE_FILE_POLICY value. Expected off, warn, or block. Falling back to "warn".');
   return "warn";
 }
 
@@ -861,7 +861,7 @@ function parseSandboxMode(raw: string | undefined): CodexSandboxMode {
 
   if (!isCodexSandboxMode(raw)) {
     console.warn(
-      `Invalid CODEX_SANDBOX_MODE value: "${raw}". Expected one of: read-only, workspace-write, danger-full-access. Falling back to "workspace-write".`,
+      'Invalid CODEX_SANDBOX_MODE value. Expected one of: read-only, workspace-write, danger-full-access. Falling back to "workspace-write".',
     );
     return "workspace-write";
   }
@@ -876,7 +876,7 @@ function parseApprovalPolicy(raw: string | undefined): CodexApprovalPolicy {
 
   if (!isCodexApprovalPolicy(raw)) {
     console.warn(
-      `Invalid CODEX_APPROVAL_POLICY value: "${raw}". Expected one of: never, on-request, on-failure, untrusted. Falling back to "never".`,
+      'Invalid CODEX_APPROVAL_POLICY value. Expected one of: never, on-request, on-failure, untrusted. Falling back to "never".',
     );
     return "never";
   }
@@ -897,7 +897,7 @@ function parseToolVerbosity(raw: string | undefined): ToolVerbosity {
       return raw;
     default:
       console.warn(
-        `Invalid TOOL_VERBOSITY value: "${raw}". Expected one of: all, summary, errors-only, none. Falling back to "summary".`,
+        'Invalid TOOL_VERBOSITY value. Expected one of: all, summary, errors-only, none. Falling back to "summary".',
       );
       return "summary";
   }
@@ -912,7 +912,7 @@ function parseLogFormat(raw: string | undefined): ConnectorLogFormat {
     return raw;
   }
 
-  console.warn(`Invalid CONNECTOR_LOG_FORMAT value: "${raw}". Expected text or json. Falling back to "text".`);
+  console.warn('Invalid CONNECTOR_LOG_FORMAT value. Expected text or json. Falling back to "text".');
   return "text";
 }
 
@@ -923,7 +923,7 @@ function parseTelegramTransport(raw: string | undefined): "polling" | "webhook" 
   if (raw === "polling" || raw === "webhook") {
     return raw;
   }
-  console.warn(`Invalid TELEGRAM_TRANSPORT value: "${raw}". Expected polling or webhook. Falling back to polling.`);
+  console.warn("Invalid TELEGRAM_TRANSPORT value. Expected polling or webhook. Falling back to polling.");
   return "polling";
 }
 
@@ -934,7 +934,7 @@ function parseDiscordCommandMode(raw: string | undefined): "slash" | "message" |
   if (raw === "slash" || raw === "message" || raw === "both") {
     return raw;
   }
-  console.warn(`Invalid DISCORD_COMMAND_MODE value: "${raw}". Expected slash, message, or both. Falling back to both.`);
+  console.warn("Invalid DISCORD_COMMAND_MODE value. Expected slash, message, or both. Falling back to both.");
   return "both";
 }
 
@@ -964,7 +964,7 @@ function parseStateBackend(raw: string | undefined): StateBackendKind {
     return raw;
   }
 
-  console.warn(`Invalid NORDRELAY_STATE_BACKEND value: "${raw}". Expected json or sqlite. Falling back to json.`);
+  console.warn("Invalid NORDRELAY_STATE_BACKEND value. Expected json or sqlite. Falling back to json.");
   return "json";
 }
 
@@ -976,14 +976,14 @@ function parseSessionWorkspaceMode(raw: string | undefined): SessionWorkspaceMod
   if (SESSION_WORKSPACE_MODES.includes(normalized as SessionWorkspaceMode)) {
     return normalized as SessionWorkspaceMode;
   }
-  console.warn(`Invalid NORDRELAY_SESSION_WORKSPACE_MODE value: "${raw}". Expected shared, worktree, or attached. Falling back to shared.`);
+  console.warn("Invalid NORDRELAY_SESSION_WORKSPACE_MODE value. Expected shared, worktree, or attached. Falling back to shared.");
   return "shared";
 }
 
 function parseBranchPrefix(raw: string | undefined): string {
   const normalized = (raw?.trim() || "nr/session").replace(/^\/+|\/+$/g, "");
   if (!normalized || normalized.includes("..") || /[\s~^:?*[\\]/.test(normalized)) {
-    console.warn(`Invalid NORDRELAY_SESSION_WORKTREE_BRANCH_PREFIX value: "${raw}". Falling back to nr/session.`);
+    console.warn("Invalid NORDRELAY_SESSION_WORKTREE_BRANCH_PREFIX value. Falling back to nr/session.");
     return "nr/session";
   }
   return normalized;
@@ -1042,7 +1042,7 @@ function parseDefaultLaunchProfileId(
 
   const profile = findLaunchProfile(launchProfiles, raw);
   if (!profile) {
-    throw new Error(`Unknown CODEX_DEFAULT_LAUNCH_PROFILE: ${raw}`);
+    throw new Error("Unknown CODEX_DEFAULT_LAUNCH_PROFILE.");
   }
 
   return profile.id;
@@ -1077,7 +1077,7 @@ function parseDefaultAgent(
   }
 
   if (!isAgentId(raw)) {
-    throw new Error(`Invalid NORDRELAY_DEFAULT_AGENT: ${raw}. Expected codex, pi, hermes, openclaw, or claude-code`);
+    throw new Error("Invalid NORDRELAY_DEFAULT_AGENT. Expected codex, pi, hermes, openclaw, or claude-code");
   }
   if (raw === "codex" && !codexEnabled) {
     throw new Error("NORDRELAY_DEFAULT_AGENT=codex requires NORDRELAY_CODEX_ENABLED=true");
@@ -1105,7 +1105,7 @@ function parsePiThinkingLevel(raw: string | undefined): AgentReasoningEffort {
     return raw as AgentReasoningEffort;
   }
   console.warn(
-    `Invalid PI_DEFAULT_THINKING value: "${raw}". Expected one of: ${PI_THINKING_LEVELS.join(", ")}. Falling back to "medium".`,
+    `Invalid PI_DEFAULT_THINKING value. Expected one of: ${PI_THINKING_LEVELS.join(", ")}. Falling back to "medium".`,
   );
   return "medium";
 }
@@ -1119,7 +1119,7 @@ function parseHermesReasoningEffort(raw: string | undefined): AgentReasoningEffo
     return normalized as AgentReasoningEffort;
   }
   console.warn(
-    `Invalid HERMES_DEFAULT_REASONING value: "${raw}". Expected one of: ${HERMES_REASONING_EFFORTS.join(", ")}. Falling back to model default.`,
+    `Invalid HERMES_DEFAULT_REASONING value. Expected one of: ${HERMES_REASONING_EFFORTS.join(", ")}. Falling back to model default.`,
   );
   return undefined;
 }
@@ -1132,7 +1132,7 @@ function parseOpenClawThinkingLevel(raw: string | undefined): AgentReasoningEffo
     return raw as AgentReasoningEffort;
   }
   console.warn(
-    `Invalid OPENCLAW_DEFAULT_THINKING value: "${raw}". Expected one of: ${OPENCLAW_THINKING_LEVELS.join(", ")}. Falling back to OpenClaw default.`,
+    `Invalid OPENCLAW_DEFAULT_THINKING value. Expected one of: ${OPENCLAW_THINKING_LEVELS.join(", ")}. Falling back to OpenClaw default.`,
   );
   return undefined;
 }
@@ -1145,7 +1145,7 @@ function parseClaudeCodeEffort(raw: string | undefined): AgentReasoningEffort | 
     return raw as AgentReasoningEffort;
   }
   console.warn(
-    `Invalid CLAUDE_CODE_DEFAULT_EFFORT value: "${raw}". Expected one of: ${CLAUDE_CODE_EFFORT_LEVELS.join(", ")}. Falling back to Claude Code default.`,
+    `Invalid CLAUDE_CODE_DEFAULT_EFFORT value. Expected one of: ${CLAUDE_CODE_EFFORT_LEVELS.join(", ")}. Falling back to Claude Code default.`,
   );
   return undefined;
 }

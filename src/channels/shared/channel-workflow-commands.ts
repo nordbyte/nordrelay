@@ -1,5 +1,12 @@
 import type { ConnectorConfig } from "../../core/config.js";
-import { WorkflowStore, renderTemplateText, type Workflow, type PromptTemplate } from "../../state/workflow-store.js";
+import {
+  WorkflowStore,
+  assertRequiredTemplateVariables,
+  extractTemplateVariables,
+  renderTemplateText,
+  type PromptTemplate,
+  type Workflow,
+} from "../../state/workflow-store.js";
 
 export interface ChannelWorkflowSelection {
   id: string;
@@ -26,6 +33,7 @@ export function renderChannelWorkflowList(config: ConnectorConfig): string {
 export function channelTemplatePrompt(config: ConnectorConfig, id: string, variables: Record<string, string> = {}): ChannelWorkflowSelection {
   const store = new WorkflowStore(config.workspace, config.stateBackend);
   const template = requireTemplate(store, id);
+  assertRequiredTemplateVariables(template.variables, variables, template.name);
   return {
     id: template.id,
     name: template.name,
@@ -36,6 +44,7 @@ export function channelTemplatePrompt(config: ConnectorConfig, id: string, varia
 export function channelWorkflowPrompts(config: ConnectorConfig, id: string, variables: Record<string, string> = {}): ChannelWorkflowSelection[] {
   const store = new WorkflowStore(config.workspace, config.stateBackend);
   const workflow = requireWorkflow(store, id);
+  assertWorkflowRequiredVariables(store, workflow, variables);
   return workflow.steps.map((step) => {
     const template = step.templateId ? requireTemplate(store, step.templateId) : null;
     const prompt = template ? renderTemplate(template, variables) : renderTemplateText(step.prompt ?? "", variables).trim();
@@ -81,4 +90,21 @@ function requireWorkflow(store: WorkflowStore, id: string): Workflow {
 function renderTemplate(template: PromptTemplate, variables: Record<string, string>): string {
   const defaults = Object.fromEntries(template.variables.map((variable) => [variable.name, variable.defaultValue ?? ""]));
   return renderTemplateText(template.prompt, { ...defaults, ...variables }).trim();
+}
+
+function assertWorkflowRequiredVariables(store: WorkflowStore, workflow: Workflow, variables: Record<string, string>, seen = new Set<string>()): void {
+  if (seen.has(workflow.id)) return;
+  seen.add(workflow.id);
+  for (const step of workflow.steps) {
+    if (step.type === "workflow" && step.workflowId) {
+      assertWorkflowRequiredVariables(store, requireWorkflow(store, step.workflowId), variables, seen);
+      continue;
+    }
+    if (step.templateId) {
+      const template = requireTemplate(store, step.templateId);
+      assertRequiredTemplateVariables(template.variables, variables, `${workflow.name} / ${step.name}`);
+      continue;
+    }
+    assertRequiredTemplateVariables(extractTemplateVariables(step.prompt ?? ""), variables, `${workflow.name} / ${step.name}`);
+  }
 }

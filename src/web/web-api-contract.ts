@@ -16,6 +16,7 @@ export interface WebApiRouteDefinition<
   path: Path;
   methods: Methods;
   permissions: WebPermissionRule;
+  auth?: "authenticated" | "anonymous-token";
   pattern?: string;
   dynamicType?: string;
 }
@@ -128,7 +129,14 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   dynamic("/api/workflows/:id", "^/api/workflows/[^/]+$", ["PUT", "DELETE"], "workflows.write", `/api/workflows/${stringToken}`),
   dynamic("/api/workflows/:id/run", "^/api/workflows/[^/]+/run$", ["POST"], "workflows.run", `/api/workflows/${stringToken}/run`),
   dynamic("/api/workflows/:id/preview", "^/api/workflows/[^/]+/preview$", ["POST"], "workflows.read", `/api/workflows/${stringToken}/preview`),
-  dynamic("/api/workflow-triggers/:token/run", "^/api/workflow-triggers/[^/]+/run$", ["POST"], "workflows.run", `/api/workflow-triggers/${stringToken}/run`),
+  dynamic(
+    "/api/workflow-triggers/:token/run",
+    "^/api/workflow-triggers/[^/]+/run$",
+    ["POST"],
+    "workflows.run",
+    `/api/workflow-triggers/${stringToken}/run`,
+    "anonymous-token",
+  ),
   dynamic("/api/workflow-runs/:id", "^/api/workflow-runs/[^/]+$", ["GET"], "workflows.read", `/api/workflow-runs/${stringToken}`),
   dynamic("/api/workflow-runs/:id/report", "^/api/workflow-runs/[^/]+/report$", ["GET"], "workflows.read", `/api/workflow-runs/${stringToken}/report`),
   dynamic("/api/workflow-runs/:id/cancel", "^/api/workflow-runs/[^/]+/cancel$", ["POST"], "workflows.run", `/api/workflow-runs/${stringToken}/cancel`),
@@ -218,6 +226,9 @@ export function permissionForWebRequestFromContract(method: string | undefined, 
   if (!rule) {
     return null;
   }
+  if (rule.auth === "anonymous-token") {
+    return null;
+  }
   return resolvePermission(rule.permissions, verb);
 }
 
@@ -225,14 +236,16 @@ function exact<const Path extends string, const Methods extends readonly WebHttp
   path: Path,
   methods: Methods,
   permissions: WebPermissionRule,
+  auth?: WebApiRouteDefinition["auth"],
 ): {
   path: Path;
   methods: Methods;
   permissions: WebPermissionRule;
+  auth?: WebApiRouteDefinition["auth"];
   pattern?: undefined;
   dynamicType?: undefined;
 } {
-  return { path, methods, permissions };
+  return { path, methods, permissions, auth };
 }
 
 function dynamic<
@@ -246,14 +259,16 @@ function dynamic<
   methods: Methods,
   permissions: WebPermissionRule,
   dynamicType: DynamicType,
+  auth?: WebApiRouteDefinition["auth"],
 ): {
   path: Path;
   pattern: Pattern;
   methods: Methods;
   permissions: WebPermissionRule;
   dynamicType: DynamicType;
+  auth?: WebApiRouteDefinition["auth"];
 } {
-  return { path, pattern, methods, permissions, dynamicType };
+  return { path, pattern, methods, permissions, dynamicType, auth };
 }
 
 function readWrite(read: Permission, write: Permission): WebPermissionRule {
