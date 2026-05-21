@@ -35,6 +35,7 @@ export const CHANNEL_COMMANDS: readonly ChannelCommandDefinition[] = [
   { name: "register_channel", description: "Enable this Discord channel for NordRelay", telegram: false },
   { name: "channels", description: "Messaging adapter status", discordDescription: "Show channel adapters" },
   { name: "peers", description: "NordRelay peer status", discordDescription: "Show paired NordRelay instances" },
+  { name: "nodes", description: "Select local or peer node", discordDescription: "Select the local node or a peer" },
   { name: "target", description: "Select local or peer target", discordDescription: "Select local or peer target", discordOptions: [textOption("value", "local or peer id")] },
   { name: "agents", description: "Agent adapter status", discordDescription: "Show agent adapters" },
   { name: "agent", description: "Select agent", discordDescription: "Select or show the active agent", discordOptions: [textOption("value", "Agent id")] },

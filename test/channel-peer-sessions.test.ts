@@ -25,15 +25,17 @@ describe("channel peer session helpers", () => {
   it("lists and switches sessions through the selected peer", async () => {
     const preferencesStore = new BotPreferencesStore(tempWorkspace());
     preferencesStore.update("telegram:1", { targetPeerId: "peer-a" });
+    const requests: PeerWebProxyPayload[] = [];
     const client = fakeClient({
       "/api/snapshot": { session: sessionInfo("thread-1") },
       "/api/sessions": { sessions: [threadRecord("thread-1"), threadRecord("thread-2")] },
       "/api/sessions/switch": { session: sessionInfo("thread-2") },
-    });
+    }, requests);
 
     const listed = await listTargetPeerSessions({ contextKey: "telegram:1", preferencesStore, remoteClient: client });
     expect(listed?.sessions.map((record) => record.id)).toEqual(["thread-1", "thread-2"]);
     expect(listed?.activeThreadId).toBe("thread-1");
+    expect(requests.find((payload) => payload.path === "/api/sessions")?.query).toMatchObject({ agent: "codex" });
 
     const switched = await switchTargetPeerSession({ contextKey: "telegram:1", preferencesStore, remoteClient: client, threadId: "thread-2" });
     expect(switched?.info.threadId).toBe("thread-2");
@@ -61,9 +63,10 @@ describe("channel peer session helpers", () => {
   });
 });
 
-function fakeClient(responses: Record<string, unknown>): RemotePeerWebClient {
+function fakeClient(responses: Record<string, unknown>, requests: PeerWebProxyPayload[] = []): RemotePeerWebClient {
   return {
     async webProxy(_peerId: string, payload: PeerWebProxyPayload): Promise<unknown> {
+      requests.push(payload);
       if (!(payload.path in responses)) {
         throw new Error(`Unexpected path ${payload.path}`);
       }

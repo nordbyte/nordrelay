@@ -120,7 +120,7 @@ import { registerTelegramDiagnosticsCommands } from "./telegram-diagnostics-comm
 import { registerTelegramGeneralCommands } from "./telegram-general-commands.js";
 import { registerTelegramLastCommand } from "./telegram-last-command.js";
 import { registerTelegramOperationalCommands } from "./telegram-operational-commands.js";
-import { handleTargetPeerSessionCallback, handleTargetPeerSessionsCommand, replyTargetPeerSession } from "./telegram-peer-session-commands.js";
+import { handleTargetPeerSessionCallback, handleTargetPeerSessionsCommand, registerTelegramNodeTargetCallback, replyTargetPeerSession } from "./telegram-peer-session-commands.js";
 import { registerTelegramPreferenceCommands } from "./telegram-preference-commands.js";
 import {
   createQueuedPromptCancelKeyboard,
@@ -1071,6 +1071,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
   });
 
+  registerTelegramNodeTargetCallback({ bot, commandService, preferencesStore, syncPeerMirror: (key) => peerMirrorController.sync(key, telegramChannelContextFromKey(key)) });
   const handleUserPrompt = async (
     ctx: Context,
     contextKey: TelegramContextKey,
@@ -2899,7 +2900,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     pendingSessionButtons.set(contextKey, sessionButtons);
     const keyboard = paginateKeyboard(sessionButtons, 0, "sess");
 
-    const heading = query ? `Matching threads (${orderedSessions.length})` : `Recent threads (${orderedSessions.length})`;
+    const heading = `${query ? "Matching threads" : "Recent threads"} on Local node · Agent: ${session.getInfo().agentLabel} (${orderedSessions.length})`;
     await safeReply(ctx, `<b>${escapeHTML(heading)}</b>:\nTap to switch.`, {
       fallbackText: `${heading}:\nTap to switch.`,
       replyMarkup: keyboard,

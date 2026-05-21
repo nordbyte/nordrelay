@@ -7,8 +7,10 @@ Telegram, Discord, Slack, and Matrix share the same core command behavior where 
 | Command | Purpose |
 | --- | --- |
 | `/help` | Show command help |
+| `/nodes` | Select local node or a trusted peer node |
+| `/target` | Set the local or peer target directly |
 | `/session` | Show the selected session |
-| `/sessions` | Browse and switch sessions |
+| `/sessions` | Browse and switch sessions on the selected node |
 | `/agent` | Select an agent |
 | `/model` | Select a model when supported |
 | `/reasoning` | Select reasoning or effort when supported |

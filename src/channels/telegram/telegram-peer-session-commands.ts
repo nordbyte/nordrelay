@@ -6,6 +6,8 @@ import { friendlyErrorText } from "../../core/error-messages.js";
 import { escapeHTML } from "../../core/format.js";
 import { formatRelativeTime } from "../shared/bot-rendering.js";
 import { renderSessionInfoHTML, renderSessionInfoPlain } from "../shared/session-format.js";
+import type { ChannelCommandService } from "../shared/channel-command-service.js";
+import { contextKeyFromCtx } from "../shared/context-key.js";
 import {
   listTargetPeerSessions,
   parseRemoteSessionChoice,
@@ -87,8 +89,9 @@ export async function handleTargetPeerSessionsCommand(options: {
     callbackData: `sess_${index}`,
   }));
   options.pendingSessionButtons.set(options.contextKey, sessionButtons);
-  await safeReply(options.ctx, `<b>${escapeHTML(`Remote threads on ${remote.peerLabel} (${remote.sessions.length})`)}</b>:\nTap to switch.`, {
-    fallbackText: `Remote threads on ${remote.peerLabel} (${remote.sessions.length}):\nTap to switch.`,
+  const heading = `Sessions on ${remote.peerLabel} · Agent: ${remote.agentLabel ?? remote.agentId ?? "-"}`;
+  await safeReply(options.ctx, `<b>${escapeHTML(`${heading} (${remote.sessions.length})`)}</b>:\nTap to switch.`, {
+    fallbackText: `${heading} (${remote.sessions.length}):\nTap to switch.`,
     replyMarkup: paginateKeyboard(sessionButtons, 0, "sess"),
   });
   return true;
@@ -112,6 +115,67 @@ export async function handleTargetPeerSessionCallback(options: {
   await options.ctx.answerCallbackQuery({ text: "Switching remote..." });
   await switchAndReply(options, remoteChoice.threadId, options.messageId);
   return true;
+}
+
+export function registerTelegramNodeTargetCallback(options: {
+  bot: Bot<Context>;
+  commandService: Pick<ChannelCommandService, "renderNodeTargetAction">;
+  preferencesStore: BotPreferencesStore;
+  syncPeerMirror(contextKey: TelegramContextKey): void;
+}): void {
+  options.bot.callbackQuery(/^node_target:(local|peer:.+)$/, async (ctx) => {
+    const contextKey = contextKeyFromCtx(ctx);
+    const chatId = ctx.chat?.id;
+    const messageId = ctx.callbackQuery.message?.message_id;
+    if (!contextKey || !chatId) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    await handleTelegramNodeTargetCallback({
+      ctx,
+      bot: options.bot,
+      chatId,
+      messageId,
+      contextKey,
+      commandService: options.commandService,
+      preferencesStore: options.preferencesStore,
+      action: `node_target:${ctx.match?.[1] ?? "local"}`,
+      syncPeerMirror: options.syncPeerMirror,
+    });
+  });
+}
+
+export async function handleTelegramNodeTargetCallback(options: {
+  ctx: Context;
+  bot: Bot<Context>;
+  chatId: TelegramChatId;
+  messageId?: number;
+  contextKey: TelegramContextKey;
+  commandService: Pick<ChannelCommandService, "renderNodeTargetAction">;
+  preferencesStore: BotPreferencesStore;
+  action: string;
+  syncPeerMirror(contextKey: TelegramContextKey): void;
+}): Promise<void> {
+  try {
+    const rendered = options.commandService.renderNodeTargetAction({
+      source: "telegram",
+      contextKey: options.contextKey,
+      argument: "",
+      preferencesStore: options.preferencesStore,
+      action: options.action,
+    });
+    await options.ctx.answerCallbackQuery({ text: "Node selected" });
+    options.syncPeerMirror(options.contextKey);
+    if (options.messageId) {
+      await safeEditMessage(options.bot, options.chatId, options.messageId, rendered.html, {
+        fallbackText: rendered.plain,
+      });
+    } else {
+      await safeReply(options.ctx, rendered.html, { fallbackText: rendered.plain });
+    }
+  } catch (error) {
+    await options.ctx.answerCallbackQuery({ text: friendlyErrorText(error), show_alert: true });
+  }
 }
 
 async function switchAndReply(options: {

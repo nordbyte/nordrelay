@@ -17,6 +17,7 @@ export interface DiscordSessionPageState {
   contextKey: ChannelContextKey;
   source: DiscordSessionPageSource;
   query: string;
+  title?: string;
   records: DiscordSessionListRecord[];
   page: number;
   pageSize: number;

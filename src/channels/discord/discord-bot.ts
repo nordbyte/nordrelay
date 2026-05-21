@@ -572,6 +572,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       { names: ["start", "help"], handler: (request) => commandHelp(request) },
       { names: ["channels"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderChannels()).then(() => {}) },
       { names: ["peers"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderPeers()).then(() => {}) },
+      { names: ["nodes"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderNodeTargets({ source: "discord", contextKey: request.contextKey, argument: "", preferencesStore })).then(() => {}) },
       { names: ["target"], handler: async (request, argument) => {
         await deliverChannelAction(runtime, request.context, commandService.renderTargetPreference({ source: "discord", contextKey: request.contextKey, argument, preferencesStore }));
         peerMirrorController.sync(request.contextKey, request.context);
@@ -796,10 +797,11 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     if (remote) {
       const records = remote.sessions;
       if (records.length === 0) { await reply(request, "No remote sessions found."); return; }
+      const title = `Sessions on ${remote.peerLabel} · Agent: ${remote.agentLabel ?? remote.agentId ?? "-"}`;
       const rendered = renderDiscordSessionPageAction(
-        `Remote sessions · ${remote.peerLabel}`,
+        title,
         records,
-        createSessionPage("sessions", request.contextKey, query, records, records.map((record) => remoteSessionChoiceValue(remote.peerId, record.id))),
+        createSessionPage("sessions", request.contextKey, query, records, records.map((record) => remoteSessionChoiceValue(remote.peerId, record.id)), title),
       );
       await reply(request, rendered.text, { buttons: rendered.buttons });
       return;
@@ -807,7 +809,12 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     const session = await getSession(request, { deferThreadStart: true });
     const records = listDiscordSessionRecords(session, query);
     if (records.length === 0) { await reply(request, "No sessions found."); return; }
-    const rendered = renderDiscordSessionPageAction("Sessions", records, createSessionPage("sessions", request.contextKey, query, records));
+    const title = `Sessions on Local node · Agent: ${session.getInfo().agentLabel}`;
+    const rendered = renderDiscordSessionPageAction(
+      title,
+      records,
+      createSessionPage("sessions", request.contextKey, query, records, undefined, title),
+    );
     await reply(request, rendered.text, { buttons: rendered.buttons });
   };
 
@@ -1303,7 +1310,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
         if (pick) pick.values = refreshed.map((record) => record.id);
       }
     } else state.page += action === "next" ? 1 : -1;
-    const rendered = renderDiscordSessionPageAction(state.source === "pinned" ? "Pinned threads" : "Sessions", state.records, pickId, state.page, state.pageSize);
+    const rendered = renderDiscordSessionPageAction(state.title ?? (state.source === "pinned" ? "Pinned threads" : "Sessions"), state.records, pickId, state.page, state.pageSize);
     state.page = rendered.page;
     await editSessionPageReply(request, rendered.text, rendered.buttons);
   };
@@ -1507,6 +1514,18 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     if (request.interaction?.isButton()) {
       await request.interaction.deferUpdate().catch(() => {});
     }
+    const nodeTargetMatch = action.match(/^node_target:(local|peer:.+)$/);
+    if (nodeTargetMatch?.[1]) {
+      await deliverChannelAction(runtime, request.context, commandService.renderNodeTargetAction({
+        source: "discord",
+        contextKey: request.contextKey,
+        argument: "",
+        preferencesStore,
+        action: `node_target:${nodeTargetMatch[1]}`,
+      }));
+      peerMirrorController.sync(request.contextKey, request.context);
+      return;
+    }
     const sessionPageMatch = action.match(/^discord_sessions_page:([^:]+):(prev|next|refresh)$/);
     if (sessionPageMatch?.[1] && sessionPageMatch[2]) {
       await commandSessionPage(request, sessionPageMatch[1], sessionPageMatch[2] as "prev" | "next" | "refresh");
@@ -1615,9 +1634,9 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     });
   };
 
-  const createSessionPage = (source: DiscordSessionPageSource, contextKey: ChannelContextKey, query: string, records: DiscordSessionListRecord[], values?: string[]): string => {
+  const createSessionPage = (source: DiscordSessionPageSource, contextKey: ChannelContextKey, query: string, records: DiscordSessionListRecord[], values?: string[], title?: string): string => {
     const id = createPick("session", values ?? records.map((record) => record.id));
-    sessionPages.set(id, { contextKey, source, query, records, page: 0, pageSize: DISCORD_SESSION_PAGE_SIZE, createdAt: Date.now() });
+    sessionPages.set(id, { contextKey, source, query, title, records, page: 0, pageSize: DISCORD_SESSION_PAGE_SIZE, createdAt: Date.now() });
     setTimeout(() => sessionPages.delete(id), 10 * 60 * 1000).unref?.();
     return id;
   };

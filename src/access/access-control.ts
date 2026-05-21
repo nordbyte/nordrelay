@@ -130,6 +130,7 @@ const COMMAND_PERMISSIONS = new Map<string, Permission>([
   ["version", "inspect"],
   ["channels", "inspect"],
   ["peers", "peers.read"],
+  ["nodes", "peers.connect"],
   ["target", "peers.connect"],
   ["agents", "inspect"],
   ["tasks", "inspect"],
@@ -202,6 +203,9 @@ export function permissionForCallbackData(callbackData: string | undefined): Per
   }
   if (callbackData === "noop_page") {
     return "inspect";
+  }
+  if (callbackData.startsWith("node_target:")) {
+    return "peers.connect";
   }
   if (/^(sess_|ws_)/.test(callbackData)) {
     return "sessions.write";

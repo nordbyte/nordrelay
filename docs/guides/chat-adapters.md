@@ -32,6 +32,7 @@ Most chat adapters support the same commands:
 
 ```text
 /help
+/nodes
 /session
 /sessions
 /agent

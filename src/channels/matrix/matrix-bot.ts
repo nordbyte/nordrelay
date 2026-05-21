@@ -545,6 +545,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
       { names: ["start", "help"], handler: (request) => commandHelp(request) },
       { names: ["channels"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderChannels()).then(() => {}) },
       { names: ["peers"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderPeers()).then(() => {}) },
+      { names: ["nodes"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderNodeTargets({ source: "matrix", contextKey: request.contextKey, argument: "", preferencesStore })).then(() => {}) },
       { names: ["target"], handler: async (request, argument) => {
         await deliverChannelAction(runtime, request.context, commandService.renderTargetPreference({ source: "matrix", contextKey: request.contextKey, argument, preferencesStore }));
         peerMirrorController.sync(request.contextKey, request.context);
@@ -742,6 +743,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
         await reply(request, query.trim() ? `No remote threads found matching "${query.trim()}".` : "No remote threads found.");
         return;
       }
+      const title = `Sessions on ${remote.peerLabel} · Agent: ${remote.agentLabel ?? remote.agentId ?? "-"}`;
       const pickId = createSessionPage(
         "sessions",
         request.contextKey,
@@ -749,8 +751,9 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
         records,
         undefined,
         records.map((record) => remoteSessionChoiceValue(remote.peerId, record.id)),
+        title,
       );
-      const rendered = renderMatrixSessionPageAction(`Remote threads · ${remote.peerLabel}`, records, pickId, {
+      const rendered = renderMatrixSessionPageAction(title, records, pickId, {
         activeThreadId: remote.activeThreadId,
         pinnedThreadIds: [],
       });
@@ -768,8 +771,9 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
       await reply(request, query.trim() ? `No threads found matching "${query.trim()}".` : "No recent threads found.");
       return;
     }
-    const pickId = createSessionPage("sessions", request.contextKey, query, records, session);
-    const rendered = renderMatrixSessionPageAction(query.trim() ? "Matching threads" : "Recent threads", records, pickId, {
+    const title = `${query.trim() ? "Matching threads" : "Recent threads"} on Local node · Agent: ${session.getInfo().agentLabel}`;
+    const pickId = createSessionPage("sessions", request.contextKey, query, records, session, undefined, title);
+    const rendered = renderMatrixSessionPageAction(title, records, pickId, {
       activeThreadId: session.getInfo().threadId,
       pinnedThreadIds: registry.listPinnedThreadIds(request.contextKey),
     });
@@ -1354,6 +1358,18 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
   };
 
   const handleButtonAction = async (request: MatrixRequest, action: string): Promise<void> => {
+    const nodeTargetMatch = action.match(/^node_target:(local|peer:.+)$/);
+    if (nodeTargetMatch?.[1]) {
+      await deliverChannelAction(runtime, request.context, commandService.renderNodeTargetAction({
+        source: "matrix",
+        contextKey: request.contextKey,
+        argument: "",
+        preferencesStore,
+        action: `node_target:${nodeTargetMatch[1]}`,
+      }));
+      peerMirrorController.sync(request.contextKey, request.context);
+      return;
+    }
     const sessionPageMatch = action.match(/^matrix_sessions_page:([^:]+):(prev|next|refresh)$/);
     if (sessionPageMatch?.[1] && sessionPageMatch[2]) {
       await commandSessionPage(request, sessionPageMatch[1], sessionPageMatch[2] as "prev" | "next" | "refresh");
@@ -1471,7 +1487,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
     } else {
       state.page += action === "next" ? 1 : -1;
     }
-    const rendered = renderMatrixSessionPageAction(state.source === "pinned" ? "Pinned threads" : (state.query.trim() ? "Matching threads" : "Recent threads"), state.records, pickId, {
+    const rendered = renderMatrixSessionPageAction(state.title ?? (state.source === "pinned" ? "Pinned threads" : (state.query.trim() ? "Matching threads" : "Recent threads")), state.records, pickId, {
       page: state.page,
       pageSize: state.pageSize,
       activeThreadId: state.activeThreadId,
@@ -1481,12 +1497,13 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
     await reply(request, rendered.text, { buttons: rendered.buttons });
   };
 
-  const createSessionPage = (source: MatrixSessionPageSource, contextKey: ChannelContextKey, query: string, records: MatrixSessionListRecord[], session?: AgentSessionService, values?: string[]): string => {
+  const createSessionPage = (source: MatrixSessionPageSource, contextKey: ChannelContextKey, query: string, records: MatrixSessionListRecord[], session?: AgentSessionService, values?: string[], title?: string): string => {
     const id = createPick("session", values ?? records.map((record) => record.id));
     sessionPages.set(id, {
       contextKey,
       source,
       query,
+      title,
       records,
       activeThreadId: session?.getInfo().threadId,
       pinnedThreadIds: session ? registry.listPinnedThreadIds(contextKey) : [],

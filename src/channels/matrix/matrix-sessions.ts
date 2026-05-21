@@ -16,6 +16,7 @@ export interface MatrixSessionPageState {
   contextKey: ChannelContextKey;
   source: MatrixSessionPageSource;
   query: string;
+  title?: string;
   records: MatrixSessionListRecord[];
   activeThreadId?: string | null;
   pinnedThreadIds: string[];

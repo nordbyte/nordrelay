@@ -539,6 +539,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
       { names: ["start", "help"], handler: (request) => commandHelp(request) },
       { names: ["channels"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderChannels()).then(() => {}) },
       { names: ["peers"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderPeers()).then(() => {}) },
+      { names: ["nodes"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderNodeTargets({ source: "slack", contextKey: request.contextKey, argument: "", preferencesStore })).then(() => {}) },
       { names: ["target"], handler: async (request, argument) => {
         await deliverChannelAction(runtime, request.context, commandService.renderTargetPreference({ source: "slack", contextKey: request.contextKey, argument, preferencesStore }));
         peerMirrorController.sync(request.contextKey, request.context);
@@ -737,7 +738,8 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
         return;
       }
       const pickId = createPick("session", records.map((record) => remoteSessionChoiceValue(remote.peerId, record.id)));
-      await reply(request, [`Remote sessions on ${remote.peerLabel}:`, ...records.map((record, index) => `${index + 1}. ${record.title || record.id}\n   ${record.id}\n   ${record.cwd || "-"}`)].join("\n"), {
+      const heading = `Sessions on ${remote.peerLabel} · Agent: ${remote.agentLabel ?? remote.agentId ?? "-"}`;
+      await reply(request, [`${heading}:`, ...records.map((record, index) => `${index + 1}. ${record.title || record.id}\n   ${record.id}\n   ${record.cwd || "-"}`)].join("\n"), {
         buttons: records.map((record, index) => [{ label: trimLine(record.title || record.id, 70), action: `slack_pick:${pickId}:${index}` }]),
       });
       return;
@@ -749,7 +751,8 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
       return;
     }
     const pickId = createPick("session", records.map((record) => record.id));
-    await reply(request, ["Sessions:", ...records.map((record, index) => `${index + 1}. ${record.title || record.id}\n   ${record.id}\n   ${record.cwd || "-"}`)].join("\n"), {
+    const heading = `Sessions on Local node · Agent: ${session.getInfo().agentLabel}`;
+    await reply(request, [`${heading}:`, ...records.map((record, index) => `${index + 1}. ${record.title || record.id}\n   ${record.id}\n   ${record.cwd || "-"}`)].join("\n"), {
       buttons: records.map((record, index) => [{ label: trimLine(record.title || record.id, 70), action: `slack_pick:${pickId}:${index}` }]),
     });
   };
@@ -1323,6 +1326,18 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
   };
 
   const handleButtonAction = async (request: SlackRequest, action: string): Promise<void> => {
+    const nodeTargetMatch = action.match(/^node_target:(local|peer:.+)$/);
+    if (nodeTargetMatch?.[1]) {
+      await deliverChannelAction(runtime, request.context, commandService.renderNodeTargetAction({
+        source: "slack",
+        contextKey: request.contextKey,
+        argument: "",
+        preferencesStore,
+        action: `node_target:${nodeTargetMatch[1]}`,
+      }));
+      peerMirrorController.sync(request.contextKey, request.context);
+      return;
+    }
     const pickMatch = action.match(/^slack_pick:([^:]+):(\d+)$/);
     if (pickMatch?.[1]) {
       const pick = picks.get(pickMatch[1]);

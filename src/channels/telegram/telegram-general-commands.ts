@@ -90,6 +90,17 @@ export function registerTelegramGeneralCommands(options: TelegramGeneralCommandO
     await options.replyChannelAction(ctx, options.commandService.renderPeers());
   });
 
+  options.bot.command("nodes", async (ctx) => {
+    const contextSession = await options.getContextSession(ctx, { deferThreadStart: true });
+    if (!contextSession) return;
+    await options.replyChannelAction(ctx, options.commandService.renderNodeTargets({
+      source: "telegram",
+      contextKey: contextSession.contextKey,
+      argument: "",
+      preferencesStore: options.preferencesStore,
+    }));
+  });
+
   options.bot.command("target", async (ctx) => {
     const contextSession = await options.getContextSession(ctx, { deferThreadStart: true });
     if (!contextSession) return;

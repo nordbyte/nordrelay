@@ -49,6 +49,7 @@ import {
 } from "./bot-rendering.js";
 import { renderSessionInfoHTML, renderSessionInfoPlain } from "./session-format.js";
 import { getAvailableBackends } from "../../artifacts/voice.js";
+import { renderNodeTargetAction, renderNodeTargetPreference } from "./channel-node-targets.js";
 
 export type CommandChannelSource = "telegram" | "discord" | "slack" | "matrix" | "web";
 
@@ -107,28 +108,19 @@ export class ChannelCommandService {
   }
 
   renderTargetPreference(options: ChannelPreferenceCommandOptions): ChannelActionResponse {
-    const argument = options.argument.trim();
-    const peers = new PeerStore().listPublic().filter((peer) => peer.enabled && peer.url);
-    if (argument) {
-      const normalized = argument.toLowerCase();
-      if (normalized === "local") {
-        options.preferencesStore.update(options.contextKey, { targetPeerId: null });
-      } else {
-        const peer = peers.find((candidate) => candidate.id === argument || candidate.name.toLowerCase() === normalized || candidate.nodeId === argument);
-        if (!peer) {
-          return usageResponse("Unknown peer target. Use /target local or /target <peer-id>.");
-        }
-        options.preferencesStore.update(options.contextKey, { targetPeerId: peer.id });
-      }
-    }
-    const current = options.preferencesStore.get(options.contextKey).targetPeerId;
-    const currentPeer = current ? peers.find((peer) => peer.id === current) : null;
-    const target = currentPeer ? `${currentPeer.name} (${currentPeer.id})` : "local";
-    const available = peers.map((peer) => `${peer.id} ${peer.name}`).join("\n") || "No enabled outbound peers.";
-    return {
-      plain: [`Target: ${target}`, "", "Available peers:", available].join("\n"),
-      html: [`<b>Target:</b> <code>${escapeHTML(target)}</code>`, "", "<b>Available peers:</b>", `<code>${escapeHTML(available)}</code>`].join("\n"),
-    };
+    return renderNodeTargetPreference(options);
+  }
+
+  renderNodeTargets(options: ChannelPreferenceCommandOptions): ChannelActionResponse {
+    return renderNodeTargetPreference(options);
+  }
+
+  renderNodeTargetAction(options: ChannelPreferenceCommandOptions & { action: string }): ChannelActionResponse {
+    return renderNodeTargetAction({
+      contextKey: options.contextKey,
+      preferencesStore: options.preferencesStore,
+      action: options.action,
+    });
   }
 
   async renderLogs(argument: string): Promise<ChannelActionResponse> {

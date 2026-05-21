@@ -24,6 +24,8 @@ export interface TargetPeerSessionList {
   peerLabel: string;
   sessions: AgentThreadRecord[];
   activeThreadId?: string | null;
+  agentId?: AgentSessionInfo["agentId"];
+  agentLabel?: string;
 }
 
 export interface TargetPeerSwitchResult {
@@ -65,23 +67,24 @@ export async function listTargetPeerSessions(
   if (!targetPeerId) {
     return null;
   }
-  const [snapshot, page] = await Promise.all([
-    targetPeerSnapshot(options, targetPeerId),
-    peerProxy(options, targetPeerId, {
-      method: "GET",
-      path: "/api/sessions",
-      query: {
-        page: 1,
-        limit: options.limit ?? 50,
-        query: options.query ?? "",
-      },
-    }),
-  ]);
+  const snapshot = await targetPeerSnapshot(options, targetPeerId);
+  const page = await peerProxy(options, targetPeerId, {
+    method: "GET",
+    path: "/api/sessions",
+    query: {
+      page: 1,
+      limit: options.limit ?? 50,
+      query: options.query ?? "",
+      agent: snapshot.session.agentId,
+    },
+  });
   return {
     peerId: targetPeerId,
     peerLabel: selectedTargetPeerLabel(targetPeerId),
     sessions: parseSessionPage(page),
     activeThreadId: snapshot.session.threadId,
+    agentId: snapshot.session.agentId,
+    agentLabel: snapshot.session.agentLabel,
   };
 }
 

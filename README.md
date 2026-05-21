@@ -102,6 +102,7 @@ Chat adapters share the core command set:
 
 ```text
 /help
+/nodes
 /session
 /sessions
 /agent
