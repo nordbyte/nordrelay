@@ -298,6 +298,8 @@ describe("loadConfig", () => {
       codexSyncIntervalMs: 10_000,
       codexExternalBusyCheckMs: 5_000,
       codexExternalBusyStaleMs: 300_000,
+      codexExternalApprovalControl: false,
+      codexExternalApprovalSudoHelper: false,
       codexSandboxMode: "danger-full-access",
       codexApprovalPolicy: "on-request",
       launchProfiles: [
@@ -445,6 +447,8 @@ describe("loadConfig", () => {
     expect(config.codexSyncIntervalMs).toBe(10_000);
     expect(config.codexExternalBusyCheckMs).toBe(5_000);
     expect(config.codexExternalBusyStaleMs).toBe(300_000);
+    expect(config.codexExternalApprovalControl).toBe(false);
+    expect(config.codexExternalApprovalSudoHelper).toBe(false);
     expect(config.telegramRateLimitMinIntervalMs).toBe(80);
     expect(config.telegramEditMinIntervalMs).toBe(1_200);
     expect(config.mirrorMode).toBe("status");

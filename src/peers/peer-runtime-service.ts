@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { enabledAgents } from "../agents/shared/agent-factory.js";
 import { listAgentAdapterDescriptors } from "../agents/shared/agent-adapter.js";
 import { buildAdapterConformanceMatrix } from "../agents/shared/adapter-conformance.js";
-import { isAgentId, type AgentId, type AgentSessionInfo, type AgentThreadRecord } from "../agents/shared/agent.js";
+import { isAgentId, type AgentApprovalChoice, type AgentId, type AgentSessionInfo, type AgentThreadRecord } from "../agents/shared/agent.js";
 import { permissionForWebRequest, type Permission } from "../access/access-control.js";
 import { listChannelDescriptors } from "../channels/shared/channel-adapter.js";
 import type { ConnectorConfig } from "../core/config.js";
@@ -437,6 +437,12 @@ export class PeerRuntimeService {
       await this.assertCurrentSessionScope(peer, runtime);
       const files = Array.isArray(body.files) ? body.files.map((file, index) => parseUploadFile(file, index)) : [];
       return runtime.sendUploadPrompt({ text: stringValue(body.text), correlationId: stringValue(body.correlationId) || undefined, transcribeOnly: Boolean(body.transcribeOnly), files }, remoteActor);
+    }
+    if (method === "POST" && path.startsWith("/api/approvals/") && path.endsWith("/respond")) {
+      await this.assertCurrentSessionScope(peer, runtime);
+      const approvalId = params[0];
+      if (!approvalId) throw unsupportedPeerRoute(method, path);
+      return runtime.respondExternalApproval(approvalId, parseApprovalChoice(requiredString(body.choice, "choice")), remoteActor);
     }
     if (method === "POST" && (path === "/api/abort" || path === "/api/stop")) {
       await this.assertCurrentSessionScope(peer, runtime);
@@ -1083,6 +1089,13 @@ function parseRequiredAgentId(value: unknown): AgentId {
     throw new Error("agentId is required.");
   }
   return agentId;
+}
+
+function parseApprovalChoice(value: string): AgentApprovalChoice {
+  if (value === "yes" || value === "persist" || value === "no") {
+    return value;
+  }
+  throw new Error(`Invalid approval choice: ${value}`);
 }
 
 function parseWorkspaceMode(value: unknown): WorkflowStep["workspaceMode"] {
