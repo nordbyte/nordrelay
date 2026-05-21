@@ -99,6 +99,7 @@ export type { RuntimeMetricsDto } from "./metrics.js";
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "../core/workspace-policy.js";
 import type { RelayRuntimeDelegate } from "./relay-runtime-delegate.js";
 import type { SessionWorktreeRecord } from "../worktrees/worktree-types.js";
+import { externalSnapshotMessages, mergeSessionDetailMessages } from "./relay-runtime-session-detail.js";
 export { relayRuntimeSessionDetail, relayRuntimeSetSessionName } from "./relay-runtime-session-detail.js";
 export type {
   ActiveSessionDto,
@@ -365,7 +366,13 @@ export async function relayRuntimeLogout(runtime: RelayRuntimeDelegate, agentId?
 
 export async function relayRuntimeChatHistory(runtime: RelayRuntimeDelegate, limit = 200): Promise<WebChatMessage[]> {
     const session = await runtime.getSession(true);
-    return runtime.chatStore.list(runtime.publicInfo(session).threadId, limit);
+    const info = runtime.publicInfo(session);
+    const webMessages = runtime.chatStore.list(info.threadId, limit);
+    if (!info.threadId) {
+      return webMessages;
+    }
+    const external = getExternalSnapshotForSession(session, runtime.config, { maxEvents: limit });
+    return mergeSessionDetailMessages(webMessages, externalSnapshotMessages(external, info.threadId), limit);
   }
 
 export async function relayRuntimeWebMirrorPreference(runtime: RelayRuntimeDelegate, argument = "", actor?: WebActivityActor): Promise<{

@@ -188,7 +188,7 @@ function sessionDetailStub(
   }, agentId, capabilities);
 }
 
-function externalSnapshotMessages(snapshot: AgentExternalSnapshot | null, threadId: string): WebChatMessage[] {
+export function externalSnapshotMessages(snapshot: AgentExternalSnapshot | null, threadId: string): WebChatMessage[] {
   if (!snapshot) {
     return [];
   }
@@ -291,10 +291,10 @@ function sessionDetailActivityDetail(event: AgentActivityEvent, snapshot: AgentE
     || "";
 }
 
-function mergeSessionDetailMessages(webMessages: WebChatMessage[], externalMessages: WebChatMessage[]): WebChatMessage[] {
-  return dedupeSessionDetailRows([...webMessages, ...externalMessages], (message) =>
-    [message.role, message.timestamp, normalizeSessionDetailText(message.text)].join("\0"),
-  ).sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp)).slice(-100);
+export function mergeSessionDetailMessages(webMessages: WebChatMessage[], externalMessages: WebChatMessage[], limit = 100): WebChatMessage[] {
+  return dedupeSessionDetailMessages([...webMessages, ...externalMessages])
+    .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp))
+    .slice(-Math.max(1, limit));
 }
 
 function mergeSessionDetailActivity(webActivity: WebActivityEvent[], externalActivity: WebActivityEvent[]): WebActivityEvent[] {
@@ -315,6 +315,42 @@ function dedupeSessionDetailRows<T>(items: T[], keyFor: (item: T) => string): T[
     output.push(item);
   }
   return output;
+}
+
+function dedupeSessionDetailMessages(items: WebChatMessage[]): WebChatMessage[] {
+  const output: WebChatMessage[] = [];
+  for (const item of items) {
+    if (output.some((existing) => isDuplicateSessionDetailMessage(existing, item))) {
+      continue;
+    }
+    output.push(item);
+  }
+  return output;
+}
+
+function isDuplicateSessionDetailMessage(left: WebChatMessage, right: WebChatMessage): boolean {
+  if (left === right) {
+    return true;
+  }
+  const leftText = normalizeSessionDetailText(left.text);
+  const rightText = normalizeSessionDetailText(right.text);
+  if (!leftText || leftText !== rightText || left.role !== right.role) {
+    return false;
+  }
+  if (left.key && right.key && left.key === right.key) {
+    return true;
+  }
+  if (left.turnId && right.turnId && left.turnId === right.turnId) {
+    return true;
+  }
+  if (sessionDetailTimestamp(left.timestamp) === sessionDetailTimestamp(right.timestamp)) {
+    return true;
+  }
+  const differentSources = left.source && right.source && left.source !== right.source;
+  if (differentSources && Math.abs(Date.parse(left.timestamp) - Date.parse(right.timestamp)) <= 10 * 60 * 1000) {
+    return true;
+  }
+  return false;
 }
 
 function normalizeSessionDetailText(value: string): string {

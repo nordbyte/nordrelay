@@ -20,7 +20,8 @@ import { discoverLanPeers } from "../peers/peer-discovery.js";
 import { PeerStore } from "../peers/peer-store.js";
 import { publicPeer, type PeerIdentityBackup, type PeerWebProxyPayload } from "../peers/peer-types.js";
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
-import type { WebActivityActor } from "./web-state.js";
+import { mergeSessionDetailMessages } from "../runtime/relay-runtime-session-detail.js";
+import type { WebActivityActor, WebChatMessage } from "./web-state.js";
 import {
   arrayStringField,
   objectRecord,
@@ -324,14 +325,23 @@ export async function handleDashboardPeerRoute(
   if (proxyMatch?.[1] && req.method === "POST") {
     const body = await readJsonBody(req);
     const payload = parseProxyPayload(body);
-    const data = await new RemoteRelayClient(store, options.home).webProxy(
-      decodeURIComponent(proxyMatch[1]),
+    const client = new RemoteRelayClient(store, options.home);
+    const peerId = decodeURIComponent(proxyMatch[1]);
+    const data = await client.webProxy(
+      peerId,
       payload,
       options.activityActor,
       payload.contextKey,
       peerProxyTimeoutOptions(payload),
     );
-    sendJson(res, 200, data);
+    sendJson(res, 200, await hydratePeerProxyResponse(
+      client,
+      peerId,
+      payload,
+      data,
+      options.activityActor,
+      payload.contextKey,
+    ));
     return true;
   }
 
@@ -467,6 +477,70 @@ function peerProxyTimeoutOptions(payload: PeerWebProxyPayload): { timeoutMs?: nu
     return { timeoutMs: PEER_ACTIVE_SESSIONS_TIMEOUT_MS };
   }
   return {};
+}
+
+async function hydratePeerProxyResponse(
+  client: RemoteRelayClient,
+  peerId: string,
+  payload: PeerWebProxyPayload,
+  data: unknown,
+  actor: WebActivityActor,
+  sourceContextKey?: string,
+): Promise<unknown> {
+  if (!isChatHistoryPayload(payload)) {
+    return data;
+  }
+  const messages = webChatMessagesFromResponse(data);
+  try {
+    const bootstrap = await client.webProxy(peerId, {
+      method: "GET",
+      path: "/api/bootstrap",
+      query: {},
+      body: {},
+      contextKey: payload.contextKey,
+    }, actor, sourceContextKey, { timeoutMs: 8_000 });
+    const session = objectRecord((bootstrap as { session?: unknown })?.session);
+    const threadId = optionalStringField(session, "threadId");
+    if (!threadId) {
+      return data;
+    }
+    const detail = await client.webProxy(peerId, {
+      method: "GET",
+      path: "/api/sessions/detail",
+      query: { threadId, agent: optionalStringField(session, "agentId") },
+      body: {},
+      contextKey: payload.contextKey,
+    }, actor, sourceContextKey, { timeoutMs: 8_000 });
+    const detailMessages = webChatMessagesFromResponse({ messages: (detail as { messages?: unknown })?.messages });
+    return {
+      ...(data && typeof data === "object" ? data as Record<string, unknown> : {}),
+      messages: mergeSessionDetailMessages(messages, detailMessages, numberFromUnknown(payload.query?.limit, 200)),
+    };
+  } catch {
+    return data;
+  }
+}
+
+function isChatHistoryPayload(payload: PeerWebProxyPayload): boolean {
+  return payload.method.trim().toUpperCase() === "GET" && payload.path.trim() === "/api/chat/history";
+}
+
+function webChatMessagesFromResponse(value: unknown): WebChatMessage[] {
+  const record = objectRecord(value);
+  return Array.isArray(record.messages) ? record.messages.filter(isWebChatMessage) : [];
+}
+
+function isWebChatMessage(value: unknown): value is WebChatMessage {
+  const record = objectRecord(value);
+  return typeof record.id === "string"
+    && typeof record.role === "string"
+    && typeof record.text === "string"
+    && typeof record.timestamp === "string";
+}
+
+function numberFromUnknown(value: unknown, fallback: number): number {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
 }
 
 function parseWorkspaceAliases(value: unknown): Record<string, string> {
