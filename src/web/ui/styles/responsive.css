@@ -19,24 +19,11 @@ header{z-index:30}
 .composer-abort{height:32px;min-height:32px}
 .side-panel{order:-1;max-height:360px}
 .tool-stream{max-height:300px}
-.sessions-table .optional-model{display:none}
 header{align-items:center}
 .metrics{grid-template-columns:1fr 1fr}
 .diagnostics-overview-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
-@media(max-width:760px){.data-table-wrap{overflow:visible;border:0;background:transparent}
-.diagnostics-overview-grid{grid-template-columns:1fr}
-.data-table,.data-table thead,.data-table tbody,.data-table tr,.data-table th,.data-table td{display:block;width:100%}
-.data-table thead{display:none}
-.data-table tr{display:grid;gap:4px;margin-bottom:8px;padding:10px 12px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface-soft)}
-.data-table tbody tr:last-child{margin-bottom:0}
-.data-table td{display:grid;grid-template-columns:86px minmax(0,1fr);gap:10px;align-items:center;padding:3px 0;border:0}
-.data-table td::before{content:attr(data-label);color:var(--muted);font-size:13px;font-weight:750;line-height:1.2}
-.data-table .optional-agent,.data-table .optional-model{display:grid!important}
-.data-table .actions-cell{display:block;padding-top:8px}
-.data-table .actions-cell::before{display:none}
-.data-table-actions{justify-content:flex-start}
-.sessions-table th,.sessions-table td,.templates-table th,.templates-table td,.adapters-table th,.adapters-table td,.metrics-table th,.metrics-table td,.version-table th,.version-table td,.activity-table th,.activity-table td,.access-users-table th,.access-users-table td,.access-groups-table th,.access-groups-table td,.access-channels-table th,.access-channels-table td,.access-telegram-table th,.access-telegram-table td,.access-locks-table th,.access-locks-table td,.access-audit-table th,.access-audit-table td{width:100%!important}
+@media(max-width:760px){.diagnostics-overview-grid{grid-template-columns:1fr}
 }
 @media(max-width:560px){.metrics{grid-template-columns:1fr}
 .metrics-summary{grid-template-columns:1fr 1fr}
