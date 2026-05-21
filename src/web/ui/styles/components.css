@@ -146,6 +146,13 @@
 .data-table-actions button{min-height:28px;height:28px;padding:0 8px;font-size:13px;line-height:1}
 .actions-cell,.actions-heading{white-space:nowrap}
 .actions-heading{text-align:right!important}
+.table-action-menu{position:relative;display:inline-block;text-align:left}
+.table-action-menu summary{display:inline-flex;align-items:center;justify-content:center;min-height:28px;height:28px;padding:0 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px;font-weight:700;line-height:1;cursor:pointer;list-style:none;user-select:none}
+.table-action-menu summary::-webkit-details-marker{display:none}
+.table-action-menu summary::after{content:"";width:0;height:0;margin-left:7px;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor}
+.table-action-menu[open] summary{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-text)}
+.table-action-menu-list{display:grid;gap:4px;min-width:150px;margin-top:6px;padding:6px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface);box-shadow:0 10px 24px rgba(0,0,0,.18)}
+.table-action-menu-list button{justify-content:flex-start;width:100%;min-height:30px;height:30px;padding:0 9px;text-align:left;font-size:13px}
 .sessions-table{--table-min-width:1160px}
 .sessions-table:not(.worktrees-table) th:nth-child(1),.sessions-table:not(.worktrees-table) td:nth-child(1){width:9%;white-space:nowrap}
 .sessions-table:not(.worktrees-table) th:nth-child(2),.sessions-table:not(.worktrees-table) td:nth-child(2){width:22%}
@@ -232,18 +239,16 @@
 .peer-status-table{--table-min-width:720px}
 .peer-status-table th:nth-child(1),.peer-status-table td:nth-child(1){width:22%}
 .peer-status-table th:nth-child(2),.peer-status-table td:nth-child(2){width:78%}
-.peers-table{--table-min-width:1600px}
+.peers-table{--table-min-width:1220px}
 .peers-table th:nth-child(1),.peers-table td:nth-child(1){width:10%}
 .peers-table th:nth-child(2),.peers-table td:nth-child(2){width:8%;white-space:nowrap}
 .peers-table th:nth-child(3),.peers-table td:nth-child(3){width:9%;white-space:nowrap}
-.peers-table th:nth-child(4),.peers-table td:nth-child(4){width:16%}
-.peers-table th:nth-child(5),.peers-table td:nth-child(5){width:22%}
-.peers-table th:nth-child(6),.peers-table td:nth-child(6){width:13%}
+.peers-table th:nth-child(4),.peers-table td:nth-child(4){width:19%}
+.peers-table th:nth-child(5),.peers-table td:nth-child(5){width:23%}
+.peers-table th:nth-child(6),.peers-table td:nth-child(6){width:17%}
 .peers-table th:nth-child(7),.peers-table td:nth-child(7){width:10%;white-space:nowrap}
-.peers-table th:nth-child(8),.peers-table td:nth-child(8){width:520px}
-.peers-table .actions-cell{white-space:normal;vertical-align:top}
-.peers-table .actions-cell .data-table-actions{justify-content:flex-start;align-items:flex-start;flex-wrap:wrap;white-space:normal;max-width:100%;row-gap:6px}
-.peers-table .actions-cell .data-table-actions button{flex:0 0 auto}
+.peers-table th:nth-child(8),.peers-table td:nth-child(8){width:90px}
+.peers-table .actions-cell{text-align:right;vertical-align:top}
 .peer-invites-table{--table-min-width:1260px}
 .peer-invites-table th:nth-child(1),.peer-invites-table td:nth-child(1){width:14%}
 .peer-invites-table th:nth-child(2),.peer-invites-table td:nth-child(2){width:8%;white-space:nowrap}
