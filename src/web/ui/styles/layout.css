@@ -74,6 +74,7 @@ textarea{width:100%;padding:10px;resize:vertical;line-height:1.4}
 nav button{display:flex;align-items:center;justify-content:flex-start;width:100%;min-height:40px;height:40px;padding:0 12px;line-height:1.1;text-align:left}
 .nav-label{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .nav-badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;margin-left:auto;padding:0 6px;border-radius:999px;background:var(--accent);color:white;font-size:12px;font-weight:760;line-height:1}
+.nav-badge.warning{background:#d9a441;color:#1f1600}
 .nav-badge[hidden]{display:none}
 button.brand-home{width:100%;min-height:calc(var(--dashboard-header-height) - 1px);height:calc(var(--dashboard-header-height) - 1px);border:0;border-radius:0;background:transparent;color:inherit;text-align:left;justify-content:flex-start;white-space:normal}
 button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--sidebar-text);outline:none}

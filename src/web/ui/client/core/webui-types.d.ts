@@ -147,6 +147,7 @@ interface WebuiActiveSession extends WebuiRecord {
   source?: string;
   startedAt?: string;
   prompt?: string;
+  approvalRequired?: WebuiRecord | null;
 }
 
 interface WebuiActiveSessionsState extends WebuiRecord {

@@ -158,7 +158,7 @@ async function loadActiveSessions(){
     state.activeSessionsLoading=false;
   }
 }
-function shouldRefreshActiveSessions(){return state.currentPage==='overview'||(state.activeSessionsTarget||'local')==='all'}
+function shouldRefreshActiveSessions(){return can('sessions.read')}
 function syncActiveSessionsRefresh(){if(shouldRefreshActiveSessions())startActiveSessionsRefresh();else stopActiveSessionsRefresh()}
 function startActiveSessionsRefresh(){
   if(state.currentPage==='overview')startActiveSessionDurationCounter();
@@ -178,13 +178,16 @@ function stopActiveSessionDurationCounter(){if(state.activeSessionDurationTimer)
 function updateActiveSessionsCount(items:any=undefined){
   const sessions=Array.isArray(items)?items:(Array.isArray(state.activeSessions?.sessions)?state.activeSessions.sessions:[]);
   const count=sessions.length;
+  const approvalRequired=sessions.some(session=>Boolean(session?.approvalRequired));
   const heading=document.getElementById('activeSessionsCount');
   if(heading)heading.textContent='('+count+')';
   const badge=document.getElementById('overviewActiveBadge');
   if(badge){
     badge.textContent=String(count);
     badge.hidden=count<1;
-    badge.setAttribute('aria-label',count+' active session'+(count===1?'':'s'));
+    badge.classList.toggle('warning',approvalRequired);
+    badge.title=approvalRequired?'Action required in active sessions':'Active sessions';
+    badge.setAttribute('aria-label',count+' active session'+(count===1?'':'s')+(approvalRequired?' with approval required':''));
   }
 }
 function renderActiveSessions(items){
