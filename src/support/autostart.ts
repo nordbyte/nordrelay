@@ -62,7 +62,7 @@ const TARGETS: Record<AutostartTarget, {
     linuxName: "nordrelay-webui",
     launchdLabel: "io.nordbyte.nordrelay.webui",
     windowsName: "NordRelay WebUI",
-    command: "web",
+    command: "web-run",
     logFile: "web-service.log",
   },
 };

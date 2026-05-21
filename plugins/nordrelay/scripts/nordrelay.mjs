@@ -1639,6 +1639,7 @@ async function commandDoctor(options) {
     "fail",
     envValueFix(options.home, "NORDRELAY_WEBUI_ENABLED", "true", "Enable WebUI so at least one access surface is available."),
   ));
+  checks.push(...cliAutostartChecks(options.home));
   checks.push(check("Discord client ID", !discordUsable || Boolean(process.env.DISCORD_CLIENT_ID), discordUsable ? (process.env.DISCORD_CLIENT_ID ? "configured" : "missing; slash command auto-registration disabled") : "disabled", "warn", hintFix("Set DISCORD_CLIENT_ID from the Discord Developer Portal.")));
   checks.push(check("User store", Boolean(userStore), userStore ? userStore.filePath : "missing runtime", userStore ? "pass" : "fail", runtimeBuildFix()));
   checks.push(check("Admin user", Boolean(userSnapshot?.adminConfigured), userSnapshot?.adminConfigured ? "configured" : "missing", "fail", hintFix("Run `nordrelay user create-admin` to create the first admin.")));
@@ -1759,6 +1760,68 @@ async function checkOpenClawGateway() {
   });
 }
 
+function cliAutostartChecks(home) {
+  const connectorEnabled = process.env.NORDRELAY_AUTOSTART_ENABLED === "true";
+  const webuiEnabled = process.env.NORDRELAY_WEBUI_AUTOSTART_ENABLED === "true";
+  if (!connectorEnabled && !webuiEnabled) {
+    return [check("Autostart", true, "disabled by config")];
+  }
+  if (process.platform !== "linux") {
+    return [check("Autostart", true, `${process.platform} autostart is managed by the platform service integration`)];
+  }
+
+  const checks = [];
+  const itemFix = autostartRepairFix(home);
+  if (connectorEnabled) {
+    checks.push(systemdUserServiceDoctorCheck("Connector autostart", "nordrelay.service", itemFix));
+  }
+  if (webuiEnabled) {
+    checks.push(systemdUserServiceDoctorCheck("WebUI autostart", "nordrelay-webui.service", itemFix));
+  }
+  const linger = quietCommand("loginctl", ["show-user", process.env.USER || "", "-p", "Linger", "--value"]);
+  const lingerValue = linger.stdout.trim();
+  checks.push(check(
+    "Linux user lingering",
+    linger.ok && lingerValue === "yes",
+    linger.ok ? `Linger=${lingerValue || "unknown"}` : `loginctl unavailable: ${linger.detail}`,
+    "warn",
+    hintFix("Enable linger with `loginctl enable-linger $USER` if NordRelay should start before the first interactive login."),
+  ));
+  return checks;
+}
+
+function systemdUserServiceDoctorCheck(name, unit, itemFix) {
+  const enabled = quietCommand("systemctl", ["--user", "is-enabled", unit]);
+  const active = quietCommand("systemctl", ["--user", "is-active", unit]);
+  const enabledValue = enabled.stdout.trim();
+  const activeValue = active.stdout.trim();
+  return check(
+    name,
+    enabledValue === "enabled" && activeValue === "active",
+    `enabled=${enabledValue || (enabled.ok ? "unknown" : "no")}; active=${activeValue || (active.ok ? "unknown" : "no")}`,
+    "warn",
+    itemFix,
+  );
+}
+
+function quietCommand(command, args) {
+  const result = spawnSync(command, args, {
+    cwd: RUNTIME_ROOT,
+    env: process.env,
+    encoding: "utf8",
+    stdio: "pipe",
+    windowsHide: true,
+  });
+  const stdout = result.stdout || "";
+  const stderr = result.stderr || "";
+  const detail = [stdout.trim(), stderr.trim(), result.error?.message].filter(Boolean).join("; ");
+  return {
+    ok: !result.error && result.status === 0,
+    stdout,
+    detail: detail || `exit ${result.status ?? "unknown"}`,
+  };
+}
+
 async function commandWeb(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
@@ -1769,6 +1832,17 @@ async function commandWeb(options) {
   await prepareRuntimeForLaunch(options);
   await ensureConnectorStartedForWeb(options);
   await startWebDashboard(options, { detached: true });
+}
+
+async function commandWebRun(options) {
+  await mkdirp(options.home);
+  loadEnvFiles(options.home);
+  if (!isWebUiEnabled()) {
+    return;
+  }
+  await prepareRuntimeForLaunch(options);
+  await ensureConnectorStartedForWeb(options);
+  await startWebDashboard(options, { detached: false });
 }
 
 async function commandServiceRun(options) {
@@ -2312,6 +2386,32 @@ function runtimeBuildFix() {
   };
 }
 
+function autostartRepairFix(home) {
+  return {
+    id: "repair-autostart",
+    summary: "Reinstall enabled autostart entries and start them now.",
+    apply: async () => {
+      const modulePath = path.join(RUNTIME_ROOT, "dist", "support", "autostart.js");
+      if (!fs.existsSync(modulePath)) {
+        throw new Error(`Missing autostart runtime. Run \`npm run build\` in ${RUNTIME_ROOT}.`);
+      }
+      const patch = {};
+      if (process.env.NORDRELAY_AUTOSTART_ENABLED === "true") patch.NORDRELAY_AUTOSTART_ENABLED = "true";
+      if (process.env.NORDRELAY_WEBUI_AUTOSTART_ENABLED === "true") patch.NORDRELAY_WEBUI_AUTOSTART_ENABLED = "true";
+      const changedKeys = Object.keys(patch);
+      if (!changedKeys.length) {
+        return "Autostart is disabled in the current config.";
+      }
+      const mod = await import(pathToFileURL(modulePath).href);
+      const errors = await mod.applyAutostartSettings(patch, changedKeys, { home, runtimeRoot: RUNTIME_ROOT });
+      if (errors.length > 0) {
+        throw new Error(errors.map((error) => `${error.key}: ${error.message}`).join("; "));
+      }
+      return `Reinstalled autostart entries for ${changedKeys.join(", ")}.`;
+    },
+  };
+}
+
 async function runDoctorFixes(checks) {
   const seen = new Set();
   const fixable = checks.filter((item) => {
@@ -2588,6 +2688,7 @@ async function main() {
   if (options.command === "doctor") return commandDoctor(options);
   if (options.command === "update") return commandUpdate(options);
   if (options.command === "web" || options.command === "dashboard") return commandWeb(options);
+  if (options.command === "web-run") return commandWebRun(options);
   if (options.command === "restart") {
     await mkdirp(options.home);
     loadEnvFiles(options.home);

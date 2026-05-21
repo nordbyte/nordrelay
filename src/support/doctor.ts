@@ -1,5 +1,7 @@
+import { spawnSync } from "node:child_process";
 import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describeClaudeCodeCli, resolveClaudeCodeCli } from "../agents/claude-code/claude-code-cli.js";
 import { describeCodexCli, findExecutableOnPath, resolveCodexCli } from "../agents/codex/codex-cli.js";
@@ -10,6 +12,7 @@ import type { ConnectorConfig } from "../core/config.js";
 import { resolveDashboardEnvPath, SettingsService } from "../core/settings-service.js";
 import { stateBackendPath, checkStateBackendAvailability } from "../state/state-backend.js";
 import { UserStore } from "../access/user-management.js";
+import { applyAutostartSettings } from "./autostart.js";
 import { getConnectorHome, resolveNpmSpawnCommand } from "./operations.js";
 
 export type DoctorStatus = "pass" | "warn" | "fail";
@@ -67,6 +70,7 @@ export async function collectDoctorReport(config: ConnectorConfig, home = getCon
   checks.push(await envFileCheck(envPath));
   checks.push(check("webui", "WebUI enabled", config.webuiEnabled, config.webuiEnabled ? "enabled" : "disabled by NORDRELAY_WEBUI_ENABLED=false", "warn", fix("enable-webui", "Enable WebUI", "Set NORDRELAY_WEBUI_ENABLED=true.", true)));
   checks.push(check("access-surface", "Usable access surface", accessSurfaceEnabled(config), accessSurfaceDetail(config), "fail", fix("enable-webui", "Enable WebUI", "Enable WebUI so at least one access surface is reachable.", true)));
+  checks.push(...collectAutostartChecks(config));
   checks.push(check("admin-user", "Admin user", userStore.hasAdminUser(), userStore.hasAdminUser() ? "configured" : "missing; run nordrelay user create-admin", "fail"));
   checks.push(await dirCheck("state-dir", "Workspace state directory", path.dirname(statePath), "fail", fix("ensure-state-dir", "Create state directory", `Create ${path.dirname(statePath)}.`)));
   checks.push(check("state-backend", "State backend", stateBackend.ok, stateBackend.detail, "fail"));
@@ -158,7 +162,7 @@ function agentCliCheck(id: string, name: string, enabled: boolean, detail: strin
 }
 
 function accessSurfaceEnabled(config: ConnectorConfig): boolean {
-  return config.webuiEnabled || config.telegramEnabled || config.discordEnabled || config.slackEnabled;
+  return config.webuiEnabled || config.telegramEnabled || config.discordEnabled || config.slackEnabled || config.matrixEnabled;
 }
 
 function accessSurfaceDetail(config: ConnectorConfig): string {
@@ -167,6 +171,7 @@ function accessSurfaceDetail(config: ConnectorConfig): string {
     config.telegramEnabled ? "Telegram" : "",
     config.discordEnabled ? "Discord" : "",
     config.slackEnabled ? "Slack" : "",
+    config.matrixEnabled ? "Matrix" : "",
   ].filter(Boolean).join(" and ") || "none";
 }
 
@@ -193,9 +198,88 @@ async function applyDoctorFix(fixId: string, config: ConnectorConfig, home: stri
     await new SettingsService(envPath).update({ NORDRELAY_WEBUI_ENABLED: "true" });
     return `Set NORDRELAY_WEBUI_ENABLED=true in ${envPath}.`;
   }
+  if (fixId === "repair-autostart") {
+    const patch: Record<string, string> = {};
+    if (config.autostartEnabled) patch.NORDRELAY_AUTOSTART_ENABLED = "true";
+    if (config.webuiAutostartEnabled) patch.NORDRELAY_WEBUI_AUTOSTART_ENABLED = "true";
+    const changedKeys = Object.keys(patch);
+    if (changedKeys.length === 0) {
+      return "Autostart is disabled in the current config.";
+    }
+    const errors = await applyAutostartSettings(patch, changedKeys, { home, runtimeRoot: runtimeRoot() });
+    if (errors.length > 0) {
+      throw new Error(errors.map((error) => `${error.key}: ${error.message}`).join("; "));
+    }
+    return `Reinstalled autostart entries for ${changedKeys.join(", ")}.`;
+  }
   throw new Error(`Unsupported doctor fix: ${fixId}`);
 }
 
 function majorVersion(value: string): number {
   return Number.parseInt(value.split(".")[0] ?? "0", 10);
+}
+
+function collectAutostartChecks(config: ConnectorConfig): DoctorCheck[] {
+  const checks: DoctorCheck[] = [];
+  const autostartEnabled = config.autostartEnabled || config.webuiAutostartEnabled;
+  if (!autostartEnabled) {
+    checks.push(check("autostart", "Autostart", true, "disabled by config"));
+    return checks;
+  }
+  if (process.platform !== "linux") {
+    checks.push(check("autostart", "Autostart", true, `${process.platform} autostart is managed by the platform service integration`));
+    return checks;
+  }
+
+  if (config.autostartEnabled) {
+    checks.push(systemdUserServiceCheck("connector-autostart", "Connector autostart", "nordrelay.service"));
+  }
+  if (config.webuiAutostartEnabled) {
+    checks.push(systemdUserServiceCheck("webui-autostart", "WebUI autostart", "nordrelay-webui.service"));
+  }
+
+  const linger = commandOutput("loginctl", ["show-user", process.env.USER || "", "-p", "Linger", "--value"]);
+  const lingerValue = linger.ok ? linger.stdout.trim() : "";
+  checks.push(check(
+    "linux-user-linger",
+    "Linux user lingering",
+    lingerValue === "yes",
+    linger.ok ? `Linger=${lingerValue || "unknown"}` : `loginctl unavailable: ${linger.detail}`,
+    "warn",
+  ));
+
+  return checks;
+}
+
+function systemdUserServiceCheck(id: string, name: string, unit: string): DoctorCheck {
+  const enabled = commandOutput("systemctl", ["--user", "is-enabled", unit]);
+  const active = commandOutput("systemctl", ["--user", "is-active", unit]);
+  const enabledValue = enabled.stdout.trim();
+  const activeValue = active.stdout.trim();
+  const ok = enabledValue === "enabled" && activeValue === "active";
+  const detail = [
+    `enabled=${enabledValue || (enabled.ok ? "unknown" : "no")}`,
+    `active=${activeValue || (active.ok ? "unknown" : "no")}`,
+  ].join("; ");
+  return check(id, name, ok, detail, "warn", fix("repair-autostart", "Repair autostart", "Reinstall enabled autostart entries and start them now."));
+}
+
+function commandOutput(command: string, args: string[]): { ok: boolean; stdout: string; detail: string } {
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    stdio: "pipe",
+    windowsHide: true,
+  });
+  const stdout = result.stdout || "";
+  const stderr = result.stderr || "";
+  const detail = [stdout.trim(), stderr.trim(), result.error?.message].filter(Boolean).join("; ");
+  return {
+    ok: !result.error && result.status === 0,
+    stdout,
+    detail: detail || `exit ${result.status ?? "unknown"}`,
+  };
+}
+
+function runtimeRoot(): string {
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 }

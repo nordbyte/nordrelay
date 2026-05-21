@@ -36,8 +36,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check docs links and CLI coverage
+        run: npm run docs:check
+
       - name: Build docs
         run: npm run docs:build
+
+      - name: Smoke docs build output
+        run: npm run docs:smoke
 
       - name: Configure Pages
         uses: actions/configure-pages@v6

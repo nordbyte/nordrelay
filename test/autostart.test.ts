@@ -20,14 +20,14 @@ describe("autostart specs", () => {
     expect(connector.content).not.toContain("service-run");
     expect(webui.path).toBe("/home/test/.config/systemd/user/nordrelay-webui.service");
     expect(webui.content).toContain("Description=NordRelay WebUI");
-    expect(webui.content).toContain('"web"');
+    expect(webui.content).toContain('"web-run"');
   });
 
   it("builds launchd and Windows autostart entries", () => {
     const launchd = buildAutostartSpec("webui", "install", { ...options, platform: "darwin" });
     expect(launchd.path).toBe("/home/test/Library/LaunchAgents/io.nordbyte.nordrelay.webui.plist");
     expect(launchd.content).toContain("<string>io.nordbyte.nordrelay.webui</string>");
-    expect(launchd.content).toContain("<string>web</string>");
+    expect(launchd.content).toContain("<string>web-run</string>");
 
     const windows = buildAutostartSpec("connector", "install", { ...options, platform: "win32" });
     expect(windows.path).toBe("NordRelay");
