@@ -117,7 +117,7 @@ function renderActiveSessionsTargetMenu(){
   normalizeActiveSessionsTarget();
   if(items.length<=1){mount.innerHTML='';return}
   const selected=items.find(item=>item.value===state.activeSessionsTarget)||items.find(item=>item.value==='local')||items[0];
-  mount.innerHTML=compactControlMenu('activeSessionsNode','Node',selected.value,selected.label,items,'sessions.read');
+  mount.innerHTML=compactControlMenu('activeSessionsNode','',selected.value,selected.label,items,'sessions.read');
   bindCompactControlMenus();
 }
 function activeSessionsTargetLabel(target){return target==='all'?'All nodes':target==='local'?'Local node':((state.peers?.peers||[]).find(peer=>peer.id===target)?.name||target)}
@@ -267,7 +267,7 @@ function activeLaunchLabel(session,selectedLaunch){
 function configuredLaunchProfile(controls,profileId){return Boolean(profileId&&(controls.launchProfiles||[]).some(p=>p.id===profileId))}
 function compactControlMenu(id,label,value,display,items,permission='settings.write'){
   const options=(items||[]).map(item=>'<button type="button" role="option" data-control-option="'+attr(id)+'" data-control-value="'+attr(item.value)+'" aria-selected="'+(item.value===value?'true':'false')+'">'+esc(item.label)+'</button>').join('');
-  return '<div class="compact-control" data-control-menu="'+attr(id)+'"><span class="compact-control-label">'+esc(label)+'</span><button type="button" id="'+attr(id)+'" class="control-menu-button" data-control-value="'+attr(value)+'" aria-haspopup="listbox" aria-expanded="false"'+(permission?disabledAttr(permission):'')+'>'+esc(display||'Default')+'</button><div class="control-menu-list" role="listbox" hidden>'+options+'</div></div>';
+  return '<div class="compact-control" data-control-menu="'+attr(id)+'">'+(label?'<span class="compact-control-label">'+esc(label)+'</span>':'')+'<button type="button" id="'+attr(id)+'" class="control-menu-button" data-control-value="'+attr(value)+'" aria-haspopup="listbox" aria-expanded="false"'+(permission?disabledAttr(permission):'')+'>'+esc(display||'Default')+'</button><div class="control-menu-list" role="listbox" hidden>'+options+'</div></div>';
 }
 function selectedCompactControlValue(id){return document.getElementById(id)?.dataset.controlValue||''}
 function closeCompactControlMenus(except=null){

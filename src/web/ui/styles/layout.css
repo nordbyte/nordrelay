@@ -34,12 +34,12 @@ header h1{line-height:1.1}
 h1{font-size:24px;margin:0}
 h2{font-size:16px;margin:0 0 12px}
 .active-sessions-count{color:var(--muted);font-weight:650}
-.active-sessions-header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 10px}
+.active-sessions-header{display:flex;align-items:center;justify-content:flex-start;gap:8px;flex-wrap:wrap;margin:0 0 10px}
 .active-sessions-header h2{margin:0}
-.active-sessions-target{display:flex;align-items:flex-end;justify-content:flex-end;min-width:0}
+.active-sessions-target{display:flex;align-items:center;justify-content:flex-start;min-width:0}
 .active-sessions-target:empty{display:none}
-.active-sessions-target .compact-control{align-items:flex-end}
-.active-sessions-target .control-menu-list{left:auto;right:0}
+.active-sessions-target .compact-control{align-items:flex-start}
+.active-sessions-target .control-menu-list{left:0;right:auto}
 p{margin:4px 0 0;color:var(--muted)}
 a{color:var(--link)}
 .header-actions,.row,.toolbar,.ui-actions,.chat-toolbar,.attachment-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
