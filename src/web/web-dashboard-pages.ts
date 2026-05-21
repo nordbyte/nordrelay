@@ -625,6 +625,11 @@ ${faviconLinks}
     <form method="dialog" id="newSessionForm">
       <h2>New Session</h2>
       <div class="form-grid">
+        <div id="newSessionNodeWrap" class="new-session-node full-span" hidden>
+          <span>Node</span>
+          <strong id="newSessionNodeName">Local node</strong>
+          <small id="newSessionNodeHint">New session will start on the currently selected node.</small>
+        </div>
         <label>Agent<select id="newAgent"></select></label>
         <label>Workspace<input id="newWorkspace" list="workspaceOptions" placeholder="Current workspace"></label>
         <label>Model<select id="newModel"></select></label>
