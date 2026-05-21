@@ -241,6 +241,9 @@
 .peers-table th:nth-child(6),.peers-table td:nth-child(6){width:13%}
 .peers-table th:nth-child(7),.peers-table td:nth-child(7){width:10%;white-space:nowrap}
 .peers-table th:nth-child(8),.peers-table td:nth-child(8){width:520px}
+.peers-table .actions-cell{white-space:normal;vertical-align:top}
+.peers-table .actions-cell .data-table-actions{justify-content:flex-start;align-items:flex-start;flex-wrap:wrap;white-space:normal;max-width:100%;row-gap:6px}
+.peers-table .actions-cell .data-table-actions button{flex:0 0 auto}
 .peer-invites-table{--table-min-width:1260px}
 .peer-invites-table th:nth-child(1),.peer-invites-table td:nth-child(1){width:14%}
 .peer-invites-table th:nth-child(2),.peer-invites-table td:nth-child(2){width:8%;white-space:nowrap}
