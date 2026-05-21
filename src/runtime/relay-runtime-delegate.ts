@@ -18,6 +18,7 @@ import type { ConnectorConfig } from "../core/config.js";
 import type { BotPreferencesStore } from "../state/bot-preferences.js";
 import type { UnifiedJobStore } from "../state/job-store.js";
 import type { PromptEnvelope, PromptStore } from "../state/prompt-store.js";
+import type { SessionNameStore } from "../state/session-names.js";
 import type { RelayWorkflowService } from "./relay-workflow-service.js";
 import type { WorkflowStore } from "../state/workflow-store.js";
 import type { QueuePlanStatus, QueuePlanStore } from "../state/queue-plan-store.js";
@@ -109,7 +110,7 @@ export interface RelayRuntimeDelegate {
   readonly chatStore: WebChatStore;
   readonly activityStore: WebActivityStore;
   readonly auditStore: AuditLogStore;
-  readonly preferencesStore: BotPreferencesStore;
+  readonly preferencesStore: BotPreferencesStore; readonly sessionNameStore: SessionNameStore;
   readonly lockStore: SessionLockStore;
   readonly agentUpdates: AgentUpdateManager;
   readonly queueService: RelayQueueService;
@@ -171,7 +172,7 @@ export interface RelayRuntimeDelegate {
     minInterval: number;
     response: { plain: string; html: string };
   }>;
-  sessionDetail(threadId: string, agentId?: AgentId): Promise<Record<string, unknown>>;
+  sessionDetail(threadId: string, agentId?: AgentId): Promise<Record<string, unknown>>; setSessionName(threadId: string, name: string, agentId?: AgentId, actor?: WebActivityActor): Promise<Record<string, unknown>>;
   clearChatHistory(actor?: WebActivityActor): Promise<{ removed: number; messages: WebChatMessage[] }>;
   activity(options?: RelayRuntimeActivityOptions): WebActivityEvent[];
   activityPage(options?: RelayRuntimeActivityOptions & { cursor?: string }): CursorPageDto<WebActivityEvent>;

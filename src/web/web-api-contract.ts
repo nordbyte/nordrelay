@@ -158,6 +158,7 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   exact("/api/sessions/switch", ["POST"], "sessions.write"),
   exact("/api/sessions/attach", ["POST"], "sessions.write"),
   exact("/api/sessions/detail", ["GET"], "sessions.read"),
+  exact("/api/sessions/name", ["POST"], "sessions.write"),
   exact("/api/agent", ["POST"], "sessions.write"),
   exact("/api/models", ["GET"], "settings.read"),
   exact("/api/session/model", ["POST"], "settings.write"),

@@ -190,11 +190,19 @@ export async function relayRuntimeActiveSessions(runtime: RelayRuntimeDelegate):
     }
 
     return {
-      sessions: [...sessions.values()].sort((left, right) =>
+      sessions: [...sessions.values()].map((session) => activeSessionWithName(runtime, session)).sort((left, right) =>
         right.durationMs - left.durationMs || Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
       ),
       updatedAt: new Date().toISOString(),
     };
+  }
+
+function activeSessionWithName(runtime: RelayRuntimeDelegate, session: ActiveSessionDto): ActiveSessionDto {
+    if (!session.threadId || !session.agentId) {
+      return session;
+    }
+    const record = runtime.sessionNameStore.get(session.agentId, session.threadId);
+    return record ? { ...session, sessionName: record.name } : session;
   }
 
 function safeActiveSession<T>(fn: () => T): T | null {

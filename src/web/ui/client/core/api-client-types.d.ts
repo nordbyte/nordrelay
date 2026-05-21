@@ -87,6 +87,7 @@ export type WebApiStaticPath =
   | "/api/sessions"
   | "/api/sessions/attach"
   | "/api/sessions/detail"
+  | "/api/sessions/name"
   | "/api/sessions/new"
   | "/api/sessions/switch"
   | "/api/sessions/worktrees"
@@ -260,6 +261,7 @@ export type WebApiResponseByPath = {
   "/api/sessions": ServerWebApiClientResponse<"/api/sessions">;
   "/api/sessions/attach": ServerWebApiClientResponse<"/api/sessions/attach">;
   "/api/sessions/detail": ServerWebApiClientResponse<"/api/sessions/detail">;
+  "/api/sessions/name": ServerWebApiClientResponse<"/api/sessions/name">;
   "/api/sessions/new": ServerWebApiClientResponse<"/api/sessions/new">;
   "/api/sessions/switch": ServerWebApiClientResponse<"/api/sessions/switch">;
   "/api/sessions/worktrees": ServerWebApiClientResponse<"/api/sessions/worktrees">;
@@ -359,6 +361,7 @@ export type WebApiRequestBodyByPath = {
   "/api/sessions": ServerWebApiRequestBody<"/api/sessions">;
   "/api/sessions/attach": ServerWebApiRequestBody<"/api/sessions/attach">;
   "/api/sessions/detail": ServerWebApiRequestBody<"/api/sessions/detail">;
+  "/api/sessions/name": ServerWebApiRequestBody<"/api/sessions/name">;
   "/api/sessions/new": ServerWebApiRequestBody<"/api/sessions/new">;
   "/api/sessions/switch": ServerWebApiRequestBody<"/api/sessions/switch">;
   "/api/sessions/worktrees": ServerWebApiRequestBody<"/api/sessions/worktrees">;

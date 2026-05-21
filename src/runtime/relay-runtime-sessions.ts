@@ -99,7 +99,7 @@ export type { RuntimeMetricsDto } from "./metrics.js";
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "../core/workspace-policy.js";
 import type { RelayRuntimeDelegate } from "./relay-runtime-delegate.js";
 import type { SessionWorktreeRecord } from "../worktrees/worktree-types.js";
-export { relayRuntimeSessionDetail } from "./relay-runtime-session-detail.js";
+export { relayRuntimeSessionDetail, relayRuntimeSetSessionName } from "./relay-runtime-session-detail.js";
 export type {
   ActiveSessionDto,
   ActiveSessionsDto,

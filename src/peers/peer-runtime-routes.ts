@@ -53,6 +53,7 @@ const corePaths: Array<[WebHttpMethod, string]> = [
 const sessionPaths: Array<[WebHttpMethod, string]> = [
   ["GET", "/api/sessions"],
   ["GET", "/api/sessions/detail"],
+  ["POST", "/api/sessions/name"],
   ["POST", "/api/agent"],
   ["POST", "/api/sessions/new"],
   ["GET", "/api/sessions/worktrees"],

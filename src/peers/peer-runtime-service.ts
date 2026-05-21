@@ -372,6 +372,16 @@ export class PeerRuntimeService {
       this.assertSessionDetailScope(peer, detail);
       return detail;
     }
+    if (method === "POST" && path === "/api/sessions/name") {
+      const agentId = parseAgentId(body.agentId);
+      this.assertAgentScope(peer, agentId);
+      const threadId = requiredString(body.threadId, "threadId");
+      const detail = await runtime.sessionDetail(threadId, agentId);
+      this.assertSessionDetailScope(peer, detail);
+      const updated = await runtime.setSessionName(threadId, typeof body.name === "string" ? body.name : "", agentId, remoteActor);
+      this.assertSessionDetailScope(peer, updated);
+      return updated;
+    }
     if (method === "POST" && path === "/api/agent") {
       const agentId = parseRequiredAgentId(body.agentId);
       this.assertAgentScope(peer, agentId);

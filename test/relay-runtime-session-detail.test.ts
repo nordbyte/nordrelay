@@ -85,6 +85,7 @@ describe("relay runtime session detail", () => {
       "exec_command",
       "cli",
     ]);
+    expect(detail.sessionName).toBe("Launch check");
     expect((detail.active as AgentSessionInfo).threadId).toBe("thread-1");
     expect((detail.record as AgentThreadRecord).cwd).toBe("/workspace/project");
   });
@@ -163,6 +164,7 @@ function fakeRuntime(): RelayRuntimeDelegate {
       getActiveThreadId: () => meta.threadId,
     }),
     chatStore: { list: () => [] },
+    sessionNameStore: { get: () => ({ agentId: "codex", threadId: "thread-1", name: "Launch check", updatedAt: "2026-05-21T08:00:03.000Z" }) },
     activity: () => [],
   } as unknown as RelayRuntimeDelegate;
 }

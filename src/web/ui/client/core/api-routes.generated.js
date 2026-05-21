@@ -133,6 +133,7 @@ const WEB_API_CLIENT_ROUTE_RULES = [
   { path: "/api/sessions/switch", methods: ['POST'] },
   { path: "/api/sessions/attach", methods: ['POST'] },
   { path: "/api/sessions/detail", methods: ['GET'] },
+  { path: "/api/sessions/name", methods: ['POST'] },
   { path: "/api/agent", methods: ['POST'] },
   { path: "/api/models", methods: ['GET'] },
   { path: "/api/session/model", methods: ['POST'] },

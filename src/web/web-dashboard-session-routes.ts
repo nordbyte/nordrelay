@@ -260,6 +260,22 @@ export async function handleDashboardSessionRoute(
     return true;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/sessions/name") {
+    const body = await readJsonBody(req);
+    const threadId = stringField(body, "threadId");
+    const agentId = options.parseAgentId(optionalStringField(body, "agentId"));
+    if (agentId) {
+      options.assertScopedAgent(authUser, agentId);
+    }
+    const detail = await runtime.sessionDetail(threadId, agentId);
+    options.assertSessionDetailScope(authUser, threadId, detail);
+    const name = typeof body.name === "string" ? body.name : "";
+    const updated = await runtime.setSessionName(threadId, name, agentId, options.activityActor);
+    options.assertSessionDetailScope(authUser, threadId, updated);
+    sendJson(res, 200, updated);
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/models") {
     await options.assertCurrentSessionScope(authUser);
     sendJson(res, 200, { models: await runtime.listModels() });

@@ -10,8 +10,10 @@ import {
 } from "../agents/shared/agent.js";
 import { getExternalSnapshotForSession } from "../agents/shared/agent-activity.js";
 import { renderSessionUsageRows } from "../channels/shared/session-format.js";
+import { MAX_SESSION_NAME_LENGTH, sanitizeSessionName } from "../state/session-names.js";
 import type {
   WebActivityCategory,
+  WebActivityActor,
   WebActivityEvent,
   WebActivityStatus,
   WebChatMessage,
@@ -39,10 +41,53 @@ export async function relayRuntimeSessionDetail(
   return {
     record: target.record,
     active: target.active,
+    sessionName: runtime.sessionNameStore.get(target.active.agentId, threadId)?.name ?? "",
     usageRows: target.active.threadId === threadId ? renderSessionUsageRows(target.active) : [],
     messages,
     activity,
   };
+}
+
+export async function relayRuntimeSetSessionName(
+  runtime: RelayRuntimeDelegate,
+  threadId: string,
+  rawName: string,
+  agentId?: AgentId,
+  actor?: WebActivityActor,
+): Promise<Record<string, unknown>> {
+  const name = sanitizeSessionName(rawName);
+  const normalizedRawName = rawName.replace(/\s+/g, " ").trim();
+  if (normalizedRawName.length > MAX_SESSION_NAME_LENGTH) {
+    throw new Error(`Session name must be ${MAX_SESSION_NAME_LENGTH} characters or fewer.`);
+  }
+  const target = await sessionDetailTarget(runtime, threadId, agentId);
+  const resolvedAgentId = target.active.agentId;
+  runtime.sessionNameStore.set(resolvedAgentId, threadId, name);
+  runtime.appendActivity({
+    source: "web",
+    status: "info",
+    type: name ? "session_name_set" : "session_name_cleared",
+    category: "session",
+    threadId,
+    workspace: target.record?.cwd ?? target.active.workspace,
+    agentId: resolvedAgentId,
+    actor,
+    detail: name || "Session name cleared.",
+  });
+  runtime.appendAudit({
+    action: "command",
+    category: "session",
+    status: "ok",
+    contextKey: runtime.contextKey,
+    actor,
+    threadId,
+    workspace: target.record?.cwd ?? target.active.workspace,
+    agentId: resolvedAgentId,
+    description: name ? "Session name set" : "Session name cleared",
+    detail: name || "cleared",
+  });
+  runtime.scheduleActiveSessionsBroadcast();
+  return relayRuntimeSessionDetail(runtime, threadId, resolvedAgentId);
 }
 
 async function sessionDetailTarget(

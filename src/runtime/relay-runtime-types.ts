@@ -73,6 +73,7 @@ export interface ActiveSessionDto {
   agentId?: AgentId;
   agentLabel?: string;
   threadId: string | null;
+  sessionName?: string;
   workspace?: string;
   prompt?: string;
   currentTool?: string;

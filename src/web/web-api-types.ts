@@ -152,6 +152,7 @@ export interface WebUserManagementResponse {
 export interface WebSessionDetailResponse {
   record?: Record<string, unknown>;
   active?: AgentSessionInfo;
+  sessionName?: string;
   messages?: WebChatMessage[];
   activity?: WebActivityEvent[];
   usageRows?: Array<[string, string] | string>;
@@ -188,6 +189,7 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends `/api/sessions/worktrees/${string}/update` ? Record<string, never> :
   P extends `/api/sessions/worktrees/${string}` ? { force?: boolean } :
   P extends "/api/sessions/switch" | "/api/sessions/attach" ? { threadId: string } :
+  P extends "/api/sessions/name" ? { threadId: string; agentId?: AgentId; name: string } :
   P extends "/api/session/model" ? { model: string } :
   P extends "/api/session/reasoning" ? { reasoning: string } :
   P extends "/api/session/fast" ? { enabled: boolean } :
@@ -329,7 +331,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends `/api/sessions/worktrees/${string}/update` ? SessionWorktreeUpdateResult :
   P extends `/api/sessions/worktrees/${string}/commit` ? { record: SessionWorktreeRecord; clean: boolean; status: string[] } :
   P extends `/api/sessions/worktrees/${string}` ? { record: SessionWorktreeRecord } :
-  P extends "/api/sessions/detail" ? WebSessionDetailResponse :
+  P extends "/api/sessions/detail" | "/api/sessions/name" ? WebSessionDetailResponse :
   P extends "/api/models" ? { models: unknown[] } :
   P extends "/api/prompt" | "/api/prompt/upload" | "/api/retry" ? UploadPromptResult :
   P extends "/api/abort" | "/api/stop" | "/api/runtime/restart" ? { ok: boolean } :

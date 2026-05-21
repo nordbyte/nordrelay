@@ -29,6 +29,7 @@ import { AgentUpdateManager, type AgentUpdateJobSnapshot, type AgentUpdateOperat
 import { createAgentSessionService, enabledAgents } from "../agents/shared/agent-factory.js";
 import { AuditLogStore, type AuditEvent, type AuditListOptions } from "../access/audit-log.js";
 import { BotPreferencesStore } from "../state/bot-preferences.js";
+import { SessionNameStore } from "../state/session-names.js";
 import { ChannelCommandService } from "../channels/shared/channel-command-service.js";
 import { ChannelTurnService } from "../channels/shared/channel-turn-service.js";
 import { activeSessionSourceForContextKey, ChannelMirrorRegistry } from "../channels/shared/channel-mirror-registry.js";
@@ -221,7 +222,7 @@ import {
   relayRuntimeLogout,
   relayRuntimeChatHistory,
   relayRuntimeWebMirrorPreference,
-  relayRuntimeSessionDetail,
+  relayRuntimeSessionDetail, relayRuntimeSetSessionName,
   relayRuntimeClearChatHistory,
   relayRuntimeActivity,
   relayRuntimeActivityPage,
@@ -298,7 +299,7 @@ export class RelayRuntime {
   readonly chatStore: WebChatStore;
   readonly activityStore: WebActivityStore;
   readonly auditStore: AuditLogStore;
-  readonly preferencesStore: BotPreferencesStore;
+  readonly preferencesStore: BotPreferencesStore; readonly sessionNameStore: SessionNameStore;
   readonly lockStore: SessionLockStore;
   readonly agentUpdates: AgentUpdateManager;
   readonly queueService: RelayQueueService;
@@ -342,7 +343,7 @@ export class RelayRuntime {
     this.chatStore = new WebChatStore(config.workspace, config.stateBackend, MAX_CHAT_HISTORY);
     this.activityStore = new WebActivityStore(config.workspace, config.stateBackend, config.auditMaxEvents);
     this.auditStore = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
-    this.preferencesStore = new BotPreferencesStore(config.workspace, config.stateBackend);
+    this.preferencesStore = new BotPreferencesStore(config.workspace, config.stateBackend); this.sessionNameStore = new SessionNameStore(config.workspace, config.stateBackend);
     this.lockStore = new SessionLockStore(config.workspace, config.stateBackend);
     this.queueService = new RelayQueueService(this.promptStore, this.contextKey);
     this.jobStore = new UnifiedJobStore(config.workspace, config.stateBackend, config.unifiedJobMaxItems);
@@ -574,7 +575,7 @@ export class RelayRuntime {
     return relayRuntimeWebMirrorPreference(this, argument, actor);
   }
 
-  async sessionDetail(threadId: string, agentId?: AgentId): Promise<Record<string, unknown>> { return relayRuntimeSessionDetail(this, threadId, agentId); }
+  async sessionDetail(threadId: string, agentId?: AgentId): Promise<Record<string, unknown>> { return relayRuntimeSessionDetail(this, threadId, agentId); } async setSessionName(threadId: string, name: string, agentId?: AgentId, actor?: WebActivityActor): Promise<Record<string, unknown>> { return relayRuntimeSetSessionName(this, threadId, name, agentId, actor); }
   async clearChatHistory(actor?: WebActivityActor): Promise<{ removed: number; messages: WebChatMessage[] }> { return relayRuntimeClearChatHistory(this, actor); }
 
   activity(options: {

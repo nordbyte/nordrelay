@@ -209,7 +209,9 @@ function activeSessionCard(s){
   const processOnly=isProcessOnlyActiveSession(s);
   const thread=s.threadId||'';
   const threadLabel=thread||(processOnly?'Codex exec process':'not started');
-  const threadDisplay=thread?'<button type="button" class="copy-id" data-active-copy="'+attr(thread)+'" title="Copy thread ID">'+esc(short(thread,64))+'</button>':'<span class="active-session-process">'+esc(threadLabel)+'</span>';
+  const threadText=s.sessionName||short(thread,64);
+  const threadTitle=s.sessionName?('Copy thread ID: '+thread):'Copy thread ID';
+  const threadDisplay=thread?'<button type="button" class="copy-id" data-active-copy="'+attr(thread)+'" title="'+attr(threadTitle)+'">'+esc(threadText)+'</button>':'<span class="active-session-process">'+esc(threadLabel)+'</span>';
   const prompt=processOnly?'<small>Prompt unavailable for process scan.</small>':(s.prompt?'<small>'+esc(short(s.prompt,250))+'</small>':'');
   const tool=s.currentTool||s.lastTool||'-';
   const queue=s.queueLength?(' · '+s.queueLength+' queued'+(s.queuePaused?' paused':'')):'';
