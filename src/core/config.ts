@@ -420,7 +420,7 @@ export function loadConfig(): ConnectorConfig {
   const sessionLockTtlMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_SESSION_LOCK_TTL_MS), 30 * 60 * 1000, "NORDRELAY_SESSION_LOCK_TTL_MS");
   const dashboardCacheTtlMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_DASHBOARD_CACHE_TTL_MS), 10_000, "NORDRELAY_DASHBOARD_CACHE_TTL_MS");
   const activeDiscoveryCacheTtlMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_ACTIVE_DISCOVERY_CACHE_TTL_MS), 5_000, "NORDRELAY_ACTIVE_DISCOVERY_CACHE_TTL_MS");
-  const openClawActiveDiscoveryCacheTtlMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_OPENCLAW_ACTIVE_DISCOVERY_CACHE_TTL_MS), 30_000, "NORDRELAY_OPENCLAW_ACTIVE_DISCOVERY_CACHE_TTL_MS");
+  const openClawActiveDiscoveryCacheTtlMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_OPENCLAW_ACTIVE_DISCOVERY_CACHE_TTL_MS), 120_000, "NORDRELAY_OPENCLAW_ACTIVE_DISCOVERY_CACHE_TTL_MS");
   const unifiedJobMaxItems = parsePositiveIntegerEnv(optionalString(process.env.NORDRELAY_UNIFIED_JOB_MAX_ITEMS), 1000, "NORDRELAY_UNIFIED_JOB_MAX_ITEMS");
   const peerEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_PEER_ENABLED), false);
   const peerName = optionalString(process.env.NORDRELAY_PEER_NAME);

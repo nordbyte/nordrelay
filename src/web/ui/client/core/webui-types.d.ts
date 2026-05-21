@@ -425,6 +425,8 @@ interface DashboardState {
   activeSessionsTimer: WebuiInterval | null;
   activeSessionDurationTimer: WebuiInterval | null;
   activeSessionsLoading: boolean;
+  activeSessionsLastLoadAt: number;
+  activeSessionsPeerBackoff: Record<string, number>;
   activeSessionsTarget: string;
   activeSessionsErrors?: WebuiRecord[];
   localTurnThreadId: string | null;

@@ -133,8 +133,18 @@ function activeSessionsFetchTargets(){
 }
 function decorateActiveSessions(sessions,target){return (sessions||[]).map(session=>({...session,nodeId:target.id,nodeName:target.label,peerId:target.kind==='peer'?target.id:'local'}))}
 async function fetchActiveSessionsFromTarget(target){
-  const data=target.kind==='peer'?await apiPeer(target.id,'/api/active-sessions'):await api('/api/active-sessions',{local:true});
-  return decorateActiveSessions(data.sessions||[],target);
+  if(target.kind==='peer'){
+    const retryAt=state.activeSessionsPeerBackoff?.[target.id]||0;
+    if(retryAt>Date.now())throw new Error('Peer active-session refresh is cooling down for '+fmtDuration(retryAt-Date.now()));
+  }
+  try{
+    const data=target.kind==='peer'?await apiPeer(target.id,'/api/active-sessions'):await api('/api/active-sessions',{local:true});
+    if(target.kind==='peer'&&state.activeSessionsPeerBackoff)delete state.activeSessionsPeerBackoff[target.id];
+    return decorateActiveSessions(data.sessions||[],target);
+  }catch(error){
+    if(target.kind==='peer'&&isTransientPeerRefreshError(error))state.activeSessionsPeerBackoff[target.id]=Date.now()+15_000;
+    throw error;
+  }
 }
 function sortActiveSessions(items){return (items||[]).slice().sort((left,right)=>activeSessionDurationMs(right)-activeSessionDurationMs(left))}
 async function loadActiveSessionsForSelectedTarget(){
@@ -156,6 +166,7 @@ async function loadActiveSessions(){
     state.activeSessionsErrors=data.errors||[];
     renderActiveSessions(data.sessions||[]);
   }finally{
+    state.activeSessionsLastLoadAt=Date.now();
     state.activeSessionsLoading=false;
   }
 }
@@ -172,6 +183,10 @@ function stopActiveSessionsRefresh(){
   stopActiveSessionDurationCounter();
 }
 function activeSessionDurationMs(s){const started=Date.parse(s.startedAt||'');if(Number.isFinite(started))return Math.max(0,Date.now()-started);return Number.isFinite(Number(s.durationMs))?Number(s.durationMs):0}
+function isTransientPeerRefreshError(error){
+  const message=String(error?.message||error||'').toLowerCase();
+  return message.includes('timed out')||message.includes('unreachable')||message.includes('failed to fetch')||message.includes('network');
+}
 function activeSessionDurationHtml(s){const started=Date.parse(s.startedAt||'');const attrs=Number.isFinite(started)?' data-active-duration-started="'+attr(String(started))+'"':'';return '<span class="active-session-duration"'+attrs+'>'+esc(fmtDuration(activeSessionDurationMs(s)))+'</span>'}
 function updateActiveSessionDurationCounters(){document.querySelectorAll('[data-active-duration-started]').forEach(el=>{const started=Number(el.dataset.activeDurationStarted);if(Number.isFinite(started))el.textContent=fmtDuration(Math.max(0,Date.now()-started))})}
 function startActiveSessionDurationCounter(){updateActiveSessionDurationCounters();if(state.activeSessionDurationTimer)return;state.activeSessionDurationTimer=setInterval(()=>{if(state.currentPage!=='overview'){stopActiveSessionDurationCounter();return}updateActiveSessionDurationCounters()},1000)}

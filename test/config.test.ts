@@ -385,7 +385,7 @@ describe("loadConfig", () => {
       sessionLockTtlMs: 1_800_000,
       dashboardCacheTtlMs: 10_000,
       activeDiscoveryCacheTtlMs: 5_000,
-      openClawActiveDiscoveryCacheTtlMs: 30_000,
+      openClawActiveDiscoveryCacheTtlMs: 120_000,
       unifiedJobMaxItems: 1000,
     });
   });
@@ -530,7 +530,7 @@ describe("loadConfig", () => {
     expect(config.sessionLockTtlMs).toBe(1_800_000);
     expect(config.dashboardCacheTtlMs).toBe(10_000);
     expect(config.activeDiscoveryCacheTtlMs).toBe(5_000);
-    expect(config.openClawActiveDiscoveryCacheTtlMs).toBe(30_000);
+    expect(config.openClawActiveDiscoveryCacheTtlMs).toBe(120_000);
     expect(config.unifiedJobMaxItems).toBe(1000);
     expect(config.codexSandboxMode).toBe("workspace-write");
     expect(config.codexApprovalPolicy).toBe("never");

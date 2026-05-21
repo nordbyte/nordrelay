@@ -37,6 +37,10 @@ export interface PairPeerResult {
   tlsFingerprint?: string;
 }
 
+export interface PeerRequestOptions {
+  timeoutMs?: number;
+}
+
 export async function checkPeerEndpoint(url: string, options: { expectedTlsFingerprint?: string; timeoutMs?: number } = {}): Promise<PeerEndpointProbeResult> {
   const target = joinPeerUrl(url, "/peer/healthz");
   const startedAt = Date.now();
@@ -153,7 +157,7 @@ export async function pairPeer(options: PairPeerOptions, identity: LoadedPeerIde
 export class RemoteRelayClient {
   constructor(private readonly store = new PeerStore(), private readonly home?: string) {}
 
-  async rpc(peerId: string, type: string, payload?: unknown, actor?: WebActivityActor): Promise<unknown> {
+  async rpc(peerId: string, type: string, payload?: unknown, actor?: WebActivityActor, options: PeerRequestOptions = {}): Promise<unknown> {
     const peer = this.requiredPeer(peerId);
     const body: PeerRpcRequest = {
       protocolVersion: PEER_PROTOCOL_VERSION,
@@ -166,7 +170,7 @@ export class RemoteRelayClient {
     try {
       const startedAt = Date.now();
       if (!peer.url) {
-        const result = await getPeerRelayBroker(this.home).enqueue(peer.id, body);
+        const result = await getPeerRelayBroker(this.home).enqueue(peer.id, body, options.timeoutMs);
         this.store.markSeen(peer.id, healthPatchFromRpc(type, result.ok ? result.data : null, Date.now() - startedAt));
         if (!result.ok) {
           throw new Error(result.error);
@@ -180,6 +184,7 @@ export class RemoteRelayClient {
         headers: signed.headers,
         expectedTlsFingerprint: peer.tlsFingerprint,
         allowSelfSigned: Boolean(peer.tlsFingerprint),
+        timeoutMs: options.timeoutMs,
       });
       this.store.markSeen(peer.id, healthPatchFromRpc(type, result.data.ok ? result.data.data : null, Date.now() - startedAt));
       if (!result.data.ok) {
@@ -192,8 +197,8 @@ export class RemoteRelayClient {
     }
   }
 
-  async webProxy(peerId: string, payload: PeerWebProxyPayload, actor?: WebActivityActor, sourceContextKey?: string): Promise<unknown> {
-    return this.rpc(peerId, "web.proxy", sourceContextKey ? { ...payload, contextKey: sourceContextKey } : payload, actor);
+  async webProxy(peerId: string, payload: PeerWebProxyPayload, actor?: WebActivityActor, sourceContextKey?: string, options: PeerRequestOptions = {}): Promise<unknown> {
+    return this.rpc(peerId, "web.proxy", sourceContextKey ? { ...payload, contextKey: sourceContextKey } : payload, actor, options);
   }
 
   subscribe(peerId: string, onEvent: (event: PeerEventEnvelope) => void, onError?: (error: Error) => void, sourceContextKey?: string): { close: () => void } {

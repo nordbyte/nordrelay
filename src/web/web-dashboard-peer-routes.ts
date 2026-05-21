@@ -40,6 +40,9 @@ export interface DashboardPeerRouteOptions {
   auditPeerAction?: (action: AuditEvent["action"], description: string) => void;
 }
 
+const PEER_ACTIVE_SESSIONS_TIMEOUT_MS = 3_000;
+const PEER_HEALTH_TIMEOUT_MS = 4_000;
+
 export async function handleDashboardPeerRoute(
   req: IncomingMessage,
   res: ServerResponse,
@@ -94,7 +97,7 @@ export async function handleDashboardPeerRoute(
     const readiness = await buildPeerReadiness(options.config, options.home);
     const peerId = optionalStringField(body, "peerId");
     if (peerId) {
-      const probe = await new RemoteRelayClient(store, options.home).rpc(peerId, "peer.probe", {}, options.activityActor);
+      const probe = await new RemoteRelayClient(store, options.home).rpc(peerId, "peer.probe", {}, options.activityActor, { timeoutMs: PEER_HEALTH_TIMEOUT_MS });
       sendJson(res, 200, { type: "remote", peerId, readiness, probe });
       options.auditPeerAction?.("peer_probe", peerId);
       return true;
@@ -321,7 +324,13 @@ export async function handleDashboardPeerRoute(
   if (proxyMatch?.[1] && req.method === "POST") {
     const body = await readJsonBody(req);
     const payload = parseProxyPayload(body);
-    const data = await new RemoteRelayClient(store, options.home).webProxy(decodeURIComponent(proxyMatch[1]), payload, options.activityActor, payload.contextKey);
+    const data = await new RemoteRelayClient(store, options.home).webProxy(
+      decodeURIComponent(proxyMatch[1]),
+      payload,
+      options.activityActor,
+      payload.contextKey,
+      peerProxyTimeoutOptions(payload),
+    );
     sendJson(res, 200, data);
     return true;
   }
@@ -329,7 +338,7 @@ export async function handleDashboardPeerRoute(
   const healthMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/health$/);
   if (healthMatch?.[1] && req.method === "GET") {
     const peerId = decodeURIComponent(healthMatch[1]);
-    const data = await new RemoteRelayClient(store, options.home).rpc(peerId, "peer.ping", undefined, options.activityActor);
+    const data = await new RemoteRelayClient(store, options.home).rpc(peerId, "peer.ping", undefined, options.activityActor, { timeoutMs: PEER_HEALTH_TIMEOUT_MS });
     sendJson(res, 200, { data, peer: publicPeer(store.get(peerId)!) });
     options.auditPeerAction?.("peer_health_checked", peerId);
     return true;
@@ -449,6 +458,15 @@ function parseProxyPayload(body: Record<string, unknown>): PeerWebProxyPayload {
     body: objectRecord(body.body),
     contextKey: optionalStringField(body, "contextKey"),
   };
+}
+
+function peerProxyTimeoutOptions(payload: PeerWebProxyPayload): { timeoutMs?: number } {
+  const method = payload.method.trim().toUpperCase();
+  const path = payload.path.trim();
+  if (method === "GET" && path === "/api/active-sessions") {
+    return { timeoutMs: PEER_ACTIVE_SESSIONS_TIMEOUT_MS };
+  }
+  return {};
 }
 
 function parseWorkspaceAliases(value: unknown): Record<string, string> {
