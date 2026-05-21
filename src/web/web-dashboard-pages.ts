@@ -369,27 +369,31 @@ ${faviconLinks}
           </div>
           <div class="monitor-tab active" data-monitor-tab-panel="activity">
             <div class="monitor-tab-heading">
-              <div class="row"><select id="activitySource"><option value="all">All sources</option><option value="web">Web</option><option value="telegram">Telegram</option><option value="discord">Discord</option><option value="slack">Slack</option><option value="matrix">Matrix</option><option value="cli">CLI</option></select><select id="activityCategory"><option value="all">All categories</option><option value="prompt">Prompt</option><option value="session">Session</option><option value="queue">Queue</option><option value="agent-update">Agent update</option><option value="artifact">Artifact</option><option value="system">System</option><option value="auth">Auth</option><option value="security">Security</option><option value="tool">Tool</option></select><select id="activityStatus"><option value="all">All statuses</option><option value="queued">Queued</option><option value="running">Running</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="aborted">Aborted</option><option value="info">Info</option></select><input id="activityActor" placeholder="Actor"><input id="activityAgent" placeholder="Agent"><input id="activityThread" placeholder="Thread ID"><input id="activityWorkspace" placeholder="Workspace"><input id="activityType" placeholder="Type"><input id="activitySince" type="datetime-local"><input id="activityLimit" type="number" value="100" min="1" max="500"><button id="loadActivityBtn">Load activity</button><button id="exportActivityBtn" class="secondary">Export</button></div>
+              <button type="button" class="secondary monitor-filter-toggle" data-monitor-filter-toggle="activity" aria-expanded="false"><span class="monitor-filter-arrow" aria-hidden="true">▸</span><span>Filters</span></button>
+              <div class="row monitor-filter-content" data-monitor-filter-panel="activity" hidden><select id="activitySource"><option value="all">All sources</option><option value="web">Web</option><option value="telegram">Telegram</option><option value="discord">Discord</option><option value="slack">Slack</option><option value="matrix">Matrix</option><option value="cli">CLI</option></select><select id="activityCategory"><option value="all">All categories</option><option value="prompt">Prompt</option><option value="session">Session</option><option value="queue">Queue</option><option value="agent-update">Agent update</option><option value="artifact">Artifact</option><option value="system">System</option><option value="auth">Auth</option><option value="security">Security</option><option value="tool">Tool</option></select><select id="activityStatus"><option value="all">All statuses</option><option value="queued">Queued</option><option value="running">Running</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="aborted">Aborted</option><option value="info">Info</option></select><input id="activityActor" placeholder="Actor"><input id="activityAgent" placeholder="Agent"><input id="activityThread" placeholder="Thread ID"><input id="activityWorkspace" placeholder="Workspace"><input id="activityType" placeholder="Type"><input id="activitySince" type="datetime-local"><input id="activityLimit" type="number" value="100" min="1" max="500"><button id="loadActivityBtn">Load activity</button><button id="exportActivityBtn" class="secondary">Export</button></div>
             </div>
             <div id="activityList" class="list"></div>
             <div id="activityPager" class="pager"></div>
           </div>
           <div class="monitor-tab" data-monitor-tab-panel="tasks">
             <div class="monitor-tab-heading">
-              <div class="row"><button id="reloadTasksBtn">Reload tasks</button></div>
+              <button type="button" class="secondary monitor-filter-toggle" data-monitor-filter-toggle="tasks" aria-expanded="false"><span class="monitor-filter-arrow" aria-hidden="true">▸</span><span>Filters</span></button>
+              <div class="row monitor-filter-content" data-monitor-filter-panel="tasks" hidden><button id="reloadTasksBtn">Reload tasks</button></div>
             </div>
             <div id="tasksList" class="list"></div>
             <div id="jobsPager" class="pager"></div>
           </div>
           <div class="monitor-tab" data-monitor-tab-panel="trace">
             <div class="monitor-tab-heading">
-              <div class="row"><input id="traceCorrelationId" placeholder="Correlation ID"><button id="loadTraceBtn">Load trace</button></div>
+              <button type="button" class="secondary monitor-filter-toggle" data-monitor-filter-toggle="trace" aria-expanded="false"><span class="monitor-filter-arrow" aria-hidden="true">▸</span><span>Filters</span></button>
+              <div class="row monitor-filter-content" data-monitor-filter-panel="trace" hidden><input id="traceCorrelationId" placeholder="Correlation ID"><button id="loadTraceBtn">Load trace</button></div>
             </div>
             <div id="traceDetail" class="list"></div>
           </div>
           <div class="monitor-tab" data-monitor-tab-panel="artifacts">
             <div class="monitor-tab-heading">
-              <div class="row"><button id="reloadArtifactsBtn">Reload artifacts</button><input id="artifactSearch" placeholder="Search artifacts"><select id="artifactKind"><option value="all">All files</option><option value="images">Images</option><option value="docs">Docs/code</option></select><button id="previewArtifactCleanupBtn" class="secondary">Preview cleanup</button><button id="runArtifactCleanupBtn" class="danger">Run cleanup</button><button id="zipSelectedArtifactsBtn" class="secondary">ZIP selected</button><button id="deleteSelectedArtifactsBtn" class="danger">Delete selected</button></div>
+              <button type="button" class="secondary monitor-filter-toggle" data-monitor-filter-toggle="artifacts" aria-expanded="false"><span class="monitor-filter-arrow" aria-hidden="true">▸</span><span>Filters</span></button>
+              <div class="row monitor-filter-content" data-monitor-filter-panel="artifacts" hidden><button id="reloadArtifactsBtn">Reload artifacts</button><input id="artifactSearch" placeholder="Search artifacts"><select id="artifactKind"><option value="all">All files</option><option value="images">Images</option><option value="docs">Docs/code</option></select><button id="previewArtifactCleanupBtn" class="secondary">Preview cleanup</button><button id="runArtifactCleanupBtn" class="danger">Run cleanup</button><button id="zipSelectedArtifactsBtn" class="secondary">ZIP selected</button><button id="deleteSelectedArtifactsBtn" class="danger">Delete selected</button></div>
             </div>
             <div id="artifactUsage" class="artifact-usage"></div>
             <div id="artifactCleanupPlan" class="artifact-cleanup-plan"></div>

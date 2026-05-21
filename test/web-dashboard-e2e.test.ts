@@ -57,12 +57,19 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('data-monitor-tab="tasks"');
     expect(pageSource).toContain('data-monitor-tab="trace"');
     expect(pageSource).toContain('data-monitor-tab="artifacts"');
+    expect(pageSource).toContain('data-monitor-filter-toggle="activity"');
+    expect(pageSource).toContain('data-monitor-filter-toggle="tasks"');
+    expect(pageSource).toContain('data-monitor-filter-toggle="trace"');
+    expect(pageSource).toContain('data-monitor-filter-toggle="artifacts"');
+    expect(pageSource).toContain('data-monitor-filter-panel="activity" hidden');
     expect(pageSource).not.toContain('id="page-tasks"');
     expect(pageSource).not.toContain('id="page-activity"');
     expect(pageSource).not.toContain('id="page-trace"');
     expect(pageSource).not.toContain('id="page-artifacts"');
     expect(js).toContain("function loadMonitor");
     expect(js).toContain("function switchMonitorTab");
+    expect(js).toContain("function toggleMonitorFilters");
+    expect(js).toContain("function bindMonitorFilterToggles");
     expect(js).toContain("function renderActivityTable");
     expect(js).toContain("function renderTraceTimelineTable");
     expect(js).toContain('class="data-table activity-table"');
@@ -72,6 +79,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("fmtRelativeAgo(item.at)");
     expect(js).toContain("page('monitor')");
     expect(css).toContain(".monitor-tab-heading");
+    expect(css).toContain(".monitor-filter-toggle{display:inline-flex;align-items:center;gap:6px");
+    expect(css).toContain(".monitor-filter-content[hidden]{display:none!important}");
     expect(css).toContain(".activity-table th:nth-child(8)");
   });
 
