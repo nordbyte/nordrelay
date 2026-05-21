@@ -22,7 +22,7 @@ async function loadBootstrap(){
   document.getElementById('footerVersion').textContent='NordRelay '+(data.status.health?.version || '');
   document.getElementById('footerHealth').textContent='Health: '+footerHealthLabel(data.status.health?.state?.status);
   renderFooterUser(local.auth);
-  if(state.currentPage==='overview')startActiveSessionsRefresh();else stopActiveSessionsRefresh();
+  syncActiveSessionsRefresh();
   applyPermissions();
 }
 async function refreshChatMirrorPreferenceForBootstrap(){
@@ -90,23 +90,78 @@ function launchPermissionsText(session){
   const profile=(state.controls?.launchProfiles||[]).find(p=>p.id===selectedLaunch);
   return profile?.behavior||session.launchProfileBehavior||session.nextLaunchProfileBehavior||'-';
 }
+const ACTIVE_SESSIONS_TARGET_STORAGE_KEY='nordrelayActiveSessionsTarget';
+function activeSessionsPeerOptions(){return (state.peers?.peers||[]).filter(peer=>peer?.enabled!==false&&peer?.id&&peer?.url)}
+function activeSessionsTargetItems(){
+  const peers=activeSessionsPeerOptions();
+  const items:any[]=[{value:'local',label:'Local node',kind:'local'}];
+  if(peers.length)items.unshift({value:'all',label:'All nodes',kind:'all'});
+  peers.forEach(peer=>items.push({value:peer.id,label:peer.name||peer.url||peer.id,kind:'peer',peer}));
+  return items;
+}
+function normalizeActiveSessionsTarget(){
+  const items=activeSessionsTargetItems();
+  const current=state.activeSessionsTarget||'local';
+  const next=items.some(item=>item.value===current)?current:'local';
+  if(next!==current){
+    state.activeSessionsTarget=next;
+    localStorage.setItem(ACTIVE_SESSIONS_TARGET_STORAGE_KEY,next);
+  }
+  return next;
+}
+function renderActiveSessionsTargetMenu(){
+  const mount=document.getElementById('activeSessionsTarget');
+  if(!mount)return;
+  if(!can('sessions.read')){mount.innerHTML='';return}
+  const items=activeSessionsTargetItems();
+  normalizeActiveSessionsTarget();
+  if(items.length<=1){mount.innerHTML='';return}
+  const selected=items.find(item=>item.value===state.activeSessionsTarget)||items.find(item=>item.value==='local')||items[0];
+  mount.innerHTML=compactControlMenu('activeSessionsNode','Node',selected.value,selected.label,items,'sessions.read');
+  bindCompactControlMenus();
+}
+function activeSessionsTargetLabel(target){return target==='all'?'All nodes':target==='local'?'Local node':((state.peers?.peers||[]).find(peer=>peer.id===target)?.name||target)}
+function activeSessionsFetchTargets(){
+  const peers=activeSessionsPeerOptions();
+  if((state.activeSessionsTarget||'local')==='all')return [{id:'local',label:'Local node',kind:'local'}].concat(peers.map(peer=>({id:peer.id,label:peer.name||peer.url||peer.id,kind:'peer',peer})));
+  if((state.activeSessionsTarget||'local')==='local')return [{id:'local',label:'Local node',kind:'local'}];
+  const peer=peers.find(item=>item.id===state.activeSessionsTarget);
+  return peer?[{id:peer.id,label:peer.name||peer.url||peer.id,kind:'peer',peer}]:[{id:'local',label:'Local node',kind:'local'}];
+}
+function decorateActiveSessions(sessions,target){return (sessions||[]).map(session=>({...session,nodeId:target.id,nodeName:target.label,peerId:target.kind==='peer'?target.id:'local'}))}
+async function fetchActiveSessionsFromTarget(target){
+  const data=target.kind==='peer'?await apiPeer(target.id,'/api/active-sessions'):await api('/api/active-sessions',{local:true});
+  return decorateActiveSessions(data.sessions||[],target);
+}
+function sortActiveSessions(items){return (items||[]).slice().sort((left,right)=>activeSessionDurationMs(right)-activeSessionDurationMs(left))}
+async function loadActiveSessionsForSelectedTarget(){
+  const targets=activeSessionsFetchTargets();
+  if((state.activeSessionsTarget||'local')!=='all')return {sessions:sortActiveSessions(await fetchActiveSessionsFromTarget(targets[0])),errors:[]};
+  const results=await Promise.all(targets.map(target=>fetchActiveSessionsFromTarget(target).then(sessions=>({target,sessions,error:null})).catch(error=>({target,sessions:[],error}))));
+  return {sessions:sortActiveSessions(results.flatMap(result=>result.sessions)),errors:results.filter(result=>result.error).map(result=>({target:result.target.label,error:String(result.error?.message||result.error)}))};
+}
 async function loadActiveSessions(){
   const box=document.getElementById('activeSessions');
-  if(!box)return;
-  if(!can('sessions.read')){updateActiveSessionsCount([]);box.innerHTML='<div class="item">Permission required: sessions.read</div>';return}
+  if(!box&&state.currentPage==='overview')return;
+  renderActiveSessionsTargetMenu();
+  if(!can('sessions.read')){updateActiveSessionsCount([]);if(box)box.innerHTML='<div class="item">Permission required: sessions.read</div>';return}
   if(state.activeSessionsLoading)return;
   state.activeSessionsLoading=true;
   try{
-    const data=await api('/api/active-sessions');
+    normalizeActiveSessionsTarget();
+    const data=await loadActiveSessionsForSelectedTarget();
+    state.activeSessionsErrors=data.errors||[];
     renderActiveSessions(data.sessions||[]);
   }finally{
     state.activeSessionsLoading=false;
   }
 }
+function shouldRefreshActiveSessions(){return state.currentPage==='overview'||(state.activeSessionsTarget||'local')==='all'}
+function syncActiveSessionsRefresh(){if(shouldRefreshActiveSessions())startActiveSessionsRefresh();else stopActiveSessionsRefresh()}
 function startActiveSessionsRefresh(){
-  startActiveSessionDurationCounter();
+  if(state.currentPage==='overview')startActiveSessionDurationCounter();
   if(state.activeSessionsTimer)return;
-  state.activeSessionsTimer=setInterval(()=>{if(state.currentPage==='overview'){if(!document.hidden)safe(loadActiveSessions)}else stopActiveSessionsRefresh()},5000);
+  state.activeSessionsTimer=setInterval(()=>{if(shouldRefreshActiveSessions()){if(!document.hidden)safe(loadActiveSessions)}else stopActiveSessionsRefresh()},5000);
 }
 function stopActiveSessionsRefresh(){
   if(state.activeSessionsTimer)clearInterval(state.activeSessionsTimer);
@@ -136,10 +191,11 @@ function renderActiveSessions(items){
   renderChatWorkingIndicator();
   const box=document.getElementById('activeSessions');
   if(!box)return;
-  box.innerHTML=(items||[]).map(activeSessionCard).join('')||'<div class="item">No active sessions.</div>';
+  const errors=(state.activeSessionsErrors||[]).map(error=>'<div class="item active-session-error"><strong>'+esc(error.target||'Node')+'</strong><small>'+esc(error.error||'Active sessions unavailable')+'</small></div>').join('');
+  box.innerHTML=errors+((items||[]).map(activeSessionCard).join('')||(!errors?'<div class="item">No active sessions.</div>':''));
   document.querySelectorAll('[data-active-copy]').forEach(b=>b.onclick=()=>copyText(b.dataset.activeCopy||'','Thread ID copied'));
-  document.querySelectorAll('[data-active-switch]').forEach(b=>b.onclick=()=>safe(async()=>{if(!can('sessions.write')){toast('Permission required: sessions.write');return}const agentId=b.dataset.activeAgent;const threadId=b.dataset.activeSwitch;if(agentId&&state.snapshot?.session?.agentId!==agentId){await api('/api/agent',{method:'POST',body:{agentId}})}if(threadId){await api('/api/sessions/switch',{method:'POST',body:{threadId}})}toast('Session switched');await loadBootstrap();page('chat')}));
-  document.querySelectorAll('[data-active-detail]').forEach(b=>b.onclick=()=>safe(async()=>{const agentId=b.dataset.activeAgent;const threadId=b.dataset.activeDetail;if(agentId&&state.snapshot?.session?.agentId!==agentId){await api('/api/agent',{method:'POST',body:{agentId}});await loadBootstrap()}if(threadId)await loadSessionDetail(threadId)}));
+  document.querySelectorAll('[data-active-switch]').forEach(b=>b.onclick=()=>safe(async()=>{if(!can('sessions.write')){toast('Permission required: sessions.write');return}const peerId=b.dataset.activePeer||'local';const agentId=b.dataset.activeAgent;const threadId=b.dataset.activeSwitch;if(peerId!==state.selectedPeer){state.selectedPeer=peerId;localStorage.setItem('nordrelayPeerTarget',peerId);connectEvents()}if(agentId&&state.snapshot?.session?.agentId!==agentId){await headerTargetRequest(peerId,'/api/agent',{method:'POST',body:{agentId}})}if(threadId){await headerTargetRequest(peerId,'/api/sessions/switch',{method:'POST',body:{threadId}})}toast('Session switched');await loadBootstrap();page('chat')}));
+  document.querySelectorAll('[data-active-detail]').forEach(b=>b.onclick=()=>safe(async()=>{const peerId=b.dataset.activePeer||'local';const agentId=b.dataset.activeAgent;const threadId=b.dataset.activeDetail;if(peerId!==state.selectedPeer){state.selectedPeer=peerId;localStorage.setItem('nordrelayPeerTarget',peerId);connectEvents()}if(agentId&&state.snapshot?.session?.agentId!==agentId){await headerTargetRequest(peerId,'/api/agent',{method:'POST',body:{agentId}});await loadBootstrap()}if(threadId)await loadSessionDetail(threadId)}));
   applyPermissions();
   startActiveSessionDurationCounter();
 }
@@ -153,9 +209,10 @@ function activeSessionCard(s){
   const queue=s.queueLength?(' · '+s.queueLength+' queued'+(s.queuePaused?' paused':'')):'';
   const sourceLabel=activeSourceLabel(s.source);
   const mirrors=(s.mirrorChannels||[]).map(m=>activeSourceLabel(m.source)+' '+m.mode+(m.queueLength?' · '+m.queueLength+' queued'+(m.queuePaused?' paused':''):'')).join(', ');
-  const meta=[esc('Source '+sourceLabel),s.workspace?esc(s.workspace):'',activeSessionDurationHtml(s),tool&&tool!=='-'?esc('tool '+tool):''].filter(Boolean).join(' | ');
+  const node=state.activeSessionsTarget==='all'&&s.nodeName?esc('Node '+s.nodeName):'';
+  const meta=[node,esc('Source '+sourceLabel),s.workspace?esc(s.workspace):'',activeSessionDurationHtml(s),tool&&tool!=='-'?esc('tool '+tool):''].filter(Boolean).join(' | ');
   const mirrorLine=mirrors?'<small>Mirroring: '+esc(mirrors)+'</small>':(s.source==='cli'?'<small>Mirroring: none</small>':'');
-  return '<div class="item active-session-item"><strong>'+esc(s.agentLabel||s.agentId||'Agent')+' <span class="adapter-status enabled">'+esc(s.status)+'</span></strong><small>'+threadDisplay+esc(queue)+'</small><small>'+meta+'</small>'+mirrorLine+prompt+'<div class="row"><button data-active-switch="'+attr(thread)+'" data-active-agent="'+attr(s.agentId||'')+'" '+(!s.threadId?'disabled ':'')+disabledAttr('sessions.write')+'>Switch</button><button class="secondary" data-active-detail="'+attr(thread)+'" data-active-agent="'+attr(s.agentId||'')+'" '+(!s.threadId?'disabled ':'')+'>Details</button></div></div>';
+  return '<div class="item active-session-item"><strong>'+esc(s.agentLabel||s.agentId||'Agent')+' <span class="adapter-status enabled">'+esc(s.status)+'</span></strong><small>'+threadDisplay+esc(queue)+'</small><small>'+meta+'</small>'+mirrorLine+prompt+'<div class="row"><button data-active-switch="'+attr(thread)+'" data-active-agent="'+attr(s.agentId||'')+'" data-active-peer="'+attr(s.peerId||'local')+'" '+(!s.threadId?'disabled ':'')+disabledAttr('sessions.write')+'>Switch</button><button class="secondary" data-active-detail="'+attr(thread)+'" data-active-agent="'+attr(s.agentId||'')+'" data-active-peer="'+attr(s.peerId||'local')+'" '+(!s.threadId?'disabled ':'')+'>Details</button></div></div>';
 }
 function isProcessOnlyActiveSession(s){
   return !s.threadId&&String(s.contextKey||'').startsWith('process:codex:');
@@ -208,9 +265,9 @@ function activeLaunchLabel(session,selectedLaunch){
   return label+(behavior?' - '+behavior:'')+(unsafe?' - unsafe':'');
 }
 function configuredLaunchProfile(controls,profileId){return Boolean(profileId&&(controls.launchProfiles||[]).some(p=>p.id===profileId))}
-function compactControlMenu(id,label,value,display,items){
+function compactControlMenu(id,label,value,display,items,permission='settings.write'){
   const options=(items||[]).map(item=>'<button type="button" role="option" data-control-option="'+attr(id)+'" data-control-value="'+attr(item.value)+'" aria-selected="'+(item.value===value?'true':'false')+'">'+esc(item.label)+'</button>').join('');
-  return '<div class="compact-control" data-control-menu="'+attr(id)+'"><span class="compact-control-label">'+esc(label)+'</span><button type="button" id="'+attr(id)+'" class="control-menu-button" data-control-value="'+attr(value)+'" aria-haspopup="listbox" aria-expanded="false"'+disabledAttr('settings.write')+'>'+esc(display||'Default')+'</button><div class="control-menu-list" role="listbox" hidden>'+options+'</div></div>';
+  return '<div class="compact-control" data-control-menu="'+attr(id)+'"><span class="compact-control-label">'+esc(label)+'</span><button type="button" id="'+attr(id)+'" class="control-menu-button" data-control-value="'+attr(value)+'" aria-haspopup="listbox" aria-expanded="false"'+(permission?disabledAttr(permission):'')+'>'+esc(display||'Default')+'</button><div class="control-menu-list" role="listbox" hidden>'+options+'</div></div>';
 }
 function selectedCompactControlValue(id){return document.getElementById(id)?.dataset.controlValue||''}
 function closeCompactControlMenus(except=null){
@@ -235,6 +292,17 @@ function bindCompactControlMenus(){
     const nextValue=option.dataset.controlValue||'';
     const previousValue=button.dataset.controlValue||'';
     const previousText=button.textContent||'Default';
+    if(id==='activeSessionsNode'){
+      state.activeSessionsTarget=nextValue||'local';
+      localStorage.setItem(ACTIVE_SESSIONS_TARGET_STORAGE_KEY,state.activeSessionsTarget);
+      button.dataset.controlValue=state.activeSessionsTarget;
+      button.textContent=option.textContent||activeSessionsTargetLabel(state.activeSessionsTarget);
+      option.closest('.control-menu-list')?.querySelectorAll('[data-control-option]').forEach(item=>item.setAttribute('aria-selected',item===option?'true':'false'));
+      closeCompactControlMenus();
+      syncActiveSessionsRefresh();
+      await loadActiveSessions();
+      return;
+    }
     if(id==='controlMirror'){
       closeCompactControlMenus();
       button.textContent='Saving...';

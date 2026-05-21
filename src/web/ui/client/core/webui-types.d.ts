@@ -329,6 +329,8 @@ interface DashboardState {
   activeSessionsTimer: WebuiInterval | null;
   activeSessionDurationTimer: WebuiInterval | null;
   activeSessionsLoading: boolean;
+  activeSessionsTarget: string;
+  activeSessionsErrors?: WebuiRecord[];
   localTurnThreadId: string | null;
   localTurnAgentId: string | null;
   localTurnStartedAt: string | null;

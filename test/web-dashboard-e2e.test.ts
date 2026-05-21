@@ -391,12 +391,17 @@ describe("web dashboard browser-flow assets", () => {
 
     expect(pageSource).toContain("Active Sessions");
     expect(pageSource).toContain('id="activeSessionsCount"');
+    expect(pageSource).toContain('id="activeSessionsTarget"');
     expect(pageSource).toContain('id="activeSessions"');
     expect(navSource).toContain('id="overviewActiveBadge"');
     expect(navSource).toContain('class="nav-badge" aria-hidden="true" hidden');
     expect(pageSource).not.toContain("Current Session");
     expect(js).toContain("function renderActiveSessions");
     expect(js).toContain("function updateActiveSessionsCount");
+    expect(js).toContain("nordrelayActiveSessionsTarget");
+    expect(js).toContain("function activeSessionsTargetItems");
+    expect(js).toContain("apiPeer(target.id,'/api/active-sessions')");
+    expect(js).toContain("label:'All nodes'");
     expect(js).toContain("function activeSessionDurationHtml");
     expect(js).toContain("function updateActiveSessionDurationCounters");
     expect(js).toContain("state.activeSessionDurationTimer=setInterval");
@@ -419,6 +424,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(readFileSync("src/runtime/relay-external-activity-monitor.ts", "utf8")).toContain("shouldIgnoreExternalTurn");
     expect(readFileSync("src/runtime/relay-external-activity-monitor.ts", "utf8")).toContain("message.source === \"cli\"");
     expect(css).toContain(".active-sessions-count");
+    expect(css).toContain(".active-sessions-header");
     expect(css).toContain(".nav-badge{");
     expect(js).toContain("state.activeSessionsTimer=setInterval");
     expect(js).toContain("safe(loadActiveSessions)");
