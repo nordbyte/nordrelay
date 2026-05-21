@@ -650,7 +650,9 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#peerProbeResult")).toContainText("reachable");
     await page.getByRole("tab", { name: "Peers" }).click();
     await expect(page.locator("#peersList")).toContainText("Ubuntu Workstation");
-    await page.locator('[data-peer-probe="peer-ubuntu"]').click();
+    const ubuntuPeerRow = page.locator("#peersList tr", { hasText: "Ubuntu Workstation" });
+    await ubuntuPeerRow.locator("summary", { hasText: "More" }).click();
+    await ubuntuPeerRow.locator('[data-peer-probe="peer-ubuntu"]').click();
     await expect(page.locator("#peerProbeResult")).toContainText("Remote probe from Ubuntu Workstation");
     await page.getByRole("tab", { name: "Invitations" }).click();
     await expect(page.locator("#peerInvites")).toContainText("MacBook invite");
