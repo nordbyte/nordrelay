@@ -204,6 +204,7 @@ export class RemoteRelayClient {
     }
     const signed = signPeerRequest(peer, "GET", `${url.pathname}${url.search}`, "");
     const transport = url.protocol === "https:" ? https : http;
+    let closed = false;
     const req = transport.request({
       method: "GET",
       protocol: url.protocol,
@@ -211,6 +212,7 @@ export class RemoteRelayClient {
       port: url.port,
       path: `${url.pathname}${url.search}`,
       headers: signed.headers,
+      agent: false,
       rejectUnauthorized: false,
     } as https.RequestOptions, (res) => {
       try {
@@ -245,12 +247,18 @@ export class RemoteRelayClient {
       });
     });
     req.on("error", (error) => {
+      if (closed) {
+        return;
+      }
       this.store.markError(peer.id, error.message);
       onError?.(error);
     });
     req.end();
     return {
-      close: () => req.destroy(),
+      close: () => {
+        closed = true;
+        req.destroy();
+      },
     };
   }
 
@@ -300,6 +308,7 @@ async function requestJson<T>(options: JsonRequestOptions): Promise<{ data: T; s
       hostname: url.hostname,
       port: url.port,
       path: `${url.pathname}${url.search}`,
+      agent: false,
       headers: {
         "content-type": "application/json",
         "content-length": Buffer.byteLength(bodyText),

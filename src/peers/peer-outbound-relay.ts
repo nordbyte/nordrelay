@@ -262,6 +262,7 @@ async function requestJson<T>(options: {
       hostname: url.hostname,
       port: url.port,
       path: `${url.pathname}${url.search}`,
+      agent: false,
       headers: {
         "content-type": "application/json",
         "content-length": Buffer.byteLength(options.bodyText),
