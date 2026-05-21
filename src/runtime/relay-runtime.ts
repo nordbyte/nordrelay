@@ -653,7 +653,7 @@ export class RelayRuntime {
 
   async respondExternalApproval(approvalId: string, choice: AgentApprovalChoice, actor?: WebActivityActor): Promise<AgentExternalApprovalResult> {
     const session = await this.getSession(true);
-    const result = respondToExternalApproval(session, this.config, approvalId, choice);
+    const result = await respondToExternalApproval(session, this.config, approvalId, choice);
     const info = this.publicInfo(session);
     if (result.ok) {
       const updated = this.chatStore.resolveAction({

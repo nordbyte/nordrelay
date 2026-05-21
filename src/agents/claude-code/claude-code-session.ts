@@ -1,4 +1,4 @@
-import { query, type EffortLevel, type Options, type Query, type SDKMessage, type ThinkingConfig } from "@anthropic-ai/claude-agent-sdk";
+import { query, type CanUseTool, type EffortLevel, type Options, type PermissionResult, type PermissionUpdate, type Query, type SDKMessage, type ThinkingConfig } from "@anthropic-ai/claude-agent-sdk";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -17,7 +17,13 @@ import {
   type AgentSettingResult,
   type AgentSyncResult,
   type AgentThreadRecord,
+  type AgentApprovalChoice,
 } from "../shared/agent.js";
+import {
+  clearPendingAgentApprovals,
+  registerPendingAgentApproval,
+  removePendingAgentApproval,
+} from "../shared/agent-approval-registry.js";
 import { resolveClaudeCodeCli } from "./claude-code-cli.js";
 import {
   claudeCodeProfileAsLaunchProfile,
@@ -216,6 +222,7 @@ export class ClaudeCodeSessionService implements AgentSessionService {
       this.currentQuery?.close();
       this.currentQuery = null;
       this.abortController = null;
+      if (this.currentThreadId) clearPendingAgentApprovals("claude-code", this.currentThreadId);
       this.processing = false;
     }
   }
@@ -224,6 +231,7 @@ export class ClaudeCodeSessionService implements AgentSessionService {
     await this.currentQuery?.interrupt().catch(() => {});
     this.abortController?.abort();
     this.currentQuery?.close();
+    if (this.currentThreadId) clearPendingAgentApprovals("claude-code", this.currentThreadId);
     this.processing = false;
   }
 
@@ -367,6 +375,7 @@ export class ClaudeCodeSessionService implements AgentSessionService {
   dispose(): void {
     this.currentQuery?.close();
     this.abortController?.abort();
+    if (this.currentThreadId) clearPendingAgentApprovals("claude-code", this.currentThreadId);
     this.processing = false;
   }
 
@@ -384,6 +393,7 @@ export class ClaudeCodeSessionService implements AgentSessionService {
       permissionMode: this.currentLaunchProfile.permissionMode,
       allowDangerouslySkipPermissions: this.currentLaunchProfile.allowDangerouslySkipPermissions,
       pathToClaudeCodeExecutable: this.cliPath,
+      canUseTool: this.canUseToolHandler(),
       env: {
         ...process.env,
         CLAUDE_AGENT_SDK_CLIENT_APP: `nordrelay/${process.env.npm_package_version ?? "local"}`,
@@ -408,6 +418,86 @@ export class ClaudeCodeSessionService implements AgentSessionService {
       options.thinking = { type: "adaptive", display: "summarized" } satisfies ThinkingConfig;
     }
     return options;
+  }
+
+  private canUseToolHandler(): CanUseTool {
+    return async (toolName, input, permissionOptions) => {
+      const policy = claudeToolApprovalPolicy(this.currentLaunchProfile.permissionMode, toolName);
+      if (policy === "allow") {
+        return {
+          behavior: "allow",
+          toolUseID: permissionOptions.toolUseID,
+          decisionClassification: "user_temporary",
+        } satisfies PermissionResult;
+      }
+      if (policy === "deny") {
+        return {
+          behavior: "deny",
+          message: `${toolName} is not allowed by the current Claude Code launch profile.`,
+          toolUseID: permissionOptions.toolUseID,
+          decisionClassification: "user_reject",
+        } satisfies PermissionResult;
+      }
+      return this.requestClaudeToolApproval(toolName, input, permissionOptions);
+    };
+  }
+
+  private async requestClaudeToolApproval(
+    toolName: string,
+    input: Record<string, unknown>,
+    permissionOptions: Parameters<CanUseTool>[2],
+  ): Promise<PermissionResult> {
+    const threadId = this.currentThreadId ?? "pending";
+    const toolUseId = permissionOptions.toolUseID || `${toolName}-${Date.now()}`;
+    const command = permissionOptions.title
+      ?? permissionOptions.description
+      ?? stringifyPreview(input)
+      ?? `${toolName} requested permission`;
+    const reason = [
+      permissionOptions.decisionReason,
+      permissionOptions.blockedPath ? `Blocked path: ${permissionOptions.blockedPath}` : undefined,
+      permissionOptions.description,
+    ].filter((part): part is string => Boolean(part?.trim())).join("\n") || null;
+
+    return new Promise<PermissionResult>((resolve) => {
+      let approvalId: string | undefined;
+      const abort = () => {
+        removePendingAgentApproval(approvalId);
+        resolve({
+          behavior: "deny",
+          message: "Claude Code approval request was aborted.",
+          toolUseID: permissionOptions.toolUseID,
+          decisionClassification: "user_reject",
+        });
+      };
+      const approval = registerPendingAgentApproval({
+        agentId: "claude-code",
+        agentLabel: "Claude Code",
+        threadId,
+        callId: `claude-code:${toolUseId}`,
+        toolName,
+        command,
+        workdir: this.currentWorkspace,
+        reason,
+        prefixRule: permissionPrefixRule(permissionOptions.suggestions),
+        sandboxPermissions: this.currentLaunchProfile.permissionMode,
+        turnId: this.currentThreadId,
+        sourcePath: this.getRecord(this.currentThreadId ?? "")?.sessionPath ?? `memory:claude-code:${threadId}`,
+        respond: (choice) => {
+          permissionOptions.signal.removeEventListener("abort", abort);
+          const result = claudePermissionResult(choice, permissionOptions.toolUseID, permissionOptions.suggestions);
+          resolve(result);
+          return {
+            ok: true,
+            status: "submitted",
+            message: approvalChoiceLabel(choice),
+          };
+        },
+      });
+      approvalId = approval.id;
+
+      permissionOptions.signal.addEventListener("abort", abort, { once: true });
+    });
   }
 
   private handleSystemMessage(message: SDKMessage): void {
@@ -657,6 +747,72 @@ function handleToolProgress(
   }
   const elapsed = numberValue(object.elapsed_time_seconds);
   callbacks.onToolUpdate(toolId, elapsed !== null ? `${toolName} running for ${Math.round(elapsed)}s` : `${toolName} running`);
+}
+
+function claudeToolApprovalPolicy(permissionMode: string, toolName: string): "allow" | "ask" | "deny" {
+  if (permissionMode === "bypassPermissions") {
+    return "allow";
+  }
+  if (isClaudeReadOnlyTool(toolName)) {
+    return "allow";
+  }
+  if (permissionMode === "acceptEdits" && isClaudeEditTool(toolName)) {
+    return "allow";
+  }
+  if (permissionMode === "dontAsk" || permissionMode === "plan") {
+    return "deny";
+  }
+  return "ask";
+}
+
+function isClaudeReadOnlyTool(toolName: string): boolean {
+  return ["Read", "Grep", "Glob", "LS", "TodoRead", "NotebookRead"].includes(toolName);
+}
+
+function isClaudeEditTool(toolName: string): boolean {
+  return ["Edit", "MultiEdit", "Write", "NotebookEdit"].includes(toolName);
+}
+
+function claudePermissionResult(
+  choice: AgentApprovalChoice,
+  toolUseId: string | undefined,
+  suggestions: PermissionUpdate[] | undefined,
+): PermissionResult {
+  if (choice === "no") {
+    return {
+      behavior: "deny",
+      message: "Denied via NordRelay.",
+      toolUseID: toolUseId,
+      decisionClassification: "user_reject",
+    };
+  }
+  return {
+    behavior: "allow",
+    toolUseID: toolUseId,
+    updatedPermissions: choice === "persist" && suggestions?.length ? suggestions : undefined,
+    decisionClassification: choice === "persist" ? "user_permanent" : "user_temporary",
+  };
+}
+
+function permissionPrefixRule(suggestions: PermissionUpdate[] | undefined): string[] {
+  if (!suggestions?.length) {
+    return [];
+  }
+  return suggestions
+    .flatMap((suggestion) => "rules" in suggestion ? suggestion.rules : [])
+    .map((rule) => rule.ruleContent ? `${rule.toolName}(${rule.ruleContent})` : rule.toolName)
+    .filter((value): value is string => Boolean(value))
+    .slice(0, 3);
+}
+
+function approvalChoiceLabel(choice: AgentApprovalChoice): string {
+  if (choice === "persist") {
+    return "Proceed and remember";
+  }
+  if (choice === "no") {
+    return "Denied";
+  }
+  return "Proceed";
 }
 
 function handleToolSummary(

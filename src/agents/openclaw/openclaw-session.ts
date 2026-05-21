@@ -18,7 +18,12 @@ import {
   type AgentSettingResult,
   type AgentSyncResult,
   type AgentThreadRecord,
+  type AgentApprovalChoice,
 } from "../shared/agent.js";
+import {
+  clearPendingAgentApprovals,
+  registerPendingAgentApproval,
+} from "../shared/agent-approval-registry.js";
 import type { CodexLaunchProfile } from "../codex/codex-launch.js";
 import type { ConnectorConfig } from "../../core/config.js";
 import { OpenClawGatewayClient, extractOpenClawOutputText, type OpenClawGatewayEvent } from "./openclaw-gateway.js";
@@ -101,7 +106,7 @@ export class OpenClawSessionService implements AgentSessionService {
       launchProfileLabel: this.currentLaunchProfile.label,
       launchProfileBehavior: this.currentLaunchProfile.behavior,
       sandboxMode: "host",
-      approvalPolicy: "never",
+      approvalPolicy: openClawProfileAsLaunchProfile(this.currentLaunchProfile).approvalPolicy,
       fastMode: false,
       unsafeLaunch: this.currentLaunchProfile.unsafe,
       sessionUsage: this.cachedUsage,
@@ -213,6 +218,36 @@ export class OpenClawSessionService implements AgentSessionService {
             if (openTool) callbacks.onToolEnd(openTool.id, Boolean(payload.error));
             break;
           }
+          case "approval.request":
+          case "exec.approval.request":
+          case "agent.approval.request":
+          case "session.approval.request": {
+            const approval = parseOpenClawApprovalEvent(event, payload, threadId, this.currentRunId, this.currentWorkspace);
+            const toolId = `${approval.callId}-approval`;
+            callbacks.onToolStart(approval.toolName, toolId);
+            callbacks.onToolUpdate(toolId, `Waiting for approval ${approval.command}`);
+            const request = registerPendingAgentApproval({
+              ...approval,
+              respond: async (choice) => {
+                const mapped = mapOpenClawApprovalChoice(choice);
+                await gateway.respondApproval({
+                  runId: this.currentRunId,
+                  sessionId: threadId,
+                  approvalId: approval.gatewayApprovalId,
+                  choice: mapped,
+                });
+                callbacks.onToolUpdate(toolId, `Approval response: ${mapped}`);
+                callbacks.onToolEnd(toolId, mapped === "deny");
+                return {
+                  ok: true,
+                  status: "submitted",
+                  message: openClawApprovalChoiceLabel(choice),
+                };
+              },
+            });
+            callbacks.onToolUpdate(toolId, `Approval request ${request.id} is pending.`);
+            break;
+          }
           case "agent.completed":
           case "run.completed": {
             const finalText = extractOpenClawOutputText(payload);
@@ -251,6 +286,7 @@ export class OpenClawSessionService implements AgentSessionService {
       this.currentRunId = null;
       this.currentGateway = null;
       this.abortController = null;
+      if (threadId) clearPendingAgentApprovals("openclaw", threadId);
       this.processing = false;
       gateway.close();
     }
@@ -261,6 +297,7 @@ export class OpenClawSessionService implements AgentSessionService {
       await this.currentGateway.cancelRun(this.currentRunId).catch(() => {});
     }
     this.abortController?.abort();
+    if (this.currentThreadId) clearPendingAgentApprovals("openclaw", this.currentThreadId);
     this.processing = false;
   }
 
@@ -409,6 +446,7 @@ export class OpenClawSessionService implements AgentSessionService {
   dispose(): void {
     this.abortController?.abort();
     this.currentGateway?.close();
+    if (this.currentThreadId) clearPendingAgentApprovals("openclaw", this.currentThreadId);
     this.processing = false;
     this.currentRunId = null;
   }
@@ -584,6 +622,72 @@ function usageFromGatewayResult(value: unknown): AgentSessionInfo["sessionUsage"
   const cacheWrite = numberValue(usage.cacheWrite) ?? numberValue(usage.cache_write_tokens) ?? 0;
   const total = input + output + cacheRead + cacheWrite;
   return total > 0 ? { input, output, cacheRead, cacheWrite, total, cost: numberValue(usage.cost) ?? undefined } : undefined;
+}
+
+function parseOpenClawApprovalEvent(
+  event: OpenClawGatewayEvent,
+  payload: Record<string, unknown>,
+  threadId: string,
+  runId: string | null,
+  workspace: string,
+) {
+  const approval = objectValue(payload.approval) ?? objectValue(payload.request) ?? payload;
+  const toolName = stringValue(approval.toolName)
+    ?? stringValue(approval.tool_name)
+    ?? stringValue(approval.tool)
+    ?? "approval";
+  const command = stringValue(approval.command)
+    ?? stringValue(approval.cmd)
+    ?? stringValue(approval.preview)
+    ?? stringValue(approval.text)
+    ?? extractOpenClawOutputText(approval.input)
+    ?? "OpenClaw requested approval";
+  const gatewayApprovalId = stringValue(approval.approvalId)
+    ?? stringValue(approval.approval_id)
+    ?? stringValue(approval.requestId)
+    ?? stringValue(approval.request_id)
+    ?? stringValue(approval.id)
+    ?? [runId ?? threadId, toolName, command].join(":");
+  return {
+    agentId: "openclaw" as const,
+    agentLabel: "OpenClaw",
+    threadId,
+    callId: ["openclaw", runId ?? threadId, gatewayApprovalId].join(":"),
+    gatewayApprovalId,
+    toolName,
+    command,
+    workdir: stringValue(approval.workdir) ?? stringValue(approval.cwd) ?? workspace,
+    reason: stringValue(approval.reason) ?? stringValue(approval.message) ?? stringValue(approval.description),
+    prefixRule: commandPrefixRule(command),
+    sandboxPermissions: stringValue(approval.permissions) ?? null,
+    turnId: runId ?? threadId,
+    sourcePath: `gateway:${stringValue(event.event) ?? stringValue(event.type) ?? "approval"}`,
+  };
+}
+
+function mapOpenClawApprovalChoice(choice: AgentApprovalChoice): "allow-once" | "allow-always" | "deny" {
+  if (choice === "persist") {
+    return "allow-always";
+  }
+  if (choice === "no") {
+    return "deny";
+  }
+  return "allow-once";
+}
+
+function openClawApprovalChoiceLabel(choice: AgentApprovalChoice): string {
+  if (choice === "persist") {
+    return "Proceed and remember";
+  }
+  if (choice === "no") {
+    return "Denied";
+  }
+  return "Proceed";
+}
+
+function commandPrefixRule(command: string): string[] {
+  const [first] = command.trim().split(/\s+/);
+  return first ? [first] : [];
 }
 
 function computeTextDelta(previous: string, next: string): string {

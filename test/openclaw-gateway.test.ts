@@ -77,4 +77,66 @@ describe("openclaw-gateway", () => {
       }),
     ]);
   });
+
+  it("submits approval responses through the gateway", async () => {
+    const sent: Array<{ method?: string; params?: Record<string, unknown>; id: string; type: string }> = [];
+    class FakeSocket {
+      readyState = 1;
+      private listeners = new Map<string, Array<(event: unknown) => void>>();
+
+      constructor(readonly url: string) {
+        setTimeout(() => this.emit("open", {}), 0);
+      }
+
+      addEventListener(type: string, listener: (event: unknown) => void): void {
+        const listeners = this.listeners.get(type) ?? [];
+        listeners.push(listener);
+        this.listeners.set(type, listeners);
+      }
+
+      send(data: string): void {
+        const frame = JSON.parse(data) as { id: string; type: string; method?: string; params?: Record<string, unknown> };
+        sent.push(frame);
+        if (frame.type === "connect") {
+          this.emitMessage({ type: "res", id: frame.id, ok: true, payload: { status: "hello-ok" } });
+          return;
+        }
+        this.emitMessage({ type: "res", id: frame.id, ok: true, payload: { status: "ok" } });
+      }
+
+      close(): void {}
+
+      private emit(type: string, event: unknown): void {
+        for (const listener of this.listeners.get(type) ?? []) {
+          listener(event);
+        }
+      }
+
+      private emitMessage(frame: unknown): void {
+        this.emit("message", { data: JSON.stringify(frame) });
+      }
+    }
+
+    const client = new OpenClawGatewayClient({
+      url: "ws://127.0.0.1:18789",
+      webSocketFactory: FakeSocket as never,
+    });
+
+    await client.respondApproval({
+      runId: "run-1",
+      sessionId: "session-1",
+      approvalId: "approval-1",
+      choice: "allow-once",
+    });
+
+    expect(sent).toContainEqual(expect.objectContaining({
+      method: "agent.approval.respond",
+      params: expect.objectContaining({
+        runId: "run-1",
+        sessionId: "session-1",
+        approvalId: "approval-1",
+        choice: "allow-once",
+      }),
+    }));
+  });
 });

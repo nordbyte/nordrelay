@@ -17,7 +17,12 @@ import {
   type AgentSettingResult,
   type AgentSyncResult,
   type AgentThreadRecord,
+  type AgentApprovalChoice,
 } from "../shared/agent.js";
+import {
+  clearPendingAgentApprovals,
+  registerPendingAgentApproval,
+} from "../shared/agent-approval-registry.js";
 import type { CodexLaunchProfile } from "../codex/codex-launch.js";
 import type { ConnectorConfig } from "../../core/config.js";
 import { HermesApiClient } from "./hermes-api.js";
@@ -106,7 +111,7 @@ export class HermesSessionService implements AgentSessionService {
       launchProfileLabel: this.currentLaunchProfile.label,
       launchProfileBehavior: this.currentLaunchProfile.behavior,
       sandboxMode: "host",
-      approvalPolicy: "never",
+      approvalPolicy: hermesProfileAsLaunchProfile(this.currentLaunchProfile).approvalPolicy,
       fastMode: false,
       unsafeLaunch: this.currentLaunchProfile.unsafe,
       sessionPath: this.stateDbPath,
@@ -205,11 +210,30 @@ export class HermesSessionService implements AgentSessionService {
           case "approval.request": {
             const toolId = `${run.run_id}-approval`;
             callbacks.onToolStart("approval", toolId);
+            const approval = parseHermesApprovalEvent(event, run.run_id, threadId, this.currentWorkspace, this.stateDbPath);
             callbacks.onToolUpdate(toolId, "Hermes requested command approval.");
-            void this.api.approveRun(run.run_id, this.currentLaunchProfile.approvalChoice)
-              .then(() => callbacks.onToolUpdate(toolId, `Approval response: ${this.currentLaunchProfile.approvalChoice}`))
-              .catch((error) => callbacks.onToolUpdate(toolId, `Approval response failed: ${error instanceof Error ? error.message : String(error)}`))
-              .finally(() => callbacks.onToolEnd(toolId, this.currentLaunchProfile.approvalChoice === "deny"));
+            if (this.currentLaunchProfile.approvalChoice !== "ask") {
+              void this.api.approveRun(run.run_id, this.currentLaunchProfile.approvalChoice)
+                .then(() => callbacks.onToolUpdate(toolId, `Approval response: ${this.currentLaunchProfile.approvalChoice}`))
+                .catch((error) => callbacks.onToolUpdate(toolId, `Approval response failed: ${error instanceof Error ? error.message : String(error)}`))
+                .finally(() => callbacks.onToolEnd(toolId, this.currentLaunchProfile.approvalChoice === "deny"));
+              break;
+            }
+            const request = registerPendingAgentApproval({
+              ...approval,
+              respond: async (choice) => {
+                const hermesChoice = mapHermesApprovalChoice(choice);
+                await this.api.approveRun(run.run_id, hermesChoice);
+                callbacks.onToolUpdate(toolId, `Approval response: ${hermesChoice}`);
+                callbacks.onToolEnd(toolId, hermesChoice === "deny");
+                return {
+                  ok: true,
+                  status: "submitted",
+                  message: hermesApprovalChoiceLabel(choice),
+                };
+              },
+            });
+            callbacks.onToolUpdate(toolId, `Waiting for approval ${request.id}.`);
             break;
           }
           case "run.completed": {
@@ -256,6 +280,7 @@ export class HermesSessionService implements AgentSessionService {
     } finally {
       this.currentRunId = null;
       this.abortController = null;
+      if (threadId) clearPendingAgentApprovals("hermes", threadId);
       this.processing = false;
     }
   }
@@ -266,6 +291,7 @@ export class HermesSessionService implements AgentSessionService {
       await this.api.stopRun(runId).catch(() => {});
     }
     this.abortController?.abort();
+    if (this.currentThreadId) clearPendingAgentApprovals("hermes", this.currentThreadId);
     this.processing = false;
   }
 
@@ -415,6 +441,7 @@ export class HermesSessionService implements AgentSessionService {
 
   dispose(): void {
     this.abortController?.abort();
+    if (this.currentThreadId) clearPendingAgentApprovals("hermes", this.currentThreadId);
     this.processing = false;
     this.currentRunId = null;
   }
@@ -538,6 +565,70 @@ function numberValue(value: unknown): number | null {
 
 function objectValue(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null ? value as Record<string, unknown> : null;
+}
+
+function parseHermesApprovalEvent(
+  event: Record<string, unknown>,
+  runId: string,
+  threadId: string,
+  workspace: string,
+  sourcePath: string,
+) {
+  const approval = objectValue(event.approval) ?? objectValue(event.request) ?? event;
+  const command = stringValue(approval.command)
+    ?? stringValue(approval.cmd)
+    ?? stringValue(approval.preview)
+    ?? stringValue(approval.description)
+    ?? "Hermes requested approval";
+  const toolName = stringValue(approval.tool)
+    ?? stringValue(approval.toolName)
+    ?? stringValue(approval.tool_name)
+    ?? "approval";
+  const callId = [
+    "hermes",
+    runId,
+    stringValue(approval.approvalId) ?? stringValue(approval.approval_id) ?? stringValue(approval.id) ?? toolName,
+    command,
+  ].join(":");
+  return {
+    agentId: "hermes" as const,
+    agentLabel: "Hermes",
+    threadId,
+    callId,
+    toolName,
+    command,
+    workdir: stringValue(approval.workdir) ?? stringValue(approval.cwd) ?? workspace,
+    reason: stringValue(approval.reason) ?? stringValue(approval.message) ?? stringValue(approval.description),
+    prefixRule: commandPrefixRule(command),
+    sandboxPermissions: null,
+    turnId: runId,
+    sourcePath,
+  };
+}
+
+function mapHermesApprovalChoice(choice: AgentApprovalChoice): "once" | "session" | "deny" {
+  if (choice === "persist") {
+    return "session";
+  }
+  if (choice === "no") {
+    return "deny";
+  }
+  return "once";
+}
+
+function hermesApprovalChoiceLabel(choice: AgentApprovalChoice): string {
+  if (choice === "persist") {
+    return "Proceed and remember";
+  }
+  if (choice === "no") {
+    return "Denied";
+  }
+  return "Proceed";
+}
+
+function commandPrefixRule(command: string): string[] {
+  const [first] = command.trim().split(/\s+/);
+  return first ? [first] : [];
 }
 
 function isAbortError(error: unknown): boolean {

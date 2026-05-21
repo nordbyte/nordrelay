@@ -55,6 +55,7 @@ export interface AgentCapabilities {
   fastMode: boolean;
   externalActivity: boolean;
   cliMirror: boolean;
+  interactiveApprovals: boolean;
   activityLog: boolean;
   auth: boolean;
   login: boolean;
@@ -75,6 +76,7 @@ export const CODEX_AGENT_CAPABILITIES: AgentCapabilities = {
   fastMode: true,
   externalActivity: true,
   cliMirror: true,
+  interactiveApprovals: true,
   activityLog: true,
   auth: true,
   login: true,
@@ -94,6 +96,7 @@ export const PI_AGENT_CAPABILITIES: AgentCapabilities = {
   fastMode: false,
   externalActivity: true,
   cliMirror: true,
+  interactiveApprovals: false,
   activityLog: true,
   auth: true,
   login: false,
@@ -113,6 +116,7 @@ export const HERMES_AGENT_CAPABILITIES: AgentCapabilities = {
   fastMode: false,
   externalActivity: true,
   cliMirror: true,
+  interactiveApprovals: true,
   activityLog: true,
   auth: true,
   login: true,
@@ -132,6 +136,7 @@ export const OPENCLAW_AGENT_CAPABILITIES: AgentCapabilities = {
   fastMode: false,
   externalActivity: true,
   cliMirror: true,
+  interactiveApprovals: true,
   activityLog: true,
   auth: true,
   login: false,
@@ -151,6 +156,7 @@ export const CLAUDE_CODE_AGENT_CAPABILITIES: AgentCapabilities = {
   fastMode: false,
   externalActivity: true,
   cliMirror: true,
+  interactiveApprovals: true,
   activityLog: true,
   auth: true,
   login: true,

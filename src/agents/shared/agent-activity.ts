@@ -38,6 +38,7 @@ import {
   getPiSessionDiagnostics,
   getPiSessionSnapshot,
 } from "../pi/pi-state.js";
+import { listPendingAgentApprovals } from "./agent-approval-registry.js";
 
 const EXTERNAL_SNAPSHOT_CACHE_TTL_MS = 1_000;
 
@@ -151,6 +152,7 @@ export function getExternalSnapshotForSession(
   } catch {
     snapshot = null;
   }
+  snapshot = withPendingApprovals(snapshot, info, threadId);
   externalSnapshotCache.set(cacheKey, { expiresAt: now + EXTERNAL_SNAPSHOT_CACHE_TTL_MS, snapshot });
   if (externalSnapshotCache.size > 500) {
     pruneExternalSnapshotCache(now);
@@ -210,6 +212,60 @@ function readExternalSnapshot(
     staleAfterMs: config.codexExternalBusyStaleMs,
   });
   return snapshot ? codexSnapshotToAgentSnapshot(snapshot) : null;
+}
+
+function withPendingApprovals(
+  snapshot: AgentExternalSnapshot | null,
+  info: ReturnType<AgentSessionService["getInfo"]>,
+  threadId: string,
+): AgentExternalSnapshot | null {
+  const pending = listPendingAgentApprovals(info.agentId, threadId);
+  if (!pending.length) {
+    return snapshot;
+  }
+  if (snapshot) {
+    return {
+      ...snapshot,
+      activity: {
+        ...snapshot.activity,
+        active: true,
+        stale: false,
+        updatedAt: pending.at(-1)?.requestedAt ?? snapshot.activity.updatedAt,
+      },
+      latestToolName: pending.at(-1)?.toolName ?? snapshot.latestToolName,
+      pendingApprovals: [
+        ...(snapshot.pendingApprovals ?? []),
+        ...pending.filter((approval) => !(snapshot.pendingApprovals ?? []).some((existing) => existing.id === approval.id)),
+      ],
+    };
+  }
+  const first = pending[0]!;
+  const latest = pending.at(-1)!;
+  return {
+    agentId: info.agentId,
+    agentLabel: info.agentLabel,
+    threadId,
+    sourcePath: first.sourcePath,
+    sourceLabel: `${info.agentLabel} runtime`,
+    lineCount: 0,
+    activity: {
+      agentId: info.agentId,
+      agentLabel: info.agentLabel,
+      threadId,
+      sourcePath: first.sourcePath,
+      sourceLabel: `${info.agentLabel} runtime`,
+      active: true,
+      stale: false,
+      turnId: first.turnId,
+      startedAt: first.requestedAt,
+      updatedAt: latest.requestedAt,
+    },
+    events: [],
+    latestAgentMessage: null,
+    latestUserMessage: null,
+    latestToolName: latest.toolName,
+    pendingApprovals: pending,
+  };
 }
 
 function externalSnapshotCacheKey(

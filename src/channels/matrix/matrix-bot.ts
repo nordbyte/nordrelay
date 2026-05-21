@@ -1277,7 +1277,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
         await reply(request, "No session for this room.", { ephemeral: true });
         return;
       }
-      const result = respondToExternalApproval(session, config, approvalMatch[2], approvalMatch[1] as "yes" | "persist" | "no");
+      const result = await respondToExternalApproval(session, config, approvalMatch[2], approvalMatch[1] as "yes" | "persist" | "no");
       await reply(request, result.message, { ephemeral: !result.ok });
       const info = session.getInfo();
       activityStore.append({

@@ -36,7 +36,7 @@ export function registerTelegramExternalApprovalCallbacks(options: {
       await ctx.answerCallbackQuery({ text: "No session for this chat." });
       return;
     }
-    const result = respondToExternalApproval(session, options.config, approvalId, action);
+    const result = await respondToExternalApproval(session, options.config, approvalId, action);
     await ctx.answerCallbackQuery({ text: result.message.slice(0, 200), show_alert: !result.ok });
     const chatId = ctx.chat?.id;
     const messageId = ctx.callbackQuery.message?.message_id;

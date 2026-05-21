@@ -1,7 +1,7 @@
 import type { AgentLaunchProfileRecord } from "../shared/agent.js";
 import { createLaunchProfile, type CodexLaunchProfile } from "../codex/codex-launch.js";
 
-export type HermesApprovalChoice = "once" | "session" | "always" | "deny";
+export type HermesApprovalChoice = "ask" | "once" | "session" | "always" | "deny";
 
 export interface HermesLaunchProfile extends AgentLaunchProfileRecord {
   approvalChoice: HermesApprovalChoice;
@@ -12,9 +12,9 @@ export const HERMES_LAUNCH_PROFILES: HermesLaunchProfile[] = [
   {
     id: "default",
     label: "Default",
-    behavior: "Hermes API server defaults / auto-approve once",
+    behavior: "Hermes API server defaults / ask before risky actions",
     unsafe: false,
-    approvalChoice: "once",
+    approvalChoice: "ask",
   },
   {
     id: "safe",

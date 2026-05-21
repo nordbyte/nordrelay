@@ -367,6 +367,7 @@ const agentFeatureDefs=[
   ['attachments','Files/images','File, photo, and voice attachments'],
   ['externalActivity','External busy','Detect native CLI activity'],
   ['cliMirror','CLI mirror','Mirror native CLI turns'],
+  ['interactiveApprovals','Approvals','Approve action-required prompts from WebUI and chat adapters'],
   ['activityLog','Activity','Session activity timeline'],
   ['usageStats','Usage','Token and context usage'],
   ['subscriptionLimits','Limits','Subscription/quota limits'],

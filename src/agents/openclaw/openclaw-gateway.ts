@@ -149,6 +149,30 @@ export class OpenClawGatewayClient {
     ).catch(() => {});
   }
 
+  async respondApproval(params: {
+    runId?: string | null;
+    sessionId: string;
+    approvalId: string;
+    choice: "allow-once" | "allow-always" | "deny";
+  }): Promise<void> {
+    await this.connect();
+    const payload = {
+      runId: params.runId ?? undefined,
+      run_id: params.runId ?? undefined,
+      sessionId: params.sessionId,
+      session_id: params.sessionId,
+      approvalId: params.approvalId,
+      approval_id: params.approvalId,
+      choice: params.choice,
+      decision: params.choice,
+    };
+    await this.request("agent.approval.respond", payload, { timeoutMs: 10_000 }).catch(() =>
+      this.request("approval.respond", payload, { timeoutMs: 10_000 }),
+    ).catch(() =>
+      this.request("exec.approval.respond", payload, { timeoutMs: 10_000 }),
+    );
+  }
+
   onEvent(listener: (event: OpenClawGatewayEvent) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -168,7 +192,7 @@ export class OpenClawGatewayClient {
         deviceFamily: "nordrelay",
       },
       role: "operator",
-      subscribe: ["agent", "session.message", "session.tool", "sessions.changed", "health"],
+      subscribe: ["agent", "session.message", "session.tool", "approval", "exec.approval", "sessions.changed", "health"],
     };
     const auth: Record<string, string> = {};
     if (this.options.token) auth.token = this.options.token;

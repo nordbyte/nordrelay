@@ -6,17 +6,25 @@ import type {
 } from "./agent.js";
 import { getExternalSnapshotForSession } from "./agent-activity.js";
 import {
+  findPendingRegisteredApproval,
+  respondToRegisteredApproval,
+  type AgentExternalApprovalResult,
+} from "./agent-approval-registry.js";
+import {
   respondToCodexExternalApproval,
-  type CodexExternalApprovalResult,
 } from "../codex/codex-external-approval.js";
 
-export type AgentExternalApprovalResult = CodexExternalApprovalResult;
+export type { AgentExternalApprovalResult } from "./agent-approval-registry.js";
 
 export function findPendingExternalApproval(
   session: AgentSessionService,
   config: ConnectorConfig,
   approvalId?: string,
 ): AgentApprovalRequest | null {
+  const registered = findPendingRegisteredApproval(approvalId);
+  if (registered) {
+    return registered;
+  }
   const snapshot = getExternalSnapshotForSession(session, config, { maxEvents: 0 });
   const approvals = snapshot?.pendingApprovals ?? [];
   if (!approvalId) {
@@ -25,12 +33,17 @@ export function findPendingExternalApproval(
   return approvals.find((approval) => approval.id === approvalId) ?? null;
 }
 
-export function respondToExternalApproval(
+export async function respondToExternalApproval(
   session: AgentSessionService,
   config: ConnectorConfig,
   approvalId: string | undefined,
   choice: AgentApprovalChoice,
-): AgentExternalApprovalResult {
+): Promise<AgentExternalApprovalResult> {
+  const registered = await respondToRegisteredApproval(approvalId, choice);
+  if (registered) {
+    return registered;
+  }
+
   const info = session.getInfo();
   const approval = findPendingExternalApproval(session, config, approvalId);
   if (!approval) {

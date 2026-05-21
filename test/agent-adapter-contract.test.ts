@@ -30,6 +30,7 @@ const CAPABILITY_KEYS = [
   "fastMode",
   "externalActivity",
   "cliMirror",
+  "interactiveApprovals",
   "activityLog",
   "auth",
   "login",
@@ -166,6 +167,9 @@ describe("agent adapter contracts", () => {
 
       if (capabilities.externalActivity) {
         expect(capabilities.cliMirror, `${descriptor.id} CLI mirror for external activity`).toBe(true);
+      }
+      if (capabilities.interactiveApprovals) {
+        expect(capabilities.externalActivity, `${descriptor.id} approvals require external activity snapshots`).toBe(true);
       }
       if (capabilities.modelSelection) {
         expect(SERVICE_CLASS_BY_AGENT[descriptor.id].prototype.setModel, `${descriptor.id} setModel`).toBeTypeOf("function");
