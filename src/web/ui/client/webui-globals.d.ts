@@ -128,7 +128,7 @@ declare function loadPeers(): Promise<void>;
 declare function loadQueue(): Promise<void>;
 declare function loadQueuePlanner(): Promise<void>;
 declare function loadSessions(reset?: boolean, agentId?: string): Promise<void>;
-declare function loadSessionDetail(threadId: string): Promise<void>;
+declare function loadSessionDetail(threadId: string, agentId?: string): Promise<void>;
 declare function loadSettings(): Promise<void>;
 declare function loadTasks(reset?: boolean): Promise<void>;
 declare function loadVersion(options?: { quiet?: boolean; refreshJobs?: boolean }): Promise<void>;

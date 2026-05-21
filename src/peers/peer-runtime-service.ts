@@ -366,7 +366,9 @@ export class PeerRuntimeService {
       return this.scopedSessionPage(peer, await runtime.listSessionsPage(numberValue(query.page, 1), numberValue(query.limit, 50), stringValue(query.query), agentId));
     }
     if (method === "GET" && path === "/api/sessions/detail") {
-      const detail = await runtime.sessionDetail(requiredString(query.threadId, "threadId"));
+      const agentId = parseAgentId(query.agent);
+      this.assertAgentScope(peer, agentId);
+      const detail = await runtime.sessionDetail(requiredString(query.threadId, "threadId"), agentId);
       this.assertSessionDetailScope(peer, detail);
       return detail;
     }

@@ -171,7 +171,7 @@ export interface RelayRuntimeDelegate {
     minInterval: number;
     response: { plain: string; html: string };
   }>;
-  sessionDetail(threadId: string): Promise<Record<string, unknown>>;
+  sessionDetail(threadId: string, agentId?: AgentId): Promise<Record<string, unknown>>;
   clearChatHistory(actor?: WebActivityActor): Promise<{ removed: number; messages: WebChatMessage[] }>;
   activity(options?: RelayRuntimeActivityOptions): WebActivityEvent[];
   activityPage(options?: RelayRuntimeActivityOptions & { cursor?: string }): CursorPageDto<WebActivityEvent>;

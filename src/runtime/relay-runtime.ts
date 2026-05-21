@@ -574,7 +574,7 @@ export class RelayRuntime {
     return relayRuntimeWebMirrorPreference(this, argument, actor);
   }
 
-  async sessionDetail(threadId: string): Promise<Record<string, unknown>> { return relayRuntimeSessionDetail(this, threadId); }
+  async sessionDetail(threadId: string, agentId?: AgentId): Promise<Record<string, unknown>> { return relayRuntimeSessionDetail(this, threadId, agentId); }
   async clearChatHistory(actor?: WebActivityActor): Promise<{ removed: number; messages: WebChatMessage[] }> { return relayRuntimeClearChatHistory(this, actor); }
 
   activity(options: {

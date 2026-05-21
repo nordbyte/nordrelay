@@ -250,7 +250,11 @@ export async function handleDashboardSessionRoute(
 
   if (req.method === "GET" && url.pathname === "/api/sessions/detail") {
     const threadId = requiredSearch(url, "threadId");
-    const detail = await runtime.sessionDetail(threadId);
+    const agentId = options.parseAgentId(url.searchParams.get("agent") ?? undefined);
+    if (agentId) {
+      options.assertScopedAgent(authUser, agentId);
+    }
+    const detail = await runtime.sessionDetail(threadId, agentId);
     options.assertSessionDetailScope(authUser, threadId, detail);
     sendJson(res, 200, detail);
     return true;

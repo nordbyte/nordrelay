@@ -59,7 +59,6 @@ import {
 } from "./relay-runtime-helpers.js";
 import { RelayDashboardService } from "./relay-dashboard-service.js";
 import { capabilitiesOf } from "../channels/shared/bot-rendering.js";
-import { renderSessionInfoPlain, renderSessionUsageRows } from "../channels/shared/session-format.js";
 import { SessionLockStore, type SessionLock } from "../access/session-locks.js";
 import { SessionRegistry, type ContextMetadata } from "../state/session-registry.js";
 import { createSupportBundle, type SupportBundleResult } from "../support/support-bundle.js";
@@ -100,6 +99,7 @@ export type { RuntimeMetricsDto } from "./metrics.js";
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "../core/workspace-policy.js";
 import type { RelayRuntimeDelegate } from "./relay-runtime-delegate.js";
 import type { SessionWorktreeRecord } from "../worktrees/worktree-types.js";
+export { relayRuntimeSessionDetail } from "./relay-runtime-session-detail.js";
 export type {
   ActiveSessionDto,
   ActiveSessionsDto,
@@ -414,19 +414,6 @@ export async function relayRuntimeWebMirrorPreference(runtime: RelayRuntimeDeleg
       mode,
       minInterval: runtime.config.webMirrorMinUpdateMs,
       response,
-    };
-  }
-
-export async function relayRuntimeSessionDetail(runtime: RelayRuntimeDelegate, threadId: string): Promise<Record<string, unknown>> {
-    const session = await runtime.getSession(true);
-    const record = session.getSessionRecord(threadId);
-    const active = runtime.publicInfo(session, { includeUsage: true });
-    return {
-      record,
-      active,
-      usageRows: active.threadId === threadId ? renderSessionUsageRows(active) : [],
-      messages: runtime.chatStore.list(threadId, 100),
-      activity: runtime.activity({ limit: 100 }).filter((event) => event.threadId === threadId),
     };
   }
 
