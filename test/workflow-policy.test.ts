@@ -24,7 +24,7 @@ describe("workflow policy", () => {
   });
 
   it("pins GitHub Pages actions while keeping deploy permissions scoped", () => {
-    const workflow = readFileSync(".github/workflows/pages.yml", "utf8");
+    const workflow = readFileSync(".github/workflows/pages.yml", "utf8").replace(/\r\n/g, "\n");
 
     expect(workflow).toMatch(/actions\/checkout@[a-f0-9]{40} # v\d+/);
     expect(workflow).toMatch(/actions\/setup-node@[a-f0-9]{40} # v\d+/);
