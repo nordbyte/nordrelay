@@ -33,7 +33,7 @@ header{position:sticky;top:0;z-index:5;display:flex;justify-content:space-betwee
 header h1{line-height:1.1}
 h1{font-size:24px;margin:0}
 h2{font-size:16px;margin:0 0 12px}
-.active-sessions-count{color:var(--muted);font-weight:650}
+.active-sessions-count{color:var(--muted);font-weight:650;margin-left:5px}
 .active-sessions-header{display:flex;align-items:center;justify-content:flex-start;gap:8px;flex-wrap:wrap;margin:0 0 10px}
 .active-sessions-header h2{display:flex;align-items:center;margin:0;line-height:28px}
 .active-sessions-target{display:flex;align-items:center;justify-content:flex-start;min-width:0}
