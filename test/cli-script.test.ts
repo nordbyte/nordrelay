@@ -70,6 +70,8 @@ describe("nordrelay CLI script", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
 
     expect(source).toContain("function resolveLaunchWorkspace()");
+    expect(source).toContain("function childProcessEnv(extra = {})");
+    expect(source).toContain("path.dirname(process.execPath)");
     expect(source).toContain("NORDRELAY_WORKSPACE: resolveLaunchWorkspace()");
     expect(source).toContain("const launchWorkspace = resolveLaunchWorkspace()");
     expect(source).toContain("NORDRELAY_WORKSPACE: launchWorkspace");

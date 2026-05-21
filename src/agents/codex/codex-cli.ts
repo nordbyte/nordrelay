@@ -20,7 +20,7 @@ export function resolveCodexCli(env: NodeJS.ProcessEnv = process.env): CodexCliR
     return { source: "bundled" };
   }
 
-  const pathMatch = findExecutableOnPath("codex", env.PATH, { pathext: env.PATHEXT });
+  const pathMatch = findExecutableOnPath("codex", codexSearchPath(env), { pathext: env.PATHEXT });
   return pathMatch ? { path: pathMatch, source: "path" } : { source: "bundled" };
 }
 
@@ -110,4 +110,40 @@ function optionalString(value: string | undefined): string | undefined {
 function isEnabled(value: string | undefined): boolean {
   const normalized = value?.trim().toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+function codexSearchPath(env: NodeJS.ProcessEnv): string | undefined {
+  return prependUniquePathDirs(env.PATH, [
+    path.dirname(process.execPath),
+    env.APPDATA ? path.join(env.APPDATA, "npm") : undefined,
+  ]);
+}
+
+function prependUniquePathDirs(pathValue: string | undefined, directories: Array<string | undefined>): string | undefined {
+  const existing = (pathValue || "")
+    .split(path.delimiter)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const normalized = new Set(existing.map((item) => normalizePathKey(item)));
+  const prefix: string[] = [];
+
+  for (const directory of directories) {
+    if (!directory) {
+      continue;
+    }
+    const resolved = path.resolve(directory);
+    const key = normalizePathKey(resolved);
+    if (normalized.has(key)) {
+      continue;
+    }
+    normalized.add(key);
+    prefix.push(resolved);
+  }
+
+  return [...prefix, ...existing].join(path.delimiter) || undefined;
+}
+
+function normalizePathKey(value: string): string {
+  const resolved = path.resolve(value);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 }

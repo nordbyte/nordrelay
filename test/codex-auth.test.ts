@@ -66,6 +66,29 @@ describe("codex-auth", () => {
       expect(status.detail).toContain("user@example.com");
     });
 
+    it("uses the configured Codex CLI path for auth checks", async () => {
+      const previous = process.env.CODEX_CLI_PATH;
+      process.env.CODEX_CLI_PATH = "/opt/codex/bin/codex";
+      mockExecSuccess("Logged in");
+
+      try {
+        const status = await checkAuthStatus();
+        expect(status.authenticated).toBe(true);
+        expect(mockExecFile).toHaveBeenCalledWith(
+          "/opt/codex/bin/codex",
+          ["login", "status"],
+          expect.any(Object),
+          expect.any(Function),
+        );
+      } finally {
+        if (previous === undefined) {
+          delete process.env.CODEX_CLI_PATH;
+        } else {
+          process.env.CODEX_CLI_PATH = previous;
+        }
+      }
+    });
+
     it("reports unauthenticated when CLI auth fails", async () => {
       mockExecFailure("Not logged in");
 

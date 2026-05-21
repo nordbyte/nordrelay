@@ -197,6 +197,43 @@ function resolveLaunchWorkspace() {
   return path.resolve(configured || process.cwd());
 }
 
+function childProcessEnv(extra = {}) {
+  const env = {
+    ...process.env,
+    ...extra,
+  };
+  env.PATH = prependUniquePathDirs(env.PATH, [
+    path.dirname(process.execPath),
+    resolveNpmGlobalBinDir(env),
+  ]);
+  return env;
+}
+
+function prependUniquePathDirs(pathValue, directories) {
+  const existing = (pathValue || "")
+    .split(path.delimiter)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const normalized = new Set(existing.map((item) => normalizePathKey(item)));
+  const prefix = [];
+
+  for (const directory of directories) {
+    if (!directory) continue;
+    const resolved = path.resolve(directory);
+    const key = normalizePathKey(resolved);
+    if (normalized.has(key)) continue;
+    normalized.add(key);
+    prefix.push(resolved);
+  }
+
+  return [...prefix, ...existing].join(path.delimiter) || undefined;
+}
+
+function normalizePathKey(value) {
+  const resolved = path.resolve(value);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
 function loadEnvFile(envPath) {
   if (!fs.existsSync(envPath)) return;
   const text = fs.readFileSync(envPath, "utf8");
@@ -439,10 +476,9 @@ async function commandStart(options, settings = {}) {
     const child = spawn(process.execPath, [SCRIPT_PATH, "foreground", ...runtimeForwardFlags(options.rawFlags)], {
       cwd: RUNTIME_ROOT,
       detached: true,
-      env: {
-        ...process.env,
+      env: childProcessEnv({
         NORDRELAY_WORKSPACE: resolveLaunchWorkspace(),
-      },
+      }),
       stdio: ["ignore", logFd, logFd],
     });
     child.unref();
@@ -1874,14 +1910,13 @@ async function startWebDashboard(options, settings = {}) {
     throw new Error(`Missing dashboard runtime. Run \`npm install\` and \`npm run build\` in ${RUNTIME_ROOT}.`);
   }
 
-  const env = {
-    ...process.env,
+  const env = childProcessEnv({
     NORDRELAY_HOME: options.home,
     NORDRELAY_SOURCE_ROOT: RUNTIME_ROOT,
     NORDRELAY_WORKSPACE: resolveLaunchWorkspace(),
     NORDRELAY_DASHBOARD_HOST: host,
     NORDRELAY_DASHBOARD_PORT: String(port),
-  };
+  });
   let child = null;
   let stdio = null;
   let alreadyRunning = false;
@@ -2012,15 +2047,14 @@ async function commandForeground(options) {
     throw new Error(message);
   }
 
-  const env = {
-    ...process.env,
+  const env = childProcessEnv({
     NORDRELAY_HOME: options.home,
     NORDRELAY_SOURCE_ROOT: RUNTIME_ROOT,
     NORDRELAY_WORKSPACE: launchWorkspace,
     NORDRELAY_STATE_FILE: options.stateFile,
     NORDRELAY_WRAPPER_PID: String(process.pid),
     NORDRELAY_DROP_PENDING_UPDATES: options.dropPendingUpdates ? "1" : "0",
-  };
+  });
 
   const child = spawn(entry.command, entry.args, {
     cwd: RUNTIME_ROOT,

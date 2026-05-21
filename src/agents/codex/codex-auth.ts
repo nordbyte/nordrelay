@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
 
+import { resolveCodexCli } from "./codex-cli.js";
+
 export interface AuthStatus {
   authenticated: boolean;
   method: "api-key" | "cli" | "none";
@@ -111,8 +113,9 @@ export async function startLogout(): Promise<LoginResult> {
 
 function runCodexCommand(args: string[]): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
+    const cli = resolveCodexCli();
     execFile(
-      CODEX_CLI,
+      cli.path ?? CODEX_CLI,
       args,
       {
         timeout: COMMAND_TIMEOUT_MS,
