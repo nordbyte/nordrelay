@@ -181,6 +181,7 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .chat-message-custom-action.primary{background:var(--accent);border-color:var(--accent);color:white}
 .chat-message-custom-action.danger{background:var(--danger);border-color:var(--danger);color:white}
 .chat-message-custom-action.danger:hover,.chat-message-custom-action.danger:focus{background:color-mix(in srgb,var(--danger) 82%,#000);border-color:color-mix(in srgb,var(--danger) 82%,#000)}
+.chat-message-action-resolution{display:inline-flex;align-items:center;min-height:28px;margin-top:10px;padding:0 10px;border:1px solid color-mix(in srgb,var(--success) 52%,var(--border));border-radius:8px;background:color-mix(in srgb,var(--success) 12%,var(--surface));color:var(--text);font-size:13px;font-weight:700}
 .message-edit-button:hover::after,.message-edit-button:focus::after{background:transparent}
 .message .chat-inline-code{appearance:none;-webkit-appearance:none;display:inline;min-height:0;height:auto;margin:0;padding:0;border:0;background:transparent;color:var(--link);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:1em;line-height:inherit;white-space:normal;vertical-align:baseline;cursor:pointer}
 .message .chat-inline-code:hover,.message .chat-inline-code:focus{background:transparent;color:var(--link);text-decoration:underline;outline:none}

@@ -21,6 +21,12 @@ export interface WebChatAction {
   title?: string;
 }
 
+export interface WebChatActionResolution {
+  actionId: string;
+  label: string;
+  resolvedAt: string;
+}
+
 export interface WebChatMessage {
   id: string;
   threadId: string;
@@ -33,6 +39,7 @@ export interface WebChatMessage {
   turnId?: string;
   key?: string;
   actions?: WebChatAction[];
+  actionResolution?: WebChatActionResolution;
 }
 
 export interface WebActivityEvent {
@@ -130,7 +137,11 @@ export class WebChatStore {
         existing.turnId = input.turnId;
         existing.timestamp = input.timestamp ?? now;
         existing.key = input.key;
-        existing.actions = input.actions;
+        if (input.meta !== undefined) {
+          existing.meta = input.meta;
+        }
+        existing.actionResolution = input.actionResolution ?? existing.actionResolution;
+        existing.actions = filterResolvedWebChatActions(input.actions, existing.actionResolution);
         result = { message: existing, inserted: false, updated: true };
         return payload;
       }
@@ -149,6 +160,37 @@ export class WebChatStore {
       return payload;
     });
     return result!;
+  }
+
+  resolveAction(input: { actionId: string; label: string; actionPrefix?: string; threadId?: string; resolvedAt?: string }): number {
+    const actionId = input.actionId.trim();
+    if (!actionId) {
+      return 0;
+    }
+    const actionPrefix = input.actionPrefix?.trim();
+    const actionSuffix = `:${actionId}`;
+    const resolvedAt = input.resolvedAt ?? new Date().toISOString();
+    let updated = 0;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      for (const [threadId, messages] of Object.entries(payload.messagesByThread)) {
+        if (input.threadId && threadId !== input.threadId) {
+          continue;
+        }
+        for (const message of messages) {
+          const actions = message.actions ?? [];
+          if (!actions.some((action) => isMatchingWebChatAction(action, actionSuffix, actionPrefix))) {
+            continue;
+          }
+          const remaining = actions.filter((action) => !isMatchingWebChatAction(action, actionSuffix, actionPrefix));
+          message.actions = remaining.length ? remaining : undefined;
+          message.actionResolution = { actionId, label: input.label, resolvedAt };
+          updated += 1;
+        }
+      }
+      return payload;
+    });
+    return updated;
   }
 
   list(threadId: string | null | undefined, limit = 200): WebChatMessage[] {
@@ -327,6 +369,7 @@ function isWebChatMessage(value: unknown): value is WebChatMessage {
     (candidate.meta === undefined || (Array.isArray(candidate.meta) && candidate.meta.every((item) => typeof item === "string"))) &&
     (candidate.key === undefined || typeof candidate.key === "string") &&
     (candidate.actions === undefined || (Array.isArray(candidate.actions) && candidate.actions.every(isWebChatAction))) &&
+    (candidate.actionResolution === undefined || isWebChatActionResolution(candidate.actionResolution)) &&
     ["user", "agent", "system", "tool"].includes(candidate.role) &&
     ["web", "telegram", "discord", "slack", "matrix", "cli"].includes(candidate.source);
 }
@@ -340,6 +383,32 @@ function isWebChatAction(value: unknown): value is WebChatAction {
     typeof candidate.action === "string" &&
     (candidate.style === undefined || ["primary", "secondary", "danger"].includes(candidate.style)) &&
     (candidate.title === undefined || typeof candidate.title === "string");
+}
+
+function isWebChatActionResolution(value: unknown): value is WebChatActionResolution {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as WebChatActionResolution;
+  return typeof candidate.actionId === "string" &&
+    typeof candidate.label === "string" &&
+    typeof candidate.resolvedAt === "string";
+}
+
+function filterResolvedWebChatActions(actions: WebChatAction[] | undefined, resolution: WebChatActionResolution | undefined): WebChatAction[] | undefined {
+  if (!actions?.length) {
+    return undefined;
+  }
+  if (!resolution?.actionId) {
+    return actions;
+  }
+  const suffix = `:${resolution.actionId}`;
+  const filtered = actions.filter((action) => !action.action.endsWith(suffix));
+  return filtered.length ? filtered : undefined;
+}
+
+function isMatchingWebChatAction(action: WebChatAction, actionSuffix: string, actionPrefix: string | undefined): boolean {
+  return action.action.endsWith(actionSuffix) && (!actionPrefix || action.action.startsWith(actionPrefix));
 }
 
 function isWebActivityEvent(value: unknown): value is WebActivityEvent {

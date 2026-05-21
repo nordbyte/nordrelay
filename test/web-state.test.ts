@@ -128,6 +128,66 @@ describe("web dashboard state stores", () => {
     }
   });
 
+  it("replaces resolved approval actions with the selected option", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-web-chat-approval-"));
+    try {
+      const store = new WebChatStore(workspace, "json", 10);
+      store.upsertByKey({
+        threadId: "thread-a",
+        role: "system",
+        text: "Action required",
+        source: "cli",
+        key: "approval:1",
+        actions: [
+          { label: "Proceed", action: "approval:yes:abc123", style: "primary" },
+          { label: "Proceed and remember", action: "approval:persist:abc123" },
+          { label: "Deny", action: "approval:no:abc123", style: "danger" },
+        ],
+      });
+
+      expect(store.resolveAction({
+        threadId: "thread-a",
+        actionPrefix: "approval:",
+        actionId: "abc123",
+        label: "Selected: Proceed",
+        resolvedAt: "2026-05-21T08:30:00.000Z",
+      })).toBe(1);
+
+      const resolved = store.list("thread-a")[0];
+      expect(resolved?.actions).toBeUndefined();
+      expect(resolved).toMatchObject({
+        actionResolution: {
+          actionId: "abc123",
+          label: "Selected: Proceed",
+          resolvedAt: "2026-05-21T08:30:00.000Z",
+        },
+      });
+
+      store.upsertByKey({
+        threadId: "thread-a",
+        role: "system",
+        text: "Action required",
+        source: "cli",
+        key: "approval:1",
+        actions: [
+          { label: "Proceed", action: "approval:yes:abc123", style: "primary" },
+          { label: "Deny", action: "approval:no:abc123", style: "danger" },
+        ],
+      });
+
+      const preserved = store.list("thread-a")[0];
+      expect(preserved?.actions).toBeUndefined();
+      expect(preserved).toMatchObject({
+        actionResolution: {
+          actionId: "abc123",
+          label: "Selected: Proceed",
+        },
+      });
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("filters activity timeline events", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-web-activity-"));
     try {

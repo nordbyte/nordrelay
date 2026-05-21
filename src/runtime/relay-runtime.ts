@@ -655,6 +655,17 @@ export class RelayRuntime {
     const session = await this.getSession(true);
     const result = respondToExternalApproval(session, this.config, approvalId, choice);
     const info = this.publicInfo(session);
+    if (result.ok) {
+      const updated = this.chatStore.resolveAction({
+        threadId: info.threadId ?? undefined,
+        actionPrefix: "approval:",
+        actionId: approvalId,
+        label: externalApprovalChoiceDisplay(choice),
+      });
+      if (updated > 0) {
+        this.broadcast({ type: "chat_history", messages: await this.chatHistory() });
+      }
+    }
     this.appendActivity({
       source: "web",
       status: result.ok ? "info" : "failed",
@@ -824,4 +835,14 @@ export class RelayRuntime {
   }
 
   publicInfo(session: AgentSessionService, options?: AgentSessionInfoOptions): AgentSessionInfo { return relayRuntimePublicInfo(this, session, options); }
+}
+
+function externalApprovalChoiceDisplay(choice: AgentApprovalChoice): string {
+  if (choice === "persist") {
+    return "Selected: Proceed and remember";
+  }
+  if (choice === "no") {
+    return "Selected: Deny";
+  }
+  return "Selected: Proceed";
 }
