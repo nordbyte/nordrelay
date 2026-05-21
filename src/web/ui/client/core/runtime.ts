@@ -66,7 +66,13 @@ function applyPermissions(){
     ['[data-update-agent],[data-update-send],[data-update-cancel],[data-update-delete-log]','updates.run'],
     ['[data-user-edit],[data-user-toggle],[data-user-code],[data-user-link],[data-user-discord-code],[data-user-discord-link],[data-user-slack-code],[data-user-slack-link],[data-user-matrix-code],[data-user-matrix-link],[data-user-password],[data-user-revoke],[data-telegram-unlink],[data-discord-unlink],[data-slack-unlink],[data-matrix-unlink],[data-group-edit],[data-chat-edit],[data-chat-toggle],[data-discord-channel-edit],[data-discord-channel-toggle],[data-slack-channel-edit],[data-slack-channel-toggle],[data-matrix-room-edit],[data-matrix-room-toggle]','users.write'],
   ];
-  disableMap.forEach(([selector,permission])=>document.querySelectorAll(selector).forEach(el=>{el.disabled=!can(permission);if(!can(permission))el.title='Permission required: '+permission}));
+  disableMap.forEach(([selector,permission])=>document.querySelectorAll(selector).forEach(el=>{
+    const allowed=can(permission);
+    const stateDisabled=el.dataset.stateDisabled==='true';
+    el.disabled=!allowed||stateDisabled;
+    if(!allowed)el.title='Permission required: '+permission;
+    else if(stateDisabled&&el.dataset.stateDisabledTitle)el.title=el.dataset.stateDisabledTitle;
+  }));
 }
 function readOpenNavSections(){try{const raw=localStorage.getItem(NAV_OPEN_STORAGE_KEY);if(!raw)return null;const parsed=JSON.parse(raw);return Array.isArray(parsed)?new Set(parsed.filter(Boolean)):null}catch{return null}}
 function writeOpenNavSections(){const open=[...document.querySelectorAll('[data-nav-section]')].filter(section=>section.dataset.navOpen==='true').map(section=>section.dataset.navSection).filter(Boolean);localStorage.setItem(NAV_OPEN_STORAGE_KEY,JSON.stringify(open))}

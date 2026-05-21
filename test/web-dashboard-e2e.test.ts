@@ -507,6 +507,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("Install");
     expect(js).toContain("data-update-delete-log");
     expect(js).toContain("Delete Log");
+    expect(js).toContain("data.stateDisabled='true'");
+    expect(js).toContain("const stateDisabled=el.dataset.stateDisabled==='true'");
     expect(js).not.toContain("data-update-log");
     expect(js).toContain("function renderVersionTable");
     expect(js).toContain('class="data-table version-table"');

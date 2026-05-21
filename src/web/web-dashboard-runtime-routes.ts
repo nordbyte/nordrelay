@@ -65,6 +65,14 @@ export async function handleDashboardRuntimeRoute(
     const agentId = options.parseAgentIdRequired(stringField(body, "agentId"));
     const operation = parseAgentUpdateOperation(optionalStringField(body, "operation"));
     options.assertScopedAgent(authUser, agentId);
+    const runningJob = runtime.agentUpdateJobs().find((job) => job.agentId === agentId && job.status === "running");
+    if (runningJob) {
+      sendJson(res, 409, {
+        error: `${runningJob.agentLabel} ${runningJob.operation} is already running.`,
+        job: runningJob,
+      });
+      return true;
+    }
     sendJson(res, 202, { job: runtime.startAgentUpdate(agentId, operation, options.activityActor) });
     return true;
   }

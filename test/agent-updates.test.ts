@@ -81,6 +81,7 @@ describe("agent updates", () => {
       env: { ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH ?? ""}` },
     });
     const started = manager.start("codex");
+    expect(() => manager.start("codex")).toThrow(/already running/i);
 
     await waitFor(() => manager.get(started.id)?.needsInput === true);
     expect(() => manager.deleteLog(started.id)).toThrow(/still running/i);
