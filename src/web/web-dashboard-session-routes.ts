@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { isAgentId, type AgentId } from "../agents/shared/agent.js";
+import { isAgentId, type AgentApprovalChoice, type AgentId } from "../agents/shared/agent.js";
 import type { RelayRuntime, SessionPageDto } from "../runtime/relay-runtime.js";
 import type { QueuePlanInput } from "../runtime/relay-runtime-queue-planner.js";
 import { SESSION_WORKSPACE_MODES, type SessionWorkspaceMode, type WorktreeConflictResolution } from "../worktrees/worktree-types.js";
@@ -311,6 +311,15 @@ export async function handleDashboardSessionRoute(
     return true;
   }
 
+  const approvalRespondMatch = url.pathname.match(/^\/api\/approvals\/([^/]+)\/respond$/);
+  if (req.method === "POST" && approvalRespondMatch?.[1]) {
+    await options.assertCurrentSessionScope(authUser);
+    const body = await readJsonBody(req);
+    const choice = parseApprovalChoice(stringField(body, "choice"));
+    sendJson(res, 200, await runtime.respondExternalApproval(decodeURIComponent(approvalRespondMatch[1]), choice, options.activityActor));
+    return true;
+  }
+
   if (req.method === "POST" && (url.pathname === "/api/abort" || url.pathname === "/api/stop")) {
     await options.assertCurrentSessionScope(authUser);
     await runtime.abort(options.activityActor);
@@ -450,6 +459,13 @@ export async function handleDashboardSessionRoute(
   }
 
   return false;
+}
+
+function parseApprovalChoice(value: string): AgentApprovalChoice {
+  if (value === "yes" || value === "persist" || value === "no") {
+    return value;
+  }
+  throw new Error(`Invalid approval choice: ${value}`);
 }
 
 function parseWorkspaceMode(value: string | undefined): SessionWorkspaceMode | undefined {

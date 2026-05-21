@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
@@ -8,6 +9,7 @@ import {
   type CodexApprovalPolicy,
   type CodexSandboxMode,
 } from "./codex-launch.js";
+import type { AgentApprovalRequest } from "../shared/agent.js";
 
 export interface CodexThreadRecord {
   id: string;
@@ -69,7 +71,9 @@ export interface CodexThreadActivity {
   updatedAt: Date | null;
 }
 
-export type CodexActivityEventKind = "task" | "user" | "agent" | "tool";
+export type CodexApprovalRequest = AgentApprovalRequest;
+
+export type CodexActivityEventKind = "task" | "user" | "agent" | "tool" | "approval";
 
 export interface CodexActivityEvent {
   lineNumber: number;
@@ -81,6 +85,7 @@ export interface CodexActivityEvent {
   text: string | null;
   toolName: string | null;
   phase: string | null;
+  approval?: CodexApprovalRequest;
 }
 
 export interface CodexRolloutSnapshot {
@@ -92,6 +97,7 @@ export interface CodexRolloutSnapshot {
   latestAgentMessage: string | null;
   latestUserMessage: string | null;
   latestToolName: string | null;
+  pendingApprovals: CodexApprovalRequest[];
 }
 
 const ROLLOUT_CACHE_MAX_EVENTS = 200;
@@ -486,6 +492,9 @@ function parseRolloutSnapshot(
   let latestAgentMessage: string | null = options.base?.latestAgentMessage ?? null;
   let latestUserMessage: string | null = options.base?.latestUserMessage ?? null;
   let latestToolName: string | null = options.base?.latestToolName ?? null;
+  const pendingApprovals = new Map<string, CodexApprovalRequest>(
+    (options.base?.pendingApprovals ?? []).map((approval) => [approval.callId, approval]),
+  );
   const events: CodexActivityEvent[] = [...(options.base?.events ?? [])];
   const lines = contents.split(/\r?\n/);
   const lineNumberOffset = options.base?.lineCount ?? 0;
@@ -573,6 +582,7 @@ function parseRolloutSnapshot(
         activeTurnId = null;
         startedAt = null;
         updatedAt = eventTimestamp ?? updatedAt;
+        pendingApprovals.clear();
       }
       continue;
     }
@@ -611,6 +621,7 @@ function parseRolloutSnapshot(
 
     if (type === "function_call") {
       latestToolName = readString(payload?.name);
+      const callId = readString(payload?.call_id);
       pushEvent({
         lineNumber,
         kind: "tool",
@@ -622,10 +633,40 @@ function parseRolloutSnapshot(
         toolName: latestToolName,
         phase: null,
       });
+      const approval = parseFunctionCallApproval({
+        threadId,
+        rolloutPath,
+        lineNumber,
+        turnId: activeTurnId,
+        timestamp: eventTimestamp,
+        callId,
+        toolName: latestToolName,
+        rawArguments: readString(payload?.arguments),
+      });
+      if (approval) {
+        pendingApprovals.set(approval.callId, approval);
+        pushEvent({
+          lineNumber,
+          kind: "approval",
+          timestamp: eventTimestamp,
+          type,
+          turnId: activeTurnId,
+          status: "pending",
+          text: approval.command,
+          toolName: approval.toolName,
+          phase: null,
+          approval,
+        });
+      }
       continue;
     }
 
     if (type === "function_call_output") {
+      const callId = readString(payload?.call_id);
+      const approval = callId ? pendingApprovals.get(callId) : undefined;
+      if (callId) {
+        pendingApprovals.delete(callId);
+      }
       pushEvent({
         lineNumber,
         kind: "tool",
@@ -634,7 +675,7 @@ function parseRolloutSnapshot(
         turnId: activeTurnId,
         status: "finished",
         text: null,
-        toolName: null,
+        toolName: approval?.toolName ?? null,
         phase: null,
       });
     }
@@ -657,7 +698,75 @@ function parseRolloutSnapshot(
     latestAgentMessage,
     latestUserMessage,
     latestToolName,
+    pendingApprovals: [...pendingApprovals.values()],
   };
+}
+
+function parseFunctionCallApproval(input: {
+  threadId: string;
+  rolloutPath: string;
+  lineNumber: number;
+  turnId: string | null;
+  timestamp: Date | null;
+  callId: string | null;
+  toolName: string | null;
+  rawArguments: string | null;
+}): CodexApprovalRequest | null {
+  if (!input.callId || !input.rawArguments) {
+    return null;
+  }
+
+  let args: Record<string, unknown> | null = null;
+  try {
+    args = readObject(JSON.parse(input.rawArguments));
+  } catch {
+    args = null;
+  }
+  if (!args) {
+    return null;
+  }
+
+  const sandboxPermissions = readString(args.sandbox_permissions);
+  if (sandboxPermissions !== "require_escalated") {
+    return null;
+  }
+
+  const command = readString(args.cmd) ?? readString(args.command);
+  if (!command?.trim()) {
+    return null;
+  }
+
+  const prefixRule = Array.isArray(args.prefix_rule)
+    ? args.prefix_rule.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    : [];
+
+  return {
+    id: createApprovalId(input.threadId, input.rolloutPath, input.callId, input.lineNumber),
+    callId: input.callId,
+    toolName: input.toolName ?? "tool",
+    command,
+    workdir: readString(args.workdir),
+    reason: readString(args.justification) ?? readString(args.reason),
+    prefixRule,
+    sandboxPermissions,
+    lineNumber: input.lineNumber,
+    turnId: input.turnId,
+    requestedAt: input.timestamp,
+    sourcePath: input.rolloutPath,
+  };
+}
+
+function createApprovalId(threadId: string, rolloutPath: string, callId: string, lineNumber: number): string {
+  return createHash("sha256")
+    .update(threadId)
+    .update("\0")
+    .update(rolloutPath)
+    .update("\0")
+    .update(callId)
+    .update("\0")
+    .update(String(lineNumber))
+    .digest("hex")
+    .slice(0, 12);
 }
 
 function finalizeRolloutSnapshot(
@@ -679,14 +788,15 @@ function finalizeRolloutSnapshot(
   const maxEvents = options.maxEvents ?? Number.POSITIVE_INFINITY;
   const filteredEvents = snapshot.events.filter((event) => event.lineNumber > afterLine);
   const events = maxEvents <= 0 ? [] : filteredEvents.slice(-maxEvents);
+  const hasPendingApprovals = snapshot.pendingApprovals.length > 0;
 
   return {
     ...snapshot,
     activity: {
       ...snapshot.activity,
       updatedAt,
-      stale,
-      active: snapshot.activity.active && !stale,
+      stale: hasPendingApprovals ? false : stale,
+      active: snapshot.activity.active && (hasPendingApprovals || !stale),
     },
     events,
   };

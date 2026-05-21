@@ -92,6 +92,7 @@
 - Fast mode can be toggled with `/fast` and mirrors Codex's `fast_default_opt_out` setting from `~/.codex/config.toml`.
 - Active chat sessions periodically sync model, reasoning, workspace, launch metadata, and fast-mode defaults from local agent state where supported.
 - Active local Codex CLI tasks are detected from rollout JSONL files so chat adapters do not race the CLI on the same thread.
+- Codex CLI action-required prompts are detected from rollout JSONL files and mirrored to the WebUI plus chat adapters with approval/deny controls. Submitting a choice to a terminal-started CLI requires opt-in `CODEX_EXTERNAL_APPROVAL_CONTROL=true` and OS support for local TTY input control.
 - `/diagnostics` includes rollout path, activity status, stale/idle reason, line count, and last update time.
 - Optional per-turn token usage footer with `SHOW_TURN_TOKEN_USAGE=true`.
 

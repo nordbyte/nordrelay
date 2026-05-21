@@ -116,6 +116,7 @@ export type WebApiDynamicPath =
   | `/api/agent-update/${string}/cancel`
   | `/api/agent-update/${string}/input`
   | `/api/agent-update/${string}/log`
+  | `/api/approvals/${string}/respond`
   | `/api/discord-channels/${string}`
   | `/api/groups/${string}`
   | `/api/jobs/${string}/action`

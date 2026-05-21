@@ -1,5 +1,6 @@
 import type {
   AgentCapabilities,
+  AgentApprovalRequest,
   AgentDiagnostics,
   AgentId,
   AgentModelRecord,
@@ -82,6 +83,7 @@ export interface ActiveSessionDto {
   queueLength: number;
   queuePaused: boolean;
   mirrorChannels?: ActiveSessionMirrorDto[];
+  approvalRequired?: AgentApprovalRequest;
   detail?: string;
 }
 
@@ -470,6 +472,7 @@ export interface ExternalMirrorState {
   latestStatus?: string;
   latestStatusAt?: number;
   latestMirroredEventLine?: number;
+  approvalRequestIds?: string[];
   statusMessageId?: number;
   lastTypingAt?: number;
   workingNoticeTurnKey?: string;

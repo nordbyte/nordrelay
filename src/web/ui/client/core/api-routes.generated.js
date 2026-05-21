@@ -81,6 +81,7 @@ const WEB_API_CLIENT_ROUTE_RULES = [
   { path: "/api/auth/status", methods: ['GET'] },
   { path: "/api/auth/login", methods: ['POST'] },
   { path: "/api/auth/logout", methods: ['POST'] },
+  { re: /^\/api\/approvals\/[^\/]+\/respond$/, methods: ['POST'] },
   { path: "/api/settings", methods: ['GET', 'PATCH'] },
   { path: "/api/settings/wizard/test", methods: ['POST'] },
   { path: "/api/templates", methods: ['GET', 'POST'] },

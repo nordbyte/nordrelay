@@ -35,6 +35,7 @@ export function isUnauthenticatedSlackCommandAllowed(command: string): boolean {
 export function permissionForSlackAction(action: string): Permission | null {
   if (action.startsWith("slack_queue_") || action.startsWith("slack_peer_queue_")) return "queue.write";
   if (action.startsWith("slack_abort:")) return "prompt.abort";
+  if (action.startsWith("slack_external_approval:")) return "prompt.abort";
   if (action.startsWith("slack_pick:")) return "sessions.write";
   if (action.startsWith("slack_artifact_delete:")) return "files.write";
   if (action.startsWith("slack_artifact_")) return "files.read";

@@ -176,6 +176,11 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .message-retry-button::after{content:"";position:absolute;left:6px;top:6px;width:0;height:0;border-right:5px solid currentColor;border-top:4px solid transparent;border-bottom:4px solid transparent;transform:rotate(-28deg)}
 .message-action-button:hover,.message-action-button:focus{background:var(--accent);border-color:var(--accent);color:white;outline:none}
 .message-copy-button:hover::before,.message-copy-button:hover::after,.message-copy-button:focus::before,.message-copy-button:focus::after{background:var(--accent)}
+.chat-message-custom-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.chat-message-custom-action{min-height:30px;padding:0 10px;font-size:13px}
+.chat-message-custom-action.primary{background:var(--accent);border-color:var(--accent);color:white}
+.chat-message-custom-action.danger{background:var(--danger);border-color:var(--danger);color:white}
+.chat-message-custom-action.danger:hover,.chat-message-custom-action.danger:focus{background:color-mix(in srgb,var(--danger) 82%,#000);border-color:color-mix(in srgb,var(--danger) 82%,#000)}
 .message-edit-button:hover::after,.message-edit-button:focus::after{background:transparent}
 .message .chat-inline-code{appearance:none;-webkit-appearance:none;display:inline;min-height:0;height:auto;margin:0;padding:0;border:0;background:transparent;color:var(--link);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:1em;line-height:inherit;white-space:normal;vertical-align:baseline;cursor:pointer}
 .message .chat-inline-code:hover,.message .chat-inline-code:focus{background:transparent;color:var(--link);text-decoration:underline;outline:none}
@@ -192,6 +197,8 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .message .chat-heading{display:block;margin:6px 0 2px;font-size:1.05em;font-weight:750}
 .chat-working-indicator{display:inline-flex;align-items:center;gap:8px;margin:0 0 12px;padding:8px 12px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface);color:var(--muted);font-size:13px;line-height:1.2;max-width:92%}
 .chat-working-indicator small{color:var(--muted)}
+.chat-working-indicator.action-required{border-color:var(--warn);color:var(--text)}
+.active-session-approval{color:#8a6a12;font-weight:700}
 .chat-working-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 40%,transparent);animation:workingPulse 1.4s ease-out infinite;flex:0 0 auto}
 @keyframes workingPulse{70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
 .composer{display:grid;grid-template-columns:1fr auto;gap:10px;margin-top:12px;align-items:stretch}

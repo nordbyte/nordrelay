@@ -417,6 +417,7 @@ function codexSnapshotToAgentSnapshot(snapshot: CodexRolloutSnapshot): AgentExte
     latestAgentMessage: snapshot.latestAgentMessage,
     latestUserMessage: snapshot.latestUserMessage,
     latestToolName: snapshot.latestToolName,
+    pendingApprovals: snapshot.pendingApprovals,
   };
 }
 
@@ -431,5 +432,6 @@ function codexEventToAgentEvent(event: CodexActivityEvent): AgentActivityEvent {
     text: event.text,
     toolName: event.toolName,
     phase: event.phase,
+    approval: event.approval,
   };
 }

@@ -121,6 +121,7 @@ Codex:
 - `CODEX_SYNC_INTERVAL_MS`: periodic local Codex-state sync interval for active chat sessions. Defaults to `10000`; set `0` to disable.
 - `CODEX_EXTERNAL_BUSY_CHECK_MS`: how often queued chat prompts re-check an active local Codex CLI task. Defaults to `5000`.
 - `CODEX_EXTERNAL_BUSY_STALE_MS`: maximum age for an unclosed rollout task before it is treated as stale instead of active. Defaults to `300000`.
+- `CODEX_EXTERNAL_APPROVAL_CONTROL`: when `true`, NordRelay may submit action-required approval choices to a trusted local Codex CLI terminal when the OS permits TTY input control. Detection and display work while this remains `false`.
 - `CODEX_SANDBOX_MODE`: default sandbox mode, one of `read-only`, `workspace-write`, `danger-full-access`.
 - `CODEX_APPROVAL_POLICY`: default approval policy, one of `never`, `on-request`, `on-failure`, `untrusted`.
 - `CODEX_LAUNCH_PROFILES_JSON`: JSON array of additional launch profiles.

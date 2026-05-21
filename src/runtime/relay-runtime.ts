@@ -13,6 +13,7 @@ import {
   agentReasoningLabel,
   agentReasoningOptions,
   isAgentId,
+  type AgentApprovalChoice,
   type AgentCapabilities,
   type AgentId,
   type AgentPromptObject,
@@ -22,6 +23,7 @@ import {
   type AgentThreadRecord,
 } from "../agents/shared/agent.js";
 import { getExternalSnapshotForSession } from "../agents/shared/agent-activity.js";
+import { respondToExternalApproval, type AgentExternalApprovalResult } from "../agents/shared/agent-approval.js";
 import { listAgentAdapterDescriptors } from "../agents/shared/agent-adapter.js";
 import { AgentUpdateManager, type AgentUpdateJobSnapshot, type AgentUpdateOperation } from "../agents/shared/agent-updates.js";
 import { createAgentSessionService, enabledAgents } from "../agents/shared/agent-factory.js";
@@ -648,6 +650,35 @@ export class RelayRuntime {
 
   async handback(actor?: WebActivityActor): Promise<ReturnType<AgentSessionService["handback"]>> { return relayRuntimeHandback(this, actor); }
   async abort(actor?: WebActivityActor): Promise<void> { return relayRuntimeAbort(this, actor); }
+
+  async respondExternalApproval(approvalId: string, choice: AgentApprovalChoice, actor?: WebActivityActor): Promise<AgentExternalApprovalResult> {
+    const session = await this.getSession(true);
+    const result = respondToExternalApproval(session, this.config, approvalId, choice);
+    const info = this.publicInfo(session);
+    this.appendActivity({
+      source: "web",
+      status: result.ok ? "info" : "failed",
+      type: "cli_action_required_response",
+      threadId: info.threadId,
+      workspace: info.workspace,
+      agentId: info.agentId,
+      actor,
+      detail: result.message,
+    });
+    this.appendAudit({
+      action: "command",
+      status: result.ok ? "ok" : "failed",
+      contextKey: this.contextKey,
+      actor,
+      agentId: info.agentId,
+      threadId: info.threadId,
+      workspace: info.workspace,
+      description: `External approval ${choice}: ${result.message}`,
+    });
+    this.broadcast({ type: "status", level: result.ok ? "info" : "warn", message: result.message, at: new Date().toISOString() });
+    this.scheduleActiveSessionsBroadcast();
+    return result;
+  }
 
   async sendPrompt(text: string, actor?: WebActivityActor, correlationId?: string): Promise<{ queued: boolean; queueId?: string; correlationId?: string }> {
     return relayRuntimeSendPrompt(this, text, actor, correlationId);

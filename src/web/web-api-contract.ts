@@ -98,6 +98,7 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   exact("/api/auth/status", ["GET"], "inspect"),
   exact("/api/auth/login", ["POST"], "auth.manage"),
   exact("/api/auth/logout", ["POST"], "auth.manage"),
+  dynamic("/api/approvals/:id/respond", "^/api/approvals/[^/]+/respond$", ["POST"], "prompt.abort", `/api/approvals/${stringToken}/respond`),
   exact("/api/settings", ["GET", "PATCH"], readWrite("settings.read", "settings.write")),
   exact("/api/settings/wizard/test", ["POST"], "settings.write"),
   exact("/api/templates", ["GET", "POST"], readWrite("workflows.read", "workflows.write")),

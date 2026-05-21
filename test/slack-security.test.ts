@@ -71,6 +71,7 @@ describe("Slack security boundaries", () => {
     expect(permissionForSlackAction("slack_queue_cancel:ctx:abc")).toBe("queue.write");
     expect(permissionForSlackAction("slack_peer_queue_cancel:peer:abc")).toBe("queue.write");
     expect(permissionForSlackAction("slack_abort:ctx")).toBe("prompt.abort");
+    expect(permissionForSlackAction("slack_external_approval:yes:abc123")).toBe("prompt.abort");
     expect(permissionForSlackAction("slack_artifact_send:ctx:turn")).toBe("files.read");
     expect(permissionForSlackAction("slack_artifact_delete:ctx:turn")).toBe("files.write");
     expect(permissionForSlackAction("agent-update:cancel:job")).toBe("updates.run");

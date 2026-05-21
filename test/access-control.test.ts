@@ -39,6 +39,7 @@ describe("access-control", () => {
     expect(permissionForCallbackData("effort_xhigh")).toBe("settings.write");
     expect(permissionForCallbackData("codex_abort:123")).toBe("prompt.abort");
     expect(permissionForCallbackData("approval_yes:abc123")).toBe("prompt.abort");
+    expect(permissionForCallbackData("external_approval_yes:abc123")).toBe("prompt.abort");
     expect(permissionForCallbackData("queue_cancel:123:abc123")).toBe("queue.write");
     expect(permissionForCallbackData("peer_queue_cancel:peer123:abc123")).toBe("queue.write");
     expect(permissionForCallbackData("queue_remove:-100:4:abc123")).toBe("queue.write");
@@ -88,6 +89,7 @@ describe("access-control", () => {
     expect(permissionForWebRequest("GET", "/api/diagnostics/bundle")).toBe("diagnostics.read");
     expect(permissionForWebRequest("POST", "/api/logs/clear")).toBe("logs.clear");
     expect(permissionForWebRequest("POST", "/api/abort")).toBe("prompt.abort");
+    expect(permissionForWebRequest("POST", "/api/approvals/abc123/respond")).toBe("prompt.abort");
     expect(permissionForWebRequest("GET", "/api/artifacts")).toBe("files.read");
     expect(permissionForWebRequest("DELETE", "/api/artifacts")).toBe("files.write");
     expect(permissionForWebRequest("DELETE", "/api/artifacts/file")).toBeNull();

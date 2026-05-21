@@ -1,6 +1,6 @@
 import { InlineKeyboard, type Context } from "grammy";
 
-import { CODEX_AGENT_CAPABILITIES, agentLabel, type AgentActivityEvent, type AgentExternalSnapshot, type AgentId, type AgentLaunchProfileRecord, type AgentModelRecord, type AgentPromptInput, type AgentSessionInfo } from "../../agents/shared/agent.js";
+import { CODEX_AGENT_CAPABILITIES, agentLabel, type AgentActivityEvent, type AgentApprovalRequest, type AgentExternalSnapshot, type AgentId, type AgentLaunchProfileRecord, type AgentModelRecord, type AgentPromptInput, type AgentSessionInfo } from "../../agents/shared/agent.js";
 import { getAgentDiagnostics } from "../../agents/shared/agent-activity.js";
 import { enabledAgents } from "../../agents/shared/agent-factory.js";
 import { isTelegramImagePreview, type Artifact, type ArtifactReport, type ArtifactTurnReport } from "../../artifacts/artifacts.js";
@@ -315,10 +315,18 @@ export function renderExternalMirrorStatus(
   snapshot: AgentExternalSnapshot,
   queueLength: number,
 ): { plain: string; html: string } {
+  const approval = snapshot.pendingApprovals?.[0];
   const prompt = trimLine(snapshot.latestUserMessage ?? "-", 180);
   const elapsed = snapshot.activity.startedAt
     ? formatDurationSeconds((Date.now() - snapshot.activity.startedAt.getTime()) / 1000)
     : "-";
+  if (approval) {
+    const rendered = renderExternalApprovalRequest(snapshot.agentLabel, approval);
+    return {
+      plain: `${rendered.plain}\nElapsed: ${elapsed}\nQueue: ${queueLength}`,
+      html: `${rendered.html}\n<b>Elapsed:</b> <code>${escapeHTML(elapsed)}</code>\n<b>Queue:</b> <code>${queueLength}</code>`,
+    };
+  }
   const lines = [
     `${snapshot.agentLabel} CLI task running.`,
     `Thread: ${snapshot.threadId}`,
@@ -341,6 +349,10 @@ export function renderExternalMirrorStatus(
 }
 
 export function renderExternalMirrorEvent(event: AgentActivityEvent): { plain: string; html: string } | null {
+  if (event.kind === "approval" && event.approval) {
+    return renderExternalApprovalRequest("Codex", event.approval);
+  }
+
   if (event.kind === "task") {
     const status = event.status ?? event.type;
     const plain = `CLI task: ${status}`;
@@ -361,6 +373,32 @@ export function renderExternalMirrorEvent(event: AgentActivityEvent): { plain: s
   return {
     plain,
     html: `<b>CLI tool ${escapeHTML(status)}:</b> <code>${escapeHTML(tool)}</code>${detail ? `\n<code>${escapeHTML(detail.trim())}</code>` : ""}`,
+  };
+}
+
+export function renderExternalApprovalRequest(
+  agentLabelValue: string,
+  approval: AgentApprovalRequest,
+): { plain: string; html: string } {
+  const prefix = approval.prefixRule.length ? approval.prefixRule.join(" ") : "-";
+  const plain = [
+    `${agentLabelValue} action required.`,
+    `Tool: ${approval.toolName}`,
+    `Command: ${approval.command}`,
+    `Reason: ${approval.reason ?? "-"}`,
+    `Workdir: ${approval.workdir ?? "-"}`,
+    `Remember prefix: ${prefix}`,
+  ].join("\n");
+  return {
+    plain,
+    html: [
+      `<b>${escapeHTML(agentLabelValue)} action required.</b>`,
+      `<b>Tool:</b> <code>${escapeHTML(approval.toolName)}</code>`,
+      `<b>Command:</b> <code>${escapeHTML(approval.command)}</code>`,
+      `<b>Reason:</b> <code>${escapeHTML(approval.reason ?? "-")}</code>`,
+      `<b>Workdir:</b> <code>${escapeHTML(approval.workdir ?? "-")}</code>`,
+      `<b>Remember prefix:</b> <code>${escapeHTML(prefix)}</code>`,
+    ].join("\n"),
   };
 }
 

@@ -212,7 +212,7 @@ export function permissionForCallbackData(callbackData: string | undefined): Per
   if (callbackData.startsWith("upd_")) {
     return "updates.run";
   }
-  if (callbackData.startsWith("approval_") || callbackData.startsWith("codex_abort:") || callbackData.startsWith("agent_abort:")) {
+  if (callbackData.startsWith("approval_") || callbackData.startsWith("external_approval_") || callbackData.startsWith("codex_abort:") || callbackData.startsWith("agent_abort:")) {
     return "prompt.abort";
   }
   if (callbackData.startsWith("queue_") || callbackData.startsWith("peer_queue_")) {

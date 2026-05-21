@@ -333,6 +333,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/models" ? { models: unknown[] } :
   P extends "/api/prompt" | "/api/prompt/upload" | "/api/retry" ? UploadPromptResult :
   P extends "/api/abort" | "/api/stop" | "/api/runtime/restart" ? { ok: boolean } :
+  P extends `/api/approvals/${string}/respond` ? { ok: boolean; status: string; message: string } :
   P extends "/api/handback" ? { command?: string } :
   P extends "/api/sync" ? { changed?: boolean; changedFields?: string[] } :
   P extends "/api/queue" ? { queue: QueueItemDto[]; paused: boolean } :

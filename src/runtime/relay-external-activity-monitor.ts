@@ -1,5 +1,6 @@
 import {
   type AgentExternalSnapshot,
+  type AgentApprovalRequest,
   type AgentSessionInfo,
   type AgentSessionService,
 } from "../agents/shared/agent.js";
@@ -8,6 +9,7 @@ import type { ChannelMirrorMode } from "../state/bot-preferences.js";
 import {
   renderExternalMirrorEvent,
   renderExternalMirrorStatus,
+  renderExternalApprovalRequest,
   trimLine,
 } from "../channels/shared/bot-rendering.js";
 import type { ConnectorConfig } from "../core/config.js";
@@ -136,6 +138,7 @@ export class RelayExternalActivityMonitor {
           return true;
         }
         await this.startExternalTurn(snapshot, info);
+        await this.handlePendingApprovals(snapshot, info, this.mirror);
       }
       return snapshot.activity.active;
     }
@@ -162,6 +165,7 @@ export class RelayExternalActivityMonitor {
       const mirrorMode = this.options.mirrorMode();
       const newEvents = snapshot.events.filter((event) => event.lineNumber > mirror.lastLine);
       this.broadcastExternalEvents(snapshot, newEvents, info, mirrorMode === "full");
+      await this.handlePendingApprovals(snapshot, info, mirror);
       if (mirrorMode === "full") {
         await this.appendExternalEventMessages(snapshot, newEvents, mirror);
       }
@@ -425,6 +429,56 @@ export class RelayExternalActivityMonitor {
     await this.broadcastChatHistory();
   }
 
+  private async handlePendingApprovals(
+    snapshot: AgentExternalSnapshot,
+    info: AgentSessionInfo,
+    mirror: ExternalMirrorState | null,
+  ): Promise<void> {
+    const approvals = snapshot.pendingApprovals ?? [];
+    if (!approvals.length) {
+      return;
+    }
+    if (!mirror) {
+      return;
+    }
+    const seen = new Set(mirror.approvalRequestIds ?? []);
+    let changed = false;
+    for (const approval of approvals) {
+      const rendered = renderExternalApprovalRequest(snapshot.agentLabel, approval);
+      const result = this.options.chatStore.upsertByKey({
+        threadId: snapshot.threadId,
+        role: "system",
+        text: rendered.plain,
+        source: "cli",
+        correlationId: externalCorrelationId(snapshot),
+        turnId: approval.turnId ?? snapshot.activity.turnId ?? undefined,
+        timestamp: approval.requestedAt?.toISOString(),
+        key: externalMessageKey("approval", snapshot, approval.lineNumber),
+        actions: approvalActions(approval),
+      });
+      changed = changed || result.inserted || result.updated;
+      if (!seen.has(approval.id)) {
+        this.options.appendActivity({
+          source: "cli",
+          status: "running",
+          type: "cli_action_required",
+          threadId: snapshot.threadId,
+          workspace: info.workspace,
+          agentId: info.agentId,
+          actor: CLI_ACTIVITY_ACTOR,
+          correlationId: externalCorrelationId(snapshot),
+          prompt: snapshot.latestUserMessage ?? undefined,
+          detail: `${approval.toolName}: ${approval.command}`,
+        });
+        seen.add(approval.id);
+      }
+    }
+    mirror.approvalRequestIds = [...seen].slice(-50);
+    if (changed) {
+      await this.broadcastChatHistory();
+    }
+  }
+
   private async broadcastChatHistory(): Promise<void> {
     this.options.broadcast({ type: "chat_history", messages: await this.options.chatHistory() });
   }
@@ -454,11 +508,31 @@ function externalCorrelationId(snapshot: AgentExternalSnapshot): string {
 }
 
 function externalStatusLine(snapshot: AgentExternalSnapshot, queueLength: number): string {
+  const approval = snapshot.pendingApprovals?.[0];
+  if (approval) {
+    return `${snapshot.agentLabel} action required · ${trimLine(approval.command, 120)} · ${queueLength} queued`;
+  }
   const elapsed = snapshot.activity.startedAt
     ? formatDuration((Date.now() - snapshot.activity.startedAt.getTime()) / 1000)
     : "-";
   const tool = snapshot.latestToolName ?? "-";
   return `${snapshot.agentLabel} CLI running · ${elapsed} · tool ${tool} · ${queueLength} queued`;
+}
+
+function approvalActions(approval: AgentApprovalRequest): WebChatMessage["actions"] {
+  const actions: NonNullable<WebChatMessage["actions"]> = [
+    { label: "Proceed", action: `approval:yes:${approval.id}`, style: "primary" },
+  ];
+  if (approval.prefixRule.length > 0) {
+    actions.push({
+      label: "Proceed and remember",
+      action: `approval:persist:${approval.id}`,
+      style: "secondary",
+      title: `Remember ${approval.prefixRule.join(" ")}`,
+    });
+  }
+  actions.push({ label: "Deny", action: `approval:no:${approval.id}`, style: "danger" });
+  return actions;
 }
 
 function durationFromDates(start: Date | null, end: Date | null): number | undefined {

@@ -719,6 +719,121 @@ describe("codex-state", () => {
     ]);
   });
 
+  it("detects pending external approval requests and clears them after tool output", async () => {
+    const rolloutPath = "/Users/tester/.codex/sessions/2026/05/12/rollout-thread-approval.jsonl";
+    const state = await loadCodexState({
+      files: ["state_main.sqlite"],
+      threads: [
+        {
+          id: "thread-approval",
+          title: "Approval",
+          cwd: "/workspace",
+          rollout_path: rolloutPath,
+          model: "gpt-5.5",
+          created_at: 1,
+          updated_at: 2,
+          first_user_message: "open folder",
+        },
+      ],
+      fileContents: {
+        [rolloutPath]: [
+          JSON.stringify({
+            timestamp: "2026-05-12T04:00:00.000Z",
+            type: "event_msg",
+            payload: { type: "task_started", turn_id: "turn-approval", started_at: 1_778_558_400 },
+          }),
+          JSON.stringify({
+            timestamp: "2026-05-12T04:00:01.000Z",
+            type: "event_msg",
+            payload: { type: "user_message", message: "open folder" },
+          }),
+          JSON.stringify({
+            timestamp: "2026-05-12T04:00:02.000Z",
+            type: "response_item",
+            payload: {
+              type: "function_call",
+              name: "exec_command",
+              call_id: "call-approval",
+              arguments: JSON.stringify({
+                cmd: "xdg-open /workspace",
+                workdir: "/workspace",
+                sandbox_permissions: "require_escalated",
+                justification: "Open the current workspace.",
+                prefix_rule: ["xdg-open"],
+              }),
+            },
+          }),
+        ].join("\n"),
+      },
+    });
+
+    const pending = state.getThreadRolloutSnapshot("thread-approval", { maxEvents: 10 });
+
+    expect(pending?.pendingApprovals).toHaveLength(1);
+    expect(pending?.pendingApprovals[0]).toMatchObject({
+      callId: "call-approval",
+      toolName: "exec_command",
+      command: "xdg-open /workspace",
+      workdir: "/workspace",
+      reason: "Open the current workspace.",
+      prefixRule: ["xdg-open"],
+      sandboxPermissions: "require_escalated",
+      turnId: "turn-approval",
+    });
+    expect(pending?.events.some((event) => event.kind === "approval" && event.status === "pending")).toBe(true);
+
+    const clearedState = await loadCodexState({
+      files: ["state_main.sqlite"],
+      threads: [
+        {
+          id: "thread-approval",
+          title: "Approval",
+          cwd: "/workspace",
+          rollout_path: rolloutPath,
+          model: "gpt-5.5",
+          created_at: 1,
+          updated_at: 2,
+          first_user_message: "open folder",
+        },
+      ],
+      fileContents: {
+        [rolloutPath]: [
+          JSON.stringify({
+            timestamp: "2026-05-12T04:00:00.000Z",
+            type: "event_msg",
+            payload: { type: "task_started", turn_id: "turn-approval", started_at: 1_778_558_400 },
+          }),
+          JSON.stringify({
+            timestamp: "2026-05-12T04:00:01.000Z",
+            type: "event_msg",
+            payload: { type: "user_message", message: "open folder" },
+          }),
+          JSON.stringify({
+            timestamp: "2026-05-12T04:00:02.000Z",
+            type: "response_item",
+            payload: {
+              type: "function_call",
+              name: "exec_command",
+              call_id: "call-approval",
+              arguments: JSON.stringify({
+                cmd: "xdg-open /workspace",
+                sandbox_permissions: "require_escalated",
+              }),
+            },
+          }),
+          JSON.stringify({
+            timestamp: "2026-05-12T04:00:03.000Z",
+            type: "response_item",
+            payload: { type: "function_call_output", call_id: "call-approval", output: "" },
+          }),
+        ].join("\n"),
+      },
+    });
+
+    const cleared = clearedState.getThreadRolloutSnapshot("thread-approval", { maxEvents: 10 });
+    expect(cleared?.pendingApprovals).toEqual([]);
+  });
+
   it("getThreadRolloutSnapshot limits retained timeline events while keeping latest rollout state", async () => {
     const rolloutPath = "/Users/tester/.codex/sessions/2026/05/12/rollout-thread-1.jsonl";
     const state = await loadCodexState({

@@ -370,6 +370,7 @@ export function relayRuntimeExternalActiveSession(runtime: RelayRuntimeDelegate,
       queueLength,
       queuePaused: runtime.mirrorRegistry.queuePausedForExternalSource(sourceContextKey, mirrorChannels),
       mirrorChannels,
+      approvalRequired: snapshot.pendingApprovals?.[0],
       detail: `${mirrorDetail} | ${snapshot.sourceLabel}: ${snapshot.sourcePath}`,
     };
   }

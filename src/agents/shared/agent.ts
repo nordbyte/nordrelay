@@ -314,7 +314,24 @@ export interface AgentHandbackResult {
   label?: string;
 }
 
-export type AgentActivityEventKind = "task" | "user" | "agent" | "tool";
+export type AgentApprovalChoice = "yes" | "persist" | "no";
+
+export interface AgentApprovalRequest {
+  id: string;
+  callId: string;
+  toolName: string;
+  command: string;
+  workdir: string | null;
+  reason: string | null;
+  prefixRule: string[];
+  sandboxPermissions: string | null;
+  lineNumber: number;
+  turnId: string | null;
+  requestedAt: Date | null;
+  sourcePath: string;
+}
+
+export type AgentActivityEventKind = "task" | "user" | "agent" | "tool" | "approval";
 
 export interface AgentActivityEvent {
   lineNumber: number;
@@ -326,6 +343,7 @@ export interface AgentActivityEvent {
   text: string | null;
   toolName: string | null;
   phase: string | null;
+  approval?: AgentApprovalRequest;
 }
 
 export interface AgentExternalActivity {
@@ -353,6 +371,7 @@ export interface AgentExternalSnapshot {
   latestAgentMessage: string | null;
   latestUserMessage: string | null;
   latestToolName: string | null;
+  pendingApprovals?: AgentApprovalRequest[];
 }
 
 export interface AgentDiagnostics {

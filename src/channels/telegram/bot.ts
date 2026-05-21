@@ -86,6 +86,7 @@ import {
 import { SessionRegistry } from "../../state/session-registry.js";
 import { transcribeAudio, type TranscriptionBackend } from "../../artifacts/voice.js";
 import { telegramRateLimiter } from "./telegram-rate-limit.js";
+import { registerTelegramExternalApprovalCallbacks } from "./telegram-external-approval.js";
 import {
   chatBucket,
   downloadTelegramFile,
@@ -672,10 +673,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     },
     sendStatus: async (contextKey, _context, _state, rendered) => {
       const parsed = parseContextKey(contextKey as TelegramContextKey);
-      const message = await sendTextMessage(bot.api, parsed.chatId, rendered.html, {
-        fallbackText: rendered.plain,
-        messageThreadId: parsed.messageThreadId,
-      });
+      const message = await sendTextMessage(bot.api, parsed.chatId, rendered.html, { fallbackText: rendered.plain, messageThreadId: parsed.messageThreadId });
       return message.message_id;
     },
     editStatus: async (contextKey, _context, _state, messageId, rendered) => {
@@ -686,10 +684,14 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     },
     sendEvent: async (contextKey, _context, _state, rendered) => {
       const parsed = parseContextKey(contextKey as TelegramContextKey);
-      await sendTextMessage(bot.api, parsed.chatId, rendered.html, {
-        fallbackText: rendered.plain,
-        messageThreadId: parsed.messageThreadId,
-      });
+      await sendTextMessage(bot.api, parsed.chatId, rendered.html, { fallbackText: rendered.plain, messageThreadId: parsed.messageThreadId });
+    },
+    sendApprovalRequest: async (contextKey, _context, _state, _snapshot, approval, rendered) => {
+      const parsed = parseContextKey(contextKey as TelegramContextKey);
+      const keyboard = new InlineKeyboard().text("Proceed", `external_approval_yes:${approval.id}`);
+      if (approval.prefixRule.length > 0) keyboard.text("Proceed and remember", `external_approval_persist:${approval.id}`);
+      keyboard.row().text("Deny", `external_approval_no:${approval.id}`);
+      await sendTextMessage(bot.api, parsed.chatId, rendered.html, { fallbackText: rendered.plain, messageThreadId: parsed.messageThreadId, replyMarkup: keyboard });
     },
     sendDone: async (contextKey, _context, state, text) => {
       const parsed = parseContextKey(contextKey as TelegramContextKey);
@@ -3216,6 +3218,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     await ctx.answerCallbackQuery({ text: "Aborting..." });
     await session.abort();
   });
+
+  registerTelegramExternalApprovalCallbacks({ bot, config, registry, appendActivity: appendTelegramActivity });
 
   bot.callbackQuery(/^approval_(yes|no):([a-z0-9]+)$/, async (ctx) => {
     const action = ctx.match?.[1];

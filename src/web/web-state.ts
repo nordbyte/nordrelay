@@ -14,6 +14,13 @@ export type WebChatRole = "user" | "agent" | "system" | "tool";
 export type WebActivitySource = "web" | "telegram" | "discord" | "slack" | "matrix" | "cli";
 export type WebActivityStatus = "queued" | "running" | "completed" | "failed" | "aborted" | "info";
 
+export interface WebChatAction {
+  label: string;
+  action: string;
+  style?: "primary" | "secondary" | "danger";
+  title?: string;
+}
+
 export interface WebChatMessage {
   id: string;
   threadId: string;
@@ -25,6 +32,7 @@ export interface WebChatMessage {
   correlationId?: string;
   turnId?: string;
   key?: string;
+  actions?: WebChatAction[];
 }
 
 export interface WebActivityEvent {
@@ -122,6 +130,7 @@ export class WebChatStore {
         existing.turnId = input.turnId;
         existing.timestamp = input.timestamp ?? now;
         existing.key = input.key;
+        existing.actions = input.actions;
         result = { message: existing, inserted: false, updated: true };
         return payload;
       }
@@ -317,8 +326,20 @@ function isWebChatMessage(value: unknown): value is WebChatMessage {
     typeof candidate.timestamp === "string" &&
     (candidate.meta === undefined || (Array.isArray(candidate.meta) && candidate.meta.every((item) => typeof item === "string"))) &&
     (candidate.key === undefined || typeof candidate.key === "string") &&
+    (candidate.actions === undefined || (Array.isArray(candidate.actions) && candidate.actions.every(isWebChatAction))) &&
     ["user", "agent", "system", "tool"].includes(candidate.role) &&
     ["web", "telegram", "discord", "slack", "matrix", "cli"].includes(candidate.source);
+}
+
+function isWebChatAction(value: unknown): value is WebChatAction {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as WebChatAction;
+  return typeof candidate.label === "string" &&
+    typeof candidate.action === "string" &&
+    (candidate.style === undefined || ["primary", "secondary", "danger"].includes(candidate.style)) &&
+    (candidate.title === undefined || typeof candidate.title === "string");
 }
 
 function isWebActivityEvent(value: unknown): value is WebActivityEvent {

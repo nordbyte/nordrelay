@@ -16,6 +16,7 @@ import {
 import { ADMIN_GROUP_ID, type Permission } from "../../access/access-control.js";
 import { agentLabel, agentReasoningLabel, agentReasoningOptions, type AgentId, type AgentPromptInput, type AgentSessionInfo, type AgentSessionService, type AgentThreadRecord } from "../../agents/shared/agent.js";
 import { getAgentActivityLog, getExternalSnapshotForSession } from "../../agents/shared/agent-activity.js";
+import { respondToExternalApproval } from "../../agents/shared/agent-approval.js";
 import { hostAgentLoginCommand, hostAgentLogoutCommand } from "../../agents/shared/agent-auth-commands.js";
 import { listAgentAdapterDescriptors } from "../../agents/shared/agent-adapter.js";
 import type { AgentUpdateOperation } from "../../agents/shared/agent-updates.js";
@@ -498,6 +499,21 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     editStatus: (_contextKey, context, _state, messageId, rendered) =>
       runtime.editMessage(context, messageId, { text: rendered.html, fallbackText: rendered.plain, parseMode: "html" }),
     sendEvent: (_contextKey, context, _state, rendered) => deliverChannelAction(runtime, context, rendered).then(() => {}),
+    sendApprovalRequest: async (_contextKey, context, _state, _snapshot, approval, rendered) => {
+      const buttons: ChannelActionButton[][] = [
+        [
+          { label: "Proceed", action: `discord_external_approval:yes:${approval.id}` },
+          ...(approval.prefixRule.length > 0 ? [{ label: "Proceed and remember", action: `discord_external_approval:persist:${approval.id}` }] : []),
+        ],
+        [{ label: "Deny", action: `discord_external_approval:no:${approval.id}` }],
+      ];
+      await runtime.sendMessage(context, {
+        text: rendered.html,
+        fallbackText: rendered.plain,
+        parseMode: "html",
+        buttons,
+      });
+    },
     sendDone: (_contextKey, context, state, text) => {
       if (state.statusMessageId) {
         return runtime.editMessage(context, state.statusMessageId, { text, fallbackText: text });
@@ -1421,6 +1437,28 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     const artifactMatch = action.match(/^discord_artifact_(send|zip|delete):(.+):([^:]+)$/);
     if (artifactMatch?.[1] && artifactMatch[2] === request.contextKey) {
       await commandArtifacts(request, `${artifactMatch[1]} ${artifactMatch[3]}`);
+      return;
+    }
+    const approvalMatch = action.match(/^discord_external_approval:(yes|persist|no):([a-f0-9]+)$/);
+    if (approvalMatch?.[1] && approvalMatch[2]) {
+      const session = registry.get(request.contextKey);
+      if (!session) {
+        await reply(request, "No session for this channel.", { ephemeral: true });
+        return;
+      }
+      const result = respondToExternalApproval(session, config, approvalMatch[2], approvalMatch[1] as "yes" | "persist" | "no");
+      await reply(request, result.message, { ephemeral: !result.ok });
+      activityStore.append({
+        source: "discord",
+        status: result.ok ? "info" : "failed",
+        type: "cli_action_required_response",
+        contextKey: request.contextKey,
+        threadId: session.getActiveThreadId(),
+        workspace: session.getInfo().workspace,
+        agentId: session.getInfo().agentId,
+        actor: actorFor(request),
+        detail: result.message,
+      });
       return;
     }
     const updateMatch = action.match(/^agent-update:(start|log|cancel):(.+)$/);

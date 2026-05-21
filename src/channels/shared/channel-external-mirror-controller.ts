@@ -1,10 +1,10 @@
-import type { AgentActivityEvent, AgentExternalSnapshot, AgentSessionService } from "../../agents/shared/agent.js";
+import type { AgentActivityEvent, AgentApprovalRequest, AgentExternalSnapshot, AgentSessionService } from "../../agents/shared/agent.js";
 import type { ConnectorConfig } from "../../core/config.js";
 import type { WebActivityActor, WebActivityEvent } from "../../web/web-state.js";
 import type { ChannelContext } from "./channel-adapter.js";
 import type { ChannelExternalMirrorState } from "./channel-bridge-state.js";
 import type { ChannelContextKey } from "./context-key.js";
-import { renderExternalMirrorEvent, renderExternalMirrorStatus, trimLine } from "./bot-rendering.js";
+import { renderExternalApprovalRequest, renderExternalMirrorEvent, renderExternalMirrorStatus, trimLine } from "./bot-rendering.js";
 
 export type ChannelMirrorMode = "off" | "status" | "final" | "full";
 
@@ -47,6 +47,14 @@ export interface ChannelExternalMirrorControllerOptions<MessageId extends string
     contextKey: ChannelContextKey,
     context: ChannelContext,
     state: ChannelExternalMirrorState<MessageId>,
+    rendered: ChannelExternalMirrorRenderedText,
+  ): Promise<void>;
+  sendApprovalRequest?(
+    contextKey: ChannelContextKey,
+    context: ChannelContext,
+    state: ChannelExternalMirrorState<MessageId>,
+    snapshot: AgentExternalSnapshot,
+    approval: AgentApprovalRequest,
     rendered: ChannelExternalMirrorRenderedText,
   ): Promise<void>;
   sendDone(
@@ -229,6 +237,25 @@ export function createChannelExternalMirrorController<MessageId extends string |
     state.activityFinishedTurnKey = turnKey;
   };
 
+  const maybeSendApprovals = async (contextKey: ChannelContextKey, context: ChannelContext, session: AgentSessionService, state: ChannelExternalMirrorState<MessageId>, snapshot: AgentExternalSnapshot): Promise<void> => {
+    const approvals = snapshot.pendingApprovals ?? [];
+    if (!approvals.length || !options.sendApprovalRequest) {
+      return;
+    }
+    const sent = new Set(state.approvalRequestIds ?? []);
+    for (const approval of approvals) {
+      if (sent.has(approval.id)) {
+        continue;
+      }
+      const rendered = renderExternalApprovalRequest(snapshot.agentLabel, approval);
+      await options.sendApprovalRequest(contextKey, context, state, snapshot, approval, rendered);
+      const info = session.getInfo();
+      options.appendActivity({ source: "cli", status: "running", type: "cli_action_required", contextKey, threadId: snapshot.threadId, workspace: info.workspace, agentId: info.agentId, actor: options.activityActor(snapshot), prompt: snapshot.latestUserMessage ?? undefined, detail: `${approval.toolName}: ${approval.command}` });
+      sent.add(approval.id);
+    }
+    state.approvalRequestIds = [...sent].slice(-50);
+  };
+
   return {
     async mirror(contextKey, context, session, snapshot) {
       const { state, previous } = ensureState(contextKey, snapshot);
@@ -238,6 +265,7 @@ export function createChannelExternalMirrorController<MessageId extends string |
         state.turnId = snapshot.activity.turnId;
         state.startedAt = snapshot.activity.startedAt;
         recordTurnStart(contextKey, session, state, snapshot);
+        await maybeSendApprovals(contextKey, context, session, state, snapshot);
 
         if (mirrorMode !== "off") {
           await maybeSendTyping(contextKey, context, state);
