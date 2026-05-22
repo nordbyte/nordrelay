@@ -542,6 +542,7 @@ export function relayRuntimeScheduleActiveSessionsBroadcast(runtime: RelayRuntim
 export function relayRuntimePublicInfo(runtime: RelayRuntimeDelegate, session: AgentSessionService, options?: AgentSessionInfoOptions): AgentSessionInfo {
     const info = session.getInfo(options);
     const agentId = info.agentId ?? "codex";
+    const sessionNameRecord = info.threadId ? runtime.sessionNameStore.get(agentId, info.threadId) : null;
     const metadata = runtime.listKnownContextMetadata().find((meta) => meta.contextKey === runtime.contextKey && (!info.threadId || meta.threadId === info.threadId));
     const worktree = runtime.worktreeService.getByThreadId(info.threadId) ?? runtime.worktreeService.getByWorkspace(info.workspace);
     const worktreeSnapshot = worktree ? runtime.worktreeService.snapshot(worktree) : undefined;
@@ -549,6 +550,7 @@ export function relayRuntimePublicInfo(runtime: RelayRuntimeDelegate, session: A
       ...info,
       agentId,
       agentLabel: info.agentLabel ?? agentLabel(agentId),
+      sessionName: sessionNameRecord?.name,
       workspaceMode: worktreeSnapshot ? "worktree" : (info.workspaceMode ?? metadata?.workspaceMode ?? "shared"),
       worktree: worktreeSnapshot ? {
         id: worktreeSnapshot.id,

@@ -62,12 +62,19 @@ function renderHeaderTargetMenu(s = state.snapshot) {
   if (!line || !s?.session) return;
   const session = s.session;
   const thread = session.threadId || '';
-  const summary = [session.agentLabel || session.agentId || 'Agent', session.model || 'default', thread ? shortMiddle(thread) : 'not started'].join(' / ');
+  const summary = [session.agentLabel || session.agentId || 'Agent', session.model || 'default', headerSessionLabel(session)].join(' / ');
   const targets = state.peerTargets && state.peerTargets.length ? state.peerTargets : [{ id: state.selectedPeer || 'local', name: headerTargetName(state.selectedPeer || 'local'), agents: state.enabledAgents || [], snapshot: s, loading: false, error: '' }];
   const groups = targets.map((target: WebuiHeaderTarget) => headerTargetGroupHtml(target, session)).join('');
   line.innerHTML = '<div class="compact-control header-target-menu" data-header-target-menu><button type="button" id="headerTargetBtn" class="control-menu-button header-target-button" aria-haspopup="menu" aria-expanded="false" title="' + attr('Target: ' + headerTargetName(state.selectedPeer || 'local')) + '">' + esc(summary) + '</button><div class="control-menu-list header-target-list" role="menu" hidden>' + groups + '</div></div>' + (thread ? headerThreadCopyButton(thread) : '');
   bindHeaderTargetMenu(line);
   bindUiCopyButtons(line);
+}
+
+function headerSessionLabel(session: WebuiSessionSnapshot) {
+  const name = String(session.sessionName || '').trim();
+  if (name) return name;
+  const thread = session.threadId || '';
+  return thread ? shortMiddle(thread) : 'not started';
 }
 
 function headerThreadCopyButton(thread: string) {
@@ -86,7 +93,7 @@ function headerTargetGroupHtml(target: WebuiHeaderTarget, currentSession: WebuiS
 function headerTargetAgentHtml(target: WebuiHeaderTarget, agent: string, selected: boolean) {
   const snapshot = target.snapshot?.session;
   const model = snapshot && snapshot.agentId === agent ? (snapshot.model || 'default') : '';
-  const thread = snapshot && snapshot.agentId === agent && snapshot.threadId ? shortMiddle(snapshot.threadId) : '';
+  const thread = snapshot && snapshot.agentId === agent && snapshot.threadId ? headerSessionLabel(snapshot) : '';
   const meta = [model, thread].filter(Boolean).join(' / ');
   const key = headerTargetSessionKey(target.id, agent);
   return '<div class="header-target-agent-block" data-target-agent-block="' + attr(key) + '"><div class="header-target-agent-row"><button type="button" role="menuitemradio" class="header-target-agent" data-target-peer="' + attr(target.id) + '" data-target-agent="' + attr(agent) + '" aria-selected="' + (selected ? 'true' : 'false') + '"' + disabledAttr('sessions.write') + '><span>' + esc(agent) + '</span>' + (meta ? '<small>' + esc(meta) + '</small>' : '') + '</button><button type="button" class="header-target-session-toggle" data-target-sessions-toggle="' + attr(key) + '" data-target-peer="' + attr(target.id) + '" data-target-agent="' + attr(agent) + '" aria-expanded="false" title="Show recent sessions" aria-label="Show recent ' + attr(agent) + ' sessions"' + disabledAttr('sessions.read') + '><span aria-hidden="true"></span></button></div><div class="header-target-sessions" data-target-sessions="' + attr(key) + '" hidden></div></div>';

@@ -190,6 +190,7 @@ export interface AgentSessionInfo {
   agentId: AgentId;
   agentLabel: string;
   threadId: string | null;
+  sessionName?: string;
   workspace: string;
   model?: string;
   reasoningEffort?: string;

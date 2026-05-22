@@ -52,6 +52,7 @@ interface WebuiSessionSnapshot extends WebuiRecord {
   agentId?: string;
   agentLabel?: string;
   threadId?: string;
+  sessionName?: string;
   workspace?: string;
   model?: string;
   reasoning?: string;
