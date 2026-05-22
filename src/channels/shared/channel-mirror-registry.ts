@@ -1,7 +1,7 @@
 import type { AgentId } from "../../agents/shared/agent.js";
 import type { BotPreferencesStore, ChannelMirrorMode } from "../../state/bot-preferences.js";
 import type { ConnectorConfig } from "../../core/config.js";
-import { channelIdForContextKey, type ChannelContextKey } from "./context-key.js";
+import { parseChannelContextKey, type ChannelContextKey } from "./context-key.js";
 import type { PromptStore } from "../../state/prompt-store.js";
 import type { ActiveSessionMirrorDto, ActiveSessionSource } from "../../runtime/relay-runtime-types.js";
 import type { ContextMetadata } from "../../state/session-registry.js";
@@ -91,7 +91,11 @@ export class ChannelMirrorRegistry {
 }
 
 export function activeSessionSourceForContextKey(contextKey: ChannelContextKey): ActiveSessionSource {
-  const channelId = channelIdForContextKey(contextKey);
+  const parsed = parseChannelContextKey(contextKey);
+  if (parsed?.channelId === "peer" && parsed.topicId) {
+    return activeSessionSourceForContextKey(parsed.topicId);
+  }
+  const channelId = parsed?.channelId ?? "cli";
   if (channelId === "telegram") {
     return "telegram";
   }

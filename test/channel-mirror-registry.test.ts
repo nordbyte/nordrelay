@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BotPreferencesStore } from "../src/state/bot-preferences.js";
 import { ChannelMirrorRegistry, activeSessionSourceForContextKey } from "../src/channels/shared/channel-mirror-registry.js";
 import type { ConnectorConfig } from "../src/core/config.js";
+import { peerRuntimeContextKey } from "../src/peers/peer-context.js";
 import { PromptStore, toPromptEnvelope } from "../src/state/prompt-store.js";
 import type { ContextMetadata } from "../src/state/session-registry.js";
 
@@ -88,5 +89,32 @@ describe("ChannelMirrorRegistry", () => {
     expect(activeSessionSourceForContextKey("matrix:aG9tZQ:IXJvb206aG9tZQ")).toBe("matrix");
     expect(activeSessionSourceForContextKey("web:dashboard")).toBe("web");
     expect(activeSessionSourceForContextKey("cli:codex:thread-a")).toBe("cli");
+    expect(activeSessionSourceForContextKey(peerRuntimeContextKey({ id: "peer-a", nodeId: "node-a" }, "web:dashboard"))).toBe("web");
+    expect(activeSessionSourceForContextKey(peerRuntimeContextKey({ id: "peer-a", nodeId: "node-a" }, "123"))).toBe("telegram");
+  });
+
+  it("resolves mirror channels from peer-wrapped remote contexts", () => {
+    const promptStore = new PromptStore(workspace);
+    const preferences = new BotPreferencesStore(workspace);
+    const registry = new ChannelMirrorRegistry({
+      defaultAgent: "codex",
+      telegramMirrorMode: "status",
+      webMirrorMode: "status",
+    } as ConnectorConfig, promptStore);
+    const peerWebContext = peerRuntimeContextKey({ id: "peer-a", nodeId: "node-a" }, "web:dashboard");
+    const peerTelegramContext = peerRuntimeContextKey({ id: "peer-a", nodeId: "node-a" }, "123");
+    preferences.update(peerWebContext, { mirrorMode: "final" });
+    preferences.update(peerTelegramContext, { mirrorMode: "full" });
+    promptStore.enqueue(peerTelegramContext, toPromptEnvelope("remote queued"));
+
+    const mirrors = registry.activeMirrorsForThread("codex", "thread-a", [
+      { contextKey: peerWebContext, agentId: "codex", threadId: "thread-a", updatedAt: 1 },
+      { contextKey: peerTelegramContext, agentId: "codex", threadId: "thread-a", updatedAt: 1 },
+    ], preferences);
+
+    expect(mirrors).toEqual([
+      { source: "web", contextKey: peerWebContext, mode: "final", queueLength: 0, queuePaused: false },
+      { source: "telegram", contextKey: peerTelegramContext, mode: "full", queueLength: 1, queuePaused: false },
+    ]);
   });
 });
