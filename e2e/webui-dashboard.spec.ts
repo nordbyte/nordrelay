@@ -552,6 +552,7 @@ test.describe("NordRelay WebUI", () => {
       "Permissions",
       "Agents",
       "Workspaces",
+      "Peers",
       "Channels",
       "Actions",
     ]);
