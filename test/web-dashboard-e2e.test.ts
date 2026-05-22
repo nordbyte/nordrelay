@@ -523,6 +523,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain("padding:10px 106px 10px 12px");
     expect(css).toContain(".message.user,.message.user-prompt{max-width:min(88%,calc(100% - 36px));margin-left:auto;margin-right:0");
     expect(css).toContain(".message.user,.message.user-prompt{max-width:calc(100% - 24px);margin-left:auto;margin-right:0");
+    expect(css).toContain(".message-body{white-space:pre-wrap;font-size:14px;line-height:1.45}");
     expect(css).toContain(".message-copy-button");
     expect(css).toContain(".message-retry-button{right:70px}");
     expect(css).toContain(".message-retry-button::before");
