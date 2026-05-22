@@ -4,7 +4,7 @@ import { resolveCodexCli } from "./codex-cli.js";
 
 export interface AuthStatus {
   authenticated: boolean;
-  method: "api-key" | "cli" | "none";
+  method: "api-key" | "cli" | "bundled" | "none";
   detail: string;
 }
 
@@ -24,8 +24,9 @@ let cachedAuthStatus: { status: AuthStatus; expiresAt: number } | undefined;
  *
  * Priority:
  * 1. If CODEX_API_KEY is set in the environment, report authenticated via API key.
- * 2. Otherwise, shell out to `codex login status` to check CLI auth.
- * 3. If the CLI command fails or is unavailable, report unauthenticated.
+ * 2. Otherwise, shell out to `codex login status` to check CLI auth when an external CLI exists.
+ * 3. If only the bundled SDK runtime is available, let the SDK validate auth when a turn starts.
+ * 4. If an external CLI command fails or is unavailable, report unauthenticated.
  *
  * Results are cached for 30 seconds to avoid per-message CLI invocations.
  */
@@ -42,8 +43,19 @@ export async function checkAuthStatus(apiKey?: string): Promise<AuthStatus> {
     return cachedAuthStatus.status;
   }
 
+  const cli = resolveCodexCli();
+  if (cli.source === "bundled" && !cli.path) {
+    const status: AuthStatus = {
+      authenticated: true,
+      method: "bundled",
+      detail: "Using bundled @openai/codex runtime; authentication will be validated when a turn starts.",
+    };
+    cachedAuthStatus = { status, expiresAt: Date.now() + AUTH_CACHE_TTL_MS };
+    return status;
+  }
+
   try {
-    const { stdout } = await runCodexCommand(["login", "status"]);
+    const { stdout } = await runCodexCommand(["login", "status"], cli);
     const output = stdout.trim();
     const status: AuthStatus = {
       authenticated: true,
@@ -111,9 +123,8 @@ export async function startLogout(): Promise<LoginResult> {
   }
 }
 
-function runCodexCommand(args: string[]): Promise<{ stdout: string; stderr: string }> {
+function runCodexCommand(args: string[], cli = resolveCodexCli()): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const cli = resolveCodexCli();
     execFile(
       cli.path ?? CODEX_CLI,
       args,

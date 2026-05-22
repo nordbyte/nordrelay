@@ -38,13 +38,31 @@ function mockExecNotFound(): void {
 }
 
 describe("codex-auth", () => {
+  let previousCodexCliPath: string | undefined;
+  let previousUseBundledCli: string | undefined;
+
   beforeEach(() => {
+    previousCodexCliPath = process.env.CODEX_CLI_PATH;
+    previousUseBundledCli = process.env.CODEX_USE_BUNDLED_CLI;
+    process.env.CODEX_CLI_PATH = "/usr/bin/codex-test";
+    delete process.env.CODEX_USE_BUNDLED_CLI;
     mockExecFile.mockReset();
     clearAuthCache();
   });
 
   afterEach(() => {
+    if (previousCodexCliPath === undefined) {
+      delete process.env.CODEX_CLI_PATH;
+    } else {
+      process.env.CODEX_CLI_PATH = previousCodexCliPath;
+    }
+    if (previousUseBundledCli === undefined) {
+      delete process.env.CODEX_USE_BUNDLED_CLI;
+    } else {
+      process.env.CODEX_USE_BUNDLED_CLI = previousUseBundledCli;
+    }
     vi.restoreAllMocks();
+    clearAuthCache();
   });
 
   describe("checkAuthStatus", () => {
@@ -64,6 +82,18 @@ describe("codex-auth", () => {
       expect(status.authenticated).toBe(true);
       expect(status.method).toBe("cli");
       expect(status.detail).toContain("user@example.com");
+    });
+
+    it("delegates auth checks to the bundled runtime when no external CLI exists", async () => {
+      delete process.env.CODEX_CLI_PATH;
+      process.env.CODEX_USE_BUNDLED_CLI = "true";
+
+      const status = await checkAuthStatus();
+
+      expect(status.authenticated).toBe(true);
+      expect(status.method).toBe("bundled");
+      expect(status.detail).toContain("bundled @openai/codex");
+      expect(mockExecFile).not.toHaveBeenCalled();
     });
 
     it("uses the configured Codex CLI path for auth checks", async () => {
