@@ -153,6 +153,9 @@ export async function sendRecentMatrixArtifacts<TRequest extends MatrixArtifactR
   turnId: string,
   policy: ArtifactDeliveryPolicy = artifactDeliveryPolicy(deps.config.matrixAutoSendArtifacts ? "auto-files" : "manual-only"),
 ): Promise<void> {
+  if (!deps.config.artifactsEnabled) {
+    return;
+  }
   const report = await collectRecentWorkspaceArtifacts(session.getInfo().workspace, {
     since,
     until: new Date(),

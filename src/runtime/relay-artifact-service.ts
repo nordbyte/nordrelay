@@ -156,6 +156,9 @@ export class RelayArtifactService {
   }
 
   async persistWorkspaceArtifactsForTurn(workspace: string, turnId: string, startedAt: Date, provenance?: ArtifactProvenance): Promise<void> {
+    if (!this.config.artifactsEnabled) {
+      return;
+    }
     const report = await collectRecentWorkspaceArtifacts(workspace, {
       since: startedAt,
       until: new Date(),

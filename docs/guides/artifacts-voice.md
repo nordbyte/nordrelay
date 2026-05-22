@@ -14,7 +14,15 @@ For agents that cannot process audio directly, NordRelay transcribes audio first
 
 ## Artifact management
 
-Generated artifacts are tracked per workspace and turn. The WebUI provides:
+Generated artifact tracking is disabled by default. Enable it only when you want NordRelay to scan workspaces after turns and persist artifact reports:
+
+```dotenv
+NORDRELAY_ARTIFACTS_ENABLED=true
+```
+
+When artifact tracking is disabled, NordRelay still accepts prompt attachments and can manage previously recorded artifact reports, but it does not create new generated-artifact reports after WebUI, chat-adapter, or mirrored CLI turns.
+
+When enabled, generated artifacts are tracked per workspace and turn. The WebUI provides:
 
 - quota display
 - cleanup rules
@@ -29,8 +37,11 @@ Generated artifacts are tracked per workspace and turn. The WebUI provides:
 Default artifact delivery is controlled by:
 
 ```dotenv
+NORDRELAY_ARTIFACTS_ENABLED=true
 NORDRELAY_ARTIFACT_DELIVERY=manual-only
 ```
+
+Artifact delivery settings only take effect for newly generated reports when `NORDRELAY_ARTIFACTS_ENABLED=true`.
 
 Supported delivery modes include `manual-only`, `summary`, `summary-with-actions`, `auto-files`, `auto-zip`, `images-only`, and `off`.
 

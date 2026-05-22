@@ -18,6 +18,8 @@ import {
   removeArtifactTurn,
   telegramArtifactFilename,
 } from "../src/artifacts/artifacts.js";
+import type { ConnectorConfig } from "../src/core/config.js";
+import { RelayArtifactService } from "../src/runtime/relay-artifact-service.js";
 
 describe("ensureOutDir", () => {
   const testDir = path.join(tmpdir(), `nordrelay-art-${randomUUID()}`);
@@ -223,6 +225,31 @@ describe("collectArtifacts", () => {
         threadId: "thread-1",
       }),
     }));
+  });
+
+  it("does not generate workspace artifact reports when artifact tracking is disabled", async () => {
+    const since = new Date("2026-05-12T04:00:00.000Z");
+    const recent = new Date("2026-05-12T04:01:00.000Z");
+    mkdirSync(path.join(testDir, "out"), { recursive: true });
+    writeFileSync(path.join(testDir, "out", "result.txt"), "ok");
+    utimesSync(path.join(testDir, "out", "result.txt"), recent, recent);
+
+    const service = new RelayArtifactService({
+      artifactsEnabled: false,
+      maxFileSize: 20 * 1024 * 1024,
+      artifactMaxTotalBytes: 0,
+      artifactRetentionDays: 7,
+      artifactMaxTurnDirs: 30,
+      artifactMaxInboxDirs: 30,
+      artifactWarnPercent: 80,
+      artifactSafeFilePolicy: "warn",
+      artifactIgnoreDirs: [],
+      artifactIgnoreGlobs: [],
+    } as ConnectorConfig);
+
+    await service.persistWorkspaceArtifactsForTurn(testDir, "turn-disabled", since);
+
+    await expect(listRecentArtifactReports(testDir)).resolves.toEqual([]);
   });
 
   it("rejects unsafe artifact turn ids", async () => {

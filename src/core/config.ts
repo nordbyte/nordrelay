@@ -62,6 +62,7 @@ export interface ConnectorConfig {
   webMirrorMinUpdateMs: number;
   notifyMode: ChannelNotifyMode;
   quietHours: QuietHours | null;
+  artifactsEnabled: boolean;
   autoSendArtifacts: boolean;
   artifactDeliveryMode: ArtifactDeliveryMode;
   telegramMirrorMode: TelegramMirrorMode;
@@ -233,6 +234,7 @@ export function loadConfig(): ConnectorConfig {
   const webMirrorMinUpdateMs = parseNonNegativeIntegerEnv(optionalString(process.env.NORDRELAY_WEB_CLI_MIRROR_MIN_UPDATE_MS), mirrorMinUpdateMs, "NORDRELAY_WEB_CLI_MIRROR_MIN_UPDATE_MS");
   const notifyMode = parseNotifyMode(optionalString(process.env.NORDRELAY_NOTIFY_MODE), "minimal");
   const quietHours = parseQuietHoursOverride(process.env.NORDRELAY_QUIET_HOURS, null);
+  const artifactsEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_ARTIFACTS_ENABLED), false);
   const autoSendArtifacts = parseBooleanEnv(optionalString(process.env.NORDRELAY_AUTO_SEND_ARTIFACTS), false);
   const artifactDeliveryMode = parseArtifactDeliveryMode(
     optionalString(process.env.NORDRELAY_ARTIFACT_DELIVERY),
@@ -495,6 +497,7 @@ export function loadConfig(): ConnectorConfig {
     webMirrorMinUpdateMs,
     notifyMode,
     quietHours,
+    artifactsEnabled,
     autoSendArtifacts,
     artifactDeliveryMode,
     telegramMirrorMode,

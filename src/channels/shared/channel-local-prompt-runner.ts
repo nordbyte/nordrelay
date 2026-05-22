@@ -138,7 +138,9 @@ export async function runChannelLocalPrompt<TRequest extends ChannelLocalPromptR
       actor: options.actor,
       turnStartedAt: new Date(engine.startedAt).toISOString(),
     });
-    await options.sendRecentArtifacts(new Date(engine.startedAt), engine.turnId);
+    if (config.artifactsEnabled) {
+      await options.sendRecentArtifacts(new Date(engine.startedAt), engine.turnId);
+    }
     options.appendActivity(request, {
       ...promptActivity("completed", "prompt_completed", envelope, session.getInfo()),
       durationMs: Date.now() - engine.startedAt,

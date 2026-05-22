@@ -1678,7 +1678,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       updateSessionMetadata(contextKey, session);
       await finalizeResponse();
       await deliverCliGeneratedArtifacts(contextKey, chatId, session, artifactStartedAt, artifactTurnId, messageThreadId);
-      if (envelope.artifactOutDir) {
+      if (config.artifactsEnabled && envelope.artifactOutDir) {
         const artifactPolicy = artifactPolicyForTelegram({ contextKey, chatId, authUser: getAuthenticatedUser(ctx) });
         if (artifactPolicy.sendSummary || artifactPolicy.autoSendFiles || artifactPolicy.autoSendZip) {
           await deliverArtifacts(ctx, chatId, envelope.artifactOutDir, session.getInfo().workspace, messageThreadId, artifactPolicy);

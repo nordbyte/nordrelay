@@ -122,6 +122,7 @@ This page summarizes the runtime keys generated in `.env.example`.
 | `NORDRELAY_WEB_CLI_MIRROR_MODE` | WebUI mirror override |
 | `NORDRELAY_NOTIFY_MODE` | Completion notification mode |
 | `NORDRELAY_QUIET_HOURS` | Default quiet hours |
+| `NORDRELAY_ARTIFACTS_ENABLED` | Enable generated-artifact tracking |
 | `NORDRELAY_AUTO_SEND_ARTIFACTS` | Legacy artifact auto-summary switch |
 | `NORDRELAY_ARTIFACT_DELIVERY` | Default artifact delivery mode |
 | `*_CLI_MIRROR_MODE` | Adapter-specific mirror override |

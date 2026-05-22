@@ -153,6 +153,9 @@ export async function sendRecentDiscordArtifacts<TRequest extends DiscordArtifac
   turnId: string,
   policy: ArtifactDeliveryPolicy = artifactDeliveryPolicy(deps.config.discordAutoSendArtifacts ? "auto-files" : "manual-only"),
 ): Promise<void> {
+  if (!deps.config.artifactsEnabled) {
+    return;
+  }
   const report = await collectRecentWorkspaceArtifacts(session.getInfo().workspace, {
     since,
     until: new Date(),

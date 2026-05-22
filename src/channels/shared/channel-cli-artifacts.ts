@@ -33,6 +33,9 @@ export interface ChannelCliArtifactDeliveryOptions<MessageId extends string | nu
 export async function deliverChannelCliArtifacts<MessageId extends string | number>(
   options: ChannelCliArtifactDeliveryOptions<MessageId>,
 ): Promise<void> {
+  if (!options.config.artifactsEnabled) {
+    return;
+  }
   if (!options.startedAt || !options.turnId) {
     return;
   }

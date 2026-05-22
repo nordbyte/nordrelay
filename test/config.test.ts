@@ -26,12 +26,15 @@ describe("loadConfig", () => {
     delete process.env.NORDRELAY_WEB_CLI_MIRROR_MIN_UPDATE_MS;
     delete process.env.NORDRELAY_NOTIFY_MODE;
     delete process.env.NORDRELAY_QUIET_HOURS;
+    delete process.env.NORDRELAY_ARTIFACTS_ENABLED;
     delete process.env.NORDRELAY_AUTO_SEND_ARTIFACTS;
+    delete process.env.NORDRELAY_ARTIFACT_DELIVERY;
     delete process.env.TELEGRAM_CLI_MIRROR_MODE;
     delete process.env.TELEGRAM_CLI_MIRROR_MIN_UPDATE_MS;
     delete process.env.TELEGRAM_NOTIFY_MODE;
     delete process.env.TELEGRAM_QUIET_HOURS;
     delete process.env.TELEGRAM_REDACT_PATTERNS;
+    delete process.env.TELEGRAM_ARTIFACT_DELIVERY;
     delete process.env.TELEGRAM_TRANSPORT;
     delete process.env.TELEGRAM_WEBHOOK_URL;
     delete process.env.TELEGRAM_WEBHOOK_HOST;
@@ -52,6 +55,7 @@ describe("loadConfig", () => {
     delete process.env.DISCORD_NOTIFY_MODE;
     delete process.env.DISCORD_QUIET_HOURS;
     delete process.env.DISCORD_AUTO_SEND_ARTIFACTS;
+    delete process.env.DISCORD_ARTIFACT_DELIVERY;
     delete process.env.SLACK_ENABLED;
     delete process.env.SLACK_BOT_TOKEN;
     delete process.env.SLACK_APP_TOKEN;
@@ -67,6 +71,7 @@ describe("loadConfig", () => {
     delete process.env.SLACK_NOTIFY_MODE;
     delete process.env.SLACK_QUIET_HOURS;
     delete process.env.SLACK_AUTO_SEND_ARTIFACTS;
+    delete process.env.SLACK_ARTIFACT_DELIVERY;
     delete process.env.MATRIX_ENABLED;
     delete process.env.MATRIX_HOMESERVER_URL;
     delete process.env.MATRIX_ACCESS_TOKEN;
@@ -213,6 +218,7 @@ describe("loadConfig", () => {
       webMirrorMinUpdateMs: 4_000,
       notifyMode: "minimal",
       quietHours: null,
+      artifactsEnabled: false,
       autoSendArtifacts: false,
       artifactDeliveryMode: "manual-only",
       telegramMirrorMode: "status",
@@ -457,6 +463,7 @@ describe("loadConfig", () => {
     expect(config.webMirrorMinUpdateMs).toBe(4_000);
     expect(config.notifyMode).toBe("minimal");
     expect(config.quietHours).toBeNull();
+    expect(config.artifactsEnabled).toBe(false);
     expect(config.autoSendArtifacts).toBe(false);
     expect(config.telegramMirrorMode).toBe("status");
     expect(config.telegramMirrorMinUpdateMs).toBe(4_000);
@@ -944,6 +951,7 @@ describe("loadConfig", () => {
     process.env.NORDRELAY_CLI_MIRROR_MIN_UPDATE_MS = "9000";
     process.env.NORDRELAY_NOTIFY_MODE = "all";
     process.env.NORDRELAY_QUIET_HOURS = "22-7";
+    process.env.NORDRELAY_ARTIFACTS_ENABLED = "true";
     process.env.NORDRELAY_AUTO_SEND_ARTIFACTS = "true";
     process.env.DISCORD_CLI_MIRROR_MODE = "final";
     process.env.DISCORD_NOTIFY_MODE = "minimal";
@@ -956,6 +964,7 @@ describe("loadConfig", () => {
     expect(config.mirrorMinUpdateMs).toBe(9000);
     expect(config.notifyMode).toBe("all");
     expect(config.quietHours).toEqual({ startHour: 22, endHour: 7 });
+    expect(config.artifactsEnabled).toBe(true);
     expect(config.autoSendArtifacts).toBe(true);
     expect(config.telegramMirrorMode).toBe("full");
     expect(config.telegramMirrorMinUpdateMs).toBe(9000);

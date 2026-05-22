@@ -153,6 +153,9 @@ export async function sendRecentSlackArtifacts<TRequest extends SlackArtifactReq
   turnId: string,
   policy: ArtifactDeliveryPolicy = artifactDeliveryPolicy(deps.config.slackAutoSendArtifacts ? "auto-files" : "manual-only"),
 ): Promise<void> {
+  if (!deps.config.artifactsEnabled) {
+    return;
+  }
   const report = await collectRecentWorkspaceArtifacts(session.getInfo().workspace, {
     since,
     until: new Date(),
