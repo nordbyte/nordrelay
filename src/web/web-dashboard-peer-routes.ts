@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { isPermission, type Permission } from "../access/access-control.js";
 import { AGENT_IDS, isAgentId, type AgentId } from "../agents/shared/agent.js";
 import type { AuditEvent } from "../access/audit-log.js";
+import type { AuthenticatedUser, UserStore } from "../access/user-management.js";
 import type { ConnectorConfig } from "../core/config.js";
 import {
   exportPeerIdentityBackup,
@@ -10,7 +11,7 @@ import {
   loadOrCreatePeerIdentity,
   restorePeerIdentityBackup,
 } from "../peers/peer-identity.js";
-import { getPeerOutboundRelaySnapshot } from "../peers/peer-outbound-relay.js";
+import { getPeerOutboundRelaySnapshot, type PeerOutboundRelaySnapshot } from "../peers/peer-outbound-relay.js";
 import { getPeerRelayBroker } from "../peers/peer-relay-broker.js";
 import { PeerRelayEventStore } from "../peers/peer-relay-event-store.js";
 import { checkPeerEndpoint, checkPeerIdentityEndpoint, pairPeer, RemoteRelayClient } from "../peers/peer-client.js";
@@ -18,7 +19,7 @@ import type { PeerDiscoveryJobManager } from "../peers/peer-discovery-jobs.js";
 import { buildPeerReadiness, peerListenUrl } from "../peers/peer-readiness.js";
 import { discoverLanPeers } from "../peers/peer-discovery.js";
 import { PeerStore } from "../peers/peer-store.js";
-import { publicPeer, type PeerIdentityBackup, type PeerWebProxyPayload } from "../peers/peer-types.js";
+import { publicPeer, type PeerIdentityBackup, type PeerRelayQueueSnapshot, type PeerWebProxyPayload } from "../peers/peer-types.js";
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
 import { mergeSessionDetailMessages } from "../runtime/relay-runtime-session-detail.js";
 import type { WebActivityActor, WebChatMessage } from "./web-state.js";
@@ -30,6 +31,7 @@ import {
   optionalStringField,
   readJsonBody,
   sendJson,
+  WebAccessDeniedError,
 } from "./web-dashboard-http.js";
 
 export interface DashboardPeerRouteOptions {
@@ -37,6 +39,8 @@ export interface DashboardPeerRouteOptions {
   home: string;
   runtime?: RelayRuntime;
   discoveryJobs?: PeerDiscoveryJobManager;
+  users: UserStore;
+  authUser: AuthenticatedUser;
   activityActor: WebActivityActor;
   auditPeerAction?: (action: AuditEvent["action"], description: string) => void;
 }
@@ -56,12 +60,12 @@ export async function handleDashboardPeerRoute(
 
   if (req.method === "GET" && url.pathname === "/api/peers") {
     const readiness = await buildPeerReadiness(options.config, options.home);
-    sendJson(res, 200, store.snapshot(identity.public, {
+    sendJson(res, 200, scopedPeerSnapshot(options, store.snapshot(identity.public, {
       enabled: options.config.peerEnabled,
       listenUrl: readiness.listenUrl,
       requireTls: options.config.peerRequireTls,
       readiness,
-    }));
+    })));
     return true;
   }
 
@@ -98,6 +102,7 @@ export async function handleDashboardPeerRoute(
     const readiness = await buildPeerReadiness(options.config, options.home);
     const peerId = optionalStringField(body, "peerId");
     if (peerId) {
+      assertPeerAccess(options, peerId);
       const probe = await new RemoteRelayClient(store, options.home).rpc(peerId, "peer.probe", {}, options.activityActor, { timeoutMs: PEER_HEALTH_TIMEOUT_MS });
       sendJson(res, 200, { type: "remote", peerId, readiness, probe });
       options.auditPeerAction?.("peer_probe", peerId);
@@ -125,7 +130,7 @@ export async function handleDashboardPeerRoute(
   if (url.pathname === "/api/peers/relay") {
     const broker = getPeerRelayBroker(options.home);
     if (req.method === "GET") {
-      sendJson(res, 200, peerRelayStatus(options, broker));
+      sendJson(res, 200, peerRelayStatus(options, store, broker));
       return true;
     }
     if (req.method === "POST") {
@@ -134,13 +139,20 @@ export async function handleDashboardPeerRoute(
       let result: unknown = {};
       if (action === "cancel") {
         const peerId = requiredString(body, "peerId");
+        assertPeerAccess(options, peerId);
         const id = requiredString(body, "id");
         result = { removed: broker.cancel(peerId, id) };
         options.auditPeerAction?.("peer_relay_cancelled", `${peerId}/${id}`);
       } else if (action === "retry") {
         const peerId = optionalStringField(body, "peerId");
         const id = optionalStringField(body, "id");
-        result = { moved: broker.retry(peerId, id) };
+        if (peerId) {
+          assertPeerAccess(options, peerId);
+          result = { moved: broker.retry(peerId, id) };
+        } else {
+          const peerIds = visiblePeerIds(options, store);
+          result = { moved: peerIds.reduce((count, visiblePeerId) => count + broker.retry(visiblePeerId, id), 0) };
+        }
         options.auditPeerAction?.("peer_relay_retried", [peerId, id].filter(Boolean).join("/") || "all stale requests");
       } else if (action === "drain-expired") {
         result = broker.drainExpired();
@@ -148,7 +160,7 @@ export async function handleDashboardPeerRoute(
       } else {
         throw new Error(`Unsupported peer relay action: ${action}`);
       }
-      sendJson(res, 200, { ...peerRelayStatus(options, broker), result });
+      sendJson(res, 200, { ...peerRelayStatus(options, store, broker), result });
       return true;
     }
   }
@@ -223,7 +235,9 @@ export async function handleDashboardPeerRoute(
   const peerMatch = url.pathname.match(/^\/api\/peers\/([^/]+)$/);
   if (peerMatch?.[1] && req.method === "PATCH") {
     const body = await readJsonBody(req);
-    const peer = store.updatePeer(decodeURIComponent(peerMatch[1]), {
+    const peerId = decodeURIComponent(peerMatch[1]);
+    assertPeerAccess(options, peerId);
+    const peer = store.updatePeer(peerId, {
       name: optionalStringField(body, "name"),
       group: optionalStringField(body, "group"),
       url: optionalStringField(body, "url"),
@@ -241,6 +255,7 @@ export async function handleDashboardPeerRoute(
   const repinMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/repin$/);
   if (repinMatch?.[1] && req.method === "POST") {
     const peerId = decodeURIComponent(repinMatch[1]);
+    assertPeerAccess(options, peerId);
     const peer = store.get(peerId);
     if (!peer?.url) {
       throw new Error("Peer URL is required before TLS re-pin.");
@@ -261,6 +276,7 @@ export async function handleDashboardPeerRoute(
   const rotateMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/rotate$/);
   if (rotateMatch?.[1] && req.method === "POST") {
     const body = await readJsonBody(req);
+    assertPeerAccess(options, decodeURIComponent(rotateMatch[1]));
     const readiness = await buildPeerReadiness(options.config, options.home);
     const created = store.createRotationInvitation(decodeURIComponent(rotateMatch[1]), {
       expiresInMs: (optionalNumberField(body, "expiresMinutes") ?? 10) * 60 * 1000,
@@ -292,7 +308,7 @@ export async function handleDashboardPeerRoute(
         data: await options.runtime.listSessionsPage(1, limit, query, agent),
       });
     }
-    const peers = store.listPublic().filter((peer) => peer.enabled && (peer.url || peer.direction === "inbound"));
+    const peers = store.listPublic().filter((peer) => canUsePeer(options, peer.id) && peer.enabled && (peer.url || peer.direction === "inbound"));
     const remoteTargets = await Promise.all(peers.map(async (peer) => {
       try {
         const data = await client.webProxy(peer.id, {
@@ -313,6 +329,7 @@ export async function handleDashboardPeerRoute(
 
   if (peerMatch?.[1] && req.method === "DELETE") {
     const peerId = decodeURIComponent(peerMatch[1]);
+    assertPeerAccess(options, peerId);
     const removed = store.revokePeer(peerId);
     sendJson(res, 200, { removed });
     if (removed) {
@@ -327,6 +344,7 @@ export async function handleDashboardPeerRoute(
     const payload = parseProxyPayload(body);
     const client = new RemoteRelayClient(store, options.home);
     const peerId = decodeURIComponent(proxyMatch[1]);
+    assertPeerAccess(options, peerId);
     const data = await client.webProxy(
       peerId,
       payload,
@@ -348,6 +366,7 @@ export async function handleDashboardPeerRoute(
   const healthMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/health$/);
   if (healthMatch?.[1] && req.method === "GET") {
     const peerId = decodeURIComponent(healthMatch[1]);
+    assertPeerAccess(options, peerId);
     const data = await new RemoteRelayClient(store, options.home).rpc(peerId, "peer.ping", undefined, options.activityActor, { timeoutMs: PEER_HEALTH_TIMEOUT_MS });
     sendJson(res, 200, { data, peer: publicPeer(store.get(peerId)!) });
     options.auditPeerAction?.("peer_health_checked", peerId);
@@ -357,6 +376,7 @@ export async function handleDashboardPeerRoute(
   const eventsMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/events$/);
   if (eventsMatch?.[1] && req.method === "GET") {
     const peerId = decodeURIComponent(eventsMatch[1]);
+    assertPeerAccess(options, peerId);
     const peer = store.get(peerId);
     res.writeHead(200, {
       "content-type": "text/event-stream; charset=utf-8",
@@ -414,13 +434,53 @@ export async function handleDashboardPeerRoute(
   return false;
 }
 
-function peerRelayStatus(options: DashboardPeerRouteOptions, broker: ReturnType<typeof getPeerRelayBroker>) {
+function peerRelayStatus(options: DashboardPeerRouteOptions, store: PeerStore, broker: ReturnType<typeof getPeerRelayBroker>) {
+  const visible = new Set(visiblePeerIds(options, store));
   return {
     enabled: options.config.peerOutboundRelayEnabled,
-    allowedPeerIds: [...options.config.peerOutboundRelayPeerIds],
-    queue: broker.snapshot(),
-    outbound: getPeerOutboundRelaySnapshot(options.home),
+    allowedPeerIds: [...options.config.peerOutboundRelayPeerIds].filter((peerId) => canUsePeer(options, peerId)),
+    queue: filterPeerRelaySnapshot(broker.snapshot(), visible),
+    outbound: filterOutboundRelaySnapshot(getPeerOutboundRelaySnapshot(options.home), visible),
     updatedAt: new Date().toISOString(),
+  };
+}
+
+function filterOutboundRelaySnapshot(snapshot: PeerOutboundRelaySnapshot, visible: Set<string>): PeerOutboundRelaySnapshot {
+  return {
+    ...snapshot,
+    allowedPeerIds: snapshot.allowedPeerIds.filter((peerId) => visible.has(peerId)),
+    peers: snapshot.peers.filter((peer) => visible.has(peer.peerId)),
+  };
+}
+
+function scopedPeerSnapshot(options: DashboardPeerRouteOptions, snapshot: ReturnType<PeerStore["snapshot"]>) {
+  const peers = snapshot.peers.filter((peer) => canUsePeer(options, peer.id));
+  return {
+    ...snapshot,
+    peers,
+    groups: [...new Set(peers.map((peer) => peer.group).filter((group): group is string => Boolean(group)))].sort(),
+  };
+}
+
+function canUsePeer(options: Pick<DashboardPeerRouteOptions, "users" | "authUser">, peerId: string): boolean {
+  return options.users.canUsePeerStrict(options.authUser, peerId);
+}
+
+function assertPeerAccess(options: Pick<DashboardPeerRouteOptions, "users" | "authUser">, peerId: string): void {
+  if (!canUsePeer(options, peerId)) {
+    throw new WebAccessDeniedError(`Access denied: peer ${peerId} is outside your group scope.`);
+  }
+}
+
+function visiblePeerIds(options: Pick<DashboardPeerRouteOptions, "users" | "authUser">, store = new PeerStore()): string[] {
+  return store.listPublic().filter((peer) => canUsePeer(options, peer.id)).map((peer) => peer.id);
+}
+
+function filterPeerRelaySnapshot(snapshot: PeerRelayQueueSnapshot, visible: Set<string>): PeerRelayQueueSnapshot {
+  return {
+    pending: snapshot.pending.filter((item) => visible.has(item.peerId)),
+    inFlight: snapshot.inFlight.filter((item) => visible.has(item.peerId)),
+    completed: snapshot.completed.filter((item) => visible.has(item.peerId)),
   };
 }
 

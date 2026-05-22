@@ -58,6 +58,7 @@ export interface ChannelPreferenceCommandOptions {
   contextKey: string;
   argument: string;
   preferencesStore: BotPreferencesStore;
+  canUsePeer?: (peerId: string) => boolean;
 }
 
 export interface ChannelMirrorCommandOptions extends ChannelPreferenceCommandOptions {
@@ -76,8 +77,8 @@ export class ChannelCommandService {
     return renderAgentsAction(listAgentAdapterDescriptors(), agentIds);
   }
 
-  renderPeers(): ChannelActionResponse {
-    const peers = new PeerStore().listPublic();
+  renderPeers(canUsePeer?: (peerId: string) => boolean): ChannelActionResponse {
+    const peers = new PeerStore().listPublic().filter((peer) => !canUsePeer || canUsePeer(peer.id));
     if (peers.length === 0) {
       return {
         plain: "No NordRelay peers configured.",
@@ -120,6 +121,7 @@ export class ChannelCommandService {
       contextKey: options.contextKey,
       preferencesStore: options.preferencesStore,
       action: options.action,
+      canUsePeer: options.canUsePeer,
     });
   }
 

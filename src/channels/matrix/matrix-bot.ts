@@ -341,6 +341,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
       contextKey: request.contextKey,
       prompt: envelope,
       remoteClient,
+      canUsePeer: (peerId) => userStore.canUsePeer(request.authUser, peerId),
       editMinIntervalMs: EDIT_DEBOUNCE_MS,
       typingIntervalMs: TYPING_INTERVAL_MS,
       sendTyping: () => runtime.sendTyping(request.context),
@@ -544,10 +545,10 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
     bindings: [
       { names: ["start", "help"], handler: (request) => commandHelp(request) },
       { names: ["channels"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderChannels()).then(() => {}) },
-      { names: ["peers"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderPeers()).then(() => {}) },
-      { names: ["nodes"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderNodeTargets({ source: "matrix", contextKey: request.contextKey, argument: "", preferencesStore })).then(() => {}) },
+      { names: ["peers"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderPeers((peerId) => userStore.canUsePeer(request.authUser, peerId))).then(() => {}) },
+      { names: ["nodes"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderNodeTargets({ source: "matrix", contextKey: request.contextKey, argument: "", preferencesStore, canUsePeer: (peerId) => userStore.canUsePeer(request.authUser, peerId) })).then(() => {}) },
       { names: ["target"], handler: async (request, argument) => {
-        await deliverChannelAction(runtime, request.context, commandService.renderTargetPreference({ source: "matrix", contextKey: request.contextKey, argument, preferencesStore }));
+        await deliverChannelAction(runtime, request.context, commandService.renderTargetPreference({ source: "matrix", contextKey: request.contextKey, argument, preferencesStore, canUsePeer: (peerId) => userStore.canUsePeer(request.authUser, peerId) }));
         peerMirrorController.sync(request.contextKey, request.context);
       } },
       { names: ["agents"], handler: (request) => deliverChannelAction(runtime, request.context, commandService.renderAgents()).then(() => {}) },
@@ -713,6 +714,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
       preferencesStore,
       remoteClient,
       actor: actorFor(request),
+      canUsePeer: (peerId) => userStore.canUsePeer(request.authUser, peerId),
     }).catch(async (error) => {
       await reply(request, `Remote session failed: ${friendlyErrorText(error)}`);
       return null;
@@ -731,6 +733,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
       preferencesStore,
       remoteClient,
       actor: actorFor(request),
+      canUsePeer: (peerId) => userStore.canUsePeer(request.authUser, peerId),
       query,
       limit: 50,
     }).catch(async (error) => {
@@ -805,6 +808,10 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
     }
     const remoteChoice = parseRemoteSessionChoice(threadId.trim());
     if (remoteChoice) {
+      if (!userStore.canUsePeer(request.authUser, remoteChoice.peerId)) {
+        await reply(request, "Access denied for peer target.");
+        return;
+      }
       preferencesStore.update(request.contextKey, { targetPeerId: remoteChoice.peerId });
     }
     if (remoteChoice || selectedTargetPeerId(preferencesStore, request.contextKey)) {
@@ -813,6 +820,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
         preferencesStore,
         remoteClient,
         actor: actorFor(request),
+        canUsePeer: (peerId) => userStore.canUsePeer(request.authUser, peerId),
         threadId: remoteChoice?.threadId ?? threadId.trim(),
       }).catch(async (error) => {
         await reply(request, `Remote switch failed: ${friendlyErrorText(error)}`);
@@ -1240,6 +1248,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
       preferencesStore,
       remoteClient,
       actor: actorFor(request),
+      canUsePeer: (peerId) => userStore.canUsePeer(request.authUser, peerId),
     }).catch(async (error) => {
       await reply(request, `Remote mirror failed: ${friendlyErrorText(error)}`);
       return null;
@@ -1366,6 +1375,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
         argument: "",
         preferencesStore,
         action: `node_target:${nodeTargetMatch[1]}`,
+        canUsePeer: (peerId) => userStore.canUsePeer(request.authUser, peerId),
       }));
       peerMirrorController.sync(request.contextKey, request.context);
       return;
@@ -1398,6 +1408,10 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
     }
     const peerQueueMatch = action.match(/^matrix_peer_queue_cancel:([^:]+):([^:]+)$/);
     if (peerQueueMatch?.[1] && peerQueueMatch[2]) {
+      if (!userStore.canUsePeer(request.authUser, peerQueueMatch[1])) {
+        await reply(request, "Access denied for peer target.", { ephemeral: true });
+        return;
+      }
       await remoteClient.webProxy(peerQueueMatch[1], { method: "POST", path: "/api/queue", body: { action: "cancel", id: peerQueueMatch[2] }, contextKey: request.contextKey }, actorFor(request), request.contextKey);
       await reply(request, `Cancelled remote queued prompt ${peerQueueMatch[2]}.`, { ephemeral: true });
       return;

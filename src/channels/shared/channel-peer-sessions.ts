@@ -17,6 +17,7 @@ export interface TargetPeerCommandOptions {
   preferencesStore: BotPreferencesStore;
   remoteClient?: RemotePeerWebClient;
   actor?: WebActivityActor;
+  canUsePeer?: (peerId: string) => boolean;
 }
 
 export interface TargetPeerSessionList {
@@ -49,6 +50,7 @@ export async function renderTargetPeerSession(options: TargetPeerCommandOptions)
   if (!targetPeerId) {
     return null;
   }
+  assertTargetPeerAllowed(options, targetPeerId);
   const snapshot = await targetPeerSnapshot(options, targetPeerId);
   const info = snapshot.session;
   return {
@@ -67,6 +69,7 @@ export async function listTargetPeerSessions(
   if (!targetPeerId) {
     return null;
   }
+  assertTargetPeerAllowed(options, targetPeerId);
   const snapshot = await targetPeerSnapshot(options, targetPeerId);
   const page = await peerProxy(options, targetPeerId, {
     method: "GET",
@@ -95,6 +98,7 @@ export async function switchTargetPeerSession(
   if (!targetPeerId) {
     return null;
   }
+  assertTargetPeerAllowed(options, targetPeerId);
   const result = await peerProxy(options, targetPeerId, {
     method: "POST",
     path: "/api/sessions/switch",
@@ -114,6 +118,7 @@ export async function renderTargetPeerMirrorPreference(
   if (!targetPeerId) {
     return null;
   }
+  assertTargetPeerAllowed(options, targetPeerId);
   const argument = options.argument.trim();
   const result = await peerProxy(options, targetPeerId, {
     method: argument ? "POST" : "GET",
@@ -162,8 +167,15 @@ async function targetPeerSnapshot(options: TargetPeerCommandOptions, peerId: str
 }
 
 async function peerProxy(options: TargetPeerCommandOptions, peerId: string, payload: PeerWebProxyPayload): Promise<unknown> {
+  assertTargetPeerAllowed(options, peerId);
   const client = options.remoteClient ?? new RemoteRelayClient();
   return client.webProxy(peerId, payload, options.actor, options.contextKey);
+}
+
+function assertTargetPeerAllowed(options: Pick<TargetPeerCommandOptions, "canUsePeer">, peerId: string): void {
+  if (options.canUsePeer && !options.canUsePeer(peerId)) {
+    throw new Error(`Access denied for peer target: ${selectedTargetPeerLabel(peerId)}.`);
+  }
 }
 
 function parseSessionPage(value: unknown): AgentThreadRecord[] {

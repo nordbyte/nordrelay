@@ -34,6 +34,17 @@ describe("channel node target helpers", () => {
       scopes: REQUIRED_SCOPES,
       enabled: true,
     });
+    peerStore.upsertPeer({
+      id: "peer-b",
+      name: "Server B",
+      url: "https://server-b.example",
+      nodeId: "node-b",
+      publicKey: "public-key-b",
+      fingerprint: "fingerprint-b",
+      secret: "secret-b",
+      scopes: REQUIRED_SCOPES,
+      enabled: true,
+    });
   });
 
   afterEach(() => {
@@ -50,6 +61,27 @@ describe("channel node target helpers", () => {
     expect(response.plain).toContain("Selected node: Local node");
     expect(response.plain).toContain("Server A (peer-a)");
     expect(response.buttons?.flat().map((button) => button.action)).toContain("node_target:peer:peer-a");
+  });
+
+  it("hides and rejects peers outside the channel user's group scope", () => {
+    const response = renderNodeTargetPicker({
+      contextKey: "telegram:1",
+      preferencesStore,
+      peerStore,
+      canUsePeer: (peerId) => peerId === "peer-a",
+    });
+
+    expect(response.plain).toContain("Server A (peer-a)");
+    expect(response.plain).not.toContain("Server B (peer-b)");
+    expect(response.buttons?.flat().map((button) => button.action)).not.toContain("node_target:peer:peer-b");
+    expect(() => renderNodeTargetAction({
+      contextKey: "telegram:1",
+      preferencesStore,
+      peerStore,
+      action: "node_target:peer:peer-b",
+      canUsePeer: (peerId) => peerId === "peer-a",
+    })).toThrow("Access denied for peer target");
+    expect(preferencesStore.get("telegram:1").targetPeerId ?? null).toBeNull();
   });
 
   it("updates the channel node target", () => {

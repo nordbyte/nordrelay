@@ -125,7 +125,7 @@ See [Chat commands](docs/reference/chat-commands.md) and the [CLI reference](doc
 - Streaming replies, typing/status indicators, tool activity, queue handling, retry, abort/stop, and CLI handback.
 - File, photo, voice/audio, and generated artifact workflows.
 - Prompt templates and multi-step workflows with variable preview, run history, and unified job tracking.
-- Per-user and per-group access control for WebUI and chat adapters.
+- Per-user and per-group access control for WebUI, chat adapters, workspaces, agents, and peer nodes.
 - Optional peer federation for controlling agents on other trusted NordRelay hosts.
 - WebUI dashboard for chat, sessions, settings, logs, diagnostics, updates, artifacts, peers, metrics, and users.
 - Agent adapters for Codex, Pi, Hermes, OpenClaw, and Claude Code.

@@ -186,15 +186,16 @@
 .access-users-table th:nth-child(6),.access-users-table td:nth-child(6){width:14%}
 .access-users-table th:nth-child(7),.access-users-table td:nth-child(7){width:18%}
 .access-users-table th:nth-child(8),.access-users-table td:nth-child(8){width:220px}
-.access-groups-table{--table-min-width:1120px}
-.access-groups-table th:nth-child(1),.access-groups-table td:nth-child(1){width:14%}
-.access-groups-table th:nth-child(2),.access-groups-table td:nth-child(2){width:18%}
+.access-groups-table{--table-min-width:1260px}
+.access-groups-table th:nth-child(1),.access-groups-table td:nth-child(1){width:13%}
+.access-groups-table th:nth-child(2),.access-groups-table td:nth-child(2){width:16%}
 .access-groups-table th:nth-child(3),.access-groups-table td:nth-child(3){width:7%;white-space:nowrap}
 .access-groups-table th:nth-child(4),.access-groups-table td:nth-child(4){width:9%;white-space:nowrap}
 .access-groups-table th:nth-child(5),.access-groups-table td:nth-child(5){width:11%}
-.access-groups-table th:nth-child(6),.access-groups-table td:nth-child(6){width:14%}
-.access-groups-table th:nth-child(7),.access-groups-table td:nth-child(7){width:19%}
-.access-groups-table th:nth-child(8),.access-groups-table td:nth-child(8){width:120px}
+.access-groups-table th:nth-child(6),.access-groups-table td:nth-child(6){width:13%}
+.access-groups-table th:nth-child(7),.access-groups-table td:nth-child(7){width:13%}
+.access-groups-table th:nth-child(8),.access-groups-table td:nth-child(8){width:16%}
+.access-groups-table th:nth-child(9),.access-groups-table td:nth-child(9){width:120px}
 .access-channels-table{--table-min-width:1250px}
 .access-channels-table th:nth-child(1),.access-channels-table td:nth-child(1){width:20%}
 .access-channels-table th:nth-child(2),.access-channels-table td:nth-child(2){width:10%;white-space:nowrap}

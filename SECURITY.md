@@ -38,10 +38,10 @@ NordRelay is designed to fail closed:
 - Slack channels and threads are disabled until an admin enables the channel.
 - Matrix DMs require a linked active NordRelay user.
 - Matrix rooms and threads are disabled until an admin enables the room.
-- Authorization is enforced through user groups, granular permissions, and optional group scopes for agents, workspace roots, Telegram chats, Discord channels, Slack channels, and Matrix rooms.
+- Authorization is enforced through user groups, granular permissions, and optional group scopes for agents, workspace roots, peer nodes, Telegram chats, Discord channels, Slack channels, and Matrix rooms.
 - NordRelay peer federation is disabled by default and uses a dedicated API port separate from the WebUI.
 - Peer pairing requires an explicit one-time invitation code, Ed25519 node identity verification, request HMAC signatures, timestamp and nonce replay protection, and TLS fingerprint pinning.
-- Peer permissions are scoped with `peers.read`, `peers.write`, and `peers.connect`, plus per-peer remote scopes, allowed agent ids, allowed workspace roots, and optional workspace aliases.
+- Peer access is scoped with group peer allow-lists, `peers.read`, `peers.write`, and `peers.connect`, plus per-peer remote scopes, allowed agent ids, allowed workspace roots, and optional workspace aliases.
 - Peer invitations are one-time use and capped to a maximum lifetime of 24 hours.
 - Plaintext peer serving is refused on non-loopback hosts when TLS is required.
 - Unknown commands, callback actions, and API routes are denied by default.

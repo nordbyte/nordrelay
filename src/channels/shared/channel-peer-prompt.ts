@@ -30,11 +30,16 @@ export interface ChannelPeerPromptOptions<MessageId> {
   sendQueued(queueId: string): Promise<void>;
   sendCompleted(): Promise<void>;
   sendFailure(message: string): Promise<void>;
+  canUsePeer?: (peerId: string) => boolean;
 }
 
 export async function runChannelPeerPrompt<MessageId>(options: ChannelPeerPromptOptions<MessageId>): Promise<boolean> {
   if (!options.targetPeerId) {
     return false;
+  }
+  if (options.canUsePeer && !options.canUsePeer(options.targetPeerId)) {
+    await options.sendFailure(`Access denied for peer target: ${options.targetPeerId}.`);
+    return true;
   }
 
   const client = options.remoteClient ?? new RemoteRelayClient();

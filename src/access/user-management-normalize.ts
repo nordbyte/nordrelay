@@ -42,6 +42,7 @@ export function normalizePayload(payload: PersistedUsers | undefined): Persisted
       discordChannelIds: [],
       slackChannelIds: [],
       matrixRoomIds: [],
+      peerIds: [],
       createdAt: now,
       updatedAt: now,
     });
@@ -58,6 +59,7 @@ export function normalizePayload(payload: PersistedUsers | undefined): Persisted
       discordChannelIds: normalizeStringList(group.discordChannelIds),
       slackChannelIds: normalizeStringList(group.slackChannelIds),
       matrixRoomIds: normalizeStringList(group.matrixRoomIds),
+      peerIds: normalizeStringList(group.peerIds),
     });
   }
   const groups = Array.from(groupsById.values());

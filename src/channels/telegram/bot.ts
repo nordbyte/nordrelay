@@ -1010,6 +1010,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       contextKey,
       prompt,
       remoteClient,
+      canUsePeer: (peerId) => userStore.canUsePeer(getAuthenticatedUser(ctx), peerId),
       editMinIntervalMs: config.telegramEditMinIntervalMs,
       typingIntervalMs: TYPING_INTERVAL_MS,
       sendTyping: () => sendChatActionSafe(ctx.api, chatId, "typing", messageThreadId),
@@ -1052,6 +1053,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       return;
     }
     try {
+      if (!userStore.canUsePeer(getAuthenticatedUser(ctx), targetPeerId)) throw new Error(`Access denied for peer target: ${targetPeerId}.`);
       await remoteClient.webProxy(targetPeerId, {
         method: "POST",
         path: "/api/queue",
@@ -1071,7 +1073,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
   });
 
-  registerTelegramNodeTargetCallback({ bot, commandService, preferencesStore, syncPeerMirror: (key) => peerMirrorController.sync(key, telegramChannelContextFromKey(key)) });
+  registerTelegramNodeTargetCallback({ bot, commandService, preferencesStore, canUsePeer: (ctx, peerId) => userStore.canUsePeer(getAuthenticatedUser(ctx), peerId), syncPeerMirror: (key) => peerMirrorController.sync(key, telegramChannelContextFromKey(key)) });
   const handleUserPrompt = async (
     ctx: Context,
     contextKey: TelegramContextKey,
@@ -2132,18 +2134,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
 
   registerTelegramAccessCommands({ bot, userStore, contextUsers, linkAttempts, audit, getUserRole });
 
-  registerTelegramGeneralCommands({
-    bot,
-    config,
-    registry,
-    getContextSession,
-    checkAgentAuthStatus,
-    isTopicContext,
-    replyChannelAction,
-    commandService,
-    preferencesStore,
-    onTargetChanged: (contextKey) => peerMirrorController.sync(contextKey, telegramChannelContextFromKey(contextKey)),
-  });
+  registerTelegramGeneralCommands({ bot, config, registry, getContextSession, checkAgentAuthStatus, isTopicContext, replyChannelAction, commandService, preferencesStore, canUsePeer: (ctx, peerId) => userStore.canUsePeer(getAuthenticatedUser(ctx), peerId), onTargetChanged: (contextKey) => peerMirrorController.sync(contextKey, telegramChannelContextFromKey(contextKey)) });
 
   registerTelegramAgentCommands({
     bot,
@@ -2169,15 +2160,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }),
   });
 
-  registerTelegramPreferenceCommands({
-    bot,
-    config,
-    commandService,
-    preferencesStore,
-    getContextSession,
-    remoteClient,
-    onMirrorChanged: (contextKey) => peerMirrorController.sync(contextKey, telegramChannelContextFromKey(contextKey)),
-  });
+  registerTelegramPreferenceCommands({ bot, config, commandService, preferencesStore, getContextSession, remoteClient, canUsePeer: (ctx, peerId) => userStore.canUsePeer(getAuthenticatedUser(ctx), peerId), onMirrorChanged: (contextKey) => peerMirrorController.sync(contextKey, telegramChannelContextFromKey(contextKey)) });
 
   registerTelegramDiagnosticsCommands({
     bot,
@@ -2416,7 +2399,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     const { contextKey, session } = contextSession;
-    if (await replyTargetPeerSession({ ctx, contextKey, preferencesStore, remoteClient, actor: telegramActivityActor(ctx) })) return;
+    if (await replyTargetPeerSession({ ctx, contextKey, preferencesStore, remoteClient, actor: telegramActivityActor(ctx), canUsePeer: (peerId) => userStore.canUsePeer(getAuthenticatedUser(ctx), peerId) })) return;
     const info = session.getInfo({ includeUsage: true });
     const contextLabel = isTopicContext(contextKey) ? "Topic session" : "Chat session";
     const policyLine = renderWorkspacePolicyLine(info.workspace, config);
@@ -2803,6 +2786,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       preferencesStore,
       remoteClient,
       actor: telegramActivityActor(ctx),
+      canUsePeer: (peerId) => userStore.canUsePeer(getAuthenticatedUser(ctx), peerId),
       pendingSessionPicks,
       pendingSessionButtons,
       syncPeerMirror: (key) => peerMirrorController.sync(key, telegramChannelContextFromKey(key)),
@@ -3310,6 +3294,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       preferencesStore,
       remoteClient,
       actor: telegramActivityActor(ctx),
+      canUsePeer: (peerId) => userStore.canUsePeer(getAuthenticatedUser(ctx), peerId),
       syncPeerMirror: (key) => peerMirrorController.sync(key, telegramChannelContextFromKey(key)),
     })) {
       pendingSessionPicks.delete(contextKey);

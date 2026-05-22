@@ -28,6 +28,7 @@ export interface GroupRecord extends GroupDefinition {
   discordChannelIds: string[];
   slackChannelIds: string[];
   matrixRoomIds: string[];
+  peerIds: string[];
   createdAt: string;
   updatedAt: string;
 }

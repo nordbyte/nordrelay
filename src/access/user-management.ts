@@ -1124,6 +1124,18 @@ export class UserStore {
     return user.groups.some((group) => group.matrixRoomIds.length === 0 || group.matrixRoomIds.includes(normalized));
   }
 
+  canUsePeer(user: AuthenticatedUser | null | undefined, peerId: string | undefined): boolean {
+    const normalized = peerId?.trim();
+    if (!user || !normalized) {
+      return true;
+    }
+    return user.groups.some((group) => group.peerIds.length === 0 || group.peerIds.includes(normalized));
+  }
+
+  canUsePeerStrict(user: AuthenticatedUser | null | undefined, peerId: string | undefined): boolean {
+    return Boolean(user && peerId && this.canUsePeer(user, peerId));
+  }
+
   createGroup(input: {
     name: string;
     description?: string;
@@ -1134,6 +1146,7 @@ export class UserStore {
     discordChannelIds?: string[];
     slackChannelIds?: string[];
     matrixRoomIds?: string[];
+    peerIds?: string[];
   }): GroupRecord {
     return this.mutatePayload((payload) => {
       const now = new Date().toISOString();
@@ -1156,6 +1169,7 @@ export class UserStore {
         discordChannelIds: normalizeStringList(input.discordChannelIds ?? []),
         slackChannelIds: normalizeStringList(input.slackChannelIds ?? []),
         matrixRoomIds: normalizeStringList(input.matrixRoomIds ?? []),
+        peerIds: normalizeStringList(input.peerIds ?? []),
         createdAt: now,
         updatedAt: now,
       };
@@ -1174,6 +1188,7 @@ export class UserStore {
     discordChannelIds?: string[];
     slackChannelIds?: string[];
     matrixRoomIds?: string[];
+    peerIds?: string[];
   }): GroupRecord {
     return this.mutatePayload((payload) => {
       const group = payload.groups.find((candidate) => candidate.id === id);
@@ -1193,6 +1208,7 @@ export class UserStore {
       if (patch.discordChannelIds !== undefined) group.discordChannelIds = normalizeStringList(patch.discordChannelIds);
       if (patch.slackChannelIds !== undefined) group.slackChannelIds = normalizeStringList(patch.slackChannelIds);
       if (patch.matrixRoomIds !== undefined) group.matrixRoomIds = normalizeStringList(patch.matrixRoomIds);
+      if (patch.peerIds !== undefined) group.peerIds = normalizeStringList(patch.peerIds);
       group.updatedAt = new Date().toISOString();
       return group;
     });

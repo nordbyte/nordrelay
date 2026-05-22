@@ -19,6 +19,7 @@ export interface DashboardWorkflowRouteOptions {
   runtime: RelayRuntime;
   authUser: AuthenticatedUser;
   activityActor: WebActivityActor;
+  assertPeerAccess?: (peerId: string) => void;
 }
 
 export async function handleDashboardWorkflowRoute(
@@ -125,7 +126,7 @@ export async function handleDashboardWorkflowRoute(
   if (req.method === "GET" && url.pathname === "/api/workflows") {
     const list = service.list();
     sendJson(res, 200, {
-      workflows: list.workflows.filter((workflow) => canReadScopedWorkflowEntity(options.authUser, workflow)),
+      workflows: list.workflows.filter((workflow) => canReadWorkflowEntity(options, workflow)),
       runs: list.runs.filter((run) => canReadWorkflowRun(options, run)).slice(0, numberParam(url, "runs", 100)),
     });
     return true;
@@ -133,14 +134,22 @@ export async function handleDashboardWorkflowRoute(
 
   if (req.method === "POST" && url.pathname === "/api/workflows") {
     const body = await readJsonBody(req);
-    sendJson(res, 201, { workflow: service.saveWorkflow(parseWorkflowBody(body, options.authUser.user.id), options.activityActor) });
+    const parsed = parseWorkflowBody(body, options.authUser.user.id);
+    assertWorkflowPeerScope(options, parsed);
+    sendJson(res, 201, { workflow: service.saveWorkflow(parsed, options.activityActor) });
     return true;
   }
 
   if (req.method === "POST" && url.pathname === "/api/workflows/import") {
     const body = await readJsonBody(req);
     const workflow = service.importWorkflow(importBody(body), options.activityActor);
-    assertCanWriteScopedWorkflowEntity(options.authUser, workflow);
+    try {
+      assertCanWriteScopedWorkflowEntity(options.authUser, workflow);
+      assertWorkflowPeerScope(options, workflow);
+    } catch (error) {
+      service.deleteWorkflow(workflow.id, options.activityActor);
+      throw error;
+    }
     sendJson(res, 201, { workflow });
     return true;
   }
@@ -199,17 +208,20 @@ export async function handleDashboardWorkflowRoute(
     }
     if (section === "versions" && version && req.method === "POST" && action === "rollback") {
       assertCanWriteWorkflow(options, id);
+      assertWorkflowVersionPeerScope(options, id, version);
       sendJson(res, 200, { workflow: service.restoreWorkflowVersion(id, version, options.activityActor) });
       return true;
     }
     if (section === "versions" && version && req.method === "POST" && action === "preview") {
       assertCanReadWorkflow(options, id);
+      assertWorkflowVersionPeerScope(options, id, version);
       const body = await readJsonBody(req);
       sendJson(res, 200, service.previewWorkflowVersion(id, version, variableRecord(body?.variables)));
       return true;
     }
     if (section === "versions" && version && req.method === "POST" && action === "run") {
       assertCanReadWorkflow(options, id);
+      assertWorkflowVersionPeerScope(options, id, version);
       const body = await readJsonBody(req);
       sendJson(res, 202, { run: service.runWorkflowVersion(id, version, variableRecord(body?.variables), options.activityActor) });
       return true;
@@ -221,7 +233,13 @@ export async function handleDashboardWorkflowRoute(
     const body = await readJsonBody(req);
     const id = decodeURIComponent(workflowDryRunMatch[1]);
     assertCanReadWorkflow(options, id);
-    sendJson(res, 200, service.dryRunWorkflow(id, variableRecord(body?.variables), versionParam(optionalStringField(objectRecord(body), "version"))));
+    const version = versionParam(optionalStringField(objectRecord(body), "version"));
+    if (version) {
+      assertWorkflowVersionPeerScope(options, id, version);
+    } else {
+      assertWorkflowPeerScope(options, assertCanReadWorkflow(options, id));
+    }
+    sendJson(res, 200, service.dryRunWorkflow(id, variableRecord(body?.variables), version));
     return true;
   }
 
@@ -258,7 +276,9 @@ export async function handleDashboardWorkflowRoute(
     if (req.method === "PUT" && !action) {
       const existing = assertCanWriteWorkflow(options, id);
       const body = await readJsonBody(req);
-      sendJson(res, 200, { workflow: service.saveWorkflow({ ...parseWorkflowBody(body, existing.ownerUserId ?? options.authUser.user.id), id }, options.activityActor) });
+      const parsed = { ...parseWorkflowBody(body, existing.ownerUserId ?? options.authUser.user.id), id };
+      assertWorkflowPeerScope(options, parsed);
+      sendJson(res, 200, { workflow: service.saveWorkflow(parsed, options.activityActor) });
       return true;
     }
     if (req.method === "DELETE" && !action) {
@@ -267,13 +287,13 @@ export async function handleDashboardWorkflowRoute(
       return true;
     }
     if (req.method === "POST" && action === "preview") {
-      assertCanReadWorkflow(options, id);
+      assertWorkflowPeerScope(options, assertCanReadWorkflow(options, id));
       const body = await readJsonBody(req);
       sendJson(res, 200, service.previewWorkflow(id, variableRecord(body?.variables)));
       return true;
     }
     if (req.method === "POST" && action === "run") {
-      assertCanReadWorkflow(options, id);
+      assertWorkflowPeerScope(options, assertCanReadWorkflow(options, id));
       const body = await readJsonBody(req);
       sendJson(res, 202, { run: service.runWorkflow(id, variableRecord(body?.variables), options.activityActor) });
       return true;
@@ -297,6 +317,50 @@ function ownsWorkflowEntity(authUser: AuthenticatedUser, entity: Pick<PromptTemp
 
 export function canReadScopedWorkflowEntity(authUser: AuthenticatedUser, entity: Pick<PromptTemplate | Workflow, "scope" | "ownerUserId">): boolean {
   return entity.scope === "shared" || ownsWorkflowEntity(authUser, entity) || isWorkflowAdmin(authUser);
+}
+
+function canReadWorkflowEntity(options: DashboardWorkflowRouteOptions, workflow: Workflow): boolean {
+  if (!canReadScopedWorkflowEntity(options.authUser, workflow)) {
+    return false;
+  }
+  try {
+    assertWorkflowPeerScope(options, workflow);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function assertWorkflowPeerScope(
+  options: DashboardWorkflowRouteOptions,
+  workflow: Pick<Workflow, "steps">,
+  seenWorkflowIds = new Set<string>(),
+): void {
+  for (const step of workflow.steps ?? []) {
+    const peerId = peerIdFromWorkflowTarget(step.target);
+    if (peerId) {
+      options.assertPeerAccess?.(peerId);
+    }
+    if (step.type === "workflow" && step.workflowId && !seenWorkflowIds.has(step.workflowId)) {
+      seenWorkflowIds.add(step.workflowId);
+      const child = options.runtime.workflowStore.getWorkflow(step.workflowId);
+      if (child) {
+        assertWorkflowPeerScope(options, child, seenWorkflowIds);
+      }
+    }
+  }
+}
+
+function assertWorkflowVersionPeerScope(options: DashboardWorkflowRouteOptions, id: string, version: number): void {
+  const exported = options.runtime.workflowService.exportWorkflow(id, version);
+  const workflow = (exported.version?.snapshot ?? exported.workflow) as Workflow | undefined;
+  if (workflow) {
+    assertWorkflowPeerScope(options, workflow);
+  }
+}
+
+function peerIdFromWorkflowTarget(target: WorkflowStep["target"] | undefined): string | null {
+  return target?.startsWith("peer:") ? target.slice("peer:".length).trim() || null : null;
 }
 
 function assertCanWriteScopedWorkflowEntity(authUser: AuthenticatedUser, entity: Pick<PromptTemplate | Workflow, "scope" | "ownerUserId">): void {
@@ -323,7 +387,7 @@ function assertCanWriteTemplate(options: DashboardWorkflowRouteOptions, id: stri
 function assertCanReadWorkflow(options: DashboardWorkflowRouteOptions, id: string): Workflow {
   const workflow = options.runtime.workflowStore.getWorkflow(id);
   if (!workflow) throw new Error(`Workflow not found: ${id}`);
-  if (!canReadScopedWorkflowEntity(options.authUser, workflow)) {
+  if (!canReadWorkflowEntity(options, workflow)) {
     throw new WebAccessDeniedError("Access denied: workflow is private to another user.");
   }
   return workflow;
@@ -339,14 +403,14 @@ function canReadWorkflowRun(options: DashboardWorkflowRouteOptions, run: Workflo
   if (isWorkflowAdmin(options.authUser)) return true;
   if (run.ownerUserId && run.ownerUserId === options.authUser.user.id) return true;
   if (run.templateSnapshot && canReadScopedWorkflowEntity(options.authUser, run.templateSnapshot)) return true;
-  if (run.workflowSnapshot && canReadScopedWorkflowEntity(options.authUser, run.workflowSnapshot)) return true;
+  if (run.workflowSnapshot && canReadWorkflowEntity(options, run.workflowSnapshot)) return true;
   if (run.templateId) {
     const template = options.runtime.workflowStore.getTemplate(run.templateId);
     if (template && canReadScopedWorkflowEntity(options.authUser, template)) return true;
   }
   if (run.workflowId) {
     const workflow = options.runtime.workflowStore.getWorkflow(run.workflowId);
-    if (workflow && canReadScopedWorkflowEntity(options.authUser, workflow)) return true;
+    if (workflow && canReadWorkflowEntity(options, workflow)) return true;
   }
   return false;
 }

@@ -244,6 +244,7 @@ describe("UserStore", () => {
       telegramChatIds: [-100],
       discordChannelIds: ["123"],
       slackChannelIds: ["C123"],
+      peerIds: ["peer-a"],
     });
     const user = store.createUser({
       email: "scoped@example.com",
@@ -266,6 +267,10 @@ describe("UserStore", () => {
     expect(store.canUseDiscordChannel(user, "456")).toBe(false);
     expect(store.canUseSlackChannel(user, "C123")).toBe(true);
     expect(store.canUseSlackChannel(user, "C456")).toBe(false);
+    expect(store.canUsePeer(user, "peer-a")).toBe(true);
+    expect(store.canUsePeer(user, "peer-b")).toBe(false);
+    expect(store.canUsePeerStrict(user, "peer-a")).toBe(true);
+    expect(store.canUsePeerStrict(user, undefined)).toBe(false);
     expect(() => store.createGroup({ name: "Bad", permissions: ["not.real"] })).toThrow("Unknown permission");
   });
 

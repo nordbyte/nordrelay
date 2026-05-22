@@ -253,6 +253,7 @@ export async function handleDashboardAccessRoute(
       discordChannelIds: arrayStringField(body, "discordChannelIds"),
       slackChannelIds: arrayStringField(body, "slackChannelIds"),
       matrixRoomIds: arrayStringField(body, "matrixRoomIds"),
+      peerIds: arrayStringField(body, "peerIds"),
     });
     options.auditUserAction(authUser, "group_created", group.id);
     sendJson(res, 201, { group });
@@ -272,6 +273,7 @@ export async function handleDashboardAccessRoute(
       discordChannelIds: body.discordChannelIds === undefined ? undefined : arrayStringField(body, "discordChannelIds"),
       slackChannelIds: body.slackChannelIds === undefined ? undefined : arrayStringField(body, "slackChannelIds"),
       matrixRoomIds: body.matrixRoomIds === undefined ? undefined : arrayStringField(body, "matrixRoomIds"),
+      peerIds: body.peerIds === undefined ? undefined : arrayStringField(body, "peerIds"),
     });
     options.auditUserAction(authUser, "group_updated", group.id);
     sendJson(res, 200, { group });

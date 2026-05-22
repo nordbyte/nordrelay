@@ -390,6 +390,8 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     home: options.home,
     runtime,
     discoveryJobs: peerDiscoveryJobs,
+    users,
+    authUser,
     activityActor: webActivityActor(authUser),
     auditPeerAction: (action, description) => auditUserAction(authUser, action, description),
   })) {
@@ -400,6 +402,11 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     runtime,
     authUser,
     activityActor: webActivityActor(authUser),
+    assertPeerAccess: (peerId) => {
+      if (!users.canUsePeerStrict(authUser, peerId)) {
+        throw new AccessDeniedError(`Access denied: peer ${peerId} is outside your group scope.`);
+      }
+    },
   })) {
     return;
   }

@@ -28,6 +28,7 @@ export async function replyTargetPeerSession(options: {
   preferencesStore: BotPreferencesStore;
   remoteClient: RemotePeerWebClient;
   actor: WebActivityActor;
+  canUsePeer?: (peerId: string) => boolean;
 }): Promise<boolean> {
   const remoteRendered = await renderTargetPeerSession(options).catch(async (error) => {
     const text = `Remote session failed: ${friendlyErrorText(error)}`;
@@ -46,6 +47,7 @@ export async function handleTargetPeerSessionsCommand(options: {
   preferencesStore: BotPreferencesStore;
   remoteClient: RemotePeerWebClient;
   actor: WebActivityActor;
+  canUsePeer?: (peerId: string) => boolean;
   pendingSessionPicks: Map<TelegramContextKey, string[]>;
   pendingSessionButtons: Map<TelegramContextKey, KeyboardItem[]>;
   syncPeerMirror(contextKey: TelegramContextKey): void;
@@ -62,6 +64,7 @@ export async function handleTargetPeerSessionsCommand(options: {
     preferencesStore: options.preferencesStore,
     remoteClient: options.remoteClient,
     actor: options.actor,
+    canUsePeer: options.canUsePeer,
     query,
     limit: 50,
   }).catch(async (error) => {
@@ -107,10 +110,15 @@ export async function handleTargetPeerSessionCallback(options: {
   preferencesStore: BotPreferencesStore;
   remoteClient: RemotePeerWebClient;
   actor: WebActivityActor;
+  canUsePeer?: (peerId: string) => boolean;
   syncPeerMirror(contextKey: TelegramContextKey): void;
 }): Promise<boolean> {
   const remoteChoice = parseRemoteSessionChoice(options.threadChoice);
   if (!remoteChoice) return false;
+  if (options.canUsePeer && !options.canUsePeer(remoteChoice.peerId)) {
+    await options.ctx.answerCallbackQuery({ text: "Access denied for peer target.", show_alert: true });
+    return true;
+  }
   options.preferencesStore.update(options.contextKey, { targetPeerId: remoteChoice.peerId });
   await options.ctx.answerCallbackQuery({ text: "Switching remote..." });
   await switchAndReply(options, remoteChoice.threadId, options.messageId);
@@ -121,6 +129,7 @@ export function registerTelegramNodeTargetCallback(options: {
   bot: Bot<Context>;
   commandService: Pick<ChannelCommandService, "renderNodeTargetAction">;
   preferencesStore: BotPreferencesStore;
+  canUsePeer?: (ctx: Context, peerId: string) => boolean;
   syncPeerMirror(contextKey: TelegramContextKey): void;
 }): void {
   options.bot.callbackQuery(/^node_target:(local|peer:.+)$/, async (ctx) => {
@@ -140,6 +149,7 @@ export function registerTelegramNodeTargetCallback(options: {
       commandService: options.commandService,
       preferencesStore: options.preferencesStore,
       action: `node_target:${ctx.match?.[1] ?? "local"}`,
+      canUsePeer: (peerId) => options.canUsePeer?.(ctx, peerId) ?? true,
       syncPeerMirror: options.syncPeerMirror,
     });
   });
@@ -154,6 +164,7 @@ export async function handleTelegramNodeTargetCallback(options: {
   commandService: Pick<ChannelCommandService, "renderNodeTargetAction">;
   preferencesStore: BotPreferencesStore;
   action: string;
+  canUsePeer?: (peerId: string) => boolean;
   syncPeerMirror(contextKey: TelegramContextKey): void;
 }): Promise<void> {
   try {
@@ -163,6 +174,7 @@ export async function handleTelegramNodeTargetCallback(options: {
       argument: "",
       preferencesStore: options.preferencesStore,
       action: options.action,
+      canUsePeer: options.canUsePeer,
     });
     await options.ctx.answerCallbackQuery({ text: "Node selected" });
     options.syncPeerMirror(options.contextKey);
@@ -187,6 +199,7 @@ async function switchAndReply(options: {
   preferencesStore: BotPreferencesStore;
   remoteClient: RemotePeerWebClient;
   actor: WebActivityActor;
+  canUsePeer?: (peerId: string) => boolean;
   syncPeerMirror(contextKey: TelegramContextKey): void;
 }, threadId: string, messageId?: number): Promise<void> {
   const editMessageId = messageId ?? options.messageId;
@@ -195,6 +208,7 @@ async function switchAndReply(options: {
     preferencesStore: options.preferencesStore,
     remoteClient: options.remoteClient,
     actor: options.actor,
+    canUsePeer: options.canUsePeer,
     threadId,
   }).catch(async (error) => {
     const errHtml = `<b>Failed:</b> ${escapeHTML(friendlyErrorText(error))}`;

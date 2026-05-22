@@ -12,6 +12,7 @@ export interface NodeTargetCommandOptions {
   preferencesStore: BotPreferencesStore;
   argument?: string;
   peerStore?: PeerStore;
+  canUsePeer?: (peerId: string) => boolean;
 }
 
 export interface NodeTargetActionOptions {
@@ -19,6 +20,7 @@ export interface NodeTargetActionOptions {
   preferencesStore: BotPreferencesStore;
   action: string;
   peerStore?: PeerStore;
+  canUsePeer?: (peerId: string) => boolean;
 }
 
 export interface NodeTargetSelection {
@@ -28,7 +30,7 @@ export interface NodeTargetSelection {
 }
 
 export function renderNodeTargetPicker(options: NodeTargetCommandOptions): ChannelActionResponse {
-  const peers = nodePeers(options.peerStore);
+  const peers = visibleNodePeers(options);
   const currentPeerId = options.preferencesStore.get(options.contextKey).targetPeerId ?? null;
   const currentPeer = currentPeerId ? peers.find((peer) => peer.id === currentPeerId) : null;
   const selected = currentPeer ? peerLabel(currentPeer) : currentPeerId ? `unknown peer (${currentPeerId})` : "Local node";
@@ -91,6 +93,9 @@ export function applyNodeTargetAction(options: NodeTargetActionOptions): NodeTar
   if (!peer) {
     throw new Error("Unknown peer target. Use /nodes to select an available node.");
   }
+  if (options.canUsePeer && !options.canUsePeer(peer.id)) {
+    throw new Error(`Access denied for peer target: ${peerLabel(peer)}.`);
+  }
   if (!peer.enabled || !peer.url) {
     throw new Error(`Peer is not selectable: ${peerLabel(peer)}.`);
   }
@@ -100,6 +105,10 @@ export function applyNodeTargetAction(options: NodeTargetActionOptions): NodeTar
 
 function nodePeers(store = new PeerStore()): PublicPeerRecord[] {
   return store.listPublic().sort((left, right) => peerLabel(left).localeCompare(peerLabel(right)));
+}
+
+function visibleNodePeers(options: Pick<NodeTargetCommandOptions, "peerStore" | "canUsePeer">): PublicPeerRecord[] {
+  return nodePeers(options.peerStore).filter((peer) => !options.canUsePeer || options.canUsePeer(peer.id));
 }
 
 function nodeButtons(peers: PublicPeerRecord[], currentPeerId: string | null): ChannelActionButton[][] {

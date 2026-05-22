@@ -83,6 +83,7 @@ interface WebuiAccessGroup extends WebuiRecord {
   system?: boolean;
   agentIds?: string[];
   workspaceRoots?: string[];
+  peerIds?: string[];
   matrixRoomIds?: string[];
 }
 

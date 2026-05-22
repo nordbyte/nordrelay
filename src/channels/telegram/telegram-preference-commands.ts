@@ -26,6 +26,7 @@ export interface TelegramPreferenceCommandOptions {
   getContextSession: GetTelegramContextSession;
   remoteClient?: RemotePeerWebClient;
   onMirrorChanged?: (contextKey: TelegramContextKey) => void;
+  canUsePeer?: (ctx: Context, peerId: string) => boolean;
 }
 
 export function registerTelegramPreferenceCommands(options: TelegramPreferenceCommandOptions): void {
@@ -42,6 +43,7 @@ export function registerTelegramPreferenceCommands(options: TelegramPreferenceCo
       argument,
       preferencesStore: options.preferencesStore,
       remoteClient: options.remoteClient,
+      canUsePeer: (peerId) => options.canUsePeer?.(ctx, peerId) ?? true,
     }).catch(async (error) => {
       const text = `Remote mirror failed: ${error instanceof Error ? error.message : String(error)}`;
       await safeReply(ctx, escapeHTML(text), { fallbackText: text });

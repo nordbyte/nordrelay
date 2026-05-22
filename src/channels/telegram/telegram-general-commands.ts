@@ -39,6 +39,7 @@ export interface TelegramGeneralCommandOptions {
   commandService: ChannelCommandService;
   preferencesStore: BotPreferencesStore;
   onTargetChanged?: (contextKey: TelegramContextKey) => void;
+  canUsePeer?: (ctx: Context, peerId: string) => boolean;
 }
 
 export function registerTelegramGeneralCommands(options: TelegramGeneralCommandOptions): void {
@@ -87,7 +88,7 @@ export function registerTelegramGeneralCommands(options: TelegramGeneralCommandO
   });
 
   options.bot.command("peers", async (ctx) => {
-    await options.replyChannelAction(ctx, options.commandService.renderPeers());
+    await options.replyChannelAction(ctx, options.commandService.renderPeers((peerId) => options.canUsePeer?.(ctx, peerId) ?? true));
   });
 
   options.bot.command("nodes", async (ctx) => {
@@ -98,6 +99,7 @@ export function registerTelegramGeneralCommands(options: TelegramGeneralCommandO
       contextKey: contextSession.contextKey,
       argument: "",
       preferencesStore: options.preferencesStore,
+      canUsePeer: (peerId) => options.canUsePeer?.(ctx, peerId) ?? true,
     }));
   });
 
@@ -109,6 +111,7 @@ export function registerTelegramGeneralCommands(options: TelegramGeneralCommandO
       contextKey: contextSession.contextKey,
       argument: ctx.match?.toString() ?? "",
       preferencesStore: options.preferencesStore,
+      canUsePeer: (peerId) => options.canUsePeer?.(ctx, peerId) ?? true,
     }));
     options.onTargetChanged?.(contextSession.contextKey);
   });

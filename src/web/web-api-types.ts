@@ -229,8 +229,8 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends `/api/users/${string}/slack` ? { createCode?: boolean; slackUserId?: string; teamId?: string; username?: string; realName?: string } :
   P extends `/api/users/${string}/matrix` ? { createCode?: boolean; matrixUserId?: string; homeserver?: string; displayName?: string } :
   P extends `/api/users/${string}` ? { email?: string; displayName?: string; active?: boolean; groupIds?: string[]; preferences?: { artifactDelivery?: string } } :
-  P extends "/api/groups" ? { name: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[]; discordChannelIds?: string[]; slackChannelIds?: string[]; matrixRoomIds?: string[] } :
-  P extends `/api/groups/${string}` ? { name?: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[]; discordChannelIds?: string[]; slackChannelIds?: string[]; matrixRoomIds?: string[] } :
+  P extends "/api/groups" ? { name: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[]; discordChannelIds?: string[]; slackChannelIds?: string[]; matrixRoomIds?: string[]; peerIds?: string[] } :
+  P extends `/api/groups/${string}` ? { name?: string; description?: string; permissions?: string[]; agentIds?: string[]; workspaceRoots?: string[]; telegramChatIds?: number[]; discordChannelIds?: string[]; slackChannelIds?: string[]; matrixRoomIds?: string[]; peerIds?: string[] } :
   P extends "/api/telegram-chats" ? { chatId: number; title?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :
   P extends `/api/telegram-chats/${string}` ? { title?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :
   P extends "/api/discord-channels" ? { guildId?: string; channelId: string; title?: string; type?: string; enabled?: boolean; allowedGroupIds?: string[]; artifactDelivery?: string } :

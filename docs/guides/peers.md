@@ -34,6 +34,16 @@ nordrelay peer add https://host.example:31979 --code <pairing-code>
 
 NordRelay stores the peer identity, node fingerprint, and TLS fingerprint.
 
+## Limit peer access by group
+
+Open **Users** in the WebUI, edit a group, and use **Peer scope** to select which paired nodes users in that group may access.
+
+- empty peer scope means all peers
+- selected peer scope means only those peers
+- stale peer ids remain visible as unavailable instead of silently becoming "all"
+
+The scope applies to the WebUI, chat commands, remote session switching, mirroring, workflow steps, peer proxying, relay queues, health checks, and event streams.
+
 ## Use peers from chat
 
 Approved chat users can switch a chat context between the local node and trusted peers:

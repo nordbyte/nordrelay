@@ -17,6 +17,8 @@ Admins can manage:
 - account locks
 - audit events
 
+Groups define permissions and optional scopes for agents, workspace roots, chat contexts, and peers. Leave a scope empty to allow all entries of that type; select one or more peers to limit that group to those peer nodes only.
+
 The first admin is created by `nordrelay init` or:
 
 ```bash
@@ -30,6 +32,13 @@ Chat adapters require both a linked user and an allowed or registered channel co
 ## Peers
 
 Peer federation is disabled by default. When enabled, pairing uses explicit invitation codes, node identity fingerprints, TLS fingerprints, scoped access, and optional workspace allow-lists.
+
+Peer access has two layers:
+
+- group peer scope controls which paired nodes a NordRelay user may see or use
+- each paired peer still enforces its own remote scopes, allowed agents, allowed workspace roots, and workspace aliases
+
+This means a user must be allowed by both the local group scope and the peer's own trust configuration before sessions, prompts, workflows, proxy calls, or mirroring can use that peer.
 
 ## Secrets
 
