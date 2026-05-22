@@ -691,7 +691,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(headerTarget).toContain("bindUiCopyButtons(line)");
     expect(overview).toContain("function renderChatWorkspaceLine");
     expect(overview).toContain("Workspace path copied");
-    expect(readFileSync("src/web/ui/client/workflows.ts", "utf8")).toContain("function loadSessions");
+    const workflows = readFileSync("src/web/ui/client/workflows.ts", "utf8");
+    expect(workflows).toContain("function loadSessions");
+    expect(workflows).toContain("function sessionDetailNodeLabel");
+    expect(workflows).toContain("headerTargetName(peerId)");
     expect(readFileSync("src/web/ui/client/jobs.ts", "utf8")).toContain("function renderUnifiedJobs");
     const metrics = readFileSync("src/web/ui/client/metrics.ts", "utf8");
     const components = readFileSync("src/web/ui/styles/components.css", "utf8");
