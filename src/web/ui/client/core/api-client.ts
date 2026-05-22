@@ -211,6 +211,7 @@ function shouldProxyApi(path) {
     path === '/api/peers/identity/backup' ||
     path === '/api/peers/identity/restore' ||
     path === '/api/settings/wizard/test' ||
+    isLocalWorkflowApi(path) ||
     /^\/api\/peers\/discovery-jobs\//.test(path) ||
     /^\/api\/peers\/[^/]+(?:\/events|\/proxy)?$/.test(path) ||
     /^\/api\/peers\/[^/]+\/repin$/.test(path) ||
@@ -241,6 +242,17 @@ function isLocalAdminApi(path) {
     /^\/api\/discord-channels\//.test(path) ||
     /^\/api\/slack-channels\//.test(path) ||
     /^\/api\/matrix-rooms\//.test(path);
+}
+
+/**
+ * @param {string} path
+ */
+function isLocalWorkflowApi(path) {
+  return path === '/api/templates' ||
+    path === '/api/workflows' ||
+    /^\/api\/templates\//.test(path) ||
+    /^\/api\/workflows\//.test(path) ||
+    /^\/api\/workflow-runs\//.test(path);
 }
 
 function selectedPeerTarget() {

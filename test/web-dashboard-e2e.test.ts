@@ -242,7 +242,7 @@ describe("web dashboard browser-flow assets", () => {
     const runtimeSource = readFileSync("src/web/ui/client/core/runtime.ts", "utf8");
 
     expect(pageSource).toContain('id="pageTitle" class="page-title-heading"');
-    expect(runtimeSource).toContain("const LOCAL_ONLY_PAGES=new Set(['access','settings','peers'])");
+    expect(runtimeSource).toContain("const LOCAL_ONLY_PAGES=new Set(['access','settings','peers','workflows'])");
     expect(runtimeSource).toContain("function availableNodeCount()");
     expect(runtimeSource).toContain("function pageUsesSelectedPeer");
     expect(runtimeSource).toContain("function selectedNodeBadgeHtml");
@@ -253,6 +253,17 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("renderPageTitle()");
     expect(css).toContain(".page-title-heading{display:flex;align-items:center;gap:8px");
     expect(css).toContain(".page-node-badge{display:inline-flex;align-items:center");
+  });
+
+  it("keeps workflow resources local while a remote peer is selected", () => {
+    const apiClientSource = readFileSync("src/web/ui/client/core/api-client.ts", "utf8");
+
+    expect(apiClientSource).toContain("function isLocalWorkflowApi");
+    expect(apiClientSource).toContain("path === '/api/templates'");
+    expect(apiClientSource).toContain("path === '/api/workflows'");
+    expect(apiClientSource).toContain("/^\\/api\\/templates\\//.test(path)");
+    expect(apiClientSource).toContain("/^\\/api\\/workflows\\//.test(path)");
+    expect(apiClientSource).toContain("/^\\/api\\/workflow-runs\\//.test(path)");
   });
 
   it("shows compact relative age for sessions and keeps absolute time in the tooltip", () => {
