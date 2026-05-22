@@ -372,6 +372,7 @@ interface DashboardState {
   auth: WebuiAuth | null;
   profile: WebuiRecord | null;
   csrfToken: string | null;
+  authReloading: boolean;
   permissions: string[];
   settings: WebuiSettingRecord[];
   settingsDraft: Record<string, string>;

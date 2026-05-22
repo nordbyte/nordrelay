@@ -530,6 +530,17 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).not.toContain("await fetch(url.pathname + url.search");
   });
 
+  it("refreshes stale dashboard auth state instead of rendering CSRF as a peer error", () => {
+    const js = dashboardJs();
+
+    expect(js).toContain("function handleApiResponse");
+    expect(js).toContain("function shouldRefreshDashboardForAuth");
+    expect(js).toContain("res.status === 401");
+    expect(js).toContain("res.status !== 403");
+    expect(js).toContain("/csrf/i.test(apiErrorMessage(data, ''))");
+    expect(js).toContain("Dashboard session changed. Reloading...");
+  });
+
   it("allows every dashboard dialog to close from backdrop clicks", () => {
     const js = dashboardJs();
 

@@ -34,11 +34,7 @@ async function api<P extends import("./api-client-types.js").WebApiPath>(
       headers: { 'content-type': 'application/json', ...(csrfToken ? { 'x-nordrelay-csrf': csrfToken } : {}) },
       body: proxyBody,
     });
-    if (res.status === 401) { location.reload(); return /** @type {never} */ (undefined); }
-    const text = await res.text();
-    const data = text ? JSON.parse(text) : {};
-    if (!res.ok) throw new Error(data.error || res.statusText);
-    return data;
+    return await handleApiResponse<P>(res);
   }
   const body = normalizeBody(options.body);
   const csrfToken = /** @type {{ NORDRELAY_WEBUI_RUNTIME_STATE?: { csrfToken?: string | null } }} */ (globalThis).NORDRELAY_WEBUI_RUNTIME_STATE?.csrfToken;
@@ -48,11 +44,7 @@ async function api<P extends import("./api-client-types.js").WebApiPath>(
     ...(options.headers || {}),
   };
   const res = await fetchApi(url.pathname + url.search, { method, headers, body });
-  if (res.status === 401) { location.reload(); return /** @type {never} */ (undefined); }
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : {};
-  if (!res.ok) throw new Error(data.error || res.statusText);
-  return data;
+  return await handleApiResponse<P>(res);
 }
 
 /**
@@ -82,11 +74,67 @@ async function apiPeer<P extends import("./api-client-types.js").WebApiPath>(
       contextKey: 'web:dashboard',
     }),
   });
-  if (res.status === 401) { location.reload(); return /** @type {never} */ (undefined); }
+  return await handleApiResponse<P>(res);
+}
+
+/**
+ * @template {WebApiPath} P
+ * @param {Response} res
+ * @returns {Promise<import("./api-client-types.js").WebApiClientResponse<P>>}
+ */
+async function handleApiResponse<P extends import("./api-client-types.js").WebApiPath>(
+  res: Response,
+): Promise<import("./api-client-types.js").WebApiClientResponse<P>> {
+  const data = await readApiResponse(res);
+  if (shouldRefreshDashboardForAuth(res, data)) {
+    return await refreshDashboardForAuth();
+  }
+  if (!res.ok) throw new Error(apiErrorMessage(data, res.statusText));
+  return data as import("./api-client-types.js").WebApiClientResponse<P>;
+}
+
+/**
+ * @param {Response} res
+ * @returns {Promise<Record<string, unknown>>}
+ */
+async function readApiResponse(res: Response): Promise<Record<string, unknown>> {
   const text = await res.text();
-  const data = text ? JSON.parse(text) : {};
-  if (!res.ok) throw new Error(data.error || res.statusText);
-  return data;
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: text };
+  }
+}
+
+/**
+ * @param {Response} res
+ * @param {Record<string, unknown>} data
+ */
+function shouldRefreshDashboardForAuth(res: Response, data: Record<string, unknown>) {
+  if (res.status === 401) return true;
+  if (res.status !== 403) return false;
+  return /csrf/i.test(apiErrorMessage(data, ''));
+}
+
+/**
+ * @param {Record<string, unknown>} data
+ * @param {string} fallback
+ */
+function apiErrorMessage(data: Record<string, unknown>, fallback: string) {
+  const error = typeof data.error === 'string' ? data.error : '';
+  const message = typeof data.message === 'string' ? data.message : '';
+  return error || message || fallback || 'Request failed';
+}
+
+async function refreshDashboardForAuth(): Promise<never> {
+  const runtimeState = globalThis.NORDRELAY_WEBUI_RUNTIME_STATE;
+  if (!runtimeState?.authReloading) {
+    if (runtimeState) runtimeState.authReloading = true;
+    if (typeof toast === 'function') toast('Dashboard session changed. Reloading...', { duration: 1200 });
+    setTimeout(() => location.reload(), 50);
+  }
+  return await new Promise<never>(() => {});
 }
 
 /**
