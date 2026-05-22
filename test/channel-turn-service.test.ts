@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { CODEX_AGENT_CAPABILITIES, type AgentSessionService } from "../src/agents/shared/agent.js";
 import { ChannelTurnService } from "../src/channels/shared/channel-turn-service.js";
@@ -71,9 +71,65 @@ describe("ChannelTurnService", () => {
       rmSync(workspace, { recursive: true, force: true });
     }
   });
+
+  it("reattaches changed session state before running a prompt", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-turn-sync-"));
+    try {
+      const chatStore = new WebChatStore(workspace, "json", 10);
+      const updateSession = vi.fn();
+      const syncFromAgentState = vi.fn(() => ({
+        threadId: "thread-1",
+        changed: true,
+        reattached: true,
+        changedFields: ["launch"],
+        info: fakeSession().getInfo(),
+      }));
+      const prompt = vi.fn(async (_input, callbacks) => {
+        callbacks.onTextDelta("done");
+        callbacks.onAgentEnd();
+      });
+      let progress: WebTaskDto | null = null;
+      let currentTurnStartedAt = Date.now();
+      let accumulatedText = "";
+      const session = fakeSession({ syncFromAgentState, prompt });
+      const service = new ChannelTurnService({
+        source: "web",
+        contextKey: "web:dashboard",
+        chatStore,
+        artifactService: {
+          persistWorkspaceArtifactsForTurn: async () => undefined,
+        } as unknown as RelayArtifactService,
+        checkAuth: async () => ({ authenticated: true, detail: "ok" }),
+        ensureActiveThread: async () => undefined,
+        updateSession,
+        appendActivity: (input) => ({ id: "activity", timestamp: new Date().toISOString(), ...input }) as WebActivityEvent,
+        appendAudit: (input) => ({ id: "audit", timestamp: new Date().toISOString(), channelId: "web", ...input }) as AuditEvent,
+        broadcast: () => undefined,
+        chatHistory: async () => chatStore.list("thread-1"),
+        setLastPrompt: () => undefined,
+        getCurrentProgress: () => progress,
+        setCurrentProgress: (next) => { progress = next; },
+        setCurrentTurn: (_id, startedAt, text) => {
+          currentTurnStartedAt = startedAt ?? Date.now();
+          accumulatedText = text ?? "";
+        },
+        getCurrentTurnStartedAt: () => currentTurnStartedAt,
+        getAccumulatedText: () => accumulatedText,
+        setAccumulatedText: (text) => { accumulatedText = text; },
+      });
+
+      await service.run(session, toPromptEnvelope("continue"));
+
+      expect(syncFromAgentState).toHaveBeenCalledWith({ reattach: true });
+      expect(updateSession).toHaveBeenCalledWith(session);
+      expect(prompt).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
 });
 
-function fakeSession(): AgentSessionService {
+function fakeSession(overrides: Partial<AgentSessionService> = {}): AgentSessionService {
   return {
     getInfo: () => ({
       agentId: "codex",
@@ -128,8 +184,9 @@ function fakeSession(): AgentSessionService {
       approvalPolicy: "never",
       unsafe: false,
     }),
-    syncFromAgentState: () => ({ ok: true, changed: false, message: "ok" }),
+    syncFromAgentState: () => ({ threadId: "thread-1", changed: false, reattached: false, changedFields: [], info: fakeSession().getInfo() }),
     handback: () => ({ ok: true, message: "ok" }),
     dispose: () => undefined,
+    ...overrides,
   } as AgentSessionService;
 }

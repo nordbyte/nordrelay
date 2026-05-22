@@ -46,6 +46,10 @@ export class ChannelTurnService {
   async run(session: AgentSessionService, envelope: PromptEnvelope): Promise<void> {
     const actor = envelope.activityActor;
     await this.options.ensureActiveThread(session);
+    const sync = session.syncFromAgentState({ reattach: true });
+    if (sync.changed || sync.reattached) {
+      this.options.updateSession(session);
+    }
     const info = session.getInfo();
     if ((info.capabilities ?? CODEX_AGENT_CAPABILITIES).auth) {
       const auth = await this.options.checkAuth(info);
