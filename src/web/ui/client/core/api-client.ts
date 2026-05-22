@@ -6,6 +6,7 @@
 /** @type {ApiRouteRule[]} */
 const API_ROUTE_RULES = /** @type {{ NORDRELAY_WEB_API_CLIENT_ROUTE_RULES?: ApiRouteRule[] }} */ (globalThis).NORDRELAY_WEB_API_CLIENT_ROUTE_RULES ?? [];
 const AUTH_REFRESH_STORAGE_KEY = 'nordrelayAuthRefreshAttemptedAt';
+let dashboardAuthRefreshPromise: Promise<boolean> | null = null;
 
 /**
  * @template {WebApiPath} P
@@ -22,7 +23,6 @@ async function api<P extends import("./api-client-types.js").WebApiPath>(
   assertApiRoute(url.pathname, method);
   if (!options.local && shouldProxyApi(url.pathname)) {
     const peerId = selectedPeerTarget();
-    const csrfToken = /** @type {{ NORDRELAY_WEBUI_RUNTIME_STATE?: { csrfToken?: string | null } }} */ (globalThis).NORDRELAY_WEBUI_RUNTIME_STATE?.csrfToken;
     const proxyBody = JSON.stringify({
       method,
       path: url.pathname,
@@ -30,22 +30,26 @@ async function api<P extends import("./api-client-types.js").WebApiPath>(
       body: bodyObject(options.body),
       contextKey: 'web:dashboard',
     });
-    const res = await fetchApi('/api/peers/'+encodeURIComponent(peerId)+'/proxy', {
+    const send = () => fetchApi('/api/peers/'+encodeURIComponent(peerId)+'/proxy', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...(csrfToken ? { 'x-nordrelay-csrf': csrfToken } : {}) },
+      headers: { 'content-type': 'application/json', ...csrfHeader() },
       body: proxyBody,
     });
-    return await handleApiResponse<P>(res);
+    const res = await send();
+    return await handleApiResponse<P>(res, send);
   }
   const body = normalizeBody(options.body);
-  const csrfToken = /** @type {{ NORDRELAY_WEBUI_RUNTIME_STATE?: { csrfToken?: string | null } }} */ (globalThis).NORDRELAY_WEBUI_RUNTIME_STATE?.csrfToken;
-  const headers = {
-    ...(body !== undefined && shouldSendJsonHeader(options.body) ? { 'content-type': 'application/json' } : {}),
-    ...(method !== 'GET' && csrfToken ? { 'x-nordrelay-csrf': csrfToken } : {}),
-    ...(options.headers || {}),
-  };
-  const res = await fetchApi(url.pathname + url.search, { method, headers, body });
-  return await handleApiResponse<P>(res);
+  const send = () => fetchApi(url.pathname + url.search, {
+    method,
+    headers: {
+      ...(body !== undefined && shouldSendJsonHeader(options.body) ? { 'content-type': 'application/json' } : {}),
+      ...(method !== 'GET' ? csrfHeader() : {}),
+      ...(options.headers || {}),
+    },
+    body,
+  });
+  const res = await send();
+  return await handleApiResponse<P>(res, send);
 }
 
 /**
@@ -63,10 +67,9 @@ async function apiPeer<P extends import("./api-client-types.js").WebApiPath>(
   const method = normalizeMethod(options.method, options.body);
   const url = apiUrl(path, options.query);
   assertApiRoute(url.pathname, method);
-  const csrfToken = /** @type {{ NORDRELAY_WEBUI_RUNTIME_STATE?: { csrfToken?: string | null } }} */ (globalThis).NORDRELAY_WEBUI_RUNTIME_STATE?.csrfToken;
-  const res = await fetchApi('/api/peers/'+encodeURIComponent(peerId)+'/proxy', {
+  const send = () => fetchApi('/api/peers/'+encodeURIComponent(peerId)+'/proxy', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', ...(csrfToken ? { 'x-nordrelay-csrf': csrfToken } : {}) },
+    headers: { 'content-type': 'application/json', ...csrfHeader() },
     body: JSON.stringify({
       method,
       path: url.pathname,
@@ -75,7 +78,8 @@ async function apiPeer<P extends import("./api-client-types.js").WebApiPath>(
       contextKey: 'web:dashboard',
     }),
   });
-  return await handleApiResponse<P>(res);
+  const res = await send();
+  return await handleApiResponse<P>(res, send);
 }
 
 /**
@@ -85,14 +89,24 @@ async function apiPeer<P extends import("./api-client-types.js").WebApiPath>(
  */
 async function handleApiResponse<P extends import("./api-client-types.js").WebApiPath>(
   res: Response,
+  retry?: () => Promise<Response>,
+  authRetried = false,
 ): Promise<import("./api-client-types.js").WebApiClientResponse<P>> {
   const data = await readApiResponse(res);
   if (shouldRefreshDashboardForAuth(res, data)) {
-    return await refreshDashboardForAuth();
+    if (retry && !authRetried && await refreshDashboardForAuth()) {
+      return await handleApiResponse<P>(await retry(), undefined, true);
+    }
+    throw new Error("Dashboard session changed. Wait until NordRelay is reachable, then retry the action.");
   }
   if (!res.ok) throw new Error(apiErrorMessage(data, res.statusText));
   clearDashboardAuthRefreshAttempt();
   return data as import("./api-client-types.js").WebApiClientResponse<P>;
+}
+
+function csrfHeader() {
+  const csrfToken = /** @type {{ NORDRELAY_WEBUI_RUNTIME_STATE?: { csrfToken?: string | null } }} */ (globalThis).NORDRELAY_WEBUI_RUNTIME_STATE?.csrfToken;
+  return csrfToken ? { 'x-nordrelay-csrf': csrfToken } : {};
 }
 
 /**
@@ -129,38 +143,70 @@ function apiErrorMessage(data: Record<string, unknown>, fallback: string) {
   return error || message || fallback || 'Request failed';
 }
 
-async function refreshDashboardForAuth(): Promise<never> {
-  const runtimeState = globalThis.NORDRELAY_WEBUI_RUNTIME_STATE;
-  if (runtimeState?.authReloading) {
-    return await new Promise<never>(() => {});
-  }
-  if (runtimeState) runtimeState.authReloading = true;
-  if (dashboardAuthRefreshAlreadyAttempted()) {
-    if (typeof toast === 'function') {
-      toast('Dashboard session changed. Reload the page once NordRelay is ready.', { sticky: true });
-    }
-    return await new Promise<never>(() => {});
-  }
-  rememberDashboardAuthRefreshAttempt();
-  if (typeof toast === 'function') toast('Dashboard session changed. Reloading once...', { duration: 1500 });
-  setTimeout(() => location.reload(), 750);
-  return await new Promise<never>(() => {});
+async function refreshDashboardForAuth(): Promise<boolean> {
+  if (dashboardAuthRefreshPromise) return dashboardAuthRefreshPromise;
+  dashboardAuthRefreshPromise = refreshDashboardAuthState().finally(() => {
+    dashboardAuthRefreshPromise = null;
+  });
+  return dashboardAuthRefreshPromise;
 }
 
-function dashboardAuthRefreshAlreadyAttempted(): boolean {
-  try {
-    return Boolean(sessionStorage.getItem(AUTH_REFRESH_STORAGE_KEY));
-  } catch {
-    return false;
+async function refreshDashboardAuthState(): Promise<boolean> {
+  const runtimeState = globalThis.NORDRELAY_WEBUI_RUNTIME_STATE;
+  if (runtimeState) runtimeState.authReloading = true;
+  rememberDashboardAuthRefreshAttempt();
+  if (typeof toast === 'function') {
+    toast('Dashboard session changed. Waiting for NordRelay API...', { sticky: true });
   }
+  try {
+    const auth = await waitForDashboardAuthState();
+    if (!auth?.csrfToken) {
+      if (typeof toast === 'function') toast('Dashboard login expired. Sign in again.', { sticky: true });
+      return false;
+    }
+    if (runtimeState) {
+      runtimeState.auth = auth;
+      runtimeState.csrfToken = auth.csrfToken || null;
+      runtimeState.permissions = auth.permissions || [];
+    }
+    if (typeof applyAccountChrome === 'function') applyAccountChrome(auth);
+    if (typeof clearStickyToast === 'function') clearStickyToast();
+    return true;
+  } catch {
+    if (typeof toast === 'function') {
+      toast('NordRelay is restarting. Actions will resume when the API is reachable.', { sticky: true });
+    }
+    return false;
+  } finally {
+    if (runtimeState) runtimeState.authReloading = false;
+  }
+}
+
+async function waitForDashboardAuthState(timeoutMs = 30000): Promise<WebuiAuth | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    try {
+      const res = await fetch('/api/auth/me', { method: 'GET', headers: { accept: 'application/json' }, cache: 'no-store' });
+      if (res.ok) return await readApiResponse(res) as WebuiAuth;
+      if (res.status === 401) return null;
+    } catch {
+      // NordRelay may be between shutdown and startup; keep the current page stable and retry.
+    }
+    await delay(1000);
+  }
+  throw new Error('Timed out waiting for NordRelay API.');
 }
 
 function rememberDashboardAuthRefreshAttempt(now = Date.now()): void {
   try {
     sessionStorage.setItem(AUTH_REFRESH_STORAGE_KEY, String(now));
   } catch {
-    // Ignore storage failures; the in-memory guard still prevents duplicate reloads in this page instance.
+    // Ignore storage failures; the in-memory promise still prevents duplicate auth refreshes.
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function clearDashboardAuthRefreshAttempt(): void {

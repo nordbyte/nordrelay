@@ -556,12 +556,15 @@ describe("web dashboard browser-flow assets", () => {
 
     expect(js).toContain("function handleApiResponse");
     expect(js).toContain("function shouldRefreshDashboardForAuth");
+    expect(js).toContain("function waitForDashboardAuthState");
+    expect(js).toContain("await handleApiResponse<P>(await retry(), undefined, true)");
     expect(js).toContain("res.status === 401");
     expect(js).toContain("res.status !== 403");
     expect(js).toContain("/csrf/i.test(apiErrorMessage(data, ''))");
     expect(js).toContain("AUTH_REFRESH_STORAGE_KEY");
-    expect(js).toContain("Dashboard session changed. Reloading once...");
-    expect(js).toContain("Dashboard session changed. Reload the page once NordRelay is ready.");
+    expect(js).toContain("Dashboard session changed. Waiting for NordRelay API...");
+    expect(js).toContain("NordRelay is restarting. Actions will resume when the API is reachable.");
+    expect(js).not.toContain("location.reload()");
   });
 
   it("allows every dashboard dialog to close from backdrop clicks", () => {
