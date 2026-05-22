@@ -351,8 +351,8 @@
 .session-meta-row:first-of-type{border-top:0;padding-top:0}
 .session-meta-row:last-child{padding-bottom:0}
 .session-meta-row>span{color:var(--muted);line-height:1.35}
-.session-meta-row>strong{min-width:0;font-weight:600;line-height:1.35}
-.session-meta-value,.session-meta-copy{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.session-meta-row>strong{min-width:0;font-weight:600;line-height:1.35;overflow-wrap:anywhere;word-break:break-word}
+.session-meta-value,.session-meta-copy{max-width:100%;min-width:0;overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;word-break:break-word}
 .session-meta-copy{justify-content:flex-start;text-align:left}
 .session-meta-usage .session-meta-row{grid-template-columns:minmax(130px,42%) minmax(0,1fr)}
 @media(max-width:760px){.session-detail-header{flex-direction:column}.session-meta-grid{grid-template-columns:1fr}.session-meta-row{grid-template-columns:1fr;gap:3px}}
