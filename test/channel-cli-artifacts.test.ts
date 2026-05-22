@@ -127,6 +127,7 @@ async function writeRecentArtifact(workspace: string): Promise<Date> {
 function config(workspace: string): ConnectorConfig {
   return {
     workspace,
+    artifactsEnabled: true,
     maxFileSize: 1024 * 1024,
     artifactIgnoreDirs: [],
     artifactIgnoreGlobs: [],
