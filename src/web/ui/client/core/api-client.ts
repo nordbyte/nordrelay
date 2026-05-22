@@ -5,6 +5,7 @@
 
 /** @type {ApiRouteRule[]} */
 const API_ROUTE_RULES = /** @type {{ NORDRELAY_WEB_API_CLIENT_ROUTE_RULES?: ApiRouteRule[] }} */ (globalThis).NORDRELAY_WEB_API_CLIENT_ROUTE_RULES ?? [];
+const AUTH_REFRESH_STORAGE_KEY = 'nordrelayAuthRefreshAttemptedAt';
 
 /**
  * @template {WebApiPath} P
@@ -90,6 +91,7 @@ async function handleApiResponse<P extends import("./api-client-types.js").WebAp
     return await refreshDashboardForAuth();
   }
   if (!res.ok) throw new Error(apiErrorMessage(data, res.statusText));
+  clearDashboardAuthRefreshAttempt();
   return data as import("./api-client-types.js").WebApiClientResponse<P>;
 }
 
@@ -129,12 +131,48 @@ function apiErrorMessage(data: Record<string, unknown>, fallback: string) {
 
 async function refreshDashboardForAuth(): Promise<never> {
   const runtimeState = globalThis.NORDRELAY_WEBUI_RUNTIME_STATE;
-  if (!runtimeState?.authReloading) {
-    if (runtimeState) runtimeState.authReloading = true;
-    if (typeof toast === 'function') toast('Dashboard session changed. Reloading...', { duration: 1200 });
-    setTimeout(() => location.reload(), 50);
+  if (runtimeState?.authReloading) {
+    return await new Promise<never>(() => {});
   }
+  if (runtimeState) runtimeState.authReloading = true;
+  if (dashboardAuthRefreshAlreadyAttempted()) {
+    if (typeof toast === 'function') {
+      toast('Dashboard session changed. Reload the page once NordRelay is ready.', { sticky: true });
+    }
+    return await new Promise<never>(() => {});
+  }
+  rememberDashboardAuthRefreshAttempt();
+  if (typeof toast === 'function') toast('Dashboard session changed. Reloading once...', { duration: 1500 });
+  setTimeout(() => location.reload(), 750);
   return await new Promise<never>(() => {});
+}
+
+function dashboardAuthRefreshAlreadyAttempted(): boolean {
+  try {
+    return Boolean(sessionStorage.getItem(AUTH_REFRESH_STORAGE_KEY));
+  } catch {
+    return false;
+  }
+}
+
+function rememberDashboardAuthRefreshAttempt(now = Date.now()): void {
+  try {
+    sessionStorage.setItem(AUTH_REFRESH_STORAGE_KEY, String(now));
+  } catch {
+    // Ignore storage failures; the in-memory guard still prevents duplicate reloads in this page instance.
+  }
+}
+
+function clearDashboardAuthRefreshAttempt(): void {
+  try {
+    sessionStorage.removeItem(AUTH_REFRESH_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+  const runtimeState = globalThis.NORDRELAY_WEBUI_RUNTIME_STATE;
+  if (runtimeState) {
+    runtimeState.authReloading = false;
+  }
 }
 
 /**

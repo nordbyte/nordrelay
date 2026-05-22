@@ -18,5 +18,13 @@ export function requiresWebCsrf(method: string | undefined, pathname: string): b
 }
 
 export function isMutatingWebApiRequest(method: string | undefined, pathname: string): boolean {
-  return requiresWebCsrf(method, pathname);
+  if (!requiresWebCsrf(method, pathname)) {
+    return false;
+  }
+  return !isPeerProxyTransportRequest(method, pathname);
+}
+
+function isPeerProxyTransportRequest(method: string | undefined, pathname: string): boolean {
+  const verb = (method ?? "GET").toUpperCase();
+  return verb === "POST" && /^\/api\/peers\/[^/]+\/proxy$/.test(pathname);
 }

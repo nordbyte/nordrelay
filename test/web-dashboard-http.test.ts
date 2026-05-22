@@ -7,7 +7,7 @@ import { brotliCompressSync, brotliDecompressSync, gunzipSync, gzipSync } from "
 import { describe, expect, it } from "vitest";
 
 import { WEB_API_ROUTE_DEFINITIONS } from "../src/web/web-api-contract.js";
-import { requiresWebCsrf } from "../src/web/web-dashboard-security.js";
+import { isMutatingWebApiRequest, requiresWebCsrf } from "../src/web/web-dashboard-security.js";
 import {
   isInvalidJsonBodyError,
   isRequestBodyTooLargeError,
@@ -67,6 +67,12 @@ describe("web dashboard HTTP helpers", () => {
         expect(requiresWebCsrf(method, route.path), `${method} ${route.path}`).toBe(expected);
       }
     }
+  });
+
+  it("keeps CSRF on peer proxy transport without counting it as a local API mutation", () => {
+    expect(requiresWebCsrf("POST", "/api/peers/peer-1/proxy")).toBe(true);
+    expect(isMutatingWebApiRequest("POST", "/api/peers/peer-1/proxy")).toBe(false);
+    expect(isMutatingWebApiRequest("POST", "/api/settings")).toBe(true);
   });
 
   it("rate limits repeated mutating API attempts", () => {
