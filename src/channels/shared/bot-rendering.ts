@@ -986,8 +986,12 @@ export function getWorkspaceShortName(workspace: string): string {
   return workspace.split(/[\\/]/).filter(Boolean).pop() ?? workspace;
 }
 
-export function formatRelativeTime(date: Date): string {
-  const deltaMs = Date.now() - date.getTime();
+export function formatRelativeTime(date: Date | string | number): string {
+  const parsed = date instanceof Date ? date : new Date(date);
+  if (!Number.isFinite(parsed.getTime())) {
+    return "unknown";
+  }
+  const deltaMs = Date.now() - parsed.getTime();
   const deltaSeconds = Math.max(0, Math.floor(deltaMs / 1000));
 
   if (deltaSeconds < 60) {

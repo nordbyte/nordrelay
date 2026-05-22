@@ -10,6 +10,7 @@ import {
   remoteSessionChoiceValue,
   renderTargetPeerMirrorPreference,
   renderTargetPeerSession,
+  selectedTargetNodeLabel,
   switchTargetPeerSession,
   type RemotePeerWebClient,
 } from "../src/channels/shared/channel-peer-sessions.js";
@@ -34,6 +35,8 @@ describe("channel peer session helpers", () => {
 
     const listed = await listTargetPeerSessions({ contextKey: "telegram:1", preferencesStore, remoteClient: client });
     expect(listed?.sessions.map((record) => record.id)).toEqual(["thread-1", "thread-2"]);
+    expect(listed?.sessions[0]?.updatedAt).toBeInstanceOf(Date);
+    expect(listed?.sessions[0]?.createdAt).toBeInstanceOf(Date);
     expect(listed?.activeThreadId).toBe("thread-1");
     expect(requests.find((payload) => payload.path === "/api/sessions")?.query).toMatchObject({ agent: "codex" });
 
@@ -60,6 +63,14 @@ describe("channel peer session helpers", () => {
     });
     expect(response?.mode).toBe("full");
     expect(preferencesStore.get("discord:g:c").mirrorMode).toBe("full");
+  });
+
+  it("renders the selected node label for channel commands", () => {
+    const preferencesStore = new BotPreferencesStore(tempWorkspace());
+    expect(selectedTargetNodeLabel(preferencesStore, "telegram:1")).toBe("Local node");
+
+    preferencesStore.update("telegram:1", { targetPeerId: "missing-peer-x" });
+    expect(selectedTargetNodeLabel(preferencesStore, "telegram:1")).toBe("missing-peer-x");
   });
 });
 
@@ -96,6 +107,7 @@ function threadRecord(id: string): AgentThreadRecord {
     title: `Thread ${id}`,
     cwd: "/workspace",
     firstUserMessage: "Prompt",
+    createdAt: "2026-05-21T09:59:00.000Z",
     updatedAt: "2026-05-21T10:00:00.000Z",
   } as AgentThreadRecord;
 }

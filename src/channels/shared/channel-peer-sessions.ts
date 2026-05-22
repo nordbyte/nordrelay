@@ -45,6 +45,11 @@ export function selectedTargetPeerLabel(peerId: string): string {
   return peer ? `${peer.name} (${peer.id})` : peerId;
 }
 
+export function selectedTargetNodeLabel(preferencesStore: BotPreferencesStore, contextKey: string): string {
+  const peerId = selectedTargetPeerId(preferencesStore, contextKey);
+  return peerId ? selectedTargetPeerLabel(peerId) : "Local node";
+}
+
 export async function renderTargetPeerSession(options: TargetPeerCommandOptions): Promise<ChannelActionResponse | null> {
   const targetPeerId = selectedTargetPeerId(options.preferencesStore, options.contextKey);
   if (!targetPeerId) {
@@ -183,7 +188,7 @@ function parseSessionPage(value: unknown): AgentThreadRecord[] {
     return [];
   }
   const sessions = (value as { sessions?: unknown }).sessions;
-  return Array.isArray(sessions) ? sessions.filter(isAgentThreadRecord) : [];
+  return Array.isArray(sessions) ? sessions.filter(isAgentThreadRecord).map(normalizeAgentThreadRecord) : [];
 }
 
 function parseSessionInfoResult(value: unknown): AgentSessionInfo {
@@ -217,4 +222,27 @@ function parseMirrorResult(value: unknown): { mode: ChannelMirrorMode; minInterv
 
 function isAgentThreadRecord(value: unknown): value is AgentThreadRecord {
   return Boolean(value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string");
+}
+
+function normalizeAgentThreadRecord(record: AgentThreadRecord): AgentThreadRecord {
+  const updatedAt = normalizeDate((record as { updatedAt?: unknown }).updatedAt) ?? new Date(0);
+  const createdAt = normalizeDate((record as { createdAt?: unknown }).createdAt) ?? updatedAt;
+  return {
+    ...record,
+    createdAt,
+    updatedAt,
+  };
+}
+
+function normalizeDate(value: unknown): Date | null {
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    return value;
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    if (Number.isFinite(parsed.getTime())) {
+      return parsed;
+    }
+  }
+  return null;
 }

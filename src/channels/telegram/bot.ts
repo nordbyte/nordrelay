@@ -81,10 +81,8 @@ import { escapeHTML } from "../../core/format.js";
 import { toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "../../state/prompt-store.js";
 import { redactText } from "../../core/redaction.js";
 import { canWriteWithLock } from "../../access/session-locks.js";
-import {
-  renderSessionInfoHTML,
-  renderSessionInfoPlain,
-} from "../shared/session-format.js";
+import { renderSessionInfoHTML, renderSessionInfoPlain } from "../shared/session-format.js";
+import { withSelectedNodeHeader } from "../shared/channel-node-context.js";
 import { SessionRegistry } from "../../state/session-registry.js";
 import { transcribeAudio, type TranscriptionBackend } from "../../artifacts/voice.js";
 import { telegramRateLimiter } from "./telegram-rate-limit.js";
@@ -120,6 +118,7 @@ import { registerTelegramDiagnosticsCommands } from "./telegram-diagnostics-comm
 import { registerTelegramGeneralCommands } from "./telegram-general-commands.js";
 import { registerTelegramLastCommand } from "./telegram-last-command.js";
 import { registerTelegramOperationalCommands } from "./telegram-operational-commands.js";
+import { selectedTargetNodeLabel } from "../shared/channel-peer-sessions.js";
 import { handleTargetPeerSessionCallback, handleTargetPeerSessionsCommand, registerTelegramNodeTargetCallback, replyTargetPeerSession } from "./telegram-peer-session-commands.js";
 import { registerTelegramPreferenceCommands } from "./telegram-preference-commands.js";
 import {
@@ -390,7 +389,9 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     if (!channelContext) {
       return;
     }
-    await deliverChannelAction(telegramChannelRuntime, channelContext, rendered);
+    const contextKey = contextKeyFromCtx(ctx);
+    const renderedWithNode = contextKey ? withSelectedNodeHeader(rendered, selectedTargetNodeLabel(preferencesStore, contextKey)) : rendered;
+    await deliverChannelAction(telegramChannelRuntime, channelContext, renderedWithNode);
   };
 
   const agentUpdateContext = () => ({
@@ -2151,6 +2152,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     startAgentLogout,
     hostLoginCommand,
     hostLogoutCommand,
+    selectedNodeLabel: (contextKey) => selectedTargetNodeLabel(preferencesStore, contextKey),
     appendActivity: (ctx, input) => appendActivity({
       source: "telegram",
       ...input,
@@ -2404,8 +2406,20 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     const contextLabel = isTopicContext(contextKey) ? "Topic session" : "Chat session";
     const policyLine = renderWorkspacePolicyLine(info.workspace, config);
 
-    const plainLines = [`${contextLabel}:`, policyLine, renderSessionInfoPlain(info)].filter((line): line is string => line !== undefined);
-    const htmlLines = [`<b>${escapeHTML(contextLabel)}:</b>`, policyLine ? `<i>${escapeHTML(policyLine)}</i>` : undefined, renderSessionInfoHTML(info)].filter((line): line is string => line !== undefined);
+    const plainLines = [
+      `Node: ${selectedTargetNodeLabel(preferencesStore, contextKey)}`,
+      "",
+      `${contextLabel}:`,
+      policyLine,
+      renderSessionInfoPlain(info),
+    ].filter((line): line is string => line !== undefined);
+    const htmlLines = [
+      `<b>Node:</b> <code>${escapeHTML(selectedTargetNodeLabel(preferencesStore, contextKey))}</code>`,
+      "",
+      `<b>${escapeHTML(contextLabel)}:</b>`,
+      policyLine ? `<i>${escapeHTML(policyLine)}</i>` : undefined,
+      renderSessionInfoHTML(info),
+    ].filter((line): line is string => line !== undefined);
 
     await safeReply(ctx, htmlLines.join("\n"), { fallbackText: plainLines.join("\n") });
   });

@@ -11,6 +11,8 @@ import {
   idOf,
   labelOf,
 } from "../shared/bot-rendering.js";
+import { withSelectedNodeHeader } from "../shared/channel-node-context.js";
+import type { ChannelActionResponse } from "../shared/channel-actions.js";
 import { checkAuthStatus } from "../../agents/codex/codex-auth.js";
 import type { ConnectorConfig } from "../../core/config.js";
 import { contextKeyFromCtx, type TelegramContextKey } from "../shared/context-key.js";
@@ -44,6 +46,7 @@ export interface TelegramAgentCommandOptions {
   startAgentLogout: (info?: AgentSessionInfo) => Promise<{ success: boolean; message: string }>;
   hostLoginCommand: (info?: AgentSessionInfo) => string;
   hostLogoutCommand: (info?: AgentSessionInfo) => string;
+  selectedNodeLabel?: (contextKey: TelegramContextKey) => string;
   appendActivity?: (
     ctx: Context,
     input: Partial<Omit<WebActivityEvent, "id" | "timestamp" | "source">> & Pick<WebActivityEvent, "status" | "type"> & { timestamp?: string },
@@ -69,8 +72,12 @@ export function registerTelegramAgentCommands(options: TelegramAgentCommandOptio
     const currentAgent = idOf(session.getInfo());
     if (availableAgents.length <= 1) {
       const only = agentLabel(availableAgents[0] ?? currentAgent);
-      await safeReply(ctx, `<b>Current agent:</b> <code>${escapeHTML(only)}</code>\nNo other agents are enabled.`, {
-        fallbackText: `Current agent: ${only}\nNo other agents are enabled.`,
+      const reply = withNodeHeader(options, contextKey, {
+        html: `<b>Current agent:</b> <code>${escapeHTML(only)}</code>\nNo other agents are enabled.`,
+        plain: `Current agent: ${only}\nNo other agents are enabled.`,
+      });
+      await safeReply(ctx, reply.html, {
+        fallbackText: reply.plain,
       });
       return;
     }
@@ -81,8 +88,12 @@ export function registerTelegramAgentCommands(options: TelegramAgentCommandOptio
       keyboard.text(`${agentLabel(availableAgent)}${availableAgent === currentAgent ? " ✓" : ""}`, `agent_${availableAgent}`).row();
     }
 
-    await safeReply(ctx, `<b>Current agent:</b> <code>${escapeHTML(agentLabel(currentAgent))}</code>\nSelect agent for this Telegram context:`, {
-      fallbackText: `Current agent: ${agentLabel(currentAgent)}\nSelect agent for this Telegram context:`,
+    const reply = withNodeHeader(options, contextKey, {
+      html: `<b>Current agent:</b> <code>${escapeHTML(agentLabel(currentAgent))}</code>\nSelect agent for this Telegram context:`,
+      plain: `Current agent: ${agentLabel(currentAgent)}\nSelect agent for this Telegram context:`,
+    });
+    await safeReply(ctx, reply.html, {
+      fallbackText: reply.plain,
       replyMarkup: keyboard,
     });
   });
@@ -287,12 +298,14 @@ export function registerTelegramAgentCommands(options: TelegramAgentCommandOptio
         agentId: info.agentId,
         detail: labelOf(info),
       });
-      const html = [`<b>Agent switched to ${escapeHTML(labelOf(info))}.</b>`, "", renderSessionInfoHTML(info)].join("\n");
-      const plain = [`Agent switched to ${labelOf(info)}.`, "", renderSessionInfoPlain(info)].join("\n");
+      const response = withNodeHeader(options, contextKey, {
+        html: [`<b>Agent switched to ${escapeHTML(labelOf(info))}.</b>`, "", renderSessionInfoHTML(info)].join("\n"),
+        plain: [`Agent switched to ${labelOf(info)}.`, "", renderSessionInfoPlain(info)].join("\n"),
+      });
       if (messageId) {
-        await safeEditMessage(options.bot, chatId, messageId, html, { fallbackText: plain });
+        await safeEditMessage(options.bot, chatId, messageId, response.html, { fallbackText: response.plain });
       } else {
-        await safeReply(ctx, html, { fallbackText: plain });
+        await safeReply(ctx, response.html, { fallbackText: response.plain });
       }
     } catch (error) {
       const html = `<b>Failed:</b> ${escapeHTML(friendlyErrorText(error))}`;
@@ -304,4 +317,13 @@ export function registerTelegramAgentCommands(options: TelegramAgentCommandOptio
       }
     }
   });
+}
+
+function withNodeHeader(
+  options: Pick<TelegramAgentCommandOptions, "selectedNodeLabel">,
+  contextKey: TelegramContextKey,
+  response: ChannelActionResponse,
+): ChannelActionResponse {
+  const label = options.selectedNodeLabel?.(contextKey);
+  return label ? withSelectedNodeHeader(response, label) : response;
 }
