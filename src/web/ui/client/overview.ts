@@ -87,9 +87,11 @@ function renderChatWorkspaceLine(){
 }
 function launchPermissionsText(session){
   if(!session?.capabilities?.launchProfiles)return'n/a';
-  const selectedLaunch=session.launchProfileId||session.nextLaunchProfileId;
+  const selectedLaunch=activeLaunchProfileId(session,state.controls||{});
   const profile=(state.controls?.launchProfiles||[]).find(p=>p.id===selectedLaunch);
-  return profile?.behavior||session.launchProfileBehavior||session.nextLaunchProfileBehavior||'-';
+  if(session.launchProfileBehavior)return session.launchProfileBehavior;
+  if(profile&&launchProfileBehaviorMatches(profile,session))return profile.behavior;
+  return session.nextLaunchProfileBehavior||profile?.behavior||'-';
 }
 const ACTIVE_SESSIONS_TARGET_STORAGE_KEY='nordrelayActiveSessionsTarget';
 function activeSessionsPeerOptions(){return (state.peers?.peers||[]).filter(peer=>peer?.enabled!==false&&peer?.id&&peer?.url)}
@@ -257,7 +259,7 @@ function renderSessionControls(){
   const selectedReasoning=reasoningItems.find(item=>item.value===s.reasoningEffort)||(s.reasoningEffort?{value:s.reasoningEffort,label:s.reasoningEffort}:reasoningItems[0]);
   const fastItems=[{value:'on',label:'on'},{value:'off',label:'off'}];
   const selectedFast=s.fastMode?'on':'off';
-  const selectedLaunch=activeLaunchProfileId(s);
+  const selectedLaunch=activeLaunchProfileId(s,c);
   const launchItems=launchMenuItems(c,s,selectedLaunch);
   const selectedLaunchItem=launchItems.find(item=>item.value===selectedLaunch)||launchItems[0];
   const mirrorItems=[{value:'off',label:'off'},{value:'status',label:'status'},{value:'final',label:'final'},{value:'full',label:'full'}];
@@ -274,7 +276,24 @@ function renderSessionControls(){
   renderChatWorkspaceLine();
   const applyLaunch=document.getElementById('applyLaunchBtn'); if(applyLaunch) applyLaunch.onclick=()=>safe(async()=>{const profileId=selectedCompactControlValue('controlLaunch');if(!configuredLaunchProfile(c,profileId)){toast('Select a configured launch profile first');return}await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId,apply:true})});toast('Launch profile applied to current session');loadBootstrap()});
 }
-function activeLaunchProfileId(session){return session.launchProfileId||session.nextLaunchProfileId||''}
+function activeLaunchProfileId(session,controls=state.controls||{}){
+  const profiles=controls.launchProfiles||[];
+  const currentId=session.launchProfileId||'';
+  const currentProfile=profiles.find(profile=>profile.id===currentId);
+  if(currentProfile&&launchProfileBehaviorMatches(currentProfile,session))return currentId;
+  const matchingProfile=profiles.find(profile=>launchProfileBehaviorMatches(profile,session));
+  if(matchingProfile)return matchingProfile.id;
+  return currentId||session.nextLaunchProfileId||'';
+}
+function launchProfileBehaviorMatches(profile,session){
+  const behavior=String(profile?.behavior||'').trim();
+  if(!behavior)return false;
+  const activeBehavior=String(session?.launchProfileBehavior||'').trim();
+  if(activeBehavior&&behavior===activeBehavior)return true;
+  const sandbox=String(session?.sandboxMode||'').trim();
+  const approval=String(session?.approvalPolicy||'').trim();
+  return Boolean(sandbox&&approval&&behavior===sandbox+' / '+approval);
+}
 function launchMenuItems(controls,session,selectedLaunch){
   const items=(controls.launchProfiles||[]).map(p=>({value:p.id,label:p.label+' - '+p.behavior+(p.unsafe?' - unsafe':'')}));
   if(selectedLaunch&&!items.some(item=>item.value===selectedLaunch)){

@@ -340,8 +340,10 @@ describe("web dashboard browser-flow assets", () => {
   it("selects the current launch mode in the launch dropdown", () => {
     const js = dashboardJs();
 
-    expect(js).toContain("selectedLaunch=activeLaunchProfileId(s)");
+    expect(js).toContain("selectedLaunch=activeLaunchProfileId(s,c)");
     expect(js).toContain("function activeLaunchProfileId");
+    expect(js).toContain("function launchProfileBehaviorMatches");
+    expect(js).toContain("behavior===sandbox+' / '+approval");
     expect(js).toContain("function launchMenuItems");
     expect(js).toContain("function activeLaunchLabel");
     expect(js).toContain("items.unshift({value:selectedLaunch,label:activeLaunchLabel(session,selectedLaunch)})");
