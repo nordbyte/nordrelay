@@ -422,6 +422,12 @@ interface DashboardState {
   sessionAgeTimer: WebuiInterval | null;
   activityAgeTimer: WebuiInterval | null;
   chatWorkingTimer: WebuiInterval | null;
+  sessionDetailRefreshTimer: WebuiInterval | null;
+  sessionDetailAgeTimer: WebuiInterval | null;
+  sessionDetailThreadId: string | null;
+  sessionDetailAgentId: string | null;
+  sessionDetailPeerId: string | null;
+  sessionDetailRequestId: number;
   chatHistoryRequestId: number;
   chatRenderVersion: number;
   activeSessions: WebuiActiveSessionsState | null;

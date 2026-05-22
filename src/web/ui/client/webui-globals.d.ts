@@ -187,6 +187,7 @@ declare function startActiveSessionsRefresh(): void;
 declare function startSessionAgeCounter(): void;
 declare function stopActivityAgeCounter(): void;
 declare function stopActiveSessionsRefresh(): void;
+declare function updateSessionAgeCounters(): void;
 declare let switchAccessTab: (tab?: string) => void;
 declare function slackChannelLabel(value: Partial<WebuiChannelRecord>): string;
 declare function slackScopeLabel(value: unknown): string;

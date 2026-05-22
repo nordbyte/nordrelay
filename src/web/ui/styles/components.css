@@ -334,6 +334,19 @@
 .session-detail-section{margin-top:20px}
 .session-detail-section summary{cursor:pointer;font-weight:700;margin-bottom:0;line-height:1.25}
 .session-detail-section[open] summary{margin-bottom:10px}
+.session-detail-section .data-table-wrap{margin-top:0}
+.session-detail-messages-table{--table-min-width:860px}
+.session-detail-messages-table th:nth-child(1),.session-detail-messages-table td:nth-child(1){width:96px;white-space:nowrap}
+.session-detail-messages-table th:nth-child(2),.session-detail-messages-table td:nth-child(2){width:88px}
+.session-detail-messages-table th:nth-child(3),.session-detail-messages-table td:nth-child(3){width:100px}
+.session-detail-messages-table th:nth-child(4),.session-detail-messages-table td:nth-child(4){width:auto}
+.session-detail-activity-table{--table-min-width:1040px}
+.session-detail-activity-table th:nth-child(1),.session-detail-activity-table td:nth-child(1){width:96px;white-space:nowrap}
+.session-detail-activity-table th:nth-child(2),.session-detail-activity-table td:nth-child(2){width:90px}
+.session-detail-activity-table th:nth-child(3),.session-detail-activity-table td:nth-child(3){width:96px}
+.session-detail-activity-table th:nth-child(4),.session-detail-activity-table td:nth-child(4){width:150px}
+.session-detail-activity-table th:nth-child(5),.session-detail-activity-table td:nth-child(5){width:150px}
+.session-detail-activity-table th:nth-child(6),.session-detail-activity-table td:nth-child(6){width:auto}
 .session-detail-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 0 14px;padding-bottom:12px;border-bottom:1px solid var(--border-soft)}
 .session-detail-header h2{margin:0 0 4px;font-size:20px;line-height:1.2}
 .session-detail-header small{display:block;color:var(--muted);line-height:1.35}
