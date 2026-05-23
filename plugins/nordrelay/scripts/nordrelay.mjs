@@ -1133,6 +1133,7 @@ async function peerModules() {
     "peer-store.js",
     "peer-identity.js",
     "peer-client.js",
+    "peer-diagnostics.js",
   ];
   for (const file of required) {
     const modulePath = path.join(RUNTIME_ROOT, "dist", "peers", file);
@@ -1140,15 +1141,15 @@ async function peerModules() {
       throw new Error(`Missing peer runtime. Run \`npm run build\` in ${RUNTIME_ROOT}.`);
     }
   }
-  const [store, identity, client] = await Promise.all(required.map((file) => import(pathToFileURL(path.join(RUNTIME_ROOT, "dist", "peers", file)).href)));
-  return { store, identity, client };
+  const [store, identity, client, diagnostics] = await Promise.all(required.map((file) => import(pathToFileURL(path.join(RUNTIME_ROOT, "dist", "peers", file)).href)));
+  return { store, identity, client, diagnostics };
 }
 
 function parsePeerFlags(argv) {
   const copy = [...argv];
   const subcommand = copy[0] && !copy[0].startsWith("-") ? copy.shift() : "list";
   const flags = { subcommand, url: undefined };
-  if (["add", "test", "check", "revoke", "trust", "rotate"].includes(subcommand) && copy[0] && !copy[0].startsWith("-")) {
+  if (["add", "test", "check", "revoke", "trust", "rotate", "debug", "access", "health", "repair"].includes(subcommand) && copy[0] && !copy[0].startsWith("-")) {
     flags.url = copy.shift();
     flags.id = flags.url;
   }
@@ -1163,6 +1164,15 @@ function parsePeerFlags(argv) {
     else if (arg === "--agents") flags.agents = requireValue(copy, ++i, arg);
     else if (arg === "--workspaces") flags.workspaces = requireValue(copy, ++i, arg);
     else if (arg === "--workspace-aliases" || arg === "--aliases") flags.workspaceAliases = requireValue(copy, ++i, arg);
+    else if (arg === "--email") flags.email = requireValue(copy, ++i, arg);
+    else if (arg === "--probe") flags.probe = true;
+    else if (arg === "--repin-tls") flags.repairAction = "repin-tls";
+    else if (arg === "--clear-error") flags.repairAction = "clear-error";
+    else if (arg === "--enable") flags.repairAction = "enable";
+    else if (arg === "--disable") flags.repairAction = "disable";
+    else if (arg === "--retry-relay") flags.repairAction = "retry-relay";
+    else if (arg === "--drain-expired") flags.repairAction = "drain-expired";
+    else if (arg === "--rotate-pairing") flags.repairAction = "rotate-pairing";
   }
   return flags;
 }
@@ -1180,7 +1190,7 @@ async function commandPeer(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
   const flags = parsePeerFlags(options.rawFlags);
-  const { store: storeMod, identity: identityMod, client: clientMod } = await peerModules();
+  const { store: storeMod, identity: identityMod, client: clientMod, diagnostics: diagnosticsMod } = await peerModules();
   const store = new storeMod.PeerStore(options.home);
   const identity = identityMod.loadOrCreatePeerIdentity(options.home, process.env.NORDRELAY_PEER_NAME);
 
@@ -1282,6 +1292,62 @@ async function commandPeer(options) {
     return;
   }
 
+  if (flags.subcommand === "debug") {
+    const id = flags.id || await ask(null, "Peer id", "");
+    const userContext = await peerUserContext(options, flags);
+    const report = await diagnosticsMod.buildPeerDebugReport({
+      peerId: id,
+      home: options.home,
+      store,
+      users: userContext.users,
+      authUser: userContext.authUser,
+      runProbes: flags.probe !== false,
+      timeoutMs: 5000,
+    });
+    printPeerDebugReport(report);
+    if (report.summary?.status === "error") process.exitCode = 1;
+    return;
+  }
+
+  if (flags.subcommand === "access") {
+    const id = flags.id || await ask(null, "Peer id", "");
+    const peer = store.get(id);
+    if (!peer) throw new Error(`Peer not found: ${id}`);
+    const userContext = await peerUserContext(options, flags);
+    const access = diagnosticsMod.buildPeerAccessReport({ peer, users: userContext.users, authUser: userContext.authUser });
+    printPeerAccessReport(access);
+    if (!access.allowed) process.exitCode = 1;
+    return;
+  }
+
+  if (flags.subcommand === "health") {
+    const id = flags.id || await ask(null, "Peer id", "");
+    const peer = store.get(id);
+    if (!peer) throw new Error(`Peer not found: ${id}`);
+    console.log(`${peer.name} (${peer.id}) health history`);
+    const history = (peer.healthHistory || []).slice().reverse().slice(0, 25);
+    if (!history.length) {
+      console.log("No health samples recorded.");
+      return;
+    }
+    for (const item of history) {
+      const detail = item.error || item.detail || item.remoteStatus || "";
+      console.log(`${item.checkedAt} ${item.status} ${item.check || "-"} ${item.code || "-"}${item.latencyMs !== undefined ? ` ${item.latencyMs}ms` : ""}${detail ? ` - ${detail}` : ""}`);
+    }
+    return;
+  }
+
+  if (flags.subcommand === "repair") {
+    const id = flags.id || await ask(null, "Peer id", "");
+    const action = flags.repairAction || await ask(null, "Repair action", "clear-error");
+    const url = process.env.NORDRELAY_PEER_PUBLIC_URL || `${process.env.NORDRELAY_PEER_TLS_ENABLED === "false" ? "http" : "https"}://${process.env.NORDRELAY_PEER_HOST || "127.0.0.1"}:${process.env.NORDRELAY_PEER_PORT || "31979"}`;
+    const result = await diagnosticsMod.runPeerRepairAction({ peerId: id, action, home: options.home, store, listenUrl: url });
+    console.log(`Peer repair completed: ${result.action}`);
+    if (result.peer) console.log(`Peer: ${result.peer.name} (${result.peer.id})`);
+    if (result.result?.command) console.log(`Command: ${result.result.command}`);
+    return;
+  }
+
   if (flags.subcommand === "revoke") {
     const id = flags.id || await ask(null, "Peer id", "");
     console.log(store.revokePeer(id) ? `Revoked peer ${id}.` : `Peer not found: ${id}`);
@@ -1313,7 +1379,50 @@ async function commandPeer(options) {
     return;
   }
 
-  throw new Error("Usage: nordrelay peer [identity|list|invite|add|test|check|trust|rotate|revoke]");
+  throw new Error("Usage: nordrelay peer [identity|list|invite|add|test|check|debug|access|health|repair|trust|rotate|revoke]");
+}
+
+async function peerUserContext(options, flags) {
+  if (!flags.email) {
+    return { users: undefined, authUser: undefined };
+  }
+  const users = await createUserStore(options.home);
+  const authUser = users.getUserByEmail(flags.email);
+  if (!authUser) {
+    throw new Error(`User not found: ${flags.email}`);
+  }
+  return { users, authUser };
+}
+
+function printPeerDebugReport(report) {
+  console.log(`Peer debug: ${report.peer ? `${report.peer.name} (${report.peer.id})` : "not found"}`);
+  console.log(`Status: ${report.summary.status}`);
+  console.log(`Checks: ${report.summary.ok} ok, ${report.summary.warnings} warnings, ${report.summary.errors} errors, ${report.summary.skipped} skipped`);
+  if (report.summary.primaryIssue) console.log(`Issue: ${report.summary.primaryIssue}`);
+  if (report.summary.remediation) console.log(`Fix: ${report.summary.remediation}`);
+  console.log("");
+  for (const check of report.checks) {
+    const latency = check.latencyMs !== undefined ? ` (${check.latencyMs}ms)` : "";
+    console.log(`${check.status.toUpperCase()} ${check.label}: ${check.code}${latency}`);
+    console.log(`  ${check.detail}`);
+    if (check.remediation) console.log(`  Fix: ${check.remediation}`);
+  }
+  if (report.access) {
+    console.log("");
+    printPeerAccessReport(report.access);
+  }
+}
+
+function printPeerAccessReport(access) {
+  console.log(`Peer access: ${access.peerName} (${access.peerId})`);
+  if (access.user) console.log(`User: ${access.user.email || access.user.displayName || access.user.id} groups=${access.user.groupIds.join(",") || "-"}`);
+  console.log(`Summary: ${access.summary}`);
+  for (const check of access.checks) {
+    const permission = check.requiredPermission ? ` ${check.requiredPermission}` : "";
+    console.log(`${check.allowed ? "OK" : "DENY"} ${check.label}${permission}`);
+    if (!check.allowed || check.reason) console.log(`  ${check.reason}`);
+    if (!check.allowed && check.fix) console.log(`  Fix: ${check.fix}`);
+  }
 }
 
 async function commandService(options) {

@@ -35,13 +35,19 @@ export function startPeerHealthMonitor(options: {
           const result = await client.rpc(peer.id, "peer.ping");
           const record = result && typeof result === "object" ? result as { version?: unknown; status?: unknown } : {};
           store.markSeen(peer.id, {
+            check: "health-monitor",
+            code: "peer.ok",
             latencyMs: Date.now() - startedAt,
             remoteVersion: typeof record.version === "string" ? record.version : undefined,
             remoteStatus: typeof record.status === "string" ? record.status : "online",
+            detail: "Scheduled peer health check completed.",
           });
         } catch (error) {
           failed += 1;
-          store.markError(peer.id, error instanceof Error ? error.message : String(error));
+          store.markError(peer.id, error instanceof Error ? error.message : String(error), {
+            check: "health-monitor",
+            detail: "Scheduled peer health check failed.",
+          });
         }
       }));
       return { checked: peers.length, failed };

@@ -9,6 +9,7 @@ import type { ClearLogResult, ConnectorHealth, ConnectorRuntimeState, FormattedL
 import type { DoctorFixResponse, DoctorReport } from "../support/doctor.js";
 import type { PeerDiscoveryJobSnapshot, PeerDiscoveryResult, PeerIdentityBackup, PeerRelayQueueSnapshot, PeerSnapshot, PublicPeerRecord } from "../peers/peer-types.js";
 import type { PeerOutboundRelaySnapshot } from "../peers/peer-outbound-relay.js";
+import type { PeerDebugReport, PeerEffectiveAccessReport, PeerRepairAction, PeerRepairResult } from "../peers/peer-diagnostics.js";
 import type { RuntimeMetricHistorySample, RuntimeMetricsDto } from "../runtime/metrics.js";
 import type { WebApiDynamicPathFromContract, WebApiStaticPathFromContract } from "./web-api-contract.js";
 import type {
@@ -204,6 +205,7 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/peers/relay" ? { action: "cancel"; peerId: string; id: string } | { action: "retry"; peerId?: string; id?: string } | { action: "drain-expired" } :
   P extends "/api/peers/identity/restore" ? { backup: PeerIdentityBackup } :
   P extends `/api/peers/${string}/rotate` ? { expiresMinutes?: number } :
+  P extends `/api/peers/${string}/repair` ? { action: PeerRepairAction } :
   P extends "/api/logs/clear" ? { target?: "connector" | "update" | "agent-updates" } :
   P extends "/api/doctor/fix" ? { fixIds?: string[] } :
   P extends "/api/settings" ? { settings: Record<string, string | null | undefined> } :
@@ -277,6 +279,10 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends `/api/peers/discovery-jobs/${string}/cancel` | `/api/peers/discovery-jobs/${string}` ? { job: PeerDiscoveryJobSnapshot | null } :
   P extends `/api/peers/${string}/repin` ? { peer: PublicPeerRecord; probe: unknown } :
   P extends `/api/peers/${string}/rotate` ? { peer: PublicPeerRecord; invitation: unknown; code: string; command: string; readiness?: unknown; warnings?: string[] } :
+  P extends `/api/peers/${string}/debug` | `/api/peers/${string}/debug/probe` ? PeerDebugReport :
+  P extends `/api/peers/${string}/effective-access` ? PeerEffectiveAccessReport :
+  P extends `/api/peers/${string}/health-history` ? { peer: PublicPeerRecord; history: PublicPeerRecord["healthHistory"] } :
+  P extends `/api/peers/${string}/repair` ? PeerRepairResult & { report: PeerDebugReport } :
   P extends "/api/peers/probe" ? unknown :
   P extends "/api/peers/global-sessions" ? unknown :
   P extends "/api/permissions" | "/api/users" ? WebUserManagementResponse :

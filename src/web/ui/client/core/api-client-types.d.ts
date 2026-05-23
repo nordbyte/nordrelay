@@ -124,9 +124,14 @@ export type WebApiDynamicPath =
   | `/api/jobs/${string}/log`
   | `/api/matrix-rooms/${string}`
   | `/api/peers/${string}`
+  | `/api/peers/${string}/debug`
+  | `/api/peers/${string}/debug/probe`
+  | `/api/peers/${string}/effective-access`
   | `/api/peers/${string}/events`
   | `/api/peers/${string}/health`
+  | `/api/peers/${string}/health-history`
   | `/api/peers/${string}/proxy`
+  | `/api/peers/${string}/repair`
   | `/api/peers/${string}/repin`
   | `/api/peers/${string}/rotate`
   | `/api/peers/discovery-jobs/${string}`

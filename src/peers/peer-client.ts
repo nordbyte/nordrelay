@@ -281,11 +281,13 @@ export class RemoteRelayClient {
 
 function healthPatchFromRpc(type: string, data: unknown, latencyMs: number): Parameters<PeerStore["markSeen"]>[1] {
   if (type !== "peer.ping" || !data || typeof data !== "object") {
-    return { latencyMs, remoteStatus: "online" };
+    return { check: type, code: "peer.ok", latencyMs, remoteStatus: "online" };
   }
   const record = data as { version?: unknown; status?: unknown };
   return {
     latencyMs,
+    check: type,
+    code: "peer.ok",
     remoteVersion: typeof record.version === "string" ? record.version : undefined,
     remoteStatus: typeof record.status === "string" ? record.status : "online",
   };

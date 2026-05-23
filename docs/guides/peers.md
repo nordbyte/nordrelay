@@ -60,7 +60,12 @@ Approved chat users can switch a chat context between the local node and trusted
 ```bash
 nordrelay peer check https://host.example:31979
 nordrelay peer test <peer-id>
+nordrelay peer debug <peer-id>
 ```
+
+The WebUI also includes **Peers > Peers > More > Debug**. The debug view separates connectivity, TLS trust, effective access, route checks, live-event prerequisites, health history, and safe repair actions.
+
+Use it when a peer reports `Access denied`, `Peer TLS certificate fingerprint mismatch`, stale relay failures, or missing sessions. The access tab explains whether the local user group, peer scopes, allowed agents, or workspace roots are responsible.
 
 ## Rotate or trust TLS
 
@@ -74,6 +79,16 @@ For identity or access changes:
 
 ```bash
 nordrelay peer rotate <peer-id>
+```
+
+The debug view can also run safe repairs:
+
+```bash
+nordrelay peer repair <peer-id> --repin-tls
+nordrelay peer repair <peer-id> --clear-error
+nordrelay peer repair <peer-id> --retry-relay
+nordrelay peer repair <peer-id> --drain-expired
+nordrelay peer repair <peer-id> --rotate-pairing
 ```
 
 ## Outbound relay mode

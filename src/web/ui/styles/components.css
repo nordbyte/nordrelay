@@ -1,5 +1,5 @@
-.access-tab,.adapter-tab,.peer-tab,.workflow-tab,.queue-tab,.session-tab,.monitor-tab,.metrics-tab,.diagnostics-tab{display:none}
-.access-tab.active,.adapter-tab.active,.peer-tab.active,.workflow-tab.active,.queue-tab.active,.session-tab.active,.monitor-tab.active,.metrics-tab.active,.diagnostics-tab.active{display:block}
+.access-tab,.adapter-tab,.peer-tab,.peer-debug-panel,.workflow-tab,.queue-tab,.session-tab,.monitor-tab,.metrics-tab,.diagnostics-tab{display:none}
+.access-tab.active,.adapter-tab.active,.peer-tab.active,.peer-debug-panel.active,.workflow-tab.active,.queue-tab.active,.session-tab.active,.monitor-tab.active,.metrics-tab.active,.diagnostics-tab.active{display:block}
 .incremental-render-status{display:block;margin:8px 0 0;color:var(--muted);font-size:12px}
 .section-header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:-12px -16px 0;padding:0 16px}
 .access-section-header,.settings-section-header,.adapter-section-header,.peer-section-header,.workflow-section-header,.queue-section-header,.sessions-section-header,.monitor-section-header,.metrics-section-header,.diagnostics-section-header{margin-bottom:12px}
@@ -289,6 +289,11 @@
 .artifact-cleanup-table{--table-min-width:960px}
 .diff-split-table{--table-min-width:960px}
 .peer-table-detail{display:grid;gap:10px;margin-top:12px}
+.peer-debug-dialog{display:grid;gap:12px}
+.peer-debug-summary{display:grid;gap:4px;padding:12px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface-soft)}
+.peer-debug-tabs{min-height:38px}
+.peer-debug-tabs button{min-height:38px;height:38px}
+.peer-debug-checks-table,.peer-debug-access-table,.peer-debug-history-table,.peer-debug-repair-table{--table-min-width:980px}
 .metrics-table{--table-min-width:860px}
 .metrics-table .number-cell,.metrics-table .status-cell,.metrics-table .updated-cell{white-space:nowrap}
 .metrics-web-routes{--table-min-width:980px}

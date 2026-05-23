@@ -53,9 +53,16 @@ export interface PeerUpsertInput {
 }
 
 export interface PeerHealthPatch {
+  check?: string;
+  code?: string;
   latencyMs?: number;
+  statusCode?: number;
+  tlsFingerprint?: string;
+  expectedTlsFingerprint?: string;
   remoteVersion?: string;
   remoteStatus?: string;
+  detail?: string;
+  remediation?: string;
 }
 
 export class PeerStore {
@@ -265,14 +272,21 @@ export class PeerStore {
       healthHistory: appendHealthSample(peer.healthHistory, {
         checkedAt,
         status: "online",
+        check: patch.check,
+        code: patch.code,
         latencyMs: patch.latencyMs,
+        statusCode: patch.statusCode,
+        tlsFingerprint: patch.tlsFingerprint,
+        expectedTlsFingerprint: patch.expectedTlsFingerprint,
         remoteVersion: patch.remoteVersion,
         remoteStatus: patch.remoteStatus ?? "online",
+        detail: patch.detail,
+        remediation: patch.remediation,
       }),
     }));
   }
 
-  markError(id: string, error: string): void {
+  markError(id: string, error: string, patch: PeerHealthPatch = {}): void {
     const checkedAt = new Date().toISOString();
     this.patchPeer(id, (peer) => ({
       lastError: error,
@@ -282,8 +296,24 @@ export class PeerStore {
       healthHistory: appendHealthSample(peer.healthHistory, {
         checkedAt,
         status: "offline",
+        check: patch.check,
+        code: patch.code,
+        statusCode: patch.statusCode,
+        tlsFingerprint: patch.tlsFingerprint,
+        expectedTlsFingerprint: patch.expectedTlsFingerprint,
+        detail: patch.detail,
         error,
+        remediation: patch.remediation,
       }),
+    }));
+  }
+
+  clearError(id: string): void {
+    const checkedAt = new Date().toISOString();
+    this.patchPeer(id, () => ({
+      lastError: undefined,
+      lastCheckedAt: checkedAt,
+      updatedAt: checkedAt,
     }));
   }
 

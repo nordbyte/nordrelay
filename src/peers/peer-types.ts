@@ -19,10 +19,17 @@ export interface PeerNodeIdentity {
 export interface PeerHealthSample {
   checkedAt: string;
   status: "online" | "offline";
+  check?: string;
+  code?: string;
   latencyMs?: number;
+  statusCode?: number;
+  tlsFingerprint?: string;
+  expectedTlsFingerprint?: string;
   remoteVersion?: string;
   remoteStatus?: string;
+  detail?: string;
   error?: string;
+  remediation?: string;
 }
 
 export interface PeerRecord {

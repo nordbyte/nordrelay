@@ -81,6 +81,11 @@ describe("access-control", () => {
     expect(permissionForWebRequest("POST", "/api/peers/abc/rotate")).toBe("peers.write");
     expect(permissionForWebRequest("GET", "/api/peers/abc/health")).toBe("peers.connect");
     expect(routeForWebRequest("GET", "/api/peers/abc/health")?.path).toBe("/api/peers/:id/health");
+    expect(permissionForWebRequest("GET", "/api/peers/abc/debug")).toBe("peers.connect");
+    expect(permissionForWebRequest("POST", "/api/peers/abc/debug/probe")).toBe("peers.connect");
+    expect(permissionForWebRequest("GET", "/api/peers/abc/effective-access")).toBe("peers.connect");
+    expect(permissionForWebRequest("GET", "/api/peers/abc/health-history")).toBe("peers.connect");
+    expect(permissionForWebRequest("POST", "/api/peers/abc/repair")).toBe("peers.write");
     expect(permissionForWebRequest("POST", "/api/peers/abc/proxy")).toBe("peers.connect");
     expect(permissionForWebRequest("GET", "/api/peers/abc/events")).toBe("peers.connect");
     expect(permissionForWebRequest("POST", "/api/jobs/queue%3Aabc/action")).toBe("inspect");

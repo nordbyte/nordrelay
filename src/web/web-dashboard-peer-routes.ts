@@ -15,6 +15,7 @@ import { getPeerOutboundRelaySnapshot, type PeerOutboundRelaySnapshot } from "..
 import { getPeerRelayBroker } from "../peers/peer-relay-broker.js";
 import { PeerRelayEventStore } from "../peers/peer-relay-event-store.js";
 import { checkPeerEndpoint, checkPeerIdentityEndpoint, pairPeer, RemoteRelayClient } from "../peers/peer-client.js";
+import { buildPeerAccessReport, buildPeerDebugReport, runPeerRepairAction, type PeerRepairAction } from "../peers/peer-diagnostics.js";
 import type { PeerDiscoveryJobManager } from "../peers/peer-discovery-jobs.js";
 import { buildPeerReadiness, peerListenUrl } from "../peers/peer-readiness.js";
 import { discoverLanPeers } from "../peers/peer-discovery.js";
@@ -373,6 +374,92 @@ export async function handleDashboardPeerRoute(
     return true;
   }
 
+  const debugMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/debug$/);
+  if (debugMatch?.[1] && req.method === "GET") {
+    const peerId = decodeURIComponent(debugMatch[1]);
+    assertPeerAccess(options, peerId);
+    const report = await buildPeerDebugReport({
+      peerId,
+      home: options.home,
+      store,
+      users: options.users,
+      authUser: options.authUser,
+      actor: options.activityActor,
+      runProbes: url.searchParams.get("probe") === "true",
+      timeoutMs: PEER_HEALTH_TIMEOUT_MS,
+    });
+    sendJson(res, 200, report);
+    return true;
+  }
+
+  const debugProbeMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/debug\/probe$/);
+  if (debugProbeMatch?.[1] && req.method === "POST") {
+    const peerId = decodeURIComponent(debugProbeMatch[1]);
+    assertPeerAccess(options, peerId);
+    const report = await buildPeerDebugReport({
+      peerId,
+      home: options.home,
+      store,
+      users: options.users,
+      authUser: options.authUser,
+      actor: options.activityActor,
+      runProbes: true,
+      timeoutMs: PEER_HEALTH_TIMEOUT_MS,
+    });
+    sendJson(res, 200, report);
+    options.auditPeerAction?.("peer_debug_checked", peerId);
+    return true;
+  }
+
+  const accessMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/effective-access$/);
+  if (accessMatch?.[1] && req.method === "GET") {
+    const peerId = decodeURIComponent(accessMatch[1]);
+    assertPeerAccess(options, peerId);
+    const peer = store.get(peerId);
+    if (!peer) throw new Error("Peer not found.");
+    sendJson(res, 200, buildPeerAccessReport({ peer, users: options.users, authUser: options.authUser }));
+    return true;
+  }
+
+  const historyMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/health-history$/);
+  if (historyMatch?.[1] && req.method === "GET") {
+    const peerId = decodeURIComponent(historyMatch[1]);
+    assertPeerAccess(options, peerId);
+    const peer = store.get(peerId);
+    if (!peer) throw new Error("Peer not found.");
+    sendJson(res, 200, { peer: publicPeer(peer), history: peer.healthHistory ?? [] });
+    return true;
+  }
+
+  const repairMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/repair$/);
+  if (repairMatch?.[1] && req.method === "POST") {
+    const body = await readJsonBody(req);
+    const peerId = decodeURIComponent(repairMatch[1]);
+    assertPeerAccess(options, peerId);
+    const readiness = await buildPeerReadiness(options.config, options.home);
+    const result = await runPeerRepairAction({
+      peerId,
+      home: options.home,
+      store,
+      action: parsePeerRepairAction(requiredString(body, "action")),
+      listenUrl: readiness.listenUrl,
+    });
+    sendJson(res, 200, {
+      ...result,
+      report: await buildPeerDebugReport({
+        peerId,
+        home: options.home,
+        store,
+        users: options.users,
+        authUser: options.authUser,
+        actor: options.activityActor,
+        runProbes: false,
+      }),
+    });
+    options.auditPeerAction?.("peer_repair_applied", `${peerId}/${result.action}`);
+    return true;
+  }
+
   const eventsMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/events$/);
   if (eventsMatch?.[1] && req.method === "GET") {
     const peerId = decodeURIComponent(eventsMatch[1]);
@@ -518,6 +605,14 @@ function parseAgents(values: string[]): AgentId[] {
 
 function parseAgent(value: string | undefined): AgentId | undefined {
   return value && isAgentId(value) ? value : undefined;
+}
+
+function parsePeerRepairAction(value: string): PeerRepairAction {
+  const action = value.trim();
+  if (["repin-tls", "clear-error", "enable", "disable", "retry-relay", "drain-expired", "rotate-pairing"].includes(action)) {
+    return action as PeerRepairAction;
+  }
+  throw new Error(`Unsupported peer repair action: ${value}`);
 }
 
 function parseProxyPayload(body: Record<string, unknown>): PeerWebProxyPayload {
