@@ -151,7 +151,8 @@ export class CodexSessionService {
 
     const effectiveLaunchProfile = this.activeThreadLaunchProfile ?? this.currentLaunchProfile;
     const codexFastMode = readCodexFastMode();
-    this.lastObservedFastMode = codexFastMode;
+    const effectiveFastMode = codexFastMode ?? this.lastObservedFastMode ?? false;
+    this.lastObservedFastMode = effectiveFastMode;
     const info: CodexSessionInfo = {
       agentId: "codex",
       agentLabel: "Codex",
@@ -163,7 +164,7 @@ export class CodexSessionService {
       launchProfileBehavior: formatLaunchProfileBehavior(effectiveLaunchProfile),
       sandboxMode: effectiveLaunchProfile.sandboxMode,
       approvalPolicy: effectiveLaunchProfile.approvalPolicy,
-      fastMode: codexFastMode ?? (effectiveLaunchProfile.approvalPolicy === "never"),
+      fastMode: effectiveFastMode,
       unsafeLaunch: effectiveLaunchProfile.unsafe,
       capabilities: CODEX_AGENT_CAPABILITIES,
     };
@@ -475,12 +476,11 @@ export class CodexSessionService {
   setFastMode(enabled: boolean): FastModeResult {
     this.ensureIdle("change fast mode");
 
-    const profile = this.findFastModeLaunchProfile(enabled);
     writeCodexFastMode(enabled);
     this.lastObservedFastMode = enabled;
-    this.currentLaunchProfile = profile;
     this.resetCodexClient();
 
+    const profile = this.activeThreadLaunchProfile ?? this.currentLaunchProfile;
     let appliedToActiveThread = false;
     if (this.thread) {
       if (this.currentThreadId) {
@@ -536,22 +536,10 @@ export class CodexSessionService {
     }
 
     const codexFastMode = readCodexFastMode();
-    if (codexFastMode !== this.lastObservedFastMode) {
+    if (codexFastMode !== null && codexFastMode !== this.lastObservedFastMode) {
       changedFields.add("fast");
+      this.lastObservedFastMode = codexFastMode;
     }
-    this.lastObservedFastMode = codexFastMode;
-    if (codexFastMode !== null) {
-      try {
-        const fastProfile = this.findFastModeLaunchProfile(codexFastMode);
-        if (fastProfile.id !== this.currentLaunchProfile.id) {
-          changedFields.add("next-launch");
-        }
-        this.currentLaunchProfile = fastProfile;
-      } catch {
-        // Keep the existing profile if no configured profile maps to this value.
-      }
-    }
-
     const changed = changedFields.size > 0 ||
       before.workspace !== this.currentWorkspace ||
       before.model !== this.currentModel ||
@@ -757,31 +745,6 @@ export class CodexSessionService {
     return this.activeThreadLaunchProfileOverride.profile;
   }
 
-  private findFastModeLaunchProfile(enabled: boolean): CodexLaunchProfile {
-    const current = this.currentLaunchProfile;
-    const profiles = this.config.launchProfiles;
-    const candidates = enabled
-      ? [
-          current.approvalPolicy === "never" ? current : undefined,
-          profiles.find((profile) => profile.sandboxMode === current.sandboxMode && profile.approvalPolicy === "never"),
-          profiles.find((profile) => profile.id === this.config.defaultLaunchProfileId && profile.approvalPolicy === "never"),
-          profiles.find((profile) => !profile.unsafe && profile.approvalPolicy === "never"),
-          profiles.find((profile) => profile.approvalPolicy === "never"),
-        ]
-      : [
-          current.approvalPolicy !== "never" ? current : undefined,
-          profiles.find((profile) => profile.sandboxMode === current.sandboxMode && profile.approvalPolicy !== "never"),
-          profiles.find((profile) => profile.id === "review"),
-          profiles.find((profile) => !profile.unsafe && profile.approvalPolicy !== "never"),
-          profiles.find((profile) => profile.approvalPolicy !== "never"),
-        ];
-
-    const profile = candidates.find((candidate): candidate is CodexLaunchProfile => Boolean(candidate));
-    if (!profile) {
-      throw new Error(`No launch profile is configured for fast mode ${enabled ? "on" : "off"}`);
-    }
-    return profile;
-  }
 }
 
 function getLaunchProfile(config: ConnectorConfig, profileId: string): CodexLaunchProfile {

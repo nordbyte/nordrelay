@@ -250,7 +250,7 @@ describe("CodexSessionService", () => {
       launchProfileBehavior: "workspace-write / never",
       sandboxMode: "workspace-write",
       approvalPolicy: "never",
-      fastMode: true,
+      fastMode: false,
       unsafeLaunch: false,
     });
   });
@@ -284,7 +284,7 @@ describe("CodexSessionService", () => {
       launchProfileBehavior: "read-only / never",
       sandboxMode: "read-only",
       approvalPolicy: "never",
-      fastMode: true,
+      fastMode: false,
       unsafeLaunch: false,
     });
   });
@@ -368,7 +368,7 @@ describe("CodexSessionService", () => {
       launchProfileBehavior: "read-only / never",
       sandboxMode: "read-only",
       approvalPolicy: "never",
-      fastMode: true,
+      fastMode: false,
       unsafeLaunch: false,
     });
   });
@@ -413,7 +413,7 @@ describe("CodexSessionService", () => {
       launchProfileBehavior: "read-only / never",
       sandboxMode: "read-only",
       approvalPolicy: "never",
-      fastMode: true,
+      fastMode: false,
       unsafeLaunch: false,
     });
   });
@@ -457,8 +457,8 @@ describe("CodexSessionService", () => {
     expect(result).toEqual({
       enabled: false,
       profile: expect.objectContaining({
-        id: "review",
-        approvalPolicy: "on-request",
+        id: "default",
+        approvalPolicy: "never",
       }),
       appliedToActiveThread: true,
     });
@@ -466,7 +466,7 @@ describe("CodexSessionService", () => {
       model: "o3",
       sandboxMode: "workspace-write",
       workingDirectory: "/workspace/base",
-      approvalPolicy: "on-request",
+      approvalPolicy: "never",
       skipGitRepoCheck: true,
     });
     expect(mockCodexConfig.writeCodexFastMode).toHaveBeenCalledWith(false);
@@ -474,17 +474,17 @@ describe("CodexSessionService", () => {
       threadId: "thread-fast",
       workspace: "/workspace/base",
       model: "o3",
-      launchProfileId: "review",
-      launchProfileLabel: "Review",
-      launchProfileBehavior: "workspace-write / on-request",
+      launchProfileId: "default",
+      launchProfileLabel: "Default",
+      launchProfileBehavior: "workspace-write / never",
       sandboxMode: "workspace-write",
-      approvalPolicy: "on-request",
+      approvalPolicy: "never",
       fastMode: false,
       unsafeLaunch: false,
     });
   });
 
-  it("setFastMode enables fast mode from the matching sandbox profile", async () => {
+  it("setFastMode enables fast mode without changing the launch profile", async () => {
     const service = await CodexSessionService.create(createConfig(), {
       launchProfileId: "review",
       deferThreadStart: true,
@@ -495,13 +495,13 @@ describe("CodexSessionService", () => {
     expect(result).toEqual({
       enabled: true,
       profile: expect.objectContaining({
-        id: "default",
-        approvalPolicy: "never",
+        id: "review",
+        approvalPolicy: "on-request",
       }),
       appliedToActiveThread: false,
     });
     expect(service.getInfo().fastMode).toBe(true);
-    expect(service.getSelectedLaunchProfile().id).toBe("default");
+    expect(service.getSelectedLaunchProfile().id).toBe("review");
     expect(mockCodexConfig.writeCodexFastMode).toHaveBeenCalledWith(true);
   });
 
@@ -639,9 +639,9 @@ describe("CodexSessionService", () => {
     const result = service.syncFromAgentState();
 
     expect(result.changed).toBe(true);
-    expect(result.changedFields).toEqual(expect.arrayContaining(["fast", "next-launch"]));
+    expect(result.changedFields).toEqual(["fast"]);
     expect(result.info.fastMode).toBe(true);
-    expect(service.getSelectedLaunchProfile().id).toBe("default");
+    expect(service.getSelectedLaunchProfile().id).toBe("review");
   });
 
   it("reports the active thread launch mode separately from the next selected launch profile", async () => {
@@ -658,7 +658,7 @@ describe("CodexSessionService", () => {
       launchProfileBehavior: "workspace-write / never",
       sandboxMode: "workspace-write",
       approvalPolicy: "never",
-      fastMode: true,
+      fastMode: false,
       unsafeLaunch: false,
       nextLaunchProfileId: "readonly",
       nextLaunchProfileLabel: "Read Only",
@@ -1091,7 +1091,7 @@ describe("CodexSessionService", () => {
       launchProfileBehavior: "workspace-write / never",
       sandboxMode: "workspace-write",
       approvalPolicy: "never",
-      fastMode: true,
+      fastMode: false,
       unsafeLaunch: false,
     });
     expect(service.getCurrentWorkspace()).toBe("/workspace/other");
@@ -1119,7 +1119,7 @@ describe("CodexSessionService", () => {
       launchProfileBehavior: "workspace-write / never",
       sandboxMode: "workspace-write",
       approvalPolicy: "never",
-      fastMode: true,
+      fastMode: false,
       unsafeLaunch: false,
     });
   });
@@ -1397,7 +1397,7 @@ describe("CodexSessionService", () => {
       launchProfileBehavior: "workspace-write / never",
       sandboxMode: "workspace-write",
       approvalPolicy: "never",
-      fastMode: true,
+      fastMode: false,
       unsafeLaunch: false,
       sessionTokens: {
         input: 1,
