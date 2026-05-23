@@ -16,6 +16,17 @@ async function loadMetrics(options:{silent?:boolean}={}){
 function formatMs(value){
   return value===null||value===undefined?'-':value+'ms';
 }
+function formatUptime(value){
+  if(!value&&value!==0)return'-';
+  const sec=Math.round(Number(value)/1000);
+  if(!Number.isFinite(sec))return'-';
+  if(sec<60)return sec+'s';
+  const min=Math.floor(sec/60);
+  if(min<60)return min+'m '+(sec%60)+'s';
+  const hours=Math.floor(min/60);
+  if(hours<24)return hours+'h '+(min%60)+'m';
+  return Math.floor(hours/24)+'d '+(hours%24)+'h';
+}
 function metricPercent(value){
   return value===null||value===undefined?'-':value+'%';
 }
@@ -84,7 +95,7 @@ function metricSummaryHtml(d){
     metricKpi('Queue',String(d.queue?.length??0)+(d.queue?.paused?' paused':' running'),d.queue?.paused?'warn':'ok')+
     metricKpi('Active turns',d.turns?.active??0,metricCountStatus(d.turns?.active??0))+
     metricKpi('Failed turns',failed,metricFailureStatus(failed))+
-    metricKpi('Uptime',fmtDuration(p.uptimeMs))+
+    metricKpi('Uptime',formatUptime(p.uptimeMs))+
     metricKpi('Heap used',fmtBytes(p.memory?.heapUsedBytes||0))+
     metricKpi('Event loop p95',formatMs(loop.delayP95Ms),metricLoopStatus(loop.delayP95Ms))+
     '</div>';
@@ -119,7 +130,7 @@ function metricProcessRows(d){
     ['PID',p.pid],
     ['Node',p.nodeVersion],
     ['Platform',[p.platform,p.arch].filter(Boolean).join(' ')],
-    ['Uptime',fmtDuration(p.uptimeMs)],
+    ['Uptime',formatUptime(p.uptimeMs)],
     ['Started',metricRelativeTimeHtml(p.startedAt,'Started'),'html'],
     ['RSS',fmtBytes(memory.rssBytes||0)],
     ['Heap used',fmtBytes(memory.heapUsedBytes||0)],

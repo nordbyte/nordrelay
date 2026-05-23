@@ -222,6 +222,7 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
     await expect(page.locator("#metricsPanel .metrics-summary")).toBeVisible();
     await expect(page.locator("#metricsPanel")).toContainText("Runtime");
+    await expect(page.locator("#metricsPanel")).toContainText("1h 1m");
     await expect(page.locator("#metricsPanel .metric-kv").first()).toBeVisible();
     await expect(page.locator("#metricsPanel .metrics-card").first()).not.toContainText("Generated");
     await page.getByRole("tab", { name: "Web API" }).click();
@@ -1132,7 +1133,7 @@ function metrics() {
       nodeVersion: "v24.13.0",
       platform: "linux",
       arch: "x64",
-      uptimeMs: 12_000,
+      uptimeMs: 3_690_000,
       startedAt: new Date().toISOString(),
       memory: {
         rssBytes: 128 * 1024 * 1024,

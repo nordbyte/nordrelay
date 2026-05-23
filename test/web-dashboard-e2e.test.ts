@@ -743,6 +743,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(metrics).toContain("function metricKvCard");
     expect(metrics).toContain("function metricWebRoutesTable");
     expect(metrics).toContain("function metricRateLimitTable");
+    expect(metrics).toContain("function formatUptime");
+    expect(metrics).toContain("if(hours<24)return hours+'h '+(min%60)+'m'");
+    expect(metrics).toContain("return Math.floor(hours/24)+'d '+(hours%24)+'h'");
     expect(metrics).toContain("function setMetricsAutoRefresh");
     expect(metrics).not.toContain("['Generated'");
     expect(components).toContain(".metric-kv{display:grid");
