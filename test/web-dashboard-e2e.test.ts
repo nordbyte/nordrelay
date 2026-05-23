@@ -173,6 +173,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('id="queuePlannerBoard"');
     expect(pageSource).toContain('id="queueProgressBoard"');
     expect(js).toContain("function loadQueue");
+    expect(js).toContain("function renderQueueTable");
+    expect(js).toContain("class=\"data-table queue-table\"");
+    expect(js).toContain("function bindQueueTable");
+    expect(js).toContain("Queue ID copied");
     expect(js).toContain("function renderQueueKanban");
     expect(js).toContain("loadQueuePlanner(options:WebuiRecord={})");
     expect(js).toContain("setLoading('queuePlannerBoard','Loading planned prompts...')");
@@ -180,6 +184,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("/api/queue/plans");
     expect(js).toContain("data-plan-enqueue");
     expect(css).toContain(".queue-kanban");
+    expect(css).toContain(".queue-table{--table-min-width");
     expect(css).toContain(".queue-tab-heading");
     expect(contract).toContain('exact("/api/queue/plans"');
     expect(contract).toContain('dynamic("/api/queue/plans/:id/enqueue"');
