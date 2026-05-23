@@ -284,6 +284,23 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#chatTabs")).toBeHidden();
   });
 
+  test("keeps the previous chat tab when creating a new session", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
+    await page.goto(mock.baseUrl);
+    await navigateDashboard(page, "Chat");
+
+    await expect(page.locator("#chatTabs")).toBeHidden();
+    await page.locator("#newSessionBtn").click();
+    await page.locator("#createSessionBtn").click();
+
+    await expect.poll(() => mock.requests.some((request) => request.path === "/api/sessions/new" && request.method === "POST")).toBe(true);
+    await expect(page.locator("#chatTabs")).toBeVisible();
+    await expect(page.locator("#chatTabs .chat-tab")).toHaveCount(2);
+    await expect(page.locator("#chatTabs")).toContainText("codex-thread-1");
+    await expect(page.locator("#chatTabs")).toContainText("codex-thread-new");
+    await expect(page.locator('#chatTabs .chat-tab[aria-selected="true"]')).toContainText("codex-thread-new");
+  });
+
   test("opens the account menu, updates profile preferences, and changes password", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
@@ -1025,6 +1042,12 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[], s
   if (url.pathname.match(/^\/api\/jobs\/[^/]+\/action$/)) return jobsList();
   if (url.pathname === "/api/trace") return traceDetail(url.searchParams.get("correlationId") || "cid-job-1");
   if (url.pathname === "/api/sessions") return sessions(url);
+  if (url.pathname === "/api/sessions/new") {
+    const agentId = bodyRecord?.agentId || state.agentId || "codex";
+    state.agentId = agentId;
+    state.threadId = agentId === "pi" ? "pi-thread-new" : "codex-thread-new";
+    return { session: sessionInfo(state.agentId, state.threadId) };
+  }
   if (url.pathname === "/api/sessions/switch" || url.pathname === "/api/sessions/attach") {
     if (bodyRecord?.threadId) {
       state.threadId = bodyRecord.threadId;
