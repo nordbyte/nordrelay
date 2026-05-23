@@ -339,7 +339,11 @@ export async function removeArtifactTurn(workspace: string, turnId: string): Pro
     return false;
   }
 
-  const turnDir = path.join(artifactTurnsDir(workspace), safeTurnId);
+  const turnsDir = path.resolve(artifactTurnsDir(workspace));
+  const turnDir = path.resolve(turnsDir, safeTurnId);
+  if (path.dirname(turnDir) !== turnsDir || path.basename(turnDir) !== safeTurnId) {
+    return false;
+  }
   const fileStat = await stat(turnDir).catch(() => null);
   if (!fileStat?.isDirectory()) {
     return false;
@@ -1004,6 +1008,9 @@ function cleanOptional(value: unknown): string | undefined {
 
 function sanitizeTurnId(turnId: string): string | null {
   const trimmed = turnId.trim();
+  if (trimmed === "." || trimmed === "..") {
+    return null;
+  }
   if (!/^[a-zA-Z0-9._-]+$/.test(trimmed)) {
     return null;
   }

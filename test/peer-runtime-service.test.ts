@@ -269,6 +269,28 @@ describe("PeerRuntimeService", () => {
       },
     })).rejects.toThrow(/cannot target another peer/);
   });
+
+  it("blocks peer artifact file downloads when the safe-file policy blocks preview", async () => {
+    const service = new PeerRuntimeService(config(), runtime({
+      artifactPreview: async () => ({
+        kind: "unsupported",
+        name: ".env",
+        sizeBytes: 10,
+        detail: "Safe-file policy blocks inline preview for this artifact.",
+        safeStatus: "blocked",
+        safeWarnings: ["environment file"],
+      }),
+      artifact: async () => {
+        throw new Error("artifact should not be read when blocked");
+      },
+    }));
+
+    await expect(service.handle(peer({ scopes: ["files.read"] }), {
+      protocolVersion: 1,
+      type: "web.proxy",
+      payload: { method: "GET", path: "/api/artifacts/file", query: { turnId: "turn-secret", path: ".env" } },
+    })).rejects.toThrow(/safe-file policy/);
+  });
 });
 
 function peer(patch: Partial<PeerRecord> = {}): PeerRecord {

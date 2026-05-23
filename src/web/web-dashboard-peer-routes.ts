@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { isPermission, type Permission } from "../access/access-control.js";
+import { isPermission, permissionForWebRequest, type Permission } from "../access/access-control.js";
 import { AGENT_IDS, isAgentId, type AgentId } from "../agents/shared/agent.js";
 import type { AuditEvent } from "../access/audit-log.js";
 import type { AuthenticatedUser, UserStore } from "../access/user-management.js";
@@ -346,6 +346,7 @@ export async function handleDashboardPeerRoute(
     const client = new RemoteRelayClient(store, options.home);
     const peerId = decodeURIComponent(proxyMatch[1]);
     assertPeerAccess(options, peerId);
+    assertPeerProxyTargetPermission(options, payload);
     const data = await client.webProxy(
       peerId,
       payload,
@@ -557,6 +558,22 @@ function assertPeerAccess(options: Pick<DashboardPeerRouteOptions, "users" | "au
   if (!canUsePeer(options, peerId)) {
     throw new WebAccessDeniedError(`Access denied: peer ${peerId} is outside your group scope.`);
   }
+}
+
+export function assertPeerProxyTargetPermission(
+  options: Pick<DashboardPeerRouteOptions, "users" | "authUser">,
+  payload: Pick<PeerWebProxyPayload, "method" | "path">,
+): Permission {
+  const method = payload.method.trim().toUpperCase();
+  const routePath = payload.path.trim();
+  const permission = permissionForWebRequest(method, routePath);
+  if (!permission) {
+    throw new WebAccessDeniedError(`Access denied: peer proxy target ${method} ${routePath} is not an allowed WebUI route.`);
+  }
+  if (!options.users.hasPermission(options.authUser, permission)) {
+    throw new WebAccessDeniedError(`Access denied: ${permission} permission required for proxied ${method} ${routePath}.`);
+  }
+  return permission;
 }
 
 function visiblePeerIds(options: Pick<DashboardPeerRouteOptions, "users" | "authUser">, store = new PeerStore()): string[] {

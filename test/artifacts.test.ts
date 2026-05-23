@@ -253,8 +253,52 @@ describe("collectArtifacts", () => {
   });
 
   it("rejects unsafe artifact turn ids", async () => {
+    const turnsDir = path.join(testDir, ".nordrelay", "turns");
+    const sentinel = path.join(testDir, ".nordrelay", "sentinel.txt");
+    mkdirSync(path.join(turnsDir, "turn-safe"), { recursive: true });
+    writeFileSync(sentinel, "keep");
+
     expect(await getArtifactTurnReport(testDir, "../bad")).toBeNull();
     expect(await removeArtifactTurn(testDir, "../bad")).toBe(false);
+    expect(await getArtifactTurnReport(testDir, ".")).toBeNull();
+    expect(await removeArtifactTurn(testDir, ".")).toBe(false);
+    expect(await getArtifactTurnReport(testDir, "..")).toBeNull();
+    expect(await removeArtifactTurn(testDir, "..")).toBe(false);
+    expect(existsSync(turnsDir)).toBe(true);
+    expect(existsSync(sentinel)).toBe(true);
+  });
+
+  it("blocks safe-file-policy protected artifact diffs", async () => {
+    const secretPath = path.join(testDir, ".env");
+    mkdirSync(testDir, { recursive: true });
+    writeFileSync(secretPath, "TOKEN=value\n");
+    await persistWorkspaceArtifactReport(testDir, "turn-secret", {
+      artifacts: [{
+        name: ".env",
+        relativePath: ".env",
+        localPath: secretPath,
+        sizeBytes: 12,
+      }],
+      skippedCount: 0,
+    });
+    const service = new RelayArtifactService({
+      artifactsEnabled: true,
+      maxFileSize: 20 * 1024 * 1024,
+      artifactMaxTotalBytes: 0,
+      artifactRetentionDays: 7,
+      artifactMaxTurnDirs: 30,
+      artifactMaxInboxDirs: 30,
+      artifactWarnPercent: 80,
+      artifactSafeFilePolicy: "block",
+      artifactIgnoreDirs: [],
+      artifactIgnoreGlobs: [],
+    } as ConnectorConfig);
+
+    await expect(service.diff(testDir, "turn-secret", ".env")).resolves.toEqual(expect.objectContaining({
+      kind: "unavailable",
+      safeStatus: "blocked",
+      detail: expect.stringContaining("Safe-file policy blocks"),
+    }));
   });
 
   it("prunes old turn and inbox directories", async () => {

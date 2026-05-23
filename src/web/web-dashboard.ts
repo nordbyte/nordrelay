@@ -47,6 +47,7 @@ import { applyAutostartSettings } from "../support/autostart.js";
 import { recordWebApiMetric } from "./web-performance.js";
 import { createCspNonce, isMutatingWebApiRequest, requiresWebCsrf } from "./web-dashboard-security.js";
 import { consumeRateLimit, resetRateLimit, type RateLimitBucket } from "./web-rate-limit.js";
+import { firstRunSetupTokenError } from "./web-first-run-setup-policy.js";
 
 interface DashboardOptions {
   host: string;
@@ -74,7 +75,6 @@ const peerDiscoveryJobs = new PeerDiscoveryJobManager(config, options.home);
 const loginAttempts = new Map<string, RateLimitBucket>();
 const apiMutationAttempts = new Map<string, RateLimitBucket>();
 const firstRunSetupToken = users.hasAdminUser() ? undefined : randomBytes(18).toString("base64url");
-const firstRunSetupRequiresToken = !isLoopbackHost(options.host);
 const csrfSecret = randomBytes(32).toString("base64url");
 
 if (firstRunSetupToken) {
@@ -155,7 +155,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         sendText(
           res,
           200,
-          renderFirstRunSetupPage({ tokenRequired: firstRunSetupRequiresToken || !isLoopbackRequest(req), cspNonce }),
+          renderFirstRunSetupPage({ tokenRequired: true, cspNonce }),
           "text/html; charset=utf-8",
           { cspNonce },
         );
@@ -521,19 +521,16 @@ async function handleFirstRunSetup(req: IncomingMessage, res: ServerResponse): P
   const displayName = optionalStringField(body, "displayName") ?? email;
   const password = optionalStringField(body, "password") ?? "";
   const setupToken = optionalStringField(body, "setupToken") ?? "";
-  if ((firstRunSetupRequiresToken || !isLoopbackRequest(req)) && setupToken !== firstRunSetupToken) {
+  const setupTokenError = firstRunSetupTokenError(setupToken, firstRunSetupToken);
+  if (setupTokenError) {
     audit({
       action: "auth_login_failed",
       status: "denied",
       channelId: "web",
       contextKey: "web",
-      description: `Rejected remote first-run setup for ${email || "unknown"}`,
+      description: `Rejected first-run setup for ${email || "unknown"}`,
     });
-    sendJson(res, 403, { error: "Setup token required." });
-    return;
-  }
-  if (setupToken && setupToken !== firstRunSetupToken) {
-    sendJson(res, 403, { error: "Invalid setup token." });
+    sendJson(res, 403, { error: setupTokenError });
     return;
   }
   if (!email || !password || password.length < 12) {
@@ -620,18 +617,6 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse): Promise<v
   });
   setSessionCookie(res, session.token, req);
   sendJson(res, 200, currentUserDto(authUser, undefined, session.token));
-}
-
-function isLoopbackRequest(req: IncomingMessage): boolean {
-  const address = req.socket.remoteAddress ?? "";
-  return address === "127.0.0.1" ||
-    address === "::1" ||
-    address === "::ffff:127.0.0.1" ||
-    address === "localhost";
-}
-
-function isLoopbackHost(host: string): boolean {
-  return host === "127.0.0.1" || host === "::1" || host === "localhost";
 }
 
 function handleLogout(req: IncomingMessage, res: ServerResponse): void {

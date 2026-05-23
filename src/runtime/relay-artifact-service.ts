@@ -113,12 +113,23 @@ export class RelayArtifactService {
     if (!artifact) {
       return null;
     }
+    const safe = safeAssessment(artifact.relativePath, this.config.artifactSafeFilePolicy);
+    if (safe.safeStatus === "blocked") {
+      return {
+        kind: "unavailable",
+        name: artifact.name,
+        relativePath,
+        detail: "Safe-file policy blocks diff preview for this artifact.",
+        ...safe,
+      };
+    }
     if (report?.source !== "workspace") {
       return {
         kind: "unavailable",
         name: artifact.name,
         relativePath,
         detail: "Diffs are available for workspace artifacts tracked by Git.",
+        ...safe,
       };
     }
     const diff = await gitDiff(workspace, relativePath);
@@ -128,6 +139,7 @@ export class RelayArtifactService {
         name: artifact.name,
         relativePath,
         detail: "No Git diff is available for this file.",
+        ...safe,
       };
     }
     const truncated = Buffer.byteLength(diff) > MAX_DIFF_PREVIEW_BYTES;
@@ -137,6 +149,7 @@ export class RelayArtifactService {
       relativePath,
       text: diff.slice(0, MAX_DIFF_PREVIEW_BYTES),
       truncated,
+      ...safe,
     };
   }
 

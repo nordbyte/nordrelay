@@ -693,8 +693,7 @@ describe("web dashboard browser-flow assets", () => {
 
     expect(source).toContain("firstRunSetupToken");
     expect(source).toContain("/api/setup/admin");
-    expect(source).toContain("isLoopbackRequest");
-    expect(source).toContain("isLoopbackHost");
+    expect(source).toContain("firstRunSetupTokenError");
     expect(pageSource).toContain("NordRelay Setup");
     expect(pageSource).toContain("setupToken");
   });

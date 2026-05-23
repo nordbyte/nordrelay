@@ -670,6 +670,10 @@ export class PeerRuntimeService {
       await this.assertCurrentSessionScope(peer, runtime);
       const turnId = requiredString(query.turnId, "turnId");
       const relativePath = requiredString(query.path, "path");
+      const preview = await runtime.artifactPreview(turnId, relativePath);
+      if (preview?.safeStatus === "blocked") {
+        throw new Error("Artifact blocked by safe-file policy.");
+      }
       const report = await runtime.artifact(turnId);
       const artifact = report?.artifacts.find((candidate) => candidate.relativePath === relativePath);
       if (!artifact) throw new Error("Artifact not found.");

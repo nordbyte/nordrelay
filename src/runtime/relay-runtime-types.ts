@@ -262,6 +262,8 @@ export interface ArtifactDiffDto {
   text?: string;
   truncated?: boolean;
   detail?: string;
+  safeStatus?: "ok" | "warn" | "blocked";
+  safeWarnings?: string[];
 }
 
 export interface WebDiagnosticsDto {

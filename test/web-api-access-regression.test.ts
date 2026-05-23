@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { ALL_PERMISSIONS, permissionForWebRequest, type Permission } from "../src/access/access-control.js";
+import type { AuthenticatedUser, UserStore } from "../src/access/user-management.js";
 import { WEB_API_ROUTE_DEFINITIONS, type WebHttpMethod } from "../src/web/web-api-contract.js";
+import { assertPeerProxyTargetPermission } from "../src/web/web-dashboard-peer-routes.js";
 
 describe("WebUI API access regressions", () => {
   it("denies every known route when the required permission is missing", () => {
@@ -36,6 +38,23 @@ describe("WebUI API access regressions", () => {
     expect(simulateDashboardGate("DELETE", "/api/prompt", ALL_PERMISSIONS)).toBe(403);
     expect(permissionForWebRequest("POST", "/api/workflow-triggers/sample-token/run")).toBeNull();
   });
+
+  it("requires the proxied target permission in addition to peers.connect", () => {
+    const user = fakeAuthUser(["peers.connect"]);
+    const users = {
+      hasPermission: (authUser: AuthenticatedUser | null | undefined, permission: Permission | null | undefined) =>
+        Boolean(authUser && permission && authUser.permissions.includes(permission)),
+    } as Pick<UserStore, "hasPermission">;
+
+    expect(() => assertPeerProxyTargetPermission({ users: users as UserStore, authUser: user }, {
+      method: "POST",
+      path: "/api/prompt",
+    })).toThrow(/prompt\.send/);
+    expect(assertPeerProxyTargetPermission({ users: users as UserStore, authUser: fakeAuthUser(["peers.connect", "prompt.send"]) }, {
+      method: "POST",
+      path: "/api/prompt",
+    })).toBe("prompt.send");
+  });
 });
 
 function samplePath(route: typeof WEB_API_ROUTE_DEFINITIONS[number]): string {
@@ -53,4 +72,21 @@ function simulateDashboardGate(method: WebHttpMethod, path: string, permissions:
 
 function without(permission: Permission): Permission[] {
   return ALL_PERMISSIONS.filter((candidate) => candidate !== permission);
+}
+
+function fakeAuthUser(permissions: Permission[]): AuthenticatedUser {
+  return {
+    user: {
+      id: "user-1",
+      email: "user@example.test",
+      displayName: "User",
+      passwordHash: "",
+      passwordSalt: "",
+      active: true,
+      createdAt: "2026-05-23T00:00:00.000Z",
+      updatedAt: "2026-05-23T00:00:00.000Z",
+    },
+    groups: [],
+    permissions,
+  };
 }
