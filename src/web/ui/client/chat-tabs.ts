@@ -60,6 +60,14 @@ function activeChatTab() {
   return ensureChatTabs().find(tab => tab.id === state.activeChatTabId) || null;
 }
 
+function writableActiveChatTab() {
+  let tab = activeChatTab();
+  if (!tab && state.snapshot?.session?.threadId) {
+    tab = syncCurrentSessionChatTab({ activate: true });
+  }
+  return tab;
+}
+
 function chatTabFromSession(session: WebuiSessionSnapshot | null | undefined, peerId = state.selectedPeer || 'local'): WebuiChatTab | null {
   const threadId = String(session?.threadId || '').trim();
   if (!threadId) return null;
@@ -134,10 +142,12 @@ function syncCurrentSessionChatTab(options: { activate?: boolean } = {}) {
 }
 
 function saveActiveChatTabDraft() {
-  const tab = activeChatTab();
   const input = document.getElementById('promptInput') as HTMLTextAreaElement | null;
+  const tab = writableActiveChatTab();
   if (!tab || !input) return;
-  tab.draft = input.value || '';
+  const draft = input.value || '';
+  if (tab.draft === draft) return;
+  tab.draft = draft;
   writeChatTabs();
 }
 
@@ -146,6 +156,19 @@ function restoreActiveChatTabDraft() {
   const input = document.getElementById('promptInput') as HTMLTextAreaElement | null;
   if (!input) return;
   input.value = tab?.draft || '';
+}
+
+function bindPromptDraftPersistence() {
+  const input = document.getElementById('promptInput') as HTMLTextAreaElement | null;
+  if (!input || input.dataset.draftPersistenceBound === 'true') return;
+  input.dataset.draftPersistenceBound = 'true';
+  input.addEventListener('input', saveActiveChatTabDraft);
+  input.addEventListener('change', saveActiveChatTabDraft);
+  window.addEventListener('pagehide', saveActiveChatTabDraft);
+  window.addEventListener('beforeunload', saveActiveChatTabDraft);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) saveActiveChatTabDraft();
+  });
 }
 
 function currentSnapshotMatchesChatTab(tab: WebuiChatTab) {
@@ -300,3 +323,5 @@ function bindChatTabs(root: ParentNode = document) {
     closeChatTab(button.dataset.chatTabClose || '');
   });
 }
+
+bindPromptDraftPersistence();

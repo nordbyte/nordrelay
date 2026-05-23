@@ -558,6 +558,27 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".message .chat-list-continuation");
   });
 
+  it("persists unsent WebUI chat drafts per chat tab", () => {
+    const js = dashboardJs();
+    const chatTabsSource = readFileSync("src/web/ui/client/chat-tabs.ts", "utf8");
+    const runtimeSource = readFileSync("src/web/ui/client/core/runtime.ts", "utf8");
+    const eventsSource = readFileSync("src/web/ui/client/events.ts", "utf8");
+
+    expect(chatTabsSource).toContain("draft: raw?.draft ? String(raw.draft) : ''");
+    expect(chatTabsSource).toContain("function bindPromptDraftPersistence");
+    expect(chatTabsSource).toContain("input.addEventListener('input', saveActiveChatTabDraft)");
+    expect(chatTabsSource).toContain("window.addEventListener('pagehide', saveActiveChatTabDraft)");
+    expect(chatTabsSource).toContain("window.addEventListener('beforeunload', saveActiveChatTabDraft)");
+    expect(chatTabsSource).toContain("if (document.hidden) saveActiveChatTabDraft()");
+    expect(chatTabsSource).toContain("input.value = tab?.draft || ''");
+    expect(chatTabsSource).toContain("bindPromptDraftPersistence();");
+    expect(runtimeSource).toContain("if(state.currentPage==='chat')saveActiveChatTabDraft()");
+    expect(eventsSource).toContain("input.dispatchEvent(new Event('input',{bubbles:true}))");
+    expect(js).toContain("nordrelayChatTabs");
+    expect(js).toContain("function saveActiveChatTabDraft");
+    expect(js).toContain("function restoreActiveChatTabDraft");
+  });
+
   it("uses a friendly dashboard API network failure message", () => {
     const js = dashboardJs();
 
