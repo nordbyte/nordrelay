@@ -71,6 +71,20 @@ function sessionAgentModelText(session){return [(session.agentLabel||session.age
 function metricThreadCopyHtml(thread){
   return thread?' <button type="button" class="copy-id metric-thread-copy" data-copy-value="'+attr(thread)+'" data-copy-label="Thread ID copied" title="Copy thread ID" aria-label="Copy thread ID"><span class="copy-icon" aria-hidden="true"></span></button>':'';
 }
+function updateSnapshotQueue(queue,paused){
+  if(!state.snapshot)return;
+  state.snapshot.queue=Array.isArray(queue)?queue:[];
+  state.snapshot.queuePaused=Boolean(paused);
+  if(state.currentPage==='chat')renderChatWorkspaceLine();
+}
+function currentChatQueueState(){
+  const queue=state.snapshot?.queue;
+  if(Array.isArray(queue))return{length:queue.length,paused:Boolean(state.snapshot?.queuePaused)};
+  const session=state.snapshot?.session||{};
+  const active=(state.activeSessions?.sessions||[]).find(item=>String(item.threadId||'')===String(session.threadId||'')&&(!session.agentId||!item.agentId||String(item.agentId)===String(session.agentId)));
+  const length=Number(active?.queueLength||0);
+  return{length:Number.isFinite(length)&&length>0?length:0,paused:Boolean(active?.queuePaused)};
+}
 function renderChatWorkspaceLine(){
   const line=document.getElementById('chatWorkspaceLine');
   if(!line)return;
@@ -83,8 +97,11 @@ function renderChatWorkspaceLine(){
   }
   const peer=state.selectedPeer&&state.selectedPeer!=='local'?headerTargetName(state.selectedPeer):'';
   const label=peer?'Workspace on '+peer:'Workspace';
+  const queue=currentChatQueueState();
+  const queueLabel=queue.length>0?queue.length+' in queue'+(queue.paused?' paused':''):'';
+  const meta=[label,queueLabel].filter(Boolean).join(' · ');
   line.hidden=false;
-  line.innerHTML='<span class="chat-workspace-label">'+esc(label)+'</span><button type="button" class="copy-id chat-workspace-path" data-copy-value="'+attr(workspace)+'" data-copy-label="Workspace path copied" title="'+attr(workspace)+'" aria-label="Copy workspace path">'+esc(shortMiddle(workspace,18,52))+'</button>';
+  line.innerHTML='<span class="chat-workspace-label">'+esc(meta)+'</span><button type="button" class="copy-id chat-workspace-path" data-copy-value="'+attr(workspace)+'" data-copy-label="Workspace path copied" title="'+attr(workspace)+'" aria-label="Copy workspace path">'+esc(shortMiddle(workspace,18,52))+'</button>';
   bindUiCopyButtons(line);
 }
 function launchPermissionsText(session){

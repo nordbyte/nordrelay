@@ -62,6 +62,8 @@ interface WebuiSessionSnapshot extends WebuiRecord {
 interface WebuiSnapshot extends WebuiRecord {
   session?: WebuiSessionSnapshot | null;
   workspaces?: string[];
+  queue?: WebuiRecord[];
+  queuePaused?: boolean;
 }
 
 interface WebuiAuth extends WebuiRecord {

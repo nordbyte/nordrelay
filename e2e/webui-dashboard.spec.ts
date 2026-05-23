@@ -22,6 +22,7 @@ interface MockDashboardState {
   mirrorMode: string;
   agentId: string;
   threadId: string;
+  queue: Array<{ id: string; description: string; createdAt: string; attempts: number; correlationId?: string }>;
 }
 
 const NAV_SECTION_BY_PAGE: Record<string, string> = {
@@ -254,6 +255,7 @@ test.describe("NordRelay WebUI", () => {
     await page.locator("#sendPromptBtn").click();
 
     await expect(page.locator("#messages")).toContainText("Queued prompt queue-web-1");
+    await expect(page.locator("#chatWorkspaceLine")).toContainText("Workspace · 1 in queue");
     const promptRequest = mock.requests.find((request) => request.path === "/api/prompt");
     const promptBody = promptRequest?.body as { text?: string; correlationId?: string } | undefined;
     expect(promptBody).toMatchObject({ text: "Run a browser smoke test", correlationId: expect.stringMatching(/^[a-f0-9]{12}$/) });
@@ -959,7 +961,7 @@ test.describe("NordRelay WebUI", () => {
 async function startMockDashboardServer(): Promise<MockServer> {
   const requests: MockServer["requests"] = [];
   const jobs: unknown[] = [];
-  const state: MockDashboardState = { mirrorMode: "status", agentId: "codex", threadId: "codex-thread-1" };
+  const state: MockDashboardState = { mirrorMode: "status", agentId: "codex", threadId: "codex-thread-1", queue: [] };
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (url.pathname === "/") return sendText(res, 200, renderDashboardApp(), "text/html; charset=utf-8");
@@ -997,8 +999,14 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[], s
   if (url.pathname === "/api/bootstrap") return bootstrap(session);
   if (url.pathname === "/api/chat/history") return method === "DELETE" ? { messages: [], removed: 1 } : { messages: chatMessages(state.threadId) };
   if (url.pathname === "/api/chat/mirror") return mirrorPreference(body, state);
-  if (url.pathname === "/api/queue") return { queue: [], paused: false };
-  if (url.pathname === "/api/prompt") return { queued: true, queueId: "queue-web-1", correlationId: (body as { correlationId?: string } | null)?.correlationId, files: [] };
+  if (url.pathname === "/api/queue") return queueResponse(method, body, state);
+  if (url.pathname === "/api/prompt") {
+    const correlationId = (body as { correlationId?: string } | null)?.correlationId;
+    if (!state.queue.some((item) => item.id === "queue-web-1")) {
+      state.queue.push({ id: "queue-web-1", description: "Run a browser smoke test", createdAt: now(), attempts: 0, correlationId });
+    }
+    return { queued: true, queueId: "queue-web-1", correlationId, files: [] };
+  }
   if (url.pathname === "/api/settings") return method === "PATCH" ? settingsPatchResponse(body) : settings();
   if (url.pathname === "/api/settings/wizard/test") return wizardTestResponse(body);
   if (url.pathname === "/api/profile") return method === "PATCH" ? profile(body as Record<string, unknown>) : profile();
@@ -1320,6 +1328,16 @@ function mirrorPreference(body: unknown, state: { mirrorMode: string }) {
       html: "",
     },
   };
+}
+
+function queueResponse(method: string, body: unknown, state: MockDashboardState) {
+  if (method === "POST") {
+    const record = body as { action?: string; id?: string } | null;
+    if ((record?.action === "cancel" || record?.action === "remove") && record.id) {
+      state.queue = state.queue.filter((item) => item.id !== record.id);
+    }
+  }
+  return { queue: state.queue, paused: false };
 }
 
 function sessions(url?: URL) {
