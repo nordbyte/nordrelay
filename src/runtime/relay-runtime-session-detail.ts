@@ -11,6 +11,7 @@ import {
 import { getExternalSnapshotForSession } from "../agents/shared/agent-activity.js";
 import { renderSessionUsageRows } from "../channels/shared/session-format.js";
 import { MAX_SESSION_NAME_LENGTH, sanitizeSessionName } from "../state/session-names.js";
+import { isExternalSnapshotSuppressedByManagedAbort } from "./relay-runtime-helpers.js";
 import type {
   WebActivityCategory,
   WebActivityActor,
@@ -26,9 +27,12 @@ export async function relayRuntimeSessionDetail(
   agentId?: AgentId,
 ): Promise<Record<string, unknown>> {
   const target = await sessionDetailTarget(runtime, threadId, agentId);
-  const snapshot = target.stub
+  const rawSnapshot = target.stub
     ? getExternalSnapshotForSession(target.stub, runtime.config, { maxEvents: 100 })
     : null;
+  const snapshot = isExternalSnapshotSuppressedByManagedAbort(rawSnapshot, runtime.activity({ limit: 50, threadId }))
+    ? null
+    : rawSnapshot;
   const messages = mergeSessionDetailMessages(
     runtime.chatStore.list(threadId, 100),
     externalSnapshotMessages(snapshot, threadId),

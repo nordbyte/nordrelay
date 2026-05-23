@@ -26,6 +26,7 @@ import {
   type WebChatMessage,
   type WebChatStore,
 } from "../web/web-state.js";
+import { isExternalSnapshotSuppressedByManagedAbort } from "./relay-runtime-helpers.js";
 
 const CLI_ACTIVITY_ACTOR: WebActivityActor = {
   channel: "cli",
@@ -41,6 +42,7 @@ export interface RelayExternalActivityMonitorOptions {
   mirrorMinUpdateMs: () => number;
   chatStore: WebChatStore;
   chatHistory: () => Promise<WebChatMessage[]>;
+  activity: (threadId: string) => WebActivityEvent[];
   persistWorkspaceArtifactsForTurn: (workspace: string, turnId: string, startedAt: Date, provenance?: ArtifactProvenance) => Promise<void>;
   drainQueue: () => Promise<void>;
   appendActivity: (input: Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }) => WebActivityEvent;
@@ -296,6 +298,9 @@ export class RelayExternalActivityMonitor {
 
   private async shouldIgnoreExternalTurn(snapshot: AgentExternalSnapshot): Promise<boolean> {
     if (this.ignoredTurns.has(externalTurnKey(snapshot))) {
+      return true;
+    }
+    if (isExternalSnapshotSuppressedByManagedAbort(snapshot, this.options.activity(snapshot.threadId))) {
       return true;
     }
     const startedAtMs = snapshot.activity.startedAt?.getTime();

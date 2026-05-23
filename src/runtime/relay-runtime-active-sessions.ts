@@ -49,6 +49,7 @@ import {
   dedupeJobs,
   hostLoginCommand,
   hostLogoutCommand,
+  isExternalSnapshotSuppressedByManagedAbort,
   isPromptTerminalActivity,
   normalizeMimeType,
   promptActivityToUnifiedJob,
@@ -347,6 +348,9 @@ export function relayRuntimeExternalActiveSession(runtime: RelayRuntimeDelegate,
       maxEvents: 8,
     });
     if (!snapshot?.activity.active) {
+      return null;
+    }
+    if (isExternalSnapshotSuppressedByManagedAbort(snapshot, runtime.activityStore.list({ threadId: snapshot.threadId, limit: 50 }))) {
       return null;
     }
 

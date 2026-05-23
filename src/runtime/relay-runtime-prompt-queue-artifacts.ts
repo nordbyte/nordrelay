@@ -51,6 +51,7 @@ import {
   dedupeJobs,
   hostLoginCommand,
   hostLogoutCommand,
+  isExternalSnapshotSuppressedByManagedAbort,
   isPromptTerminalActivity,
   normalizeMimeType,
   promptActivityToUnifiedJob,
@@ -292,7 +293,8 @@ export async function relayRuntimeSendEnvelope(runtime: RelayRuntimeDelegate, en
     const correlated = ensurePromptCorrelationId({ ...envelope, activityActor });
     const session = await runtime.getSession(false);
     const external = getExternalSnapshotForSession(session, runtime.config, { maxEvents: 0 });
-    if (session.isProcessing() || external?.activity.active) {
+    const externalBusy = Boolean(external?.activity.active && !isExternalSnapshotSuppressedByManagedAbort(external, runtime.activityStore.list({ threadId: external.threadId, limit: 50 })));
+    if (session.isProcessing() || externalBusy) {
       const queued = runtime.queueService.enqueue(correlated);
       const info = runtime.publicInfo(session);
       runtime.appendActivity({
@@ -305,7 +307,7 @@ export async function relayRuntimeSendEnvelope(runtime: RelayRuntimeDelegate, en
         actor: activityActor,
         correlationId: correlated.correlationId,
         prompt: correlated.description,
-        detail: external?.activity.active
+        detail: externalBusy && external
           ? `Queued because ${external.agentLabel} CLI is still processing another task.`
           : `Queued at position ${runtime.queueService.length()}.`,
       });
@@ -321,7 +323,7 @@ export async function relayRuntimeSendEnvelope(runtime: RelayRuntimeDelegate, en
         correlationId: correlated.correlationId,
         description: correlated.description,
       });
-      if (external?.activity.active) {
+      if (externalBusy && external) {
         runtime.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${runtime.queueService.length()} queued.`, "info");
       }
       runtime.broadcastQueue();
@@ -505,7 +507,7 @@ export async function relayRuntimeDrainQueue(runtime: RelayRuntimeDelegate): Pro
       const session = await runtime.getSession(false);
       while (!session.isProcessing()) {
         const external = getExternalSnapshotForSession(session, runtime.config, { maxEvents: 0 });
-        if (external?.activity.active) {
+        if (external?.activity.active && !isExternalSnapshotSuppressedByManagedAbort(external, runtime.activityStore.list({ threadId: external.threadId, limit: 50 }))) {
           runtime.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${runtime.queueService.length()} queued.`, "info");
           return;
         }

@@ -2,6 +2,7 @@ import type { AgentSessionInfo } from "../agents/shared/agent.js";
 import { getExternalSnapshotForSession } from "../agents/shared/agent-activity.js";
 import type { WebActivityActor } from "../web/web-state.js";
 import type { RelayRuntimeDelegate } from "./relay-runtime-delegate.js";
+import { isExternalSnapshotSuppressedByManagedAbort } from "./relay-runtime-helpers.js";
 import type {
   SessionWorktreeDiffSnapshot,
   SessionWorktreeRecord,
@@ -152,7 +153,7 @@ export async function relayRuntimeForkCurrentSessionToWorktree(
   runtime.ensureIdle(session);
   const current = runtime.publicInfo(session);
   const external = getExternalSnapshotForSession(session, runtime.config, { maxEvents: 0 });
-  if (external?.activity.active) {
+  if (external?.activity.active && !isExternalSnapshotSuppressedByManagedAbort(external, runtime.activityStore.list({ threadId: external.threadId, limit: 50 }))) {
     throw new Error(`Cannot fork while the external ${external.agentLabel} CLI task is still running.`);
   }
   const fork = runtime.worktreeService.fork({

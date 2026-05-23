@@ -78,6 +78,7 @@ declare function card(title: string, rows?: WebuiRows, options?: UiCardOptions):
 declare function closeChatMoreMenu(): void;
 declare function closeCompactControlMenus(except?: Element | null): void;
 declare function clearStickyToast(): void;
+declare function clearCurrentChatWorkingState(): void;
 declare function connectEvents(): void;
 declare function copyText(value: string, label?: string): void;
 declare function cssEscape(value: string): string;

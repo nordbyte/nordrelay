@@ -51,6 +51,7 @@ import {
   dedupeJobs,
   hostLoginCommand,
   hostLogoutCommand,
+  isExternalSnapshotSuppressedByManagedAbort,
   isPromptTerminalActivity,
   normalizeMimeType,
   promptActivityToUnifiedJob,
@@ -795,7 +796,11 @@ export async function relayRuntimeSetLaunchProfile(
     }
     if (options.applyToCurrent) {
       const external = getExternalSnapshotForSession(session, runtime.config, { maxEvents: 0 });
-      if (external?.activity.active && !session.isProcessing()) {
+      if (
+        external?.activity.active &&
+        !session.isProcessing() &&
+        !isExternalSnapshotSuppressedByManagedAbort(external, runtime.activityStore.list({ threadId: external.threadId, limit: 50 }))
+      ) {
         throw new Error(`Cannot apply launch profile while the external ${external.agentLabel} CLI task is still running.`);
       }
     }
@@ -831,6 +836,12 @@ export async function relayRuntimeAbort(runtime: RelayRuntimeDelegate, actor?: W
     const session = await runtime.getSession(true);
     const snapshot = getExternalSnapshotForSession(session, runtime.config, { maxEvents: 0 });
     if (snapshot?.activity.active && !session.isProcessing()) {
+      if (isExternalSnapshotSuppressedByManagedAbort(snapshot, runtime.activityStore.list({ threadId: snapshot.threadId, limit: 50 }))) {
+        runtime.broadcast({ type: "status", level: "info", message: "Abort already sent.", at: new Date().toISOString() });
+        runtime.scheduleActiveSessionsBroadcast();
+        await runtime.drainQueue();
+        return;
+      }
       runtime.broadcast({
         type: "status",
         level: "warn",
@@ -845,6 +856,8 @@ export async function relayRuntimeAbort(runtime: RelayRuntimeDelegate, actor?: W
     const info = runtime.publicInfo(session);
     runtime.appendActivity({ source: "web", status: "aborted", type: "prompt_aborted", threadId: info.threadId, workspace: info.workspace, agentId: info.agentId, actor, detail: "Current operation aborted." });
     runtime.broadcast({ type: "status", level: "warn", message: "Current operation aborted.", at: new Date().toISOString() });
+    runtime.scheduleActiveSessionsBroadcast();
+    await runtime.drainQueue();
   }
 
 export async function relayRuntimeGetControlSession(runtime: RelayRuntimeDelegate, agentId?: AgentId): Promise<{ session: AgentSessionService; dispose: boolean }> {

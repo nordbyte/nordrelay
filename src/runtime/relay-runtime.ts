@@ -22,7 +22,6 @@ import {
   type AgentSessionService,
   type AgentThreadRecord,
 } from "../agents/shared/agent.js";
-import { getExternalSnapshotForSession } from "../agents/shared/agent-activity.js";
 import { respondToExternalApproval, type AgentExternalApprovalResult } from "../agents/shared/agent-approval.js";
 import { listAgentAdapterDescriptors } from "../agents/shared/agent-adapter.js";
 import { AgentUpdateManager, type AgentUpdateJobSnapshot, type AgentUpdateOperation } from "../agents/shared/agent-updates.js";
@@ -59,6 +58,7 @@ import {
   dedupeJobs,
   hostLoginCommand,
   hostLogoutCommand,
+  isSessionBusyWithExternalSnapshot,
   isPromptTerminalActivity,
   normalizeMimeType,
   promptActivityToUnifiedJob,
@@ -368,6 +368,7 @@ export class RelayRuntime {
       mirrorMinUpdateMs: () => this.config.webMirrorMinUpdateMs,
       chatStore: this.chatStore,
       chatHistory: () => this.chatHistory(),
+      activity: (threadId) => this.activityStore.list({ threadId, limit: 50 }),
       persistWorkspaceArtifactsForTurn: (workspace, turnId, startedAt, provenance) =>
         this.artifactService.persistWorkspaceArtifactsForTurn(workspace, turnId, startedAt, provenance),
       drainQueue: () => this.drainQueue(),
@@ -450,7 +451,7 @@ export class RelayRuntime {
         actor,
         sourceContextKey: this.contextKey,
       }),
-      isSessionBusy: (session) => session.isProcessing() || Boolean(getExternalSnapshotForSession(session, this.config, { maxEvents: 0 })?.activity.active),
+      isSessionBusy: (session) => isSessionBusyWithExternalSnapshot(session, this.config, (threadId) => this.activityStore.list({ threadId, limit: 50 })),
       abort: (actor) => this.abort(actor),
       appendActivity: (input) => this.appendActivity(input),
       appendAudit: (input) => this.appendAudit(input),
@@ -837,7 +838,6 @@ export class RelayRuntime {
 
   publicInfo(session: AgentSessionService, options?: AgentSessionInfoOptions): AgentSessionInfo { return relayRuntimePublicInfo(this, session, options); }
 }
-
 function externalApprovalChoiceDisplay(choice: AgentApprovalChoice): string {
   if (choice === "persist") {
     return "Selected: Proceed and remember";

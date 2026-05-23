@@ -1,6 +1,7 @@
 import path from "node:path";
 
-import type { AgentId, AgentSessionInfo } from "../agents/shared/agent.js";
+import type { AgentExternalSnapshot, AgentId, AgentSessionInfo, AgentSessionService } from "../agents/shared/agent.js";
+import { getExternalSnapshotForSession } from "../agents/shared/agent-activity.js";
 import type { AgentUpdateJobSnapshot } from "../agents/shared/agent-updates.js";
 import type { StagedFile } from "../artifacts/attachments.js";
 import type { ConnectorConfig } from "../core/config.js";
@@ -100,6 +101,44 @@ export function isPromptTerminalActivity(event: WebActivityEvent): boolean {
     event.type === "prompt_completed" ||
     event.type === "prompt_failed" ||
     event.type === "prompt_aborted";
+}
+
+export function isExternalSnapshotSuppressedByManagedAbort(
+  snapshot: AgentExternalSnapshot | null | undefined,
+  events: WebActivityEvent[],
+): boolean {
+  if (!snapshot?.activity.active || !snapshot.threadId) {
+    return false;
+  }
+  const startedAtMs = snapshot.activity.startedAt?.getTime();
+  if (typeof startedAtMs !== "number" || !Number.isFinite(startedAtMs)) {
+    return false;
+  }
+  return events.some((event) => {
+    if (event.type !== "prompt_aborted" || event.status !== "aborted") {
+      return false;
+    }
+    if (event.source === "cli" || event.threadId !== snapshot.threadId) {
+      return false;
+    }
+    if (event.agentId && event.agentId !== snapshot.agentId) {
+      return false;
+    }
+    const eventAtMs = Date.parse(event.timestamp);
+    return Number.isFinite(eventAtMs) && eventAtMs >= startedAtMs - 5_000;
+  });
+}
+
+export function isSessionBusyWithExternalSnapshot(
+  session: AgentSessionService,
+  config: ConnectorConfig,
+  activityForThread: (threadId: string) => WebActivityEvent[],
+): boolean {
+  if (session.isProcessing()) {
+    return true;
+  }
+  const external = getExternalSnapshotForSession(session, config, { maxEvents: 0 });
+  return Boolean(external?.activity.active && !isExternalSnapshotSuppressedByManagedAbort(external, activityForThread(external.threadId)));
 }
 
 export function taskToUnifiedJob(
