@@ -221,14 +221,18 @@
 .access-audit-table th:nth-child(5),.access-audit-table td:nth-child(5){width:16%}
 .access-audit-table th:nth-child(6),.access-audit-table td:nth-child(6){width:19%}
 .access-audit-table th:nth-child(7),.access-audit-table td:nth-child(7){width:18%}
-.templates-table{--table-min-width:1180px}
+.templates-table{--table-min-width:1080px}
 .templates-table th:nth-child(1),.templates-table td:nth-child(1){width:9%;white-space:nowrap}
-.templates-table th:nth-child(2),.templates-table td:nth-child(2){width:19%}
+.templates-table th:nth-child(2),.templates-table td:nth-child(2){width:21%}
 .templates-table th:nth-child(3),.templates-table td:nth-child(3){width:8%}
-.templates-table th:nth-child(4),.templates-table td:nth-child(4){width:14%}
+.templates-table th:nth-child(4),.templates-table td:nth-child(4){width:13%}
 .templates-table th:nth-child(5),.templates-table td:nth-child(5){width:9%;white-space:nowrap}
-.templates-table th:nth-child(6),.templates-table td:nth-child(6){width:24%}
-.templates-table th:nth-child(7),.templates-table td:nth-child(7){width:250px}
+.templates-table th:nth-child(6),.templates-table td:nth-child(6){width:26%}
+.templates-table th:nth-child(7),.templates-table td:nth-child(7){width:140px}
+.workflows-table{--table-min-width:1180px}
+.workflows-table th:nth-child(8),.workflows-table td:nth-child(8){width:140px}
+.workflow-row-actions{justify-content:flex-end}
+.workflow-action-menu .table-action-menu-list{min-width:154px}
 .adapters-table{--table-min-width:1120px}
 .adapters-table th:nth-child(1),.adapters-table td:nth-child(1){width:13%}
 .adapters-table th:nth-child(2),.adapters-table td:nth-child(2){width:9%;white-space:nowrap}
