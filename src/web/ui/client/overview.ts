@@ -247,6 +247,7 @@ function renderActiveSessions(items){
   state.activeSessions={sessions:items||[],updatedAt:new Date().toISOString()};
   updateActiveSessionsCount(items||[]);
   renderChatWorkingIndicator();
+  if(state.currentPage==='chat')renderSessionControls();
   renderChatTabs();
   const box=document.getElementById('activeSessions');
   if(!box)return;
@@ -289,6 +290,7 @@ function activeSourceLabel(source){
 }
 function renderSessionControls(){
   const c=state.controls||{};const s=state.snapshot?.session||{};const caps=c.capabilities||{};
+  const lockedTitle=chatSessionControlLockTitle();
   const modelItems=[{value:'',label:'Default'}].concat((c.models||[]).map(m=>({value:m.slug,label:modelLabel(m)})));
   const selectedModel=modelItems.find(item=>item.value===s.model)||(s.model?{value:s.model,label:s.model}:modelItems[0]);
   const reasoningItems=(c.reasoningOptions||[]).map(v=>({value:v,label:v}));
@@ -300,18 +302,20 @@ function renderSessionControls(){
   const selectedLaunchItem=launchItems.find(item=>item.value===selectedLaunch)||launchItems[0];
   const mirrorItems=[{value:'off',label:'off'},{value:'status',label:'status'},{value:'final',label:'final'},{value:'full',label:'full'}];
   const selectedMirror=state.webMirror?.mode||'off';
+  const applyLaunchAttrs=stateDisabledAttr(lockedTitle)||(' title="Apply selected launch profile to the current idle session"'+disabledAttr('settings.write'));
   document.getElementById('sessionControls').innerHTML=[
-    caps.modelSelection?compactControlMenu('controlModel','Model',selectedModel?.value||'',selectedModel?.label||'Default',modelItems):'',
-    caps.reasoningSelection?compactControlMenu('controlReasoning',c.reasoningLabel||'Reasoning',selectedReasoning?.value||'',selectedReasoning?.label||'Default',reasoningItems):'',
-    caps.fastMode?compactControlMenu('controlFast','Fast mode',selectedFast,selectedFast,fastItems):'',
-    caps.launchProfiles?compactControlMenu('controlLaunch','Launch',selectedLaunchItem?.value||'',selectedLaunchItem?.label||'Default',launchItems):'',
+    caps.modelSelection?compactControlMenu('controlModel','Model',selectedModel?.value||'',selectedModel?.label||'Default',modelItems,'settings.write',lockedTitle):'',
+    caps.reasoningSelection?compactControlMenu('controlReasoning',c.reasoningLabel||'Reasoning',selectedReasoning?.value||'',selectedReasoning?.label||'Default',reasoningItems,'settings.write',lockedTitle):'',
+    caps.fastMode?compactControlMenu('controlFast','Fast mode',selectedFast,selectedFast,fastItems,'settings.write',lockedTitle):'',
+    caps.launchProfiles?compactControlMenu('controlLaunch','Launch',selectedLaunchItem?.value||'',selectedLaunchItem?.label||'Default',launchItems,'settings.write',lockedTitle):'',
     compactControlMenu('controlMirror','Mirror',selectedMirror,selectedMirror,mirrorItems),
-    caps.launchProfiles?'<button id="applyLaunchBtn" class="secondary compact-apply-button" title="Apply selected launch profile to the current idle session"'+disabledAttr('settings.write')+'>Apply</button>':''
+    caps.launchProfiles?'<button id="applyLaunchBtn" class="secondary compact-apply-button"'+applyLaunchAttrs+'>Apply</button>':''
   ].join('');
   bindCompactControlMenus();
   renderChatWorkspaceLine();
   const applyLaunch=document.getElementById('applyLaunchBtn'); if(applyLaunch) applyLaunch.onclick=()=>safe(async()=>{const profileId=selectedCompactControlValue('controlLaunch');const profile=launchProfileForSelection(c,state.snapshot?.session||{},profileId);if(!profile){toast('Select a configured launch profile first');return}if(!confirmUnsafeLaunchProfile(profile,true))return;await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId,apply:true,confirmUnsafe:Boolean(profile.unsafe)})});toast('Launch profile applied to current session');loadBootstrap()});
 }
+function chatSessionControlLockTitle(){return currentChatWorkingSession()?'Wait until the current session finishes before changing model, reasoning, fast mode, or launch.':''}
 function activeLaunchProfileId(session,controls=state.controls||{}){
   const profiles=controls.launchProfiles||[];
   const currentId=session.launchProfileId||'';
@@ -361,9 +365,10 @@ function confirmUnsafeLaunchProfile(profile,apply){
   if(!profile?.unsafe)return true;
   return confirm((apply?'Apply':'Set')+' unsafe launch profile "'+(profile.label||profile.id)+'"?\n\nBehavior: '+(profile.behavior||'-')+'\n\nUse this only in a trusted workspace.');
 }
-function compactControlMenu(id,label,value,display,items,permission='settings.write'){
+function stateDisabledAttr(title){return title?' data-state-disabled="true" data-state-disabled-title="'+attr(title)+'" disabled title="'+attr(title)+'"':''}
+function compactControlMenu(id,label,value,display,items,permission='settings.write',stateDisabledTitle=''){
   const options=(items||[]).map(item=>'<button type="button" role="option" data-control-option="'+attr(id)+'" data-control-value="'+attr(item.value)+'" aria-selected="'+(item.value===value?'true':'false')+'">'+esc(item.label)+'</button>').join('');
-  return '<div class="compact-control" data-control-menu="'+attr(id)+'">'+(label?'<span class="compact-control-label">'+esc(label)+'</span>':'')+'<button type="button" id="'+attr(id)+'" class="control-menu-button" data-control-value="'+attr(value)+'" aria-haspopup="listbox" aria-expanded="false"'+(permission?disabledAttr(permission):'')+'>'+esc(display||'Default')+'</button><div class="control-menu-list" role="listbox" hidden>'+options+'</div></div>';
+  return '<div class="compact-control" data-control-menu="'+attr(id)+'">'+(label?'<span class="compact-control-label">'+esc(label)+'</span>':'')+'<button type="button" id="'+attr(id)+'" class="control-menu-button" data-control-value="'+attr(value)+'" aria-haspopup="listbox" aria-expanded="false"'+(stateDisabledAttr(stateDisabledTitle)||(permission?disabledAttr(permission):''))+'>'+esc(display||'Default')+'</button><div class="control-menu-list" role="listbox" hidden>'+options+'</div></div>';
 }
 function selectedCompactControlValue(id){return document.getElementById(id)?.dataset.controlValue||''}
 function closeCompactControlMenus(except=null){
@@ -385,6 +390,7 @@ function bindCompactControlMenus(){
     const id=option.dataset.controlOption;
     const button=document.getElementById(id);
     if(!button||button.disabled)return;
+    if(['controlModel','controlReasoning','controlFast','controlLaunch'].includes(id)&&currentChatWorkingSession()){toast('Wait until the current session finishes before changing this setting.');closeCompactControlMenus();return}
     const nextValue=option.dataset.controlValue||'';
     const previousValue=button.dataset.controlValue||'';
     const previousText=button.textContent||'Default';

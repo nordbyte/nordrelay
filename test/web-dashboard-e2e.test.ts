@@ -376,6 +376,11 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("await setMirrorPreference(nextValue||'off')");
     expect(js).toContain("body:{mode:argument}");
     expect(js).toContain("function bindCompactControlMenus");
+    expect(js).toContain("function chatSessionControlLockTitle");
+    expect(js).toContain("stateDisabledAttr(lockedTitle)");
+    expect(js).toContain("currentChatWorkingSession()?'Wait until the current session finishes");
+    expect(js).toContain("['controlModel','controlReasoning','controlFast','controlLaunch'].includes(id)&&currentChatWorkingSession()");
+    expect(js).toContain("renderChatWorkingIndicator();renderSessionControls();renderChatTabs()");
     expect(js).toContain("selectedCompactControlValue('controlLaunch')");
     expect(js).toContain(">Apply</button>");
     expect(js).not.toContain("Apply to Current");
