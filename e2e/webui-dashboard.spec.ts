@@ -18,6 +18,12 @@ interface MockServer {
   requests: Array<{ method: string; path: string; query: Record<string, string>; body: unknown }>;
 }
 
+interface MockDashboardState {
+  mirrorMode: string;
+  agentId: string;
+  threadId: string;
+}
+
 const NAV_SECTION_BY_PAGE: Record<string, string> = {
   Metrics: "operations",
   Adapters: "operations",
@@ -253,6 +259,29 @@ test.describe("NordRelay WebUI", () => {
     expect(promptBody).toMatchObject({ text: "Run a browser smoke test", correlationId: expect.stringMatching(/^[a-f0-9]{12}$/) });
     await expect(page.locator("#messages")).toContainText("CID:");
     await expect(page.locator(`#messages [data-trace-id="${promptBody?.correlationId}"]`)).toBeVisible();
+  });
+
+  test("keeps multiple chat tabs for opened sessions", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
+    await page.goto(mock.baseUrl);
+    await navigateDashboard(page, "Chat");
+    await expect(page.locator("#chatTabs")).toBeHidden();
+    await expect(page.locator("#messages")).toContainText("Existing web message");
+
+    await navigateDashboard(page, "Sessions");
+    await page.locator('[data-switch="codex-thread-2"]').click();
+    await navigateDashboard(page, "Chat");
+
+    await expect(page.locator("#chatTabs")).toBeVisible();
+    await expect(page.locator("#chatTabs .chat-tab")).toHaveCount(2);
+    await expect(page.locator("#chatTabs .chat-tab-spinner")).toHaveCount(1);
+    await expect(page.locator("#messages")).toContainText("Existing web message 2");
+
+    await page.locator("#chatTabs .chat-tab").filter({ hasText: "codex-thread-1" }).locator(".chat-tab-main").click();
+    await expect(page.locator("#messages")).toContainText("Existing web message");
+
+    await page.locator("#chatTabs .chat-tab").filter({ hasText: "Existing session 2" }).locator(".chat-tab-close").click();
+    await expect(page.locator("#chatTabs")).toBeHidden();
   });
 
   test("opens the account menu, updates profile preferences, and changes password", async ({ page }) => {
@@ -913,7 +942,7 @@ test.describe("NordRelay WebUI", () => {
 async function startMockDashboardServer(): Promise<MockServer> {
   const requests: MockServer["requests"] = [];
   const jobs: unknown[] = [];
-  const state = { mirrorMode: "status" };
+  const state: MockDashboardState = { mirrorMode: "status", agentId: "codex", threadId: "codex-thread-1" };
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (url.pathname === "/") return sendText(res, 200, renderDashboardApp(), "text/html; charset=utf-8");
@@ -945,10 +974,11 @@ async function startMockDashboardServer(): Promise<MockServer> {
   };
 }
 
-function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[], state: { mirrorMode: string }): unknown {
-  const session = sessionInfo((body as { agentId?: string } | null)?.agentId || "codex");
+function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[], state: MockDashboardState): unknown {
+  const bodyRecord = body as { agentId?: string; threadId?: string } | null;
+  const session = sessionInfo(state.agentId, state.threadId);
   if (url.pathname === "/api/bootstrap") return bootstrap(session);
-  if (url.pathname === "/api/chat/history") return method === "DELETE" ? { messages: [], removed: 1 } : { messages: chatMessages() };
+  if (url.pathname === "/api/chat/history") return method === "DELETE" ? { messages: [], removed: 1 } : { messages: chatMessages(state.threadId) };
   if (url.pathname === "/api/chat/mirror") return mirrorPreference(body, state);
   if (url.pathname === "/api/queue") return { queue: [], paused: false };
   if (url.pathname === "/api/prompt") return { queued: true, queueId: "queue-web-1", correlationId: (body as { correlationId?: string } | null)?.correlationId, files: [] };
@@ -995,9 +1025,22 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[], s
   if (url.pathname.match(/^\/api\/jobs\/[^/]+\/action$/)) return jobsList();
   if (url.pathname === "/api/trace") return traceDetail(url.searchParams.get("correlationId") || "cid-job-1");
   if (url.pathname === "/api/sessions") return sessions(url);
+  if (url.pathname === "/api/sessions/switch" || url.pathname === "/api/sessions/attach") {
+    if (bodyRecord?.threadId) {
+      state.threadId = bodyRecord.threadId;
+      state.agentId = bodyRecord.threadId.startsWith("pi-") ? "pi" : "codex";
+    }
+    return { session: sessionInfo(state.agentId, state.threadId) };
+  }
   if (url.pathname === "/api/sessions/detail") return sessionDetail();
   if (url.pathname === "/api/control-options") return controls(url.searchParams.get("agent") || "codex");
-  if (url.pathname === "/api/agent") return { session };
+  if (url.pathname === "/api/agent") {
+    if (bodyRecord?.agentId) {
+      state.agentId = bodyRecord.agentId;
+      state.threadId = bodyRecord.agentId === "pi" ? "pi-thread-1" : "codex-thread-1";
+    }
+    return { session: sessionInfo(state.agentId, state.threadId) };
+  }
   if (url.pathname === "/api/activity") return { events: [] };
   if (url.pathname === "/api/artifacts") return artifacts();
   if (url.pathname === "/api/artifacts/preview") return artifactPreview(url.searchParams.get("path") || "report.txt");
@@ -1005,7 +1048,7 @@ function apiResponse(url: URL, method: string, body: unknown, jobs: unknown[], s
   if (url.pathname === "/api/artifacts/zip") return { name: "turn-web-1.zip", mimeType: "application/zip", dataBase64: Buffer.from("zip").toString("base64") };
   if (url.pathname === "/api/logs") return logs(url);
   if (url.pathname === "/api/logs/clear") return { filePath: "/tmp/nordrelay.log", clearedAt: new Date().toISOString() };
-  if (url.pathname === "/api/diagnostics") return { health: health(), versionChecks: version().versionChecks, snapshot: bootstrap(session).status.snapshot, runtime: { stateBackend: "json", sourceWorkspace: "/tmp/project", queuePaused: false, externalMirror: null, agentDiagnostics: { lines: [] } } };
+  if (url.pathname === "/api/diagnostics") return { health: health(), versionChecks: version().versionChecks, snapshot: bootstrap(sessionInfo(state.agentId, state.threadId)).status.snapshot, runtime: { stateBackend: "json", sourceWorkspace: "/tmp/project", queuePaused: false, externalMirror: null, agentDiagnostics: { lines: [] } } };
   if (url.pathname === "/api/users") return users();
   if (url.pathname === "/api/locks") return { locks: [{ contextKey: "web:codex-thread-1", ownerLabel: "Admin", ownerUserId: "user-1", ownerChannel: "web", ownerChannelUserId: "admin@example.com", expiresAt: "2099-05-14T10:20:00.000Z" }] };
   if (url.pathname === "/api/audit") return { events: [{ id: "audit-1", timestamp: now(), channelId: "web", status: "ok", category: "auth", action: "login", actor: { label: "Admin", channel: "web", channelUserId: "admin@example.com" }, contextKey: "web", agentId: "codex", threadId: "codex-thread-1", workspace: "/tmp/project", description: "Admin login" }] };
@@ -1096,12 +1139,12 @@ function metrics() {
   };
 }
 
-function sessionInfo(agentId = "codex") {
+function sessionInfo(agentId = "codex", threadId?: string) {
   const pi = agentId === "pi";
   return {
     agentId,
     agentLabel: pi ? "Pi" : "Codex",
-    threadId: pi ? "pi-thread-1" : "codex-thread-1",
+    threadId: threadId || (pi ? "pi-thread-1" : "codex-thread-1"),
     workspace: "/tmp/project",
     cwd: "/tmp/project",
     model: pi ? "pi-default" : "gpt-5.5",
@@ -1230,11 +1273,13 @@ function workflowRun(name: string, status = "queued") {
   };
 }
 
-function chatMessages() {
+function chatMessages(threadId = "codex-thread-1") {
+  const suffix = threadId.match(/-(\d+)$/)?.[1];
+  const label = suffix && suffix !== "1" ? ` ${suffix}` : "";
   return [
-    { id: "m1", threadId: "codex-thread-1", role: "user", text: "Existing web message", timestamp: now(), source: "web" },
-    { id: "m2", threadId: "codex-thread-1", role: "agent", text: "Existing agent response", timestamp: now(), source: "web" },
-    { id: "m3", threadId: "codex-thread-1", role: "agent", text: "Run `npm test` with **bold** and _italic_ text plus [docs](https://example.com).\n```ts\nconst value = 1;\n```\n- bullet item\n> quoted line", timestamp: now(), source: "web" },
+    { id: "m1", threadId, role: "user", text: "Existing web message" + label, timestamp: now(), source: "web" },
+    { id: "m2", threadId, role: "agent", text: "Existing agent response" + label, timestamp: now(), source: "web" },
+    { id: "m3", threadId, role: "agent", text: "Run `npm test` with **bold** and _italic_ text plus [docs](https://example.com).\n```ts\nconst value = 1;\n```\n- bullet item\n> quoted line", timestamp: now(), source: "web" },
   ];
 }
 

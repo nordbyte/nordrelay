@@ -18,6 +18,8 @@ async function loadBootstrap(){
   void refreshRemoteHeaderTargets(local,data).catch(()=>renderHeaderTargetMenu(state.snapshot));
   safe(loadActiveSessions);
   renderSessionControls();
+  syncCurrentSessionChatTab({activate:state.currentPage==='chat'&&!state.activeChatTabId});
+  renderChatTabs();
   populateNewSessionForm(data.enabledAgents);
   renderAdapters(data.channels, data.agentAdapters);
   document.getElementById('footerVersion').textContent='NordRelay '+(data.status.health?.version || '');
@@ -133,6 +135,17 @@ function activeSessionsFetchTargets(){
   const peer=peers.find(item=>item.id===state.activeSessionsTarget);
   return peer?[{id:peer.id,label:peer.name||peer.url||peer.id,kind:'peer',peer}]:[{id:'local',label:'Local node',kind:'local'}];
 }
+function activeSessionsTargetForPeerId(peerId){
+  if(!peerId||peerId==='local')return{id:'local',label:'Local node',kind:'local'};
+  const peer=activeSessionsPeerOptions().find(item=>item.id===peerId);
+  return{id:peerId,label:peer?.name||peer?.url||headerTargetName(peerId),kind:'peer',peer};
+}
+function chatTabActiveSessionsFetchTargets(){
+  const peerIds=new Set<string>();
+  ensureChatTabs().forEach(tab=>peerIds.add(tab.peerId||'local'));
+  peerIds.add(state.selectedPeer||'local');
+  return Array.from(peerIds).map(activeSessionsTargetForPeerId);
+}
 function decorateActiveSessions(sessions,target){return (sessions||[]).map(session=>({...session,nodeId:target.id,nodeName:target.label,peerId:target.kind==='peer'?target.id:'local'}))}
 async function fetchActiveSessionsFromTarget(target){
   if(target.kind==='peer'){
@@ -155,6 +168,11 @@ async function loadActiveSessionsForSelectedTarget(){
   const results=await Promise.all(targets.map(target=>fetchActiveSessionsFromTarget(target).then(sessions=>({target,sessions,error:null})).catch(error=>({target,sessions:[],error}))));
   return {sessions:sortActiveSessions(results.flatMap(result=>result.sessions)),errors:results.filter(result=>result.error).map(result=>({target:result.target.label,error:String(result.error?.message||result.error)}))};
 }
+async function loadActiveSessionsForChatTabs(){
+  const targets=chatTabActiveSessionsFetchTargets();
+  const results=await Promise.all(targets.map(target=>fetchActiveSessionsFromTarget(target).then(sessions=>({target,sessions,error:null})).catch(error=>({target,sessions:[],error}))));
+  return {sessions:sortActiveSessions(results.flatMap(result=>result.sessions)),errors:results.filter(result=>result.error).map(result=>({target:result.target.label,error:String(result.error?.message||result.error)}))};
+}
 async function loadActiveSessions(){
   const box=document.getElementById('activeSessions');
   if(!box&&state.currentPage==='overview')return;
@@ -164,7 +182,7 @@ async function loadActiveSessions(){
   state.activeSessionsLoading=true;
   try{
     normalizeActiveSessionsTarget();
-    const data=await loadActiveSessionsForSelectedTarget();
+    const data=state.currentPage==='chat'&&ensureChatTabs().length>1?await loadActiveSessionsForChatTabs():await loadActiveSessionsForSelectedTarget();
     state.activeSessionsErrors=data.errors||[];
     renderActiveSessions(data.sessions||[]);
   }finally{
@@ -212,12 +230,13 @@ function renderActiveSessions(items){
   state.activeSessions={sessions:items||[],updatedAt:new Date().toISOString()};
   updateActiveSessionsCount(items||[]);
   renderChatWorkingIndicator();
+  renderChatTabs();
   const box=document.getElementById('activeSessions');
   if(!box)return;
   const errors=(state.activeSessionsErrors||[]).map(error=>'<div class="item active-session-error"><strong>'+esc(error.target||'Node')+'</strong><small>'+esc(error.error||'Active sessions unavailable')+'</small></div>').join('');
   box.innerHTML=errors+((items||[]).map(activeSessionCard).join('')||(!errors?'<div class="item">No active sessions.</div>':''));
   document.querySelectorAll('[data-active-copy]').forEach(b=>b.onclick=()=>copyText(b.dataset.activeCopy||'','Thread ID copied'));
-  document.querySelectorAll('[data-active-switch]').forEach(b=>b.onclick=()=>safe(async()=>{if(!can('sessions.write')){toast('Permission required: sessions.write');return}const peerId=b.dataset.activePeer||'local';const agentId=b.dataset.activeAgent;const threadId=b.dataset.activeSwitch;if(peerId!==state.selectedPeer){state.selectedPeer=peerId;localStorage.setItem('nordrelayPeerTarget',peerId);connectEvents()}if(agentId&&state.snapshot?.session?.agentId!==agentId){await headerTargetRequest(peerId,'/api/agent',{method:'POST',body:{agentId}})}if(threadId){await headerTargetRequest(peerId,'/api/sessions/switch',{method:'POST',body:{threadId}})}toast('Session switched');await loadBootstrap();page('chat')}));
+  document.querySelectorAll('[data-active-switch]').forEach(b=>b.onclick=()=>safe(async()=>{if(!can('sessions.write')){toast('Permission required: sessions.write');return}const peerId=b.dataset.activePeer||'local';const agentId=b.dataset.activeAgent;const threadId=b.dataset.activeSwitch;const active=(state.activeSessions?.sessions||[]).find(item=>item.threadId===threadId&&(item.peerId||'local')===peerId);await openChatSession(chatTabFromActiveSession(active||{peerId,agentId,threadId} as WebuiActiveSession)||{peerId,agentId,threadId},{navigate:true})}));
   document.querySelectorAll('[data-active-detail]').forEach(b=>b.onclick=()=>safe(async()=>{const peerId=b.dataset.activePeer||'local';const agentId=b.dataset.activeAgent;const threadId=b.dataset.activeDetail;if(peerId!==state.selectedPeer){state.selectedPeer=peerId;localStorage.setItem('nordrelayPeerTarget',peerId);connectEvents()}if(agentId&&state.snapshot?.session?.agentId!==agentId){await headerTargetRequest(peerId,'/api/agent',{method:'POST',body:{agentId}});await loadBootstrap()}if(threadId)await loadSessionDetail(threadId,agentId)}));
   applyPermissions();
   startActiveSessionDurationCounter();

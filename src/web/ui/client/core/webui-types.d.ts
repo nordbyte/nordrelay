@@ -163,6 +163,22 @@ interface WebuiChatMessage extends WebuiRecord {
   actionResolution?: WebuiRecord | null;
 }
 
+interface WebuiChatTab extends WebuiRecord {
+  id: string;
+  peerId: string;
+  peerName?: string;
+  agentId?: string;
+  agentLabel?: string;
+  threadId: string;
+  sessionName?: string;
+  title?: string;
+  workspace?: string;
+  model?: string;
+  draft?: string;
+  openedAt: string;
+  lastActiveAt: string;
+}
+
 interface WebuiActiveSessionsState extends WebuiRecord {
   sessions?: WebuiActiveSession[];
 }
@@ -431,6 +447,8 @@ interface DashboardState {
   sessionDetailRequestId: number;
   chatHistoryRequestId: number;
   chatRenderVersion: number;
+  chatTabs: WebuiChatTab[];
+  activeChatTabId: string;
   activeSessions: WebuiActiveSessionsState | null;
   activeSessionsTimer: WebuiInterval | null;
   activeSessionDurationTimer: WebuiInterval | null;
@@ -439,6 +457,7 @@ interface DashboardState {
   activeSessionsPeerBackoff: Record<string, number>;
   activeSessionsTarget: string;
   activeSessionsErrors?: WebuiRecord[];
+  currentSessions?: WebuiRecord[];
   localTurnThreadId: string | null;
   localTurnAgentId: string | null;
   localTurnStartedAt: string | null;

@@ -15,6 +15,7 @@ const clientSources = [
   "client/core/pagers.ts",
   "client/profile.ts",
   "client/header-target.ts",
+  "client/chat-tabs.ts",
   "client/overview.ts",
   "client/events.ts",
   "client/workflows.ts",

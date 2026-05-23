@@ -150,16 +150,13 @@ async function selectHeaderTarget(peerId: string, agentId: string) {
 
 async function selectHeaderTargetSession(peerId: string, agentId: string, threadId: string) {
   if (!threadId) return;
-  const previousPeer = state.selectedPeer || 'local';
-  const changedPeer = previousPeer !== peerId;
-  state.selectedPeer = peerId || 'local';
-  localStorage.setItem('nordrelayPeerTarget', state.selectedPeer);
-  if (changedPeer) connectEvents();
-  if (agentId) await headerTargetRequest(state.selectedPeer, '/api/agent', { method: 'POST', body: JSON.stringify({ agentId }) });
-  const r = await headerTargetRequest(state.selectedPeer, '/api/sessions/switch', { method: 'POST', body: JSON.stringify({ threadId }) });
-  if (state.snapshot && r.session) { state.snapshot.session = r.session; renderSnapshot(state.snapshot); }
-  toast('Session switched');
-  await loadBootstrap(); await reloadCurrentPage({ agentId });
+  await openChatSession({
+    peerId: peerId || 'local',
+    peerName: headerTargetName(peerId || 'local'),
+    agentId,
+    agentLabel: agentId,
+    threadId,
+  }, { navigate: state.currentPage === 'chat' });
 }
 
 async function toggleHeaderTargetSessions(toggle: HTMLElement) {

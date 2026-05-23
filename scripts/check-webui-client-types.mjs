@@ -25,6 +25,7 @@ assert(coreTypes.includes("interface DashboardState"), "WebUI core types must de
 const buildScript = read("scripts/build-web-assets.mjs");
 const runtimeAssets = read("src/web/web-dashboard-assets.ts");
 const expectedSources = [
+  "chat-tabs.ts",
   "admin-core.ts",
   "admin-monitor.ts",
   "admin-access.ts",

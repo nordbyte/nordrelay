@@ -22,6 +22,7 @@ const assets = [
       "src/web/ui/client/core/pagers.ts",
       "src/web/ui/client/profile.ts",
       "src/web/ui/client/header-target.ts",
+      "src/web/ui/client/chat-tabs.ts",
       "src/web/ui/client/overview.ts",
       "src/web/ui/client/events.ts",
       "src/web/ui/client/workflows.ts",

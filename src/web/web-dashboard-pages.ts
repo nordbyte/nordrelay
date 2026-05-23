@@ -191,6 +191,7 @@ ${faviconLinks}
       <section class="page" id="page-chat">
         <div class="chat-layout tools-hidden" id="chatLayout">
           <div class="panel chat-panel">
+            <div id="chatTabs" class="chat-tabs" hidden></div>
             <div class="chat-toolbar">
               <button id="newSessionBtn">New session</button>
               <div class="template-picker-menu" data-template-picker-menu>

@@ -12,6 +12,8 @@ header{z-index:30}
 .conformance-grid{grid-template-columns:1fr}
 .chat-layout{grid-template-columns:1fr}
 .chat-panel{height:auto;min-height:0}
+.chat-tabs{margin-bottom:8px}
+.chat-tab{min-width:min(210px,78vw)}
 .messages{max-height:55vh;min-height:300px}
 .composer{grid-template-columns:1fr}
 .composer-actions{min-width:0}
