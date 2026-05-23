@@ -173,6 +173,7 @@ declare let renderDiscordChannels: (channels?: WebuiChannelRecord[]) => void;
 declare function renderHeaderTargetMenu(snapshot: WebuiSnapshot | null): void;
 declare function renderPageTitle(name?: string): void;
 declare function renderChatWorkingIndicator(): void;
+declare function restoreActiveChatTabDraft(): void;
 declare function renderIncrementalHtml<T>(target: string | Element, items: readonly T[], options: RenderIncrementalOptions<T>): void;
 declare function renderIncrementalTable<T>(target: string | Element, items: readonly T[], options: RenderIncrementalOptions<T>): void;
 declare function renderQueue(queue?: unknown, paused?: boolean): void;

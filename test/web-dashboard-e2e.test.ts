@@ -566,15 +566,20 @@ describe("web dashboard browser-flow assets", () => {
 
     expect(chatTabsSource).toContain("draft: raw?.draft ? String(raw.draft) : ''");
     expect(chatTabsSource).toContain("function bindPromptDraftPersistence");
+    expect(chatTabsSource).toContain("const CHAT_TAB_DRAFT_STORAGE_PREFIX = 'nordrelayChatDraft:'");
+    expect(chatTabsSource).toContain("function readChatTabDraft");
+    expect(chatTabsSource).toContain("function writeChatTabDraft");
     expect(chatTabsSource).toContain("input.addEventListener('input', saveActiveChatTabDraft)");
     expect(chatTabsSource).toContain("window.addEventListener('pagehide', saveActiveChatTabDraft)");
     expect(chatTabsSource).toContain("window.addEventListener('beforeunload', saveActiveChatTabDraft)");
     expect(chatTabsSource).toContain("if (document.hidden) saveActiveChatTabDraft()");
-    expect(chatTabsSource).toContain("input.value = tab?.draft || ''");
+    expect(chatTabsSource).toContain("input.value = readChatTabDraft(tab)");
     expect(chatTabsSource).toContain("bindPromptDraftPersistence();");
     expect(runtimeSource).toContain("if(state.currentPage==='chat')saveActiveChatTabDraft()");
+    expect(runtimeSource).toContain("if(input&&!input.value)restoreActiveChatTabDraft()");
     expect(eventsSource).toContain("input.dispatchEvent(new Event('input',{bubbles:true}))");
     expect(js).toContain("nordrelayChatTabs");
+    expect(js).toContain("nordrelayChatDraft:");
     expect(js).toContain("function saveActiveChatTabDraft");
     expect(js).toContain("function restoreActiveChatTabDraft");
   });

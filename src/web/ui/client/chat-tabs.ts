@@ -1,5 +1,6 @@
 const CHAT_TABS_STORAGE_KEY = 'nordrelayChatTabs';
 const ACTIVE_CHAT_TAB_STORAGE_KEY = 'nordrelayActiveChatTabId';
+const CHAT_TAB_DRAFT_STORAGE_PREFIX = 'nordrelayChatDraft:';
 const MAX_CHAT_TABS = 16;
 
 function chatTabId(peerId: string, agentId: string, threadId: string) {
@@ -58,6 +59,30 @@ function writeChatTabs() {
 
 function activeChatTab() {
   return ensureChatTabs().find(tab => tab.id === state.activeChatTabId) || null;
+}
+
+function chatTabDraftStorageKey(tab: WebuiChatTab | null | undefined) {
+  return tab?.id ? CHAT_TAB_DRAFT_STORAGE_PREFIX + tab.id : '';
+}
+
+function readChatTabDraft(tab: WebuiChatTab | null | undefined) {
+  if (tab?.draft) return tab.draft;
+  const key = chatTabDraftStorageKey(tab);
+  if (!key) return '';
+  try {
+    return localStorage.getItem(key) || '';
+  } catch {
+    return '';
+  }
+}
+
+function writeChatTabDraft(tab: WebuiChatTab | null | undefined, draft: string) {
+  const key = chatTabDraftStorageKey(tab);
+  if (!key) return;
+  try {
+    if (draft) localStorage.setItem(key, draft);
+    else localStorage.removeItem(key);
+  } catch {}
 }
 
 function writableActiveChatTab() {
@@ -146,6 +171,7 @@ function saveActiveChatTabDraft() {
   const tab = writableActiveChatTab();
   if (!tab || !input) return;
   const draft = input.value || '';
+  writeChatTabDraft(tab, draft);
   if (tab.draft === draft) return;
   tab.draft = draft;
   writeChatTabs();
@@ -155,7 +181,7 @@ function restoreActiveChatTabDraft() {
   const tab = activeChatTab();
   const input = document.getElementById('promptInput') as HTMLTextAreaElement | null;
   if (!input) return;
-  input.value = tab?.draft || '';
+  input.value = readChatTabDraft(tab);
 }
 
 function bindPromptDraftPersistence() {
