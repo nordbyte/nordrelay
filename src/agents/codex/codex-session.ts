@@ -104,6 +104,7 @@ export class CodexSessionService {
   private currentReasoningEffort: ModelReasoningEffort | undefined;
   private currentLaunchProfile: CodexLaunchProfile;
   private activeThreadLaunchProfile: CodexLaunchProfile | null = null;
+  private activeThreadLaunchProfileOverride: { threadId: string; profile: CodexLaunchProfile } | null = null;
   private sessionTokens = { input: 0, cached: 0, output: 0 };
   private lastObservedFastMode: boolean | null = null;
 
@@ -124,6 +125,12 @@ export class CodexSessionService {
     service.resetCodexClient();
 
     if (options?.resumeThreadId) {
+      if (options.launchProfileId && options.launchProfileId !== config.defaultLaunchProfileId) {
+        service.activeThreadLaunchProfileOverride = {
+          threadId: options.resumeThreadId,
+          profile: service.currentLaunchProfile,
+        };
+      }
       await service.resumeThread(options.resumeThreadId);
       return service;
     }
@@ -352,6 +359,7 @@ export class CodexSessionService {
     const effectiveModel = model ?? this.currentModel;
     this.thread = this.getCodex().startThread(this.buildThreadOptions(effectiveWorkspace, effectiveModel));
     this.activeThreadLaunchProfile = this.currentLaunchProfile;
+    this.activeThreadLaunchProfileOverride = null;
     this.currentWorkspace = effectiveWorkspace;
     this.currentThreadId = this.thread.id ?? null;
     if (model) {
@@ -384,6 +392,7 @@ export class CodexSessionService {
 
     this.thread = this.getCodex().resumeThread(threadId, this.buildThreadOptions(workspace, model, launchProfile));
     this.activeThreadLaunchProfile = launchProfile;
+    this.activeThreadLaunchProfileOverride = null;
     this.currentWorkspace = workspace;
     this.currentThreadId = threadId;
     if (model) {
@@ -457,6 +466,9 @@ export class CodexSessionService {
     this.currentLaunchProfile = profile;
     this.resetCodexClient();
     const appliedToActiveThread = this.reattachActiveThread(profile);
+    if (appliedToActiveThread && this.currentThreadId) {
+      this.activeThreadLaunchProfileOverride = { threadId: this.currentThreadId, profile };
+    }
     return { value: profile.id, appliedToActiveThread };
   }
 
@@ -482,6 +494,9 @@ export class CodexSessionService {
         );
       }
       this.activeThreadLaunchProfile = profile;
+      if (this.currentThreadId) {
+        this.activeThreadLaunchProfileOverride = { threadId: this.currentThreadId, profile };
+      }
       appliedToActiveThread = true;
     }
 
@@ -509,7 +524,7 @@ export class CodexSessionService {
         if (record.cwd && record.cwd !== this.currentWorkspace) changedFields.add("workspace");
         if ((record.model || undefined) !== this.currentModel) changedFields.add("model");
         if ((record.reasoningEffort || undefined) !== this.currentReasoningEffort) changedFields.add("reasoning");
-        const resolvedLaunchProfile = this.resolveThreadLaunchProfile(record);
+        const resolvedLaunchProfile = this.launchProfileOverrideFor(activeThreadId) ?? this.resolveThreadLaunchProfile(record);
         if (resolvedLaunchProfile.id !== this.activeThreadLaunchProfile?.id) changedFields.add("launch");
         this.currentWorkspace = record.cwd || this.currentWorkspace;
         this.currentModel = record.model || this.currentModel;
@@ -564,6 +579,7 @@ export class CodexSessionService {
     this.thread = null;
     this.currentThreadId = null;
     this.activeThreadLaunchProfile = null;
+    this.activeThreadLaunchProfileOverride = null;
     return info;
   }
 
@@ -573,6 +589,7 @@ export class CodexSessionService {
     this.thread = null;
     this.currentThreadId = null;
     this.activeThreadLaunchProfile = null;
+    this.activeThreadLaunchProfileOverride = null;
   }
 
   private buildSdkInput(input: CodexPromptInput): Input {
@@ -708,7 +725,7 @@ export class CodexSessionService {
     this.currentReasoningEffort = record.reasoningEffort
       ? record.reasoningEffort as ModelReasoningEffort
       : undefined;
-    this.activeThreadLaunchProfile = this.resolveThreadLaunchProfile(record);
+    this.activeThreadLaunchProfile = this.launchProfileOverrideFor(threadId) ?? this.resolveThreadLaunchProfile(record);
   }
 
   private reattachActiveThread(launchProfileOverride?: CodexLaunchProfile): boolean {
@@ -731,6 +748,13 @@ export class CodexSessionService {
     }
     this.activeThreadLaunchProfile = launchProfile;
     return true;
+  }
+
+  private launchProfileOverrideFor(threadId: string | null | undefined): CodexLaunchProfile | null {
+    if (!threadId || this.activeThreadLaunchProfileOverride?.threadId !== threadId) {
+      return null;
+    }
+    return this.activeThreadLaunchProfileOverride.profile;
   }
 
   private findFastModeLaunchProfile(enabled: boolean): CodexLaunchProfile {

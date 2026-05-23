@@ -377,6 +377,18 @@ describe("CodexSessionService", () => {
     const service = await CodexSessionService.create(createConfig(), {
       resumeThreadId: "thread-launch",
     });
+    mockCodexState.getThread.mockReturnValue({
+      id: "thread-launch",
+      title: "Saved thread",
+      cwd: "/workspace/base",
+      model: "o3",
+      reasoningEffort: null,
+      sandboxMode: "workspace-write",
+      approvalPolicy: "never",
+      createdAt: new Date("2026-05-11T00:00:00.000Z"),
+      updatedAt: new Date("2026-05-11T01:00:00.000Z"),
+      firstUserMessage: "hello",
+    });
 
     const result = service.setLaunchProfileForCurrentSession("readonly");
     const codexInstance = mockState.codexInstances.at(-1);
@@ -404,6 +416,34 @@ describe("CodexSessionService", () => {
       fastMode: true,
       unsafeLaunch: false,
     });
+  });
+
+  it("keeps an applied launch profile even when stored thread metadata is stale", async () => {
+    const service = await CodexSessionService.create(createConfig(), {
+      resumeThreadId: "thread-stale-launch",
+    });
+    mockCodexState.getThread.mockReturnValue({
+      id: "thread-stale-launch",
+      title: "Stale thread",
+      cwd: "/workspace/base",
+      model: "o3",
+      reasoningEffort: null,
+      sandboxMode: "workspace-write",
+      approvalPolicy: "never",
+      createdAt: new Date("2026-05-11T00:00:00.000Z"),
+      updatedAt: new Date("2026-05-11T01:00:00.000Z"),
+      firstUserMessage: "hello",
+    });
+
+    service.setLaunchProfileForCurrentSession("readonly");
+
+    expect(service.getInfo()).toEqual(expect.objectContaining({
+      threadId: "thread-stale-launch",
+      launchProfileId: "readonly",
+      launchProfileBehavior: "read-only / never",
+      sandboxMode: "read-only",
+      approvalPolicy: "never",
+    }));
   });
 
   it("setFastMode disables fast mode and reattaches an idle active thread", async () => {
