@@ -15,6 +15,7 @@ import { resolveCodexCli } from "./codex-cli.js";
 import { readCodexFastMode, writeCodexFastMode } from "./codex-config.js";
 import {
   getThread,
+  getThreadRolloutSnapshot,
   getThreadUsage,
   listModels,
   listThreads,
@@ -670,13 +671,18 @@ export class CodexSessionService {
   }
 
   private resolveThreadLaunchProfile(record: CodexThreadRecord | null): CodexLaunchProfile {
-    if (!record?.sandboxMode || !record.approvalPolicy) {
+    const rolloutSnapshot = record?.id
+      ? getThreadRolloutSnapshot(record.id, { maxEvents: 0 })
+      : null;
+    const sandboxMode = rolloutSnapshot?.sandboxMode ?? record?.sandboxMode ?? null;
+    const approvalPolicy = rolloutSnapshot?.approvalPolicy ?? record?.approvalPolicy ?? null;
+    if (!sandboxMode || !approvalPolicy) {
       return this.currentLaunchProfile;
     }
 
     const matchingProfile = this.config.launchProfiles.find(
       (profile) =>
-        profile.sandboxMode === record.sandboxMode && profile.approvalPolicy === record.approvalPolicy,
+        profile.sandboxMode === sandboxMode && profile.approvalPolicy === approvalPolicy,
     );
 
     if (matchingProfile) {
@@ -686,8 +692,8 @@ export class CodexSessionService {
     return createLaunchProfile({
       id: "attached-thread",
       label: "Attached Thread",
-      sandboxMode: record.sandboxMode,
-      approvalPolicy: record.approvalPolicy,
+      sandboxMode,
+      approvalPolicy,
     });
   }
 
@@ -757,6 +763,14 @@ export class CodexSessionService {
 function getLaunchProfile(config: ConnectorConfig, profileId: string): CodexLaunchProfile {
   const profile = findLaunchProfile(config.launchProfiles, profileId);
   if (!profile) {
+    if (profileId === "full-access") {
+      return createLaunchProfile({
+        id: "full-access",
+        label: "Full Access",
+        sandboxMode: "danger-full-access",
+        approvalPolicy: "never",
+      });
+    }
     throw new Error(`Unknown launch profile: ${profileId}`);
   }
   return profile;

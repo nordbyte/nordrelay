@@ -719,6 +719,52 @@ describe("codex-state", () => {
     ]);
   });
 
+  it("reads latest turn launch permissions from Codex rollout context", async () => {
+    const rolloutPath = "/Users/tester/.codex/sessions/2026/05/12/rollout-thread-full.jsonl";
+    const state = await loadCodexState({
+      files: ["state_main.sqlite"],
+      threads: [
+        {
+          id: "thread-full",
+          title: "Full",
+          cwd: "/workspace",
+          rollout_path: rolloutPath,
+          model: "gpt-5.5",
+          created_at: 1,
+          updated_at: 2,
+          first_user_message: "hello",
+        },
+      ],
+      fileContents: {
+        [rolloutPath]: [
+          JSON.stringify({
+            timestamp: "2026-05-12T04:00:00.000Z",
+            type: "turn_context",
+            payload: {
+              type: "turn_context",
+              sandbox_policy: { type: "workspace-write" },
+              approval_policy: "on-request",
+            },
+          }),
+          JSON.stringify({
+            timestamp: "2026-05-12T04:00:01.000Z",
+            type: "turn_context",
+            payload: {
+              type: "turn_context",
+              sandbox_policy: { type: "danger-full-access" },
+              approval_policy: "never",
+            },
+          }),
+        ].join("\n"),
+      },
+    });
+
+    expect(state.getThreadRolloutSnapshot("thread-full", { maxEvents: 0 })).toMatchObject({
+      sandboxMode: "danger-full-access",
+      approvalPolicy: "never",
+    });
+  });
+
   it("detects pending external approval requests and clears them after tool output", async () => {
     const rolloutPath = "/Users/tester/.codex/sessions/2026/05/12/rollout-thread-approval.jsonl";
     const state = await loadCodexState({

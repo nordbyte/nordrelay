@@ -93,6 +93,8 @@ export interface CodexRolloutSnapshot {
   rolloutPath: string;
   lineCount: number;
   activity: CodexThreadActivity;
+  sandboxMode: CodexSandboxMode | null;
+  approvalPolicy: CodexApprovalPolicy | null;
   events: CodexActivityEvent[];
   latestAgentMessage: string | null;
   latestUserMessage: string | null;
@@ -489,6 +491,8 @@ function parseRolloutSnapshot(
   let activeTurnId: string | null = options.base?.activity.active ? options.base.activity.turnId : null;
   let startedAt: Date | null = options.base?.activity.active ? options.base.activity.startedAt : null;
   let updatedAt: Date | null = options.base?.activity.updatedAt ?? null;
+  let sandboxMode: CodexSandboxMode | null = options.base?.sandboxMode ?? null;
+  let approvalPolicy: CodexApprovalPolicy | null = options.base?.approvalPolicy ?? null;
   let latestAgentMessage: string | null = options.base?.latestAgentMessage ?? null;
   let latestUserMessage: string | null = options.base?.latestUserMessage ?? null;
   let latestToolName: string | null = options.base?.latestToolName ?? null;
@@ -544,6 +548,12 @@ function parseRolloutSnapshot(
 
     const type = readString(payload?.type);
     if (!type) {
+      continue;
+    }
+
+    if (type === "turn_context") {
+      sandboxMode = parseSandboxPolicy(payload?.sandbox_policy) ?? sandboxMode;
+      approvalPolicy = parseApprovalMode(payload?.approval_policy) ?? approvalPolicy;
       continue;
     }
 
@@ -694,6 +704,8 @@ function parseRolloutSnapshot(
       startedAt,
       updatedAt,
     },
+    sandboxMode,
+    approvalPolicy,
     events,
     latestAgentMessage,
     latestUserMessage,
@@ -917,6 +929,12 @@ function parseApprovalMode(value: unknown): CodexApprovalPolicy | null {
 }
 
 function parseSandboxPolicy(value: unknown): CodexSandboxMode | null {
+  const objectValue = readObject(value);
+  if (objectValue) {
+    const type = readString(objectValue.type);
+    return type && isCodexSandboxMode(type) ? type : null;
+  }
+
   if (typeof value !== "string" || !value.trim()) {
     return null;
   }

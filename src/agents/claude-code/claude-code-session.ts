@@ -70,7 +70,7 @@ export class ClaudeCodeSessionService implements AgentSessionService {
     this.currentEffort = normalizeClaudeCodeEffort(config.claudeCodeDefaultEffort);
     this.currentLaunchProfile = findClaudeCodeLaunchProfile(
       config.claudeCodeDefaultLaunchProfileId,
-      config.enableUnsafeLaunchProfiles,
+      allowsClaudeCodeUnsafeProfile(config.claudeCodeDefaultLaunchProfileId, config.enableUnsafeLaunchProfiles),
     );
     this.cachedModels = defaultClaudeCodeModels(this.currentModel);
   }
@@ -82,7 +82,7 @@ export class ClaudeCodeSessionService implements AgentSessionService {
     service.currentEffort = normalizeClaudeCodeEffort(options?.reasoningEffort ?? config.claudeCodeDefaultEffort);
     service.currentLaunchProfile = findClaudeCodeLaunchProfile(
       options?.launchProfileId ?? config.claudeCodeDefaultLaunchProfileId,
-      config.enableUnsafeLaunchProfiles,
+      allowsClaudeCodeUnsafeProfile(options?.launchProfileId ?? config.claudeCodeDefaultLaunchProfileId, config.enableUnsafeLaunchProfiles),
     );
     await service.refreshModels().catch(() => {});
 
@@ -327,7 +327,10 @@ export class ClaudeCodeSessionService implements AgentSessionService {
 
   setLaunchProfile(profileId: string): CodexLaunchProfile {
     this.ensureIdle("change Claude Code profile");
-    this.currentLaunchProfile = findClaudeCodeLaunchProfile(profileId, this.config.enableUnsafeLaunchProfiles);
+    this.currentLaunchProfile = findClaudeCodeLaunchProfile(
+      profileId,
+      allowsClaudeCodeUnsafeProfile(profileId, this.config.enableUnsafeLaunchProfiles),
+    );
     return claudeCodeProfileAsLaunchProfile(this.currentLaunchProfile);
   }
 
@@ -855,6 +858,10 @@ function normalizeClaudeCodeEffort(value: string | undefined): string | undefine
     return value;
   }
   throw new Error(`Unsupported Claude Code effort: ${value}`);
+}
+
+function allowsClaudeCodeUnsafeProfile(profileId: string | undefined, includeUnsafe: boolean): boolean {
+  return includeUnsafe || profileId === "bypass-permissions";
 }
 
 function isClaudeEffortLevel(value: string): value is EffortLevel {

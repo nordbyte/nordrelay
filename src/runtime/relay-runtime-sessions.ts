@@ -22,6 +22,7 @@ import {
 } from "../agents/shared/agent.js";
 import { getExternalSnapshotForSession } from "../agents/shared/agent-activity.js";
 import { listAgentAdapterDescriptors } from "../agents/shared/agent-adapter.js";
+import { findLaunchProfileRecord } from "../agents/shared/agent-launch-profiles.js";
 import { AgentUpdateManager, type AgentUpdateJobSnapshot, type AgentUpdateOperation } from "../agents/shared/agent-updates.js";
 import { createAgentSessionService, enabledAgents } from "../agents/shared/agent-factory.js";
 import { AuditLogStore, type AuditEvent, type AuditListOptions } from "../access/audit-log.js";
@@ -781,10 +782,17 @@ export async function relayRuntimeSetLaunchProfile(
   runtime: RelayRuntimeDelegate,
   profileId: string,
   actor?: WebActivityActor,
-  options: { applyToCurrent?: boolean } = {},
+  options: { applyToCurrent?: boolean; confirmUnsafe?: boolean } = {},
 ): Promise<AgentSessionInfo> {
     const session = await runtime.getSession(true);
     runtime.ensureIdle(session);
+    if (options.confirmUnsafe !== undefined) {
+      const info = session.getInfo();
+      const profile = findLaunchProfileRecord(info.agentId, profileId, session.listLaunchProfiles());
+      if (profile?.unsafe && !options.confirmUnsafe) {
+        throw new Error(`Unsafe launch profile "${profile.label}" requires explicit confirmation.`);
+      }
+    }
     if (options.applyToCurrent) {
       const external = getExternalSnapshotForSession(session, runtime.config, { maxEvents: 0 });
       if (external?.activity.active && !session.isProcessing()) {

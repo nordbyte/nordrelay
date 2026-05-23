@@ -645,7 +645,7 @@ export class RelayRuntime {
   async setReasoningEffort(effort: string, actor?: WebActivityActor): Promise<AgentSessionInfo> { return relayRuntimeSetReasoningEffort(this, effort, actor); }
   async setFastMode(enabled: boolean, actor?: WebActivityActor): Promise<AgentSessionInfo> { return relayRuntimeSetFastMode(this, enabled, actor); }
 
-  async setLaunchProfile(profileId: string, actor?: WebActivityActor, options: { applyToCurrent?: boolean } = {}): Promise<AgentSessionInfo> {
+  async setLaunchProfile(profileId: string, actor?: WebActivityActor, options: { applyToCurrent?: boolean; confirmUnsafe?: boolean } = {}): Promise<AgentSessionInfo> {
     return relayRuntimeSetLaunchProfile(this, profileId, actor, options);
   }
 

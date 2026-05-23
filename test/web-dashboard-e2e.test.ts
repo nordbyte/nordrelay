@@ -356,6 +356,11 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("behavior===sandbox+' / '+approval");
     expect(js).toContain("function launchMenuItems");
     expect(js).toContain("function activeLaunchLabel");
+    expect(js).toContain("function knownUnsafeLaunchProfilesForSession");
+    expect(js).toContain("function confirmUnsafeLaunchProfile");
+    expect(js).toContain("Full Access");
+    expect(js).toContain("Bypass Permissions");
+    expect(js).toContain("confirmUnsafe:Boolean(profile.unsafe)");
     expect(js).toContain("items.unshift({value:selectedLaunch,label:activeLaunchLabel(session,selectedLaunch)})");
     expect(js).toContain("function configuredLaunchProfile");
     expect(js).toContain("Select a configured launch profile first");

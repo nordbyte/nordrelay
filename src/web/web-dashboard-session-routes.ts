@@ -307,7 +307,10 @@ export async function handleDashboardSessionRoute(
     const body = await readJsonBody(req);
     await options.assertCurrentSessionScope(authUser);
     sendJson(res, 200, {
-      session: await runtime.setLaunchProfile(stringField(body, "profileId"), options.activityActor, { applyToCurrent: Boolean(body?.apply) }),
+      session: await runtime.setLaunchProfile(stringField(body, "profileId"), options.activityActor, {
+        applyToCurrent: Boolean(body?.apply),
+        confirmUnsafe: optionalBooleanField(body, "confirmUnsafe") ?? false,
+      }),
     });
     return true;
   }

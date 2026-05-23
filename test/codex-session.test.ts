@@ -5,6 +5,7 @@ import type { ConnectorConfig } from "../src/core/config.js";
 
 const mockCodexState = vi.hoisted(() => {
   const getThread = vi.fn();
+  const getThreadRolloutSnapshot = vi.fn().mockReturnValue(null);
   const getThreadUsage = vi.fn().mockReturnValue(null);
   const listThreads = vi.fn().mockReturnValue([]);
   const listWorkspaces = vi.fn().mockReturnValue([]);
@@ -12,6 +13,7 @@ const mockCodexState = vi.hoisted(() => {
 
   return {
     getThread,
+    getThreadRolloutSnapshot,
     getThreadUsage,
     listThreads,
     listWorkspaces,
@@ -19,6 +21,8 @@ const mockCodexState = vi.hoisted(() => {
     reset: () => {
       getThread.mockReset();
       getThread.mockReturnValue(null);
+      getThreadRolloutSnapshot.mockReset();
+      getThreadRolloutSnapshot.mockReturnValue(null);
       getThreadUsage.mockReset();
       getThreadUsage.mockReturnValue(null);
       listThreads.mockReset();
@@ -100,6 +104,7 @@ vi.mock("@openai/codex-sdk", () => ({
 
 vi.mock("../src/agents/codex/codex-state.js", () => ({
   getThread: mockCodexState.getThread,
+  getThreadRolloutSnapshot: mockCodexState.getThreadRolloutSnapshot,
   getThreadUsage: mockCodexState.getThreadUsage,
   listThreads: mockCodexState.listThreads,
   listWorkspaces: mockCodexState.listWorkspaces,
@@ -510,6 +515,38 @@ describe("CodexSessionService", () => {
       approvalPolicy: "never",
       fastMode: false,
       unsafeLaunch: true,
+    }));
+  });
+
+  it("prefers latest rollout turn permissions over stale Codex thread database metadata", async () => {
+    mockCodexConfig.readCodexFastMode.mockReturnValue(false);
+    const service = await CodexSessionService.create(createConfig(), {
+      resumeThreadId: "thread-cli-full-access",
+    });
+    mockCodexState.getThread.mockReturnValue({
+      id: "thread-cli-full-access",
+      title: "CLI full access thread",
+      cwd: "/workspace/from-cli",
+      model: "gpt-5.5",
+      reasoningEffort: "xhigh",
+      sandboxMode: "workspace-write",
+      approvalPolicy: "never",
+      createdAt: new Date("2026-05-11T00:00:00.000Z"),
+      updatedAt: new Date("2026-05-11T01:00:00.000Z"),
+      firstUserMessage: "hello",
+    });
+    mockCodexState.getThreadRolloutSnapshot.mockReturnValue({
+      sandboxMode: "danger-full-access",
+      approvalPolicy: "never",
+    });
+
+    expect(service.getInfo()).toEqual(expect.objectContaining({
+      launchProfileId: "attached-thread",
+      launchProfileBehavior: "danger-full-access / never",
+      sandboxMode: "danger-full-access",
+      approvalPolicy: "never",
+      unsafeLaunch: true,
+      fastMode: false,
     }));
   });
 

@@ -274,7 +274,7 @@ function renderSessionControls(){
   ].join('');
   bindCompactControlMenus();
   renderChatWorkspaceLine();
-  const applyLaunch=document.getElementById('applyLaunchBtn'); if(applyLaunch) applyLaunch.onclick=()=>safe(async()=>{const profileId=selectedCompactControlValue('controlLaunch');if(!configuredLaunchProfile(c,profileId)){toast('Select a configured launch profile first');return}await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId,apply:true})});toast('Launch profile applied to current session');loadBootstrap()});
+  const applyLaunch=document.getElementById('applyLaunchBtn'); if(applyLaunch) applyLaunch.onclick=()=>safe(async()=>{const profileId=selectedCompactControlValue('controlLaunch');const profile=launchProfileForSelection(c,state.snapshot?.session||{},profileId);if(!profile){toast('Select a configured launch profile first');return}if(!confirmUnsafeLaunchProfile(profile,true))return;await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId,apply:true,confirmUnsafe:Boolean(profile.unsafe)})});toast('Launch profile applied to current session');loadBootstrap()});
 }
 function activeLaunchProfileId(session,controls=state.controls||{}){
   const profiles=controls.launchProfiles||[];
@@ -296,6 +296,9 @@ function launchProfileBehaviorMatches(profile,session){
 }
 function launchMenuItems(controls,session,selectedLaunch){
   const items=(controls.launchProfiles||[]).map(p=>({value:p.id,label:p.label+' - '+p.behavior+(p.unsafe?' - unsafe':'')}));
+  for(const profile of knownUnsafeLaunchProfilesForSession(session)){
+    if(!items.some(item=>item.value===profile.id))items.push({value:profile.id,label:profile.label+' - '+profile.behavior+' - unsafe'});
+  }
   if(selectedLaunch&&!items.some(item=>item.value===selectedLaunch)){
     items.unshift({value:selectedLaunch,label:activeLaunchLabel(session,selectedLaunch)});
   }
@@ -307,7 +310,21 @@ function activeLaunchLabel(session,selectedLaunch){
   const unsafe=session.unsafeLaunch||session.nextUnsafeLaunch;
   return label+(behavior?' - '+behavior:'')+(unsafe?' - unsafe':'');
 }
-function configuredLaunchProfile(controls,profileId){return Boolean(profileId&&(controls.launchProfiles||[]).some(p=>p.id===profileId))}
+function configuredLaunchProfile(controls,profileId){return Boolean(launchProfileForSelection(controls,state.snapshot?.session||{},profileId))}
+function launchProfileForSelection(controls,session,profileId){return (controls.launchProfiles||[]).find(p=>p.id===profileId)||knownUnsafeLaunchProfileForSession(session,profileId)}
+function knownUnsafeLaunchProfileForSession(session,profileId){
+  return knownUnsafeLaunchProfilesForSession(session).find(profile=>profile.id===profileId)||null;
+}
+function knownUnsafeLaunchProfilesForSession(session){
+  const agentId=session?.agentId;
+  if(agentId==='codex')return[{id:'full-access',label:'Full Access',behavior:'danger-full-access / never',unsafe:true}];
+  if(agentId==='claude-code')return[{id:'bypass-permissions',label:'Bypass Permissions',behavior:'Bypass Claude Code permission prompts. Use only in trusted workspaces.',unsafe:true}];
+  return[];
+}
+function confirmUnsafeLaunchProfile(profile,apply){
+  if(!profile?.unsafe)return true;
+  return confirm((apply?'Apply':'Set')+' unsafe launch profile "'+(profile.label||profile.id)+'"?\n\nBehavior: '+(profile.behavior||'-')+'\n\nUse this only in a trusted workspace.');
+}
 function compactControlMenu(id,label,value,display,items,permission='settings.write'){
   const options=(items||[]).map(item=>'<button type="button" role="option" data-control-option="'+attr(id)+'" data-control-value="'+attr(item.value)+'" aria-selected="'+(item.value===value?'true':'false')+'">'+esc(item.label)+'</button>').join('');
   return '<div class="compact-control" data-control-menu="'+attr(id)+'">'+(label?'<span class="compact-control-label">'+esc(label)+'</span>':'')+'<button type="button" id="'+attr(id)+'" class="control-menu-button" data-control-value="'+attr(value)+'" aria-haspopup="listbox" aria-expanded="false"'+(permission?disabledAttr(permission):'')+'>'+esc(display||'Default')+'</button><div class="control-menu-list" role="listbox" hidden>'+options+'</div></div>';
@@ -373,7 +390,14 @@ function bindCompactControlMenus(){
     }else if(id==='controlFast'){
       await api('/api/session/fast',{method:'POST',body:JSON.stringify({enabled:button.dataset.controlValue==='on'})});toast('Fast mode updated');loadBootstrap();
     }else if(id==='controlLaunch'){
-      await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId:button.dataset.controlValue})});toast('Launch profile updated');loadBootstrap();
+      const profile=launchProfileForSelection(state.controls||{},state.snapshot?.session||{},button.dataset.controlValue);
+      if(!confirmUnsafeLaunchProfile(profile,false)){
+        button.dataset.controlValue=previousValue;
+        button.textContent=previousText;
+        option.closest('.control-menu-list')?.querySelectorAll('[data-control-option]').forEach(item=>item.setAttribute('aria-selected',item.dataset.controlValue===previousValue?'true':'false'));
+        return;
+      }
+      await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId:button.dataset.controlValue,confirmUnsafe:Boolean(profile?.unsafe)})});toast('Launch profile updated');loadBootstrap();
     }
   },event));
   if(!state.compactControlOutsideBound){
