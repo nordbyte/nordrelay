@@ -339,6 +339,7 @@ interface WebuiReloadPageOptions {
 interface WebuiLoadVersionOptions {
   quiet?: boolean;
   refreshJobs?: boolean;
+  forceRefresh?: boolean;
 }
 
 interface WebuiChatScrollOptions {

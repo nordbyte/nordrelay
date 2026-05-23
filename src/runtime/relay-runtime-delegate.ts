@@ -138,7 +138,7 @@ export interface RelayRuntimeDelegate {
   snapshot(): Promise<RelaySnapshot>;
   status(): Promise<Record<string, unknown>>;
   bootstrapStatus(): Promise<Record<string, unknown>>;
-  version(): Promise<Record<string, unknown>>;
+  version(options?: { forceRefresh?: boolean }): Promise<Record<string, unknown>>;
   updateConnector(actor?: WebActivityActor): SelfUpdateResult;
   agentUpdateJobs(): AgentUpdateJobSnapshot[];
   startAgentUpdate(agentId: AgentId, operation?: AgentUpdateOperation, actor?: WebActivityActor): AgentUpdateJobSnapshot;

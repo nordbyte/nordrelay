@@ -475,8 +475,8 @@ export class RelayRuntime {
     return relayRuntimeBootstrapStatus(this);
   }
 
-  async version(): Promise<Record<string, unknown>> {
-    return relayRuntimeVersion(this);
+  async version(options: { forceRefresh?: boolean } = {}): Promise<Record<string, unknown>> {
+    return relayRuntimeVersion(this, options);
   }
 
   updateConnector(actor?: WebActivityActor): ReturnType<typeof spawnSelfUpdate> {

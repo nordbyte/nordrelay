@@ -82,7 +82,11 @@ export class RelayDashboardService {
     this.warmTimers = [];
   }
 
-  async version(): Promise<Record<string, unknown>> {
+  async version(options: { forceRefresh?: boolean } = {}): Promise<Record<string, unknown>> {
+    if (options.forceRefresh) {
+      this.options.cache.invalidate("version");
+      return this.produceVersion({ forceRefresh: true });
+    }
     return this.cached("version");
   }
 
@@ -114,12 +118,12 @@ export class RelayDashboardService {
     return (await this.options.cache.get<T>(key, this.options.config.dashboardCacheTtlMs)).value;
   }
 
-  private async produceVersion(): Promise<Record<string, unknown>> {
+  private async produceVersion(options: { forceRefresh?: boolean } = {}): Promise<Record<string, unknown>> {
     const cliOptions = this.options.cliPathOptions();
     const [health, state, versionChecks] = await Promise.all([
       getConnectorHealth(cliOptions),
       readConnectorState(),
-      getVersionChecks(cliOptions),
+      getVersionChecks({ ...cliOptions, forceRefresh: options.forceRefresh }),
     ]);
     return {
       health,

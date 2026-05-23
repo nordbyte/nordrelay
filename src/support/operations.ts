@@ -165,6 +165,14 @@ interface AgentCliVersionSnapshot {
   legacyPiPackageVersion: string | null;
 }
 
+interface VersionCheckOptions {
+  piCliPath?: string;
+  hermesCliPath?: string;
+  openClawCliPath?: string;
+  claudeCodeCliPath?: string;
+  forceRefresh?: boolean;
+}
+
 interface CommandOutput {
   stdout: string;
   stderr: string;
@@ -351,7 +359,7 @@ export async function getPackageVersion(): Promise<string> {
   }
 }
 
-export async function getVersionChecks(options: { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string; claudeCodeCliPath?: string } = {}): Promise<VersionChecks> {
+export async function getVersionChecks(options: VersionCheckOptions = {}): Promise<VersionChecks> {
   const [nordrelayVersion, cliVersions] = await Promise.all([
     getPackageVersion(),
     resolveAgentCliVersions(options),
@@ -369,6 +377,7 @@ export async function getVersionChecks(options: { piCliPath?: string; hermesCliP
       packageName: PACKAGE_NAME,
       installedLabel: nordrelayVersion,
       installedVersion: extractVersion(nordrelayVersion),
+      forceRefresh: options.forceRefresh,
     }),
     buildVersionCheck({
       label: "Codex",
@@ -376,6 +385,7 @@ export async function getVersionChecks(options: { piCliPath?: string; hermesCliP
       installedLabel: cliVersions.codexVersionLabel,
       installedVersion: extractVersion(cliVersions.codexVersionLabel),
       notInstalled: cliVersions.codexVersionLabel === "not installed",
+      forceRefresh: options.forceRefresh,
     }),
     buildVersionCheck({
       label: "Pi",
@@ -384,14 +394,16 @@ export async function getVersionChecks(options: { piCliPath?: string; hermesCliP
       installedVersion: extractVersion(cliVersions.piVersionLabel),
       notInstalled: cliVersions.piVersionLabel === "not installed",
       detail: cliVersions.legacyPiPackageVersion ? `Legacy package ${LEGACY_PI_PACKAGE_NAME} is present; current package is ${PI_PACKAGE_NAME}.` : undefined,
+      forceRefresh: options.forceRefresh,
     }),
-    buildHermesVersionCheck(cliVersions.hermesVersionLabel),
+    buildHermesVersionCheck(cliVersions.hermesVersionLabel, { forceRefresh: options.forceRefresh }),
     buildVersionCheck({
       label: "OpenClaw",
       packageName: OPENCLAW_PACKAGE_NAME,
       installedLabel: cliVersions.openClawVersionLabel,
       installedVersion: extractVersion(cliVersions.openClawVersionLabel),
       notInstalled: cliVersions.openClawVersionLabel === "not installed",
+      forceRefresh: options.forceRefresh,
     }),
     buildVersionCheck({
       label: "Claude Code",
@@ -399,6 +411,7 @@ export async function getVersionChecks(options: { piCliPath?: string; hermesCliP
       installedLabel: cliVersions.claudeCodeVersionLabel,
       installedVersion: extractVersion(cliVersions.claudeCodeVersionLabel),
       notInstalled: cliVersions.claudeCodeVersionLabel === "not installed",
+      forceRefresh: options.forceRefresh,
     }),
   ]);
 
@@ -541,7 +554,7 @@ function redactSecrets(text: string): string {
   return text.replace(SECRET_RE, "$1$2[redacted]");
 }
 
-async function resolveAgentCliVersions(options: { piCliPath?: string; hermesCliPath?: string; openClawCliPath?: string; claudeCodeCliPath?: string } = {}): Promise<AgentCliVersionSnapshot> {
+async function resolveAgentCliVersions(options: VersionCheckOptions = {}): Promise<AgentCliVersionSnapshot> {
   const codexCli = resolveCodexCli();
   const piCli = resolvePiCli(process.env, options.piCliPath);
   const hermesCli = resolveHermesCli(process.env, options.hermesCliPath);
@@ -555,11 +568,11 @@ async function resolveAgentCliVersions(options: { piCliPath?: string; hermesCliP
     openClawVersionLabel,
     claudeCodeVersionLabel,
   ] = await Promise.all([
-    codexCli.path ? detectCliVersion(codexCli.path) : Promise.resolve(readInstalledPackageVersion(CODEX_PACKAGE_NAME) ?? "not installed"),
-    piCli.path ? detectCliVersion(piCli.path) : Promise.resolve(readInstalledPackageVersion(PI_PACKAGE_NAME) ?? legacyPiPackageVersion ?? "not installed"),
-    hermesCli.path ? detectCliVersion(hermesCli.path) : Promise.resolve("not installed"),
-    openClawCli.path ? detectCliVersion(openClawCli.path) : Promise.resolve("not installed"),
-    claudeCodeCli.path ? detectCliVersion(claudeCodeCli.path) : Promise.resolve(readInstalledPackageVersion(CLAUDE_CODE_SDK_PACKAGE_NAME) ?? "bundled"),
+    codexCli.path ? detectCliVersion(codexCli.path, { forceRefresh: options.forceRefresh }) : Promise.resolve(readInstalledPackageVersion(CODEX_PACKAGE_NAME) ?? "not installed"),
+    piCli.path ? detectCliVersion(piCli.path, { forceRefresh: options.forceRefresh }) : Promise.resolve(readInstalledPackageVersion(PI_PACKAGE_NAME) ?? legacyPiPackageVersion ?? "not installed"),
+    hermesCli.path ? detectCliVersion(hermesCli.path, { forceRefresh: options.forceRefresh }) : Promise.resolve("not installed"),
+    openClawCli.path ? detectCliVersion(openClawCli.path, { forceRefresh: options.forceRefresh }) : Promise.resolve("not installed"),
+    claudeCodeCli.path ? detectCliVersion(claudeCodeCli.path, { forceRefresh: options.forceRefresh }) : Promise.resolve(readInstalledPackageVersion(CLAUDE_CODE_SDK_PACKAGE_NAME) ?? "bundled"),
   ]);
 
   return {
@@ -578,13 +591,13 @@ async function resolveAgentCliVersions(options: { piCliPath?: string; hermesCliP
   };
 }
 
-async function detectCliVersion(commandPath: string | undefined): Promise<string> {
+async function detectCliVersion(commandPath: string | undefined, options: { forceRefresh?: boolean } = {}): Promise<string> {
   if (!commandPath) {
     return "not installed";
   }
 
   const ttlMs = parseCliVersionCacheTtlMs();
-  if (ttlMs > 0) {
+  if (ttlMs > 0 && !options.forceRefresh) {
     const cached = cliVersionCache.get(commandPath);
     if (cached && Date.now() < cached.expiresAt) {
       if (cached.value !== undefined) {
@@ -601,7 +614,11 @@ async function detectCliVersion(commandPath: string | undefined): Promise<string
     return value;
   }
 
-  return detectCliVersionUncached(commandPath);
+  const value = await detectCliVersionUncached(commandPath);
+  if (ttlMs > 0) {
+    cliVersionCache.set(commandPath, { value, expiresAt: Date.now() + ttlMs });
+  }
+  return value;
 }
 
 async function detectCliVersionUncached(commandPath: string): Promise<string> {
@@ -619,9 +636,9 @@ async function detectCliVersionUncached(commandPath: string): Promise<string> {
   return output || "unknown";
 }
 
-async function buildHermesVersionCheck(installedLabel: string): Promise<VersionCheck> {
+async function buildHermesVersionCheck(installedLabel: string, options: { forceRefresh?: boolean } = {}): Promise<VersionCheck> {
   if (installedLabel === "not installed") {
-    const latest = await detectLatestNpmVersion(HERMES_PACKAGE_NAME);
+    const latest = await detectLatestNpmVersion(HERMES_PACKAGE_NAME, { forceRefresh: options.forceRefresh });
     return {
       label: "Hermes",
       packageName: HERMES_PACKAGE_NAME,
@@ -656,9 +673,10 @@ async function buildVersionCheck(options: {
   notInstalled?: boolean;
   skipLatest?: boolean;
   detail?: string;
+  forceRefresh?: boolean;
 }): Promise<VersionCheck> {
   if (options.notInstalled) {
-    const latest = options.skipLatest ? { version: null, error: undefined } : await detectLatestNpmVersion(options.packageName);
+    const latest = options.skipLatest ? { version: null, error: undefined } : await detectLatestNpmVersion(options.packageName, { forceRefresh: options.forceRefresh });
     return {
       label: options.label,
       packageName: options.packageName,
@@ -682,7 +700,7 @@ async function buildVersionCheck(options: {
     };
   }
 
-  const latest = await detectLatestNpmVersion(options.packageName);
+  const latest = await detectLatestNpmVersion(options.packageName, { forceRefresh: options.forceRefresh });
   if (!options.installedVersion || !latest.version) {
     return {
       label: options.label,
@@ -706,8 +724,8 @@ async function buildVersionCheck(options: {
   };
 }
 
-async function detectLatestNpmVersion(packageName: string): Promise<{ version: string | null; error?: string }> {
-  const cached = readVersionCache(packageName);
+async function detectLatestNpmVersion(packageName: string, options: { forceRefresh?: boolean } = {}): Promise<{ version: string | null; error?: string }> {
+  const cached = options.forceRefresh ? null : readVersionCache(packageName);
   if (cached) {
     return cached;
   }

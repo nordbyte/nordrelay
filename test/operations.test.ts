@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { clearLogFile, detectSelfUpdateMethod, readFormattedLogTail, resolveNpmSpawnCommand } from "../src/support/operations.js";
+import { clearLogFile, detectSelfUpdateMethod, getVersionChecks, readFormattedLogTail, resolveNpmSpawnCommand } from "../src/support/operations.js";
 
 const tempDirs: string[] = [];
 
@@ -103,6 +103,36 @@ describe("operations", () => {
       argsPrefix: [npmCli],
       shell: false,
     });
+  });
+
+  it("bypasses the latest-version cache for forced version checks", async () => {
+    const dir = createTempDir();
+    const fakeNpm = path.join(dir, "npm-cli.js");
+    const versionFile = path.join(dir, "version.txt");
+    writeFileSync(versionFile, "1.0.0\n");
+    writeFileSync(fakeNpm, [
+      "const fs = require('node:fs');",
+      "if (!process.argv.includes('view')) process.exit(1);",
+      "console.log(fs.readFileSync(process.env.NORDRELAY_FAKE_NPM_VERSION_FILE, 'utf8').trim());",
+    ].join("\n"));
+    process.env = {
+      ...originalEnv,
+      PATH: dir,
+      npm_execpath: fakeNpm,
+      NORDRELAY_HOME: dir,
+      NORDRELAY_VERSION_CACHE_TTL_MS: "600000",
+      NORDRELAY_CLI_VERSION_CACHE_TTL_MS: "0",
+      NORDRELAY_FAKE_NPM_VERSION_FILE: versionFile,
+    };
+
+    const first = await getVersionChecks();
+    writeFileSync(versionFile, "1.0.1\n");
+    const cached = await getVersionChecks();
+    const forced = await getVersionChecks({ forceRefresh: true });
+
+    expect(first.nordrelay.latestVersion).toBe("1.0.0");
+    expect(cached.nordrelay.latestVersion).toBe("1.0.0");
+    expect(forced.nordrelay.latestVersion).toBe("1.0.1");
   });
 
   it.runIf(process.platform === "win32")("prefers npm.cmd over the extensionless npm shim on Windows", () => {

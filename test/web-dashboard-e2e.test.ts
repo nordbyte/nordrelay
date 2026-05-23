@@ -142,6 +142,16 @@ describe("web dashboard browser-flow assets", () => {
     expect(contract).toContain('dynamic("/api/workflow-runs/:id/cancel"');
   });
 
+  it("forces fresh version checks from the manual Version page action", () => {
+    const js = dashboardJs();
+    const routeSource = readFileSync("src/web/web-dashboard-runtime-routes.ts", "utf8");
+
+    expect(js).toContain("loadVersion({forceRefresh:true})");
+    expect(js).toContain("api('/api/version',{query:options.forceRefresh?{force:true}:undefined})");
+    expect(routeSource).toContain('url.searchParams.get("force") === "true"');
+    expect(routeSource).toContain("runtime.version({ forceRefresh })");
+  });
+
   it("passes WebUI correlation IDs through prompts and queued feedback", () => {
     const js = dashboardJs();
 

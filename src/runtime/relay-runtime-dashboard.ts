@@ -175,8 +175,8 @@ export async function relayRuntimeBootstrapStatus(runtime: RelayRuntimeDelegate)
     };
   }
 
-export async function relayRuntimeVersion(runtime: RelayRuntimeDelegate): Promise<Record<string, unknown>> {
-    return runtime.dashboardService.version();
+export async function relayRuntimeVersion(runtime: RelayRuntimeDelegate, options: { forceRefresh?: boolean } = {}): Promise<Record<string, unknown>> {
+    return runtime.dashboardService.version(options);
   }
 
 export async function relayRuntimeDiagnostics(runtime: RelayRuntimeDelegate): Promise<WebDiagnosticsDto> {

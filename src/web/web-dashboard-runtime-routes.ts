@@ -46,7 +46,8 @@ export async function handleDashboardRuntimeRoute(
   }
 
   if (req.method === "GET" && url.pathname === "/api/version") {
-    sendJson(res, 200, await runtime.version());
+    const forceRefresh = url.searchParams.get("force") === "true" || url.searchParams.get("fresh") === "true";
+    sendJson(res, 200, await runtime.version({ forceRefresh }));
     return true;
   }
 
