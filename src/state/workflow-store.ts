@@ -504,6 +504,7 @@ export class WorkflowStore {
       updatedAt: undefined,
       name: raw.name ? String(raw.name) : "Imported workflow",
       steps: raw.steps ?? [],
+      triggers: undefined,
     });
   }
 

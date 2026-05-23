@@ -51,4 +51,28 @@ describe("logger", () => {
       message: 'hello {"id":1}',
     }));
   });
+
+  it("redacts secrets in structured console arguments", () => {
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    const originalError = console.error;
+    const output: string[] = [];
+    const secret = "plain-custom-token-value-1234567890";
+    console.log = vi.fn((line: string) => {
+      output.push(line);
+    }) as unknown as typeof console.log;
+
+    try {
+      installConsoleLogger("json");
+      console.error("config", { CODEX_API_KEY: secret, nested: { accessToken: secret } });
+    } finally {
+      console.log = originalLog;
+      console.warn = originalWarn;
+      console.error = originalError;
+    }
+
+    expect(output).toHaveLength(1);
+    expect(output[0]).not.toContain(secret);
+    expect(JSON.parse(output[0]!).message).toBe('config {"CODEX_API_KEY":"[REDACTED]","nested":{"accessToken":"[REDACTED]"}}');
+  });
 });

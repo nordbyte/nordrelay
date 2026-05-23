@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -97,6 +97,48 @@ describe("SettingsService", () => {
       expect(result.changedKeys).toEqual([]);
       expect(result.errors.map((error) => error.key)).toEqual(["NORDRELAY_STATE_BACKEND", "TELEGRAM_WEBHOOK_PORT"]);
       await expect(readFile(envPath, "utf8")).resolves.toContain("NORDRELAY_STATE_BACKEND=json");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes env updates atomically with private file permissions", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "nordrelay-settings-mode-"));
+    try {
+      const envPath = path.join(dir, "nordrelay.env");
+      writeFileSync(envPath, "CODEX_MODEL=gpt-5\n", { encoding: "utf8", mode: 0o644 });
+      if (process.platform !== "win32") {
+        chmodSync(envPath, 0o644);
+      }
+      const service = new SettingsService(envPath);
+
+      await service.update({ TELEGRAM_BOT_TOKEN: "123456789:abcdefghijklmnopqrstuvwxyz123456" });
+
+      await expect(readFile(envPath, "utf8")).resolves.toContain("TELEGRAM_BOT_TOKEN=123456789:abcdefghijklmnopqrstuvwxyz123456");
+      if (process.platform !== "win32") {
+        expect(statSync(envPath).mode & 0o777).toBe(0o600);
+        expect(statSync(dir).mode & 0o777).toBe(0o700);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes concurrent dashboard updates to avoid lost env changes", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "nordrelay-settings-lock-"));
+    try {
+      const envPath = path.join(dir, "nordrelay.env");
+      writeFileSync(envPath, "NORDRELAY_PI_ENABLED=false\n", "utf8");
+      const service = new SettingsService(envPath);
+
+      await Promise.all([
+        service.update({ NORDRELAY_PI_ENABLED: "true" }),
+        service.update({ CODEX_MODEL: "gpt-5.5" }),
+      ]);
+
+      const text = await readFile(envPath, "utf8");
+      expect(text).toContain("NORDRELAY_PI_ENABLED=true");
+      expect(text).toContain("CODEX_MODEL=gpt-5.5");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

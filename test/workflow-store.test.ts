@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   WorkflowStore,
   extractTemplateVariables,
+  hashWorkflowTriggerToken,
   renderTemplateText,
 } from "../src/state/workflow-store.js";
 import { RelayWorkflowService, type RelayWorkflowServiceOptions } from "../src/runtime/relay-workflow-service.js";
@@ -116,6 +117,32 @@ describe("WorkflowStore", () => {
     } finally {
       rmSync(workspace, { recursive: true, force: true });
       rmSync(importWorkspace, { recursive: true, force: true });
+    }
+  });
+
+  it("drops imported workflow triggers so anonymous tokens cannot be smuggled in", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-workflows-import-trigger-"));
+    try {
+      const store = new WorkflowStore(workspace, "json");
+      const knownToken = "nrt_known-imported-trigger-token";
+      const imported = store.importWorkflow({
+        kind: "workflow",
+        workflow: {
+          name: "Imported trigger workflow",
+          steps: [{ name: "Step", prompt: "Run", sessionMode: "current", target: "local", type: "prompt", requiresApproval: false, continueOnError: false }],
+          triggers: [{
+            kind: "api",
+            name: "Hidden trigger",
+            enabled: true,
+            tokenHash: hashWorkflowTriggerToken(knownToken),
+          }],
+        },
+      });
+
+      expect(imported.triggers).toBeUndefined();
+      expect(store.findWorkflowTriggerByToken(knownToken)).toBeNull();
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
     }
   });
 

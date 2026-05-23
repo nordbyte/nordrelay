@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { SECRET_KEYS } from "../src/core/config-metadata.js";
-import { configureRedaction, redactText } from "../src/core/redaction.js";
+import { configureRedaction, redactText, redactUnknown } from "../src/core/redaction.js";
 
 describe("redaction", () => {
   afterEach(() => {
@@ -45,5 +45,39 @@ describe("redaction", () => {
     configureRedaction(["customer-[0-9]+"]);
 
     expect(redactText("ticket for customer-1234")).toBe("ticket for [REDACTED]");
+  });
+
+  it("redacts secret keys from structured object logs before serialization", () => {
+    const secret = "plain-custom-token-value-1234567890";
+
+    const redacted = redactUnknown({
+      CODEX_API_KEY: secret,
+      nested: {
+        accessToken: secret,
+        safe: "visible",
+      },
+      list: [
+        { password: secret },
+      ],
+    });
+
+    expect(redacted).not.toContain(secret);
+    expect(JSON.parse(redacted)).toEqual({
+      CODEX_API_KEY: "[REDACTED]",
+      nested: {
+        accessToken: "[REDACTED]",
+        safe: "visible",
+      },
+      list: [
+        { password: "[REDACTED]" },
+      ],
+    });
+  });
+
+  it("redacts quoted JSON secret assignments in text", () => {
+    const secret = "plain-custom-token-value-1234567890";
+
+    expect(redactText(`{"CODEX_API_KEY":"${secret}"}`)).toBe('{"CODEX_API_KEY":"[REDACTED]"}');
+    expect(redactText(`{"nestedAccessToken":"${secret}"}`)).toBe('{"nestedAccessToken":"[REDACTED]"}');
   });
 });

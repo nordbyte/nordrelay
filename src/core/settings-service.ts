@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, rename, unlink } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import { SECRET_KEYS, SETTING_DEFINITIONS, type SettingDefinition } from "./config-metadata.js";
@@ -49,48 +50,72 @@ export class SettingsService {
   }
 
   async update(patch: Record<string, string | null | undefined>): Promise<SettingsUpdateResult> {
-    const current = await readEnvFile(this.envPath);
-    const changedKeys: string[] = [];
-    const errors: Array<{ key: string; message: string }> = [];
-    const definitions = new Map(SETTING_DEFINITIONS.map((definition) => [definition.key, definition]));
+    return withEnvFileLock(this.envPath, async () => {
+      const current = await readEnvFile(this.envPath);
+      const changedKeys: string[] = [];
+      const errors: Array<{ key: string; message: string }> = [];
+      const definitions = new Map(SETTING_DEFINITIONS.map((definition) => [definition.key, definition]));
 
-    for (const [key, rawValue] of Object.entries(patch)) {
-      const definition = definitions.get(key);
-      if (!definition) {
-        continue;
-      }
-      const value = normalizeSettingValue(rawValue);
-      if (value === undefined || isMaskedSecret(value)) {
-        continue;
-      }
-      if (value === "") {
-        if (current[key] !== undefined) {
-          delete current[key];
+      for (const [key, rawValue] of Object.entries(patch)) {
+        const definition = definitions.get(key);
+        if (!definition) {
+          continue;
+        }
+        const value = normalizeSettingValue(rawValue);
+        if (value === undefined || isMaskedSecret(value)) {
+          continue;
+        }
+        if (value === "") {
+          if (current[key] !== undefined) {
+            delete current[key];
+            changedKeys.push(key);
+          }
+          continue;
+        }
+        const validationError = validateSettingValue(definition, value);
+        if (validationError) {
+          errors.push({ key, message: validationError });
+          continue;
+        }
+        if (current[key] !== value) {
+          current[key] = value;
           changedKeys.push(key);
         }
-        continue;
       }
-      const validationError = validateSettingValue(definition, value);
-      if (validationError) {
-        errors.push({ key, message: validationError });
-        continue;
-      }
-      if (current[key] !== value) {
-        current[key] = value;
-        changedKeys.push(key);
-      }
-    }
 
-    if (changedKeys.length > 0 && errors.length === 0) {
-      await writeEnvFile(this.envPath, current);
-    }
+      if (changedKeys.length > 0 && errors.length === 0) {
+        await writeEnvFile(this.envPath, current);
+      }
 
-    return {
-      envPath: this.envPath,
-      changedKeys: errors.length === 0 ? changedKeys : [],
-      restartRequired: errors.length === 0 && changedKeys.some((key) => definitions.get(key)?.restartRequired),
-      errors,
-    };
+      return {
+        envPath: this.envPath,
+        changedKeys: errors.length === 0 ? changedKeys : [],
+        restartRequired: errors.length === 0 && changedKeys.some((key) => definitions.get(key)?.restartRequired),
+        errors,
+      };
+    });
+  }
+}
+
+const envFileLocks = new Map<string, Promise<void>>();
+
+async function withEnvFileLock<T>(filePath: string, task: () => Promise<T>): Promise<T> {
+  const lockKey = path.resolve(filePath);
+  const previous = envFileLocks.get(lockKey) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const next = previous.then(() => current, () => current);
+  envFileLocks.set(lockKey, next);
+  await previous;
+  try {
+    return await task();
+  } finally {
+    release();
+    if (envFileLocks.get(lockKey) === next) {
+      envFileLocks.delete(lockKey);
+    }
   }
 }
 
@@ -135,8 +160,11 @@ function validateSettingValue(definition: SettingDefinition, value: string): str
 async function readEnvFile(filePath: string): Promise<Record<string, string>> {
   try {
     return parseEnvText(await readFile(filePath, "utf8"));
-  } catch {
-    return {};
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      return {};
+    }
+    throw error;
   }
 }
 
@@ -162,7 +190,9 @@ function parseEnvText(text: string): Record<string, string> {
 }
 
 async function writeEnvFile(filePath: string, values: Record<string, string>): Promise<void> {
-  await mkdir(path.dirname(filePath), { recursive: true });
+  const directory = path.dirname(filePath);
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await chmodPrivate(directory, 0o700);
   const orderedKeys = [
     ...SETTING_DEFINITIONS.map((definition) => definition.key).filter((key) => values[key] !== undefined),
     ...Object.keys(values).filter((key) => !SETTING_DEFINITIONS.some((definition) => definition.key === key)).sort(),
@@ -172,7 +202,34 @@ async function writeEnvFile(filePath: string, values: Record<string, string>): P
     ...orderedKeys.map((key) => `${key}=${quoteEnvValue(values[key] ?? "")}`),
     "",
   ];
-  await writeFile(filePath, lines.join("\n"), { mode: 0o600 });
+  const tempPath = path.join(directory, `.${path.basename(filePath)}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`);
+  let handle: Awaited<ReturnType<typeof open>> | null = null;
+  try {
+    handle = await open(tempPath, "wx", 0o600);
+    await handle.writeFile(lines.join("\n"), "utf8");
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    await rename(tempPath, filePath);
+    await chmodPrivate(filePath, 0o600);
+  } catch (error) {
+    if (handle) {
+      await handle.close().catch(() => {});
+    }
+    await unlink(tempPath).catch(() => {});
+    throw error;
+  }
+}
+
+async function chmodPrivate(filePath: string, mode: number): Promise<void> {
+  if (process.platform === "win32") {
+    return;
+  }
+  await chmod(filePath, mode).catch(() => {});
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }
 
 function unquoteEnvValue(value: string): string {
