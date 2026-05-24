@@ -160,6 +160,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("body:JSON.stringify({text,correlationId,files:payloadFiles})");
     expect(js).toContain("appendQueuedMessage(r.queueId,r.correlationId||correlationId)");
     expect(js).toContain("function appendQueuedMessage(id,correlationId)");
+    expect(js).toContain("queued-message-actions");
+    expect(js).toContain("btn.className='danger mini-button'");
   });
 
   it("includes queue planner kanban tabs on the Queue page", () => {

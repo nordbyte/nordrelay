@@ -60,7 +60,7 @@ declare function adminDialog(title: string, body: string, onSubmit: () => unknow
 declare function api<P extends import("./core/api-client-types.js").WebApiPath>(path: P, options?: import("./core/api-client-types.js").WebApiClientOptions<P> & { local?: boolean }): Promise<import("./core/api-client-types.js").WebApiClientResponse<P>>;
 declare function apiPeer<P extends import("./core/api-client-types.js").WebApiPath>(peerId: string, path: P, options?: import("./core/api-client-types.js").WebApiClientOptions<P>): Promise<import("./core/api-client-types.js").WebApiClientResponse<P>>;
 declare function appendMessage(role: string, text: string, options?: WebuiAppendMessageOptions): HTMLElement | void;
-declare function appendQueuedMessage(queueId: string, text: string, options?: WebuiRecord): void;
+declare function appendQueuedMessage(queueId: string, correlationId?: string | null): void;
 declare function applyAccountChrome(auth?: WebuiAuth | null): void;
 declare function applyHeaderPeerSnapshot(peers: WebuiPeerState | null, bootstrap: WebuiBootstrap | null): void;
 declare function applyPermissions(root?: Element | Document): void;
