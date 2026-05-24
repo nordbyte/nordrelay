@@ -44,6 +44,7 @@ import { RelayAuthService } from "./relay-auth-service.js";
 import { RelayExternalActivityMonitor } from "./relay-external-activity-monitor.js";
 import { RelayQueueService, type RelayQueueAction } from "./relay-queue-service.js";
 import { RuntimeSnapshotCache } from "./runtime-cache.js";
+import { appendQueuedPromptChatMessage, resolveQueuedPromptChatAction } from "./relay-runtime-chat-sync.js";
 import {
   activeSessionPriority,
   activityToUnifiedJob,
@@ -302,6 +303,7 @@ export async function relayRuntimeSendEnvelope(runtime: RelayRuntimeDelegate, en
     if (session.isProcessing() || externalBusy) {
       const queued = runtime.queueService.enqueue(correlated);
       const info = runtime.publicInfo(session);
+      appendQueuedPromptChatMessage(runtime, info, queued, runtime.queueService.length());
       runtime.appendActivity({
         source: "web",
         status: "queued",
@@ -353,6 +355,9 @@ export function relayRuntimeQueueAction(runtime: RelayRuntimeDelegate, action: R
     const before = runtime.queueService.rawList();
     const affected = id ? before.find((item: QueuedPrompt) => item.id === id) : undefined;
     runtime.queueService.apply(action, id);
+    if (id && action === "cancel" && affected) {
+      resolveQueuedPromptChatAction(runtime, id, `Queued prompt ${id} cancelled`);
+    }
     if (id && action === "run") {
       void runtime.drainQueue().catch((error: unknown) => runtime.broadcastStatus(friendlyErrorText(error), "error"));
     }
@@ -521,6 +526,7 @@ export async function relayRuntimeDrainQueue(runtime: RelayRuntimeDelegate): Pro
         if (!next) {
           return;
         }
+        resolveQueuedPromptChatAction(runtime, next.id, `Queued prompt ${next.id} started`);
         await runtime.runPrompt(session, next);
       }
     } finally {

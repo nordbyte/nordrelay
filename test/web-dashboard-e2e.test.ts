@@ -173,6 +173,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('id="queuePlannerBoard"');
     expect(pageSource).toContain('id="queueProgressBoard"');
     expect(js).toContain("function loadQueue");
+    expect(js).toContain("async function loadQueue(options:WebuiRecord={})");
+    expect(js).toContain("loadQueue({silent:true})");
     expect(js).toContain("function renderQueueTable");
     expect(js).toContain("class=\"data-table queue-table\"");
     expect(js).toContain("function bindQueueTable");
@@ -534,6 +536,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("api('/api/chat/attachment'");
     expect(css).toContain(".chat-attachment-image");
     expect(js).toContain("function bindChatMessageActionButtons");
+    expect(js).toContain("queue:cancel");
+    expect(js).toContain("!currentAgentMessage||!currentAgentMessage.isConnected");
     expect(js).toContain("function retryChatMessage");
     expect(js).toContain("Message copied");
     expect(js).toContain("Retry message");

@@ -29,17 +29,17 @@ function bindQueueTabs(){
   });
 }
 
-async function loadQueue(){
+async function loadQueue(options:WebuiRecord={}){
   bindQueueTabs();
   switchQueueTab(state.queueTab||'queue');
   if(!can('queue.read')){
     document.getElementById('queueList').innerHTML=uiEmpty('Permission required: queue.read');
     return;
   }
-  setLoading('queueList','Loading queue...');
+  if(!options.silent)setLoading('queueList','Loading queue...');
   if(can('queue.plan.read')){
-    setLoading('queuePlannerBoard','Loading planned prompts...');
-    setLoading('queueProgressBoard','Loading in-progress prompts...');
+    if(!options.silent)setLoading('queuePlannerBoard','Loading planned prompts...');
+    if(!options.silent)setLoading('queueProgressBoard','Loading in-progress prompts...');
   }
   const [queue,planner]=await Promise.all([
     api('/api/queue'),

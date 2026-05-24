@@ -128,6 +128,7 @@ export class ChannelTurnService {
       source: this.options.source,
       correlationId,
     });
+    void this.options.chatHistory().then((messages) => this.options.broadcast({ type: "chat_history", messages })).catch(() => {});
 
     try {
       await session.prompt(envelope.input as AgentPromptInput, this.callbacks(turnId, info, envelope, actor));

@@ -132,6 +132,7 @@ export function relayRuntimeSubscribe(runtime: RelayRuntimeDelegate, callback: (
     runtime.subscribers.add(callback);
     void runtime.snapshot().then((data) => callback({ type: "snapshot", data })).catch(() => {});
     void runtime.chatHistory().then((messages) => callback({ type: "chat_history", messages })).catch(() => {});
+    callback({ type: "queue_update", queue: runtime.queue(), paused: runtime.queuePaused() });
     void runtime.activeSessions().then((active) => callback({ type: "active_sessions_update", active })).catch(() => {});
     callback({ type: "activity_update", events: runtime.activity({ limit: 50 }) });
     return () => runtime.subscribers.delete(callback);

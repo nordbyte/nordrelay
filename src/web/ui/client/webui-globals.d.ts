@@ -134,7 +134,7 @@ declare function setMirrorPreference(argument: string): Promise<unknown>;
 declare function createWebCorrelationId(): string;
 declare function loadMonitor(): Promise<void>;
 declare function loadPeers(): Promise<void>;
-declare function loadQueue(): Promise<void>;
+declare function loadQueue(options?: WebuiRecord): Promise<void>;
 declare function loadQueuePlanner(): Promise<void>;
 declare function loadSessions(reset?: boolean, agentId?: string): Promise<void>;
 declare function loadSessionDetail(threadId: string, agentId?: string): Promise<void>;
