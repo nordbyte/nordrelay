@@ -24,6 +24,7 @@ import { getExternalSnapshotForSession } from "../agents/shared/agent-activity.j
 import { listAgentAdapterDescriptors } from "../agents/shared/agent-adapter.js";
 import { AgentUpdateManager, type AgentUpdateJobSnapshot, type AgentUpdateOperation } from "../agents/shared/agent-updates.js";
 import { createAgentSessionService, enabledAgents } from "../agents/shared/agent-factory.js";
+import { findLaunchProfile, formatLaunchProfileBehavior } from "../agents/codex/codex-launch.js";
 import { AuditLogStore, type AuditEvent, type AuditListOptions } from "../access/audit-log.js";
 import { BotPreferencesStore } from "../state/bot-preferences.js";
 import { ChannelCommandService } from "../channels/shared/channel-command-service.js";
@@ -269,7 +270,16 @@ export function relayRuntimeListKnownContextMetadata(runtime: RelayRuntimeDelega
         workspace: current.workspace,
         model: current.model,
         reasoningEffort: current.reasoningEffort,
+        activeLaunchProfileId: current.launchProfileId,
+        launchProfileLabel: current.launchProfileLabel,
+        launchProfileBehavior: current.launchProfileBehavior,
+        sandboxMode: current.sandboxMode,
+        approvalPolicy: current.approvalPolicy,
+        unsafeLaunch: current.unsafeLaunch,
         launchProfileId: current.nextLaunchProfileId ?? current.launchProfileId,
+        nextLaunchProfileLabel: current.nextLaunchProfileLabel,
+        nextLaunchProfileBehavior: current.nextLaunchProfileBehavior,
+        nextUnsafeLaunch: current.nextUnsafeLaunch,
         sessionPath: current.sessionPath,
         updatedAt: Date.now(),
       });
@@ -388,6 +398,8 @@ export function relayRuntimeExternalActiveSession(runtime: RelayRuntimeDelegate,
   }
 
 export function relayRuntimeSessionStubForMetadata(runtime: RelayRuntimeDelegate, meta: ContextMetadata, agentId: AgentId, capabilities: AgentCapabilities): AgentSessionService {
+    const launch = launchInfoFromMetadata(runtime, meta, agentId);
+    const nextLaunchProfileId = meta.launchProfileId && meta.launchProfileId !== launch.id ? meta.launchProfileId : undefined;
     const info: AgentSessionInfo = {
       agentId,
       agentLabel: agentLabel(agentId),
@@ -395,13 +407,17 @@ export function relayRuntimeSessionStubForMetadata(runtime: RelayRuntimeDelegate
       workspace: meta.workspace,
       model: meta.model,
       reasoningEffort: meta.reasoningEffort,
-      launchProfileId: meta.launchProfileId ?? runtime.config.defaultLaunchProfileId,
-      launchProfileLabel: meta.launchProfileId ?? runtime.config.defaultLaunchProfileId,
-      launchProfileBehavior: "-",
-      sandboxMode: "-",
-      approvalPolicy: "-",
+      launchProfileId: launch.id,
+      launchProfileLabel: launch.label,
+      launchProfileBehavior: launch.behavior,
+      sandboxMode: launch.sandboxMode,
+      approvalPolicy: launch.approvalPolicy,
       fastMode: false,
-      unsafeLaunch: false,
+      unsafeLaunch: launch.unsafe,
+      nextLaunchProfileId,
+      nextLaunchProfileLabel: nextLaunchProfileId ? meta.nextLaunchProfileLabel ?? nextLaunchProfileId : undefined,
+      nextLaunchProfileBehavior: nextLaunchProfileId ? meta.nextLaunchProfileBehavior : undefined,
+      nextUnsafeLaunch: nextLaunchProfileId ? meta.nextUnsafeLaunch : undefined,
       sessionPath: meta.sessionPath,
       workspaceMode: meta.workspaceMode ?? "attached",
       worktree: meta.worktreeId ? (() => {
@@ -422,6 +438,29 @@ export function relayRuntimeSessionStubForMetadata(runtime: RelayRuntimeDelegate
       getInfo: () => info,
       getActiveThreadId: () => meta.threadId,
     } as AgentSessionService;
+  }
+
+function launchInfoFromMetadata(runtime: RelayRuntimeDelegate, meta: ContextMetadata, agentId: AgentId): {
+  id: string;
+  label: string;
+  behavior: string;
+  sandboxMode: string;
+  approvalPolicy: string;
+  unsafe: boolean;
+} {
+    const id = meta.activeLaunchProfileId ?? meta.launchProfileId ?? runtime.config.defaultLaunchProfileId;
+    const configured = agentId === "codex" ? findLaunchProfile(runtime.config.launchProfiles, id) : undefined;
+    const sandboxMode = meta.sandboxMode ?? configured?.sandboxMode ?? "-";
+    const approvalPolicy = meta.approvalPolicy ?? configured?.approvalPolicy ?? "-";
+    const behavior = meta.launchProfileBehavior ?? (configured ? formatLaunchProfileBehavior(configured) : (sandboxMode !== "-" && approvalPolicy !== "-" ? `${sandboxMode} / ${approvalPolicy}` : "-"));
+    return {
+      id,
+      label: meta.launchProfileLabel ?? configured?.label ?? id,
+      behavior,
+      sandboxMode,
+      approvalPolicy,
+      unsafe: meta.unsafeLaunch ?? (configured?.unsafe ?? sandboxMode === "danger-full-access"),
+    };
   }
 
 export function relayRuntimeCapabilitiesForAgent(runtime: RelayRuntimeDelegate, agentId: AgentId): AgentCapabilities {

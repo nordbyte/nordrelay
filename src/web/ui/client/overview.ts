@@ -317,22 +317,28 @@ function renderSessionControls(){
 }
 function chatSessionControlLockTitle(){return currentChatWorkingSession()?'Wait until the current session finishes before changing model, reasoning, fast mode, or launch.':''}
 function activeLaunchProfileId(session,controls=state.controls||{}){
-  const profiles=controls.launchProfiles||[];
+  const profiles=(controls.launchProfiles||[]).concat(knownUnsafeLaunchProfilesForSession(session));
   const currentId=session.launchProfileId||'';
   const currentProfile=profiles.find(profile=>profile.id===currentId);
   if(currentProfile&&launchProfileBehaviorMatches(currentProfile,session))return currentId;
   const matchingProfile=profiles.find(profile=>launchProfileBehaviorMatches(profile,session));
   if(matchingProfile)return matchingProfile.id;
+  if(currentProfile&&activeLaunchBehavior(session))return 'active:'+activeLaunchBehavior(session);
   return currentId||session.nextLaunchProfileId||'';
+}
+function activeLaunchBehavior(session){
+  const activeBehavior=String(session?.launchProfileBehavior||'').trim();
+  if(activeBehavior)return activeBehavior;
+  const sandbox=String(session?.sandboxMode||'').trim();
+  const approval=String(session?.approvalPolicy||'').trim();
+  return sandbox&&approval?sandbox+' / '+approval:'';
 }
 function launchProfileBehaviorMatches(profile,session){
   const behavior=String(profile?.behavior||'').trim();
   if(!behavior)return false;
-  const activeBehavior=String(session?.launchProfileBehavior||'').trim();
+  const activeBehavior=activeLaunchBehavior(session);
   if(activeBehavior&&behavior===activeBehavior)return true;
-  const sandbox=String(session?.sandboxMode||'').trim();
-  const approval=String(session?.approvalPolicy||'').trim();
-  return Boolean(sandbox&&approval&&behavior===sandbox+' / '+approval);
+  return false;
 }
 function launchMenuItems(controls,session,selectedLaunch){
   const items=(controls.launchProfiles||[]).map(p=>({value:p.id,label:p.label+' - '+p.behavior+(p.unsafe?' - unsafe':'')}));

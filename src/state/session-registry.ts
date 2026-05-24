@@ -16,7 +16,16 @@ export interface ContextMetadata {
   worktreeId?: string;
   model?: string;
   reasoningEffort?: string;
+  activeLaunchProfileId?: string;
+  launchProfileLabel?: string;
+  launchProfileBehavior?: string;
+  sandboxMode?: string;
+  approvalPolicy?: string;
+  unsafeLaunch?: boolean;
   launchProfileId?: string;
+  nextLaunchProfileLabel?: string;
+  nextLaunchProfileBehavior?: string;
+  nextUnsafeLaunch?: boolean;
   sessionPath?: string;
   pinnedThreadIds?: string[];
   pinnedThreadIdsByAgent?: Partial<Record<AgentId, string[]>>;
@@ -177,9 +186,20 @@ export class SessionRegistry {
       workspaceMode,
       model: info.model,
       reasoningEffort: info.reasoningEffort,
+      activeLaunchProfileId: info.launchProfileId,
+      launchProfileLabel: info.launchProfileLabel,
+      launchProfileBehavior: info.launchProfileBehavior,
+      sandboxMode: info.sandboxMode,
+      approvalPolicy: info.approvalPolicy,
+      unsafeLaunch: info.unsafeLaunch,
       launchProfileId: info.nextLaunchProfileId ?? info.launchProfileId,
       updatedAt: Date.now(),
     };
+    if (info.nextLaunchProfileId) {
+      next.nextLaunchProfileLabel = info.nextLaunchProfileLabel;
+      next.nextLaunchProfileBehavior = info.nextLaunchProfileBehavior;
+      next.nextUnsafeLaunch = info.nextUnsafeLaunch;
+    }
     if (worktreeId) {
       next.worktreeId = worktreeId;
     }
