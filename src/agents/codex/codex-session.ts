@@ -125,12 +125,6 @@ export class CodexSessionService {
     service.resetCodexClient();
 
     if (options?.resumeThreadId) {
-      if (options.launchProfileId && options.launchProfileId !== config.defaultLaunchProfileId) {
-        service.activeThreadLaunchProfileOverride = {
-          threadId: options.resumeThreadId,
-          profile: service.currentLaunchProfile,
-        };
-      }
       await service.resumeThread(options.resumeThreadId);
       return service;
     }
@@ -372,12 +366,26 @@ export class CodexSessionService {
   async resumeThread(threadId: string): Promise<CodexSessionInfo> {
     this.ensureIdle("resume a thread");
 
+    const record = getThread(threadId);
+    const workspace = record?.cwd ?? this.currentWorkspace;
+    const model = record?.model || this.currentModel;
+    const launchProfile = this.launchProfileOverrideFor(threadId) ?? this.resolveThreadLaunchProfile(record);
+    if (record) {
+      this.currentReasoningEffort = record.reasoningEffort
+        ? record.reasoningEffort as ModelReasoningEffort
+        : undefined;
+    }
+
     this.thread = this.getCodex().resumeThread(
       threadId,
-      this.buildThreadOptions(this.currentWorkspace, this.currentModel),
+      this.buildThreadOptions(workspace, model, launchProfile),
     );
-    this.activeThreadLaunchProfile = this.currentLaunchProfile;
+    this.activeThreadLaunchProfile = launchProfile;
     this.currentThreadId = threadId;
+    this.currentWorkspace = workspace;
+    if (model) {
+      this.currentModel = model;
+    }
     return this.getInfo();
   }
 
