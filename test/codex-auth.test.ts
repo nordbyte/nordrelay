@@ -128,6 +128,16 @@ describe("codex-auth", () => {
       expect(status.detail).toContain("Not logged in");
     });
 
+    it("delegates to Codex turn startup when CLI auth status cannot load configuration", async () => {
+      mockExecFailure("Error loading configuration: No such file or directory (os error 2)");
+
+      const status = await checkAuthStatus();
+      expect(status.authenticated).toBe(true);
+      expect(status.method).toBe("cli");
+      expect(status.detail).toContain("auth precheck could not load configuration");
+      expect(status.detail).toContain("validated when a turn starts");
+    });
+
     it("reports unauthenticated when CLI is not found", async () => {
       mockExecNotFound();
 

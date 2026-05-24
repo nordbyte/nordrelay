@@ -162,11 +162,22 @@ function parseCommandError(error: unknown): AuthStatus {
   }
 
   const detail = extractErrorMessage(error) || "Not authenticated";
+  if (isConfigurationLoadError(detail)) {
+    return {
+      authenticated: true,
+      method: "cli",
+      detail: `Codex CLI auth precheck could not load configuration (${detail}); authentication will be validated when a turn starts.`,
+    };
+  }
   return {
     authenticated: false,
     method: "none",
     detail,
   };
+}
+
+function isConfigurationLoadError(detail: string): boolean {
+  return /error loading configuration/i.test(detail);
 }
 
 function extractErrorMessage(error: unknown): string {
