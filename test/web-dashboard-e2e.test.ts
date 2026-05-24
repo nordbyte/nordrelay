@@ -866,12 +866,17 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("data-peer-tab-panel");
     expect(js).toContain("function discoverPeers");
     expect(js).toContain("function openPeerDebugDialog");
+    expect(js).toContain("function bindTableActionMenus");
+    expect(js).toContain("function positionTableActionMenu");
+    expect(js).toContain("bindTableActionMenus(document.getElementById('peersList')");
     expect(js).toContain("/debug/probe");
     expect(js).toContain("Peer debug");
     expect(js).toContain("/api/peers/discover");
     expect(js).toContain("Health history");
     expect(css).toContain(".peer-tab");
     expect(css).toContain(".peer-debug-panel");
+    expect(css).toContain(".table-action-menu.is-floating .table-action-menu-list");
+    expect(css).toContain("position:fixed");
     expect(contract).toContain('exact("/api/peers/discover"');
     expect(contract).toContain('/api/peers/:id/debug');
   });
