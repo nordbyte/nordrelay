@@ -861,11 +861,16 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('data-peer-tab="status"');
     expect(pageSource).toContain('data-peer-tab-panel="discovery"');
     expect(pageSource).toContain("Discover LAN peers");
+    expect(pageSource).toContain('id="syncPeersBtn"');
     expect(pageSource).toContain('id="peerDiscovery"');
     expect(js).toContain("function switchPeerTab");
     expect(js).toContain("data-peer-tab-panel");
     expect(js).toContain("function discoverPeers");
     expect(js).toContain("function openPeerDebugDialog");
+    expect(js).toContain("function openPeerSyncDialog");
+    expect(js).toContain("function loadPeerSyncCandidates");
+    expect(js).toContain("/sync-candidates");
+    expect(js).toContain("/api/peers/sync");
     expect(js).toContain("function bindTableActionMenus");
     expect(js).toContain("function positionTableActionMenu");
     expect(js).toContain("bindTableActionMenus(document.getElementById('peersList')");
@@ -878,6 +883,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".table-action-menu.is-floating .table-action-menu-list");
     expect(css).toContain("position:fixed");
     expect(contract).toContain('exact("/api/peers/discover"');
+    expect(contract).toContain('exact("/api/peers/sync"');
+    expect(contract).toContain('/api/peers/:id/sync-candidates');
+    expect(contract).toContain('/api/peers/:id/sync-invite');
     expect(contract).toContain('/api/peers/:id/debug');
   });
 

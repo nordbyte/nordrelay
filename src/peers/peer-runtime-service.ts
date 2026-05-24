@@ -10,9 +10,12 @@ import type { ConnectorConfig } from "../core/config.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import { friendlyErrorText } from "../core/error-messages.js";
 import { getPackageVersion } from "../support/operations.js";
-import { checkPeerEndpoint } from "./peer-client.js";
+import { checkPeerEndpoint, RemoteRelayClient } from "./peer-client.js";
+import { loadOrCreatePeerIdentity } from "./peer-identity.js";
+import { buildPeerReadiness } from "./peer-readiness.js";
 import { matchPeerWebRoute, type MatchedPeerWebRoute } from "./peer-runtime-routes.js";
-import type { PeerRecord, PeerRpcRequest, PeerWebProxyPayload } from "./peer-types.js";
+import { publicPeer, type PeerRecord, type PeerRpcRequest, type PeerWebProxyPayload } from "./peer-types.js";
+import { PeerStore } from "./peer-store.js";
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
 import type { ActiveSessionsDto, QueuePlanDto, QueuePlannerSnapshotDto, RelayEvent, RelaySnapshot, SessionPageDto, TraceDetailDto, UnifiedJobDto, UnifiedJobsDto, WebDiagnosticsDto, WebTasksDto } from "../runtime/relay-runtime-types.js";
 import type { QueuePlanInput } from "../runtime/relay-runtime-queue-planner.js";
@@ -37,6 +40,7 @@ export class PeerRuntimeService {
     private readonly config: ConnectorConfig,
     private readonly runtime: RelayRuntime,
     private readonly options: {
+      home?: string;
       runtimeForContext?: (peer: PeerRecord, sourceContextKey?: ChannelContextKey) => RelayRuntime;
     } = {},
   ) {}
@@ -96,6 +100,7 @@ export class PeerRuntimeService {
   private async handleMatchedWebRoute(route: MatchedPeerWebRoute, context: PeerWebRouteContext): Promise<unknown> {
     switch (route.definition.group) {
       case "core": return this.handleCoreWebRoute(context);
+      case "peers": return this.handlePeerWebRoute(context, route.params);
       case "agentUpdates": return this.handleAgentUpdateWebRoute(context, route.params);
       case "jobs": return this.handleJobsWebRoute(context, route.params);
       case "workflows": return this.handleWorkflowWebRoute(context, route.params);
@@ -106,6 +111,57 @@ export class PeerRuntimeService {
       case "artifacts": return this.handleArtifactWebRoute(context);
       case "operations": return this.handleOperationsWebRoute(context);
     }
+  }
+
+  private async handlePeerWebRoute(context: PeerWebRouteContext, params: string[]): Promise<unknown> {
+    const { peer, method, path, body, remoteActor } = context;
+    const store = new PeerStore(this.options.home);
+    const identity = loadOrCreatePeerIdentity(this.options.home, this.config.peerName);
+    if (method === "GET" && path === "/api/peers") {
+      this.assertScope(peer, "peers.read");
+      const readiness = await buildPeerReadiness(this.config, this.options.home);
+      return store.snapshot(identity.public, {
+        enabled: this.config.peerEnabled,
+        listenUrl: readiness.listenUrl,
+        requireTls: this.config.peerRequireTls,
+        readiness,
+      });
+    }
+    const peerId = params[0];
+    if (method === "POST" && peerId && path.endsWith("/rotate")) {
+      this.assertScope(peer, "peers.write");
+      const readiness = await buildPeerReadiness(this.config, this.options.home);
+      const created = store.createRotationInvitation(peerId, {
+        expiresInMs: numberValue(body.expiresMinutes, 10) * 60 * 1000,
+      });
+      return {
+        peer: created.peer,
+        invitation: created.invitation,
+        code: created.code,
+        command: `nordrelay peer add ${readiness.listenUrl} --code ${created.code}`,
+        readiness,
+        warnings: readiness.warnings,
+      };
+    }
+    if (method === "POST" && peerId && path.endsWith("/sync-invite")) {
+      this.assertScope(peer, "peers.write");
+      this.assertScope(peer, "peers.connect");
+      const sourcePeer = store.get(peerId);
+      if (!sourcePeer) {
+        throw new Error("Peer not found.");
+      }
+      if (!sourcePeer.url) {
+        throw new Error("Peer sync requires the selected peer to expose a direct URL.");
+      }
+      const created = objectRecord(await new RemoteRelayClient(store, this.options.home).webProxy(sourcePeer.id, {
+        method: "POST",
+        path: `/api/peers/${encodeURIComponent(sourcePeer.id)}/rotate`,
+        body: { expiresMinutes: numberValue(body.expiresMinutes, 10) },
+        contextKey: stringValue(body.contextKey) || "web:peer-sync",
+      }, remoteActor, "web:peer-sync", { timeoutMs: 12_000 }));
+      return { ...created, peer: publicPeer(sourcePeer), remotePeer: created.peer };
+    }
+    throw unsupportedPeerRoute(method, path);
   }
 
   private async handleCoreWebRoute(context: PeerWebRouteContext): Promise<unknown> {

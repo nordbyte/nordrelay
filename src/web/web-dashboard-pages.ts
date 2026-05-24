@@ -459,7 +459,7 @@ ${faviconLinks}
           </div>
           <div class="peer-tab" data-peer-tab-panel="peers">
             <div class="peer-tab-heading">
-              <div class="row peer-heading-actions"><button id="addPeerBtn" class="secondary">Add peer</button><button id="reloadPeersListBtn" class="secondary">Reload peers</button></div>
+              <div class="row peer-heading-actions"><button id="addPeerBtn" class="secondary">Add peer</button><button id="syncPeersBtn" class="secondary">Sync peers</button><button id="reloadPeersListBtn" class="secondary">Reload peers</button></div>
             </div>
             <div id="peersList" class="list"></div>
           </div>

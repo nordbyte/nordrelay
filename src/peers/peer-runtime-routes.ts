@@ -2,6 +2,7 @@ import type { WebHttpMethod } from "../web/web-api-contract.js";
 
 export type PeerWebRouteGroup =
   | "core"
+  | "peers"
   | "agentUpdates"
   | "jobs"
   | "workflows"
@@ -108,6 +109,8 @@ const artifactPaths: Array<[WebHttpMethod, string]> = [
 
 export const PEER_WEB_ROUTES: PeerWebRouteDefinition[] = [
   ...corePaths.map(([method, path]) => exact(method, path, "core")),
+  exact("GET", "/api/peers", "peers"),
+  pattern("POST", /^\/api\/peers\/([^/]+)\/(?:rotate|sync-invite)$/, "peers"),
   exact("GET", "/api/agent-updates", "agentUpdates"),
   exact("POST", "/api/agent-update", "agentUpdates"),
   pattern("*", /^\/api\/agent-update\/([^/]+)\/(?:log|input|cancel)$/, "agentUpdates"),
@@ -177,6 +180,8 @@ export const PEER_WEB_ROUTE_CONTRACT_PATHS = new Set([
   "/api/workflows/:id/run",
   "/api/workflows/:id/preview",
   "/api/workflow-triggers/:token/run",
+  "/api/peers/:id/rotate",
+  "/api/peers/:id/sync-invite",
   "/api/sessions/worktrees/:id",
   "/api/sessions/worktrees/integrations/:id/finalize",
   "/api/sessions/worktrees/:id/diff",

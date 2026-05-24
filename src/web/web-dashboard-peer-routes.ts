@@ -20,7 +20,17 @@ import type { PeerDiscoveryJobManager } from "../peers/peer-discovery-jobs.js";
 import { buildPeerReadiness, peerListenUrl } from "../peers/peer-readiness.js";
 import { discoverLanPeers } from "../peers/peer-discovery.js";
 import { PeerStore } from "../peers/peer-store.js";
-import { publicPeer, type PeerIdentityBackup, type PeerRelayQueueSnapshot, type PeerWebProxyPayload } from "../peers/peer-types.js";
+import {
+  publicPeer,
+  type PeerIdentityBackup,
+  type PeerRelayQueueSnapshot,
+  type PeerReadiness,
+  type PeerSnapshot,
+  type PeerSyncCandidate,
+  type PeerSyncResultItem,
+  type PeerWebProxyPayload,
+  type PublicPeerRecord,
+} from "../peers/peer-types.js";
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
 import { mergeSessionDetailMessages } from "../runtime/relay-runtime-session-detail.js";
 import type { WebActivityActor, WebChatMessage } from "./web-state.js";
@@ -230,6 +240,84 @@ export async function handleDashboardPeerRoute(
     }, identity, store);
     sendJson(res, 201, { peer: publicPeer(result.peer), tlsFingerprint: result.tlsFingerprint });
     options.auditPeerAction?.("peer_paired", `${result.peer.name} (${result.peer.id})`);
+    return true;
+  }
+
+  const syncCandidatesMatch = url.pathname.match(/^\/api\/peers\/([^/]+)\/sync-candidates$/);
+  if (syncCandidatesMatch?.[1] && req.method === "GET") {
+    const sourcePeerId = decodeURIComponent(syncCandidatesMatch[1]);
+    assertPeerAccess(options, sourcePeerId);
+    assertLocalPermission(options, "peers.connect");
+    const sourcePeer = store.get(sourcePeerId);
+    if (!sourcePeer) {
+      throw new Error("Source peer not found.");
+    }
+    const remoteSnapshot = await loadRemotePeerSnapshot(options, store, sourcePeer.id);
+    sendJson(res, 200, {
+      sourcePeer: publicPeer(sourcePeer),
+      candidates: peerSyncCandidates(store, identity.public.nodeId, remoteSnapshot.peers),
+    });
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/peers/sync") {
+    const body = await readJsonBody(req);
+    const sourcePeerId = requiredString(body, "sourcePeerId");
+    const candidateNodeIds = arrayStringField(body, "candidateNodeIds");
+    if (!candidateNodeIds.length) {
+      throw new Error("Select at least one peer to sync.");
+    }
+    assertPeerAccess(options, sourcePeerId);
+    assertLocalPermission(options, "peers.connect");
+    const sourcePeer = store.get(sourcePeerId);
+    if (!sourcePeer) {
+      throw new Error("Source peer not found.");
+    }
+    const remoteSnapshot = await loadRemotePeerSnapshot(options, store, sourcePeer.id);
+    const candidates = peerSyncCandidates(store, identity.public.nodeId, remoteSnapshot.peers);
+    const byNodeId = new Map(candidates.map((candidate) => [candidate.peer.nodeId, candidate]));
+    const readiness = await buildPeerReadiness(options.config, options.home);
+    const publicUrl = pairingPublicUrl(readiness);
+    const client = new RemoteRelayClient(store, options.home);
+    const expiresMinutes = Math.min(Math.max(optionalNumberField(body, "expiresMinutes") ?? 10, 1), 60);
+    const results: PeerSyncResultItem[] = [];
+    for (const nodeId of [...new Set(candidateNodeIds)]) {
+      const candidate = byNodeId.get(nodeId);
+      if (!candidate) {
+        results.push({ nodeId, name: nodeId, status: "skipped", reason: "Peer candidate was not found on the source peer." });
+        continue;
+      }
+      if (!candidate.importable || !candidate.peer.url) {
+        results.push({ nodeId, name: candidate.peer.name, status: "skipped", reason: candidate.reason || "Peer cannot be synced automatically." });
+        continue;
+      }
+      try {
+        const invite = objectRecord(await client.webProxy(sourcePeer.id, {
+          method: "POST",
+          path: `/api/peers/${encodeURIComponent(candidate.peer.id)}/sync-invite`,
+          body: { expiresMinutes },
+          contextKey: "web:peer-sync",
+        }, options.activityActor, "web:peer-sync", { timeoutMs: 20_000 }));
+        const code = requiredString(invite, "code");
+        const paired = await pairPeer({
+          url: candidate.peer.url,
+          code,
+          name: candidate.peer.name,
+          publicUrl,
+        }, identity, store);
+        const updated = candidate.peer.group
+          ? store.updatePeer(paired.peer.id, { group: candidate.peer.group })
+          : paired.peer;
+        results.push({ nodeId, name: candidate.peer.name, status: "created", peer: publicPeer(updated) });
+        options.auditPeerAction?.("peer_synced", `${candidate.peer.name} via ${sourcePeer.name}`);
+      } catch (error) {
+        results.push({ nodeId, name: candidate.peer.name, status: "failed", reason: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    const created = results.filter((item) => item.status === "created").length;
+    const skipped = results.filter((item) => item.status === "skipped").length;
+    const failed = results.filter((item) => item.status === "failed").length;
+    sendJson(res, 200, { sourcePeer: publicPeer(sourcePeer), results, created, skipped, failed });
     return true;
   }
 
@@ -550,6 +638,53 @@ function scopedPeerSnapshot(options: DashboardPeerRouteOptions, snapshot: Return
   };
 }
 
+async function loadRemotePeerSnapshot(options: DashboardPeerRouteOptions, store: PeerStore, sourcePeerId: string): Promise<PeerSnapshot> {
+  const client = new RemoteRelayClient(store, options.home);
+  const data = objectRecord(await client.webProxy(sourcePeerId, {
+    method: "GET",
+    path: "/api/peers",
+    body: {},
+    contextKey: "web:peer-sync",
+  }, options.activityActor, "web:peer-sync", { timeoutMs: 12_000 }));
+  return {
+    ...data,
+    peers: Array.isArray(data.peers) ? data.peers as PublicPeerRecord[] : [],
+    invitations: Array.isArray(data.invitations) ? data.invitations as PeerSnapshot["invitations"] : [],
+  } as PeerSnapshot;
+}
+
+function peerSyncCandidates(store: PeerStore, selfNodeId: string, remotePeers: PublicPeerRecord[]): PeerSyncCandidate[] {
+  const localPeers = store.listPublic();
+  const localNodeIds = new Set(localPeers.map((peer) => peer.nodeId));
+  const localIds = new Set(localPeers.map((peer) => peer.id));
+  return remotePeers.map((peer) => {
+    const isSelf = peer.nodeId === selfNodeId;
+    const alreadyExists = localNodeIds.has(peer.nodeId) || localIds.has(peer.id);
+    const reason = peerSyncBlockReason(peer, isSelf, alreadyExists);
+    return {
+      peer,
+      alreadyExists,
+      isSelf,
+      importable: !reason,
+      canAutoPair: !reason,
+      reason,
+    };
+  }).sort((a, b) => Number(a.alreadyExists || a.isSelf) - Number(b.alreadyExists || b.isSelf) || a.peer.name.localeCompare(b.peer.name));
+}
+
+function peerSyncBlockReason(peer: PublicPeerRecord, isSelf: boolean, alreadyExists: boolean): string | undefined {
+  if (isSelf) return "This is the local node.";
+  if (alreadyExists) return "Already added locally.";
+  if (!peer.url) return "No direct peer URL is available.";
+  if (!peer.enabled) return "Peer is disabled on the source node.";
+  if (peer.trustStatus === "error") return peer.lastError || "Peer trust status is error.";
+  return undefined;
+}
+
+function pairingPublicUrl(readiness: PeerReadiness): string | undefined {
+  return readiness.enabled && readiness.localListening && !readiness.loopbackOnly ? readiness.listenUrl : undefined;
+}
+
 function canUsePeer(options: Pick<DashboardPeerRouteOptions, "users" | "authUser">, peerId: string): boolean {
   return options.users.canUsePeerStrict(options.authUser, peerId);
 }
@@ -557,6 +692,12 @@ function canUsePeer(options: Pick<DashboardPeerRouteOptions, "users" | "authUser
 function assertPeerAccess(options: Pick<DashboardPeerRouteOptions, "users" | "authUser">, peerId: string): void {
   if (!canUsePeer(options, peerId)) {
     throw new WebAccessDeniedError(`Access denied: peer ${peerId} is outside your group scope.`);
+  }
+}
+
+function assertLocalPermission(options: Pick<DashboardPeerRouteOptions, "users" | "authUser">, permission: Permission): void {
+  if (!options.users.hasPermission(options.authUser, permission)) {
+    throw new WebAccessDeniedError(`Access denied: ${permission} permission required.`);
   }
 }
 

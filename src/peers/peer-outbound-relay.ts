@@ -51,7 +51,7 @@ export function startPeerOutboundRelay(options: {
     return null;
   }
   const store = new PeerStore(home);
-  const service = new PeerRuntimeService(config, runtime);
+  const service = new PeerRuntimeService(config, runtime, { home });
   const homeKey = path.resolve(home || process.env.NORDRELAY_HOME || DEFAULT_HOME);
   let closed = false;
   const timers = new Map<string, NodeJS.Timeout>();

@@ -214,6 +214,53 @@ describe("peer server pairing", () => {
       body: { text: "should be denied" },
     })).rejects.toThrow(/access denied|permission denied/i);
   });
+
+  it("creates a transitive sync invite without copying peer secrets", async () => {
+    const sourceHome = tmpHome();
+    const targetHome = tmpHome();
+    const localHome = tmpHome();
+    const sourceHandle = await startPeerServer({
+      config: peerConfig(sourceHome, { name: "source" }),
+      runtime: fakeRuntime(),
+      home: sourceHome,
+    });
+    const targetHandle = await startPeerServer({
+      config: peerConfig(targetHome, { name: "target" }),
+      runtime: fakeRuntime(),
+      home: targetHome,
+    });
+    handles.push(sourceHandle!, targetHandle!);
+
+    const sourceIdentity = loadOrCreatePeerIdentity(sourceHome, "source");
+    const sourceStore = new PeerStore(sourceHome);
+    const targetStore = new PeerStore(targetHome);
+    const sourceToTargetInvite = targetStore.createInvitation({ scopes: ["inspect", "peers.read", "peers.write", "peers.connect"] });
+    const sourceToTarget = await pairPeer({ url: targetHandle!.url, code: sourceToTargetInvite.code }, sourceIdentity, sourceStore);
+
+    const localIdentity = loadOrCreatePeerIdentity(localHome, "local");
+    const localStore = new PeerStore(localHome);
+    const localToSourceInvite = sourceStore.createInvitation({ scopes: ["inspect", "peers.read", "peers.write", "peers.connect"] });
+    const localToSource = await pairPeer({ url: sourceHandle!.url, code: localToSourceInvite.code }, localIdentity, localStore);
+
+    const sourcePeers = await new RemoteRelayClient(localStore).webProxy(localToSource.peer.id, {
+      method: "GET",
+      path: "/api/peers",
+      body: {},
+    });
+    expect(sourcePeers).toMatchObject({ peers: expect.arrayContaining([expect.objectContaining({ nodeId: sourceToTarget.peer.nodeId })]) });
+
+    const syncInvite = await new RemoteRelayClient(localStore).webProxy(localToSource.peer.id, {
+      method: "POST",
+      path: `/api/peers/${encodeURIComponent(sourceToTarget.peer.id)}/sync-invite`,
+      body: { expiresMinutes: 5 },
+    });
+    expect(syncInvite).toMatchObject({ code: expect.any(String), peer: expect.objectContaining({ nodeId: sourceToTarget.peer.nodeId }) });
+
+    const localToTarget = await pairPeer({ url: targetHandle!.url, code: (syncInvite as { code: string }).code }, localIdentity, localStore);
+    expect(localToTarget.peer.nodeId).toBe(sourceToTarget.peer.nodeId);
+    expect(localToTarget.peer.secret).not.toBe(sourceToTarget.peer.secret);
+    expect(localStore.get(localToTarget.peer.id)?.scopes).toEqual(expect.arrayContaining(["peers.read", "peers.write"]));
+  });
 });
 
 function tmpHome(): string {

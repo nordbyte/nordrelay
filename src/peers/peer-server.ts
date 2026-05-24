@@ -54,6 +54,7 @@ export async function startPeerServer(options: {
   const nonces = new PeerNonceCache();
   const contextRuntimes = new Map<string, RelayRuntime>();
   const service = new PeerRuntimeService(config, runtime, {
+    home,
     runtimeForContext: (peer, sourceContextKey) => {
       const contextKey = peerRuntimeContextKey(peer, sourceContextKey);
       let scoped = contextRuntimes.get(contextKey);

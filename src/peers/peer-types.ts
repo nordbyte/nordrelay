@@ -138,6 +138,36 @@ export interface PeerSnapshot {
   invitations: PublicPeerInvitationRecord[];
 }
 
+export interface PeerSyncCandidate {
+  peer: PublicPeerRecord;
+  alreadyExists: boolean;
+  isSelf: boolean;
+  importable: boolean;
+  canAutoPair: boolean;
+  reason?: string;
+}
+
+export interface PeerSyncCandidatesResponse {
+  sourcePeer: PublicPeerRecord;
+  candidates: PeerSyncCandidate[];
+}
+
+export interface PeerSyncResultItem {
+  nodeId: string;
+  name: string;
+  status: "created" | "skipped" | "failed";
+  peer?: PublicPeerRecord;
+  reason?: string;
+}
+
+export interface PeerSyncResponse {
+  sourcePeer: PublicPeerRecord;
+  results: PeerSyncResultItem[];
+  created: number;
+  skipped: number;
+  failed: number;
+}
+
 export interface PeerReadiness {
   enabled: boolean;
   listenUrl: string;

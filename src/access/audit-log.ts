@@ -47,6 +47,7 @@ export type AuditAction =
   | "peer_invite_created"
   | "peer_invite_deleted"
   | "peer_paired"
+  | "peer_synced"
   | "peer_updated"
   | "peer_revoked"
   | "peer_probe"

@@ -70,6 +70,7 @@ export type WebApiStaticPath =
   | "/api/peers/pair"
   | "/api/peers/probe"
   | "/api/peers/relay"
+  | "/api/peers/sync"
   | "/api/permissions"
   | "/api/profile"
   | "/api/profile/logout-other-sessions"
@@ -135,6 +136,8 @@ export type WebApiDynamicPath =
   | `/api/peers/${string}/repair`
   | `/api/peers/${string}/repin`
   | `/api/peers/${string}/rotate`
+  | `/api/peers/${string}/sync-candidates`
+  | `/api/peers/${string}/sync-invite`
   | `/api/peers/discovery-jobs/${string}`
   | `/api/peers/discovery-jobs/${string}/cancel`
   | `/api/peers/discovery-jobs/${string}/log`
@@ -250,6 +253,7 @@ export type WebApiResponseByPath = {
   "/api/peers/pair": ServerWebApiClientResponse<"/api/peers/pair">;
   "/api/peers/probe": ServerWebApiClientResponse<"/api/peers/probe">;
   "/api/peers/relay": ServerWebApiClientResponse<"/api/peers/relay">;
+  "/api/peers/sync": ServerWebApiClientResponse<"/api/peers/sync">;
   "/api/permissions": ServerWebApiClientResponse<"/api/permissions">;
   "/api/profile": ServerWebApiClientResponse<"/api/profile">;
   "/api/profile/logout-other-sessions": ServerWebApiClientResponse<"/api/profile/logout-other-sessions">;
@@ -351,6 +355,7 @@ export type WebApiRequestBodyByPath = {
   "/api/peers/pair": ServerWebApiRequestBody<"/api/peers/pair">;
   "/api/peers/probe": ServerWebApiRequestBody<"/api/peers/probe">;
   "/api/peers/relay": ServerWebApiRequestBody<"/api/peers/relay">;
+  "/api/peers/sync": ServerWebApiRequestBody<"/api/peers/sync">;
   "/api/permissions": ServerWebApiRequestBody<"/api/permissions">;
   "/api/profile": ServerWebApiRequestBody<"/api/profile">;
   "/api/profile/logout-other-sessions": ServerWebApiRequestBody<"/api/profile/logout-other-sessions">;
