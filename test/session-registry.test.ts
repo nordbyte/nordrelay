@@ -102,6 +102,7 @@ vi.mock("../src/agents/codex/codex-session.js", () => ({
 }));
 
 import { SessionRegistry } from "../src/state/session-registry.js";
+import { stateBackendPath } from "../src/state/state-backend.js";
 
 describe("SessionRegistry", () => {
   afterEach(() => {
@@ -284,7 +285,8 @@ describe("SessionRegistry", () => {
   });
 
   it("restores distinct per-context workspace, model, reasoning effort, and thread ids", async () => {
-    const persistPath = path.join("/workspace/base", ".nordrelay", "contexts.json");
+    const config = createConfig();
+    const persistPath = stateBackendPath(config.workspace, config.stateBackend, "contexts.json");
     mockFsState.files.set(
       persistPath,
       JSON.stringify([
@@ -309,19 +311,19 @@ describe("SessionRegistry", () => {
       ]),
     );
 
-    const registry = new SessionRegistry(createConfig());
+    const registry = new SessionRegistry(config);
 
     const first = await registry.getOrCreate("123");
     const second = await registry.getOrCreate("123:42");
 
-    expect(mockSessionState.create).toHaveBeenNthCalledWith(1, createConfig(), {
+    expect(mockSessionState.create).toHaveBeenNthCalledWith(1, config, {
       workspace: "/workspace/a",
       model: "o4-mini",
       reasoningEffort: "low",
       launchProfileId: "readonly",
       resumeThreadId: "thread-a",
     });
-    expect(mockSessionState.create).toHaveBeenNthCalledWith(2, createConfig(), {
+    expect(mockSessionState.create).toHaveBeenNthCalledWith(2, config, {
       workspace: "/workspace/b",
       model: "gpt-5.4",
       reasoningEffort: "high",
@@ -356,7 +358,8 @@ describe("SessionRegistry", () => {
 
   it("falls back to the default launch profile when persisted metadata references a missing profile", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const persistPath = path.join("/workspace/base", ".nordrelay", "contexts.json");
+    const config = createConfig();
+    const persistPath = stateBackendPath(config.workspace, config.stateBackend, "contexts.json");
     mockFsState.files.set(
       persistPath,
       JSON.stringify([
@@ -370,10 +373,10 @@ describe("SessionRegistry", () => {
       ]),
     );
 
-    const registry = new SessionRegistry(createConfig());
+    const registry = new SessionRegistry(config);
     await registry.getOrCreate("123");
 
-    expect(mockSessionState.create).toHaveBeenCalledWith(createConfig(), {
+    expect(mockSessionState.create).toHaveBeenCalledWith(config, {
       workspace: "/workspace/a",
       model: undefined,
       reasoningEffort: undefined,
@@ -388,7 +391,7 @@ describe("SessionRegistry", () => {
   it("passes persisted active launch overrides separately from the next launch profile", async () => {
     const config = createConfig();
     mockFsState.files.set(
-      path.join(config.workspace, ".nordrelay", "contexts.json"),
+      stateBackendPath(config.workspace, config.stateBackend, "contexts.json"),
       JSON.stringify([
         {
           contextKey: "123",
@@ -635,7 +638,7 @@ describe("SessionRegistry", () => {
 
   it("persists metadata and reloads it in a new registry", async () => {
     const config = createConfig();
-    const persistPath = path.join(config.workspace, ".nordrelay", "contexts.json");
+    const persistPath = stateBackendPath(config.workspace, config.stateBackend, "contexts.json");
     const registry = new SessionRegistry(config);
     const session = (await registry.getOrCreate("123")) as any;
 
@@ -679,7 +682,7 @@ describe("SessionRegistry", () => {
 
   it("warns when persisted metadata cannot be loaded", () => {
     const config = createConfig();
-    const persistPath = path.join(config.workspace, ".nordrelay", "contexts.json");
+    const persistPath = stateBackendPath(config.workspace, config.stateBackend, "contexts.json");
     mockFsState.files.set(persistPath, "{broken");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
@@ -694,7 +697,7 @@ describe("SessionRegistry", () => {
 
   it("merges persisted metadata instead of overwriting unrelated contexts", async () => {
     const config = createConfig();
-    const persistPath = path.join(config.workspace, ".nordrelay", "contexts.json");
+    const persistPath = stateBackendPath(config.workspace, config.stateBackend, "contexts.json");
     mockFsState.files.set(persistPath, JSON.stringify([
       {
         contextKey: "telegram:1",
@@ -709,7 +712,7 @@ describe("SessionRegistry", () => {
       fileName: "web-contexts.json",
       sqliteKey: "web-contexts",
     });
-    const dashboardPath = path.join(config.workspace, ".nordrelay", "web-contexts.json");
+    const dashboardPath = stateBackendPath(config.workspace, config.stateBackend, "web-contexts.json");
     mockFsState.files.set(dashboardPath, JSON.stringify([
       {
         contextKey: "web:other",
@@ -732,8 +735,8 @@ describe("SessionRegistry", () => {
 
   it("supports separate metadata stores for dashboard contexts", async () => {
     const config = createConfig();
-    const telegramPath = path.join(config.workspace, ".nordrelay", "contexts.json");
-    const dashboardPath = path.join(config.workspace, ".nordrelay", "web-contexts.json");
+    const telegramPath = stateBackendPath(config.workspace, config.stateBackend, "contexts.json");
+    const dashboardPath = stateBackendPath(config.workspace, config.stateBackend, "web-contexts.json");
     const registry = new SessionRegistry(config, {
       fileName: "web-contexts.json",
       sqliteKey: "web-contexts",
