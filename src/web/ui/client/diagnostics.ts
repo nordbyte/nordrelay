@@ -45,6 +45,18 @@ function diagnosticsText(value: unknown) {
   return String(value);
 }
 
+function diagnosticsUptime(value: unknown) {
+  if (value === null || value === undefined || value === '') return '-';
+  const sec = Math.max(0, Math.round(Number(value)));
+  if (!Number.isFinite(sec)) return '-';
+  if (sec < 60) return sec + 's';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return min + 'm ' + (sec % 60) + 's';
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return hours + 'h ' + (min % 60) + 'm';
+  return Math.floor(hours / 24) + 'd ' + (hours % 24) + 'h';
+}
+
 function diagnosticsVersionValue(v: DiagnosticsRecord) {
   const status = String(v.status ?? '');
   return uiBadge(versionStatusLabel(status), versionStatusClass(status)) + ' <span class="diagnostics-inline-value">' + esc((v.installedLabel || '-') + ' / latest ' + (v.latestVersion || '-')) + '</span>';
@@ -67,7 +79,7 @@ function diagnosticsRuntimeRows(d: DiagnosticsRecord, h: DiagnosticsRecord): Dia
   const healthState = asRecord(h.state);
   const runtime = asRecord(d.runtime);
   const warnings = Array.isArray(healthState.adapterWarnings) ? healthState.adapterWarnings : [];
-  return [['Status', healthState.status, diagnosticsStatus(healthState.status)], ['PID', healthState.pid], ['App PID', healthState.appPid], ['State file', h.stateFile], ['Log file', h.logFile], ['State backend', runtime.stateBackend], ['Source workspace', runtime.sourceWorkspace], ['Runtime warnings', warnings.join(' | ') || '-', warnings.length ? 'warn' : 'ok'], ['Queue', runtime.queuePaused ? 'paused' : 'running', runtime.queuePaused ? 'warn' : 'ok'], ['Uptime', h.uptimeSeconds !== undefined ? h.uptimeSeconds + 's' : '-']];
+  return [['Status', healthState.status, diagnosticsStatus(healthState.status)], ['PID', healthState.pid], ['App PID', healthState.appPid], ['State file', h.stateFile], ['Log file', h.logFile], ['State backend', runtime.stateBackend], ['Source workspace', runtime.sourceWorkspace], ['Runtime warnings', warnings.join(' | ') || '-', warnings.length ? 'warn' : 'ok'], ['Queue', runtime.queuePaused ? 'paused' : 'running', runtime.queuePaused ? 'warn' : 'ok'], ['Uptime', diagnosticsUptime(h.uptimeSeconds)]];
 }
 
 function diagnosticsAgentRows(s: DiagnosticsRecord): DiagnosticsRow[] {

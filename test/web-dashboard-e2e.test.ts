@@ -782,9 +782,13 @@ describe("web dashboard browser-flow assets", () => {
     expect(workflows).toContain("function sessionDetailNodeLabel");
     expect(workflows).toContain("headerTargetName(peerId)");
     expect(readFileSync("src/web/ui/client/jobs.ts", "utf8")).toContain("function renderUnifiedJobs");
+    const diagnostics = readFileSync("src/web/ui/client/diagnostics.ts", "utf8");
     const metrics = readFileSync("src/web/ui/client/metrics.ts", "utf8");
     const components = readFileSync("src/web/ui/styles/components.css", "utf8");
     const pages = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    expect(diagnostics).toContain("function diagnosticsUptime");
+    expect(diagnostics).toContain("if (hours < 24) return hours + 'h ' + (min % 60) + 'm'");
+    expect(diagnostics).toContain("return Math.floor(hours / 24) + 'd ' + (hours % 24) + 'h'");
     expect(metrics).toContain("function loadMetrics");
     expect(metrics).toContain("function metricKvCard");
     expect(metrics).toContain("function metricWebRoutesTable");
@@ -839,7 +843,6 @@ describe("web dashboard browser-flow assets", () => {
     expect(webuiGlobals).toContain("declare const state: DashboardState");
     expect(webuiGlobals).toContain("declare const activityPager: WebuiPager");
     expect(webuiGlobals).not.toContain("declare const state: any");
-    const diagnostics = readFileSync("src/web/ui/client/diagnostics.ts", "utf8");
     expect(diagnostics).toContain("function diagnosticsHtml");
     expect(diagnostics).toContain("function switchDiagnosticsTab");
     expect(diagnostics).toContain("function bindDiagnosticsTabs");
