@@ -156,6 +156,9 @@
 .table-action-menu.is-floating{z-index:120}
 .table-action-menu.is-floating .table-action-menu-list{position:fixed;right:auto;top:auto;z-index:120;max-height:min(360px,calc(100vh - 16px));overflow-y:auto}
 .table-action-menu-list button{justify-content:flex-start;width:100%;min-height:30px;height:30px;padding:0 9px;text-align:left;font-size:13px}
+.peer-action-menu .peer-action-menu-panel{top:calc(100% + 8px);gap:6px;min-width:220px;padding:8px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow)}
+.peer-action-menu .peer-action-menu-panel button,.peer-action-menu .peer-action-menu-panel button.danger{width:100%;justify-content:flex-start;background:var(--surface);color:var(--text);border-color:transparent}
+.peer-action-menu .peer-action-menu-panel button:hover,.peer-action-menu .peer-action-menu-panel button:focus,.peer-action-menu .peer-action-menu-panel button.active,.peer-action-menu .peer-action-menu-panel button.danger:hover:not(:disabled),.peer-action-menu .peer-action-menu-panel button.danger:focus:not(:disabled){background:var(--accent);border-color:var(--accent);color:white;outline:none}
 .sessions-table{--table-min-width:1160px}
 .sessions-table:not(.worktrees-table) th:nth-child(1),.sessions-table:not(.worktrees-table) td:nth-child(1){width:9%;white-space:nowrap}
 .sessions-table:not(.worktrees-table) th:nth-child(2),.sessions-table:not(.worktrees-table) td:nth-child(2){width:22%}
