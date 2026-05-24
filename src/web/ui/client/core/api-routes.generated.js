@@ -159,6 +159,7 @@ const WEB_API_CLIENT_ROUTE_RULES = [
   { re: /^\/api\/queue\/plans\/[^\/]+\/approve$/, methods: ['POST'] },
   { re: /^\/api\/queue\/plans\/[^\/]+\/enqueue$/, methods: ['POST'] },
   { path: "/api/chat/history", methods: ['GET', 'DELETE'] },
+  { path: "/api/chat/attachment", methods: ['GET'] },
   { path: "/api/chat/mirror", methods: ['GET', 'POST'] },
   { path: "/api/activity", methods: ['GET'] },
   { path: "/api/artifacts", methods: ['GET', 'DELETE'] },

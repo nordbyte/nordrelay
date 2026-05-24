@@ -1,14 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type { AgentPromptInput } from "../agents/shared/agent.js";
+import type { StagedFile } from "../artifacts/attachments.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "./state-backend.js";
-import type { WebActivityActor } from "../web/web-state.js";
+import type { WebActivityActor, WebChatAttachment } from "../web/web-state.js";
 
 export interface PromptEnvelope {
   input: AgentPromptInput;
   description: string;
   displayText?: string;
   displayMeta?: string[];
+  attachments?: WebChatAttachment[];
   correlationId?: string;
   artifactOutDir?: string;
   activityActor?: WebActivityActor;
@@ -332,6 +334,17 @@ export function toPromptEnvelope(input: AgentPromptInput, artifactOutDir?: strin
   };
 }
 
+export function webChatAttachmentsForStagedFiles(files: readonly StagedFile[], turnId: string): WebChatAttachment[] {
+  return files.map((file) => ({
+    id: file.safeName,
+    kind: attachmentKind(file.mimeType),
+    name: file.safeName,
+    mimeType: file.mimeType,
+    sizeBytes: file.sizeBytes,
+    turnId,
+  }));
+}
+
 export function createCorrelationId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 12);
 }
@@ -396,7 +409,22 @@ function isPromptEnvelope(value: unknown): value is PromptEnvelope {
     (candidate.displayText === undefined || typeof candidate.displayText === "string") &&
     (candidate.displayMeta === undefined ||
       (Array.isArray(candidate.displayMeta) && candidate.displayMeta.every((item) => typeof item === "string"))) &&
+    (candidate.attachments === undefined ||
+      (Array.isArray(candidate.attachments) && candidate.attachments.every(isWebChatAttachmentLike))) &&
     (candidate.correlationId === undefined || typeof candidate.correlationId === "string");
+}
+
+function isWebChatAttachmentLike(value: unknown): value is WebChatAttachment {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as WebChatAttachment;
+  return typeof candidate.id === "string" &&
+    typeof candidate.name === "string" &&
+    typeof candidate.mimeType === "string" &&
+    typeof candidate.sizeBytes === "number" &&
+    typeof candidate.turnId === "string" &&
+    ["image", "audio", "file"].includes(candidate.kind);
 }
 
 function isQueuedPrompt(value: unknown): value is QueuedPrompt {
@@ -429,4 +457,10 @@ function isCodexPromptInput(value: unknown): value is AgentPromptInput {
 function trimDescription(text: string): string {
   const singleLine = text.replace(/\s+/g, " ").trim();
   return singleLine.length <= 80 ? singleLine : `${singleLine.slice(0, 79)}…`;
+}
+
+function attachmentKind(mimeType: string): WebChatAttachment["kind"] {
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("audio/")) return "audio";
+  return "file";
 }

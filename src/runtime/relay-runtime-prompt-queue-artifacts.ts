@@ -36,7 +36,7 @@ import type { ConnectorConfig } from "../core/config.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import { friendlyErrorText } from "../core/error-messages.js";
 import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "../support/operations.js";
-import { createCorrelationId, ensurePromptCorrelationId, PromptStore, toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "../state/prompt-store.js";
+import { createCorrelationId, ensurePromptCorrelationId, PromptStore, toPromptEnvelope, webChatAttachmentsForStagedFiles, type PromptEnvelope, type QueuedPrompt } from "../state/prompt-store.js";
 import { UnifiedJobStore } from "../state/job-store.js";
 import { buildRuntimeMetrics, type RuntimeMetricsDto } from "./metrics.js";
 import { RelayArtifactService } from "./relay-artifact-service.js";
@@ -280,7 +280,12 @@ export async function relayRuntimeSendUploadPrompt(runtime: RelayRuntimeDelegate
       };
     }
 
-    const result = await runtime.sendEnvelope({ ...toPromptEnvelope(promptInput, outDir), correlationId, activityActor: actor }, actor);
+    const result = await runtime.sendEnvelope({
+      ...toPromptEnvelope(promptInput, outDir),
+      attachments: webChatAttachmentsForStagedFiles(stagedFiles, turnId),
+      correlationId,
+      activityActor: actor,
+    }, actor);
     return {
       ...result,
       transcript: transcriptParts.join("\n\n") || undefined,

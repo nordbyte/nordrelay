@@ -27,12 +27,22 @@ export interface WebChatActionResolution {
   resolvedAt: string;
 }
 
+export interface WebChatAttachment {
+  id: string;
+  kind: "image" | "audio" | "file";
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  turnId: string;
+}
+
 export interface WebChatMessage {
   id: string;
   threadId: string;
   role: WebChatRole;
   text: string;
   meta?: string[];
+  attachments?: WebChatAttachment[];
   timestamp: string;
   source: WebActivitySource;
   correlationId?: string;
@@ -367,11 +377,26 @@ function isWebChatMessage(value: unknown): value is WebChatMessage {
     typeof candidate.text === "string" &&
     typeof candidate.timestamp === "string" &&
     (candidate.meta === undefined || (Array.isArray(candidate.meta) && candidate.meta.every((item) => typeof item === "string"))) &&
+    (candidate.attachments === undefined ||
+      (Array.isArray(candidate.attachments) && candidate.attachments.every(isWebChatAttachment))) &&
     (candidate.key === undefined || typeof candidate.key === "string") &&
     (candidate.actions === undefined || (Array.isArray(candidate.actions) && candidate.actions.every(isWebChatAction))) &&
     (candidate.actionResolution === undefined || isWebChatActionResolution(candidate.actionResolution)) &&
     ["user", "agent", "system", "tool"].includes(candidate.role) &&
     ["web", "telegram", "discord", "slack", "matrix", "cli"].includes(candidate.source);
+}
+
+function isWebChatAttachment(value: unknown): value is WebChatAttachment {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as WebChatAttachment;
+  return typeof candidate.id === "string" &&
+    typeof candidate.name === "string" &&
+    typeof candidate.mimeType === "string" &&
+    typeof candidate.sizeBytes === "number" &&
+    typeof candidate.turnId === "string" &&
+    ["image", "audio", "file"].includes(candidate.kind);
 }
 
 function isWebChatAction(value: unknown): value is WebChatAction {

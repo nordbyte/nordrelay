@@ -83,11 +83,12 @@ export class ChannelTurnService {
     const displayText = displayTextForPromptEnvelope(envelope);
     const displayMeta = displayMetaForPromptEnvelope(envelope);
 
-    this.options.chatStore.append({
+    const userMessage = this.options.chatStore.append({
       threadId: info.threadId ?? "pending",
       role: "user",
       text: displayText,
       meta: displayMeta,
+      attachments: envelope.attachments,
       source: this.options.source,
       correlationId,
       turnId,
@@ -118,9 +119,11 @@ export class ChannelTurnService {
     this.options.broadcast({
       type: "turn_start",
       id: turnId,
+      messageId: userMessage.id,
       prompt: envelope.description,
       text: displayText,
       meta: displayMeta,
+      attachments: envelope.attachments,
       at: startedAt,
       source: this.options.source,
       correlationId,

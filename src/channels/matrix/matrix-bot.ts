@@ -48,7 +48,7 @@ import type { ConnectorConfig } from "../../core/config.js";
 import { isMatrixContextKey, parseMatrixContextKey, type ChannelContextKey } from "../shared/context-key.js";
 import { friendlyErrorText } from "../../core/error-messages.js";
 import { spawnConnectorRestart, spawnSelfUpdate } from "../../support/operations.js";
-import { toPromptEnvelope, type PromptEnvelope } from "../../state/prompt-store.js";
+import { toPromptEnvelope, webChatAttachmentsForStagedFiles, type PromptEnvelope } from "../../state/prompt-store.js";
 import { resolveArtifactDeliveryPolicy, type ArtifactDeliveryMode } from "../../artifacts/artifact-delivery.js";
 import { redactText } from "../../core/redaction.js";
 import { renderSessionInfoPlain } from "../shared/session-format.js";
@@ -366,10 +366,11 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
     });
   };
 
-  const handlePrompt = async (request: MatrixRequest, input: AgentPromptInput, artifactOutDir?: string, options: { fromQueue?: boolean } = {}): Promise<void> => {
+  const handlePrompt = async (request: MatrixRequest, input: AgentPromptInput, artifactOutDir?: string, options: { fromQueue?: boolean; attachments?: ReturnType<typeof webChatAttachmentsForStagedFiles> } = {}): Promise<void> => {
     const session = await getSession(request);
     const envelope = toPromptEnvelope(input, artifactOutDir);
     envelope.activityActor = actorFor(request);
+    if (options.attachments) envelope.attachments = options.attachments;
 
     if (!options.fromQueue && await handleRemotePrompt(request, envelope)) {
       return;
@@ -435,7 +436,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
         const next = promptStore.dequeue(request.contextKey);
         if (!next) return;
         await reply(request, `Processing queued prompt ${next.id}: ${next.description}`);
-        await handlePrompt(request, next.input, next.artifactOutDir, { fromQueue: true });
+        await handlePrompt(request, next.input, next.artifactOutDir, { fromQueue: true, attachments: next.attachments });
       }
     } finally {
       draining.delete(request.contextKey);
@@ -977,7 +978,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
     else if (action === "run" && id) {
       const item = promptStore.remove(request.contextKey, id);
       if (item) {
-        await handlePrompt(request, item.input, item.artifactOutDir);
+        await handlePrompt(request, item.input, item.artifactOutDir, { attachments: item.attachments });
         return;
       }
     } else {
@@ -1005,7 +1006,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
       await reply(request, "Nothing to retry. Send a message first.");
       return;
     }
-    await handlePrompt(request, cached.input, cached.artifactOutDir);
+    await handlePrompt(request, cached.input, cached.artifactOutDir, { attachments: cached.attachments });
   };
 
   const commandLast = async (request: MatrixRequest, argument: string): Promise<void> => {
@@ -1333,7 +1334,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
     if (textParts.length) prompt.text = textParts.join("\n\n");
     if (imagePaths.length) prompt.imagePaths = imagePaths;
     if (stagedFiles.length) prompt.stagedFileInstructions = buildFileInstructions(stagedFiles, outDir);
-    await handlePrompt(request, prompt, outDir);
+    await handlePrompt(request, prompt, outDir, { attachments: webChatAttachmentsForStagedFiles(stagedFiles, turnId) });
   };
 
   const handleMessage = async (event: MatrixMessageEvent): Promise<void> => {

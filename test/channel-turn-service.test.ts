@@ -27,6 +27,14 @@ describe("ChannelTurnService", () => {
         imagePaths: ["/tmp/screenshot.png"],
         stagedFileInstructions: "Attached files are available on disk.",
       });
+      envelope.attachments = [{
+        id: "screenshot.png",
+        kind: "image",
+        name: "screenshot.png",
+        mimeType: "image/png",
+        sizeBytes: 12345,
+        turnId: "turn-upload",
+      }];
 
       const service = new ChannelTurnService({
         source: "web",
@@ -60,12 +68,15 @@ describe("ChannelTurnService", () => {
       expect(userMessage).toMatchObject({
         text: longPrompt,
         meta: ["1 image", "staged file input"],
+        attachments: envelope.attachments,
       });
       const turnStart = events.find((event) => event.type === "turn_start");
       expect(turnStart).toMatchObject({
+        messageId: userMessage?.id,
         prompt: expect.stringContaining("1 image"),
         text: longPrompt,
         meta: ["1 image", "staged file input"],
+        attachments: envelope.attachments,
       });
     } finally {
       rmSync(workspace, { recursive: true, force: true });

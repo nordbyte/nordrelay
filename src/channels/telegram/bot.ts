@@ -78,7 +78,7 @@ import type { ConnectorConfig, ToolVerbosity } from "../../core/config.js";
 import { contextKeyFromCtx, isTelegramContextKey, isTopicContextKey, parseContextKey, type TelegramContextKey } from "../shared/context-key.js";
 import { friendlyErrorText } from "../../core/error-messages.js";
 import { escapeHTML } from "../../core/format.js";
-import { toPromptEnvelope, type PromptEnvelope, type QueuedPrompt } from "../../state/prompt-store.js";
+import { toPromptEnvelope, webChatAttachmentsForStagedFiles, type PromptEnvelope, type QueuedPrompt } from "../../state/prompt-store.js";
 import { redactText } from "../../core/redaction.js";
 import { canWriteWithLock } from "../../access/session-locks.js";
 import { renderSessionInfoHTML, renderSessionInfoPlain } from "../shared/session-format.js";
@@ -2128,7 +2128,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       promptInput.text = Array.from(new Set(captions)).join("\n\n");
     }
 
-    await startUserPrompt(pending.ctx, pending.contextKey, pending.chatId, pending.session, toPromptEnvelope(promptInput, outDir));
+    await startUserPrompt(pending.ctx, pending.contextKey, pending.chatId, pending.session, { ...toPromptEnvelope(promptInput, outDir), attachments: webChatAttachmentsForStagedFiles(stagedFiles, turnId) });
   };
 
   bot.use(createTelegramAccessMiddleware({ userStore, contextUsers, audit }));
@@ -3943,7 +3943,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       type: "attachment_staged",
       detail: stagedPhoto.safeName,
     });
-    await startUserPrompt(ctx, contextKey, chatId, session, toPromptEnvelope(promptInput, outDir));
+    await startUserPrompt(ctx, contextKey, chatId, session, { ...toPromptEnvelope(promptInput, outDir), attachments: webChatAttachmentsForStagedFiles([stagedPhoto], turnId) });
   });
 
   bot.on("message:document", async (ctx) => {
@@ -4044,7 +4044,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       promptInput.text = caption;
     }
 
-    await startUserPrompt(ctx, contextKey, chatId, session, toPromptEnvelope(promptInput, outDir));
+    await startUserPrompt(ctx, contextKey, chatId, session, { ...toPromptEnvelope(promptInput, outDir), attachments: webChatAttachmentsForStagedFiles([stagedFile], turnId) });
   });
 
   bot.catch((error) => {

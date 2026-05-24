@@ -88,6 +88,7 @@ const queuePaths: Array<[WebHttpMethod, string]> = [
 const chatPaths: Array<[WebHttpMethod, string]> = [
   ["GET", "/api/chat/history"],
   ["DELETE", "/api/chat/history"],
+  ["GET", "/api/chat/attachment"],
   ["GET", "/api/chat/mirror"],
   ["POST", "/api/chat/mirror"],
 ];

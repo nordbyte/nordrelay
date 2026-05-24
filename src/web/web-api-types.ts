@@ -11,6 +11,7 @@ import type { PeerDiscoveryJobSnapshot, PeerDiscoveryResult, PeerIdentityBackup,
 import type { PeerOutboundRelaySnapshot } from "../peers/peer-outbound-relay.js";
 import type { PeerDebugReport, PeerEffectiveAccessReport, PeerRepairAction, PeerRepairResult } from "../peers/peer-diagnostics.js";
 import type { RuntimeMetricHistorySample, RuntimeMetricsDto } from "../runtime/metrics.js";
+import type { WebChatAttachmentFileDto } from "../runtime/relay-runtime-types.js";
 import type { WebApiDynamicPathFromContract, WebApiStaticPathFromContract } from "./web-api-contract.js";
 import type {
   ActiveSessionsDto,
@@ -349,6 +350,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends `/api/queue/plans/${string}/approve` | `/api/queue/plans/${string}/enqueue` | `/api/queue/plans/${string}/move` ? { plan: QueuePlanDto; snapshot: QueuePlannerSnapshotDto } :
   P extends `/api/queue/plans/${string}` ? { plan?: QueuePlanDto; removed?: boolean; snapshot?: QueuePlannerSnapshotDto } :
   P extends "/api/chat/history" ? { messages: WebChatMessage[]; removed?: number } :
+  P extends "/api/chat/attachment" ? WebChatAttachmentFileDto :
   P extends "/api/chat/mirror" ? { mode: string; minInterval: number; response: { plain: string; html: string } } :
   P extends "/api/activity" ? { events: WebActivityEvent[]; pagination?: CursorPageDto<WebActivityEvent>["pagination"] } :
   P extends "/api/artifacts" ? { reports: ArtifactReportDto[]; pagination?: CursorPageDto<ArtifactReportDto>["pagination"]; removed?: boolean } :

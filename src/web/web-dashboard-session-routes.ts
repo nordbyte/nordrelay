@@ -440,6 +440,20 @@ export async function handleDashboardSessionRoute(
     return true;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/chat/attachment") {
+    await options.assertCurrentSessionScope(authUser);
+    const attachment = await runtime.chatAttachment(
+      requiredSearch(url, "messageId"),
+      requiredSearch(url, "attachmentId"),
+    );
+    if (!attachment) {
+      sendJson(res, 404, { error: "Chat attachment not found" });
+      return true;
+    }
+    sendJson(res, 200, attachment);
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/chat/mirror") {
     await options.assertCurrentSessionScope(authUser);
     sendJson(res, 200, await runtime.webMirrorPreference(""));

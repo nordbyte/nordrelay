@@ -38,6 +38,7 @@ export type WebApiStaticPath =
   | "/api/auth/me"
   | "/api/auth/status"
   | "/api/bootstrap"
+  | "/api/chat/attachment"
   | "/api/chat/history"
   | "/api/chat/mirror"
   | "/api/control-options"
@@ -217,6 +218,7 @@ export type WebApiResponseByPath = {
   "/api/auth/me": ServerWebApiClientResponse<"/api/auth/me">;
   "/api/auth/status": ServerWebApiClientResponse<"/api/auth/status">;
   "/api/bootstrap": ServerWebApiClientResponse<"/api/bootstrap">;
+  "/api/chat/attachment": ServerWebApiClientResponse<"/api/chat/attachment">;
   "/api/chat/history": ServerWebApiClientResponse<"/api/chat/history">;
   "/api/chat/mirror": ServerWebApiClientResponse<"/api/chat/mirror">;
   "/api/control-options": ServerWebApiClientResponse<"/api/control-options">;
@@ -317,6 +319,7 @@ export type WebApiRequestBodyByPath = {
   "/api/auth/me": ServerWebApiRequestBody<"/api/auth/me">;
   "/api/auth/status": ServerWebApiRequestBody<"/api/auth/status">;
   "/api/bootstrap": ServerWebApiRequestBody<"/api/bootstrap">;
+  "/api/chat/attachment": ServerWebApiRequestBody<"/api/chat/attachment">;
   "/api/chat/history": ServerWebApiRequestBody<"/api/chat/history">;
   "/api/chat/mirror": ServerWebApiRequestBody<"/api/chat/mirror">;
   "/api/control-options": ServerWebApiRequestBody<"/api/control-options">;

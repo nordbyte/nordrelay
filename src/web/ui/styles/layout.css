@@ -177,6 +177,16 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .message-body{white-space:pre-wrap;font-size:14px;line-height:1.45}
 .message-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;white-space:normal}
 .message-meta span{display:inline-flex;align-items:center;min-height:20px;padding:2px 7px;border:1px solid var(--border-soft);border-radius:999px;background:color-mix(in srgb,var(--surface) 72%,transparent);color:var(--muted);font-size:12px;line-height:1}
+.chat-attachments{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;white-space:normal}
+.chat-attachment{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;max-width:220px;padding:8px;border:1px solid var(--border-soft);border-radius:8px;background:color-mix(in srgb,var(--surface) 76%,transparent);color:var(--text);text-align:left;line-height:1.25;cursor:pointer}
+.chat-attachment:hover,.chat-attachment:focus{border-color:var(--accent);background:color-mix(in srgb,var(--accent-soft) 44%,var(--surface));color:var(--text);outline:none}
+.chat-attachment:disabled{cursor:default;opacity:.72}
+.chat-attachment.failed{border-color:var(--warn);color:var(--warn)}
+.chat-attachment small{display:block;margin-top:6px;max-width:100%;overflow:hidden;color:var(--muted);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.chat-attachment-file>span{font-size:13px;font-weight:700}
+.chat-attachment-image{width:min(180px,100%)}
+.chat-attachment-preview{display:flex;align-items:center;justify-content:center;width:100%;min-height:86px;border-radius:6px;background:var(--surface-soft);color:var(--muted);font-size:12px;overflow:hidden}
+.chat-attachment-preview img{display:block;width:100%;height:auto;max-height:150px;object-fit:cover;border-radius:6px}
 .message-action-button{position:absolute;top:6px;width:26px;height:26px;min-width:26px;min-height:26px;padding:0;border:1px solid var(--border-soft);border-radius:6px;background:var(--surface);color:var(--muted);opacity:0;pointer-events:none;transition:opacity .12s ease,background .12s ease,border-color .12s ease,color .12s ease}
 .message-copy-button{right:6px}
 .message-edit-button{right:38px}

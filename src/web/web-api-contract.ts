@@ -184,6 +184,7 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   dynamic("/api/queue/plans/:id/approve", "^/api/queue/plans/[^/]+/approve$", ["POST"], "queue.plan.approve", `/api/queue/plans/${stringToken}/approve`),
   dynamic("/api/queue/plans/:id/enqueue", "^/api/queue/plans/[^/]+/enqueue$", ["POST"], "queue.plan.approve", `/api/queue/plans/${stringToken}/enqueue`),
   exact("/api/chat/history", ["GET", "DELETE"], readWrite("sessions.read", "sessions.write")),
+  exact("/api/chat/attachment", ["GET"], "files.read"),
   exact("/api/chat/mirror", ["GET", "POST"], readWrite("sessions.read", "settings.write")),
   exact("/api/activity", ["GET"], "sessions.read"),
   exact("/api/artifacts", ["GET", "DELETE"], readWrite("files.read", "files.write")),

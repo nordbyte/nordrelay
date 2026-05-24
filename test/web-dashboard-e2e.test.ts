@@ -529,6 +529,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function isChatUserPromptMessage");
     expect(js).toContain("message?.source==='cli'&&/^Working on\\b/i");
     expect(js).toContain("data-message-index");
+    expect(js).toContain("function chatMessageAttachmentsHtml");
+    expect(js).toContain("function hydrateChatAttachments");
+    expect(js).toContain("api('/api/chat/attachment'");
+    expect(css).toContain(".chat-attachment-image");
     expect(js).toContain("function bindChatMessageActionButtons");
     expect(js).toContain("function retryChatMessage");
     expect(js).toContain("Message copied");

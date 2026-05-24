@@ -157,12 +157,23 @@ interface WebuiActiveSession extends WebuiRecord {
 }
 
 interface WebuiChatMessage extends WebuiRecord {
+  id?: string;
   source?: string;
   timestamp?: string;
   text?: string;
   meta?: WebuiRecord[];
+  attachments?: WebuiChatAttachment[];
   actions?: WebuiRecord[];
   actionResolution?: WebuiRecord | null;
+}
+
+interface WebuiChatAttachment extends WebuiRecord {
+  id?: string;
+  kind?: string;
+  name?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  turnId?: string;
 }
 
 interface WebuiChatTab extends WebuiRecord {
@@ -366,6 +377,8 @@ interface WebuiChatScrollOptions {
 
 interface WebuiAppendMessageOptions extends WebuiRecord {
   meta?: WebuiRecord[];
+  attachments?: WebuiChatAttachment[];
+  messageId?: string;
   forceScroll?: boolean;
 }
 

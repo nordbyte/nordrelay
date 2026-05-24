@@ -596,6 +596,17 @@ export class PeerRuntimeService {
       await this.assertCurrentSessionScope(peer, runtime);
       return { messages: await runtime.chatHistory(numberValue(query.limit, 200)) };
     }
+    if (method === "GET" && path === "/api/chat/attachment") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      const attachment = await runtime.chatAttachment(
+        requiredString(query.messageId, "messageId"),
+        requiredString(query.attachmentId, "attachmentId"),
+      );
+      if (!attachment) {
+        throw new Error("Chat attachment not found");
+      }
+      return attachment;
+    }
     if (method === "GET" && path === "/api/chat/mirror") {
       await this.assertCurrentSessionScope(peer, runtime);
       return runtime.webMirrorPreference("");

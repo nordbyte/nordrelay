@@ -16,6 +16,14 @@ describe("web dashboard state stores", () => {
         role: "user",
         text: "hello",
         meta: ["1 image", "staged file input"],
+        attachments: [{
+          id: "screenshot.png",
+          kind: "image",
+          name: "screenshot.png",
+          mimeType: "image/png",
+          sizeBytes: 123,
+          turnId: "turn-a",
+        }],
         source: "web",
       });
       store.append({
@@ -26,7 +34,19 @@ describe("web dashboard state stores", () => {
       });
 
       const reloaded = new WebChatStore(workspace, "json", 5);
-      expect(reloaded.list("thread-a")).toMatchObject([{ text: "hello", meta: ["1 image", "staged file input"], source: "web" }]);
+      expect(reloaded.list("thread-a")).toMatchObject([{
+        text: "hello",
+        meta: ["1 image", "staged file input"],
+        attachments: [{
+          id: "screenshot.png",
+          kind: "image",
+          name: "screenshot.png",
+          mimeType: "image/png",
+          sizeBytes: 123,
+          turnId: "turn-a",
+        }],
+        source: "web",
+      }]);
       expect(reloaded.list("thread-b")).toMatchObject([{ text: "other", source: "cli" }]);
       expect(reloaded.clear("thread-a")).toBe(1);
       expect(reloaded.list("thread-a")).toEqual([]);

@@ -21,6 +21,7 @@ import type {
   WebActivityCategory,
   WebActivitySource,
   WebActivityStatus,
+  WebChatAttachment,
   WebChatMessage,
 } from "../web/web-state.js";
 import type { PromptTemplate, Workflow, WorkflowRun } from "../state/workflow-store.js";
@@ -31,7 +32,7 @@ export type RelayEvent =
   | { type: "chat_history"; messages: WebChatMessage[] }
   | { type: "activity_update"; events: WebActivityEvent[] }
   | { type: "active_sessions_update"; active: ActiveSessionsDto }
-  | { type: "turn_start"; id: string; prompt: string; text?: string; meta?: string[]; at: string; source?: WebActivitySource; correlationId?: string }
+  | { type: "turn_start"; id: string; messageId?: string; prompt: string; text?: string; meta?: string[]; attachments?: WebChatAttachment[]; at: string; source?: WebActivitySource; correlationId?: string }
   | { type: "text_delta"; id: string; delta: string; correlationId?: string }
   | { type: "tool_start"; id: string; toolCallId: string; toolName: string; correlationId?: string }
   | { type: "tool_update"; id: string; toolCallId: string; partialResult: string; correlationId?: string }
@@ -226,6 +227,14 @@ export interface UploadPromptResult {
     mimeType: string;
     sizeBytes: number;
   }>;
+}
+
+export interface WebChatAttachmentFileDto {
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  dataBase64: string;
 }
 
 export interface DashboardControlOptions {

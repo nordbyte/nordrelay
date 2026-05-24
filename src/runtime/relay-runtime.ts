@@ -172,7 +172,7 @@ import {
   relayRuntimeRestartConnector,
   relayRuntimeDispose
 } from "./relay-runtime-dashboard.js";
-import { relayRuntimeTrace } from "./relay-runtime-trace.js";
+import { relayRuntimeTrace } from "./relay-runtime-trace.js"; import { relayRuntimeChatAttachment } from "./relay-runtime-chat-attachment.js";
 import {
   relayRuntimeUpdateConnector,
   relayRuntimeAgentUpdateJobs,
@@ -566,7 +566,7 @@ export class RelayRuntime {
   async authStatus(agentId?: AgentId): Promise<WebAuthDto> { return relayRuntimeAuthStatus(this, agentId); }
   async login(agentId?: AgentId, actor?: WebActivityActor): Promise<WebAuthDto & { result: LoginResult | null }> { return relayRuntimeLogin(this, agentId, actor); }
   async logout(agentId?: AgentId, actor?: WebActivityActor): Promise<WebAuthDto & { result: LoginResult | null }> { return relayRuntimeLogout(this, agentId, actor); }
-  async chatHistory(limit = 200): Promise<WebChatMessage[]> { return relayRuntimeChatHistory(this, limit); }
+  async chatHistory(limit = 200): Promise<WebChatMessage[]> { return relayRuntimeChatHistory(this, limit); } async chatAttachment(messageId: string, attachmentId: string) { return relayRuntimeChatAttachment(this, messageId, attachmentId); }
 
   async webMirrorPreference(argument = "", actor?: WebActivityActor): Promise<{
     mode: string;

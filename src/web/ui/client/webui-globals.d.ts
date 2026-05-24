@@ -1,6 +1,7 @@
 interface Element {
   __rawText?: string;
   __meta?: WebuiRecord[];
+  __attachments?: WebuiChatAttachment[];
   __actions?: WebuiRecord[];
   __actionResolution?: WebuiRecord | null;
   checked?: boolean;
@@ -36,6 +37,7 @@ interface EventTarget {
 interface HTMLElement {
   __rawText?: string;
   __meta?: WebuiRecord[];
+  __attachments?: WebuiChatAttachment[];
   __actions?: WebuiRecord[];
   __actionResolution?: WebuiRecord | null;
 }
@@ -57,7 +59,7 @@ declare function activeSourceLabel(value: unknown): string;
 declare function adminDialog(title: string, body: string, onSubmit: () => unknown | Promise<unknown>, options?: AdminDialogOptions): void;
 declare function api<P extends import("./core/api-client-types.js").WebApiPath>(path: P, options?: import("./core/api-client-types.js").WebApiClientOptions<P> & { local?: boolean }): Promise<import("./core/api-client-types.js").WebApiClientResponse<P>>;
 declare function apiPeer<P extends import("./core/api-client-types.js").WebApiPath>(peerId: string, path: P, options?: import("./core/api-client-types.js").WebApiClientOptions<P>): Promise<import("./core/api-client-types.js").WebApiClientResponse<P>>;
-declare function appendMessage(role: string, text: string, options?: { meta?: WebuiRecord[] }): HTMLElement | void;
+declare function appendMessage(role: string, text: string, options?: WebuiAppendMessageOptions): HTMLElement | void;
 declare function appendQueuedMessage(queueId: string, text: string, options?: WebuiRecord): void;
 declare function applyAccountChrome(auth?: WebuiAuth | null): void;
 declare function applyHeaderPeerSnapshot(peers: WebuiPeerState | null, bootstrap: WebuiBootstrap | null): void;

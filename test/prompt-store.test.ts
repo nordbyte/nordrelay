@@ -12,7 +12,16 @@ describe("PromptStore", () => {
     try {
       const store = new PromptStore(workspace);
       store.setLastPrompt("123", toPromptEnvelope("hello"));
-      const queued = store.enqueue("123", toPromptEnvelope({ text: "queued", imagePaths: ["/tmp/a.png"] }));
+      const envelope = toPromptEnvelope({ text: "queued", imagePaths: ["/tmp/a.png"] });
+      envelope.attachments = [{
+        id: "a.png",
+        kind: "image",
+        name: "a.png",
+        mimeType: "image/png",
+        sizeBytes: 42,
+        turnId: "turn-a",
+      }];
+      const queued = store.enqueue("123", envelope);
 
       const loaded = new PromptStore(workspace);
 
@@ -23,6 +32,7 @@ describe("PromptStore", () => {
           description: "queued · 1 image",
           displayText: "queued",
           displayMeta: ["1 image"],
+          attachments: envelope.attachments,
         }),
       ]);
     } finally {
