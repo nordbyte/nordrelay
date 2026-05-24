@@ -385,6 +385,33 @@ describe("SessionRegistry", () => {
     );
   });
 
+  it("passes persisted active launch overrides separately from the next launch profile", async () => {
+    const config = createConfig();
+    mockFsState.files.set(
+      path.join(config.workspace, ".nordrelay", "contexts.json"),
+      JSON.stringify([
+        {
+          contextKey: "123",
+          threadId: "thread-a",
+          workspace: "/workspace/a",
+          activeLaunchProfileId: "full-access",
+          launchProfileId: "readonly",
+          updatedAt: 10,
+        },
+      ]),
+    );
+
+    const registry = new SessionRegistry(config);
+    await registry.getOrCreate("123");
+
+    expect(mockSessionState.create).toHaveBeenCalledWith(config, expect.objectContaining({
+      workspace: "/workspace/a",
+      launchProfileId: "readonly",
+      activeLaunchProfileId: "full-access",
+      resumeThreadId: "thread-a",
+    }));
+  });
+
   it("updates metadata and lists contexts sorted by newest first", async () => {
     const registry = new SessionRegistry(createConfig());
     const first = (await registry.getOrCreate("123")) as any;

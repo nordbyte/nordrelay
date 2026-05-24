@@ -88,6 +88,7 @@ export interface CreateOptions {
   model?: string;
   reasoningEffort?: string;
   launchProfileId?: string;
+  activeLaunchProfileId?: string;
   deferThreadStart?: boolean;
   resumeThreadId?: string;
 }
@@ -125,6 +126,12 @@ export class CodexSessionService {
     service.resetCodexClient();
 
     if (options?.resumeThreadId) {
+      if (options.activeLaunchProfileId) {
+        service.activeThreadLaunchProfileOverride = {
+          threadId: options.resumeThreadId,
+          profile: getLaunchProfile(config, options.activeLaunchProfileId),
+        };
+      }
       await service.resumeThread(options.resumeThreadId);
       return service;
     }

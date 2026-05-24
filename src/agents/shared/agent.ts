@@ -393,6 +393,7 @@ export interface AgentCreateOptions {
   model?: string;
   reasoningEffort?: string;
   launchProfileId?: string;
+  activeLaunchProfileId?: string;
   deferThreadStart?: boolean;
   resumeThreadId?: string;
   sessionPath?: string;

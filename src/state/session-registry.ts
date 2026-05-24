@@ -83,7 +83,7 @@ export class SessionRegistry {
       workspace = worktree.worktreePath;
       worktreeId = worktree.id;
     }
-    session = await createAgentSessionService(this.config, agentId, {
+    const createOptions = {
       workspace,
       workspaceMode: mode,
       model: meta?.model,
@@ -92,7 +92,11 @@ export class SessionRegistry {
       deferThreadStart: options?.deferThreadStart && !meta?.threadId,
       resumeThreadId: meta?.threadId ?? undefined,
       sessionPath: meta?.sessionPath,
-    });
+    };
+    if (meta?.activeLaunchProfileId) {
+      Object.assign(createOptions, { activeLaunchProfileId: meta.activeLaunchProfileId });
+    }
+    session = await createAgentSessionService(this.config, agentId, createOptions);
 
     this.sessions.set(contextKey, session);
     if (worktreeId && shouldStartThread) {
