@@ -15,6 +15,7 @@ import {
 
 describe("voice transcription", () => {
   const originalOpenAIKey = process.env.OPENAI_API_KEY;
+  const originalFfmpegPath = process.env.FFMPEG_PATH;
   let tempDir: string;
   let audioPath: string;
 
@@ -23,6 +24,7 @@ describe("voice transcription", () => {
     audioPath = path.join(tempDir, "sample.ogg");
     writeFileSync(audioPath, Buffer.from("audio"));
     delete process.env.OPENAI_API_KEY;
+    delete process.env.FFMPEG_PATH;
     _resetImportHook();
     _setCommandHook(async () => ({ code: 1, signal: null, stdout: "", stderr: "missing faster-whisper" }));
     vi.unstubAllGlobals();
@@ -36,6 +38,11 @@ describe("voice transcription", () => {
       delete process.env.OPENAI_API_KEY;
     } else {
       process.env.OPENAI_API_KEY = originalOpenAIKey;
+    }
+    if (originalFfmpegPath === undefined) {
+      delete process.env.FFMPEG_PATH;
+    } else {
+      process.env.FFMPEG_PATH = originalFfmpegPath;
     }
   });
 
@@ -278,6 +285,23 @@ describe("voice transcription", () => {
       ["openai", "configured"],
     ]);
     expect(JSON.stringify(diagnostics)).not.toContain("sk-test");
+  });
+
+  it("uses an explicit ffmpeg path for voice diagnostics", async () => {
+    process.env.FFMPEG_PATH = "/opt/nordrelay/bin/ffmpeg";
+    _setCommandHook(async (command) => {
+      expect(command).toBe("/opt/nordrelay/bin/ffmpeg");
+      return { code: 0, signal: null, stdout: "ffmpeg version explicit\n", stderr: "" };
+    });
+
+    const diagnostics = await getVoiceDiagnostics({ includeHeavyChecks: false, forceRefresh: true });
+    const ffmpeg = diagnostics.backends.find((backend) => backend.id === "ffmpeg");
+
+    expect(ffmpeg).toMatchObject({
+      status: "available",
+      path: "/opt/nordrelay/bin/ffmpeg",
+      version: "ffmpeg version explicit",
+    });
   });
 
   it("keeps dashboard voice diagnostics light until explicitly refreshed", async () => {

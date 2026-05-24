@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { accessSync, constants as fsConstants } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
@@ -58,6 +59,12 @@ interface ParakeetEngine {
 
 const PARAKEET_SPECIFIER = "parakeet-coreml";
 const FFMPEG_INSTALL_MESSAGE = "ffmpeg not found. Install it with: sudo apt-get install ffmpeg or brew install ffmpeg";
+const FFMPEG_FALLBACK_DIRS =
+  process.platform === "darwin"
+    ? ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
+    : process.platform === "win32"
+      ? []
+      : ["/usr/local/bin", "/usr/bin", "/bin", "/snap/bin"];
 const NO_BACKEND_ERROR = `Voice messages require a transcription backend.
 
 Option 1: Install faster-whisper for local Linux transcription:
@@ -536,13 +543,14 @@ async function transcribeWithOpenAI(filePath: string, options: TranscriptionOpti
   };
 }
 
-function decodeAudioToSamples(filePath: string): Promise<Float32Array> {
+async function decodeAudioToSamples(filePath: string): Promise<Float32Array> {
+  const ffmpegCommand = resolveFfmpegCommand().command;
   return new Promise<Float32Array>((resolve, reject) => {
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let settled = false;
 
-    const ffmpeg = spawn("ffmpeg", ["-i", filePath, "-ar", "16000", "-ac", "1", "-f", "f32le", "pipe:1"], {
+    const ffmpeg = spawn(ffmpegCommand, ["-i", filePath, "-ar", "16000", "-ac", "1", "-f", "f32le", "pipe:1"], {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -630,11 +638,58 @@ function resolveCohereTranscribePython(): string {
   return process.env.COHERE_TRANSCRIBE_PYTHON?.trim() || resolveFasterWhisperPython();
 }
 
+function resolveFfmpegCommand(env: NodeJS.ProcessEnv = process.env): { command: string; path?: string } {
+  const explicit = env.FFMPEG_PATH?.trim();
+  if (explicit) return { command: explicit, path: explicit };
+  const pathMatch = findExecutableOnSearchPath("ffmpeg", env.PATH, env.PATHEXT);
+  if (pathMatch) return { command: "ffmpeg", path: pathMatch };
+  const fallback = findExecutableInDirectories("ffmpeg", FFMPEG_FALLBACK_DIRS, env.PATHEXT);
+  return fallback ? { command: fallback, path: fallback } : { command: "ffmpeg" };
+}
+
+function findExecutableOnSearchPath(command: string, searchPath?: string, pathext?: string): string | undefined {
+  const direct = findExecutableCandidate(command, pathext);
+  if (direct && (path.isAbsolute(command) || command.includes("/") || command.includes("\\"))) return direct;
+  for (const dir of (searchPath || "").split(path.delimiter).filter(Boolean)) {
+    const found = findExecutableCandidate(path.join(dir, command), pathext);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function findExecutableInDirectories(command: string, directories: string[], pathext?: string): string | undefined {
+  for (const dir of directories) {
+    const found = findExecutableCandidate(path.join(dir, command), pathext);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function findExecutableCandidate(candidate: string, pathext?: string): string | undefined {
+  for (const name of executableCandidateNames(candidate, pathext)) {
+    try {
+      accessSync(name, process.platform === "win32" ? fsConstants.F_OK : fsConstants.X_OK);
+      return name;
+    } catch {
+      // Try the next platform extension candidate.
+    }
+  }
+  return undefined;
+}
+
+function executableCandidateNames(candidate: string, pathext?: string): string[] {
+  if (process.platform !== "win32" || path.extname(candidate)) return [candidate];
+  const extensions = (pathext || ".EXE;.CMD;.BAT;.COM").split(";").map((ext) => ext.trim()).filter(Boolean);
+  return [candidate, ...extensions.flatMap((ext) => [candidate + ext.toLowerCase(), candidate + ext.toUpperCase()])];
+}
+
 function voiceDiagnosticsCacheKey(options: VoiceDiagnosticsOptions): string {
+  const ffmpeg = resolveFfmpegCommand();
   return JSON.stringify({
     preferredBackend: options.preferredBackend ?? "auto",
     defaultLanguage: options.defaultLanguage?.trim() || null,
     transcribeOnly: Boolean(options.transcribeOnly),
+    ffmpegPath: ffmpeg.path ?? null,
     fasterWhisperPython: options.fasterWhisperPython?.trim() || resolveFasterWhisperPython(),
     cohereTranscribePython: resolveCohereTranscribePython(),
   });
@@ -658,7 +713,8 @@ function hasOpenAIApiKey(): boolean {
 }
 
 async function inspectFfmpeg(): Promise<VoiceBackendDiagnostic> {
-  const result = await _runCommand("ffmpeg", ["-version"], {
+  const ffmpeg = resolveFfmpegCommand();
+  const result = await _runCommand(ffmpeg.command, ["-version"], {
     env: process.env,
     timeoutMs: 5_000,
   }).catch((error): CommandResult => ({
@@ -673,6 +729,7 @@ async function inspectFfmpeg(): Promise<VoiceBackendDiagnostic> {
       label: "ffmpeg",
       status: "missing",
       detail: (result.stderr || result.stdout || "ffmpeg not found").trim(),
+      path: ffmpeg.path,
     };
   }
   return {
@@ -681,6 +738,7 @@ async function inspectFfmpeg(): Promise<VoiceBackendDiagnostic> {
     status: "available",
     detail: "Audio decoding available.",
     version: firstNonEmptyLine(result.stdout),
+    path: ffmpeg.path,
   };
 }
 
