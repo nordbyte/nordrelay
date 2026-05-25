@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { workspaceInboxRoot, workspaceTurnsRoot } from "../state/workspace-storage.js";
+
 export interface StagedFile {
   originalName: string;
   safeName: string;
@@ -30,11 +32,11 @@ export function sanitizeFilename(name: string): string {
 }
 
 export function inboxPath(workspace: string, turnId: string): string {
-  return path.join(workspace, ".nordrelay", "inbox", turnId);
+  return path.join(workspaceInboxRoot(workspace), turnId);
 }
 
 export function outboxPath(workspace: string, turnId: string): string {
-  return path.join(workspace, ".nordrelay", "turns", turnId, "out");
+  return path.join(workspaceTurnsRoot(workspace), turnId, "out");
 }
 
 export async function stageFile(

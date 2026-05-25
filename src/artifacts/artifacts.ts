@@ -5,6 +5,7 @@ import path from "node:path";
 
 import type { AgentId } from "../agents/shared/agent.js";
 import type { WebActivityActor } from "../core/activity-events.js";
+import { workspaceInboxRoot, workspaceTurnsRoot } from "../state/workspace-storage.js";
 
 export interface Artifact {
   name: string;
@@ -817,11 +818,11 @@ function shouldIgnoreEntry(name: string): boolean {
 }
 
 function artifactTurnsDir(workspace: string): string {
-  return path.join(workspace, ".nordrelay", "turns");
+  return workspaceTurnsRoot(workspace);
 }
 
 function artifactInboxDir(workspace: string): string {
-  return path.join(workspace, ".nordrelay", "inbox");
+  return workspaceInboxRoot(workspace);
 }
 
 function artifactTurnDir(workspace: string, turnId: string): string {

@@ -1,8 +1,8 @@
 import { createRequire } from "node:module";
-import os from "node:os";
 import path from "node:path";
 
 import { assertSupportedStatePayload, chmodPrivateFile, ensurePrivateDir, readJsonFileWithBackup, StatePersistenceError, updateJsonFileAtomic, writeJsonFileAtomic } from "./persistence.js";
+import { resolveNordRelayHome } from "./nordrelay-home.js";
 
 export type StateBackendKind = "json" | "sqlite";
 
@@ -88,33 +88,8 @@ export function stateBackendPath(workspace: string, backend: StateBackendKind, f
   return path.join(baseDir, fileName ?? "state.json");
 }
 
-export function stateBackendDirectory(workspace: string): string {
-  const resolvedWorkspace = safeResolveWorkspace(workspace);
-  if (!resolvedWorkspace || isFilesystemRoot(resolvedWorkspace)) {
-    return resolveNordRelayHome();
-  }
-  return path.join(resolvedWorkspace, ".nordrelay");
-}
-
-function resolveNordRelayHome(): string {
-  const configuredHome = process.env.NORDRELAY_HOME?.trim();
-  const fallbackHome = path.join(os.homedir(), ".nordrelay");
-  const home = configuredHome || fallbackHome;
-  const resolvedHome = path.resolve(home);
-  return isFilesystemRoot(resolvedHome) ? fallbackHome : resolvedHome;
-}
-
-function safeResolveWorkspace(workspace: string): string | null {
-  const candidate = typeof workspace === "string" ? workspace.trim() : "";
-  if (!candidate) {
-    return null;
-  }
-  return path.resolve(candidate);
-}
-
-function isFilesystemRoot(candidate: string): boolean {
-  const parsed = path.parse(candidate);
-  return parsed.root === candidate;
+export function stateBackendDirectory(_workspace: string): string {
+  return resolveNordRelayHome();
 }
 
 function createJsonDocumentStore<TValue>(options: DocumentStoreOptions): DocumentStore<TValue> {

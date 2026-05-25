@@ -55,6 +55,6 @@ Generated outputs are ignored:
 - `dist/`
 - `docs/.vitepress/cache/`
 - `docs/.vitepress/dist/`
-- local runtime state in `.nordrelay/`
+- local runtime state in `~/.nordrelay/`
 
 Do not commit runtime logs, private state, tokens, or support bundles.

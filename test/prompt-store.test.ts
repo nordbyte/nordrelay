@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { ensurePromptCorrelationId, PromptStore, toPromptEnvelope } from "../src/state/prompt-store.js";
+import { stateBackendPath } from "../src/state/state-backend.js";
 
 describe("PromptStore", () => {
   it("persists last prompts and queues", () => {
@@ -158,7 +159,7 @@ describe("PromptStore", () => {
       store.setLastPrompt("123", toPromptEnvelope("first"));
       store.setLastPrompt("123", toPromptEnvelope("second"));
 
-      const persistPath = path.join(workspace, ".nordrelay", "prompts.json");
+      const persistPath = stateBackendPath(workspace, "json", "prompts.json");
       writeFileSync(persistPath, "{not-json", "utf8");
 
       const loaded = new PromptStore(workspace);

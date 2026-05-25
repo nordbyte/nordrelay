@@ -276,7 +276,7 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
 
   setting("WORKSPACE_ALLOWED_ROOTS", "Workspace allowed roots", "Workspace", "list", "Restrict selectable workspaces.", true),
   setting("WORKSPACE_WARN_ROOTS", "Workspace warn roots", "Workspace", "list", "Warn for broad workspace roots.", true),
-  setting("NORDRELAY_WORKSPACE", "Default workspace", "Workspace", "string", "Default workspace for state, queues, artifacts, and new sessions.", true),
+  setting("NORDRELAY_WORKSPACE", "Default workspace", "Workspace", "string", "Default workspace for new sessions, workspace policies, and workspace-scoped artifact grouping.", true),
   setting("NORDRELAY_SESSION_WORKSPACE_MODE", "Session workspace mode", "Workspace", "string", "shared keeps current behavior, worktree creates an isolated Git worktree per new session, attached leaves external CLI sessions untouched.", false, ["shared", "worktree", "attached"]),
   setting("NORDRELAY_SESSION_WORKTREE_ROOT", "Session worktree root", "Workspace", "string", "Directory where isolated session worktrees and integration worktrees are created.", true),
   setting("NORDRELAY_SESSION_WORKTREE_BRANCH_PREFIX", "Worktree branch prefix", "Workspace", "string", "Git branch prefix used for session and integration worktrees.", true),

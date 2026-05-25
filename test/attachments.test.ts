@@ -12,6 +12,7 @@ import {
   sanitizeFilename,
   stageFile,
 } from "../src/artifacts/attachments.js";
+import { workspaceStorageId } from "../src/state/workspace-storage.js";
 
 describe("sanitizeFilename", () => {
   it("passes through safe names", () => {
@@ -95,29 +96,35 @@ describe("stageFile", () => {
 
 describe("buildFileInstructions", () => {
   it("builds a text instruction with file listing and output directory", () => {
+    const stagedPath = inboxPath("/workspace", "t1");
+    const outDir = outboxPath("/workspace", "t1");
     const files = [
       {
         originalName: "log.txt",
         safeName: "log.txt",
-        localPath: "/workspace/.nordrelay/inbox/t1/log.txt",
+        localPath: path.join(stagedPath, "log.txt"),
         mimeType: "text/plain",
         sizeBytes: 1234,
       },
     ];
 
-    const result = buildFileInstructions(files, "/workspace/.nordrelay/turns/t1/out");
+    const result = buildFileInstructions(files, outDir);
 
     expect(result).toContain("log.txt");
     expect(result).toContain("text/plain");
-    expect(result).toContain("/workspace/.nordrelay/turns/t1/out");
+    expect(result).toContain(outDir);
     expect(result).toContain("staged on disk");
   });
 });
 
 describe("inboxPath / outboxPath", () => {
-  it("returns deterministic paths", () => {
-    expect(inboxPath("/workspace", "turn-1")).toBe(path.join("/workspace", ".nordrelay", "inbox", "turn-1"));
-    expect(outboxPath("/workspace", "turn-1")).toBe(path.join("/workspace", ".nordrelay", "turns", "turn-1", "out"));
+  it("returns deterministic global workspace storage paths", () => {
+    const home = process.env.NORDRELAY_HOME!;
+    const workspace = "/workspace";
+    const id = workspaceStorageId(workspace);
+
+    expect(inboxPath(workspace, "turn-1")).toBe(path.join(home, "workspaces", id, "inbox", "turn-1"));
+    expect(outboxPath(workspace, "turn-1")).toBe(path.join(home, "workspaces", id, "turns", "turn-1", "out"));
   });
 });
 

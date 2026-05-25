@@ -10,6 +10,7 @@ import {
   collectRecentWorkspaceArtifacts,
   createArtifactZipBundle,
   ensureOutDir,
+  artifactOutDirForTurn,
   formatArtifactSummary,
   getArtifactTurnReport,
   listRecentArtifactReports,
@@ -20,6 +21,7 @@ import {
 } from "../src/artifacts/artifacts.js";
 import type { ConnectorConfig } from "../src/core/config.js";
 import { RelayArtifactService } from "../src/runtime/relay-artifact-service.js";
+import { workspaceInboxRoot, workspaceStorageRoot, workspaceTurnsRoot } from "../src/state/workspace-storage.js";
 
 describe("ensureOutDir", () => {
   const testDir = path.join(tmpdir(), `nordrelay-art-${randomUUID()}`);
@@ -142,7 +144,7 @@ describe("collectArtifacts", () => {
   });
 
   it("lists recent artifact turns for a workspace", async () => {
-    const outDir = path.join(testDir, ".nordrelay", "turns", "turn-a", "out");
+    const outDir = artifactOutDirForTurn(testDir, "turn-a");
     mkdirSync(outDir, { recursive: true });
     writeFileSync(path.join(outDir, "result.txt"), "ok");
 
@@ -156,7 +158,7 @@ describe("collectArtifacts", () => {
   });
 
   it("loads and removes a specific artifact turn", async () => {
-    const outDir = path.join(testDir, ".nordrelay", "turns", "turn-a", "out");
+    const outDir = artifactOutDirForTurn(testDir, "turn-a");
     mkdirSync(outDir, { recursive: true });
     writeFileSync(path.join(outDir, "result.txt"), "ok");
 
@@ -253,8 +255,8 @@ describe("collectArtifacts", () => {
   });
 
   it("rejects unsafe artifact turn ids", async () => {
-    const turnsDir = path.join(testDir, ".nordrelay", "turns");
-    const sentinel = path.join(testDir, ".nordrelay", "sentinel.txt");
+    const turnsDir = workspaceTurnsRoot(testDir);
+    const sentinel = path.join(workspaceStorageRoot(testDir), "sentinel.txt");
     mkdirSync(path.join(turnsDir, "turn-safe"), { recursive: true });
     writeFileSync(sentinel, "keep");
 
@@ -304,9 +306,9 @@ describe("collectArtifacts", () => {
   it("prunes old turn and inbox directories", async () => {
     const now = new Date("2026-05-11T00:00:00.000Z").getTime();
     const oldDate = new Date(now - 10 * 24 * 60 * 60 * 1000);
-    const oldTurn = path.join(testDir, ".nordrelay", "turns", "old-turn");
-    const newTurn = path.join(testDir, ".nordrelay", "turns", "new-turn");
-    const oldInbox = path.join(testDir, ".nordrelay", "inbox", "old-inbox");
+    const oldTurn = path.join(workspaceTurnsRoot(testDir), "old-turn");
+    const newTurn = path.join(workspaceTurnsRoot(testDir), "new-turn");
+    const oldInbox = path.join(workspaceInboxRoot(testDir), "old-inbox");
     mkdirSync(oldTurn, { recursive: true });
     mkdirSync(newTurn, { recursive: true });
     mkdirSync(oldInbox, { recursive: true });

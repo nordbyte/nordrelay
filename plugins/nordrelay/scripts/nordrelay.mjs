@@ -1824,7 +1824,7 @@ async function commandDoctor(options) {
   const openClawGatewayCheck = await checkOpenClawGateway();
   checks.push(check("OpenClaw Gateway", openClawGatewayCheck.ok, openClawGatewayCheck.detail, process.env.NORDRELAY_OPENCLAW_ENABLED === "true" ? "fail" : "warn"));
   checks.push(check("ffmpeg", Boolean(findExecutable("ffmpeg")), findExecutable("ffmpeg") || "not found", "warn", hintFix("Install ffmpeg with your OS package manager to enable voice conversion.")));
-  const stateBackendCheck = validateStateBackend();
+  const stateBackendCheck = validateStateBackend(options.home);
   checks.push(check("State backend", stateBackendCheck.ok, stateBackendCheck.detail, "fail", hintFix("Use NORDRELAY_STATE_BACKEND=json or install/rebuild better-sqlite3 for sqlite.")));
   checks.push(check("Runtime entry", Boolean(await resolveRuntimeEntry()), RUNTIME_ROOT, "fail", runtimeBuildFix()));
 
@@ -2745,14 +2745,13 @@ function isLoopbackName(host) {
   return host === "127.0.0.1" || host === "::1" || host === "localhost";
 }
 
-function validateStateBackend() {
+function validateStateBackend(home = process.env.NORDRELAY_HOME || DEFAULT_HOME) {
   const backend = process.env.NORDRELAY_STATE_BACKEND || "json";
   if (backend === "json") return { ok: true, detail: "NORDRELAY_STATE_BACKEND=json" };
   if (backend !== "sqlite") return { ok: false, detail: `Invalid NORDRELAY_STATE_BACKEND=${backend}` };
   try {
     const Database = require("better-sqlite3");
-    const workspace = path.resolve(process.env.NORDRELAY_WORKSPACE || process.cwd());
-    const filePath = path.join(workspace, ".nordrelay", "state.sqlite");
+    const filePath = path.join(path.resolve(home || DEFAULT_HOME), "state.sqlite");
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const db = new Database(filePath);
     db.exec([

@@ -17,16 +17,23 @@ afterEach(() => {
 });
 
 describe("state backend paths", () => {
-  it("keeps regular workspace state scoped below the workspace", () => {
+  it("stores regular workspace state in NordRelay home", () => {
+    const home = mkdtempSync(path.join(tmpdir(), "nordrelay-home-"));
     const workspace = path.join(tmpdir(), "nordrelay-workspace");
+    try {
+      process.env.NORDRELAY_HOME = home;
 
-    expect(stateBackendDirectory(workspace)).toBe(path.join(workspace, ".nordrelay"));
-    expect(stateBackendPath(workspace, "json", "session-names.json")).toBe(
-      path.join(workspace, ".nordrelay", "session-names.json"),
-    );
+      expect(stateBackendDirectory(workspace)).toBe(home);
+      expect(stateBackendPath(workspace, "json", "session-names.json")).toBe(
+        path.join(home, "session-names.json"),
+      );
+      expect(stateBackendPath(workspace, "sqlite")).toBe(path.join(home, "state.sqlite"));
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
-  it("falls back to NordRelay home instead of writing below the filesystem root", () => {
+  it("uses NordRelay home for filesystem root workspaces too", () => {
     const home = mkdtempSync(path.join(tmpdir(), "nordrelay-home-"));
     try {
       process.env.NORDRELAY_HOME = home;

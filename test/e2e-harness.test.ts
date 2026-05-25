@@ -10,7 +10,7 @@ import { TelegramChannelAdapter, listChannelDescriptors, type ChannelInboundMess
 import { ChannelCommandRouter, InMemoryChannelRuntime, deliverChannelAction } from "../src/channels/shared/channel-runtime.js";
 import { AuditLogStore } from "../src/access/audit-log.js";
 import { SessionLockStore, canWriteWithLock } from "../src/access/session-locks.js";
-import { createDocumentStore } from "../src/state/state-backend.js";
+import { createDocumentStore, stateBackendDirectory } from "../src/state/state-backend.js";
 import type { ConnectorConfig } from "../src/core/config.js";
 
 const require = createRequire(import.meta.url);
@@ -177,7 +177,7 @@ describe("state, audit, and lock stores", () => {
 
   (sqliteAvailable ? it : it.skip)("creates the SQLite state directory before opening the database", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-sqlite-state-"));
-    const stateDir = path.join(workspace, ".nordrelay");
+    const stateDir = stateBackendDirectory(workspace);
     let store: ReturnType<typeof createDocumentStore<{ value: number }>> | undefined;
     try {
       store = createDocumentStore<{ value: number }>({

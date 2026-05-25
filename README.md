@@ -64,6 +64,8 @@ nordrelay start
 ~/.nordrelay/nordrelay.env
 ```
 
+NordRelay keeps runtime state, queues, uploads, logs, and workspace-scoped artifacts under `~/.nordrelay`.
+
 A minimal Telegram + Codex configuration looks like this:
 
 ```dotenv
