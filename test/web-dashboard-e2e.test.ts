@@ -300,6 +300,7 @@ describe("web dashboard browser-flow assets", () => {
 
     expect(js).toContain("function fmtSessionAge");
     expect(js).toContain("function updateSessionAgeCounters");
+    expect(js).toContain("function hasSessionAgeCounters");
     expect(js).toContain("function startSessionAgeCounter");
     expect(js).toContain("state.sessionAgeTimer=setInterval");
     expect(js).toContain("function sessionRelativeTimeHtml");
@@ -889,6 +890,12 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function openPeerDebugDialog");
     expect(js).toContain("function openPeerSyncDialog");
     expect(js).toContain("function loadPeerSyncCandidates");
+    expect(js).toContain("function peerVersionHtml");
+    expect(js).toContain("function peerLastSeenHtml");
+    expect(js).toContain("<th>Health</th><th>Version</th><th>Last seen</th>");
+    expect(js).toContain("peerCell('Version',peerVersionHtml(p)");
+    expect(js).toContain("peerCell('Last seen',peerLastSeenHtml(p)");
+    expect(js).toContain("data-session-age-at");
     expect(js).toContain("/sync-candidates");
     expect(js).toContain("/api/peers/sync");
     expect(js).toContain("function bindTableActionMenus");
