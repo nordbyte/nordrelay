@@ -18,15 +18,17 @@ async function loadWorkflows(){
   setLoading('templateList','Loading templates...');
   setLoading('workflowList','Loading workflows...');
   setLoading('workflowRunList','Loading runs...');
-  const [templates,workflows,peers]=await Promise.all([
+  const [templates,workflows,peers,pluginCatalog]=await Promise.all([
     api('/api/templates'),
     api('/api/workflows'),
-    can('peers.read')?api('/api/peers',{local:true}).catch(()=>state.peers||null):Promise.resolve(state.peers||null)
+    can('peers.read')?api('/api/peers',{local:true}).catch(()=>state.peers||null):Promise.resolve(state.peers||null),
+    can('plugins.read')?api('/api/plugins/catalog',{local:true}).catch(()=>state.pluginCatalog||null):Promise.resolve(state.pluginCatalog||null)
   ]);
   state.workflowTemplates=templates.templates||[];
   state.workflows=workflows.workflows||[];
   state.workflowRuns=workflows.runs||[];
   if(peers)state.peers=peers;
+  if(pluginCatalog)state.pluginCatalog=pluginCatalog;
   renderWorkflowSections();
 }
 
@@ -71,7 +73,7 @@ function renderWorkflowsTable(workflows){if(!workflows.length)return uiEmpty('No
 function workflowRunProgress(r){const steps=r.steps||[];const done=steps.filter(s=>s.status==='completed'||s.status==='skipped').length;return done+'/'+steps.length+' steps'}
 function workflowRunCurrentStep(r){const step=(r.steps||[]).find(s=>['running','paused','queued'].includes(s.status))||(r.steps||[]).find(s=>s.status==='failed')||(r.steps||[]).slice(-1)[0];return step?step.name+' / '+step.status:'-'}
 function workflowRunActions(r){return '<div class="data-table-actions"><button class="secondary" data-workflow-run-report="'+attr(r.id)+'">Report</button>'+(r.status==='paused'?'<button class="secondary" data-workflow-run-resume="'+attr(r.id)+'"'+disabledAttr('workflows.run')+'>Resume</button>':'')+(r.status==='failed'?'<button class="secondary" data-workflow-run-rerun-failed="'+attr(r.id)+'"'+disabledAttr('workflows.run')+'>Rerun failed step</button>':'')+(['queued','running','paused'].includes(r.status)?'<button class="danger" data-workflow-run-cancel="'+attr(r.id)+'"'+disabledAttr('workflows.run')+'>Cancel</button>':'')+'</div>'}
-function workflowRunStepMeta(s){return [['Target',s.target],['Session',s.sessionMode],['Agent',s.agentId],['Workspace',s.workspace],['Workspace mode',s.workspaceMode],['Model',s.model],['Reasoning',s.reasoningEffort],['Launch',s.launchProfileId],['Approval',s.requiresApproval?'required':''],['Continue on error',s.continueOnError?'yes':''],['Retry',s.retryPolicy?((s.retryPolicy.maxAttempts||1)+' attempts / '+(s.retryPolicy.delayMs||0)+'ms'):''],['Trace',s.correlationId?uiTraceControls(s.correlationId):'']].filter(row=>row[1]).map(row=>'<small>'+esc(row[0])+': '+(row[0]==='Trace'?row[1]:esc(row[1]))+'</small>').join('')}
+function workflowRunStepMeta(s){return [['Target',s.target],['Plugin',s.pluginId&&s.pluginActionId?s.pluginId+'/'+s.pluginActionId:''],['Session',s.sessionMode],['Agent',s.agentId],['Workspace',s.workspace],['Workspace mode',s.workspaceMode],['Model',s.model],['Reasoning',s.reasoningEffort],['Launch',s.launchProfileId],['Approval',s.requiresApproval?'required':''],['Continue on error',s.continueOnError?'yes':''],['Retry',s.retryPolicy?((s.retryPolicy.maxAttempts||1)+' attempts / '+(s.retryPolicy.delayMs||0)+'ms'):''],['Trace',s.correlationId?uiTraceControls(s.correlationId):'']].filter(row=>row[1]).map(row=>'<small>'+esc(row[0])+': '+(row[0]==='Trace'?row[1]:esc(row[1]))+'</small>').join('')}
 function workflowRunAttemptHtml(s){const attempts=s.attemptHistory||[];if(!attempts.length)return'';return '<div class="workflow-attempts">'+attempts.map(a=>'<small>'+esc('#'+a.attempt+' '+a.status+' / '+fmtDate(a.startedAt)+(a.finishedAt?' - '+fmtDate(a.finishedAt):'')+(a.error?' / '+a.error:''))+'</small>').join('')+'</div>'}
 function workflowRunTimelineHtml(r){const steps=r.steps||[];if(!steps.length)return uiEmpty('No steps recorded.');return '<div class="data-table-wrap"><table class="data-table workflow-run-step-table"><thead><tr><th>Step</th><th>Status</th><th>Timing</th><th>Target</th><th>Prompt</th></tr></thead><tbody>'+steps.map(s=>'<tr>'+workflowCell('Step','<span class="truncate-cell" title="'+attr(s.name||'-')+'">'+esc(short(s.name||'-',120))+'</span>','primary-cell')+workflowCell('Status','<span class="adapter-status '+runStatusClass(s.status)+'">'+esc(s.status||'-')+'</span>','status-cell')+workflowCell('Timing','<span class="truncate-cell" title="'+attr([fmtDate(s.startedAt),fmtDate(s.finishedAt)].filter(v=>v&&v!=='-').join(' - '))+'">'+esc([s.startedAt?fmtDate(s.startedAt):'',s.finishedAt?fmtDate(s.finishedAt):''].filter(Boolean).join(' - ')||'-')+'</span>')+workflowCell('Target','<div class="activity-context">'+workflowRunStepMeta(s)+workflowRunAttemptHtml(s)+'</div>')+workflowCell('Prompt','<span class="truncate-cell" title="'+attr((s.error?('Error: '+s.error+' | '):'')+(s.prompt||''))+'">'+esc(short(s.error?('Error: '+s.error):s.prompt||'-',220))+'</span>')+'</tr>').join('')+'</tbody></table></div>'}
 function renderWorkflowRunRow(r){const status='<span class="adapter-status '+runStatusClass(r.status)+'">'+esc(r.status||'-')+'</span>';const title=(r.error?'Error: '+r.error:'Created '+fmtDate(r.createdAt));const timeline='<details class="workflow-run-timeline"><summary>'+esc(workflowRunProgress(r))+'</summary>'+workflowRunTimelineHtml(r)+'</details>';return '<tr>'+workflowCell('Updated',templateUpdatedHtml(r),'updated-cell')+workflowCell('Name','<span class="truncate-cell" title="'+attr(title)+'">'+esc(short(r.name||'-',130))+'</span>','primary-cell')+workflowCell('Status',status,'status-cell')+workflowCell('Progress',timeline)+workflowCell('Current step','<span class="truncate-cell" title="'+attr(workflowRunCurrentStep(r))+'">'+esc(short(workflowRunCurrentStep(r),140))+'</span>')+workflowCell('Owner','<span class="truncate-cell" title="'+attr(r.ownerId||'-')+'">'+esc(short(r.ownerId||'-',100))+'</span>')+workflowCell('Actions',workflowRunActions(r),'actions-cell')+'</tr>'}
@@ -92,7 +94,7 @@ function workflowVariableDefinitions(items){
         if(name&&!map.has(name))map.set(name,{name,label:v.label||name,required:v.required!==false,defaultValue:v.defaultValue||''});
       });
     }else{
-      collectVariablesFromPrompt(item.prompt).forEach(name=>{if(!map.has(name))map.set(name,{name,label:name,required:true,defaultValue:''})});
+      collectVariablesFromPrompt(item.prompt||JSON.stringify(item.pluginInput||{})).forEach(name=>{if(!map.has(name))map.set(name,{name,label:name,required:true,defaultValue:''})});
     }
   });
   return [...map.values()];

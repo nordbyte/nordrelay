@@ -63,6 +63,7 @@ export async function startPeerServer(options: {
           contextKey,
           registryFileName: "peer-contexts.json",
           registrySqliteKey: "peer-contexts",
+          home,
         });
         contextRuntimes.set(contextKey, scoped);
       }

@@ -11,6 +11,7 @@ nordrelay <command> [options]
 | [`init`](/commands/init) | Create local config and the first admin user |
 | [`user`](/commands/user) | Manage users, groups, and chat identity links |
 | [`peer`](/commands/peer) | Manage secure NordRelay peer federation |
+| [`plugin`](/commands/plugin) | Install, enable, and develop NordRelay plugins |
 | [`service`](/commands/service) | Install, remove, or inspect OS service integration |
 | [`doctor`](/commands/doctor) | Validate the local setup and apply safe fixes |
 | [`web`](/commands/web) | Start the WebUI and connector in the background |

@@ -68,7 +68,13 @@ export type AuditAction =
   | "peer_tls_repinned"
   | "peer_rotation_invite_created"
   | "peer_identity_backup_exported"
-  | "peer_identity_restored";
+  | "peer_identity_restored"
+  | "plugin_scaffold_created"
+  | "plugin_installed"
+  | "plugin_enabled"
+  | "plugin_disabled"
+  | "plugin_removed"
+  | "plugin_updated";
 
 export interface AuditEvent {
   id: string;

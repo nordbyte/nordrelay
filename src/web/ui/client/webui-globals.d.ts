@@ -157,6 +157,7 @@ declare function setMirrorPreference(argument: string): Promise<unknown>;
 declare function createWebCorrelationId(): string;
 declare function loadMonitor(): Promise<void>;
 declare function loadPeers(): Promise<void>;
+declare function loadPlugins(): Promise<void>;
 declare function stopPeerTableRefresh(): void;
 declare function loadQueue(options?: WebuiRecord): Promise<void>;
 declare function loadQueuePlanner(): Promise<void>;

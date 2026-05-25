@@ -22,6 +22,14 @@ This page summarizes the runtime keys generated in `.env.example`.
 | `NORDRELAY_WEBAUTHN_RP_ID` | Optional passkey relying-party domain |
 | `NORDRELAY_WEBAUTHN_ORIGIN` | Optional expected WebUI origin |
 
+## Plugins
+
+| Key | Purpose |
+| --- | --- |
+| `NORDRELAY_PLUGINS_ENABLED` | Enable local plugin metadata loading and plugin extension points |
+| `NORDRELAY_PLUGIN_GITHUB_INSTALL_ENABLED` | Allow installing plugins from GitHub repository URLs |
+| `NORDRELAY_PLUGIN_ALLOW_BUILD_SCRIPTS` | Reserved switch for trusted plugin build hooks |
+
 ## Chat adapters
 
 | Key | Purpose |

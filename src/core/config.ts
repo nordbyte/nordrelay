@@ -56,6 +56,9 @@ export interface ConnectorConfig {
   webAuthnRpName: string;
   webAuthnRpId?: string;
   webAuthnOrigin?: string;
+  pluginsEnabled: boolean;
+  pluginGithubInstallEnabled: boolean;
+  pluginAllowBuildScripts: boolean;
   telegramEnabled: boolean;
   telegramBotToken: string;
   telegramRateLimitMinIntervalMs: number;
@@ -232,6 +235,9 @@ export function loadConfig(): ConnectorConfig {
   const webAuthnRpName = optionalString(process.env.NORDRELAY_WEBAUTHN_RP_NAME) ?? "NordRelay";
   const webAuthnRpId = optionalString(process.env.NORDRELAY_WEBAUTHN_RP_ID);
   const webAuthnOrigin = optionalString(process.env.NORDRELAY_WEBAUTHN_ORIGIN);
+  const pluginsEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_PLUGINS_ENABLED), true);
+  const pluginGithubInstallEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_PLUGIN_GITHUB_INSTALL_ENABLED), true);
+  const pluginAllowBuildScripts = parseBooleanEnv(optionalString(process.env.NORDRELAY_PLUGIN_ALLOW_BUILD_SCRIPTS), false);
   const requestedTelegramEnabled = parseBooleanEnv(optionalString(process.env.TELEGRAM_ENABLED), true);
   const telegramBotToken = optionalString(process.env.TELEGRAM_BOT_TOKEN) ?? "";
   const telegramRateLimitMinIntervalMs = parseNonNegativeIntegerEnv(optionalString(process.env.TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS), 80, "TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS");
@@ -499,6 +505,9 @@ export function loadConfig(): ConnectorConfig {
     webAuthnRpName,
     webAuthnRpId,
     webAuthnOrigin,
+    pluginsEnabled,
+    pluginGithubInstallEnabled,
+    pluginAllowBuildScripts,
     telegramEnabled,
     telegramBotToken,
     telegramRateLimitMinIntervalMs,

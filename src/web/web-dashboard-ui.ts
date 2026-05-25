@@ -39,6 +39,7 @@ export const DASHBOARD_NAV_SECTIONS: DashboardNavSection[] = [
     label: "Administration",
     pages: [
       { id: "access", label: "Users", permission: "users.read" },
+      { id: "plugins", label: "Plugins", permission: "plugins.read" },
       { id: "settings", label: "Settings", permission: "settings.read" },
       { id: "peers", label: "Peers", permission: "peers.read" },
     ],

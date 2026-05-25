@@ -25,6 +25,7 @@ import {
 } from "../state/workflow-store.js";
 import type { WebActivityActor, WebActivityEvent } from "../web/web-state.js";
 import type { UnifiedJobDto, WorkflowDryRunDto, WorkflowPreviewDto } from "./relay-runtime-types.js";
+import type { PluginService } from "../plugins/plugin-service.js";
 
 export interface RelayWorkflowServiceOptions {
   store: WorkflowStore;
@@ -42,6 +43,7 @@ export interface RelayWorkflowServiceOptions {
   attachSession(threadId: string, actor?: WebActivityActor): Promise<unknown>;
   runPrompt(session: AgentSessionService, envelope: PromptEnvelope): Promise<void>;
   runPeerPromptStep?(peerId: string, step: WorkflowStep, prompt: string, correlationId: string, actor?: WebActivityActor): Promise<{ status: string; detail?: string }>;
+  pluginService?: PluginService;
   isSessionBusy(session: AgentSessionService): boolean;
   abort(actor?: WebActivityActor): Promise<void>;
   appendActivity(input: Omit<WebActivityEvent, "id" | "timestamp"> & { timestamp?: string }): WebActivityEvent;
@@ -659,6 +661,8 @@ export class RelayWorkflowService {
     try {
       if (step.type === "workflow") {
         await this.runSubflow(id, step, run.variables, actor, depth);
+      } else if (step.type === "plugin") {
+        await this.runPluginStep(step, run.variables);
       } else if (step.target !== "local") {
         await this.runPeerStep(step, prompt, correlationId, actor);
       } else {
@@ -673,7 +677,7 @@ export class RelayWorkflowService {
         steps: patchStep(latest.steps, step.id, {
           status: "completed",
           finishedAt,
-          outputSummary: step.type === "workflow" ? "Subflow completed." : step.target !== "local" ? "Peer step completed." : "Prompt completed.",
+          outputSummary: step.type === "workflow" ? "Subflow completed." : step.type === "plugin" ? "Plugin action completed." : step.target !== "local" ? "Peer step completed." : "Prompt completed.",
           attemptHistory: finishAttemptHistory(latest.steps.find((candidate) => candidate.stepId === step.id)?.attemptHistory, attempt, "completed", finishedAt),
         }),
       });
@@ -772,6 +776,12 @@ export class RelayWorkflowService {
       if (!workflow) throw new Error(`Workflow step ${step.name} has no subflow.`);
       return `Run subflow: ${workflow.name}`;
     }
+    if (step.type === "plugin") {
+      if (!step.pluginId || !step.pluginActionId) {
+        throw new Error(`Workflow step ${step.name} has no plugin action.`);
+      }
+      return `Run plugin action: ${step.pluginId}/${step.pluginActionId}`;
+    }
     if (step.templateId) {
       return renderPromptTemplate(this.requireTemplate(step.templateId), variables);
     }
@@ -869,6 +879,10 @@ export class RelayWorkflowService {
         }
         continue;
       }
+      if (step.type === "plugin") {
+        collectVariablesFromUnknown(step.pluginInput).forEach(add);
+        continue;
+      }
       if (step.templateId) {
         this.options.store.getTemplate(step.templateId)?.variables.forEach(add);
       } else {
@@ -876,6 +890,20 @@ export class RelayWorkflowService {
       }
     }
     return [...variables.values()];
+  }
+
+  private async runPluginStep(step: WorkflowStep, variables: Record<string, string>): Promise<void> {
+    if (!this.options.pluginService) {
+      throw new Error("Plugin workflow actions are not available in this runtime.");
+    }
+    if (!step.pluginId || !step.pluginActionId) {
+      throw new Error(`Workflow step ${step.name} has no plugin action.`);
+    }
+    const input = renderPluginInput(step.pluginInput ?? {}, variables);
+    const result = await this.options.pluginService.invokeWorkflowAction(step.pluginId, step.pluginActionId, input);
+    if (!result.ok) {
+      throw new Error(result.stderr || "Plugin workflow action failed.");
+    }
   }
 
   private assertWorkflowRequiredVariables(workflow: Workflow, variables: Record<string, string>): void {
@@ -1014,6 +1042,8 @@ function stepRunMetadata(step: WorkflowStep): Partial<WorkflowStepRun> {
     model: step.model,
     reasoningEffort: step.reasoningEffort,
     launchProfileId: step.launchProfileId,
+    pluginId: step.pluginId,
+    pluginActionId: step.pluginActionId,
     requiresApproval: step.requiresApproval,
     continueOnError: step.continueOnError,
     retryPolicy: step.retryPolicy,
@@ -1152,6 +1182,31 @@ function datePartsInTimezone(date: Date, timezone: string): { minute: number; ho
     month: value("month"),
     weekday: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekdayText.slice(0, 3)),
   };
+}
+
+function collectVariablesFromUnknown(input: unknown): PromptTemplate["variables"] {
+  try {
+    return extractTemplateVariables(JSON.stringify(input ?? {}));
+  } catch {
+    return [];
+  }
+}
+
+function renderPluginInput(input: Record<string, unknown>, variables: Record<string, string>): Record<string, unknown> {
+  return renderUnknownTemplate(input, variables) as Record<string, unknown>;
+}
+
+function renderUnknownTemplate(value: unknown, variables: Record<string, string>): unknown {
+  if (typeof value === "string") {
+    return renderTemplateText(value, variables);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => renderUnknownTemplate(item, variables));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, renderUnknownTemplate(item, variables)]));
+  }
+  return value;
 }
 
 function peerIdFromWorkflowTarget(target: WorkflowStep["target"]): string | null {

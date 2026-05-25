@@ -50,6 +50,7 @@ let runtimeConfig: ConnectorConfig | undefined;
 
 try {
   const config = loadConfig();
+  const home = process.env.NORDRELAY_HOME || path.join(os.homedir(), ".nordrelay");
   runtimeConfig = config;
   configureRedaction(config.telegramRedactPatterns);
   installConsoleLogger(config.logFormat);
@@ -74,11 +75,11 @@ try {
   matrixBridge = createMatrixBridge(config, registry);
   await matrixBridge?.start();
   if (config.peerEnabled) {
-    peerRuntime = new RelayRuntime(config);
+    peerRuntime = new RelayRuntime(config, { home });
     peerServer = await startPeerServer({ config, runtime: peerRuntime });
   }
   if (config.peerOutboundRelayEnabled) {
-    peerRuntime ??= new RelayRuntime(config);
+    peerRuntime ??= new RelayRuntime(config, { home });
     peerOutboundRelay = startPeerOutboundRelay({ config, runtime: peerRuntime });
   }
   peerHealthMonitor = startPeerHealthMonitor({ config });

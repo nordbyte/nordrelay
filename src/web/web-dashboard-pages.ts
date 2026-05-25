@@ -548,6 +548,64 @@ ${faviconLinks}
         </div>
       </section>
 
+      <section class="page" id="page-plugins">
+        <div class="panel">
+          <div class="section-header plugins-section-header">
+            <div id="pluginTabs" class="section-tabs plugin-tabs" role="tablist" aria-label="Plugin sections">
+              <button type="button" role="tab" aria-selected="true" tabindex="0" data-plugin-tab="installed" class="active">Installed</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="install">Install</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="catalog">Extension Catalog</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="developer">Developer</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="logs">Logs</button>
+            </div>
+          </div>
+          <div class="plugin-tab active" data-plugin-tab-panel="installed">
+            <div class="plugin-tab-heading">
+              <div class="row plugin-heading-actions"><button id="reloadPluginsBtn" class="secondary">Reload plugins</button></div>
+            </div>
+            <div id="pluginStatus" class="callout muted"></div>
+            <div id="pluginList" class="sessions-table-host"></div>
+          </div>
+          <div class="plugin-tab" data-plugin-tab-panel="install">
+            <div class="plugin-tab-heading">
+              <div class="row plugin-heading-actions"><button id="installPluginBtn">Install plugin</button><button id="validatePluginSourceBtn" class="secondary">Validate local path</button></div>
+            </div>
+            <div class="settings-grid compact-settings-grid">
+              <label><span>Source</span><input id="pluginInstallSource" placeholder="github:owner/repo, https://github.com/owner/repo, or local path"></label>
+              <label><span>Git ref</span><input id="pluginInstallRef" placeholder="Optional branch, tag, or commit"></label>
+              <label class="checkbox"><input id="pluginInstallEnable" type="checkbox"> Enable after install</label>
+              <label class="checkbox"><input id="pluginInstallApprove" type="checkbox"> Approve declared permissions</label>
+              <label class="checkbox"><input id="pluginInstallForce" type="checkbox"> Force reinstall same version</label>
+            </div>
+            <div id="pluginInstallResult" class="list"></div>
+          </div>
+          <div class="plugin-tab" data-plugin-tab-panel="catalog">
+            <div class="plugin-tab-heading">
+              <div class="row plugin-heading-actions"><button id="reloadPluginCatalogBtn" class="secondary">Reload catalog</button></div>
+            </div>
+            <div id="pluginCatalog" class="list"></div>
+          </div>
+          <div class="plugin-tab" data-plugin-tab-panel="developer">
+            <div class="plugin-tab-heading">
+              <div class="row plugin-heading-actions"><button id="createPluginScaffoldBtn">Create plugin scaffold</button></div>
+            </div>
+            <div class="settings-grid compact-settings-grid">
+              <label><span>Target directory</span><input id="pluginScaffoldDir" placeholder="/path/to/my-plugin"></label>
+              <label><span>Plugin ID</span><input id="pluginScaffoldId" placeholder="my-plugin"></label>
+              <label><span>Name</span><input id="pluginScaffoldName" placeholder="My Plugin"></label>
+              <label class="full-span"><span>Description</span><input id="pluginScaffoldDescription" placeholder="What this plugin adds"></label>
+            </div>
+            <div id="pluginDeveloperResult" class="list"></div>
+          </div>
+          <div class="plugin-tab" data-plugin-tab-panel="logs">
+            <div class="plugin-tab-heading">
+              <div class="row plugin-heading-actions"><select id="pluginLogSelect"></select><button id="loadPluginLogBtn" class="secondary">Load log</button></div>
+            </div>
+            <pre id="pluginLog" class="log-view"></pre>
+          </div>
+        </div>
+      </section>
+
       <section class="page" id="page-access">
         <div class="panel">
           <div class="section-header access-section-header">

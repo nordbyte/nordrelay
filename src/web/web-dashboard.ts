@@ -49,6 +49,7 @@ import { handleDashboardPeerRoute } from "./web-dashboard-peer-routes.js";
 import { handleDashboardProfileRoute } from "./web-dashboard-profile-routes.js";
 import { handleDashboardProfileSecurityRoute } from "./web-dashboard-profile-security-routes.js";
 import { handleDashboardWorkflowRoute } from "./web-dashboard-workflow-routes.js";
+import { handleDashboardPluginRoute } from "./web-dashboard-plugin-routes.js";
 import { activeSettingsValues } from "./web-dashboard-settings-values.js";
 import { PeerDiscoveryJobManager } from "../peers/peer-discovery-jobs.js";
 import { applyAutostartSettings } from "../support/autostart.js";
@@ -75,7 +76,7 @@ const config = loadConfig();
 if (!config.webuiEnabled) {
   throw new Error("WebUI is disabled by NORDRELAY_WEBUI_ENABLED=false.");
 }
-const runtime = new RelayRuntime(config, { backgroundServices: false });
+const runtime = new RelayRuntime(config, { backgroundServices: false, home: options.home });
 const settings = new SettingsService(resolveDashboardEnvPath(options.home));
 const users = new UserStore(options.home);
 const auditLog = new AuditLogStore(config.workspace, config.stateBackend, config.auditMaxEvents);
@@ -447,6 +448,15 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
         throw new AccessDeniedError(`Access denied: peer ${peerId} is outside your group scope.`);
       }
     },
+  })) {
+    return;
+  }
+
+  if (await handleDashboardPluginRoute(req, res, url, {
+    config,
+    home: options.home,
+    authUser,
+    auditPluginAction: (action, description) => auditUserAction(authUser, action, description),
   })) {
     return;
   }

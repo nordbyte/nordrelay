@@ -73,6 +73,10 @@ export type WebApiStaticPath =
   | "/api/peers/relay"
   | "/api/peers/sync"
   | "/api/permissions"
+  | "/api/plugins"
+  | "/api/plugins/catalog"
+  | "/api/plugins/scaffold"
+  | "/api/plugins/validate"
   | "/api/profile"
   | "/api/profile/api-tokens"
   | "/api/profile/logout-other-sessions"
@@ -151,6 +155,13 @@ export type WebApiDynamicPath =
   | `/api/peers/discovery-jobs/${string}/cancel`
   | `/api/peers/discovery-jobs/${string}/log`
   | `/api/peers/invitations/${string}`
+  | `/api/plugins/${string}`
+  | `/api/plugins/${string}/disable`
+  | `/api/plugins/${string}/enable`
+  | `/api/plugins/${string}/invoke`
+  | `/api/plugins/${string}/log`
+  | `/api/plugins/${string}/manifest`
+  | `/api/plugins/${string}/settings`
   | `/api/profile/api-tokens/${string}`
   | `/api/profile/sessions/${string}`
   | `/api/profile/webauthn/${string}`
@@ -268,6 +279,10 @@ export type WebApiResponseByPath = {
   "/api/peers/relay": ServerWebApiClientResponse<"/api/peers/relay">;
   "/api/peers/sync": ServerWebApiClientResponse<"/api/peers/sync">;
   "/api/permissions": ServerWebApiClientResponse<"/api/permissions">;
+  "/api/plugins": ServerWebApiClientResponse<"/api/plugins">;
+  "/api/plugins/catalog": ServerWebApiClientResponse<"/api/plugins/catalog">;
+  "/api/plugins/scaffold": ServerWebApiClientResponse<"/api/plugins/scaffold">;
+  "/api/plugins/validate": ServerWebApiClientResponse<"/api/plugins/validate">;
   "/api/profile": ServerWebApiClientResponse<"/api/profile">;
   "/api/profile/api-tokens": ServerWebApiClientResponse<"/api/profile/api-tokens">;
   "/api/profile/logout-other-sessions": ServerWebApiClientResponse<"/api/profile/logout-other-sessions">;
@@ -379,6 +394,10 @@ export type WebApiRequestBodyByPath = {
   "/api/peers/relay": ServerWebApiRequestBody<"/api/peers/relay">;
   "/api/peers/sync": ServerWebApiRequestBody<"/api/peers/sync">;
   "/api/permissions": ServerWebApiRequestBody<"/api/permissions">;
+  "/api/plugins": ServerWebApiRequestBody<"/api/plugins">;
+  "/api/plugins/catalog": ServerWebApiRequestBody<"/api/plugins/catalog">;
+  "/api/plugins/scaffold": ServerWebApiRequestBody<"/api/plugins/scaffold">;
+  "/api/plugins/validate": ServerWebApiRequestBody<"/api/plugins/validate">;
   "/api/profile": ServerWebApiRequestBody<"/api/profile">;
   "/api/profile/api-tokens": ServerWebApiRequestBody<"/api/profile/api-tokens">;
   "/api/profile/logout-other-sessions": ServerWebApiRequestBody<"/api/profile/logout-other-sessions">;

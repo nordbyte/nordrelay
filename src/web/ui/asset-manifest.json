@@ -27,6 +27,7 @@
         "client/admin-adapters.ts",
         "client/admin-version.ts",
         "client/admin-peers.ts",
+        "client/admin-plugins.ts",
         "client/diagnostics.ts",
         "client/queue-planner.ts",
         "client/workflow-builder.ts",

@@ -73,7 +73,8 @@ export default defineConfig({
           { text: "Workflows", link: "/guides/workflows" },
           { text: "Artifacts and voice", link: "/guides/artifacts-voice" },
           { text: "Security and login", link: "/guides/security-login" },
-          { text: "Peers", link: "/guides/peers" }
+          { text: "Peers", link: "/guides/peers" },
+          { text: "Plugins", link: "/guides/plugins" }
         ]
       },
       {
@@ -94,6 +95,7 @@ export default defineConfig({
           { text: "init", link: "/commands/init" },
           { text: "user", link: "/commands/user" },
           { text: "peer", link: "/commands/peer" },
+          { text: "plugin", link: "/commands/plugin" },
           { text: "service", link: "/commands/service" },
           { text: "doctor", link: "/commands/doctor" },
           { text: "web", link: "/commands/web" },

@@ -78,6 +78,17 @@ const LOCAL_ONLY_ROUTE_PATHS = new Set([
   "/api/matrix-rooms",
   "/api/matrix-rooms/:id",
   "/api/audit",
+  "/api/plugins",
+  "/api/plugins/catalog",
+  "/api/plugins/validate",
+  "/api/plugins/scaffold",
+  "/api/plugins/:id",
+  "/api/plugins/:id/enable",
+  "/api/plugins/:id/disable",
+  "/api/plugins/:id/settings",
+  "/api/plugins/:id/log",
+  "/api/plugins/:id/manifest",
+  "/api/plugins/:id/invoke",
 ]);
 
 export function peerProxyCoverage(): {

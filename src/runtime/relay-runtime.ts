@@ -43,6 +43,7 @@ import { WorkflowStore } from "../state/workflow-store.js";
 import { QueuePlanStore, type QueuePlanStatus } from "../state/queue-plan-store.js";
 import { MetricsHistoryStore } from "../state/metrics-history-store.js";
 import { RelayWorkflowService } from "./relay-workflow-service.js";
+import { PluginService } from "../plugins/plugin-service.js";
 import { runPeerWorkflowPromptStep } from "./relay-peer-workflow.js";
 import { type RuntimeMetricHistorySample, type RuntimeMetricsDto } from "./metrics.js";
 import { RelayArtifactService } from "./relay-artifact-service.js";
@@ -291,6 +292,7 @@ export interface RelayRuntimeOptions {
   registryFileName?: string;
   registrySqliteKey?: string;
   backgroundServices?: boolean;
+  home?: string;
 }
 
 export class RelayRuntime {
@@ -308,7 +310,7 @@ export class RelayRuntime {
   readonly workflowStore: WorkflowStore;
   readonly queuePlanStore: QueuePlanStore;
   readonly metricsHistoryStore: MetricsHistoryStore;
-  readonly workflowService: RelayWorkflowService;
+  readonly workflowService: RelayWorkflowService; readonly pluginService: PluginService;
   readonly artifactService: RelayArtifactService;
   readonly worktreeService: SessionWorktreeService;
   readonly mirrorRegistry: ChannelMirrorRegistry;
@@ -320,16 +322,11 @@ export class RelayRuntime {
   readonly subscribers = new Set<(event: RelayEvent) => void>();
   readonly agentUpdateActors = new Map<string, WebActivityActor>();
   readonly agentUpdateStates = new Map<string, { status: AgentUpdateJobSnapshot["status"]; needsInput: boolean }>();
-  externalMonitor?: AdaptiveExternalMonitorHandle;
-  activeSessionsBroadcastTimer: NodeJS.Timeout | null = null;
-  metricsHistoryTimer: NodeJS.Timeout | null = null;
-  metricsHistoryPoller: ObservedPollerHandle | null = null;
-  activeSessionsLastBroadcastAt = 0;
-  draining = false;
-  currentTurnId: string | null = null;
-  accumulatedText = "";
-  currentTurnStartedAt = 0;
-  currentProgress: WebTaskDto | null = null;
+  externalMonitor?: AdaptiveExternalMonitorHandle; activeSessionsBroadcastTimer: NodeJS.Timeout | null = null;
+  metricsHistoryTimer: NodeJS.Timeout | null = null; metricsHistoryPoller: ObservedPollerHandle | null = null;
+  activeSessionsLastBroadcastAt = 0; draining = false;
+  currentTurnId: string | null = null; accumulatedText = "";
+  currentTurnStartedAt = 0; currentProgress: WebTaskDto | null = null;
   private readonly backgroundServicesEnabled: boolean;
 
   constructor(readonly config: ConnectorConfig, options: RelayRuntimeOptions = {}) {
@@ -352,6 +349,7 @@ export class RelayRuntime {
     this.workflowStore = new WorkflowStore(config.workspace, config.stateBackend);
     this.queuePlanStore = new QueuePlanStore(config.workspace, config.stateBackend);
     this.metricsHistoryStore = new MetricsHistoryStore(config.workspace, config.stateBackend);
+    this.pluginService = new PluginService(options.home ?? process.env.NORDRELAY_HOME ?? (process.env.HOME ? `${process.env.HOME}/.nordrelay` : ".nordrelay"));
     this.artifactService = new RelayArtifactService(config);
     this.authService = new RelayAuthService(config);
     this.mirrorRegistry = new ChannelMirrorRegistry(config, this.promptStore);
@@ -445,6 +443,7 @@ export class RelayRuntime {
         actor,
         sourceContextKey: this.contextKey,
       }),
+      pluginService: this.pluginService,
       isSessionBusy: (session) => isSessionBusyWithExternalSnapshot(session, this.config, (threadId) => this.activityStore.list({ threadId, limit: 50 })),
       abort: (actor) => this.abort(actor),
       appendActivity: (input) => this.appendActivity(input),

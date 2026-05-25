@@ -321,6 +321,10 @@ interface WebuiWorkflowBuilderStep extends WebuiRecord {
   prompt?: string;
   templateId?: string;
   workflowId?: string;
+  pluginId?: string;
+  pluginActionId?: string;
+  pluginInput?: Record<string, unknown>;
+  pluginInputJson?: string;
   condition?: {
     variable?: string;
     operator?: string;
@@ -461,6 +465,7 @@ interface DashboardState {
   settingsWizard: WebuiSettingsWizardState | null;
   accessTab: string;
   adapterTab: string;
+  pluginTab?: string;
   peerTab: string;
   workflowTab: string;
   queueTab: string;
@@ -535,6 +540,8 @@ interface DashboardState {
   activePeerDiscoveryJobId?: string;
   peerTargets?: WebuiPeerTarget[];
   adapterConformance?: WebuiRecord | null;
+  plugins?: WebuiRecord[];
+  pluginCatalog?: WebuiRecord | null;
   activityEvents?: WebuiRecord[];
   auditEvents?: WebuiAuditEvent[];
   logsEntries?: WebuiRecord[];

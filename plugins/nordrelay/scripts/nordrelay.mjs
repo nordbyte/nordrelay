@@ -10,6 +10,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { printExistingInitState } from "./init-state.mjs";
 import { collectInitConfig, validateInitConfig } from "./init-tui.mjs";
+import { commandPlugin } from "./plugin-manager.mjs";
 import {
   buildLaunchdServiceSpec,
   buildSystemdUserServiceSpec,
@@ -2823,7 +2824,7 @@ function printHelp() {
   console.log("Commands:");
   console.log("  init                 Create local config and first admin user");
   console.log("  user                 Manage users, groups, and channel links");
-  console.log("  peer                 Manage secure NordRelay peer federation");
+  console.log("  peer                 Manage secure NordRelay peer federation"); console.log("  plugin               Manage local and GitHub plugins");
   console.log("  service              Install, remove, or inspect the OS service");
   console.log("  doctor [--fix]       Validate the local setup and apply safe fixes");
   console.log("  web, dashboard       Start the WebUI and connector in the background");
@@ -2862,9 +2863,8 @@ async function main() {
   if (options.command === "stop") return commandStop(options);
   if (options.command === "status") return commandStatus(options);
   if (options.command === "init") return commandInit(options);
-  if (options.command === "user") return commandUser(options);
-  if (options.command === "peer") return commandPeer(options);
-  if (options.command === "service") return commandService(options);
+  if (options.command === "user") return commandUser(options); if (options.command === "peer") return commandPeer(options);
+  if (options.command === "plugin") return commandPlugin(options); if (options.command === "service") return commandService(options);
   if (options.command === "doctor") return commandDoctor(options);
   if (options.command === "update") return commandUpdate(options);
   if (options.command === "web" || options.command === "dashboard") return commandWeb(options);
@@ -2878,7 +2878,7 @@ async function main() {
   }
 
   console.error(`Unknown command: ${options.command}`);
-  console.error("Usage: nordrelay [init|user|peer|service|doctor|web|start|stop|restart|status|update|foreground|version]");
+  console.error("Usage: nordrelay [init|user|peer|plugin|service|doctor|web|start|stop|restart|status|update|foreground|version]");
   console.error("Run `nordrelay --help` for details.");
   process.exitCode = 2;
 }

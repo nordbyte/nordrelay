@@ -95,6 +95,27 @@ describe("web dashboard browser-flow assets", () => {
     expect(settingsPanelSource).toContain("{id:'chat',label:'Chat',groups:['Telegram','Discord','Slack','Matrix']}");
   });
 
+  it("includes plugin management in the local administration WebUI", () => {
+    const js = dashboardJs();
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    const navSource = readFileSync("src/web/web-dashboard-ui.ts", "utf8");
+    const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
+
+    expect(navSource).toContain('{ id: "plugins", label: "Plugins", permission: "plugins.read" }');
+    expect(pageSource).toContain('id="page-plugins"');
+    expect(pageSource).toContain('data-plugin-tab="installed"');
+    expect(pageSource).toContain('id="pluginInstallSource"');
+    expect(pageSource).toContain('id="createPluginScaffoldBtn"');
+    expect(js).toContain("function loadPlugins");
+    expect(js).toContain("function renderPluginList");
+    expect(js).toContain("function workflowPluginActionOptions");
+    expect(js).toContain("/api/plugins/catalog");
+    expect(js).toContain("data-plugin-enable");
+    expect(contract).toContain('exact("/api/plugins"');
+    expect(contract).toContain('dynamic("/api/plugins/:id/enable"');
+    expect(webAssetManifestSources()).toContain("src/web/ui/client/admin-plugins.ts");
+  });
+
   it("includes workflow templates and workflow runs in the WebUI", () => {
     const js = dashboardJs();
     const css = dashboardCss();
@@ -279,7 +300,7 @@ describe("web dashboard browser-flow assets", () => {
     const runtimeSource = readFileSync("src/web/ui/client/core/runtime.ts", "utf8");
 
     expect(pageSource).toContain('id="pageTitle" class="page-title-heading"');
-    expect(runtimeSource).toContain("const LOCAL_ONLY_PAGES=new Set(['access','settings','peers','workflows'])");
+    expect(runtimeSource).toContain("const LOCAL_ONLY_PAGES=new Set(['access','settings','peers','plugins','workflows'])");
     expect(runtimeSource).toContain("function availableNodeCount()");
     expect(runtimeSource).toContain("function pageUsesSelectedPeer");
     expect(runtimeSource).toContain("function selectedNodeBadgeHtml");

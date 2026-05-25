@@ -1,5 +1,5 @@
 function workflowBuilderUid(){return 'step_'+Math.random().toString(36).slice(2,9)}
-function workflowStepSource(step){return step.type==='workflow'||step.workflowId?'workflow':step.templateId?'template':'prompt'}
+function workflowStepSource(step){return step.type==='plugin'||step.pluginId?'plugin':step.type==='workflow'||step.workflowId?'workflow':step.templateId?'template':'prompt'}
 function workflowBuilderStep(step:WebuiWorkflowBuilderStep={},index=0){
   return {
     _uid: step._uid||workflowBuilderUid(),
@@ -9,6 +9,9 @@ function workflowBuilderStep(step:WebuiWorkflowBuilderStep={},index=0){
     prompt: step.prompt||'',
     templateId: step.templateId||'',
     workflowId: step.workflowId||'',
+    pluginId: step.pluginId||'',
+    pluginActionId: step.pluginActionId||'',
+    pluginInputJson: step.pluginInputJson||JSON.stringify(step.pluginInput||{},null,2),
     conditionVariable: step.condition?.variable||'',
     conditionOperator: step.condition?.operator||'exists',
     conditionValue: step.condition?.value||'',
@@ -31,6 +34,7 @@ function workflowBuilderStep(step:WebuiWorkflowBuilderStep={},index=0){
 function workflowBuilderState(w){return {workflowId:w?.id||'',steps:(w?.steps?.length?w.steps:[{name:'Step 1',type:'prompt',prompt:'',sessionMode:'current',target:'local'}]).map(workflowBuilderStep)}}
 function workflowTemplateOptions(selected){return '<option value="">Select template...</option>'+(state.workflowTemplates||[]).map(t=>'<option value="'+attr(t.id)+'" '+(t.id===selected?'selected':'')+'>'+esc(t.name)+'</option>').join('')}
 function workflowOptions(selected,currentId){return '<option value="">Select workflow...</option>'+(state.workflows||[]).filter(w=>w.id!==currentId).map(w=>'<option value="'+attr(w.id)+'" '+(w.id===selected?'selected':'')+'>'+esc(w.name)+'</option>').join('')}
+function workflowPluginActionOptions(selectedPlugin,selectedAction){const actions=Array.isArray(state.pluginCatalog?.workflowActions)?state.pluginCatalog.workflowActions:[];if(!actions.length)return '<option value="">No plugin workflow actions</option>';return '<option value="">Select plugin action...</option>'+actions.map(action=>{const value=action.pluginId+'::'+action.actionId;const selected=value===(selectedPlugin+'::'+selectedAction);return '<option value="'+attr(value)+'" '+(selected?'selected':'')+'>'+esc((action.title||action.actionId)+' ('+action.pluginId+')')+'</option>'}).join('')}
 function workflowAgentOptions(selected){return '<option value="">Active agent</option>'+(state.enabledAgents||[]).map(id=>'<option value="'+attr(id)+'" '+(id===selected?'selected':'')+'>'+esc(id)+'</option>').join('')}
 function workflowReasoningOptions(selected){return '<option value="">Default</option>'+((state.controls?.reasoningOptions||[]).map(v=>'<option value="'+attr(v)+'" '+(v===selected?'selected':'')+'>'+esc(v)+'</option>').join(''))}
 function workflowLaunchOptions(selected){return '<option value="">Default</option>'+((state.controls?.launchProfiles||[]).map(p=>'<option value="'+attr(p.id)+'" '+(p.id===selected?'selected':'')+'>'+esc(p.label+' - '+p.behavior+(p.unsafe?' - unsafe':''))+'</option>').join(''))}
@@ -53,12 +57,14 @@ function workflowBuilderStepHtml(step,index){
     '</div></div>'+
     '<div class="workflow-builder-grid">'+
     '<label>Step name<input data-builder-field="name" value="'+attr(step.name)+'"></label>'+
-    '<label>Source<select data-builder-field="source"><option value="prompt" '+(source==='prompt'?'selected':'')+'>Prompt text</option><option value="template" '+(source==='template'?'selected':'')+'>Template</option><option value="workflow" '+(source==='workflow'?'selected':'')+'>Subflow</option></select></label>'+
+    '<label>Source<select data-builder-field="source"><option value="prompt" '+(source==='prompt'?'selected':'')+'>Prompt text</option><option value="template" '+(source==='template'?'selected':'')+'>Template</option><option value="workflow" '+(source==='workflow'?'selected':'')+'>Subflow</option><option value="plugin" '+(source==='plugin'?'selected':'')+'>Plugin action</option></select></label>'+
     (source==='template'
       ? '<label class="full-span">Template<select data-builder-field="templateId">'+workflowTemplateOptions(step.templateId)+'</select></label>'+(template?'<div class="workflow-template-preview full-span"><strong>'+esc(template.name)+'</strong><small>'+esc(short(template.description||template.prompt,320))+'</small></div>':'<div class="workflow-template-preview full-span">Select a template for this step.</div>')
       : source==='workflow'
         ? '<label class="full-span">Subflow<select data-builder-field="workflowId">'+workflowOptions(step.workflowId,state.workflowBuilder.workflowId)+'</select></label>'
-        : '<label class="full-span">Prompt<textarea data-builder-field="prompt" rows="6" placeholder="Write the prompt for this workflow step...">'+esc(step.prompt||'')+'</textarea></label>')+
+        : source==='plugin'
+          ? '<label class="full-span">Plugin action<select data-builder-field="pluginAction">'+workflowPluginActionOptions(step.pluginId,step.pluginActionId)+'</select></label><label class="full-span">Plugin input JSON<textarea data-builder-field="pluginInputJson" rows="6" placeholder="{ }">'+esc(step.pluginInputJson||'{}')+'</textarea><small>String values can use workflow variables like {{name}}.</small></label>'
+          : '<label class="full-span">Prompt<textarea data-builder-field="prompt" rows="6" placeholder="Write the prompt for this workflow step...">'+esc(step.prompt||'')+'</textarea></label>')+
     '<label>Session<select data-builder-field="sessionMode"><option value="current" '+(step.sessionMode==='current'?'selected':'')+'>Current session</option><option value="new" '+(step.sessionMode==='new'?'selected':'')+'>New session</option><option value="attach" '+(step.sessionMode==='attach'?'selected':'')+'>Attach to thread</option></select></label>'+
     '<label>Agent<select data-builder-field="agentId">'+workflowAgentOptions(step.agentId)+'</select></label>'+
     (showAttach?'<label class="full-span">Thread ID<input data-builder-field="threadId" value="'+attr(step.threadId)+'" placeholder="Thread ID to attach"></label>':'')+
@@ -79,7 +85,9 @@ function workflowBuilderPreviewText(){
   return workflowBuilderStepsPayload(false).map((step,index)=>{
     const template=step.templateId?state.workflowTemplates.find(t=>t.id===step.templateId):null;
     const subflow=step.workflowId?state.workflows.find(w=>w.id===step.workflowId):null;
-    const prompt=subflow?('Run subflow: '+subflow.name):template?.prompt||step.prompt||'';
+    const actions=Array.isArray(state.pluginCatalog?.workflowActions)?state.pluginCatalog.workflowActions:[];
+    const action=step.pluginActionId?actions.find(a=>a.pluginId===step.pluginId&&a.actionId===step.pluginActionId):null;
+    const prompt=action?('Run plugin action: '+action.title+' ('+step.pluginId+'/'+step.pluginActionId+')'):subflow?('Run subflow: '+subflow.name):template?.prompt||step.prompt||'';
     return (index+1)+'. '+(step.name||'Step '+(index+1))+'\n'+prompt;
   }).join('\n\n---\n\n');
 }
@@ -114,6 +122,9 @@ function collectWorkflowBuilderFromDom(){
       prompt:field('prompt')?.value||'',
       templateId:field('templateId')?.value||'',
       workflowId:field('workflowId')?.value||'',
+      pluginId:(field('pluginAction')?.value||'').split('::')[0]||'',
+      pluginActionId:(field('pluginAction')?.value||'').split('::')[1]||'',
+      pluginInputJson:field('pluginInputJson')?.value||'{}',
       conditionVariable:field('conditionVariable')?.value||'',
       conditionOperator:field('conditionOperator')?.value||'exists',
       conditionValue:field('conditionValue')?.value||'',
@@ -141,10 +152,13 @@ function workflowBuilderStepsPayload(collect=true){
     return {
       id:step.id||undefined,
       name:step.name||'Step '+(index+1),
-      type:source==='workflow'?'workflow':'prompt',
+      type:source==='workflow'?'workflow':source==='plugin'?'plugin':'prompt',
       prompt:source==='prompt'?(step.prompt||''):undefined,
       templateId:source==='template'?(step.templateId||undefined):undefined,
       workflowId:source==='workflow'?(step.workflowId||undefined):undefined,
+      pluginId:source==='plugin'?(step.pluginId||undefined):undefined,
+      pluginActionId:source==='plugin'?(step.pluginActionId||undefined):undefined,
+      pluginInput:source==='plugin'?parseWorkflowPluginInput(step.pluginInputJson):undefined,
       condition:step.conditionVariable?{variable:step.conditionVariable,operator:step.conditionOperator||'exists',value:step.conditionValue||undefined}:undefined,
       retryPolicy:(Number(step.retryAttempts)>1||Number(step.retryDelayMs)>0)?{maxAttempts:Number(step.retryAttempts)||1,delayMs:Number(step.retryDelayMs)||0}:undefined,
       agentId:step.agentId||undefined,
@@ -162,6 +176,13 @@ function workflowBuilderStepsPayload(collect=true){
   });
 }
 
+function parseWorkflowPluginInput(text){
+  const raw=String(text||'{}').trim()||'{}';
+  const parsed=JSON.parse(raw);
+  if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw new Error('Plugin input must be a JSON object.');
+  return parsed;
+}
+
 function validateWorkflowBuilder(){
   collectWorkflowBuilderFromDom();
   const rawSteps=state.workflowBuilder?.steps||[];
@@ -175,6 +196,8 @@ function validateWorkflowBuilder(){
     if(step.templateId&&!state.workflowTemplates.some(t=>t.id===step.templateId))errors.push(label+': selected template was not found.');
     if((rawStep.source||workflowStepSource(rawStep))==='workflow'&&!step.workflowId)errors.push(label+': subflow is required.');
     if(step.workflowId&&!state.workflows.some(w=>w.id===step.workflowId))errors.push(label+': selected subflow was not found.');
+    if((rawStep.source||workflowStepSource(rawStep))==='plugin'&&!step.pluginActionId)errors.push(label+': plugin action is required.');
+    if((rawStep.source||workflowStepSource(rawStep))==='plugin'){try{parseWorkflowPluginInput(rawStep.pluginInputJson)}catch(error){errors.push(label+': plugin input JSON is invalid.');}}
     if((rawStep.source||workflowStepSource(rawStep))==='prompt'&&!String(step.prompt||'').trim())errors.push(label+': prompt text is required.');
     if(step.sessionMode==='attach'&&!step.threadId)errors.push(label+': thread ID is required for attach mode.');
   });
@@ -194,7 +217,7 @@ function updateWorkflowBuilderPreview(){
 function bindWorkflowBuilderControls(){
   document.querySelectorAll('[data-workflow-builder-step] [data-builder-field]').forEach(el=>{
     el.oninput=()=>{collectWorkflowBuilderFromDom();updateWorkflowBuilderPreview()};
-    el.onchange=()=>{collectWorkflowBuilderFromDom();if(['source','sessionMode','templateId'].includes(el.dataset.builderField))renderWorkflowBuilder();else updateWorkflowBuilderPreview()};
+    el.onchange=()=>{collectWorkflowBuilderFromDom();if(['source','sessionMode','templateId','pluginAction'].includes(el.dataset.builderField))renderWorkflowBuilder();else updateWorkflowBuilderPreview()};
   });
   document.querySelectorAll('[data-workflow-builder-move]').forEach(b=>b.onclick=()=>{collectWorkflowBuilderFromDom();const uid=b.closest('[data-workflow-builder-step]').dataset.workflowBuilderStep;const index=state.workflowBuilder.steps.findIndex(s=>s._uid===uid);const next=b.dataset.workflowBuilderMove==='up'?index-1:index+1;if(index<0||next<0||next>=state.workflowBuilder.steps.length)return;const steps=state.workflowBuilder.steps;[steps[index],steps[next]]=[steps[next],steps[index]];renderWorkflowBuilder()});
   document.querySelectorAll('[data-workflow-builder-delete]').forEach(b=>b.onclick=()=>{collectWorkflowBuilderFromDom();const uid=b.closest('[data-workflow-builder-step]').dataset.workflowBuilderStep;state.workflowBuilder.steps=state.workflowBuilder.steps.filter(s=>s._uid!==uid);if(!state.workflowBuilder.steps.length)state.workflowBuilder.steps.push(workflowBuilderStep({},0));renderWorkflowBuilder()});

@@ -18,7 +18,7 @@ describe("nordrelay CLI script", () => {
 
     expect(source).toContain("async function commandUpdate");
     expect(source).toContain('options.command === "update"');
-    expect(source).toContain("nordrelay [init|user|peer|service|doctor|web|start|stop|restart|status|update|foreground|version]");
+    expect(source).toContain("nordrelay [init|user|peer|plugin|service|doctor|web|start|stop|restart|status|update|foreground|version]");
     expect(source).toContain("@nordbyte/nordrelay@latest");
   });
 
@@ -142,11 +142,14 @@ describe("nordrelay CLI script", () => {
     expect(source).toContain("if (isMainScript(process.argv[1]))");
   });
 
-  it("loads built user and peer runtimes from their dist subdirectories", () => {
+  it("loads built user, peer, and plugin runtimes from their dist subdirectories", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+    const pluginManager = readFileSync("plugins/nordrelay/scripts/plugin-manager.mjs", "utf8");
 
     expect(source).toContain('path.join(RUNTIME_ROOT, "dist", "access", "user-management.js")');
     expect(source).toContain('path.join(RUNTIME_ROOT, "dist", "peers", file)');
+    expect(source).toContain('import { commandPlugin } from "./plugin-manager.mjs"');
+    expect(pluginManager).toContain('path.join(RUNTIME_ROOT, "dist", "plugins", "plugin-service.js")');
     expect(source).not.toContain('path.join(RUNTIME_ROOT, "dist", "user-management.js")');
     expect(source).not.toContain('path.join(RUNTIME_ROOT, "dist", file)');
   });

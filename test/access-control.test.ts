@@ -27,6 +27,7 @@ describe("access-control", () => {
     expect(permissionForCommand("diagnostics")).toBe("diagnostics.read");
     expect(permissionForCommand("support")).toBe("diagnostics.read");
     expect(permissionForCommand("queue")).toBe("queue.read");
+    expect(permissionForCommand("plugins")).toBe("plugins.read");
     expect(permissionForCommand("unknown")).toBeNull();
     expect(permissionForCommand("restart")).toBe("system.restart");
     expect(permissionForCommand("register_chat")).toBe("users.write");
@@ -55,6 +56,14 @@ describe("access-control", () => {
     expect(permissionForWebRequest("POST", "/api/users/example")).toBeNull();
     expect(permissionForWebRequest("GET", "/api/settings")).toBe("settings.read");
     expect(permissionForWebRequest("PATCH", "/api/settings")).toBe("settings.write");
+    expect(permissionForWebRequest("GET", "/api/plugins")).toBe("plugins.read");
+    expect(permissionForWebRequest("POST", "/api/plugins")).toBe("plugins.install");
+    expect(permissionForWebRequest("GET", "/api/plugins/catalog")).toBe("plugins.read");
+    expect(permissionForWebRequest("POST", "/api/plugins/validate")).toBe("plugins.install");
+    expect(permissionForWebRequest("POST", "/api/plugins/example/enable")).toBe("plugins.enable");
+    expect(permissionForWebRequest("POST", "/api/plugins/example/disable")).toBe("plugins.enable");
+    expect(permissionForWebRequest("PATCH", "/api/plugins/example/settings")).toBe("plugins.settings.write");
+    expect(permissionForWebRequest("GET", "/api/plugins/example/log")).toBe("plugins.read");
     expect(permissionForWebRequest("POST", "/api/prompt")).toBe("prompt.send");
     expect(permissionForWebRequest("GET", "/api/queue")).toBe("queue.read");
     expect(permissionForWebRequest("POST", "/api/queue")).toBe("queue.write");
@@ -113,7 +122,9 @@ describe("access-control", () => {
     expect(user?.permissions).toContain("prompt.send");
     expect(user?.permissions).toContain("queue.write");
     expect(user?.permissions).toContain("queue.plan.write");
+    expect(user?.permissions).toContain("plugins.read");
     expect(user?.permissions).not.toContain("queue.plan.approve");
+    expect(user?.permissions).not.toContain("plugins.install");
     expect(user?.permissions).not.toContain("users.write");
     expect(readonly?.permissions).toContain("sessions.read");
     expect(readonly?.permissions).not.toContain("prompt.send");

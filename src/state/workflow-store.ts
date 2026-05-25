@@ -5,7 +5,7 @@ import type { SessionWorkspaceMode } from "../worktrees/worktree-types.js";
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "./state-backend.js";
 
 export type WorkflowScope = "private" | "shared";
-export type WorkflowStepType = "prompt" | "workflow";
+export type WorkflowStepType = "prompt" | "workflow" | "plugin";
 export type WorkflowSessionMode = "current" | "new" | "attach";
 export type WorkflowTarget = "local" | `peer:${string}`;
 export type WorkflowRunStatus = "queued" | "running" | "completed" | "failed" | "aborted" | "paused";
@@ -83,6 +83,9 @@ export interface WorkflowStep {
   prompt?: string;
   templateId?: string;
   workflowId?: string;
+  pluginId?: string;
+  pluginActionId?: string;
+  pluginInput?: Record<string, unknown>;
   condition?: WorkflowStepCondition;
   retryPolicy?: WorkflowRetryPolicy;
   agentId?: AgentId;
@@ -153,6 +156,8 @@ export interface WorkflowStepRun {
   name: string;
   status: WorkflowStepRunStatus;
   prompt?: string;
+  pluginId?: string;
+  pluginActionId?: string;
   correlationId?: string;
   target?: WorkflowTarget;
   sessionMode?: WorkflowSessionMode;
