@@ -17,6 +17,13 @@ import {
   serviceInstallSpec,
 } from "./service-installer.mjs";
 import { cliAutostartChecks } from "./service-doctor.mjs";
+import {
+  commonNpmGlobalBinDirs,
+  waitForDetachedChildStartup,
+  waitForManagedAppPidToExit,
+  waitForRestartSettle,
+  waitForTcpListening,
+} from "./lifecycle-utils.mjs";
 
 const FALLBACK_VERSION = "0.3.1";
 const require = createRequire(import.meta.url);
@@ -31,6 +38,7 @@ const PRIVATE_DIR_MODE = 0o700;
 const PRIVATE_FILE_MODE = 0o600;
 const LIFECYCLE_LOCK_TIMEOUT_MS = 10000;
 const LIFECYCLE_LOCK_STALE_MS = 60000;
+const RESTART_START_ATTEMPTS = 2, RESTART_PORT_RELEASE_TIMEOUT_MS = 5000, DETACHED_STARTUP_GRACE_MS = 900;
 
 function nowIso() {
   return new Date().toISOString();
@@ -207,6 +215,7 @@ function childProcessEnv(extra = {}) {
   env.PATH = prependUniquePathDirs(env.PATH, [
     path.dirname(process.execPath),
     resolveNpmGlobalBinDir(env),
+    ...commonNpmGlobalBinDirs(env),
   ]);
   return env;
 }
@@ -451,17 +460,19 @@ async function webDashboardHint(options, webUiEnabled) {
 async function commandStart(options, settings = {}) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
-  warnIfCliPathMissing();
+  if (!settings.suppressPathWarning) {
+    warnIfCliPathMissing();
+  }
   await prepareRuntimeForLaunch(options);
   const dashboard = resolveDashboardEndpoint(options);
   const webUiEnabled = isWebUiEnabled();
 
-  await withLifecycleLock(pidFileLock(options.pidFile), async () => {
+  return await withLifecycleLock(pidFileLock(options.pidFile), async () => {
     const currentPid = await readPid(options.pidFile);
     if (await isManagedConnectorPid(options, currentPid)) {
       console.log(`Already running with PID ${currentPid}`);
       await commandStatus(options);
-      return;
+      return true;
     }
     if (currentPid) {
       await fsp.rm(options.pidFile, { force: true });
@@ -497,7 +508,7 @@ async function commandStart(options, settings = {}) {
         console.log(`WebUI: ${formatDashboardUrl(dashboard)} ${await webDashboardHint(options, webUiEnabled)}`);
       }
       console.log(`Log: ${options.logFile}`);
-      return;
+      return true;
     }
 
     if (state?.status === "error") {
@@ -507,7 +518,7 @@ async function commandStart(options, settings = {}) {
       console.log(`Startup failed. Log: ${options.logFile}`);
       console.log(state.error || await readStartupError(options.logFile) || "Unknown error");
       process.exitCode = 1;
-      return;
+      return false;
     }
 
     console.log(`Started ${APP_NAME} ${VERSION} with PID ${child.pid}`);
@@ -515,6 +526,7 @@ async function commandStart(options, settings = {}) {
       console.log(`WebUI: ${formatDashboardUrl(dashboard)} ${await webDashboardHint(options, webUiEnabled)}`);
     }
     console.log(`Startup is still in progress. Log: ${options.logFile}`);
+    return true;
   });
 }
 
@@ -590,6 +602,7 @@ async function stopWebDashboard(options, settings = {}) {
 }
 
 async function commandStop(options, settings = {}) {
+  const stateBeforeStop = await readJson(options.stateFile, {});
   if (!settings.keepWeb) {
     await stopWebDashboard(options);
   }
@@ -610,9 +623,55 @@ async function commandStop(options, settings = {}) {
     console.log(`PID ${pid} did not exit after SIGTERM.`);
     process.exitCode = 1;
   } else {
+    await waitForManagedAppPidToExit(stateBeforeStop, 5000, lifecycleDeps());
     await fsp.rm(options.pidFile, { force: true });
     console.log(`Stopped ${APP_NAME} PID ${pid}.`);
   }
+}
+
+async function commandRestart(options) {
+  await mkdirp(options.home);
+  loadEnvFiles(options.home);
+  await prepareRuntimeForLaunch(options);
+  const webWasRunning = await isWebDashboardRunning(options);
+  const previousExitCode = process.exitCode;
+
+  await commandStop(options);
+  if (process.exitCode === 1 && previousExitCode !== 1) {
+    return false;
+  }
+  await waitForRestartSettle(options, { webWasRunning }, lifecycleDeps());
+
+  let started = false;
+  for (let attempt = 1; attempt <= RESTART_START_ATTEMPTS; attempt += 1) {
+    process.exitCode = previousExitCode;
+    started = await commandStart(options, {
+      skipWebHint: true,
+      suppressPathWarning: true,
+    });
+    if (started && process.exitCode !== 1) {
+      break;
+    }
+    if (attempt < RESTART_START_ATTEMPTS) {
+      console.log("Connector startup failed; waiting for old listeners to settle before retrying.");
+      await waitForRestartSettle(options, { webWasRunning }, lifecycleDeps());
+    }
+  }
+
+  if (!started || process.exitCode === 1) {
+    return false;
+  }
+  if (previousExitCode === undefined) {
+    process.exitCode = undefined;
+  }
+  if (webWasRunning) {
+    await startWebDashboard(options, { detached: true });
+  }
+  return true;
+}
+
+function lifecycleDeps() {
+  return { isProcessRunning, isValidPort, log: (message) => console.log(message), portReleaseTimeoutMs: RESTART_PORT_RELEASE_TIMEOUT_MS, readJson, readPid, resolveDashboardEndpoint, sleep };
 }
 
 async function commandStatus(options) {
@@ -799,7 +858,7 @@ async function runLoggedStep(log, label, command, args, settings = {}) {
   const useShell = Boolean(settings.shell);
   const child = spawn(useShell ? formatShellCommand(command, args) : command, useShell ? [] : args, {
     cwd: settings.cwd || RUNTIME_ROOT,
-    env: process.env,
+    env: childProcessEnv(settings.env || {}),
     shell: useShell,
     stdio: ["inherit", "pipe", "pipe"],
     windowsHide: false,
@@ -2012,6 +2071,32 @@ async function startWebDashboard(options, settings = {}) {
   }
 
   if (settings.detached) {
+    const startup = await waitForDetachedChildStartup(child, DETACHED_STARTUP_GRACE_MS);
+    if (startup.error) {
+      await fsp.rm(options.webPidFile, { force: true });
+      await writeWebState(options, {
+        status: "error",
+        pid: null,
+        host,
+        port,
+        url: formatDashboardUrl({ host, port }),
+        error: startup.error instanceof Error ? startup.error.message : String(startup.error),
+      });
+      throw startup.error;
+    }
+    if (startup.exited) {
+      await fsp.rm(options.webPidFile, { force: true });
+      await writeWebState(options, {
+        status: "error",
+        pid: null,
+        host,
+        port,
+        url: formatDashboardUrl({ host, port }),
+        exitCode: startup.code,
+        signal: startup.signal,
+      });
+      throw new Error(`Dashboard failed to start. See ${options.webLogFile}.`);
+    }
     child.unref();
     if (Array.isArray(stdio)) {
       fs.closeSync(stdio[1]);
@@ -2019,6 +2104,9 @@ async function startWebDashboard(options, settings = {}) {
     }
     console.log(`NordRelay dashboard started with PID ${child.pid}.`);
     console.log(`NordRelay dashboard: ${formatDashboardUrl({ host, port })}`);
+    if (!(await waitForTcpListening({ host, port }, 3000, sleep))) {
+      console.log("Dashboard startup is still in progress; check the WebUI log if it does not become reachable.");
+    }
     console.log(`WebUI log: ${options.webLogFile}`);
     return;
   }
@@ -2780,18 +2868,7 @@ async function main() {
   if (options.command === "update") return commandUpdate(options);
   if (options.command === "web" || options.command === "dashboard") return commandWeb(options);
   if (options.command === "web-run") return commandWebRun(options);
-  if (options.command === "restart") {
-    await mkdirp(options.home);
-    loadEnvFiles(options.home);
-    await prepareRuntimeForLaunch(options);
-    const webWasRunning = await isWebDashboardRunning(options);
-    await commandStop(options);
-    await commandStart(options);
-    if (webWasRunning && process.exitCode !== 1) {
-      await startWebDashboard(options, { detached: true });
-    }
-    return;
-  }
+  if (options.command === "restart") return commandRestart(options);
   if (options.command === "foreground") return commandForeground(options);
   if (options.command === "service-run") return commandServiceRun(options);
   if (options.command === "--version" || options.command === "version") {

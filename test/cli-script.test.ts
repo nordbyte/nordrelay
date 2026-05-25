@@ -148,6 +148,20 @@ describe("nordrelay CLI script", () => {
     expect(source).toContain("await writePidAtomic(options.webPidFile, child.pid)");
   });
 
+  it("hardens update restarts with child PATH enrichment, settle checks, and retry", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+    const lifecycleUtils = readFileSync("plugins/nordrelay/scripts/lifecycle-utils.mjs", "utf8");
+
+    expect(source).toContain("async function commandRestart");
+    expect(source).toContain("RESTART_START_ATTEMPTS");
+    expect(source).toContain("await waitForRestartSettle(options");
+    expect(source).toContain("suppressPathWarning: true");
+    expect(source).toContain("env: childProcessEnv(settings.env || {})");
+    expect(lifecycleUtils).toContain("export function commonNpmGlobalBinDirs");
+    expect(lifecycleUtils).toContain("export async function waitForTcpClosed");
+    expect(lifecycleUtils).toContain("export function waitForDetachedChildStartup");
+  });
+
   it("prevents TypeScript emits after type errors", () => {
     const tsconfig = JSON.parse(readFileSync("tsconfig.json", "utf8"));
 

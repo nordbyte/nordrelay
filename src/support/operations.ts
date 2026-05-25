@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { open, readFile, stat } from "node:fs/promises";
 import os from "node:os";
@@ -467,7 +467,7 @@ export function spawnConnectorRestart(): void {
   const child = spawn(process.execPath, [script, "restart", "--keep-pending-updates"], {
     cwd: getSourceRoot(),
     detached: true,
-    env: process.env,
+    env: buildConnectorChildEnv(),
     stdio: "ignore",
   });
   child.unref();
@@ -490,7 +490,7 @@ export function spawnSelfUpdate(): SelfUpdateResult {
   ], {
     cwd: sourceRoot,
     detached: true,
-    env: process.env,
+    env: buildConnectorChildEnv(),
     stdio: "ignore",
   });
   child.unref();
@@ -502,6 +502,19 @@ export function spawnSelfUpdate(): SelfUpdateResult {
       ? `Install latest ${PACKAGE_NAME} with npm, verify the CLI, and restart.`
       : "Pull origin/main, install dependencies, run check, tests, build, and restart.",
   };
+}
+
+export function buildConnectorChildEnv(
+  extra: NodeJS.ProcessEnv = {},
+  base: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const env = { ...base, ...extra };
+  env.PATH = prependUniquePathDirs(env.PATH, [
+    path.dirname(process.execPath),
+    resolveNpmGlobalBinDir(env),
+    ...commonNpmGlobalBinDirs(env),
+  ]);
+  return env;
 }
 
 export function getSourceRoot(): string {
@@ -801,6 +814,78 @@ function quoteWindowsCmdArg(value: string): string {
     .replace(/%/g, "%%")
     .replace(/(\\*)"/g, '$1$1\\"')
     .replace(/(\\+)$/g, "$1$1")}"`;
+}
+
+function prependUniquePathDirs(pathValue: string | undefined, directories: Array<string | null | undefined>): string | undefined {
+  const existing = (pathValue || "")
+    .split(path.delimiter)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const normalized = new Set(existing.map((item) => normalizePathKey(item)));
+  const prefix: string[] = [];
+
+  for (const directory of directories) {
+    if (!directory) continue;
+    const resolved = path.resolve(directory);
+    const key = normalizePathKey(resolved);
+    if (normalized.has(key)) continue;
+    normalized.add(key);
+    prefix.push(resolved);
+  }
+
+  return [...prefix, ...existing].join(path.delimiter) || undefined;
+}
+
+function normalizePathKey(value: string): string {
+  const resolved = path.resolve(value);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+function resolveNpmGlobalBinDir(env: NodeJS.ProcessEnv = process.env): string | null {
+  const prefix = resolveNpmGlobalPrefix(env);
+  if (!prefix) return null;
+  return process.platform === "win32" ? prefix : path.join(prefix, "bin");
+}
+
+function resolveNpmGlobalPrefix(env: NodeJS.ProcessEnv = process.env): string | null {
+  if (env.npm_config_prefix?.trim()) {
+    return path.resolve(env.npm_config_prefix.trim());
+  }
+  const npm = resolveNpmSpawnCommand(env);
+  if (!npm) return null;
+  const command = npm.shell
+    ? formatShellCommand(npm.command, [...npm.argsPrefix, "prefix", "-g"])
+    : npm.command;
+  const args = npm.shell ? [] : [...npm.argsPrefix, "prefix", "-g"];
+  const result = spawnSync(command, args, {
+    cwd: os.homedir(),
+    env,
+    shell: npm.shell,
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 5000,
+  });
+  if (result.status !== 0) return null;
+  const prefix = String(result.stdout || "").trim().split(/\r?\n/).at(-1)?.trim();
+  return prefix ? path.resolve(prefix) : null;
+}
+
+function commonNpmGlobalBinDirs(env: NodeJS.ProcessEnv = process.env): string[] {
+  if (process.platform === "win32") {
+    return [
+      env.APPDATA ? path.join(env.APPDATA, "npm") : null,
+      path.dirname(process.execPath),
+    ].filter((value): value is string => Boolean(value));
+  }
+  const home = os.homedir();
+  return [
+    path.join(home, ".npm-global", "bin"),
+    path.join(home, ".npm-packages", "bin"),
+    path.join(home, ".local", "bin"),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    path.dirname(process.execPath),
+  ];
 }
 
 export function resolveNpmSpawnCommand(env: NodeJS.ProcessEnv = process.env): NpmSpawnCommand | null {

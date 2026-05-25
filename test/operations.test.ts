@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { clearLogFile, detectSelfUpdateMethod, getVersionChecks, readFormattedLogTail, resolveNpmSpawnCommand } from "../src/support/operations.js";
+import { buildConnectorChildEnv, clearLogFile, detectSelfUpdateMethod, getVersionChecks, readFormattedLogTail, resolveNpmSpawnCommand } from "../src/support/operations.js";
 
 const tempDirs: string[] = [];
 
@@ -103,6 +103,19 @@ describe("operations", () => {
       argsPrefix: [npmCli],
       shell: false,
     });
+  });
+
+  it("adds Node and npm global bin directories to connector child PATH", () => {
+    const prefix = createTempDir();
+    const env = buildConnectorChildEnv({}, {
+      PATH: "/usr/bin",
+      npm_config_prefix: prefix,
+    });
+    const pathEntries = String(env.PATH || "").split(path.delimiter);
+
+    expect(pathEntries).toContain(path.dirname(process.execPath));
+    expect(pathEntries).toContain(process.platform === "win32" ? prefix : path.join(prefix, "bin"));
+    expect(pathEntries.at(-1)).toBe("/usr/bin");
   });
 
   it("bypasses the latest-version cache for forced version checks", async () => {
