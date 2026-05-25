@@ -16,6 +16,7 @@
         "client/overview.ts",
         "client/events.ts",
         "client/workflows.ts",
+        "client/worktree-review.ts",
         "client/jobs.ts",
         "client/metrics.ts",
         "client/settings-panel.ts",

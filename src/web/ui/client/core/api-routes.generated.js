@@ -140,6 +140,7 @@ const WEB_API_CLIENT_ROUTE_RULES = [
   { path: "/api/sessions/new", methods: ['POST'] },
   { path: "/api/sessions/worktrees", methods: ['GET'] },
   { path: "/api/sessions/worktrees/fork", methods: ['POST'] },
+  { path: "/api/sessions/worktrees/compare", methods: ['POST'] },
   { path: "/api/sessions/worktrees/integrate", methods: ['POST'] },
   { path: "/api/sessions/worktrees/integrate/preview", methods: ['POST'] },
   { path: "/api/sessions/worktrees/integrate/patch", methods: ['POST'] },

@@ -558,6 +558,7 @@ interface DashboardState {
   workflowBuilder?: WebuiWorkflowBuilderState | null;
   worktrees?: WebuiWorktreesState | null;
   worktreeConflictResolutions?: WebuiRecord[];
+  worktreeReviewIds?: string[];
   compactControlOutsideBound?: boolean;
   templatePickerOutsideBound?: boolean;
 }

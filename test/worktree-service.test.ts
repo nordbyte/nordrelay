@@ -40,7 +40,10 @@ describe("SessionWorktreeService", () => {
     expect(first.worktreePath).not.toBe(second.worktreePath);
     expect(committed.record.commitSha).toMatch(/[a-f0-9]{40}/);
     expect(diff.files.map((file) => file.path)).toContain("feature-a.txt");
+    expect(diff.structuredFiles?.map((file) => file.path)).toContain("feature-a.txt");
+    expect(diff.structuredFiles?.find((file) => file.path === "feature-a.txt")?.additions).toBeGreaterThan(0);
     expect(preview.canIntegrate).toBe(true);
+    expect(preview.riskSummary?.label).toBe("low");
     expect(integration.status).toBe("merged");
     expect(existsSync(path.join(integration.worktreePath, "feature-a.txt"))).toBe(true);
     expect(existsSync(path.join(integration.worktreePath, "feature-b.txt"))).toBe(true);
@@ -87,14 +90,26 @@ describe("SessionWorktreeService", () => {
 
     const preview = service.previewIntegration([committedFirst.record.id, committedSecond.record.id]);
     expect(preview.canIntegrate).toBe(false);
+    expect(preview.riskSummary?.label).toBe("high");
+    expect(preview.riskSummary?.high).toBeGreaterThan(0);
     expect(preview.conflictCandidates.map((file) => file.path)).toContain("README.md");
     const review = preview.conflictReview.find((file) => file.path === "README.md");
+    expect(review?.riskLevel).toBe("high");
+    expect(review?.hasLineOverlap).toBe(true);
     expect(review?.baseContent?.content).toBe("base");
     expect(review?.sourceVersions?.map((version) => normalizeLineEndings(version.content ?? ""))).toEqual(["session one", "session two"]);
+
+    const comparison = service.compare([committedFirst.record.id, committedSecond.record.id]);
+    expect(comparison.preview.riskSummary?.label).toBe("high");
+    expect(comparison.diffs).toHaveLength(2);
+    expect(comparison.diffs[0]?.structuredFiles?.some((file) => file.path === "README.md")).toBe(true);
 
     const patch = service.exportIntegrationPatch([committedFirst.record.id, committedSecond.record.id]);
     expect(patch.fileName).toMatch(/nordrelay-worktree-patches-.*\.patch$/);
     expect(patch.worktreeIds).toEqual([committedFirst.record.id, committedSecond.record.id]);
+    expect(patch.summary).toContain("NordRelay Worktree Integration Export");
+    expect(patch.riskReportJson).toContain("\"riskSummary\"");
+    expect(patch.prCommands?.some((command) => command.includes("gh pr create"))).toBe(true);
     expect(patch.content).toContain("session one");
     expect(patch.content).toContain("session two");
     expect(patch.content).toContain("README.md");

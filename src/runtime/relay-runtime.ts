@@ -74,7 +74,7 @@ import { renderSessionInfoPlain, renderSessionUsageRows } from "../channels/shar
 import { SessionLockStore, type SessionLock } from "../access/session-locks.js";
 import { SessionRegistry, type ContextMetadata } from "../state/session-registry.js";
 import { createSessionWorktreeStore, SessionWorktreeService } from "../worktrees/worktree-service.js";
-import type { SessionWorktreeDiffSnapshot, SessionWorktreeRecord, SessionWorktreeUpdateResult, WorktreeCleanupResult, WorktreeDashboardSnapshot, WorktreeFinalizeIntegrationOptions, WorktreeFinalizeIntegrationResult, WorktreeIntegrationOptions, WorktreeIntegrationPatchExport, WorktreeIntegrationRun, WorktreeIntegrationPreview } from "../worktrees/worktree-types.js";
+import type { SessionWorktreeDiffSnapshot, SessionWorktreeRecord, SessionWorktreeUpdateResult, WorktreeCleanupResult, WorktreeComparisonSnapshot, WorktreeDashboardSnapshot, WorktreeFinalizeIntegrationOptions, WorktreeFinalizeIntegrationResult, WorktreeIntegrationOptions, WorktreeIntegrationPatchExport, WorktreeIntegrationRun, WorktreeIntegrationPreview } from "../worktrees/worktree-types.js";
 import { createSupportBundle, type SupportBundleResult } from "../support/support-bundle.js";
 import { transcribeAudio, type TranscriptionBackend, type VoiceDiagnostics } from "../artifacts/voice.js";
 import {
@@ -246,7 +246,7 @@ import {
   relayRuntimeGetControlSession,
   relayRuntimeCliPathOptions
 } from "./relay-runtime-sessions.js";
-import { relayRuntimeCleanupSessionWorktrees, relayRuntimeCommitSessionWorktree, relayRuntimeExportSessionWorktreeIntegrationPatch, relayRuntimeFinalizeSessionWorktreeIntegration, relayRuntimeForkCurrentSessionToWorktree, relayRuntimeIntegrateSessionWorktrees, relayRuntimePreviewSessionWorktreeIntegration, relayRuntimeRemoveSessionWorktree, relayRuntimeSessionWorktreeDiff, relayRuntimeSessionWorktrees, relayRuntimeUpdateSessionWorktreeFromBase } from "./relay-runtime-worktrees.js";
+import { relayRuntimeCleanupSessionWorktrees, relayRuntimeCommitSessionWorktree, relayRuntimeCompareSessionWorktrees, relayRuntimeExportSessionWorktreeIntegrationPatch, relayRuntimeFinalizeSessionWorktreeIntegration, relayRuntimeForkCurrentSessionToWorktree, relayRuntimeIntegrateSessionWorktrees, relayRuntimePreviewSessionWorktreeIntegration, relayRuntimeRemoveSessionWorktree, relayRuntimeSessionWorktreeDiff, relayRuntimeSessionWorktrees, relayRuntimeUpdateSessionWorktreeFromBase } from "./relay-runtime-worktrees.js";
 import {
   relayRuntimeSendPrompt,
   relayRuntimeSendUploadPrompt,
@@ -631,6 +631,7 @@ export class RelayRuntime {
 
   async sessionWorktrees(): Promise<WorktreeDashboardSnapshot> { return relayRuntimeSessionWorktrees(this); }
   async sessionWorktreeDiff(id: string): Promise<SessionWorktreeDiffSnapshot> { return relayRuntimeSessionWorktreeDiff(this, id); }
+  async compareSessionWorktrees(ids: string[]): Promise<WorktreeComparisonSnapshot> { return relayRuntimeCompareSessionWorktrees(this, ids); }
   async previewSessionWorktreeIntegration(ids: string[]): Promise<WorktreeIntegrationPreview> { return relayRuntimePreviewSessionWorktreeIntegration(this, ids); }
   async exportSessionWorktreeIntegrationPatch(ids: string[]): Promise<WorktreeIntegrationPatchExport> { return relayRuntimeExportSessionWorktreeIntegrationPatch(this, ids); }
   async updateSessionWorktreeFromBase(id: string, actor?: WebActivityActor): Promise<SessionWorktreeUpdateResult> { return relayRuntimeUpdateSessionWorktreeFromBase(this, id, actor); }

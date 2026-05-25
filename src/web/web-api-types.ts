@@ -49,6 +49,7 @@ import type {
   SessionWorktreeRecord,
   SessionWorktreeUpdateResult,
   WorktreeCleanupResult,
+  WorktreeComparisonSnapshot,
   WorktreeConflictResolution,
   WorktreeFinalizeIntegrationOptions,
   WorktreeFinalizeIntegrationResult,
@@ -202,6 +203,7 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/agent-update" ? { agentId: AgentId; operation?: "update" | "install" } :
   P extends "/api/sessions/new" ? { agentId?: AgentId; workspace?: string; workspaceMode?: SessionWorkspaceMode; model?: string; reasoningEffort?: string; launchProfileId?: string; fastMode?: boolean } :
   P extends "/api/sessions/worktrees/fork" ? { includeUncommitted?: boolean } :
+  P extends "/api/sessions/worktrees/compare" ? { ids: string[] } :
   P extends "/api/sessions/worktrees/integrate" ? { ids: string[]; resolutions?: WorktreeConflictResolution[] } :
   P extends "/api/sessions/worktrees/integrate/preview" ? { ids: string[] } :
   P extends "/api/sessions/worktrees/integrate/patch" ? { ids: string[] } :
@@ -363,6 +365,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/sessions/new" | "/api/sessions/switch" | "/api/sessions/attach" | "/api/agent" | "/api/session/model" | "/api/session/reasoning" | "/api/session/fast" | "/api/session/launch" ? { session: AgentSessionInfo } :
   P extends "/api/sessions/worktrees" ? WorktreeDashboardSnapshot :
   P extends "/api/sessions/worktrees/fork" ? { session: AgentSessionInfo; record: SessionWorktreeRecord; copiedUntrackedFiles: string[]; skippedUntrackedFiles: string[]; patchApplied: boolean } :
+  P extends "/api/sessions/worktrees/compare" ? WorktreeComparisonSnapshot :
   P extends "/api/sessions/worktrees/integrate" ? { run: WorktreeIntegrationRun } :
   P extends "/api/sessions/worktrees/integrate/preview" ? WorktreeIntegrationPreview :
   P extends "/api/sessions/worktrees/integrate/patch" ? WorktreeIntegrationPatchExport :

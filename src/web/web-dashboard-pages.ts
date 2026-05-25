@@ -380,8 +380,9 @@ ${faviconLinks}
           <div class="session-tab" data-session-tab-panel="worktrees">
             <div class="sessions-toolbar">
               <div class="row search-row"><button id="reloadWorktreesBtn">Reload worktrees</button><button id="forkWorktreeBtn" class="secondary">Fork current</button><label class="checkbox"><input id="forkIncludeUncommitted" type="checkbox"> Include uncommitted diff</label></div>
-              <div class="row attach-row"><button id="integrateWorktreesBtn">Integrate selected</button><button id="previewWorktreeIntegrationBtn" class="secondary">Preview integration</button><button id="exportWorktreePatchBtn" class="secondary">Export patches</button><button id="cleanupWorktreesBtn" class="secondary">Cleanup stale</button></div>
+              <div class="row attach-row"><button id="integrateWorktreesBtn">Integrate selected</button><button id="previewWorktreeIntegrationBtn" class="secondary">Preview integration</button><button id="compareWorktreesBtn" class="secondary">Compare diffs</button><button id="exportWorktreePatchBtn" class="secondary">Export patches</button><button id="cleanupWorktreesBtn" class="secondary">Cleanup stale</button></div>
             </div>
+            <div id="worktreeReviewCenter" class="worktree-review-center"></div>
             <div id="worktreeWarnings" class="list"></div>
             <div id="worktreesList" class="sessions-table-host"></div>
             <div id="worktreeIntegrations" class="list"></div>

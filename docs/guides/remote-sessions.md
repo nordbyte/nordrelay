@@ -28,7 +28,14 @@ Set:
 NORDRELAY_SESSION_WORKSPACE_MODE=worktree
 ```
 
-New sessions can receive their own Git worktree and branch. This allows several sessions to work on the same repository without seeing each other's incomplete edits. Use the WebUI worktree integration view to inspect and merge completed work.
+New sessions can receive their own Git worktree and branch. This allows several sessions to work on the same repository without seeing each other's incomplete edits.
+
+Use **Sessions > Worktrees** as the review center for completed work:
+
+- Select committed worktrees and open **Preview integration** to see risk level, same-file changes, overlapping line ranges, warnings, and a guided conflict resolver.
+- Use **Compare diffs** for side-by-side branch diffs before merging.
+- Use **Export patches** to download the patch bundle, review summary, risk JSON, and PR command notes.
+- Use **Integrate selected** only after resolving or accepting the preview risk. NordRelay creates an integration worktree/branch first, then you can finalize it back into the source repository.
 
 ## Peered sessions
 

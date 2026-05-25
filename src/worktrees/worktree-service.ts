@@ -14,6 +14,9 @@ import type {
   SessionWorktreeStatusSnapshot,
   SessionWorktreeUpdateResult,
   WorktreeChangedFile,
+  WorktreeChangedRange,
+  WorktreeChangedRangeSource,
+  WorktreeComparisonSnapshot,
   WorktreeConflictReviewItem,
   WorktreeConflictResolution,
   WorktreeConflictWarning,
@@ -26,6 +29,9 @@ import type {
   WorktreeIntegrationRun,
   WorktreeIntegrationPreview,
   WorktreeIntegrationPreviewSource,
+  WorktreeRiskLevel,
+  WorktreeRiskSummary,
+  WorktreeStructuredDiffFile,
 } from "./worktree-types.js";
 
 const MAX_GIT_BUFFER = 10 * 1024 * 1024;
@@ -193,10 +199,12 @@ export class SessionWorktreeService {
     }
     const diff = this.diffText(record);
     const limited = truncateUtf8(diff, Math.max(1_024, limitBytes));
+    const files = this.changedFiles(record);
     return {
       record,
-      files: this.changedFiles(record),
+      files,
       diff: limited.text,
+      structuredFiles: structuredDiffFiles(limited.text, files),
       truncated: limited.truncated,
       byteLength: Buffer.byteLength(diff, "utf8"),
       generatedAt: new Date().toISOString(),
@@ -243,6 +251,8 @@ export class SessionWorktreeService {
       warnings.push(`${conflictCandidates.length} file(s) are changed by more than one selected worktree.`);
     }
     const sourceWorktrees = records.map(previewSource);
+    const conflictReview = files.map((file) => conflictReviewItem(file, sourceWorktrees, records, repoRoot, baseSha));
+    const riskSummary = summarizeWorktreeRisks(conflictReview, warnings);
     return {
       ids,
       canIntegrate: warnings.length === 0,
@@ -252,9 +262,19 @@ export class SessionWorktreeService {
       sourceWorktrees,
       files,
       conflictCandidates,
-      conflictReview: files.map((file) => conflictReviewItem(file, sourceWorktrees, records, repoRoot, baseSha)),
+      conflictReview,
+      riskSummary,
       warnings,
       generatedAt,
+    };
+  }
+
+  compare(ids: string[]): WorktreeComparisonSnapshot {
+    return {
+      ids,
+      preview: this.previewIntegration(ids),
+      diffs: ids.map((id) => this.diff(id)),
+      generatedAt: new Date().toISOString(),
     };
   }
 
@@ -274,6 +294,7 @@ export class SessionWorktreeService {
       throw new Error(`Worktree ${missingCommit.id} has no session commit yet.`);
     }
     const generatedAt = new Date().toISOString();
+    const preview = this.previewIntegration(ids);
     const content = records.map((record, index) => {
       const patch = gitRawOutput(["format-patch", "--stdout", `${record.baseSha}..${record.commitSha}`], record.repoRoot, true).trim();
       const fallback = patch || gitRawOutput(["diff", "--binary", `${record.baseSha}..${record.commitSha}`, "--"], record.repoRoot, true).trim();
@@ -286,10 +307,29 @@ export class SessionWorktreeService {
         fallback,
       ].join("\n").trimEnd();
     }).join("\n\n");
+    const stamp = generatedAt.replace(/[:.]/g, "-");
+    const patchFileName = `nordrelay-worktree-patches-${records[0]!.repoName}-${stamp}.patch`;
+    const summaryFileName = `nordrelay-worktree-summary-${records[0]!.repoName}-${stamp}.md`;
+    const reviewBranch = `${this.config.sessionWorktreeBranchPrefix}/review/${records[0]!.repoName}/${shortId()}`;
+    const summary = integrationExportSummary(preview, records);
+    const prTitle = `Integrate NordRelay worktrees for ${records[0]!.repoName}`;
+    const prBody = integrationPrBody(preview, records);
     return {
-      fileName: `nordrelay-worktree-patches-${records[0]!.repoName}-${generatedAt.replace(/[:.]/g, "-")}.patch`,
+      fileName: patchFileName,
       content: `${content}\n`,
       worktreeIds: records.map((record) => record.id),
+      summaryFileName,
+      summary,
+      riskReportFileName: `nordrelay-worktree-risk-${records[0]!.repoName}-${stamp}.json`,
+      riskReportJson: `${JSON.stringify({ preview, worktreeIds: records.map((record) => record.id) }, null, 2)}\n`,
+      prTitle,
+      prBody,
+      prCommands: [
+        `git checkout -b ${shellQuote(reviewBranch)} ${shellQuote(baseSha)}`,
+        `git am ${shellQuote(patchFileName)} || git apply --3way ${shellQuote(patchFileName)}`,
+        `git push -u origin ${shellQuote(reviewBranch)}`,
+        `gh pr create --draft --title ${shellQuote(prTitle)} --body-file ${shellQuote(summaryFileName)}`,
+      ],
       generatedAt,
     };
   }
@@ -794,16 +834,27 @@ function conflictReviewItem(
   const sourceWorktrees = sources.filter((source) => file.sourceWorktreeIds.includes(source.id));
   const sameFile = sourceWorktrees.length > 1;
   const risk = file.status === "conflict" ? "status-mismatch" : sameFile ? "same-file" : "none";
-  const recommendation = risk === "none"
-    ? "No conflict candidate detected for this file."
-    : risk === "status-mismatch"
-      ? "Review the file before merging because selected worktrees report different change types."
-      : "Review side-by-side diffs before merging because multiple worktrees changed this file.";
+  const changedRanges = sourceWorktrees.map((source) => {
+    const record = records.find((candidate) => candidate.id === source.id);
+    return {
+      worktreeId: source.id,
+      branchName: source.branchName,
+      ranges: record?.commitSha ? changedRangesForFile(record, file.path) : [],
+    };
+  });
+  const hasLineOverlap = changedRangesHaveOverlap(changedRanges);
+  const riskReasons = worktreeRiskReasons(file, sameFile, hasLineOverlap);
+  const riskLevel = worktreeRiskLevel(file, sameFile, hasLineOverlap);
+  const recommendation = worktreeRiskRecommendation(riskLevel, risk, hasLineOverlap);
   const item: WorktreeConflictReviewItem = {
     path: file.path,
     status: file.status,
     sourceWorktrees,
     risk,
+    riskLevel,
+    riskReasons,
+    hasLineOverlap,
+    changedRanges,
     recommendation,
   };
   if (risk !== "none") {
@@ -855,6 +906,222 @@ function previewContent(label: string, content: string) {
     content: limited.text,
     truncated: limited.truncated,
   };
+}
+
+function structuredDiffFiles(diff: string, files: WorktreeChangedFile[]): WorktreeStructuredDiffFile[] {
+  const byPath = new Map(files.map((file) => [file.path, file]));
+  const structured: WorktreeStructuredDiffFile[] = [];
+  let current: WorktreeStructuredDiffFile | null = null;
+  let oldLine = 0;
+  let newLine = 0;
+  const pushMeta = (text: string) => {
+    if (current) current.lines.push({ kind: "meta", text });
+  };
+  for (const line of diff.split(/\r?\n/)) {
+    const diffHeader = line.match(/^diff --git a\/(.+) b\/(.+)$/);
+    if (diffHeader) {
+      const filePath = normalizeDiffPath(diffHeader[2] ?? diffHeader[1] ?? "unknown");
+      const changed = byPath.get(filePath);
+      current = {
+        path: filePath,
+        oldPath: normalizeDiffPath(diffHeader[1] ?? filePath),
+        status: changed?.status ?? "unknown",
+        additions: 0,
+        deletions: 0,
+        lines: [],
+      };
+      structured.push(current);
+      oldLine = 0;
+      newLine = 0;
+      pushMeta(line);
+      continue;
+    }
+    if (!current) continue;
+    if (line.startsWith("new file mode")) {
+      current.status = "added";
+      pushMeta(line);
+      continue;
+    }
+    if (line.startsWith("deleted file mode")) {
+      current.status = "deleted";
+      pushMeta(line);
+      continue;
+    }
+    if (line.startsWith("rename from ")) {
+      current.oldPath = normalizeDiffPath(line.slice("rename from ".length));
+      current.status = "renamed";
+      pushMeta(line);
+      continue;
+    }
+    if (line.startsWith("rename to ")) {
+      current.path = normalizeDiffPath(line.slice("rename to ".length));
+      current.status = "renamed";
+      pushMeta(line);
+      continue;
+    }
+    if (line.startsWith("Binary files ")) {
+      current.binary = true;
+      pushMeta(line);
+      continue;
+    }
+    const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunk) {
+      oldLine = Number(hunk[1]) - 1;
+      newLine = Number(hunk[2]) - 1;
+      current.lines.push({ kind: "hunk", text: line });
+      continue;
+    }
+    if (line.startsWith("--- ") || line.startsWith("+++ ") || line.startsWith("index ")) {
+      pushMeta(line);
+      continue;
+    }
+    if (line.startsWith("-")) {
+      oldLine += 1;
+      current.deletions += 1;
+      current.lines.push({ kind: "delete", oldLine, text: line.slice(1) });
+      continue;
+    }
+    if (line.startsWith("+")) {
+      newLine += 1;
+      current.additions += 1;
+      current.lines.push({ kind: "add", newLine, text: line.slice(1) });
+      continue;
+    }
+    if (line.startsWith(" ")) {
+      oldLine += 1;
+      newLine += 1;
+      current.lines.push({ kind: "context", oldLine, newLine, text: line.slice(1) });
+      continue;
+    }
+    pushMeta(line);
+  }
+  return structured.filter((file) => file.lines.length > 0 || file.binary);
+}
+
+function normalizeDiffPath(value: string): string {
+  return value.replace(/^"|"$/g, "").replace(/^a\//, "").replace(/^b\//, "");
+}
+
+function changedRangesForFile(record: SessionWorktreeRecord, relativePath: string): WorktreeChangedRange[] {
+  if (!record.commitSha || !isSafeRelativePath(relativePath)) return [];
+  const raw = gitRawOutput(["diff", "--unified=0", `${record.baseSha}..${record.commitSha}`, "--", relativePath], record.repoRoot, true);
+  const ranges: WorktreeChangedRange[] = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const match = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
+    if (!match) continue;
+    const start = Number(match[1]);
+    const length = Number(match[2] ?? 1);
+    ranges.push({ start, end: Math.max(start, start + Math.max(length, 1) - 1) });
+  }
+  return ranges;
+}
+
+function changedRangesHaveOverlap(sources: WorktreeChangedRangeSource[]): boolean {
+  for (let i = 0; i < sources.length; i += 1) {
+    for (let j = i + 1; j < sources.length; j += 1) {
+      for (const left of sources[i]?.ranges ?? []) {
+        for (const right of sources[j]?.ranges ?? []) {
+          if (left.start <= right.end && right.start <= left.end) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function worktreeRiskLevel(file: WorktreeChangedFile, sameFile: boolean, hasLineOverlap: boolean): WorktreeRiskLevel {
+  if (file.status === "conflict") return "blocked";
+  if (hasLineOverlap) return "high";
+  if (sameFile) return "medium";
+  if (file.status === "deleted" || file.status === "renamed") return "medium";
+  return "low";
+}
+
+function worktreeRiskReasons(file: WorktreeChangedFile, sameFile: boolean, hasLineOverlap: boolean): string[] {
+  const reasons: string[] = [];
+  if (file.status === "conflict") reasons.push("Selected worktrees report different change types.");
+  if (sameFile) reasons.push("The file is changed by multiple selected worktrees.");
+  if (hasLineOverlap) reasons.push("The changed line ranges overlap.");
+  if (file.status === "deleted" || file.status === "renamed") reasons.push(`The file is ${file.status}; verify the final path/content before merging.`);
+  if (!reasons.length) reasons.push("Single-source file change.");
+  return reasons;
+}
+
+function worktreeRiskRecommendation(level: WorktreeRiskLevel, risk: WorktreeConflictReviewItem["risk"], hasLineOverlap: boolean): string {
+  if (level === "blocked") return "Resolve the change-type conflict before creating the integration branch.";
+  if (level === "high" || hasLineOverlap) return "Use the resolver preview or manual content because selected worktrees touched overlapping lines.";
+  if (risk === "same-file") return "Review side-by-side diffs before merging because multiple worktrees changed this file.";
+  if (level === "medium") return "Review the file before merging because the change can affect paths or file lifecycle.";
+  return "No conflict candidate detected for this file.";
+}
+
+function summarizeWorktreeRisks(items: WorktreeConflictReviewItem[], warnings: string[]): WorktreeRiskSummary {
+  const summary: WorktreeRiskSummary = {
+    label: "low",
+    low: 0,
+    medium: 0,
+    high: 0,
+    blocked: 0,
+    totalFiles: items.length,
+    riskyFiles: 0,
+    canMerge: warnings.length === 0,
+  };
+  for (const item of items) {
+    const level = item.riskLevel ?? "low";
+    summary[level] += 1;
+    if (level !== "low") summary.riskyFiles += 1;
+  }
+  if (warnings.length > 0 && items.length === 0) summary.blocked += 1;
+  summary.canMerge = warnings.length === 0 && summary.blocked === 0;
+  summary.label = summary.blocked > 0 ? "blocked" : summary.high > 0 ? "high" : summary.medium > 0 ? "medium" : "low";
+  return summary;
+}
+
+function integrationExportSummary(preview: WorktreeIntegrationPreview, records: SessionWorktreeRecord[]): string {
+  const risk = preview.riskSummary;
+  const files = preview.files.map((file) => `- ${file.status} ${file.path} (${file.sourceWorktreeIds.length} source${file.sourceWorktreeIds.length === 1 ? "" : "s"})`).join("\n") || "- No file changes.";
+  const warnings = preview.warnings.length ? preview.warnings.map((warning) => `- ${warning}`).join("\n") : "- None.";
+  const sources = records.map((record) => `- ${record.branchName} (${record.commitSha ?? "uncommitted"})`).join("\n");
+  return [
+    "# NordRelay Worktree Integration Export",
+    "",
+    `Repository: ${preview.repoName ?? records[0]?.repoName ?? "-"}`,
+    `Base: ${preview.baseSha ?? records[0]?.baseSha ?? "-"}`,
+    `Generated: ${preview.generatedAt}`,
+    "",
+    "## Risk",
+    "",
+    `Overall: ${risk?.label ?? "unknown"}`,
+    `Files: ${risk?.totalFiles ?? preview.files.length}, risky: ${risk?.riskyFiles ?? preview.conflictCandidates.length}, blocked: ${risk?.blocked ?? 0}, high: ${risk?.high ?? 0}, medium: ${risk?.medium ?? 0}, low: ${risk?.low ?? 0}`,
+    "",
+    "## Sources",
+    "",
+    sources,
+    "",
+    "## Warnings",
+    "",
+    warnings,
+    "",
+    "## Files",
+    "",
+    files,
+    "",
+  ].join("\n");
+}
+
+function integrationPrBody(preview: WorktreeIntegrationPreview, records: SessionWorktreeRecord[]): string {
+  return [
+    "Generated by NordRelay worktree review.",
+    "",
+    `Selected worktrees: ${records.map((record) => record.id).join(", ")}`,
+    `Risk: ${preview.riskSummary?.label ?? "unknown"}`,
+    `Changed files: ${preview.files.length}`,
+    preview.warnings.length ? `Warnings:\n${preview.warnings.map((warning) => `- ${warning}`).join("\n")}` : "Warnings: none",
+  ].join("\n");
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 export function createSessionWorktreeStore(config: ConnectorConfig): SessionWorktreeStore {

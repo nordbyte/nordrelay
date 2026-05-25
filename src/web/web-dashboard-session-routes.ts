@@ -154,6 +154,14 @@ export async function handleDashboardSessionRoute(
     return true;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/sessions/worktrees/compare") {
+    const body = await readJsonBody(req);
+    const ids = Array.isArray(body?.ids) ? body.ids.map(String).filter(Boolean) : [];
+    await options.assertCurrentSessionScope(authUser);
+    sendJson(res, 200, await runtime.compareSessionWorktrees(ids));
+    return true;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/sessions/worktrees/integrate") {
     const body = await readJsonBody(req);
     const ids = Array.isArray(body?.ids) ? body.ids.map(String).filter(Boolean) : [];

@@ -165,6 +165,7 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   exact("/api/sessions/new", ["POST"], "sessions.write"),
   exact("/api/sessions/worktrees", ["GET"], "sessions.read"),
   exact("/api/sessions/worktrees/fork", ["POST"], "sessions.write"),
+  exact("/api/sessions/worktrees/compare", ["POST"], "sessions.read"),
   exact("/api/sessions/worktrees/integrate", ["POST"], "sessions.write"),
   exact("/api/sessions/worktrees/integrate/preview", ["POST"], "sessions.read"),
   exact("/api/sessions/worktrees/integrate/patch", ["POST"], "sessions.read"),

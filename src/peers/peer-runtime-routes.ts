@@ -60,6 +60,7 @@ const sessionPaths: Array<[WebHttpMethod, string]> = [
   ["POST", "/api/sessions/new"],
   ["GET", "/api/sessions/worktrees"],
   ["POST", "/api/sessions/worktrees/fork"],
+  ["POST", "/api/sessions/worktrees/compare"],
   ["POST", "/api/sessions/worktrees/integrate"],
   ["POST", "/api/sessions/worktrees/integrate/preview"],
   ["POST", "/api/sessions/worktrees/integrate/patch"],

@@ -171,6 +171,15 @@
 .worktree-integrations-table{--table-min-width:1280px}
 .worktree-conflict-table{--table-min-width:1120px}
 .worktree-preview-sources-table{--table-min-width:980px}
+.worktree-review-center:not(:empty){margin:12px 0}
+.worktree-review-grid{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.worktree-review-actions{margin-top:10px}
+.worktree-file-list{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.worktree-diff-file{margin:10px 0;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface-soft)}
+.worktree-diff-file>summary{cursor:pointer;padding:10px 12px;font-weight:750}
+.worktree-diff-file>.data-table-wrap{margin:0;border-left:0;border-right:0;border-bottom:0;border-radius:0 0 8px 8px}
+.worktree-resolver-preview .worktree-version-preview{margin-top:8px}
+.worktree-risk-grid{grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-bottom:12px}
 .access-users-table{--table-min-width:1320px}
 .access-groups-table{--table-min-width:1260px}
 .access-channels-table{--table-min-width:1250px}

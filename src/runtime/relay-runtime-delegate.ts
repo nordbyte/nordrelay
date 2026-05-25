@@ -48,7 +48,7 @@ import type { RuntimeSnapshotCache } from "./runtime-cache.js";
 import type { SessionWorktreeService } from "../worktrees/worktree-service.js";
 import type {
   SessionWorktreeDiffSnapshot, SessionWorktreeRecord, SessionWorktreeUpdateResult,
-  WorktreeCleanupResult, WorktreeDashboardSnapshot, WorktreeFinalizeIntegrationOptions, WorktreeFinalizeIntegrationResult,
+  WorktreeCleanupResult, WorktreeComparisonSnapshot, WorktreeDashboardSnapshot, WorktreeFinalizeIntegrationOptions, WorktreeFinalizeIntegrationResult,
   WorktreeIntegrationOptions, WorktreeIntegrationPatchExport, WorktreeIntegrationRun,
   WorktreeIntegrationPreview,
 } from "../worktrees/worktree-types.js";
@@ -182,7 +182,7 @@ export interface RelayRuntimeDelegate {
   newSession(options?: { agentId?: AgentId; workspace?: string; workspaceMode?: "shared" | "worktree" | "attached"; model?: string; reasoningEffort?: string; launchProfileId?: string; fastMode?: boolean }, actor?: WebActivityActor): Promise<AgentSessionInfo>;
   switchSession(threadId: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
   attachSession(threadId: string, actor?: WebActivityActor): Promise<AgentSessionInfo>;
-  sessionWorktrees(): Promise<WorktreeDashboardSnapshot>; sessionWorktreeDiff(id: string): Promise<SessionWorktreeDiffSnapshot>;
+  sessionWorktrees(): Promise<WorktreeDashboardSnapshot>; sessionWorktreeDiff(id: string): Promise<SessionWorktreeDiffSnapshot>; compareSessionWorktrees(ids: string[]): Promise<WorktreeComparisonSnapshot>;
   previewSessionWorktreeIntegration(ids: string[]): Promise<WorktreeIntegrationPreview>; updateSessionWorktreeFromBase(id: string, actor?: WebActivityActor): Promise<SessionWorktreeUpdateResult>; exportSessionWorktreeIntegrationPatch(ids: string[]): Promise<WorktreeIntegrationPatchExport>;
   cleanupSessionWorktrees(actor?: WebActivityActor): Promise<WorktreeCleanupResult>; commitSessionWorktree(id: string, message?: string, actor?: WebActivityActor): Promise<{ record: SessionWorktreeRecord; clean: boolean; status: string[] }>;
   integrateSessionWorktrees(ids: string[], options?: WorktreeIntegrationOptions, actor?: WebActivityActor): Promise<WorktreeIntegrationRun>;

@@ -102,6 +102,7 @@ export type WebApiStaticPath =
   | "/api/sessions/switch"
   | "/api/sessions/worktrees"
   | "/api/sessions/worktrees/cleanup"
+  | "/api/sessions/worktrees/compare"
   | "/api/sessions/worktrees/fork"
   | "/api/sessions/worktrees/integrate"
   | "/api/sessions/worktrees/integrate/patch"
@@ -296,6 +297,7 @@ export type WebApiResponseByPath = {
   "/api/sessions/switch": ServerWebApiClientResponse<"/api/sessions/switch">;
   "/api/sessions/worktrees": ServerWebApiClientResponse<"/api/sessions/worktrees">;
   "/api/sessions/worktrees/cleanup": ServerWebApiClientResponse<"/api/sessions/worktrees/cleanup">;
+  "/api/sessions/worktrees/compare": ServerWebApiClientResponse<"/api/sessions/worktrees/compare">;
   "/api/sessions/worktrees/fork": ServerWebApiClientResponse<"/api/sessions/worktrees/fork">;
   "/api/sessions/worktrees/integrate": ServerWebApiClientResponse<"/api/sessions/worktrees/integrate">;
   "/api/sessions/worktrees/integrate/patch": ServerWebApiClientResponse<"/api/sessions/worktrees/integrate/patch">;
@@ -406,6 +408,7 @@ export type WebApiRequestBodyByPath = {
   "/api/sessions/switch": ServerWebApiRequestBody<"/api/sessions/switch">;
   "/api/sessions/worktrees": ServerWebApiRequestBody<"/api/sessions/worktrees">;
   "/api/sessions/worktrees/cleanup": ServerWebApiRequestBody<"/api/sessions/worktrees/cleanup">;
+  "/api/sessions/worktrees/compare": ServerWebApiRequestBody<"/api/sessions/worktrees/compare">;
   "/api/sessions/worktrees/fork": ServerWebApiRequestBody<"/api/sessions/worktrees/fork">;
   "/api/sessions/worktrees/integrate": ServerWebApiRequestBody<"/api/sessions/worktrees/integrate">;
   "/api/sessions/worktrees/integrate/patch": ServerWebApiRequestBody<"/api/sessions/worktrees/integrate/patch">;

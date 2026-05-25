@@ -8,6 +8,7 @@ import type {
   SessionWorktreeRecord,
   SessionWorktreeUpdateResult,
   WorktreeCleanupResult,
+  WorktreeComparisonSnapshot,
   WorktreeDashboardSnapshot,
   WorktreeFinalizeIntegrationOptions,
   WorktreeFinalizeIntegrationResult,
@@ -54,6 +55,13 @@ export async function relayRuntimeSessionWorktreeDiff(
   id: string,
 ): Promise<SessionWorktreeDiffSnapshot> {
   return runtime.worktreeService.diff(id);
+}
+
+export async function relayRuntimeCompareSessionWorktrees(
+  runtime: RelayRuntimeDelegate,
+  ids: string[],
+): Promise<WorktreeComparisonSnapshot> {
+  return runtime.worktreeService.compare(ids);
 }
 
 export async function relayRuntimePreviewSessionWorktreeIntegration(

@@ -93,9 +93,29 @@ export interface SessionWorktreeDiffSnapshot {
   record: SessionWorktreeRecord;
   files: WorktreeChangedFile[];
   diff: string;
+  structuredFiles?: WorktreeStructuredDiffFile[];
   truncated: boolean;
   byteLength: number;
   generatedAt: string;
+}
+
+export type WorktreeStructuredDiffLineKind = "context" | "add" | "delete" | "hunk" | "meta";
+
+export interface WorktreeStructuredDiffLine {
+  kind: WorktreeStructuredDiffLineKind;
+  oldLine?: number;
+  newLine?: number;
+  text: string;
+}
+
+export interface WorktreeStructuredDiffFile {
+  path: string;
+  oldPath?: string;
+  status: WorktreeChangedFileStatus;
+  binary?: boolean;
+  additions: number;
+  deletions: number;
+  lines: WorktreeStructuredDiffLine[];
 }
 
 export interface WorktreeIntegrationPreview {
@@ -108,6 +128,7 @@ export interface WorktreeIntegrationPreview {
   files: WorktreeChangedFile[];
   conflictCandidates: WorktreeChangedFile[];
   conflictReview: WorktreeConflictReviewItem[];
+  riskSummary?: WorktreeRiskSummary;
   warnings: string[];
   generatedAt: string;
 }
@@ -127,9 +148,37 @@ export interface WorktreeConflictReviewItem {
   status: WorktreeChangedFileStatus;
   sourceWorktrees: WorktreeIntegrationPreviewSource[];
   risk: "none" | "same-file" | "status-mismatch";
+  riskLevel?: WorktreeRiskLevel;
+  riskReasons?: string[];
+  hasLineOverlap?: boolean;
+  changedRanges?: WorktreeChangedRangeSource[];
   recommendation: string;
   baseContent?: WorktreeFileContentPreview;
   sourceVersions?: WorktreeFileVersionPreview[];
+}
+
+export type WorktreeRiskLevel = "low" | "medium" | "high" | "blocked";
+
+export interface WorktreeRiskSummary {
+  label: WorktreeRiskLevel;
+  low: number;
+  medium: number;
+  high: number;
+  blocked: number;
+  totalFiles: number;
+  riskyFiles: number;
+  canMerge: boolean;
+}
+
+export interface WorktreeChangedRange {
+  start: number;
+  end: number;
+}
+
+export interface WorktreeChangedRangeSource {
+  worktreeId: string;
+  branchName: string;
+  ranges: WorktreeChangedRange[];
 }
 
 export interface WorktreeFileContentPreview {
@@ -176,6 +225,20 @@ export interface WorktreeIntegrationPatchExport {
   fileName: string;
   content: string;
   worktreeIds: string[];
+  summaryFileName?: string;
+  summary?: string;
+  riskReportFileName?: string;
+  riskReportJson?: string;
+  prTitle?: string;
+  prBody?: string;
+  prCommands?: string[];
+  generatedAt: string;
+}
+
+export interface WorktreeComparisonSnapshot {
+  ids: string[];
+  preview: WorktreeIntegrationPreview;
+  diffs: SessionWorktreeDiffSnapshot[];
   generatedAt: string;
 }
 

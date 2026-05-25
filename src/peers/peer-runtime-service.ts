@@ -545,6 +545,11 @@ export class PeerRuntimeService {
       await this.assertCurrentSessionScope(peer, runtime);
       return runtime.forkCurrentSessionToWorktree({ includeUncommitted: Boolean(body.includeUncommitted) }, remoteActor);
     }
+    if (method === "POST" && path === "/api/sessions/worktrees/compare") {
+      await this.assertCurrentSessionScope(peer, runtime);
+      const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
+      return runtime.compareSessionWorktrees(ids);
+    }
     if (method === "POST" && path === "/api/sessions/worktrees/integrate") {
       await this.assertCurrentSessionScope(peer, runtime);
       const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
