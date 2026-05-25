@@ -124,7 +124,7 @@
 .syntax-string{color:var(--success)}
 .syntax-number{color:var(--warn)}
 .diff-split-table td{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;vertical-align:top;white-space:pre-wrap}
-.diff-split-table .diff-line-no{width:56px;color:var(--muted);text-align:right;user-select:none}
+.diff-split-table .diff-line-no{color:var(--muted);text-align:right;white-space:nowrap;user-select:none}
 .diff-split-table .diff-add{background:color-mix(in srgb,var(--success) 12%,transparent)}
 .diff-split-table .diff-del{background:color-mix(in srgb,var(--danger) 12%,transparent)}
 .diff-split-hunk td{background:var(--accent-soft);color:var(--accent-text);font-weight:750}
@@ -133,7 +133,7 @@
 .artifact-image-strip button{width:84px;height:64px;padding:0;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface);overflow:hidden}
 .artifact-image-strip img{width:100%;height:100%;object-fit:cover;display:block}
 .data-table-wrap{max-width:100%;margin-top:12px;overflow-x:auto;overflow-y:visible;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface-soft);-webkit-overflow-scrolling:touch}
-.data-table{width:100%;min-width:var(--table-min-width,860px);border-collapse:collapse;table-layout:fixed;font-size:14px;line-height:1.35}
+.data-table{width:100%;min-width:var(--table-min-width,860px);border-collapse:collapse;table-layout:auto;font-size:14px;line-height:1.35}
 .data-table th,.data-table td{padding:10px 12px;border-bottom:1px solid var(--border-soft);text-align:left;vertical-align:middle}
 .data-table th{background:var(--surface);color:var(--muted);font-size:13px;font-weight:750;line-height:1;text-transform:none;white-space:nowrap}
 .data-table tbody tr:last-child td{border-bottom:0}
@@ -141,7 +141,12 @@
 .data-table tbody tr:hover{background:color-mix(in srgb,var(--accent) 5%,transparent)}
 .data-table td{min-width:0;color:var(--text)}
 .data-table .primary-cell{font-weight:650}
-.truncate-cell{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.truncate-cell{display:block;min-width:0;max-width:min(44vw,420px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.data-table .primary-cell .truncate-cell{max-width:min(34vw,320px)}
+.data-table .access-cell .truncate-cell,.data-table .detail-cell .truncate-cell,.data-table .health-cell .truncate-cell,.data-table .package-cell .truncate-cell,.data-table .path-cell .truncate-cell,.data-table .prompt-cell .truncate-cell,.data-table .url-cell .truncate-cell,.data-table .workspace-cell .truncate-cell{max-width:min(48vw,480px)}
+.data-table .thread-cell .copy-id{max-width:18ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.data-table .age-cell,.data-table .number-cell,.data-table .scope-cell,.data-table .status-cell,.data-table .updated-cell,.data-table .version-cell{white-space:nowrap}
+.data-table .variables-cell{max-width:min(24vw,220px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .data-table-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:nowrap;white-space:nowrap}
 .data-table-actions button{min-height:28px;height:28px;padding:0 8px;font-size:13px;line-height:1}
 .actions-cell,.actions-heading{white-space:nowrap}
@@ -160,142 +165,29 @@
 .peer-action-menu .peer-action-menu-panel button,.peer-action-menu .peer-action-menu-panel button.danger{width:100%;justify-content:flex-start;background:var(--surface);color:var(--text);border-color:transparent}
 .peer-action-menu .peer-action-menu-panel button:hover,.peer-action-menu .peer-action-menu-panel button:focus,.peer-action-menu .peer-action-menu-panel button.active,.peer-action-menu .peer-action-menu-panel button.danger:hover:not(:disabled),.peer-action-menu .peer-action-menu-panel button.danger:focus:not(:disabled){background:var(--accent);border-color:var(--accent);color:white;outline:none}
 .sessions-table{--table-min-width:1160px}
-.sessions-table:not(.worktrees-table) th:nth-child(1),.sessions-table:not(.worktrees-table) td:nth-child(1){width:9%;white-space:nowrap}
-.sessions-table:not(.worktrees-table) th:nth-child(2),.sessions-table:not(.worktrees-table) td:nth-child(2){width:22%}
-.sessions-table:not(.worktrees-table) th:nth-child(3),.sessions-table:not(.worktrees-table) td:nth-child(3){width:112px}
-.sessions-table:not(.worktrees-table) th:nth-child(4),.sessions-table:not(.worktrees-table) td:nth-child(4){width:20%}
-.sessions-table:not(.worktrees-table) th:nth-child(5),.sessions-table:not(.worktrees-table) td:nth-child(5){width:8%}
-.sessions-table:not(.worktrees-table) th:nth-child(6),.sessions-table:not(.worktrees-table) td:nth-child(6){width:8%}
-.sessions-table:not(.worktrees-table) th:nth-child(7),.sessions-table:not(.worktrees-table) td:nth-child(7){width:9%}
-.sessions-table:not(.worktrees-table) th:nth-child(8),.sessions-table:not(.worktrees-table) td:nth-child(8){width:82px;white-space:nowrap}
-.sessions-table:not(.worktrees-table) th:nth-child(9),.sessions-table:not(.worktrees-table) td:nth-child(9){width:132px}
-.sessions-table .thread-cell .copy-id{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sessions-table:not(.worktrees-table) .actions-cell .data-table-actions{flex-wrap:nowrap}
 .queue-table{--table-min-width:1120px}
-.queue-table th:nth-child(1),.queue-table td:nth-child(1){width:76px;white-space:nowrap}
-.queue-table th:nth-child(2),.queue-table td:nth-child(2){width:24%}
-.queue-table th:nth-child(3),.queue-table td:nth-child(3){width:120px}
-.queue-table th:nth-child(4),.queue-table td:nth-child(4){width:108px;white-space:nowrap}
-.queue-table th:nth-child(5),.queue-table td:nth-child(5){width:78px;white-space:nowrap}
-.queue-table th:nth-child(6),.queue-table td:nth-child(6){width:116px}
-.queue-table th:nth-child(7),.queue-table td:nth-child(7){width:18%}
-.queue-table th:nth-child(8),.queue-table td:nth-child(8){width:230px}
-.queue-table .thread-cell .copy-id{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .worktrees-table{--table-min-width:1320px}
-.worktrees-table th:nth-child(1),.worktrees-table td:nth-child(1){width:44px}
-.worktrees-table th:nth-child(2),.worktrees-table td:nth-child(2){width:10%;white-space:nowrap}
-.worktrees-table th:nth-child(3),.worktrees-table td:nth-child(3){width:112px}
-.worktrees-table th:nth-child(4),.worktrees-table td:nth-child(4){width:15%}
-.worktrees-table th:nth-child(5),.worktrees-table td:nth-child(5){width:24%}
-.worktrees-table th:nth-child(6),.worktrees-table td:nth-child(6){width:92px}
-.worktrees-table th:nth-child(7),.worktrees-table td:nth-child(7){width:92px}
-.worktrees-table th:nth-child(8),.worktrees-table td:nth-child(8){width:240px}
 .worktree-integrations-table{--table-min-width:1280px}
 .worktree-conflict-table{--table-min-width:1120px}
 .worktree-preview-sources-table{--table-min-width:980px}
 .access-users-table{--table-min-width:1320px}
-.access-users-table th:nth-child(1),.access-users-table td:nth-child(1){width:12%}
-.access-users-table th:nth-child(2),.access-users-table td:nth-child(2){width:16%}
-.access-users-table th:nth-child(3),.access-users-table td:nth-child(3){width:8%;white-space:nowrap}
-.access-users-table th:nth-child(4),.access-users-table td:nth-child(4){width:14%}
-.access-users-table th:nth-child(5),.access-users-table td:nth-child(5){width:12%}
-.access-users-table th:nth-child(6),.access-users-table td:nth-child(6){width:14%}
-.access-users-table th:nth-child(7),.access-users-table td:nth-child(7){width:18%}
-.access-users-table th:nth-child(8),.access-users-table td:nth-child(8){width:220px}
 .access-groups-table{--table-min-width:1260px}
-.access-groups-table th:nth-child(1),.access-groups-table td:nth-child(1){width:13%}
-.access-groups-table th:nth-child(2),.access-groups-table td:nth-child(2){width:16%}
-.access-groups-table th:nth-child(3),.access-groups-table td:nth-child(3){width:7%;white-space:nowrap}
-.access-groups-table th:nth-child(4),.access-groups-table td:nth-child(4){width:9%;white-space:nowrap}
-.access-groups-table th:nth-child(5),.access-groups-table td:nth-child(5){width:11%}
-.access-groups-table th:nth-child(6),.access-groups-table td:nth-child(6){width:13%}
-.access-groups-table th:nth-child(7),.access-groups-table td:nth-child(7){width:13%}
-.access-groups-table th:nth-child(8),.access-groups-table td:nth-child(8){width:16%}
-.access-groups-table th:nth-child(9),.access-groups-table td:nth-child(9){width:120px}
 .access-channels-table{--table-min-width:1250px}
-.access-channels-table th:nth-child(1),.access-channels-table td:nth-child(1){width:20%}
-.access-channels-table th:nth-child(2),.access-channels-table td:nth-child(2){width:10%;white-space:nowrap}
-.access-channels-table th:nth-child(3),.access-channels-table td:nth-child(3){width:18%}
-.access-channels-table th:nth-child(4),.access-channels-table td:nth-child(4){width:16%}
-.access-channels-table th:nth-child(5),.access-channels-table td:nth-child(5){width:12%}
-.access-channels-table th:nth-child(6),.access-channels-table td:nth-child(6){width:16%}
-.access-channels-table th:nth-child(7),.access-channels-table td:nth-child(7){width:130px}
-.access-telegram-table th:nth-child(5),.access-telegram-table td:nth-child(5){width:24%}
-.access-telegram-table th:nth-child(6),.access-telegram-table td:nth-child(6){width:130px}
 .access-locks-table{--table-min-width:980px}
-.access-locks-table th:nth-child(1),.access-locks-table td:nth-child(1){width:28%}
-.access-locks-table th:nth-child(2),.access-locks-table td:nth-child(2){width:18%}
-.access-locks-table th:nth-child(3),.access-locks-table td:nth-child(3){width:18%}
-.access-locks-table th:nth-child(4),.access-locks-table td:nth-child(4){width:10%}
-.access-locks-table th:nth-child(5),.access-locks-table td:nth-child(5){width:16%}
-.access-locks-table th:nth-child(6),.access-locks-table td:nth-child(6){width:10%;white-space:nowrap}
 .access-audit-table{--table-min-width:1200px}
-.access-audit-table th:nth-child(1),.access-audit-table td:nth-child(1){width:14%;white-space:nowrap}
-.access-audit-table th:nth-child(2),.access-audit-table td:nth-child(2){width:10%}
-.access-audit-table th:nth-child(3),.access-audit-table td:nth-child(3){width:9%;white-space:nowrap}
-.access-audit-table th:nth-child(4),.access-audit-table td:nth-child(4){width:14%}
-.access-audit-table th:nth-child(5),.access-audit-table td:nth-child(5){width:16%}
-.access-audit-table th:nth-child(6),.access-audit-table td:nth-child(6){width:19%}
-.access-audit-table th:nth-child(7),.access-audit-table td:nth-child(7){width:18%}
 .templates-table{--table-min-width:1080px}
-.templates-table th:nth-child(1),.templates-table td:nth-child(1){width:9%;white-space:nowrap}
-.templates-table th:nth-child(2),.templates-table td:nth-child(2){width:21%}
-.templates-table th:nth-child(3),.templates-table td:nth-child(3){width:8%}
-.templates-table th:nth-child(4),.templates-table td:nth-child(4){width:13%}
-.templates-table th:nth-child(5),.templates-table td:nth-child(5){width:9%;white-space:nowrap}
-.templates-table th:nth-child(6),.templates-table td:nth-child(6){width:26%}
-.templates-table th:nth-child(7),.templates-table td:nth-child(7){width:140px}
 .workflows-table{--table-min-width:1180px}
-.workflows-table th:nth-child(8),.workflows-table td:nth-child(8){width:140px}
 .workflow-row-actions{justify-content:flex-end}
 .workflow-action-menu .table-action-menu-list{min-width:154px}
 .adapters-table{--table-min-width:1120px}
-.adapters-table th:nth-child(1),.adapters-table td:nth-child(1){width:13%}
-.adapters-table th:nth-child(2),.adapters-table td:nth-child(2){width:9%;white-space:nowrap}
-.adapters-table th:nth-child(3),.adapters-table td:nth-child(3){width:24%}
-.adapters-table th:nth-child(4),.adapters-table td:nth-child(4){width:10%}
-.adapters-table th:nth-child(5),.adapters-table td:nth-child(5){width:14%}
-.adapters-table th:nth-child(6),.adapters-table td:nth-child(6){width:16%}
-.adapters-table th:nth-child(7),.adapters-table td:nth-child(7){width:220px}
 .peer-status-table{--table-min-width:720px}
-.peer-status-table th:nth-child(1),.peer-status-table td:nth-child(1){width:22%}
-.peer-status-table th:nth-child(2),.peer-status-table td:nth-child(2){width:78%}
-.peers-table{--table-min-width:1120px;table-layout:auto}
-.peers-table .status-cell,.peers-table .version-cell,.peers-table .updated-cell,.peers-table .actions-cell{white-space:nowrap}
-.peers-table .primary-cell .truncate-cell{max-width:190px}
-.peers-table .url-cell .truncate-cell{max-width:min(28vw,280px)}
-.peers-table .access-cell .truncate-cell{max-width:min(34vw,380px)}
-.peers-table .health-cell .truncate-cell{max-width:180px}
+.peers-table{--table-min-width:1120px}
 .peers-table .actions-cell{text-align:right;vertical-align:top}
 .peer-invites-table{--table-min-width:1260px}
-.peer-invites-table th:nth-child(1),.peer-invites-table td:nth-child(1){width:14%}
-.peer-invites-table th:nth-child(2),.peer-invites-table td:nth-child(2){width:8%;white-space:nowrap}
-.peer-invites-table th:nth-child(3),.peer-invites-table td:nth-child(3){width:10%}
-.peer-invites-table th:nth-child(4),.peer-invites-table td:nth-child(4){width:12%;white-space:nowrap}
-.peer-invites-table th:nth-child(5),.peer-invites-table td:nth-child(5){width:18%}
-.peer-invites-table th:nth-child(6),.peer-invites-table td:nth-child(6){width:12%}
-.peer-invites-table th:nth-child(7),.peer-invites-table td:nth-child(7){width:12%}
-.peer-invites-table th:nth-child(8),.peer-invites-table td:nth-child(8){width:220px}
 .peer-discovery-table{--table-min-width:1120px}
-.peer-discovery-table th:nth-child(1),.peer-discovery-table td:nth-child(1){width:14%}
-.peer-discovery-table th:nth-child(2),.peer-discovery-table td:nth-child(2){width:10%;white-space:nowrap}
-.peer-discovery-table th:nth-child(3),.peer-discovery-table td:nth-child(3){width:13%}
-.peer-discovery-table th:nth-child(4),.peer-discovery-table td:nth-child(4){width:27%}
-.peer-discovery-table th:nth-child(5),.peer-discovery-table td:nth-child(5),.peer-discovery-table th:nth-child(6),.peer-discovery-table td:nth-child(6){width:13%;white-space:nowrap}
-.peer-discovery-table th:nth-child(7),.peer-discovery-table td:nth-child(7){width:10%;white-space:nowrap}
 .peer-candidates-table{--table-min-width:1200px}
-.peer-candidates-table th:nth-child(1),.peer-candidates-table td:nth-child(1){width:13%}
-.peer-candidates-table th:nth-child(2),.peer-candidates-table td:nth-child(2){width:18%}
-.peer-candidates-table th:nth-child(3),.peer-candidates-table td:nth-child(3),.peer-candidates-table th:nth-child(4),.peer-candidates-table td:nth-child(4),.peer-candidates-table th:nth-child(5),.peer-candidates-table td:nth-child(5){width:16%}
-.peer-candidates-table th:nth-child(6),.peer-candidates-table td:nth-child(6){width:8%;white-space:nowrap}
-.peer-candidates-table th:nth-child(7),.peer-candidates-table td:nth-child(7){width:130px}
 .global-peer-sessions-table{--table-min-width:1100px}
-.global-peer-sessions-table th:nth-child(1),.global-peer-sessions-table td:nth-child(1){width:15%}
-.global-peer-sessions-table th:nth-child(2),.global-peer-sessions-table td:nth-child(2){width:8%;white-space:nowrap}
-.global-peer-sessions-table th:nth-child(3),.global-peer-sessions-table td:nth-child(3){width:18%}
-.global-peer-sessions-table th:nth-child(4),.global-peer-sessions-table td:nth-child(4){width:28%}
-.global-peer-sessions-table th:nth-child(5),.global-peer-sessions-table td:nth-child(5){width:12%;white-space:nowrap}
-.global-peer-sessions-table th:nth-child(6),.global-peer-sessions-table td:nth-child(6){width:19%}
 .peer-topology-table{--table-min-width:1100px}
 .peer-relay-summary-table{--table-min-width:720px}
 .peer-relay-table{--table-min-width:1180px}
@@ -314,38 +206,11 @@
 .metrics-table{--table-min-width:860px}
 .metrics-table .number-cell,.metrics-table .status-cell,.metrics-table .updated-cell{white-space:nowrap}
 .metrics-web-routes{--table-min-width:980px}
-.metrics-web-routes th:nth-child(1),.metrics-web-routes td:nth-child(1){width:34%}
-.metrics-web-routes th:nth-child(2),.metrics-web-routes td:nth-child(2),.metrics-web-routes th:nth-child(3),.metrics-web-routes td:nth-child(3),.metrics-web-routes th:nth-child(4),.metrics-web-routes td:nth-child(4){width:10%}
-.metrics-web-routes th:nth-child(5),.metrics-web-routes td:nth-child(5){width:8%}
-.metrics-web-routes th:nth-child(6),.metrics-web-routes td:nth-child(6){width:10%}
-.metrics-web-routes th:nth-child(7),.metrics-web-routes td:nth-child(7){width:18%}
 .metrics-web-slow{--table-min-width:760px}
-.metrics-web-slow th:nth-child(1),.metrics-web-slow td:nth-child(1){width:52%}
-.metrics-web-slow th:nth-child(2),.metrics-web-slow td:nth-child(2){width:16%}
-.metrics-web-slow th:nth-child(3),.metrics-web-slow td:nth-child(3){width:14%}
-.metrics-web-slow th:nth-child(4),.metrics-web-slow td:nth-child(4){width:18%}
 .metrics-rate-table{--table-min-width:1180px}
-.metrics-rate-table th:nth-child(1),.metrics-rate-table td:nth-child(1){width:12%}
-.metrics-rate-table th:nth-child(2),.metrics-rate-table td:nth-child(2),.metrics-rate-table th:nth-child(3),.metrics-rate-table td:nth-child(3),.metrics-rate-table th:nth-child(4),.metrics-rate-table td:nth-child(4),.metrics-rate-table th:nth-child(5),.metrics-rate-table td:nth-child(5),.metrics-rate-table th:nth-child(6),.metrics-rate-table td:nth-child(6),.metrics-rate-table th:nth-child(7),.metrics-rate-table td:nth-child(7),.metrics-rate-table th:nth-child(8),.metrics-rate-table td:nth-child(8),.metrics-rate-table th:nth-child(10),.metrics-rate-table td:nth-child(10){width:8%}
-.metrics-rate-table th:nth-child(9),.metrics-rate-table td:nth-child(9){width:16%}
 .metrics-history-table{--table-min-width:1280px}
 .version-table{--table-min-width:1080px}
-.version-table th:nth-child(1),.version-table td:nth-child(1){width:16%}
-.version-table th:nth-child(2),.version-table td:nth-child(2){width:10%;white-space:nowrap}
-.version-table th:nth-child(3),.version-table td:nth-child(3){width:12%}
-.version-table th:nth-child(4),.version-table td:nth-child(4){width:12%}
-.version-table th:nth-child(5),.version-table td:nth-child(5){width:20%}
-.version-table th:nth-child(6),.version-table td:nth-child(6){width:20%}
-.version-table th:nth-child(7),.version-table td:nth-child(7){width:120px}
 .activity-table{--table-min-width:1160px}
-.activity-table th:nth-child(1),.activity-table td:nth-child(1){width:8%;white-space:nowrap}
-.activity-table th:nth-child(2),.activity-table td:nth-child(2){width:8%}
-.activity-table th:nth-child(3),.activity-table td:nth-child(3){width:9%}
-.activity-table th:nth-child(4),.activity-table td:nth-child(4){width:13%}
-.activity-table th:nth-child(5),.activity-table td:nth-child(5){width:12%}
-.activity-table th:nth-child(6),.activity-table td:nth-child(6){width:20%}
-.activity-table th:nth-child(7),.activity-table td:nth-child(7){width:22%}
-.activity-table th:nth-child(8),.activity-table td:nth-child(8){width:100px}
 .activity-context{display:grid;gap:2px;min-width:0}
 #activeSessions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 @media(min-width:1320px){#activeSessions{grid-template-columns:repeat(3,minmax(0,1fr))}}
@@ -358,17 +223,7 @@
 .session-detail-section[open] summary{margin-bottom:10px}
 .session-detail-section .data-table-wrap{margin-top:0}
 .session-detail-messages-table{--table-min-width:860px}
-.session-detail-messages-table th:nth-child(1),.session-detail-messages-table td:nth-child(1){width:96px;white-space:nowrap}
-.session-detail-messages-table th:nth-child(2),.session-detail-messages-table td:nth-child(2){width:88px}
-.session-detail-messages-table th:nth-child(3),.session-detail-messages-table td:nth-child(3){width:100px}
-.session-detail-messages-table th:nth-child(4),.session-detail-messages-table td:nth-child(4){width:auto}
 .session-detail-activity-table{--table-min-width:1040px}
-.session-detail-activity-table th:nth-child(1),.session-detail-activity-table td:nth-child(1){width:96px;white-space:nowrap}
-.session-detail-activity-table th:nth-child(2),.session-detail-activity-table td:nth-child(2){width:90px}
-.session-detail-activity-table th:nth-child(3),.session-detail-activity-table td:nth-child(3){width:96px}
-.session-detail-activity-table th:nth-child(4),.session-detail-activity-table td:nth-child(4){width:150px}
-.session-detail-activity-table th:nth-child(5),.session-detail-activity-table td:nth-child(5){width:150px}
-.session-detail-activity-table th:nth-child(6),.session-detail-activity-table td:nth-child(6){width:auto}
 .session-detail-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 0 14px;padding-bottom:12px;border-bottom:1px solid var(--border-soft)}
 .session-detail-header h2{margin:0 0 4px;font-size:20px;line-height:1.2}
 .session-detail-header small{display:block;color:var(--muted);line-height:1.35}

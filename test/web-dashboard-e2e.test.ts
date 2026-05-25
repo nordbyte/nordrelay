@@ -12,7 +12,7 @@ describe("web dashboard browser-flow assets", () => {
 
     expect(css).toContain(".feature-matrix");
     expect(css).toContain(".conformance-grid .item+.item{margin-top:8px}");
-    expect(css).toContain(".adapters-table th:nth-child(7)");
+    expect(css).toContain(".adapters-table{--table-min-width");
     expect(js).toContain("function featureMatrix");
     expect(js).toContain("function renderAdapterHealthTable");
     expect(js).toContain('class="data-table adapters-table"');
@@ -81,7 +81,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".monitor-tab-heading");
     expect(css).toContain(".monitor-filter-toggle{display:inline-flex;align-items:center;gap:6px");
     expect(css).toContain(".monitor-filter-content[hidden]{display:none!important}");
-    expect(css).toContain(".activity-table th:nth-child(8)");
+    expect(css).toContain(".activity-table{--table-min-width");
   });
 
   it("groups Matrix settings with the other chat adapters", () => {
@@ -132,7 +132,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".workflow-builder-json");
     expect(css).toContain(".template-picker-list");
     expect(css).toContain(".template-picker-item span{font-size:14px}");
-    expect(css).toContain(".templates-table th:nth-child(7)");
+    expect(css).toContain(".templates-table{--table-min-width");
     expect(contract).toContain('exact("/api/templates"');
     expect(contract).toContain('exact("/api/templates/import"');
     expect(contract).toContain('dynamic("/api/templates/:id/versions"');
@@ -317,16 +317,17 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("startSessionAgeCounter()");
     expect(js).not.toContain("short((s.cwd||'')+' / '+fmtDate(s.updatedAt))");
     expect(css).toContain(".data-table-wrap{max-width:100%;margin-top:12px;overflow-x:auto");
-    expect(css).toContain(".data-table{width:100%;min-width:var(--table-min-width,860px);border-collapse:collapse;table-layout:fixed;font-size:14px");
+    expect(css).toContain(".data-table{width:100%;min-width:var(--table-min-width,860px);border-collapse:collapse;table-layout:auto;font-size:14px");
     expect(css).toContain(".data-table th{background:var(--surface);color:var(--muted);font-size:13px");
     expect(css).toContain(".data-table tbody tr:nth-child(even){background:color-mix(in srgb,var(--surface) 55%,var(--surface-soft))}");
     expect(css).toContain(".data-table-actions button{min-height:28px;height:28px;padding:0 8px;font-size:13px");
     expect(css).toContain(".actions-cell,.actions-heading{white-space:nowrap}");
+    expect(css).toContain(".data-table .access-cell .truncate-cell");
+    expect(css).toContain(".data-table .thread-cell .copy-id");
     expect(css).toContain(".sessions-table");
     expect(css).toContain(".sessions-table{--table-min-width:1160px}");
-    expect(css).toContain(".sessions-table:not(.worktrees-table) th:nth-child(9)");
-    expect(css).toContain(".access-users-table th:nth-child(8)");
-    expect(css).toContain(".access-audit-table th:nth-child(7)");
+    expect(css).not.toContain("th:nth-child");
+    expect(css).not.toContain("td:nth-child");
     expect(css).not.toContain(".data-table,.data-table thead,.data-table tbody,.data-table tr,.data-table th,.data-table td{display:block;width:100%}");
     expect(css).not.toContain("content:attr(data-label)");
     expect(css).toContain("@media(max-width:760px){.diagnostics-overview-grid{grid-template-columns:1fr}");
@@ -913,8 +914,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("Health history");
     expect(css).toContain(".peer-tab");
     expect(css).toContain(".peer-debug-panel");
-    expect(css).toContain(".peers-table{--table-min-width:1120px;table-layout:auto}");
-    expect(css).toContain(".peers-table .access-cell .truncate-cell");
+    expect(css).toContain(".peers-table{--table-min-width:1120px}");
+    expect(css).toContain(".data-table .access-cell .truncate-cell");
     expect(css).not.toContain(".peers-table th:nth-child");
     expect(css).toContain(".peer-action-menu .peer-action-menu-panel");
     expect(css).toContain(".table-action-menu.is-floating .table-action-menu-list");
@@ -943,7 +944,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(components).toContain(".chip{display:inline-flex");
     expect(components).toContain(".mini-button{min-height:26px");
     expect(components).toContain(".log-view{max-height:min(64vh,720px);min-height:320px;font-size:14px");
-    expect(components).toContain(".version-table th:nth-child(7)");
+    expect(components).toContain(".version-table{--table-min-width");
     expect(layout).toContain(".metric .value{font-size:18px");
   });
 
