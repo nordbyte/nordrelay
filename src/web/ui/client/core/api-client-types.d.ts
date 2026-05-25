@@ -436,6 +436,7 @@ export interface WebApiClientOptions<P extends WebApiPath = WebApiPath> {
   query?: WebApiQuery;
   headers?: Record<string, string>;
   body?: WebApiRequestBody<P> | string | FormData | Blob | ArrayBuffer | null;
+  timeoutMs?: number;
 }
 
 export type WebApiRequestBody<P extends WebApiPath> =

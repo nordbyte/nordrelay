@@ -123,6 +123,7 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .header-target-peer-title{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 3px 2px;color:var(--muted);font-size:12px}
 .header-target-peer-title strong{color:var(--text);font-size:13px}
 .header-target-peer-title small{font-size:11px;text-transform:uppercase}
+.header-target-peer-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 3px 4px}
 .header-target-agent-block{display:grid;gap:2px}
 .header-target-agent-row{display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:4px;align-items:stretch}
 .header-target-agent{display:flex!important;align-items:center;justify-content:space-between!important;gap:10px!important;width:100%;height:auto!important;min-height:34px!important;padding:7px 9px!important;border:0!important;border-radius:6px!important;background:transparent!important;color:var(--text)!important;text-align:left!important;white-space:normal!important;line-height:1.2!important}

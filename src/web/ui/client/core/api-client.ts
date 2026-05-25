@@ -35,7 +35,7 @@ async function api<P extends import("./api-client-types.js").WebApiPath>(
       method: 'POST',
       headers: { 'content-type': 'application/json', ...csrfHeader() },
       body: proxyBody,
-    }, context);
+    }, context, options.timeoutMs);
     const res = await send();
     return await handleApiResponse<P>(res, send, false, context);
   }
@@ -49,7 +49,7 @@ async function api<P extends import("./api-client-types.js").WebApiPath>(
       ...(options.headers || {}),
     },
     body,
-  }, context);
+  }, context, options.timeoutMs);
   const res = await send();
   return await handleApiResponse<P>(res, send, false, context);
 }
@@ -80,7 +80,7 @@ async function apiPeer<P extends import("./api-client-types.js").WebApiPath>(
       body: bodyObject(options.body),
       contextKey: 'web:dashboard',
     }),
-  }, context);
+  }, context, options.timeoutMs);
   const res = await send();
   return await handleApiResponse<P>(res, send, false, context);
 }
@@ -237,15 +237,32 @@ function clearDashboardAuthRefreshAttempt(): void {
  * @param {RequestInfo | URL} input
  * @param {RequestInit} [init]
  */
-async function fetchApi(input, init, context: WebuiApiRequestContext = { target: 'local', path: '', method: 'GET' }) {
+async function fetchApi(input, init, context: WebuiApiRequestContext = { target: 'local', path: '', method: 'GET' }, timeoutMs = 0) {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let requestInit: RequestInit = init || {};
+  if (timeoutMs > 0 && typeof AbortController !== 'undefined') {
+    const controller = new AbortController();
+    const previousSignal = requestInit.signal;
+    if (previousSignal?.aborted) controller.abort();
+    else previousSignal?.addEventListener?.('abort', () => controller.abort(), { once: true });
+    timer = setTimeout(() => controller.abort(), timeoutMs);
+    requestInit = { ...requestInit, signal: controller.signal };
+  }
   try {
-    return await fetch(input, init);
+    return await fetch(input, requestInit);
   } catch (error) {
     const status = apiFetchFailureStatus(context.target);
-    const message = status === 'peer-unreachable'
+    const timedOut = timeoutMs > 0 && error instanceof Error && error.name === 'AbortError';
+    const message = timedOut
+      ? context.target === 'local'
+        ? 'NordRelay API timed out. Keeping current dashboard data visible.'
+        : 'Peer API timed out. Local dashboard data remains available.'
+      : status === 'peer-unreachable'
       ? 'Peer API is unreachable. Local dashboard data remains available.'
       : 'NordRelay API is restarting or unreachable. Keeping current dashboard data visible.';
     throw createApiStateError(status, message, { target: context.target, path: context.path, method: context.method, retryAfterMs: 5000 });
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 

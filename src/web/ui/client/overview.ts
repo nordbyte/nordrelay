@@ -6,16 +6,36 @@ async function loadBootstrap(){
   state.permissions = local.auth?.permissions || [];
   applyAccountChrome(local.auth);
   await loadHeaderTargetCandidates(local);
-  const data = state.selectedPeer && state.selectedPeer !== 'local' ? await api('/api/bootstrap') : local;
+  state.snapshot = local.status.snapshot;
+  state.controls = local.controls;
+  state.enabledAgents = local.enabledAgents || [];
+  mergeHeaderTargetBootstrap('local',local);
+  renderPageTitle();
+  applyPermissions();
+  renderHeaderTargetMenu(state.snapshot);
+  let data = local;
+  let remoteBootstrapError = null;
+  const selectedPeer = state.selectedPeer || 'local';
+  if(selectedPeer !== 'local'){
+    try{
+      data = await apiPeer(selectedPeer,'/api/bootstrap',{timeoutMs:HEADER_TARGET_PEER_TIMEOUT_MS});
+      mergeHeaderTargetBootstrap(selectedPeer,data);
+    }catch(error){
+      remoteBootstrapError = error;
+      markHeaderTargetError(selectedPeer,error);
+      setApiState('peer-unreachable',{target:selectedPeer,message:'Peer '+headerTargetName(selectedPeer)+' is unreachable. Select another node from the header.',retryAfterMs:5000});
+      data = local;
+    }
+  }
   state.snapshot = data.status.snapshot;
   state.controls = data.controls;
   state.enabledAgents = data.enabledAgents || [];
-  mergeHeaderTargetBootstrap(state.selectedPeer||'local',data);
+  if(!remoteBootstrapError) mergeHeaderTargetBootstrap(state.selectedPeer||'local',data);
   renderPageTitle();
   applyPermissions();
   await refreshChatMirrorPreferenceForBootstrap();
   renderSnapshot(state.snapshot);
-  void refreshRemoteHeaderTargets(local,data).catch(()=>renderHeaderTargetMenu(state.snapshot));
+  void refreshRemoteHeaderTargets(local,remoteBootstrapError?null:data).catch(()=>renderHeaderTargetMenu(state.snapshot));
   safe(loadActiveSessions);
   renderSessionControls();
   syncCurrentSessionChatTab({activate:state.currentPage==='chat'&&!state.activeChatTabId});
@@ -31,7 +51,7 @@ async function loadBootstrap(){
 async function refreshChatMirrorPreferenceForBootstrap(){
   if(state.currentPage!=='chat'||!can('sessions.read'))return;
   try{
-    const data=await api('/api/chat/mirror');
+    const data=await api('/api/chat/mirror',{timeoutMs:HEADER_TARGET_PEER_TIMEOUT_MS});
     if(data)state.webMirror=data;
   }catch{}
 }

@@ -1,3 +1,5 @@
+const HEADER_TARGET_PEER_TIMEOUT_MS = 4500;
+
 function localHeaderTarget(local: WebuiBootstrap): WebuiHeaderTarget {
   return { id: 'local', name: 'Local node', agents: local.enabledAgents || [], snapshot: local.status?.snapshot || null, loading: false, error: '' };
 }
@@ -41,17 +43,34 @@ function mergeHeaderTargetBootstrap(peerId: string, bootstrap: WebuiBootstrap) {
   state.peerTargets = targets;
 }
 
-async function refreshRemoteHeaderTargets(local: WebuiBootstrap, selectedData: WebuiBootstrap) {
+function markHeaderTargetError(peerId: string, error: unknown) {
+  if (!peerId || peerId === 'local') return;
+  const targets = state.peerTargets || [];
+  const index = targets.findIndex((t: WebuiHeaderTarget) => t.id === peerId);
+  const peer = (state.peers?.peers || []).find((p: WebuiPeerRecord) => p.id === peerId);
+  const message = headerTargetErrorMessage(error);
+  const entry = { id: peerId, name: peer?.name || peerId, agents: peer?.allowedAgents || [], snapshot: null, loading: false, error: message };
+  if (index >= 0) targets[index] = { ...targets[index], ...entry, agents: targets[index].agents?.length ? targets[index].agents : entry.agents };
+  else targets.push(entry);
+  state.peerTargets = targets;
+  setApiState('peer-unreachable', { target: peerId, message: 'Peer '+headerTargetName(peerId)+' is unreachable. Select another node or retry.', retryAfterMs: 5000 });
+}
+
+function headerTargetErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || 'Peer unreachable');
+  return message || 'Peer unreachable';
+}
+
+async function refreshRemoteHeaderTargets(local: WebuiBootstrap, selectedData: WebuiBootstrap | null = null) {
   if (!can('peers.read')) return;
   const targets = (state.peerTargets || []).filter((t: WebuiHeaderTarget) => t.id !== 'local');
   if (!targets.length) return;
   await Promise.all(targets.map(async (target: WebuiHeaderTarget) => {
     try {
-      const bootstrap = state.selectedPeer === target.id ? selectedData : await apiPeer(target.id, '/api/bootstrap');
+      const bootstrap = state.selectedPeer === target.id && selectedData && !target.error ? selectedData : await apiPeer(target.id, '/api/bootstrap', { timeoutMs: HEADER_TARGET_PEER_TIMEOUT_MS });
       mergeHeaderTargetBootstrap(target.id, bootstrap);
     } catch (error) {
-      const current = (state.peerTargets || []).find((t: WebuiHeaderTarget) => t.id === target.id);
-      if (current) { current.loading = false; current.error = error instanceof Error ? error.message : String(error); }
+      markHeaderTargetError(target.id, error);
     }
   }));
   renderHeaderTargetMenu(state.snapshot);
@@ -61,9 +80,11 @@ function renderHeaderTargetMenu(s = state.snapshot) {
   const line = document.getElementById('sessionLine');
   if (!line || !s?.session) return;
   const session = s.session;
-  const thread = session.threadId || '';
-  const summary = [session.agentLabel || session.agentId || 'Agent', session.model || 'default', headerSessionLabel(session)].join(' / ');
   const targets = state.peerTargets && state.peerTargets.length ? state.peerTargets : [{ id: state.selectedPeer || 'local', name: headerTargetName(state.selectedPeer || 'local'), agents: state.enabledAgents || [], snapshot: s, loading: false, error: '' }];
+  const selectedTarget = targets.find((target: WebuiHeaderTarget) => target.id === (state.selectedPeer || 'local'));
+  const offline = Boolean(selectedTarget?.error);
+  const thread = offline ? '' : session.threadId || '';
+  const summary = offline ? [selectedTarget?.name || headerTargetName(state.selectedPeer || 'local'), 'unreachable'].join(' / ') : [session.agentLabel || session.agentId || 'Agent', session.model || 'default', headerSessionLabel(session)].join(' / ');
   const groups = targets.map((target: WebuiHeaderTarget) => headerTargetGroupHtml(target, session)).join('');
   line.innerHTML = '<div class="compact-control header-target-menu" data-header-target-menu><button type="button" id="headerTargetBtn" class="control-menu-button header-target-button" aria-haspopup="menu" aria-expanded="false" title="' + attr('Target: ' + headerTargetName(state.selectedPeer || 'local')) + '">' + esc(summary) + '</button><div class="control-menu-list header-target-list" role="menu" hidden>' + groups + '</div></div>' + (thread ? headerThreadCopyButton(thread) : '');
   bindHeaderTargetMenu(line);
@@ -86,8 +107,14 @@ function headerTargetGroupHtml(target: WebuiHeaderTarget, currentSession: WebuiS
   const agents = target.agents || [];
   const selectedAgent = target.snapshot?.session?.agentId || currentSession.agentId;
   const status = target.error ? 'error' : target.loading ? 'loading' : '';
+  if (target.error) return '<div class="header-target-peer" data-target-peer="' + attr(target.id) + '"><div class="header-target-peer-title"><strong>' + esc(target.name || target.id) + '</strong>' + (selectedPeer ? '<span class="chip">selected peer</span>' : '') + '<small>offline</small></div>' + headerTargetOfflineHtml(target) + '</div>';
   const agentButtons = agents.length ? agents.map((agent: string) => headerTargetAgentHtml(target, agent, selectedPeer && selectedAgent === agent)).join('') : '<button type="button" class="header-target-agent" disabled>' + (target.loading ? 'Loading agents...' : target.error ? 'Unavailable' : 'No agents enabled') + '</button>';
   return '<div class="header-target-peer" data-target-peer="' + attr(target.id) + '"><div class="header-target-peer-title"><strong>' + esc(target.name || target.id) + '</strong>' + (selectedPeer ? '<span class="chip">selected peer</span>' : '') + (status ? '<small>' + esc(status) + '</small>' : '') + '</div>' + agentButtons + '</div>';
+}
+
+function headerTargetOfflineHtml(target: WebuiHeaderTarget) {
+  const switchButton = target.id !== 'local' ? '<button type="button" class="secondary mini-button" data-header-switch-local="true">Switch to Local node</button>' : '';
+  return '<div class="header-target-session-state error" title="' + attr(target.error || '') + '">Peer unreachable. Session data cannot be loaded right now.</div><div class="header-target-peer-actions">' + switchButton + '<button type="button" class="secondary mini-button" data-header-retry-peer="' + attr(target.id) + '">Retry</button></div>';
 }
 
 function headerTargetAgentHtml(target: WebuiHeaderTarget, agent: string, selected: boolean) {
@@ -106,6 +133,14 @@ function bindHeaderTargetMenu(root: ParentNode = document) {
   const button = menu?.querySelector<HTMLButtonElement>('#headerTargetBtn');
   const list = menu?.querySelector<HTMLElement>('.header-target-list');
   if (button && list) button.onclick = event => { event.preventDefault(); event.stopPropagation(); const open = list.hidden; closeCompactControlMenus(menu); list.hidden = !open; button.setAttribute('aria-expanded', open ? 'true' : 'false'); };
+  root.querySelectorAll?.<HTMLElement>('[data-header-switch-local]').forEach(option => option.onclick = event => safe(async () => {
+    event.preventDefault(); event.stopPropagation();
+    await switchHeaderTargetToLocal();
+  }, event));
+  root.querySelectorAll?.<HTMLElement>('[data-header-retry-peer]').forEach(option => option.onclick = event => safe(async () => {
+    event.preventDefault(); event.stopPropagation();
+    await retryHeaderTargetPeer(option.dataset.headerRetryPeer || '');
+  }, event));
   root.querySelectorAll?.<HTMLElement>('[data-target-agent]').forEach(option => option.onclick = event => safe(async () => {
     event.preventDefault(); event.stopPropagation();
     if (!can('sessions.write')) { toast('Permission required: sessions.write'); return; }
@@ -142,10 +177,46 @@ async function selectHeaderTarget(peerId: string, agentId: string) {
   localStorage.setItem('nordrelayPeerTarget', state.selectedPeer);
   if (changedPeer) connectEvents();
   const selected = agentId;
-  const r = await headerTargetRequest(state.selectedPeer, '/api/agent', { method: 'POST', body: JSON.stringify({ agentId: selected }) });
+  let r;
+  try {
+    r = await headerTargetRequest(state.selectedPeer, '/api/agent', { method: 'POST', body: JSON.stringify({ agentId: selected }), timeoutMs: HEADER_TARGET_PEER_TIMEOUT_MS });
+  } catch (error) {
+    markHeaderTargetError(state.selectedPeer, error);
+    renderHeaderTargetMenu(state.snapshot);
+    throw error;
+  }
   if (state.snapshot && r.session) { state.snapshot.session = r.session; renderSnapshot(state.snapshot); }
   toast('Target switched to ' + headerTargetName(state.selectedPeer) + ' / ' + selected);
   await loadBootstrap(); await reloadCurrentPage({ agentId: selected });
+}
+
+async function switchHeaderTargetToLocal() {
+  const agentId = String(state.localBootstrap?.status?.snapshot?.session?.agentId || state.localBootstrap?.enabledAgents?.[0] || state.enabledAgents?.[0] || '');
+  if (!agentId) {
+    state.selectedPeer = 'local';
+    localStorage.setItem('nordrelayPeerTarget', state.selectedPeer);
+    await loadBootstrap();
+    await reloadCurrentPage({});
+    return;
+  }
+  await selectHeaderTarget('local', agentId);
+}
+
+async function retryHeaderTargetPeer(peerId: string) {
+  if (!peerId || peerId === 'local') return;
+  const target = (state.peerTargets || []).find((t: WebuiHeaderTarget) => t.id === peerId);
+  if (target) { target.loading = true; target.error = ''; renderHeaderTargetMenu(state.snapshot); }
+  try {
+    const bootstrap = await apiPeer(peerId, '/api/bootstrap', { timeoutMs: HEADER_TARGET_PEER_TIMEOUT_MS });
+    mergeHeaderTargetBootstrap(peerId, bootstrap);
+    toast('Peer reachable: ' + headerTargetName(peerId));
+    if ((state.selectedPeer || 'local') === peerId) await loadBootstrap();
+    else renderHeaderTargetMenu(state.snapshot);
+  } catch (error) {
+    markHeaderTargetError(peerId, error);
+    renderHeaderTargetMenu(state.snapshot);
+    throw error;
+  }
 }
 
 async function selectHeaderTargetSession(peerId: string, agentId: string, threadId: string) {
@@ -178,7 +249,7 @@ async function toggleHeaderTargetSessions(toggle: HTMLElement) {
 
 async function loadHeaderTargetSessionsPage(panel: HTMLElement, peerId: string, agentId: string, pageNumber: number) {
   try {
-    const data = await headerTargetRequest(peerId, '/api/sessions', { query: { agent: agentId, page: pageNumber, limit: 5 } });
+    const data = await headerTargetRequest(peerId, '/api/sessions', { query: { agent: agentId, page: pageNumber, limit: 5 }, timeoutMs: HEADER_TARGET_PEER_TIMEOUT_MS });
     const sessions = data.sessions || [];
     const hasNext = Boolean(data.pagination?.hasNext);
     panel.querySelector('[data-target-session-load-more]')?.remove();
@@ -189,8 +260,15 @@ async function loadHeaderTargetSessionsPage(panel: HTMLElement, peerId: string, 
     else panel.insertAdjacentHTML('beforeend', renderHeaderTargetSessionItems(peerId, agentId, sessions) + headerTargetLoadMoreHtml(peerId, agentId, hasNext, pageNumber + 1));
     bindHeaderTargetMenu(panel);
   } catch (error) {
-    panel.innerHTML = '<div class="header-target-session-state error">' + esc(error instanceof Error ? error.message : String(error)) + '</div>';
+    if (peerId !== 'local') markHeaderTargetError(peerId, error);
+    panel.innerHTML = headerTargetSessionErrorHtml(peerId, error);
+    bindHeaderTargetMenu(panel);
   }
+}
+
+function headerTargetSessionErrorHtml(peerId: string, error: unknown) {
+  const actions = peerId !== 'local' ? '<div class="header-target-peer-actions"><button type="button" class="secondary mini-button" data-header-switch-local="true">Switch to Local node</button><button type="button" class="secondary mini-button" data-header-retry-peer="' + attr(peerId) + '">Retry</button></div>' : '';
+  return '<div class="header-target-session-state error">' + esc(headerTargetErrorMessage(error)) + '</div>' + actions;
 }
 
 function renderHeaderTargetSessions(peerId: string, agentId: string, sessions: WebuiHeaderSessionRecord[], hasNext = false, nextPage = 2) {

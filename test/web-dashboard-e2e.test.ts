@@ -257,8 +257,14 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("data-target-sessions-toggle");
     expect(js).toContain("function toggleHeaderTargetSessions");
     expect(js).toContain("function selectHeaderTargetSession");
+    expect(js).toContain("HEADER_TARGET_PEER_TIMEOUT_MS");
+    expect(js).toContain("function markHeaderTargetError");
+    expect(js).toContain("Switch to Local node");
+    expect(js).toContain("function retryHeaderTargetPeer");
+    expect(js).toContain("timeoutMs:HEADER_TARGET_PEER_TIMEOUT_MS");
     expect(js).toContain("limit:5");
     expect(js).toContain("async function apiPeer");
+    expect(readFileSync("src/web/ui/client/core/api-client.ts", "utf8")).toContain("AbortController");
     expect(pageSource).not.toContain('id="peerSelect"');
     expect(pageSource).not.toContain('id="agentSelect"');
     expect(pageSource).toContain('id="sessionLine" class="header-target-line"');
