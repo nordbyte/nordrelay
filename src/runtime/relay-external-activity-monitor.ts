@@ -254,8 +254,8 @@ export class RelayExternalActivityMonitor {
           `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`,
           terminalEvent.status === "failed" ? "error" : terminalEvent.status === "aborted" ? "warn" : "info",
         );
-        await this.broadcastChatHistory();
       }
+      await this.broadcastChatHistory();
       this.options.scheduleActiveSessionsBroadcast();
       await this.options.drainQueue();
     }
@@ -266,6 +266,7 @@ export class RelayExternalActivityMonitor {
   private async startExternalTurn(snapshot: AgentExternalSnapshot, info: AgentSessionInfo): Promise<void> {
     const prompt = snapshot.latestUserMessage ?? `${snapshot.agentLabel} CLI task`;
     const mode = this.options.mirrorMode();
+    let broadcastedChatHistory = false;
     if (mode === "final" || mode === "full") {
       this.options.chatStore.appendWithResult({
         threadId: snapshot.threadId,
@@ -277,6 +278,10 @@ export class RelayExternalActivityMonitor {
         timestamp: snapshot.activity.startedAt?.toISOString(),
         key: externalMessageKey("working", snapshot),
       });
+      await this.broadcastChatHistory();
+      broadcastedChatHistory = true;
+    }
+    if (!broadcastedChatHistory) {
       await this.broadcastChatHistory();
     }
     if ((mode === "status" || mode === "full") && this.mirror) {
