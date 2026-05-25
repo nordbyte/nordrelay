@@ -199,7 +199,7 @@ async function loadActiveSessions(){
   state.activeSessionsLoading=true;
   try{
     normalizeActiveSessionsTarget();
-    const data=state.currentPage==='chat'&&ensureChatTabs().length>1?await loadActiveSessionsForChatTabs():await loadActiveSessionsForSelectedTarget();
+    const data=state.currentPage==='chat'?await loadActiveSessionsForChatTabs():await loadActiveSessionsForSelectedTarget();
     state.activeSessionsErrors=data.errors||[];
     state.activeSessionsLoadedTarget=state.currentPage==='chat'?'chat-tabs':state.activeSessionsTarget||'local';
     renderActiveSessions(data.sessions||[]);

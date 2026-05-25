@@ -512,6 +512,7 @@ interface DashboardState {
   currentSessions?: WebuiRecord[];
   localTurnThreadId: string | null;
   localTurnAgentId: string | null;
+  localTurnPeerId: string | null;
   localTurnStartedAt: string | null;
   peers: WebuiPeerState | null;
   peerRelay: WebuiRecord | null;

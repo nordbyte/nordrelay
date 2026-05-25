@@ -500,6 +500,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("/api/active-sessions");
     expect(js).toContain("active_sessions_update");
     expect(js).toContain("function renderChatWorkingIndicator");
+    expect(js).toContain("function activeSessionMatchesCurrentChat");
+    expect(js).toContain("function localTurnIsStaleWithoutActive");
+    expect(js).toContain("state.localTurnPeerId=state.selectedPeer||'local'");
+    expect(js).toContain("state.currentPage==='chat'?await loadActiveSessionsForChatTabs()");
     expect(js).toContain("Working...");
     expect(js).toContain("id=\"chatWorkingElapsed\"");
     expect(js).toContain("function syncChatWorkingTimer");
