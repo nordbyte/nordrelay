@@ -42,6 +42,22 @@ describe("nordrelay CLI script", () => {
     expect(initTui).toContain("At least WebUI or one chat adapter must be enabled.");
   });
 
+  it("uses the runtime env path and explains incomplete existing init state", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+    const initState = readFileSync("plugins/nordrelay/scripts/init-state.mjs", "utf8");
+    const commandInit = source.match(/async function commandInit[\s\S]*?\r?\n}\r?\n\r?\nasync function createUserStore/)?.[0] ?? "";
+
+    expect(source).toContain('import { printExistingInitState } from "./init-state.mjs"');
+    expect(commandInit).toContain("const envPath = resolveEnvPath(options.home)");
+    expect(commandInit).toContain("await mkdirp(path.dirname(envPath))");
+    expect(commandInit).toContain("printExistingInitState(options.home, envPath)");
+    expect(commandInit.indexOf("printExistingInitState(options.home, envPath)"))
+      .toBeLessThan(commandInit.indexOf("const userStore = await createUserStore(options.home)"));
+    expect(initState).toContain("function readExistingInitState");
+    expect(initState).toContain("Admin user: missing (users.json does not exist yet)");
+    expect(initState).toContain("nordrelay user create-admin");
+  });
+
   it("configures init autostart entries from the selected settings", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
 

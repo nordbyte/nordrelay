@@ -46,7 +46,7 @@
     "api:check": "node --import tsx scripts/generate-web-api-routes.mjs --check",
     "api:generate": "node --import tsx scripts/generate-web-api-routes.mjs",
     "build": "node scripts/clean-dist.mjs && npm run api:generate && tsc && node scripts/build-web-assets.mjs",
-    "check": "node --check plugins/nordrelay/scripts/nordrelay.mjs && node --check plugins/nordrelay/scripts/lifecycle-utils.mjs && node --check plugins/nordrelay/scripts/service-installer.mjs && node --check plugins/nordrelay/scripts/service-doctor.mjs && npm run api:check && tsc --noEmit && npm run webui:check && node scripts/build-web-assets.mjs --check && node --import tsx scripts/generate-env-example.mjs --check && npm run size:check",
+    "check": "node --check plugins/nordrelay/scripts/nordrelay.mjs && node --check plugins/nordrelay/scripts/init-state.mjs && node --check plugins/nordrelay/scripts/lifecycle-utils.mjs && node --check plugins/nordrelay/scripts/service-installer.mjs && node --check plugins/nordrelay/scripts/service-doctor.mjs && npm run api:check && tsc --noEmit && npm run webui:check && node scripts/build-web-assets.mjs --check && node --import tsx scripts/generate-env-example.mjs --check && npm run size:check",
     "dev": "tsx src/index.ts",
     "docs:prepare": "npm ci --prefix docs --ignore-scripts",
     "docs:check": "node scripts/check-docs.mjs",

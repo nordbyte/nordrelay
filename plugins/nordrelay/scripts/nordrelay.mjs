@@ -8,6 +8,7 @@ import process from "node:process";
 import readline from "node:readline/promises";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { printExistingInitState } from "./init-state.mjs";
 import { collectInitConfig, validateInitConfig } from "./init-tui.mjs";
 import {
   buildLaunchdServiceSpec,
@@ -992,14 +993,14 @@ async function commandInit(options) {
   await mkdirp(options.home);
   warnSecretArgUsage(options);
   warnIfCliPathMissing();
-  const envPath = path.join(options.home, "nordrelay.env");
-  const userStore = await createUserStore(options.home);
+  const envPath = resolveEnvPath(options.home);
+  await mkdirp(path.dirname(envPath));
   if (fs.existsSync(envPath) && !options.force) {
-    console.log(`Config already exists: ${envPath}`);
-    console.log("Run with --force to overwrite.");
+    printExistingInitState(options.home, envPath);
     return;
   }
 
+  const userStore = await createUserStore(options.home);
   const init = await collectInitConfig(options);
   const enableWebui = init.enableWebui;
   const enableAutostart = init.enableAutostart;
