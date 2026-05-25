@@ -13,6 +13,15 @@ This page summarizes the runtime keys generated in `.env.example`.
 | `NORDRELAY_DASHBOARD_PORT` | WebUI bind port |
 | `NORDRELAY_ENV_FILE` | Explicit env-file path |
 
+## Security
+
+| Key | Purpose |
+| --- | --- |
+| `NORDRELAY_WEBAUTHN_ENABLED` | Enable WebUI passkeys |
+| `NORDRELAY_WEBAUTHN_RP_NAME` | Passkey relying-party display name |
+| `NORDRELAY_WEBAUTHN_RP_ID` | Optional passkey relying-party domain |
+| `NORDRELAY_WEBAUTHN_ORIGIN` | Optional expected WebUI origin |
+
 ## Chat adapters
 
 | Key | Purpose |

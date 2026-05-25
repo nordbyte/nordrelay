@@ -69,6 +69,8 @@ import type {
   TelegramIdentityRecord,
   UserRecord,
   WebSessionRecord,
+  PublicApiTokenRecord,
+  PublicWebAuthnCredentialRecord,
 } from "../access/user-management.js";
 import type { WebActivityEvent, WebChatMessage } from "./web-state.js";
 import type { VoiceDiagnostics } from "../artifacts/voice.js";
@@ -89,6 +91,7 @@ export interface WebCurrentUserDto {
   user: PublicUser;
   groups: GroupRecord[];
   permissions: Permission[];
+  apiToken?: PublicApiTokenRecord;
   csrfToken?: string;
 }
 
@@ -101,6 +104,12 @@ export interface WebProfileResponse {
   slackIdentities: SlackIdentityRecord[];
   matrixIdentities: MatrixIdentityRecord[];
   webSessions: PublicWebSession[];
+  mfa: {
+    totpEnabled: boolean;
+    recoveryCodesRemaining: number;
+    webAuthnCredentials: PublicWebAuthnCredentialRecord[];
+  };
+  apiTokens: PublicApiTokenRecord[];
   currentSessionId?: string;
 }
 
@@ -142,6 +151,8 @@ export interface WebUserManagementResponse {
     slackIdentities: SlackIdentityRecord[];
     matrixIdentities: MatrixIdentityRecord[];
     webSessions: PublicWebSession[];
+    mfa: WebProfileResponse["mfa"];
+    apiTokens: PublicApiTokenRecord[];
   }>;
   groups: GroupRecord[];
   telegramChats: TelegramChatAccessRecord[];
@@ -179,6 +190,14 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/profile" ? { displayName?: string; theme?: "light" | "dark" | "system"; preferences?: { theme?: "light" | "dark" | "system" } } :
   P extends "/api/profile/password" ? { currentPassword: string; newPassword?: string; password?: string } :
   P extends "/api/profile/logout-other-sessions" ? Record<string, never> :
+  P extends "/api/profile/mfa/totp/setup" ? Record<string, never> :
+  P extends "/api/profile/mfa/totp/enable" ? { secret: string; code: string } :
+  P extends "/api/profile/mfa/totp/disable" | "/api/profile/mfa/recovery-codes" ? Record<string, never> :
+  P extends "/api/profile/webauthn/register/options" ? Record<string, never> :
+  P extends "/api/profile/webauthn/register/verify" ? { challengeId: string; response: unknown; name?: string } :
+  P extends `/api/profile/webauthn/${string}` ? Record<string, never> :
+  P extends "/api/profile/api-tokens" ? { name: string; permissions: string[]; agentIds?: string[]; workspaceRoots?: string[]; peerIds?: string[]; expiresAt?: string } :
+  P extends `/api/profile/api-tokens/${string}` | `/api/profile/sessions/${string}` ? Record<string, never> :
   P extends "/api/agent" ? { agentId: AgentId } :
   P extends "/api/agent-update" ? { agentId: AgentId; operation?: "update" | "install" } :
   P extends "/api/sessions/new" ? { agentId?: AgentId; workspace?: string; workspaceMode?: SessionWorkspaceMode; model?: string; reasoningEffort?: string; launchProfileId?: string; fastMode?: boolean } :
@@ -256,6 +275,14 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/profile" ? WebProfileResponse :
   P extends "/api/profile/password" ? { ok: boolean; profile?: WebProfileResponse } :
   P extends "/api/profile/logout-other-sessions" ? { revoked: number; profile?: WebProfileResponse } :
+  P extends "/api/profile/mfa/totp/setup" ? { secret: string; otpauthUrl: string } :
+  P extends "/api/profile/mfa/totp/enable" | "/api/profile/mfa/recovery-codes" ? { recoveryCodes: string[]; status: WebProfileResponse["mfa"] } :
+  P extends "/api/profile/mfa/totp/disable" ? { status: WebProfileResponse["mfa"] } :
+  P extends "/api/profile/webauthn/register/options" ? { challengeId: string; options: unknown } :
+  P extends "/api/profile/webauthn/register/verify" ? { credential: unknown; status: WebProfileResponse["mfa"] } :
+  P extends `/api/profile/webauthn/${string}` ? { removed: boolean; status: WebProfileResponse["mfa"] } :
+  P extends "/api/profile/api-tokens" ? { tokens: PublicApiTokenRecord[] } | { token: string; record: PublicApiTokenRecord } :
+  P extends `/api/profile/api-tokens/${string}` | `/api/profile/sessions/${string}` ? { removed: boolean } :
   P extends "/api/bootstrap" ? WebBootstrapResponse :
   P extends "/api/health" ? WebStatusResponse :
   P extends "/api/snapshot" ? RelaySnapshot :

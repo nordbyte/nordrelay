@@ -6,6 +6,40 @@ NordRelay uses one user system for the WebUI and all chat adapters.
 
 When the WebUI is enabled, every dashboard page, API route, SSE stream, artifact download, health endpoint, and state-changing action requires an authenticated NordRelay user.
 
+## Account security
+
+Each user can manage additional security controls from the WebUI profile menu:
+
+- authenticator-app MFA using standard six-digit TOTP codes
+- single-use recovery codes for account recovery
+- passkeys using WebAuthn when the browser and dashboard origin support it
+- active web sessions with device, IP, last-seen time, and revoke controls
+
+Passkeys are enabled by default with dynamic relying-party values derived from the WebUI request. For reverse proxies or public domains, set `NORDRELAY_WEBAUTHN_RP_ID` and `NORDRELAY_WEBAUTHN_ORIGIN` so browsers verify the expected domain consistently.
+
+Recovery codes are shown only when created or regenerated. Store them outside the repository and outside `~/.nordrelay`.
+
+## API tokens
+
+Users with `auth.manage` can create scoped API tokens from the profile menu. Tokens are shown once, stored only as hashes, and can be limited by:
+
+- permissions
+- agent IDs
+- workspace roots
+- peer IDs
+- expiration time
+
+Use API tokens for automations such as workflow runs. Send them as a Bearer token:
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"variables":{}}' \
+  http://127.0.0.1:31878/api/workflows/<workflow-id>/run
+```
+
+API tokens do not bypass permissions or scopes. They only replace the browser cookie session for API calls.
+
 ## Users and groups
 
 Admins can manage:

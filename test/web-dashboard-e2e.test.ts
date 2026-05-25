@@ -756,11 +756,12 @@ describe("web dashboard browser-flow assets", () => {
 
   it("includes first-run admin setup guarded by a setup token", () => {
     const source = readFileSync("src/web/web-dashboard.ts", "utf8");
+    const authSource = readFileSync("src/web/web-dashboard-auth-routes.ts", "utf8");
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
 
     expect(source).toContain("firstRunSetupToken");
     expect(source).toContain("/api/setup/admin");
-    expect(source).toContain("firstRunSetupTokenError");
+    expect(authSource).toContain("firstRunSetupTokenError");
     expect(pageSource).toContain("NordRelay Setup");
     expect(pageSource).toContain("setupToken");
   });

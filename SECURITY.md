@@ -30,6 +30,8 @@ NordRelay is designed to fail closed:
 - A fresh install requires a NordRelay admin user before chat adapters or WebUI control can be used.
 - If the WebUI first-run setup wizard is used remotely, creating the first admin requires the one-time setup token printed in the server console.
 - WebUI login is required for every dashboard page, API route, SSE stream, artifact download, and health endpoint.
+- WebUI accounts can add authenticator-app MFA, recovery codes, passkeys, and per-device session revocation.
+- Profile API tokens are stored only as hashes, are shown once, and are restricted by the token's permissions and optional agent, workspace, peer, and expiration scopes.
 - Telegram private chats require a linked active NordRelay user.
 - Telegram group and forum chats are disabled until an admin enables the chat.
 - Discord DMs require a linked active NordRelay user.
@@ -48,7 +50,7 @@ NordRelay is designed to fail closed:
 - The last active admin user cannot be disabled or demoted.
 - WebUI login and chat account-link attempts are rate-limited.
 - Password changes and group membership changes revoke existing WebUI sessions.
-- User, group, Telegram-link, Telegram-chat, Discord-link, Discord-channel, Slack-link, Slack-channel, Matrix-link, Matrix-room, session-revocation, login, and permission-denied events are audited.
+- User, group, Telegram-link, Telegram-chat, Discord-link, Discord-channel, Slack-link, Slack-channel, Matrix-link, Matrix-room, MFA, passkey, API-token, session-revocation, login, and permission-denied events are audited.
 - Uploaded files are staged inside the selected workspace.
 - Secrets are redacted from logs, channel diagnostics, and diagnostics support bundles where possible.
 

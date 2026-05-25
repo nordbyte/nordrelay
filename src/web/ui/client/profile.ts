@@ -56,9 +56,13 @@ async function loadProfile(){
   document.getElementById('profileNameInput').value=profile.user.displayName||'';
   document.getElementById('profileThemeSelect').value=normalizeThemePreference(profile.user.preferences?.theme||savedThemePreference());
   renderProfileLinkedAccounts(profile);
+  renderProfileSecurity(profile);
+  renderProfileApiTokens(profile);
   renderProfileWebSessions(profile);
   document.getElementById('profileStatus').textContent='';
   document.getElementById('profilePasswordStatus').textContent='';
+  document.getElementById('profileSecurityStatus').textContent='';
+  document.getElementById('profileApiTokenResult').textContent='';
 }
 
 function renderProfileLinkedAccounts(profile){
@@ -111,10 +115,56 @@ function renderProfileWebSessions(profile){
       ['Created',fmtDate(session.createdAt)],
       ['Last seen',fmtDate(session.lastSeenAt)],
       ['Expires',fmtDate(session.expiresAt)],
+      ['Device',session.deviceName||'-'],
+      ['IP',session.ipAddress||'-'],
+      ['MFA',session.mfaVerified?'verified':'not verified'],
       ['ID',session.id],
-    ],current?'enabled':'disabled');
+    ],current?'enabled':'disabled')+(current?'':'<div class="row"><button class="danger" data-profile-session-revoke="'+attr(session.id)+'">Revoke session</button></div>');
   });
   box.innerHTML=rows.join('')||'<div class="item empty-state">No active web sessions.</div>';
+  box.querySelectorAll('[data-profile-session-revoke]').forEach(button=>button.addEventListener('click',event=>safe(()=>revokeProfileSession(button.dataset.profileSessionRevoke),event)));
+}
+
+function renderProfileSecurity(profile){
+  const box=document.getElementById('profileSecurity');
+  if(!box)return;
+  const mfa=profile.mfa||{};
+  const rows=[];
+  rows.push(profileListItem('Authenticator app',[
+    ['Status',mfa.totpEnabled?'enabled':'disabled'],
+    ['Recovery codes remaining',String(mfa.recoveryCodesRemaining||0)],
+  ],mfa.totpEnabled?'enabled':'disabled')+'<div class="row">'+
+    (mfa.totpEnabled?'<button type="button" class="secondary" data-profile-recovery>Regenerate recovery codes</button><button type="button" class="danger" data-profile-totp-disable>Disable authenticator</button>':'')+
+    '</div>');
+  const passkeys=(mfa.webAuthnCredentials||[]).map(credential=>profileListItem(credential.name||'Passkey',[
+    ['Created',fmtDate(credential.createdAt)],
+    ['Last used',fmtDate(credential.lastUsedAt)],
+    ['ID',credential.id],
+  ],'enabled')+'<div class="row"><button type="button" class="danger" data-profile-passkey-delete="'+attr(credential.id)+'">Remove passkey</button></div>').join('');
+  rows.push('<div class="item"><strong>Passkeys</strong><div class="row"><button type="button" class="secondary" data-profile-passkey-add>Add passkey</button></div></div>'+(passkeys||'<div class="item empty-state">No passkeys registered.</div>'));
+  box.innerHTML=rows.join('');
+  box.querySelector('[data-profile-totp-disable]')?.addEventListener('click',event=>safe(disableProfileTotp,event));
+  box.querySelector('[data-profile-recovery]')?.addEventListener('click',event=>safe(regenerateProfileRecoveryCodes,event));
+  box.querySelector('[data-profile-passkey-add]')?.addEventListener('click',event=>safe(registerProfilePasskey,event));
+  box.querySelectorAll('[data-profile-passkey-delete]').forEach(button=>button.addEventListener('click',event=>safe(()=>deleteProfilePasskey(button.dataset.profilePasskeyDelete),event)));
+}
+
+function renderProfileApiTokens(profile){
+  const box=document.getElementById('profileApiTokens');
+  if(!box)return;
+  const rows=(profile.apiTokens||[]).map(token=>profileListItem(token.name||'API token',[
+    ['Prefix',token.tokenPrefix||'-'],
+    ['Permissions',(token.permissions||[]).join(', ')||'-'],
+    ['Agent scope',(token.agentIds||[]).join(', ')||'all'],
+    ['Workspace scope',(token.workspaceRoots||[]).join(', ')||'all'],
+    ['Peer scope',(token.peerIds||[]).join(', ')||'all'],
+    ['Created',fmtDate(token.createdAt)],
+    ['Last used',fmtDate(token.lastUsedAt)],
+    ['Expires',fmtDate(token.expiresAt)],
+    ['Status',token.revokedAt?'revoked':'active'],
+  ],token.revokedAt?'disabled':'enabled')+(token.revokedAt?'':'<div class="row"><button type="button" class="danger" data-profile-token-revoke="'+attr(token.id)+'">Revoke token</button></div>'));
+  box.innerHTML=rows.join('')||'<div class="item empty-state">No API tokens.</div>';
+  box.querySelectorAll('[data-profile-token-revoke]').forEach(button=>button.addEventListener('click',event=>safe(()=>revokeProfileApiToken(button.dataset.profileTokenRevoke),event)));
 }
 
 function profileListItem(title,rows,status=''){
@@ -162,6 +212,117 @@ async function logoutOtherProfileSessions(){
   toast('Logged out '+(result.revoked||0)+' other session'+((result.revoked||0)===1?'':'s'));
 }
 
+async function setupProfileTotp(){
+  const status=document.getElementById('profileSecurityStatus');
+  const setup=await api('/api/profile/mfa/totp/setup',{method:'POST',body:{},local:true});
+  const code=prompt('Scan this otpauth URL with your authenticator, then enter the 6-digit code.\\n\\n'+setup.otpauthUrl);
+  if(!code)return;
+  const result=await api('/api/profile/mfa/totp/enable',{method:'POST',body:{secret:setup.secret,code},local:true});
+  await loadProfile();
+  if(status)status.textContent='Authenticator enabled. Save these recovery codes now: '+(result.recoveryCodes||[]).join(' ');
+  toast('Authenticator enabled');
+}
+
+async function disableProfileTotp(){
+  if(!confirm('Disable authenticator MFA and remove recovery codes?'))return;
+  await api('/api/profile/mfa/totp/disable',{method:'POST',body:{},local:true});
+  await loadProfile();
+  toast('Authenticator disabled');
+}
+
+async function regenerateProfileRecoveryCodes(){
+  if(!confirm('Generate new recovery codes? Existing unused codes will stop working.'))return;
+  const result=await api('/api/profile/mfa/recovery-codes',{method:'POST',body:{},local:true});
+  await loadProfile();
+  const status=document.getElementById('profileSecurityStatus');
+  if(status)status.textContent='New recovery codes: '+(result.recoveryCodes||[]).join(' ');
+  toast('Recovery codes regenerated');
+}
+
+async function registerProfilePasskey(){
+  if(!navigator.credentials||!window.PublicKeyCredential){toast('Passkeys are not supported in this browser');return}
+  const name=prompt('Passkey name','Passkey')||'Passkey';
+  const setup=await api('/api/profile/webauthn/register/options',{method:'POST',body:{},local:true});
+  const credential=await navigator.credentials.create({publicKey:publicKeyCreation(setup.options)});
+  await api('/api/profile/webauthn/register/verify',{method:'POST',body:{challengeId:setup.challengeId,response:credentialToJson(credential),name},local:true});
+  await loadProfile();
+  toast('Passkey registered');
+}
+
+async function deleteProfilePasskey(id){
+  if(!id||!confirm('Remove this passkey?'))return;
+  await api('/api/profile/webauthn/'+encodeURIComponent(id),{method:'DELETE',body:{},local:true});
+  await loadProfile();
+  toast('Passkey removed');
+}
+
+async function createProfileApiToken(){
+  const name=prompt('Token name','Workflow token');
+  if(!name)return;
+  const permissionText=prompt('Comma-separated permissions for this token','workflows.run,workflows.read');
+  if(!permissionText)return;
+  const result=await api('/api/profile/api-tokens',{method:'POST',body:{name,permissions:permissionText.split(',').map(v=>v.trim()).filter(Boolean)},local:true});
+  await loadProfile();
+  const box=document.getElementById('profileApiTokenResult');
+  if(box)box.textContent='New token, shown once: '+result.token;
+  toast('API token created');
+}
+
+async function revokeProfileApiToken(id){
+  if(!id||!confirm('Revoke this API token?'))return;
+  await api('/api/profile/api-tokens/'+encodeURIComponent(id),{method:'DELETE',body:{},local:true});
+  await loadProfile();
+  toast('API token revoked');
+}
+
+async function revokeProfileSession(id){
+  if(!id||!confirm('Revoke this web session?'))return;
+  await api('/api/profile/sessions/'+encodeURIComponent(id),{method:'DELETE',body:{},local:true});
+  await loadProfile();
+  toast('Session revoked');
+}
+
+function publicKeyCreation(options){
+  return {
+    ...options,
+    challenge:b64ToBuf(options.challenge),
+    user:{...options.user,id:b64ToBuf(options.user.id)},
+    excludeCredentials:(options.excludeCredentials||[]).map(c=>({...c,id:b64ToBuf(c.id)})),
+  };
+}
+
+function credentialToJson(credential){
+  return {
+    id:credential.id,
+    rawId:bufToB64(credential.rawId),
+    type:credential.type,
+    response:{
+      attestationObject:credential.response.attestationObject?bufToB64(credential.response.attestationObject):undefined,
+      authenticatorData:credential.response.authenticatorData?bufToB64(credential.response.authenticatorData):undefined,
+      clientDataJSON:bufToB64(credential.response.clientDataJSON),
+      signature:credential.response.signature?bufToB64(credential.response.signature):undefined,
+      userHandle:credential.response.userHandle?bufToB64(credential.response.userHandle):undefined,
+      transports:credential.response.getTransports?credential.response.getTransports():undefined,
+    },
+  };
+}
+
+function b64ToBuf(value){
+  const normalized=String(value||'');
+  const pad='='.repeat((4-normalized.length%4)%4);
+  const binary=atob((normalized+pad).replace(/-/g,'+').replace(/_/g,'/'));
+  const bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+function bufToB64(buffer){
+  const bytes=new Uint8Array(buffer);
+  let binary='';
+  for(const byte of bytes)binary+=String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+
 document.getElementById('userMenuBtn')?.addEventListener('click',()=>setUserMenuOpen(document.getElementById('userMenuPanel')?.hidden!==false));
 document.addEventListener('click',event=>{
   const menu=document.getElementById('accountMenu');
@@ -174,4 +335,6 @@ document.getElementById('profileThemeSelect')?.addEventListener('change',event=>
 document.getElementById('saveProfileBtn')?.addEventListener('click',event=>safe(saveProfile,event));
 document.getElementById('changeProfilePasswordBtn')?.addEventListener('click',event=>safe(changeProfilePassword,event));
 document.getElementById('logoutOtherSessionsBtn')?.addEventListener('click',event=>safe(logoutOtherProfileSessions,event));
+document.getElementById('setupTotpBtn')?.addEventListener('click',event=>safe(setupProfileTotp,event));
+document.getElementById('createApiTokenBtn')?.addEventListener('click',event=>safe(createProfileApiToken,event));
 document.getElementById('closeProfileBtn')?.addEventListener('click',()=>document.getElementById('profileDialog')?.close());

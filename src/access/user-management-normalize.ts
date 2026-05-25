@@ -17,15 +17,19 @@ import type {
   MatrixLinkCodeRecord,
   MatrixRoomAccessRecord,
   PersistedUsers,
+  ApiTokenRecord,
+  RecoveryCodeRecord,
   SlackChannelAccessRecord,
   SlackIdentityRecord,
   SlackLinkCodeRecord,
   TelegramChatAccessRecord,
   TelegramIdentityRecord,
   TelegramLinkCodeRecord,
+  TotpCredentialRecord,
   UserGroupRecord,
   UserPreferences,
   UserRecord,
+  WebAuthnCredentialRecord,
   WebSessionRecord,
 } from "./user-management-types.js";
 
@@ -97,6 +101,16 @@ export function normalizePayload(payload: PersistedUsers | undefined): Persisted
       ...room,
       artifactDelivery: normalizeArtifactDeliveryMode(room.artifactDelivery),
       allowedGroupIds: room.allowedGroupIds.filter((groupId) => groupIds.has(groupId)),
+    })),
+    totpCredentials: (payload?.totpCredentials ?? []).filter((item) => isTotpCredentialRecord(item) && userIds.has(item.userId)),
+    recoveryCodes: (payload?.recoveryCodes ?? []).filter((item) => isRecoveryCodeRecord(item) && userIds.has(item.userId)),
+    webAuthnCredentials: (payload?.webAuthnCredentials ?? []).filter((item) => isWebAuthnCredentialRecord(item) && userIds.has(item.userId)),
+    apiTokens: (payload?.apiTokens ?? []).filter((item) => isApiTokenRecord(item) && userIds.has(item.userId)).map((token) => ({
+      ...token,
+      permissions: normalizePermissions(token.permissions),
+      agentIds: normalizeStringList(token.agentIds),
+      workspaceRoots: normalizeStringList(token.workspaceRoots),
+      peerIds: normalizeStringList(token.peerIds),
     })),
     webSessions: (payload?.webSessions ?? []).filter((item) => isWebSessionRecord(item) && userIds.has(item.userId)),
     telegramLinkCodes: (payload?.telegramLinkCodes ?? []).filter((item) => isTelegramLinkCodeRecord(item) && userIds.has(item.userId)),
@@ -264,6 +278,33 @@ function isMatrixRoomAccessRecord(value: unknown): value is MatrixRoomAccessReco
   const candidate = value as MatrixRoomAccessRecord;
   return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.roomId === "string" &&
     typeof candidate.enabled === "boolean" && Array.isArray(candidate.allowedGroupIds);
+}
+
+function isTotpCredentialRecord(value: unknown): value is TotpCredentialRecord {
+  const candidate = value as TotpCredentialRecord;
+  return Boolean(candidate) && typeof candidate.userId === "string" && typeof candidate.secret === "string" &&
+    typeof candidate.enabledAt === "string";
+}
+
+function isRecoveryCodeRecord(value: unknown): value is RecoveryCodeRecord {
+  const candidate = value as RecoveryCodeRecord;
+  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.userId === "string" &&
+    typeof candidate.codeHash === "string" && typeof candidate.createdAt === "string";
+}
+
+function isWebAuthnCredentialRecord(value: unknown): value is WebAuthnCredentialRecord {
+  const candidate = value as WebAuthnCredentialRecord;
+  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.userId === "string" &&
+    typeof candidate.credentialId === "string" && typeof candidate.publicKey === "string" &&
+    typeof candidate.counter === "number" && typeof candidate.name === "string";
+}
+
+function isApiTokenRecord(value: unknown): value is ApiTokenRecord {
+  const candidate = value as ApiTokenRecord;
+  return Boolean(candidate) && typeof candidate.id === "string" && typeof candidate.userId === "string" &&
+    typeof candidate.name === "string" && typeof candidate.tokenHash === "string" &&
+    typeof candidate.tokenPrefix === "string" && Array.isArray(candidate.permissions) &&
+    typeof candidate.createdAt === "string";
 }
 
 function isWebSessionRecord(value: unknown): value is WebSessionRecord {

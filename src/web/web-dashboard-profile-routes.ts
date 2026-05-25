@@ -5,6 +5,8 @@ import {
   type AuthenticatedUser,
   type GroupRecord,
   type PublicWebSessionRecord,
+  type PublicApiTokenRecord,
+  type PublicWebAuthnCredentialRecord,
   type TelegramIdentityRecord,
   type DiscordIdentityRecord,
   type MatrixIdentityRecord,
@@ -30,6 +32,12 @@ export interface WebProfileDto {
   slackIdentities: SlackIdentityRecord[];
   matrixIdentities: MatrixIdentityRecord[];
   webSessions: PublicWebSessionRecord[];
+  mfa: {
+    totpEnabled: boolean;
+    recoveryCodesRemaining: number;
+    webAuthnCredentials: PublicWebAuthnCredentialRecord[];
+  };
+  apiTokens: PublicApiTokenRecord[];
   currentSessionId?: string;
 }
 
@@ -115,6 +123,8 @@ function profileDto(users: UserStore, authUser: AuthenticatedUser, sessionToken?
       slackIdentities: [],
       matrixIdentities: [],
       webSessions: current ? [current] : [],
+      mfa: users.mfaStatus(authUser.user.id),
+      apiTokens: [],
       currentSessionId: current?.id,
     };
   }
@@ -127,6 +137,8 @@ function profileDto(users: UserStore, authUser: AuthenticatedUser, sessionToken?
     slackIdentities,
     matrixIdentities,
     webSessions,
+    mfa,
+    apiTokens,
     ...user
   } = entry;
   return {
@@ -138,6 +150,8 @@ function profileDto(users: UserStore, authUser: AuthenticatedUser, sessionToken?
     slackIdentities,
     matrixIdentities,
     webSessions,
+    mfa,
+    apiTokens,
     currentSessionId: current?.id,
   };
 }

@@ -17,6 +17,7 @@ import { RelayRuntime, type ActiveSessionsDto, type DashboardControlOptions, typ
 import { resolveDashboardEnvPath, SettingsService } from "../core/settings-service.js";
 import { mergeSettingsWizardTestSettings, runSettingsWizardTest } from "../core/settings-wizard-test.js";
 import { UserStore, publicUser, type AuthenticatedUser } from "../access/user-management.js";
+import type { WebAuthnRelyingParty } from "../access/webauthn.js";
 import type { WebActivityActor } from "./web-state.js";
 import { handleDashboardAccessRoute } from "./web-dashboard-access-routes.js";
 import { handleDashboardArtifactRoute } from "./web-dashboard-artifact-routes.js";
@@ -36,10 +37,17 @@ import {
   registerWebResponseRequest,
 } from "./web-dashboard-http.js";
 import { renderDashboardApp, renderFirstRunSetupPage, renderLoginPage } from "./web-dashboard-pages.js";
+import {
+  handleFirstRunSetup,
+  handleLogin,
+  handleLoginMfa,
+  handleLoginWebAuthnVerify,
+} from "./web-dashboard-auth-routes.js";
 import { handleDashboardRuntimeRoute } from "./web-dashboard-runtime-routes.js";
 import { handleDashboardSessionRoute } from "./web-dashboard-session-routes.js";
 import { handleDashboardPeerRoute } from "./web-dashboard-peer-routes.js";
 import { handleDashboardProfileRoute } from "./web-dashboard-profile-routes.js";
+import { handleDashboardProfileSecurityRoute } from "./web-dashboard-profile-security-routes.js";
 import { handleDashboardWorkflowRoute } from "./web-dashboard-workflow-routes.js";
 import { activeSettingsValues } from "./web-dashboard-settings-values.js";
 import { PeerDiscoveryJobManager } from "../peers/peer-discovery-jobs.js";
@@ -47,8 +55,7 @@ import { applyAutostartSettings } from "../support/autostart.js";
 import { recordWebApiMetric } from "./web-performance.js";
 import { getObservabilityRegistry } from "../observability/observability-registry.js";
 import { createCspNonce, isMutatingWebApiRequest, requiresWebCsrf } from "./web-dashboard-security.js";
-import { consumeRateLimit, resetRateLimit, type RateLimitBucket } from "./web-rate-limit.js";
-import { firstRunSetupTokenError } from "./web-first-run-setup-policy.js";
+import { consumeRateLimit, type RateLimitBucket } from "./web-rate-limit.js";
 
 interface DashboardOptions {
   host: string;
@@ -117,11 +124,19 @@ process.once("SIGTERM", () => shutdown());
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   if (url.pathname === "/api/auth" && req.method === "POST") {
-    await handleLogin(req, res);
+    await handleLogin(req, res, authRouteOptions());
+    return;
+  }
+  if (url.pathname === "/api/auth/mfa" && req.method === "POST") {
+    await handleLoginMfa(req, res, authRouteOptions());
+    return;
+  }
+  if (url.pathname === "/api/auth/webauthn/verify" && req.method === "POST") {
+    await handleLoginWebAuthnVerify(req, res, authRouteOptions());
     return;
   }
   if (url.pathname === "/api/setup/admin" && req.method === "POST") {
-    await handleFirstRunSetup(req, res);
+    await handleFirstRunSetup(req, res, authRouteOptions());
     return;
   }
   if (url.pathname === "/api/dashboard/logout" && req.method === "POST") {
@@ -183,7 +198,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     }
   }
 
-  if (requiresCsrf(req, url) && !verifyCsrf(req)) {
+  if (!authenticated.apiToken && requiresCsrf(req, url) && !verifyCsrf(req)) {
     audit({
       action: "permission_denied",
       status: "denied",
@@ -275,6 +290,20 @@ function sendDashboardBundle(res: ServerResponse, assetName: "dashboard.css" | "
   sendText(res, 200, fallback(), contentType, { cacheControl });
 }
 
+function authRouteOptions() {
+  return {
+    users,
+    loginAttempts,
+    firstRunSetupToken,
+    webAuthnEnabled: config.webAuthnEnabled,
+    webAuthnRp: webAuthnRpForRequest,
+    audit,
+    recordActivity: runtime.recordActivity.bind(runtime),
+    currentUserDto,
+    setSessionCookie,
+  };
+}
+
 async function handleWorkflowTriggerRun(req: IncomingMessage, res: ServerResponse, token: string): Promise<void> {
   const limited = consumeRateLimit(
     apiMutationAttempts,
@@ -323,6 +352,16 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
       description: `${permission} required for ${req.method ?? "GET"} ${url.pathname}`,
     });
     sendJson(res, 403, { error: `Access denied: ${permission} permission required.` });
+    return;
+  }
+
+  if (await handleDashboardProfileSecurityRoute(req, res, url, {
+    users,
+    authUser,
+    webAuthnEnabled: config.webAuthnEnabled,
+    webAuthnRp: () => webAuthnRpForRequest(req),
+    auditUserAction,
+  })) {
     return;
   }
 
@@ -521,114 +560,6 @@ async function handleEvents(req: IncomingMessage, res: ServerResponse): Promise<
   });
 }
 
-async function handleFirstRunSetup(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  if (users.hasAdminUser()) {
-    sendJson(res, 409, { error: "Admin user already exists." });
-    return;
-  }
-  const body = await readJsonBody(req);
-  const email = optionalStringField(body, "email") ?? "";
-  const displayName = optionalStringField(body, "displayName") ?? email;
-  const password = optionalStringField(body, "password") ?? "";
-  const setupToken = optionalStringField(body, "setupToken") ?? "";
-  const setupTokenError = firstRunSetupTokenError(setupToken, firstRunSetupToken);
-  if (setupTokenError) {
-    audit({
-      action: "auth_login_failed",
-      status: "denied",
-      channelId: "web",
-      contextKey: "web",
-      description: `Rejected first-run setup for ${email || "unknown"}`,
-    });
-    sendJson(res, 403, { error: setupTokenError });
-    return;
-  }
-  if (!email || !password || password.length < 12) {
-    sendJson(res, 400, { error: "Email and a password with at least 12 characters are required." });
-    return;
-  }
-  const authUser = users.createAdmin({ email, displayName, password });
-  const session = users.createWebSession(authUser.user.id);
-  audit({
-    action: "user_created",
-    status: "ok",
-    channelId: "web",
-    contextKey: "web",
-    actor: webActivityActor(authUser),
-    actorId: authUser.user.id,
-    actorRole: authUser.groups.map((group) => group.name).join(", "),
-    description: `First admin created: ${authUser.user.email}`,
-  });
-  runtime.recordActivity({
-    source: "web",
-    status: "info",
-    type: "first_run_admin_created",
-    threadId: null,
-    actor: webActivityActor(authUser),
-    detail: authUser.user.email,
-  });
-  setSessionCookie(res, session.token, req);
-  sendJson(res, 201, currentUserDto(authUser, undefined, session.token));
-}
-
-async function handleLogin(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = await readJsonBody(req);
-  const email = optionalStringField(body, "email");
-  const password = optionalStringField(body, "password");
-  const rateLimitKey = `${req.socket.remoteAddress ?? "unknown"}:${email ?? "-"}`;
-  const limited = consumeRateLimit(loginAttempts, rateLimitKey, 5, 15 * 60 * 1000, 15 * 60 * 1000);
-  if (limited.limited) {
-    audit({
-      action: "auth_login_failed",
-      status: "denied",
-      channelId: "web",
-      contextKey: "web",
-      description: `Rate limited login attempt for ${email ?? "unknown"}`,
-      detail: `${Math.ceil((limited.retryAfterMs ?? 0) / 1000)}s retry-after`,
-    });
-    sendJson(res, 429, { error: "Too many login attempts. Try again later.", retryAfterMs: limited.retryAfterMs });
-    return;
-  }
-  if (!users.hasAdminUser()) {
-    sendJson(res, 503, { error: "No admin user exists. Run nordrelay user create-admin first." });
-    return;
-  }
-  const authUser = email && password ? users.verifyPassword(email, password) : null;
-  if (!authUser) {
-    audit({
-      action: "auth_login_failed",
-      status: "failed",
-      channelId: "web",
-      contextKey: "web",
-      description: `Failed login for ${email ?? "unknown"}`,
-    });
-    sendJson(res, 401, { error: "Invalid credentials" });
-    return;
-  }
-  resetRateLimit(loginAttempts, rateLimitKey);
-  const session = users.createWebSession(authUser.user.id);
-  audit({
-    action: "auth_login",
-    status: "ok",
-      channelId: "web",
-      contextKey: "web",
-      actor: webActivityActor(authUser),
-      actorId: authUser.user.id,
-      actorRole: authUser.groups.map((group) => group.name).join(", "),
-      description: `Login ${authUser.user.email}`,
-  });
-  runtime.recordActivity({
-    source: "web",
-    status: "info",
-    type: "auth_login",
-    threadId: null,
-    actor: webActivityActor(authUser),
-    detail: authUser.user.email,
-  });
-  setSessionCookie(res, session.token, req);
-  sendJson(res, 200, currentUserDto(authUser, undefined, session.token));
-}
-
 function handleLogout(req: IncomingMessage, res: ServerResponse): void {
   const authUser = authenticateRequest(req);
   if (authUser && !verifyCsrf(req)) {
@@ -660,8 +591,34 @@ function parseOptions(argv: string[]): DashboardOptions {
 }
 
 function authenticateRequest(req: IncomingMessage): AuthenticatedUser | null {
+  const bearer = bearerToken(req);
+  if (bearer) {
+    return users.resolveApiToken(bearer);
+  }
   const cookies = parseCookies(req.headers.cookie ?? "");
   return users.resolveWebSession(cookies.nr_session);
+}
+
+function bearerToken(req: IncomingMessage): string | undefined {
+  const header = headerValue(req, "authorization");
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  return match?.[1]?.trim();
+}
+
+function webAuthnRpForRequest(req: IncomingMessage): WebAuthnRelyingParty {
+  const origin = config.webAuthnOrigin || requestOrigin(req);
+  const host = new URL(origin).hostname;
+  return {
+    rpName: config.webAuthnRpName,
+    rpId: config.webAuthnRpId || host,
+    origin,
+  };
+}
+
+function requestOrigin(req: IncomingMessage): string {
+  const proto = String(headerValue(req, "x-forwarded-proto") || (isHttpsRequest(req) ? "https" : "http")).split(",")[0]?.trim() || "http";
+  const host = headerValue(req, "x-forwarded-host") || headerValue(req, "host") || `${options.host}:${options.port}`;
+  return `${proto}://${host}`;
 }
 
 function setSessionCookie(res: ServerResponse, token: string, req?: IncomingMessage): void {
@@ -684,7 +641,8 @@ function currentUserDto(authUser: AuthenticatedUser, req?: IncomingMessage, sess
     user: publicUser(authUser.user),
     groups: authUser.groups,
     permissions: authUser.permissions,
-    csrfToken: token ? csrfTokenForSession(token) : undefined,
+    apiToken: authUser.apiToken,
+    csrfToken: authUser.apiToken ? undefined : token ? csrfTokenForSession(token) : undefined,
   };
 }
 

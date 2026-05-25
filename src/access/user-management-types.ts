@@ -21,6 +21,51 @@ export interface UserPreferences {
   artifactDelivery?: ArtifactDeliveryMode;
 }
 
+export interface TotpCredentialRecord {
+  userId: string;
+  secret: string;
+  enabledAt: string;
+  lastUsedStep?: number;
+}
+
+export interface RecoveryCodeRecord {
+  id: string;
+  userId: string;
+  codeHash: string;
+  createdAt: string;
+  usedAt?: string;
+}
+
+export interface WebAuthnCredentialRecord {
+  id: string;
+  userId: string;
+  credentialId: string;
+  publicKey: string;
+  counter: number;
+  transports?: string[];
+  name: string;
+  deviceType?: string;
+  backedUp?: boolean;
+  createdAt: string;
+  lastUsedAt?: string;
+}
+
+export interface ApiTokenRecord {
+  id: string;
+  userId: string;
+  name: string;
+  tokenHash: string;
+  tokenPrefix: string;
+  permissions: Permission[];
+  agentIds: string[];
+  workspaceRoots: string[];
+  peerIds: string[];
+  createdAt: string;
+  expiresAt?: string;
+  lastUsedAt?: string;
+  revokedAt?: string;
+}
+
 export interface GroupRecord extends GroupDefinition {
   agentIds: string[];
   workspaceRoots: string[];
@@ -143,6 +188,11 @@ export interface WebSessionRecord {
   createdAt: string;
   expiresAt: string;
   lastSeenAt: string;
+  userAgent?: string;
+  ipAddress?: string;
+  deviceName?: string;
+  mfaVerified?: boolean;
+  apiTokenId?: string;
 }
 
 export interface TelegramLinkCodeRecord {
@@ -177,9 +227,11 @@ export interface AuthenticatedUser {
   user: UserRecord;
   groups: GroupRecord[];
   permissions: Permission[];
+  apiToken?: PublicApiTokenRecord;
 }
 
 export type PublicWebSessionRecord = Omit<WebSessionRecord, "tokenHash">;
+export type PublicApiTokenRecord = Omit<ApiTokenRecord, "tokenHash">;
 
 export interface UserManagementSnapshot {
   users: Array<UserRecord & {
@@ -189,6 +241,12 @@ export interface UserManagementSnapshot {
     slackIdentities: SlackIdentityRecord[];
     matrixIdentities: MatrixIdentityRecord[];
     webSessions: PublicWebSessionRecord[];
+    mfa: {
+      totpEnabled: boolean;
+      recoveryCodesRemaining: number;
+      webAuthnCredentials: PublicWebAuthnCredentialRecord[];
+    };
+    apiTokens: PublicApiTokenRecord[];
   }>;
   groups: GroupRecord[];
   telegramChats: TelegramChatAccessRecord[];
@@ -197,6 +255,8 @@ export interface UserManagementSnapshot {
   matrixRooms: MatrixRoomAccessRecord[];
   adminConfigured: boolean;
 }
+
+export type PublicWebAuthnCredentialRecord = Omit<WebAuthnCredentialRecord, "publicKey">;
 
 export interface PersistedUsers {
   version: 1;
@@ -211,6 +271,10 @@ export interface PersistedUsers {
   slackChannels: SlackChannelAccessRecord[];
   matrixIdentities: MatrixIdentityRecord[];
   matrixRooms: MatrixRoomAccessRecord[];
+  totpCredentials: TotpCredentialRecord[];
+  recoveryCodes: RecoveryCodeRecord[];
+  webAuthnCredentials: WebAuthnCredentialRecord[];
+  apiTokens: ApiTokenRecord[];
   webSessions: WebSessionRecord[];
   telegramLinkCodes: TelegramLinkCodeRecord[];
   discordLinkCodes: DiscordLinkCodeRecord[];

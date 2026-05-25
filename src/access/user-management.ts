@@ -36,7 +36,9 @@ import {
   sleepSync,
   verifyPasswordHash,
 } from "./user-management-crypto.js";
+import { generateRecoveryCodes, generateTotpSecret, totpUri, verifyTotpCode } from "./mfa.js";
 import type {
+  ApiTokenRecord,
   AuthenticatedUser,
   DiscordChannelAccessRecord,
   DiscordIdentityRecord,
@@ -46,17 +48,22 @@ import type {
   MatrixLinkCodeRecord,
   MatrixRoomAccessRecord,
   PersistedUsers,
+  PublicApiTokenRecord,
   PublicWebSessionRecord,
+  PublicWebAuthnCredentialRecord,
+  RecoveryCodeRecord,
   SlackChannelAccessRecord,
   SlackIdentityRecord,
   SlackLinkCodeRecord,
   TelegramChatAccessRecord,
   TelegramIdentityRecord,
   TelegramLinkCodeRecord,
+  TotpCredentialRecord,
   UserGroupRecord,
   UserManagementSnapshot,
   UserPreferences,
   UserRecord,
+  WebAuthnCredentialRecord,
   WebSessionRecord,
 } from "./user-management-types.js";
 
@@ -70,22 +77,28 @@ export type {
   MatrixLinkCodeRecord,
   MatrixRoomAccessRecord,
   PersistedUsers,
+  PublicApiTokenRecord,
   PublicWebSessionRecord,
+  PublicWebAuthnCredentialRecord,
+  RecoveryCodeRecord,
   SlackChannelAccessRecord,
   SlackIdentityRecord,
   SlackLinkCodeRecord,
   TelegramChatAccessRecord,
   TelegramIdentityRecord,
   TelegramLinkCodeRecord,
+  TotpCredentialRecord,
   UserGroupRecord,
   UserManagementSnapshot,
   UserPreferences,
   UserRecord,
+  WebAuthnCredentialRecord,
   WebSessionRecord,
 } from "./user-management-types.js";
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const LINK_CODE_TTL_MS = 15 * 60 * 1000;
+const API_TOKEN_BYTES = 32;
 const WRITE_LOCK_TIMEOUT_MS = 5_000;
 const STALE_LOCK_MS = 30_000;
 
@@ -119,6 +132,16 @@ export class UserStore {
         webSessions: payload.webSessions
           .filter((session) => session.userId === user.id)
           .map(publicWebSession),
+        mfa: {
+          totpEnabled: payload.totpCredentials.some((credential) => credential.userId === user.id),
+          recoveryCodesRemaining: payload.recoveryCodes.filter((code) => code.userId === user.id && !code.usedAt).length,
+          webAuthnCredentials: payload.webAuthnCredentials
+            .filter((credential) => credential.userId === user.id)
+            .map(publicWebAuthnCredential),
+        },
+        apiTokens: payload.apiTokens
+          .filter((token) => token.userId === user.id)
+          .map(publicApiToken),
       })),
       groups: payload.groups,
       telegramChats: payload.telegramChats,
@@ -344,7 +367,13 @@ export class UserStore {
     });
   }
 
-  createWebSession(userId: string): { token: string; session: WebSessionRecord } {
+  authenticatedUserById(userId: string): AuthenticatedUser | null {
+    const payload = this.readPayload();
+    const user = payload.users.find((candidate) => candidate.id === userId && candidate.active);
+    return user ? this.authenticatedUser(payload, user) : null;
+  }
+
+  createWebSession(userId: string, metadata: Partial<Pick<WebSessionRecord, "userAgent" | "ipAddress" | "deviceName" | "mfaVerified" | "apiTokenId">> = {}): { token: string; session: WebSessionRecord } {
     return this.mutatePayload((payload) => {
       const user = payload.users.find((candidate) => candidate.id === userId && candidate.active);
       if (!user) {
@@ -359,6 +388,11 @@ export class UserStore {
         createdAt: now.toISOString(),
         expiresAt: new Date(now.getTime() + SESSION_TTL_MS).toISOString(),
         lastSeenAt: now.toISOString(),
+        userAgent: metadata.userAgent,
+        ipAddress: metadata.ipAddress,
+        deviceName: metadata.deviceName,
+        mfaVerified: Boolean(metadata.mfaVerified),
+        apiTokenId: metadata.apiTokenId,
       };
       payload.webSessions.push(session);
       this.pruneExpiredSessionsInPayload(payload);
@@ -432,6 +466,229 @@ export class UserStore {
       new Date(candidate.expiresAt).getTime() > Date.now()
     );
     return session ? publicWebSession(session) : null;
+  }
+
+  mfaStatus(userId: string): {
+    totpEnabled: boolean;
+    recoveryCodesRemaining: number;
+    webAuthnCredentials: PublicWebAuthnCredentialRecord[];
+  } {
+    const payload = this.readPayload();
+    return this.mfaStatusInPayload(payload, userId);
+  }
+
+  setupTotp(userId: string, accountName?: string): { secret: string; otpauthUrl: string } {
+    const payload = this.readPayload();
+    const user = payload.users.find((candidate) => candidate.id === userId && candidate.active);
+    if (!user) throw new Error("Active user not found.");
+    const secret = generateTotpSecret();
+    return {
+      secret,
+      otpauthUrl: totpUri({ issuer: "NordRelay", accountName: accountName || user.email, secret }),
+    };
+  }
+
+  enableTotp(userId: string, secret: string, code: string): { recoveryCodes: string[]; status: ReturnType<UserStore["mfaStatus"]> } {
+    return this.mutatePayload((payload) => {
+      const user = payload.users.find((candidate) => candidate.id === userId && candidate.active);
+      if (!user) throw new Error("Active user not found.");
+      const verified = verifyTotpCode({ secret, code, window: 1 });
+      if (!verified.ok || verified.step === undefined) {
+        throw new Error("Invalid authenticator code.");
+      }
+      const now = new Date().toISOString();
+      const credential: TotpCredentialRecord = {
+        userId,
+        secret,
+        enabledAt: now,
+        lastUsedStep: verified.step,
+      };
+      payload.totpCredentials = payload.totpCredentials.filter((item) => item.userId !== userId);
+      payload.totpCredentials.push(credential);
+      const recoveryCodes = this.replaceRecoveryCodesInPayload(payload, userId);
+      user.updatedAt = now;
+      return { recoveryCodes, status: this.mfaStatusInPayload(payload, userId) };
+    });
+  }
+
+  disableTotp(userId: string): ReturnType<UserStore["mfaStatus"]> {
+    return this.mutatePayload((payload) => {
+      payload.totpCredentials = payload.totpCredentials.filter((item) => item.userId !== userId);
+      payload.recoveryCodes = payload.recoveryCodes.filter((item) => item.userId !== userId);
+      const user = payload.users.find((candidate) => candidate.id === userId);
+      if (user) user.updatedAt = new Date().toISOString();
+      return this.mfaStatusInPayload(payload, userId);
+    });
+  }
+
+  verifyMfaCode(userId: string, code: string): "totp" | "recovery" | null {
+    return this.mutatePayload((payload) => {
+      const user = payload.users.find((candidate) => candidate.id === userId && candidate.active);
+      if (!user) return null;
+      const totp = payload.totpCredentials.find((credential) => credential.userId === userId);
+      if (totp) {
+        const verified = verifyTotpCode({
+          secret: totp.secret,
+          code,
+          window: 1,
+          lastUsedStep: totp.lastUsedStep,
+        });
+        if (verified.ok && verified.step !== undefined) {
+          totp.lastUsedStep = verified.step;
+          return "totp";
+        }
+      }
+      const normalized = normalizeRecoveryCode(code);
+      if (!normalized) return null;
+      const hash = hashToken(normalized);
+      const recovery = payload.recoveryCodes.find((candidate) =>
+        candidate.userId === userId &&
+        !candidate.usedAt &&
+        constantTimeStringEqual(candidate.codeHash, hash)
+      );
+      if (!recovery) return null;
+      recovery.usedAt = new Date().toISOString();
+      return "recovery";
+    });
+  }
+
+  regenerateRecoveryCodes(userId: string): { recoveryCodes: string[]; status: ReturnType<UserStore["mfaStatus"]> } {
+    return this.mutatePayload((payload) => {
+      if (!payload.users.some((candidate) => candidate.id === userId && candidate.active)) {
+        throw new Error("Active user not found.");
+      }
+      const recoveryCodes = this.replaceRecoveryCodesInPayload(payload, userId);
+      return { recoveryCodes, status: this.mfaStatusInPayload(payload, userId) };
+    });
+  }
+
+  addWebAuthnCredential(userId: string, input: {
+    credentialId: string;
+    publicKey: string;
+    counter: number;
+    transports?: string[];
+    name?: string;
+    deviceType?: string;
+    backedUp?: boolean;
+  }): WebAuthnCredentialRecord {
+    return this.mutatePayload((payload) => {
+      if (!payload.users.some((candidate) => candidate.id === userId && candidate.active)) {
+        throw new Error("Active user not found.");
+      }
+      const now = new Date().toISOString();
+      payload.webAuthnCredentials = payload.webAuthnCredentials.filter((credential) => credential.credentialId !== input.credentialId);
+      const credential: WebAuthnCredentialRecord = {
+        id: randomId(),
+        userId,
+        credentialId: input.credentialId,
+        publicKey: input.publicKey,
+        counter: input.counter,
+        transports: normalizeStringList(input.transports ?? []),
+        name: input.name?.trim() || "Passkey",
+        deviceType: input.deviceType,
+        backedUp: input.backedUp,
+        createdAt: now,
+      };
+      payload.webAuthnCredentials.push(credential);
+      return credential;
+    });
+  }
+
+  listWebAuthnCredentials(userId?: string): WebAuthnCredentialRecord[] {
+    const payload = this.readPayload();
+    return payload.webAuthnCredentials.filter((credential) => !userId || credential.userId === userId);
+  }
+
+  getWebAuthnCredential(credentialId: string): WebAuthnCredentialRecord | null {
+    return this.readPayload().webAuthnCredentials.find((credential) => credential.credentialId === credentialId || credential.id === credentialId) ?? null;
+  }
+
+  updateWebAuthnCredentialUse(credentialId: string, counter: number): WebAuthnCredentialRecord | null {
+    return this.mutatePayload((payload) => {
+      const credential = payload.webAuthnCredentials.find((candidate) => candidate.credentialId === credentialId || candidate.id === credentialId);
+      if (!credential) return null;
+      credential.counter = counter;
+      credential.lastUsedAt = new Date().toISOString();
+      return credential;
+    });
+  }
+
+  deleteWebAuthnCredential(userId: string, credentialId: string): boolean {
+    return this.mutatePayload((payload) => {
+      const before = payload.webAuthnCredentials.length;
+      payload.webAuthnCredentials = payload.webAuthnCredentials.filter((credential) =>
+        !(credential.userId === userId && (credential.id === credentialId || credential.credentialId === credentialId))
+      );
+      return payload.webAuthnCredentials.length !== before;
+    });
+  }
+
+  createApiToken(userId: string, input: {
+    name: string;
+    permissions?: string[];
+    agentIds?: string[];
+    workspaceRoots?: string[];
+    peerIds?: string[];
+    expiresAt?: string;
+  }): { token: string; record: PublicApiTokenRecord } {
+    return this.mutatePayload((payload) => {
+      if (!payload.users.some((candidate) => candidate.id === userId && candidate.active)) {
+        throw new Error("Active user not found.");
+      }
+      const raw = `nrp_${randomSessionToken()}${randomSessionToken().slice(0, API_TOKEN_BYTES)}`;
+      const now = new Date().toISOString();
+      const permissions = normalizePermissions(input.permissions ?? [], true);
+      if (permissions.length === 0) {
+        throw new Error("At least one API token permission is required.");
+      }
+      const record: ApiTokenRecord = {
+        id: randomId(),
+        userId,
+        name: input.name.trim() || "API token",
+        tokenHash: hashToken(raw),
+        tokenPrefix: raw.slice(0, 12),
+        permissions,
+        agentIds: normalizeStringList(input.agentIds ?? []),
+        workspaceRoots: normalizeStringList(input.workspaceRoots ?? []),
+        peerIds: normalizeStringList(input.peerIds ?? []),
+        createdAt: now,
+        expiresAt: normalizeFutureIso(input.expiresAt),
+      };
+      payload.apiTokens.push(record);
+      return { token: raw, record: publicApiToken(record) };
+    });
+  }
+
+  revokeApiToken(userId: string, tokenId: string): boolean {
+    return this.mutatePayload((payload) => {
+      const token = payload.apiTokens.find((candidate) => candidate.userId === userId && candidate.id === tokenId);
+      if (!token || token.revokedAt) return false;
+      token.revokedAt = new Date().toISOString();
+      return true;
+    });
+  }
+
+  resolveApiToken(token: string | undefined): AuthenticatedUser | null {
+    if (!token) return null;
+    return this.mutatePayload((payload) => {
+      const tokenHash = hashToken(token);
+      const now = Date.now();
+      const record = payload.apiTokens.find((candidate) =>
+        !candidate.revokedAt &&
+        (!candidate.expiresAt || Date.parse(candidate.expiresAt) > now) &&
+        constantTimeStringEqual(candidate.tokenHash, tokenHash)
+      );
+      if (!record) return null;
+      const user = payload.users.find((candidate) => candidate.id === record.userId && candidate.active);
+      if (!user) return null;
+      record.lastUsedAt = new Date(now).toISOString();
+      const auth = this.authenticatedUser(payload, user);
+      return {
+        ...auth,
+        permissions: auth.permissions.filter((permission) => record.permissions.includes(permission)),
+        apiToken: publicApiToken(record),
+      };
+    });
   }
 
   resolveTelegramUser(telegramUserId: number | undefined): AuthenticatedUser | null {
@@ -1073,7 +1330,9 @@ export class UserStore {
     if (!user || !agentId) {
       return true;
     }
-    return user.groups.some((group) => group.agentIds.length === 0 || group.agentIds.includes(agentId));
+    const groupAllowed = user.groups.some((group) => group.agentIds.length === 0 || group.agentIds.includes(agentId));
+    const tokenAllowed = !user.apiToken || user.apiToken.agentIds.length === 0 || user.apiToken.agentIds.includes(agentId);
+    return groupAllowed && tokenAllowed;
   }
 
   canUseAgentStrict(user: AuthenticatedUser | null | undefined, agentId: string | undefined): boolean {
@@ -1085,8 +1344,11 @@ export class UserStore {
       return true;
     }
     const normalizedWorkspace = normalizeWorkspacePath(workspace);
-    return user.groups.some((group) => group.workspaceRoots.length === 0 ||
+    const groupAllowed = user.groups.some((group) => group.workspaceRoots.length === 0 ||
       group.workspaceRoots.some((root) => isPathInside(normalizedWorkspace, normalizeWorkspacePath(root))));
+    const tokenAllowed = !user.apiToken || user.apiToken.workspaceRoots.length === 0 ||
+      user.apiToken.workspaceRoots.some((root) => isPathInside(normalizedWorkspace, normalizeWorkspacePath(root)));
+    return groupAllowed && tokenAllowed;
   }
 
   canUseWorkspaceStrict(user: AuthenticatedUser | null | undefined, workspace: string | undefined): boolean {
@@ -1129,7 +1391,9 @@ export class UserStore {
     if (!user || !normalized) {
       return true;
     }
-    return user.groups.some((group) => group.peerIds.length === 0 || group.peerIds.includes(normalized));
+    const groupAllowed = user.groups.some((group) => group.peerIds.length === 0 || group.peerIds.includes(normalized));
+    const tokenAllowed = !user.apiToken || user.apiToken.peerIds.length === 0 || user.apiToken.peerIds.includes(normalized);
+    return groupAllowed && tokenAllowed;
   }
 
   canUsePeerStrict(user: AuthenticatedUser | null | undefined, peerId: string | undefined): boolean {
@@ -1218,6 +1482,29 @@ export class UserStore {
     const groups = this.groupsForUser(payload, user.id);
     const permissions = Array.from(new Set(groups.flatMap((group) => group.permissions)));
     return { user, groups, permissions };
+  }
+
+  private mfaStatusInPayload(payload: PersistedUsers, userId: string): ReturnType<UserStore["mfaStatus"]> {
+    return {
+      totpEnabled: payload.totpCredentials.some((credential) => credential.userId === userId),
+      recoveryCodesRemaining: payload.recoveryCodes.filter((code) => code.userId === userId && !code.usedAt).length,
+      webAuthnCredentials: payload.webAuthnCredentials
+        .filter((credential) => credential.userId === userId)
+        .map(publicWebAuthnCredential),
+    };
+  }
+
+  private replaceRecoveryCodesInPayload(payload: PersistedUsers, userId: string): string[] {
+    const now = new Date().toISOString();
+    const recoveryCodes = generateRecoveryCodes();
+    payload.recoveryCodes = payload.recoveryCodes.filter((code) => code.userId !== userId);
+    payload.recoveryCodes.push(...recoveryCodes.map((code): RecoveryCodeRecord => ({
+      id: randomId(),
+      userId,
+      codeHash: hashToken(normalizeRecoveryCode(code)),
+      createdAt: now,
+    })));
+    return recoveryCodes;
   }
 
   private groupIdsForUser(payload: PersistedUsers, userId: string): string[] {
@@ -1482,6 +1769,32 @@ export function publicUser(user: UserRecord): Omit<UserRecord, "passwordHash" | 
 export function publicWebSession(session: WebSessionRecord): PublicWebSessionRecord {
   const { tokenHash: _tokenHash, ...rest } = session;
   return rest;
+}
+
+export function publicWebAuthnCredential(credential: WebAuthnCredentialRecord): PublicWebAuthnCredentialRecord {
+  const { publicKey: _publicKey, ...rest } = credential;
+  return rest;
+}
+
+export function publicApiToken(token: ApiTokenRecord): PublicApiTokenRecord {
+  const { tokenHash: _tokenHash, ...rest } = token;
+  return rest;
+}
+
+function normalizeRecoveryCode(code: string): string {
+  return String(code ?? "").trim().toUpperCase().replace(/\s+/g, "").replace(/-/g, "");
+}
+
+function normalizeFutureIso(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    throw new Error("Invalid expiration date.");
+  }
+  if (timestamp <= Date.now()) {
+    throw new Error("Expiration must be in the future.");
+  }
+  return new Date(timestamp).toISOString();
 }
 
 export function publicUserSnapshot(snapshot: UserManagementSnapshot) {

@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ADMIN_GROUP_ID, ALL_PERMISSIONS, READONLY_GROUP_ID, USER_GROUP_ID } from "../src/access/access-control.js";
+import { generateTotpCode } from "../src/access/mfa.js";
 import { publicUserSnapshot, UserStore } from "../src/access/user-management.js";
 
 describe("UserStore", () => {
@@ -78,6 +79,70 @@ describe("UserStore", () => {
     expect(store.verifyPassword("profile@example.com", "new-password-123")?.user.id).toBe(user.user.id);
     expect(store.resolveWebSession(current.token)?.user.id).toBe(user.user.id);
     expect(store.resolveWebSession(other.token)).toBeNull();
+  });
+
+  it("supports TOTP MFA, recovery codes, and passkey metadata without exposing secrets", () => {
+    const user = store.createUser({
+      email: "mfa@example.com",
+      displayName: "MFA User",
+      password: "password123",
+      groupIds: [USER_GROUP_ID],
+    });
+    const setup = store.setupTotp(user.user.id);
+    const enabled = store.enableTotp(user.user.id, setup.secret, generateTotpCode(setup.secret));
+
+    expect(enabled.status.totpEnabled).toBe(true);
+    expect(enabled.recoveryCodes).toHaveLength(10);
+    expect(store.verifyMfaCode(user.user.id, "000000")).toBeNull();
+    expect(store.verifyMfaCode(user.user.id, enabled.recoveryCodes[0])).toBe("recovery");
+    expect(store.mfaStatus(user.user.id).recoveryCodesRemaining).toBe(9);
+
+    const credential = store.addWebAuthnCredential(user.user.id, {
+      credentialId: "credential-1",
+      publicKey: "public-key",
+      counter: 0,
+      transports: ["internal"],
+      name: "Laptop",
+    });
+    expect(credential.name).toBe("Laptop");
+    const snapshot = publicUserSnapshot(store.snapshot()).users.find((candidate) => candidate.id === user.user.id);
+    expect(snapshot?.mfa.webAuthnCredentials[0]).not.toHaveProperty("publicKey");
+  });
+
+  it("resolves scoped API tokens and applies token scopes in addition to group scopes", () => {
+    const group = store.createGroup({
+      name: "Token Operators",
+      permissions: ["inspect", "sessions.read", "workflows.run"],
+      agentIds: ["codex", "pi"],
+      workspaceRoots: [home],
+      peerIds: ["peer-a", "peer-b"],
+    });
+    const user = store.createUser({
+      email: "token@example.com",
+      displayName: "Token User",
+      password: "password123",
+      groupIds: [group.id],
+    });
+    const created = store.createApiToken(user.user.id, {
+      name: "Workflow token",
+      permissions: ["inspect", "workflows.run"],
+      agentIds: ["codex"],
+      workspaceRoots: [path.join(home, "repo")],
+      peerIds: ["peer-a"],
+    });
+    const auth = store.resolveApiToken(created.token);
+
+    expect(created.token).toMatch(/^nrp_/);
+    expect(created.record).not.toHaveProperty("tokenHash");
+    expect(auth?.permissions).toEqual(["inspect", "workflows.run"]);
+    expect(store.canUseAgent(auth, "codex")).toBe(true);
+    expect(store.canUseAgent(auth, "pi")).toBe(false);
+    expect(store.canUseWorkspace(auth, path.join(home, "repo", "src"))).toBe(true);
+    expect(store.canUseWorkspace(auth, home)).toBe(false);
+    expect(store.canUsePeer(auth, "peer-a")).toBe(true);
+    expect(store.canUsePeer(auth, "peer-b")).toBe(false);
+    expect(store.revokeApiToken(user.user.id, created.record.id)).toBe(true);
+    expect(store.resolveApiToken(created.token)).toBeNull();
   });
 
   it("links Telegram users with expiring link codes", () => {

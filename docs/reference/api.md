@@ -11,6 +11,12 @@ The WebUI uses internal HTTP and SSE endpoints. They are part of the local dashb
 | `/api/profile` | Profile data and preferences |
 | `/api/profile/password` | Change password |
 | `/api/profile/logout-other-sessions` | Revoke other sessions |
+| `/api/profile/mfa/totp/*` | Setup, enable, disable, and recover authenticator MFA |
+| `/api/profile/webauthn/*` | Register or remove passkeys |
+| `/api/profile/api-tokens` | Create and revoke scoped API tokens |
+| `/api/profile/sessions/:id` | Revoke an own web session |
+
+Browser sessions use the `nr_session` cookie plus CSRF tokens for mutations. Automation can use scoped Bearer API tokens created from the profile menu; token calls still go through the normal permission and scope checks.
 
 ## Dashboard and runtime
 

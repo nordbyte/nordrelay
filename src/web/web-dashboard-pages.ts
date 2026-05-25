@@ -29,6 +29,11 @@ ${faviconLinks}
     label{display:block;font-size:13px;color:#4b544d;margin:14px 0 6px}
     input{box-sizing:border-box;width:100%;height:40px;border:1px solid #cfd6ce;border-radius:6px;padding:0 10px;font:inherit}
     button{margin-top:18px;width:100%;height:42px;border:0;border-radius:6px;background:#205c43;color:white;font-weight:650;cursor:pointer}
+    button.secondary{background:#eef2ed;color:#205c43;border:1px solid #cfd6ce}
+    .mfa{display:none;margin-top:18px;border-top:1px solid #e5e9e3;padding-top:18px}
+    .mfa.active{display:block}
+    .row{display:flex;gap:10px}
+    .row button{flex:1}
     .error{color:#9b1c1c;min-height:22px;margin-top:12px}
   </style>
 </head>
@@ -39,22 +44,77 @@ ${faviconLinks}
     <label>Email</label><input id="email" name="email" type="email" autocomplete="username" ${options.adminConfigured ? "" : "disabled"}>
     <label>Password</label><input id="password" name="password" type="password" autocomplete="current-password" ${options.adminConfigured ? "" : "disabled"}>
     <button ${options.adminConfigured ? "" : "disabled"}>Sign in</button>
+    <div id="mfaBox" class="mfa">
+      <p>Enter an authenticator or recovery code to finish signing in.</p>
+      <label>Authenticator or recovery code</label><input id="mfaCode" autocomplete="one-time-code">
+      <div class="row"><button type="button" id="mfaSubmit">Verify code</button><button type="button" id="passkeySubmit" class="secondary">Use passkey</button></div>
+    </div>
     <div class="error" id="error"></div>
   </form>
   <script${nonce}>
+    let mfaChallengeId = '';
+    let webAuthnOptions = null;
     document.getElementById('login').addEventListener('submit', async (event) => {
       event.preventDefault();
+      document.getElementById('error').textContent = '';
       const payload = {
         email: document.getElementById('email')?.value || undefined,
         password: document.getElementById('password')?.value || undefined,
       };
       const res = await fetch('/api/auth', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(payload) });
+      const data = await readJson(res);
       if (!res.ok) {
-        document.getElementById('error').textContent = 'Invalid credentials';
+        document.getElementById('error').textContent = data.error || 'Invalid credentials';
+        return;
+      }
+      if (data.mfaRequired) {
+        mfaChallengeId = data.challengeId || '';
+        webAuthnOptions = data.webAuthnOptions || null;
+        document.getElementById('mfaBox').classList.add('active');
+        document.getElementById('passkeySubmit').hidden = !webAuthnOptions;
+        document.getElementById('mfaCode').focus();
+        if (webAuthnOptions && window.PublicKeyCredential) {
+          try { await finishPasskeyLogin(); } catch {}
+        }
         return;
       }
       location.href = '/';
     });
+    document.getElementById('mfaSubmit').addEventListener('click', finishCodeLogin);
+    document.getElementById('passkeySubmit').addEventListener('click', finishPasskeyLogin);
+    async function finishCodeLogin() {
+      const res = await fetch('/api/auth/mfa', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ challengeId:mfaChallengeId, code:document.getElementById('mfaCode').value }) });
+      const data = await readJson(res);
+      if (!res.ok) { document.getElementById('error').textContent = data.error || 'Verification failed'; return; }
+      location.href = '/';
+    }
+    async function finishPasskeyLogin() {
+      if (!webAuthnOptions || !navigator.credentials) return;
+      const credential = await navigator.credentials.get({ publicKey: publicKeyRequest(webAuthnOptions) });
+      const res = await fetch('/api/auth/webauthn/verify', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ challengeId:mfaChallengeId, response:credentialToJson(credential) }) });
+      const data = await readJson(res);
+      if (!res.ok) { document.getElementById('error').textContent = data.error || 'Passkey verification failed'; return; }
+      location.href = '/';
+    }
+    async function readJson(res){ try{return await res.json()}catch{return {}} }
+    function publicKeyRequest(options) {
+      return { ...options, challenge:b64ToBuf(options.challenge), allowCredentials:(options.allowCredentials||[]).map(c=>({...c,id:b64ToBuf(c.id)})) };
+    }
+    function credentialToJson(credential) {
+      return {
+        id: credential.id,
+        rawId: bufToB64(credential.rawId),
+        type: credential.type,
+        response: {
+          authenticatorData: bufToB64(credential.response.authenticatorData),
+          clientDataJSON: bufToB64(credential.response.clientDataJSON),
+          signature: bufToB64(credential.response.signature),
+          userHandle: credential.response.userHandle ? bufToB64(credential.response.userHandle) : undefined,
+        },
+      };
+    }
+    function b64ToBuf(value){const pad='='.repeat((4-value.length%4)%4);const b64=(value+pad).replace(/-/g,'+').replace(/_/g,'/');const bin=atob(b64);const bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);return bytes.buffer}
+    function bufToB64(buffer){const bytes=new Uint8Array(buffer);let bin='';for(const b of bytes)bin+=String.fromCharCode(b);return btoa(bin).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'')}
   </script>
 </body>
 </html>`;
@@ -687,6 +747,16 @@ ${faviconLinks}
           </div>
           <div id="profilePasswordStatus" class="profile-status"></div>
           <div class="row dialog-actions"><button type="button" id="changeProfilePasswordBtn" class="secondary">Change password</button></div>
+        </section>
+        <section class="profile-section full-span">
+          <div class="profile-section-title"><h3>Security</h3><button type="button" id="setupTotpBtn" class="secondary">Setup authenticator</button></div>
+          <div id="profileSecurity" class="profile-list"></div>
+          <div id="profileSecurityStatus" class="profile-status"></div>
+        </section>
+        <section class="profile-section full-span">
+          <div class="profile-section-title"><h3>API tokens</h3><button type="button" id="createApiTokenBtn" class="secondary">Create token</button></div>
+          <div id="profileApiTokens" class="profile-list"></div>
+          <div id="profileApiTokenResult" class="profile-status"></div>
         </section>
         <section class="profile-section full-span">
           <h3>Linked accounts</h3>

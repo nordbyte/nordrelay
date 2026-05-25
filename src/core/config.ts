@@ -52,6 +52,10 @@ export interface ConnectorConfig {
   webuiEnabled: boolean;
   autostartEnabled: boolean;
   webuiAutostartEnabled: boolean;
+  webAuthnEnabled: boolean;
+  webAuthnRpName: string;
+  webAuthnRpId?: string;
+  webAuthnOrigin?: string;
   telegramEnabled: boolean;
   telegramBotToken: string;
   telegramRateLimitMinIntervalMs: number;
@@ -224,6 +228,10 @@ export function loadConfig(): ConnectorConfig {
   const webuiEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_WEBUI_ENABLED), true);
   const autostartEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_AUTOSTART_ENABLED), false);
   const webuiAutostartEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_WEBUI_AUTOSTART_ENABLED), false);
+  const webAuthnEnabled = parseBooleanEnv(optionalString(process.env.NORDRELAY_WEBAUTHN_ENABLED), true);
+  const webAuthnRpName = optionalString(process.env.NORDRELAY_WEBAUTHN_RP_NAME) ?? "NordRelay";
+  const webAuthnRpId = optionalString(process.env.NORDRELAY_WEBAUTHN_RP_ID);
+  const webAuthnOrigin = optionalString(process.env.NORDRELAY_WEBAUTHN_ORIGIN);
   const requestedTelegramEnabled = parseBooleanEnv(optionalString(process.env.TELEGRAM_ENABLED), true);
   const telegramBotToken = optionalString(process.env.TELEGRAM_BOT_TOKEN) ?? "";
   const telegramRateLimitMinIntervalMs = parseNonNegativeIntegerEnv(optionalString(process.env.TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS), 80, "TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS");
@@ -487,6 +495,10 @@ export function loadConfig(): ConnectorConfig {
     webuiEnabled,
     autostartEnabled,
     webuiAutostartEnabled,
+    webAuthnEnabled,
+    webAuthnRpName,
+    webAuthnRpId,
+    webAuthnOrigin,
     telegramEnabled,
     telegramBotToken,
     telegramRateLimitMinIntervalMs,

@@ -74,8 +74,15 @@ export type WebApiStaticPath =
   | "/api/peers/sync"
   | "/api/permissions"
   | "/api/profile"
+  | "/api/profile/api-tokens"
   | "/api/profile/logout-other-sessions"
+  | "/api/profile/mfa/recovery-codes"
+  | "/api/profile/mfa/totp/disable"
+  | "/api/profile/mfa/totp/enable"
+  | "/api/profile/mfa/totp/setup"
   | "/api/profile/password"
+  | "/api/profile/webauthn/register/options"
+  | "/api/profile/webauthn/register/verify"
   | "/api/progress"
   | "/api/prompt"
   | "/api/prompt/upload"
@@ -143,6 +150,9 @@ export type WebApiDynamicPath =
   | `/api/peers/discovery-jobs/${string}/cancel`
   | `/api/peers/discovery-jobs/${string}/log`
   | `/api/peers/invitations/${string}`
+  | `/api/profile/api-tokens/${string}`
+  | `/api/profile/sessions/${string}`
+  | `/api/profile/webauthn/${string}`
   | `/api/queue/plans/${string}`
   | `/api/queue/plans/${string}/approve`
   | `/api/queue/plans/${string}/enqueue`
@@ -258,8 +268,15 @@ export type WebApiResponseByPath = {
   "/api/peers/sync": ServerWebApiClientResponse<"/api/peers/sync">;
   "/api/permissions": ServerWebApiClientResponse<"/api/permissions">;
   "/api/profile": ServerWebApiClientResponse<"/api/profile">;
+  "/api/profile/api-tokens": ServerWebApiClientResponse<"/api/profile/api-tokens">;
   "/api/profile/logout-other-sessions": ServerWebApiClientResponse<"/api/profile/logout-other-sessions">;
+  "/api/profile/mfa/recovery-codes": ServerWebApiClientResponse<"/api/profile/mfa/recovery-codes">;
+  "/api/profile/mfa/totp/disable": ServerWebApiClientResponse<"/api/profile/mfa/totp/disable">;
+  "/api/profile/mfa/totp/enable": ServerWebApiClientResponse<"/api/profile/mfa/totp/enable">;
+  "/api/profile/mfa/totp/setup": ServerWebApiClientResponse<"/api/profile/mfa/totp/setup">;
   "/api/profile/password": ServerWebApiClientResponse<"/api/profile/password">;
+  "/api/profile/webauthn/register/options": ServerWebApiClientResponse<"/api/profile/webauthn/register/options">;
+  "/api/profile/webauthn/register/verify": ServerWebApiClientResponse<"/api/profile/webauthn/register/verify">;
   "/api/progress": ServerWebApiClientResponse<"/api/progress">;
   "/api/prompt": ServerWebApiClientResponse<"/api/prompt">;
   "/api/prompt/upload": ServerWebApiClientResponse<"/api/prompt/upload">;
@@ -361,8 +378,15 @@ export type WebApiRequestBodyByPath = {
   "/api/peers/sync": ServerWebApiRequestBody<"/api/peers/sync">;
   "/api/permissions": ServerWebApiRequestBody<"/api/permissions">;
   "/api/profile": ServerWebApiRequestBody<"/api/profile">;
+  "/api/profile/api-tokens": ServerWebApiRequestBody<"/api/profile/api-tokens">;
   "/api/profile/logout-other-sessions": ServerWebApiRequestBody<"/api/profile/logout-other-sessions">;
+  "/api/profile/mfa/recovery-codes": ServerWebApiRequestBody<"/api/profile/mfa/recovery-codes">;
+  "/api/profile/mfa/totp/disable": ServerWebApiRequestBody<"/api/profile/mfa/totp/disable">;
+  "/api/profile/mfa/totp/enable": ServerWebApiRequestBody<"/api/profile/mfa/totp/enable">;
+  "/api/profile/mfa/totp/setup": ServerWebApiRequestBody<"/api/profile/mfa/totp/setup">;
   "/api/profile/password": ServerWebApiRequestBody<"/api/profile/password">;
+  "/api/profile/webauthn/register/options": ServerWebApiRequestBody<"/api/profile/webauthn/register/options">;
+  "/api/profile/webauthn/register/verify": ServerWebApiRequestBody<"/api/profile/webauthn/register/verify">;
   "/api/progress": ServerWebApiRequestBody<"/api/progress">;
   "/api/prompt": ServerWebApiRequestBody<"/api/prompt">;
   "/api/prompt/upload": ServerWebApiRequestBody<"/api/prompt/upload">;

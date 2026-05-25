@@ -177,6 +177,7 @@ npm stop
 ## Security Defaults
 
 - The dashboard requires login.
+- User accounts support authenticator MFA, recovery codes, passkeys, scoped API tokens, and session revocation.
 - Chat adapter access requires linked NordRelay users and registered/allowed channels.
 - Peer serving is disabled by default and requires explicit pairing.
 - Unsafe launch profiles are hidden unless explicitly enabled.
