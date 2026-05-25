@@ -890,6 +890,11 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function openPeerDebugDialog");
     expect(js).toContain("function openPeerSyncDialog");
     expect(js).toContain("function loadPeerSyncCandidates");
+    expect(js).toContain("function refreshPeersTable");
+    expect(js).toContain("function startPeerTableRefresh");
+    expect(js).toContain("function stopPeerTableRefresh");
+    expect(js).toContain("state.peerRefreshTimer=setInterval");
+    expect(js).toContain("state.currentPage!=='peers'");
     expect(js).toContain("function peerVersionHtml");
     expect(js).toContain("function peerLastSeenHtml");
     expect(js).toContain("<th>Health</th><th>Version</th><th>Last seen</th>");
@@ -908,6 +913,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("Health history");
     expect(css).toContain(".peer-tab");
     expect(css).toContain(".peer-debug-panel");
+    expect(css).toContain(".peers-table{--table-min-width:1120px;table-layout:auto}");
+    expect(css).toContain(".peers-table .access-cell .truncate-cell");
+    expect(css).not.toContain(".peers-table th:nth-child");
     expect(css).toContain(".peer-action-menu .peer-action-menu-panel");
     expect(css).toContain(".table-action-menu.is-floating .table-action-menu-list");
     expect(css).toContain("position:fixed");

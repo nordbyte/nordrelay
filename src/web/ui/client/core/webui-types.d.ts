@@ -516,6 +516,7 @@ interface DashboardState {
   localTurnStartedAt: string | null;
   peers: WebuiPeerState | null;
   peerRelay: WebuiRecord | null;
+  peerRefreshTimer: WebuiInterval | null;
   peerInviteSecrets: Record<string, { code: string; command: string }>;
   peerProbeResult: WebuiPeerProbeResult | null;
   peerDiscoveryJobs: WebuiRecord[];
