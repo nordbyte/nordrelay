@@ -141,6 +141,7 @@ See [Chat commands](docs/reference/chat-commands.md) and the [CLI reference](doc
 | Installation and quickstart | [docs/start/install.md](docs/start/install.md) |
 | WebUI | [docs/start/webui.md](docs/start/webui.md) |
 | Agents | [docs/guides/agents.md](docs/guides/agents.md) |
+| OpenClaw + TweetClaw workflow | [docs/guides/openclaw-tweetclaw.md](docs/guides/openclaw-tweetclaw.md) |
 | Chat adapters | [docs/guides/chat-adapters.md](docs/guides/chat-adapters.md) |
 | Workflows | [docs/guides/workflows.md](docs/guides/workflows.md) |
 | Configuration and settings | [docs/reference/configuration.md](docs/reference/configuration.md) |

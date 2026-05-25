@@ -68,6 +68,7 @@ export default defineConfig({
         text: "Guides",
         items: [
           { text: "Agents", link: "/guides/agents" },
+          { text: "OpenClaw + TweetClaw", link: "/guides/openclaw-tweetclaw" },
           { text: "Chat adapters", link: "/guides/chat-adapters" },
           { text: "Remote sessions", link: "/guides/remote-sessions" },
           { text: "Workflows", link: "/guides/workflows" },

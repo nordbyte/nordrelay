@@ -12,6 +12,8 @@ NordRelay supports multiple coding agents behind one WebUI, one user model, and 
 | OpenClaw | `NORDRELAY_OPENCLAW_ENABLED` | Uses the OpenClaw Gateway WebSocket RPC endpoint |
 | Claude Code | `NORDRELAY_CLAUDE_CODE_ENABLED` | Uses the Claude Agent SDK and host `claude` CLI when available |
 
+For a complete OpenClaw plugin workflow, see [OpenClaw + TweetClaw](openclaw-tweetclaw.md).
+
 ## Select the default agent
 
 ```dotenv
