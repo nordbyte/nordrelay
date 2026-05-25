@@ -8,6 +8,7 @@ import process from "node:process";
 import readline from "node:readline/promises";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { collectInitConfig, validateInitConfig } from "./init-tui.mjs";
 import {
   buildLaunchdServiceSpec,
   buildSystemdUserServiceSpec,
@@ -939,72 +940,44 @@ async function commandInit(options) {
     return;
   }
 
-  const enableWebui = options.disableWebui ? "false" : await askChoice(null, "Enable WebUI", "true");
-  const enableAutostart = options.disableAutostart ? "false" : await askChoice(null, "Enable NordRelay autostart", "true");
-  const enableWebuiAutostart = enableWebui === "true"
-    ? (options.disableWebuiAutostart ? "false" : await askChoice(null, "Enable WebUI autostart", "true"))
-    : "false";
-  const enableTelegram = options.disableTelegram ? "false" : await askChoice(null, "Enable Telegram", "true");
-  const telegramBotToken = enableTelegram === "true"
-    ? options.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || await ask(null, "Telegram bot token", "")
-    : "";
-  const enableDiscord = options.enableDiscord ? "true" : await askChoice(null, "Enable Discord", "false");
-  const discordBotToken = enableDiscord === "true"
-    ? options.discordBotToken || process.env.DISCORD_BOT_TOKEN || await ask(null, "Discord bot token", "")
-    : "";
-  const discordClientId = enableDiscord === "true"
-    ? options.discordClientId || process.env.DISCORD_CLIENT_ID || await ask(null, "Discord client ID", "")
-    : "";
-  const enableSlack = options.enableSlack ? "true" : await askChoice(null, "Enable Slack", "false");
-  const slackBotToken = enableSlack === "true"
-    ? options.slackBotToken || process.env.SLACK_BOT_TOKEN || await ask(null, "Slack bot token", "")
-    : "";
-  const slackAppToken = enableSlack === "true"
-    ? options.slackAppToken || process.env.SLACK_APP_TOKEN || await ask(null, "Slack app-level token for Socket Mode", "")
-    : "";
-  const slackSigningSecret = enableSlack === "true"
-    ? options.slackSigningSecret || process.env.SLACK_SIGNING_SECRET || await ask(null, "Slack signing secret (optional for Socket Mode)", "")
-    : "";
-  const enableMatrix = options.enableMatrix ? "true" : await askChoice(null, "Enable Matrix", "false");
-  const matrixHomeserverUrl = enableMatrix === "true"
-    ? options.matrixHomeserverUrl || process.env.MATRIX_HOMESERVER_URL || await ask(null, "Matrix homeserver URL", "")
-    : "";
-  const matrixAccessToken = enableMatrix === "true"
-    ? options.matrixAccessToken || process.env.MATRIX_ACCESS_TOKEN || await ask(null, "Matrix access token", "")
-    : "";
-  const matrixUserId = enableMatrix === "true"
-    ? options.matrixUserId || process.env.MATRIX_USER_ID || await ask(null, "Matrix bot user ID", "")
-    : "";
-  const matrixDeviceId = enableMatrix === "true"
-    ? options.matrixDeviceId || process.env.MATRIX_DEVICE_ID || await ask(null, "Matrix device ID (optional)", "")
-    : "";
-  const adminEmail = options.adminEmail || await ask(null, "Admin email", "");
-  const adminName = options.adminName || await ask(null, "Admin name", "Admin");
-  const adminPassword = options.adminPassword || await askSecret(null, "Admin password", "");
-  const telegramUserId = options.telegramUserId || await ask(null, "Optional Telegram user id to link", "");
-  const discordUserId = options.discordUserId || await ask(null, "Optional Discord user id to link", "");
-  const slackUserId = options.slackUserId || await ask(null, "Optional Slack user id to link", "");
-  const slackTeamId = slackUserId ? (options.slackTeamId || await ask(null, "Optional Slack team id for linked user", "")) : "";
-  const linkedMatrixUserId = options.matrixLinkedUserId || await ask(null, "Optional Matrix user id to link", "");
-  const linkedMatrixHomeserver = linkedMatrixUserId ? (options.matrixLinkedHomeserver || await ask(null, "Optional Matrix homeserver for linked user", "")) : "";
-  const enableCodex = options.disableCodex ? "false" : await askChoice(null, "Enable Codex", "true");
-  const enablePi = options.enablePi ? "true" : await askChoice(null, "Enable Pi", "false");
-  const enableHermes = options.enableHermes ? "true" : await askChoice(null, "Enable Hermes", "false");
-  const enableOpenClaw = options.enableOpenClaw ? "true" : await askChoice(null, "Enable OpenClaw", "false");
-  const enableClaudeCode = options.enableClaudeCode ? "true" : await askChoice(null, "Enable Claude Code", "false");
-  const stateBackend = options.stateBackend || await askChoice(null, "State backend (json/sqlite)", "json");
+  const init = await collectInitConfig(options);
+  const enableWebui = init.enableWebui;
+  const enableAutostart = init.enableAutostart;
+  const enableWebuiAutostart = enableWebui === "true" ? init.enableWebuiAutostart : "false";
+  const enableTelegram = init.enableTelegram;
+  const telegramBotToken = enableTelegram === "true" ? init.telegramBotToken : "";
+  const enableDiscord = init.enableDiscord;
+  const discordBotToken = enableDiscord === "true" ? init.discordBotToken : "";
+  const discordClientId = enableDiscord === "true" ? init.discordClientId : "";
+  const enableSlack = init.enableSlack;
+  const slackBotToken = enableSlack === "true" ? init.slackBotToken : "";
+  const slackAppToken = enableSlack === "true" ? init.slackAppToken : "";
+  const slackSigningSecret = enableSlack === "true" ? init.slackSigningSecret : "";
+  const enableMatrix = init.enableMatrix;
+  const matrixHomeserverUrl = enableMatrix === "true" ? init.matrixHomeserverUrl : "";
+  const matrixAccessToken = enableMatrix === "true" ? init.matrixAccessToken : "";
+  const matrixUserId = enableMatrix === "true" ? init.matrixUserId : "";
+  const matrixDeviceId = enableMatrix === "true" ? init.matrixDeviceId : "";
+  const adminEmail = init.adminEmail;
+  const adminName = init.adminName;
+  const adminPassword = init.adminPassword;
+  const telegramUserId = init.telegramUserId;
+  const discordUserId = init.discordUserId;
+  const slackUserId = init.slackUserId;
+  const slackTeamId = slackUserId ? init.slackTeamId : "";
+  const linkedMatrixUserId = init.linkedMatrixUserId;
+  const linkedMatrixHomeserver = linkedMatrixUserId ? init.linkedMatrixHomeserver : "";
+  const enableCodex = init.enableCodex;
+  const enablePi = init.enablePi;
+  const enableHermes = init.enableHermes;
+  const enableOpenClaw = init.enableOpenClaw;
+  const enableClaudeCode = init.enableClaudeCode;
+  const stateBackend = init.stateBackend;
 
-  if (enableTelegram === "true" && !telegramBotToken) throw new Error("Telegram bot token is required when Telegram is enabled.");
-  if (enableDiscord === "true" && !discordBotToken) throw new Error("Discord bot token is required when Discord is enabled.");
-  if (enableSlack === "true" && !slackBotToken) throw new Error("Slack bot token is required when Slack is enabled.");
-  if (enableSlack === "true" && !slackAppToken) throw new Error("Slack app-level token is required for default Socket Mode.");
-  if (enableMatrix === "true" && (!matrixHomeserverUrl || !matrixAccessToken || !matrixUserId)) throw new Error("Matrix homeserver URL, access token, and bot user ID are required when Matrix is enabled.");
-  if (enableWebui !== "true" && enableTelegram !== "true" && enableDiscord !== "true" && enableSlack !== "true" && enableMatrix !== "true") {
-    throw new Error("At least WebUI or one chat adapter must be enabled.");
+  const initErrors = validateInitConfig(init);
+  if (initErrors.length) {
+    throw new Error(initErrors.join("\n"));
   }
-  if (!adminEmail) throw new Error("Admin email is required.");
-  if (!adminPassword) throw new Error("Admin password is required.");
-  if (enableCodex !== "true" && enablePi !== "true" && enableHermes !== "true" && enableOpenClaw !== "true" && enableClaudeCode !== "true") throw new Error("At least one agent must be enabled.");
   const defaultAgent = enableCodex === "true"
     ? "codex"
     : enablePi === "true"

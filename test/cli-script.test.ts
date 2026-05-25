@@ -24,15 +24,22 @@ describe("nordrelay CLI script", () => {
 
   it("treats WebUI as a first-class init access surface", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+    const initTui = readFileSync("plugins/nordrelay/scripts/init-tui.mjs", "utf8");
 
+    expect(source).toContain("collectInitConfig(options)");
+    expect(initTui).toContain("async function runInitTui");
+    expect(initTui).toContain("Use Up/Down to select, Enter to edit");
+    expect(initTui).toContain("Save config and create admin");
+    expect(initTui).toContain("select another field to revise it");
+    expect(initTui).toContain("Enter - to clear an optional value.");
     expect(source).toContain('arg === "--disable-webui"');
-    expect(source).toContain('await askChoice(null, "Enable WebUI", "true")');
-    expect(source).toContain('await askChoice(null, "Enable NordRelay autostart", "true")');
-    expect(source).toContain('await askChoice(null, "Enable WebUI autostart", "true")');
+    expect(initTui).toContain('await askChoice(null, "Enable WebUI", "true")');
+    expect(initTui).toContain('await askChoice(null, "Enable NordRelay autostart", "true")');
+    expect(initTui).toContain('await askChoice(null, "Enable WebUI autostart", "true")');
     expect(source).toContain("NORDRELAY_WEBUI_ENABLED");
     expect(source).toContain("NORDRELAY_AUTOSTART_ENABLED");
     expect(source).toContain("NORDRELAY_WEBUI_AUTOSTART_ENABLED");
-    expect(source).toContain("At least WebUI or one chat adapter must be enabled.");
+    expect(initTui).toContain("At least WebUI or one chat adapter must be enabled.");
   });
 
   it("configures init autostart entries from the selected settings", () => {

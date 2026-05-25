@@ -56,6 +56,8 @@ Interactive setup:
 nordrelay init
 ```
 
+In an interactive terminal, `nordrelay init` opens a setup menu. Use Up/Down to select a setting, Enter to edit it, Space to toggle boolean values, and `s` to save. You can return to any previous entry before the config is written.
+
 Browser-only setup:
 
 ```bash

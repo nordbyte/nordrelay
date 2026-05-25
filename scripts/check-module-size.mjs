@@ -23,6 +23,7 @@ const budgets = [
   { file: "src/channels/telegram/bot.ts", maxLines: 4060 },
   { file: "src/channels/telegram/telegram-runtime-types.ts", maxLines: 140 },
   { file: "plugins/nordrelay/scripts/nordrelay.mjs", maxLines: 2900 },
+  { file: "plugins/nordrelay/scripts/init-tui.mjs", maxLines: 620 },
 ];
 
 const failures = [];
