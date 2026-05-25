@@ -220,7 +220,7 @@ test.describe("NordRelay WebUI", () => {
     await navigateDashboard(page, "Metrics");
     await expect(page.locator("#metricsTabs")).toHaveAttribute("role", "tablist");
     await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-    await expect(page.locator("#metricsPanel .metrics-summary")).toBeVisible();
+    await expect(page.locator("#metricsPanel > .metrics-summary")).toBeVisible();
     await expect(page.locator("#metricsPanel")).toContainText("Runtime");
     await expect(page.locator("#metricsPanel")).toContainText("1h 1m");
     await expect(page.locator("#metricsPanel .metric-kv").first()).toBeVisible();
