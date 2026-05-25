@@ -64,13 +64,14 @@ function clearAgentUpdateVersionRefreshTimers(){agentUpdateVersionRefreshTimers.
 function scheduleAgentUpdateVersionRefresh(job){if(!job||!AGENT_UPDATE_TERMINAL_STATUSES.has(job.status))return;clearAgentUpdateVersionRefreshTimers();const delays=[500,2000,5000,10000];agentUpdateVersionRefreshTimers=delays.map(delay=>setTimeout(()=>{if(state.currentPage==='version')loadVersion({quiet:true,refreshJobs:false})},delay))}
 function connectEvents(){
   if(state.events) state.events.close();
+  const eventTarget = state.selectedPeer && state.selectedPeer !== 'local' ? state.selectedPeer : 'local';
   const eventsUrl = state.selectedPeer && state.selectedPeer !== 'local'
     ? '/api/peers/'+encodeURIComponent(state.selectedPeer)+'/events?contextKey='+encodeURIComponent('web:dashboard')
     : '/api/events';
   const events = new EventSource(eventsUrl);
   state.events=events;
-  setConnection('Connecting','warn');
-  events.onopen=()=>{if(state.reconnectTimer){clearTimeout(state.reconnectTimer);state.reconnectTimer=null}setConnection('Live','ok')};
+  setApiState('restarting',{target:eventTarget,message:'Connecting to NordRelay events...',incrementFailure:false});
+  events.onopen=()=>{if(state.reconnectTimer){clearTimeout(state.reconnectTimer);state.reconnectTimer=null}recordApiSuccess(eventTarget)};
   events.addEventListener('snapshot', e=>{const d=JSON.parse(e.data).data;state.snapshot=d;syncCurrentSessionChatTab({activate:false});syncCompletionSoundActivity();renderSnapshot(d);renderSessionControls();renderChatWorkingIndicator();renderChatTabs()});
   events.addEventListener('chat_history', e=>{renderChatMessages(JSON.parse(e.data).messages||[]);renderChatTabs()});
   events.addEventListener('activity_update', e=>renderActivity(JSON.parse(e.data).events||[]));
@@ -87,11 +88,11 @@ function connectEvents(){
   events.addEventListener('turn_error', e=>{const d=JSON.parse(e.data);appendMessage('system','Error: '+d.error);currentAgentMessage=null;clearCurrentChatWorkingState();state.completionSoundArmedKey=null;renderChatWorkingIndicator();renderSessionControls();renderChatTabs()});
   events.addEventListener('turn_complete', ()=>{currentAgentMessage=null;clearCurrentChatWorkingState();syncCompletionSoundActivity();renderChatWorkingIndicator();renderSessionControls();renderChatTabs();notify('NordRelay turn finished','The active task completed.');loadBootstrap();if(isMonitorTabActive('tasks'))loadTasks()});
   events.addEventListener('status', e=>{const d=JSON.parse(e.data);const msg=d.message||'';if(isCliRunningStatus(msg)){state.cliStatusActive=true;toast(msg,{sticky:true});return}if(isCliDoneStatus(msg)){state.cliStatusActive=false;clearStickyToast()}toast(msg)});
-  events.onerror=()=>{setConnection('Reconnecting','error');if(!state.reconnectTimer)state.reconnectTimer=setTimeout(()=>{state.reconnectTimer=null;connectEvents()},5000)};
+  events.onerror=()=>{setApiState(apiFetchFailureStatus(eventTarget),{target:eventTarget,message:eventTarget==='local'?'NordRelay events disconnected. Reconnecting...':'Peer events disconnected. Reconnecting...',retryAfterMs:5000});if(!state.reconnectTimer)state.reconnectTimer=setTimeout(()=>{state.reconnectTimer=null;connectEvents()},5000)};
 }
 function setConnection(text,kind){const el=document.getElementById('connectionStatus');el.className='footer-connection';el.innerHTML='<span class="footer-label">Connection:</span> <span class="footer-connection-value connection-'+attr(kind)+'">'+esc(text)+'</span>'}
-window.addEventListener('offline',()=>setConnection('Offline','error'));
-window.addEventListener('online',()=>{setConnection('Reconnecting','warn');connectEvents()});
+window.addEventListener('offline',()=>setApiState('offline',{target:'local',message:'The browser is offline. Reconnect the network to continue.'}));
+window.addEventListener('online',()=>{setApiState('restarting',{target:'local',message:'Browser is online. Reconnecting to NordRelay...',incrementFailure:false});connectEvents()});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)return;if(shouldRefreshActiveSessions())safe(loadActiveSessions);if(state.currentPage==='metrics')safe(()=>loadMetrics({silent:true}));if(state.currentPage==='diagnostics')safe(loadDiagnostics)});
 const NOTIFICATION_PREF_KEY='nordrelayNotificationsEnabled';
 function updateNotificationButton(){const button=document.getElementById('notifyBtn');if(!button)return;const enabled=Boolean(state.notifications);const blocked='Notification' in window&&Notification.permission==='denied';button.classList.toggle('notifications-enabled',enabled);button.setAttribute('aria-pressed',enabled?'true':'false');const label=enabled?'Disable notifications':blocked?'Notifications blocked by browser':'Enable notifications';button.setAttribute('aria-label',label);button.setAttribute('title',label)}

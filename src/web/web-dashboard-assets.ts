@@ -10,6 +10,7 @@ const require = createRequire(import.meta.url);
 const clientSources = [
   "client/core/api-routes.generated.js",
   "client/core/api-client.ts",
+  "client/core/api-state.ts",
   "client/core/runtime.ts",
   "client/core/components.ts",
   "client/core/pagers.ts",

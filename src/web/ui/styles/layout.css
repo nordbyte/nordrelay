@@ -321,6 +321,13 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .profile-status{min-height:20px;margin-top:8px;color:var(--muted);font-size:13px}
 .profile-list{display:grid;gap:8px}
 #toast{position:fixed;right:18px;bottom:18px;display:none;background:var(--accent);color:white;border-radius:8px;padding:12px 14px;max-width:360px}
+.api-state-banner{margin:12px 22px 0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface-soft);color:var(--text);display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;line-height:1.35}
+.api-state-banner[hidden]{display:none}
+.api-state-banner strong{font-size:13px}
+.api-state-banner span{min-width:180px;flex:1;color:var(--text)}
+.api-state-banner small{color:var(--muted)}
+.api-state-banner.api-state-warn{border-color:color-mix(in srgb,#d29b17 48%,var(--border));background:color-mix(in srgb,#d29b17 12%,var(--surface))}
+.api-state-banner.api-state-error{border-color:color-mix(in srgb,var(--danger) 42%,var(--border));background:color-mix(in srgb,var(--danger) 10%,var(--surface))}
 .danger{background:var(--danger);border-color:var(--danger);color:white}
 button.danger:hover:not(:disabled),.danger:hover:not(:disabled){background:color-mix(in srgb,var(--danger) 82%,#000);border-color:color-mix(in srgb,var(--danger) 82%,#000);color:white}
 .form-grid .full-span{grid-column:1/-1}

@@ -170,6 +170,7 @@ ${faviconLinks}
           </button>
         </div>
       </header>
+      <div id="apiStateBanner" class="api-state-banner" hidden></div>
 
       <section class="page active" id="page-overview">
         <div class="metrics" id="metrics"></div>

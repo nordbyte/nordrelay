@@ -17,6 +17,7 @@ const assets = [
     sources: [
       "src/web/ui/client/core/api-routes.generated.js",
       "src/web/ui/client/core/api-client.ts",
+      "src/web/ui/client/core/api-state.ts",
       "src/web/ui/client/core/runtime.ts",
       "src/web/ui/client/core/components.ts",
       "src/web/ui/client/core/pagers.ts",

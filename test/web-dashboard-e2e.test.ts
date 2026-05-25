@@ -608,9 +608,16 @@ describe("web dashboard browser-flow assets", () => {
 
   it("uses a friendly dashboard API network failure message", () => {
     const js = dashboardJs();
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    const css = dashboardCss();
 
     expect(js).toContain("function fetchApi");
-    expect(js).toContain("NordRelay API is unreachable. Check that the dashboard is still running, then reload the page.");
+    expect(js).toContain("NordRelay API is restarting or unreachable. Keeping current dashboard data visible.");
+    expect(js).toContain("Peer API is unreachable. Local dashboard data remains available.");
+    expect(js).toContain("createApiStateError");
+    expect(js).toContain("apiFetchFailureStatus");
+    expect(pageSource).toContain('id="apiStateBanner"');
+    expect(css).toContain(".api-state-banner");
     expect(js).not.toContain("await fetch(url.pathname + url.search");
   });
 
@@ -620,13 +627,14 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function handleApiResponse");
     expect(js).toContain("function shouldRefreshDashboardForAuth");
     expect(js).toContain("function waitForDashboardAuthState");
-    expect(js).toContain("await handleApiResponse<P>(await retry(), undefined, true)");
+    expect(js).toContain("await handleApiResponse<P>(await retry(), undefined, true, context)");
     expect(js).toContain("res.status === 401");
     expect(js).toContain("res.status !== 403");
     expect(js).toContain("/csrf/i.test(apiErrorMessage(data, ''))");
     expect(js).toContain("AUTH_REFRESH_STORAGE_KEY");
     expect(js).toContain("Dashboard session changed. Waiting for NordRelay API...");
     expect(js).toContain("NordRelay is restarting. Actions will resume when the API is reachable.");
+    expect(js).toContain("setApiState('auth-expired'");
     expect(js).not.toContain("location.reload()");
   });
 
@@ -768,6 +776,7 @@ describe("web dashboard browser-flow assets", () => {
 
   it("composes dashboard assets from focused WebUI modules", () => {
     expect(readFileSync("src/web/ui/client/core/api-client.ts", "utf8")).toContain("async function api");
+    expect(readFileSync("src/web/ui/client/core/api-state.ts", "utf8")).toContain("function setApiState");
     expect(readFileSync("src/web/ui/client/core/runtime.ts", "utf8")).toContain("const state");
     expect(readFileSync("src/web/ui/client/core/components.ts", "utf8")).toContain("function uiItem");
     expect(readFileSync("src/web/ui/client/profile.ts", "utf8")).toContain("function openProfileDialog");

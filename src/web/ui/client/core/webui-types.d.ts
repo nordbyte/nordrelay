@@ -71,6 +71,41 @@ interface WebuiAuth extends WebuiRecord {
   permissions?: string[];
 }
 
+type WebuiApiStateStatus = "online" | "restarting" | "auth-expired" | "peer-unreachable" | "stale-data" | "offline";
+
+interface WebuiApiStateEntry extends WebuiRecord {
+  status: WebuiApiStateStatus;
+  target: string;
+  message?: string;
+  lastOkAt?: string;
+  updatedAt?: string;
+  retryAt?: string;
+  staleSince?: string;
+  consecutiveFailures?: number;
+}
+
+interface WebuiApiStatusState extends WebuiRecord {
+  local: WebuiApiStateEntry;
+  peers: Record<string, WebuiApiStateEntry>;
+}
+
+interface WebuiApiStateTransition extends WebuiRecord {
+  target?: string;
+  message?: string;
+  retryAfterMs?: number;
+  incrementFailure?: boolean;
+  statusCode?: number;
+  path?: string;
+  method?: string;
+}
+
+interface WebuiApiRequestContext extends WebuiRecord {
+  target?: string;
+  path?: string;
+  method?: WebApiMethod;
+  proxied?: boolean;
+}
+
 interface WebuiBootstrap extends WebuiRecord {
   auth?: WebuiAuth | null;
   controls?: WebuiControls;
@@ -405,6 +440,7 @@ interface DashboardState {
   auth: WebuiAuth | null;
   profile: WebuiRecord | null;
   csrfToken: string | null;
+  apiStatus: WebuiApiStatusState;
   authReloading: boolean;
   permissions: string[];
   settings: WebuiSettingRecord[];
@@ -472,6 +508,7 @@ interface DashboardState {
   activeSessionsPeerBackoff: Record<string, number>;
   activeSessionsTarget: string;
   activeSessionsErrors?: WebuiRecord[];
+  activeSessionsLoadedTarget?: string;
   currentSessions?: WebuiRecord[];
   localTurnThreadId: string | null;
   localTurnAgentId: string | null;

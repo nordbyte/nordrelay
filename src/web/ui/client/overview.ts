@@ -201,7 +201,19 @@ async function loadActiveSessions(){
     normalizeActiveSessionsTarget();
     const data=state.currentPage==='chat'&&ensureChatTabs().length>1?await loadActiveSessionsForChatTabs():await loadActiveSessionsForSelectedTarget();
     state.activeSessionsErrors=data.errors||[];
+    state.activeSessionsLoadedTarget=state.currentPage==='chat'?'chat-tabs':state.activeSessionsTarget||'local';
     renderActiveSessions(data.sessions||[]);
+  }catch(error){
+    if(!isApiStateError(error))throw error;
+    state.activeSessionsErrors=[];
+    const loadedTarget=state.activeSessionsLoadedTarget||'';
+    const currentTarget=state.currentPage==='chat'?'chat-tabs':state.activeSessionsTarget||'local';
+    if(loadedTarget===currentTarget&&state.activeSessions?.sessions?.length){
+      setApiState('stale-data',{target:error.apiTarget,message:'Showing the last active-session data while this node reconnects.',incrementFailure:false});
+      renderActiveSessions(state.activeSessions.sessions);
+    }else{
+      renderActiveSessions([]);
+    }
   }finally{
     state.activeSessionsLastLoadAt=Date.now();
     state.activeSessionsLoading=false;

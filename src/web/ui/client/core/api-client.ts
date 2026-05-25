@@ -30,15 +30,17 @@ async function api<P extends import("./api-client-types.js").WebApiPath>(
       body: bodyObject(options.body),
       contextKey: 'web:dashboard',
     });
+    const context = { target: peerId, path: url.pathname, method, proxied: true };
     const send = () => fetchApi('/api/peers/'+encodeURIComponent(peerId)+'/proxy', {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...csrfHeader() },
       body: proxyBody,
-    });
+    }, context);
     const res = await send();
-    return await handleApiResponse<P>(res, send);
+    return await handleApiResponse<P>(res, send, false, context);
   }
   const body = normalizeBody(options.body);
+  const context = { target: 'local', path: url.pathname, method, proxied: false };
   const send = () => fetchApi(url.pathname + url.search, {
     method,
     headers: {
@@ -47,9 +49,9 @@ async function api<P extends import("./api-client-types.js").WebApiPath>(
       ...(options.headers || {}),
     },
     body,
-  });
+  }, context);
   const res = await send();
-  return await handleApiResponse<P>(res, send);
+  return await handleApiResponse<P>(res, send, false, context);
 }
 
 /**
@@ -67,6 +69,7 @@ async function apiPeer<P extends import("./api-client-types.js").WebApiPath>(
   const method = normalizeMethod(options.method, options.body);
   const url = apiUrl(path, options.query);
   assertApiRoute(url.pathname, method);
+  const context = { target: peerId, path: url.pathname, method, proxied: true };
   const send = () => fetchApi('/api/peers/'+encodeURIComponent(peerId)+'/proxy', {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...csrfHeader() },
@@ -77,9 +80,9 @@ async function apiPeer<P extends import("./api-client-types.js").WebApiPath>(
       body: bodyObject(options.body),
       contextKey: 'web:dashboard',
     }),
-  });
+  }, context);
   const res = await send();
-  return await handleApiResponse<P>(res, send);
+  return await handleApiResponse<P>(res, send, false, context);
 }
 
 /**
@@ -91,16 +94,28 @@ async function handleApiResponse<P extends import("./api-client-types.js").WebAp
   res: Response,
   retry?: () => Promise<Response>,
   authRetried = false,
+  context: WebuiApiRequestContext = { target: 'local', path: '', method: 'GET' },
 ): Promise<import("./api-client-types.js").WebApiClientResponse<P>> {
   const data = await readApiResponse(res);
   if (shouldRefreshDashboardForAuth(res, data)) {
     if (retry && !authRetried && await refreshDashboardForAuth()) {
-      return await handleApiResponse<P>(await retry(), undefined, true);
+      return await handleApiResponse<P>(await retry(), undefined, true, context);
     }
-    throw new Error("Dashboard session changed. Wait until NordRelay is reachable, then retry the action.");
+    const status = res.status === 401 ? "auth-expired" : "restarting";
+    throw createApiStateError(status, "Dashboard session changed. Wait until NordRelay is reachable, then retry the action.", { target: "local", statusCode: res.status });
   }
-  if (!res.ok) throw new Error(apiErrorMessage(data, res.statusText));
+  if (!res.ok) {
+    const message = apiErrorMessage(data, res.statusText);
+    const status = apiResponseFailureStatus(res, message, context.target);
+    if (status) {
+      const retryAfterMs = retryAfterFromResponse(res, data);
+      throw createApiStateError(status, message, { target: context.target, statusCode: res.status, path: context.path, method: context.method, retryAfterMs });
+    }
+    throw new Error(message);
+  }
   clearDashboardAuthRefreshAttempt();
+  if (context.proxied) recordApiSuccess('local');
+  recordApiSuccess(context.target);
   return data as import("./api-client-types.js").WebApiClientResponse<P>;
 }
 
@@ -155,13 +170,11 @@ async function refreshDashboardAuthState(): Promise<boolean> {
   const runtimeState = globalThis.NORDRELAY_WEBUI_RUNTIME_STATE;
   if (runtimeState) runtimeState.authReloading = true;
   rememberDashboardAuthRefreshAttempt();
-  if (typeof toast === 'function') {
-    toast('Dashboard session changed. Waiting for NordRelay API...', { sticky: true });
-  }
+  setApiState('restarting', { target: 'local', message: 'Dashboard session changed. Waiting for NordRelay API...', incrementFailure: false });
   try {
     const auth = await waitForDashboardAuthState();
     if (!auth?.csrfToken) {
-      if (typeof toast === 'function') toast('Dashboard login expired. Sign in again.', { sticky: true });
+      setApiState('auth-expired', { target: 'local', message: 'Dashboard login expired. Sign in again.' });
       return false;
     }
     if (runtimeState) {
@@ -171,11 +184,10 @@ async function refreshDashboardAuthState(): Promise<boolean> {
     }
     if (typeof applyAccountChrome === 'function') applyAccountChrome(auth);
     if (typeof clearStickyToast === 'function') clearStickyToast();
+    recordApiSuccess('local');
     return true;
   } catch {
-    if (typeof toast === 'function') {
-      toast('NordRelay is restarting. Actions will resume when the API is reachable.', { sticky: true });
-    }
+    setApiState('restarting', { target: 'local', message: 'NordRelay is restarting. Actions will resume when the API is reachable.', retryAfterMs: 1000 });
     return false;
   } finally {
     if (runtimeState) runtimeState.authReloading = false;
@@ -225,12 +237,27 @@ function clearDashboardAuthRefreshAttempt(): void {
  * @param {RequestInfo | URL} input
  * @param {RequestInit} [init]
  */
-async function fetchApi(input, init) {
+async function fetchApi(input, init, context: WebuiApiRequestContext = { target: 'local', path: '', method: 'GET' }) {
   try {
     return await fetch(input, init);
   } catch (error) {
-    throw new Error("NordRelay API is unreachable. Check that the dashboard is still running, then reload the page.");
+    const status = apiFetchFailureStatus(context.target);
+    const message = status === 'peer-unreachable'
+      ? 'Peer API is unreachable. Local dashboard data remains available.'
+      : 'NordRelay API is restarting or unreachable. Keeping current dashboard data visible.';
+    throw createApiStateError(status, message, { target: context.target, path: context.path, method: context.method, retryAfterMs: 5000 });
   }
+}
+
+/**
+ * @param {Response} res
+ * @param {Record<string, unknown>} data
+ */
+function retryAfterFromResponse(res: Response, data: Record<string, unknown>): number {
+  const header = Number(res.headers.get('retry-after-ms') || 0);
+  if (Number.isFinite(header) && header > 0) return header;
+  const body = Number(data.retryAfterMs || 0);
+  return Number.isFinite(body) && body > 0 ? body : 0;
 }
 
 /**
