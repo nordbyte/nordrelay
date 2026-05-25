@@ -64,6 +64,7 @@ import { SessionLockStore, type SessionLock } from "../access/session-locks.js";
 import { SessionRegistry, type ContextMetadata } from "../state/session-registry.js";
 import { createSupportBundle, type SupportBundleResult } from "../support/support-bundle.js";
 import { getObservabilityRegistry, type ObservabilitySnapshot } from "../observability/observability-registry.js";
+import { PeerStore } from "../peers/peer-store.js";
 import { transcribeAudio, type TranscriptionBackend } from "../artifacts/voice.js";
 import {
   WebActivityStore,
@@ -211,8 +212,21 @@ export async function relayRuntimeMetrics(runtime: RelayRuntimeDelegate): Promis
 }
 
 export function relayRuntimeObservability(): ObservabilitySnapshot {
-    return getObservabilityRegistry().snapshot();
+    return getObservabilityRegistry().snapshot({ peerNames: observabilityPeerNames() });
   }
+
+function observabilityPeerNames(): Map<string, string> {
+  const names = new Map<string, string>();
+  try {
+    for (const peer of new PeerStore().listPublic()) {
+      if (peer.id && peer.name) names.set(peer.id, peer.name);
+      if (peer.nodeId && peer.name) names.set(peer.nodeId, peer.name);
+    }
+  } catch {
+    // Observability must stay available even if peer metadata is temporarily unreadable.
+  }
+  return names;
+}
 
 export function relayRuntimeAudit(runtime: RelayRuntimeDelegate, options: number | AuditListOptions = 50): AuditEvent[] {
     return runtime.auditStore.list(options);

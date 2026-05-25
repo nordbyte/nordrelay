@@ -47,6 +47,7 @@ export interface ObservabilityCacheSnapshot {
 
 export interface ObservabilityPeerRoundtripSnapshot {
   peerId: string;
+  peerName?: string;
   method: string;
   transport?: string;
   count: number;
@@ -124,6 +125,8 @@ export interface ObservabilitySnapshot {
   peerRoundtrips: ObservabilityPeerRoundtripSnapshot[];
   sse: ObservabilitySseSnapshot;
 }
+
+export type ObservabilityPeerNameLookup = ReadonlyMap<string, string> | Record<string, string>;
 
 export interface ObservedPollerHandle {
   id: string;
@@ -422,11 +425,11 @@ export class ObservabilityRegistry {
     };
   }
 
-  snapshot(): ObservabilitySnapshot {
+  snapshot(options: { peerNames?: ObservabilityPeerNameLookup } = {}): ObservabilitySnapshot {
     const now = Date.now();
     const pollers = [...this.pollers.values()].map((record) => pollerSnapshot(record, now));
     const caches = [...this.caches.values()].map((record) => cacheSnapshot(record, now));
-    const peerRoundtrips = [...this.peerRoundtrips.values()].map(peerRoundtripSnapshot);
+    const peerRoundtrips = [...this.peerRoundtrips.values()].map((record) => peerRoundtripSnapshot(record, options.peerNames));
     const sseActive = [...this.sseConnections.values()].map((record) => sseConnectionSnapshot(record, now));
     return {
       generatedAt: new Date(now).toISOString(),
@@ -543,7 +546,7 @@ function cacheSnapshot(record: CacheRecord, now: number): ObservabilityCacheSnap
   };
 }
 
-function peerRoundtripSnapshot(record: PeerRoundtripRecord): ObservabilityPeerRoundtripSnapshot {
+function peerRoundtripSnapshot(record: PeerRoundtripRecord, peerNames?: ObservabilityPeerNameLookup): ObservabilityPeerRoundtripSnapshot {
   const p95Ms = percentile(record.samples, 95);
   const status: ObservabilityStatus = record.lastStatus === "error"
     ? "error"
@@ -552,6 +555,7 @@ function peerRoundtripSnapshot(record: PeerRoundtripRecord): ObservabilityPeerRo
       : "ok";
   return {
     peerId: record.peerId,
+    peerName: peerNameFor(record.peerId, peerNames),
     method: record.method,
     transport: record.transport,
     count: record.count,
@@ -567,6 +571,15 @@ function peerRoundtripSnapshot(record: PeerRoundtripRecord): ObservabilityPeerRo
     lastError: record.lastError,
     status,
   };
+}
+
+function peerNameFor(peerId: string, peerNames?: ObservabilityPeerNameLookup): string | undefined {
+  if (!peerNames) return undefined;
+  const value = typeof (peerNames as ReadonlyMap<string, string>).get === "function"
+    ? (peerNames as ReadonlyMap<string, string>).get(peerId)
+    : (peerNames as Record<string, string>)[peerId];
+  const name = typeof value === "string" ? value.trim() : "";
+  return name || undefined;
 }
 
 function sseConnectionSnapshot(record: SseConnectionRecord, now: number): ObservabilitySseConnectionSnapshot {

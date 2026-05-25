@@ -62,9 +62,10 @@ describe("observability registry", () => {
     registry.recordPeerRoundtrip({ peerId: "peer-1", method: "web.proxy", durationMs: 25, ok: true, transport: "direct" });
     registry.recordPeerRoundtrip({ peerId: "peer-1", method: "web.proxy", durationMs: 100, ok: false, error: "Peer request timed out.", transport: "direct" });
 
-    const peer = registry.snapshot().peerRoundtrips[0];
+    const peer = registry.snapshot({ peerNames: { "peer-1": "Build Server" } }).peerRoundtrips[0];
     expect(peer).toMatchObject({
       peerId: "peer-1",
+      peerName: "Build Server",
       method: "web.proxy",
       count: 2,
       success: 1,

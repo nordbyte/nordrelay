@@ -278,8 +278,10 @@ function observabilityCacheTable(caches){
   return '<div class="data-table-wrap"><table class="data-table metrics-table"><thead><tr><th>Cache</th><th>Status</th><th>TTL</th><th>Hit rate</th><th>Fresh/Stale/Miss</th><th>Refresh ok/fail</th><th>In-flight</th><th>Age</th><th>Last refresh</th><th>Error</th></tr></thead><tbody>'+rows.map(observabilityCacheRow).join('')+'</tbody></table></div>';
 }
 function observabilityPeerRow(p){
+  const peerLabel=p.peerName||p.peerId||'-';
+  const peerTitle=p.peerName&&p.peerId?p.peerName+' · '+p.peerId:peerLabel;
   return '<tr>'+
-    metricCell('Peer','<span class="truncate-cell" title="'+attr(p.peerId)+'">'+esc(short(p.peerId,90))+'</span>','primary-cell')+
+    metricCell('Peer','<span class="truncate-cell" title="'+attr(peerTitle)+'">'+esc(short(peerLabel,90))+'</span>','primary-cell')+
     metricCell('Method',esc(p.method||'-'),'status-cell')+
     metricCell('Transport',esc(p.transport||'-'),'status-cell')+
     metricCell('Status',metricStatusChip(p.status),'status-cell')+
