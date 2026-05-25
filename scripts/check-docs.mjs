@@ -1,14 +1,21 @@
 #!/usr/bin/env node
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { execFile } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const docsDir = path.join(rootDir, "docs");
 const commandsDir = path.join(docsDir, "commands");
 const configPath = path.join(docsDir, ".vitepress", "config.mts");
 const cliPath = path.join(rootDir, "plugins", "nordrelay", "scripts", "nordrelay.mjs");
+const configMetadataPath = path.join(rootDir, "src", "core", "config-metadata.ts");
+const channelCommandCatalogPath = path.join(rootDir, "src", "channels", "shared", "channel-command-catalog.ts");
+const settingsReferencePath = path.join(docsDir, "reference", "settings.md");
+const chatCommandsReferencePath = path.join(docsDir, "reference", "chat-commands.md");
+const execFileAsync = promisify(execFile);
 
 const pageExtensions = new Set(["", ".md", ".html"]);
 const assetExtensions = new Set([
@@ -44,6 +51,8 @@ async function main() {
   await checkMarkdownLinks(markdownFiles, anchors);
   await checkVitePressConfigLinks(anchors);
   await checkCommandDocs(markdownFiles);
+  await checkSettingsReferenceDocs();
+  await checkChatCommandReferenceDocs();
 
   if (errors.length > 0) {
     console.error(`Docs check failed with ${errors.length} issue(s):`);
@@ -250,7 +259,10 @@ function resolvePagePath(base, target, label) {
 
 async function checkCommandDocs(markdownFiles) {
   const cliSource = await fs.readFile(cliPath, "utf8");
-  const commandGroups = extractVisibleCommandGroups(cliSource);
+  const sourceCommandGroups = extractVisibleCommandGroups(cliSource);
+  const helpCommandGroups = await extractCliHelpCommandGroups();
+  assertSameCommandGroups(sourceCommandGroups, helpCommandGroups);
+  const commandGroups = helpCommandGroups;
   const visibleCommands = commandGroups.map((group) => group[0]);
   const aliases = commandGroups.flatMap((group) => group.slice(1).map((alias) => ({ alias, page: group[0] })));
   const commandFiles = new Set(markdownFiles.filter((file) => path.dirname(file) === commandsDir).map((file) => path.basename(file, ".md")));
@@ -289,6 +301,99 @@ async function checkCommandDocs(markdownFiles) {
       }
     }
   }
+}
+
+async function checkSettingsReferenceDocs() {
+  const metadataSource = await fs.readFile(configMetadataPath, "utf8");
+  const docsSource = await fs.readFile(settingsReferencePath, "utf8");
+  const metadataKeys = extractSettingDefinitionKeys(metadataSource);
+  const documentedKeys = extractSettingsReferenceKeys(docsSource);
+
+  for (const key of metadataKeys) {
+    if (!documentedKeys.has(key)) {
+      fail(`${relative(settingsReferencePath)}: missing setting key '${key}' from config metadata`);
+    }
+  }
+
+  for (const key of documentedKeys) {
+    if (!metadataKeys.has(key)) {
+      fail(`${relative(settingsReferencePath)}: documents unknown setting key '${key}'`);
+    }
+  }
+}
+
+async function checkChatCommandReferenceDocs() {
+  const catalogSource = await fs.readFile(channelCommandCatalogPath, "utf8");
+  const docsSource = await fs.readFile(chatCommandsReferencePath, "utf8");
+  const catalogCommands = extractChannelCommandCatalogNames(catalogSource);
+  const documentedCommands = extractDocumentedChatCommands(docsSource);
+
+  for (const command of catalogCommands) {
+    if (!documentedCommands.has(command)) {
+      fail(`${relative(chatCommandsReferencePath)}: missing chat command '/${command}' from channel command catalog`);
+    }
+  }
+}
+
+async function extractCliHelpCommandGroups() {
+  const { stdout } = await execFileAsync(process.execPath, [cliPath, "--help"], { cwd: rootDir });
+  const commandsBlock = stdout.slice(stdout.indexOf("Commands:"), stdout.indexOf("Options:"));
+  const groups = [];
+  const regex = /^  ([^\n]+?)\s{2,}.+$/gm;
+  let match;
+  while ((match = regex.exec(commandsBlock))) {
+    const names = match[1].split(",").map((item) => item.trim().split(/\s+/)[0]).filter(Boolean);
+    if (names.length > 0) groups.push(names);
+  }
+  return groups;
+}
+
+function assertSameCommandGroups(sourceGroups, helpGroups) {
+  const source = sourceGroups.map((group) => group.join(",")).join("|");
+  const help = helpGroups.map((group) => group.join(",")).join("|");
+  if (source !== help) {
+    fail(`CLI help output does not match source command list: source=${source} help=${help}`);
+  }
+}
+
+function extractSettingDefinitionKeys(source) {
+  const keys = new Set();
+  const regex = /\b(?:setting|telegramSetting|discordSetting|slackSetting|matrixSetting)\(\s*"([A-Z0-9_]+)"/g;
+  let match;
+  while ((match = regex.exec(source))) {
+    keys.add(match[1]);
+  }
+  return keys;
+}
+
+function extractSettingsReferenceKeys(source) {
+  const keys = new Set();
+  const regex = /^\|\s*`([A-Z][A-Z0-9_]+)`\s*\|/gm;
+  let match;
+  while ((match = regex.exec(source))) {
+    keys.add(match[1]);
+  }
+  return keys;
+}
+
+function extractChannelCommandCatalogNames(source) {
+  const names = new Set();
+  const regex = /\{\s*name:\s*"([a-z0-9_-]+)"/g;
+  let match;
+  while ((match = regex.exec(source))) {
+    names.add(match[1]);
+  }
+  return names;
+}
+
+function extractDocumentedChatCommands(source) {
+  const commands = new Set();
+  const regex = /`\/([a-z0-9_-]+)`/g;
+  let match;
+  while ((match = regex.exec(source))) {
+    commands.add(match[1]);
+  }
+  return commands;
 }
 
 function extractVisibleCommandGroups(source) {

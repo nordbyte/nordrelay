@@ -34,6 +34,11 @@ This page summarizes the runtime keys generated in `.env.example`.
 | `DISCORD_MESSAGE_CONTENT_ENABLED` | Read normal Discord messages |
 | `DISCORD_COMMAND_MODE` | `slash`, `message`, or `both` |
 | `DISCORD_AUTO_REGISTER_COMMANDS` | Register Discord slash commands on startup |
+| `DISCORD_CLI_MIRROR_MODE` | Discord-specific CLI mirror override |
+| `DISCORD_CLI_MIRROR_MIN_UPDATE_MS` | Discord mirror edit/update throttle |
+| `DISCORD_NOTIFY_MODE` | Discord-specific completion notification override |
+| `DISCORD_QUIET_HOURS` | Discord-specific quiet-hours override |
+| `DISCORD_AUTO_SEND_ARTIFACTS` | Discord-specific automatic artifact delivery override |
 | `SLACK_ENABLED` | Enable Slack |
 | `SLACK_BOT_TOKEN` | Slack bot token |
 | `SLACK_APP_TOKEN` | Slack Socket Mode app token |
@@ -44,6 +49,11 @@ This page summarizes the runtime keys generated in `.env.example`.
 | `SLACK_ALLOWED_CHANNEL_IDS` | Slack channel allow-list |
 | `SLACK_MESSAGE_CONTENT_ENABLED` | Read normal Slack messages |
 | `SLACK_COMMAND` | Slack slash command |
+| `SLACK_CLI_MIRROR_MODE` | Slack-specific CLI mirror override |
+| `SLACK_CLI_MIRROR_MIN_UPDATE_MS` | Slack mirror edit/update throttle |
+| `SLACK_NOTIFY_MODE` | Slack-specific completion notification override |
+| `SLACK_QUIET_HOURS` | Slack-specific quiet-hours override |
+| `SLACK_AUTO_SEND_ARTIFACTS` | Slack-specific automatic artifact delivery override |
 | `MATRIX_ENABLED` | Enable Matrix |
 | `MATRIX_HOMESERVER_URL` | Matrix homeserver base URL |
 | `MATRIX_ACCESS_TOKEN` | Matrix bot access token |
@@ -55,6 +65,11 @@ This page summarizes the runtime keys generated in `.env.example`.
 | `MATRIX_COMMAND_PREFIX` | Matrix text command prefix |
 | `MATRIX_SYNC_TIMEOUT_MS` | Matrix `/sync` long-poll timeout |
 | `MATRIX_POLL_TIMEOUT_MS` | Matrix HTTP request timeout |
+| `MATRIX_CLI_MIRROR_MODE` | Matrix-specific CLI mirror override |
+| `MATRIX_CLI_MIRROR_MIN_UPDATE_MS` | Matrix mirror edit/update throttle |
+| `MATRIX_NOTIFY_MODE` | Matrix-specific completion notification override |
+| `MATRIX_QUIET_HOURS` | Matrix-specific quiet-hours override |
+| `MATRIX_AUTO_SEND_ARTIFACTS` | Matrix-specific automatic artifact delivery override |
 
 ## Agents
 
@@ -117,14 +132,25 @@ This page summarizes the runtime keys generated in `.env.example`.
 | `CONNECTOR_LOG_FORMAT` | `text` or `json` |
 | `TOOL_VERBOSITY` | Tool output verbosity |
 | `SHOW_TURN_TOKEN_USAGE` | Append per-turn token usage |
+| `ENABLE_TELEGRAM_LOGIN` | Allow Telegram `/login` and `/logout` flows |
+| `ENABLE_TELEGRAM_REACTIONS` | Send Telegram reactions when supported |
+| `TELEGRAM_RATE_LIMIT_MIN_INTERVAL_MS` | Minimum Telegram send interval |
+| `TELEGRAM_EDIT_MIN_INTERVAL_MS` | Minimum Telegram edit interval |
 | `NORDRELAY_CLI_MIRROR_MODE` | Default CLI mirror mode |
 | `NORDRELAY_CLI_MIRROR_MIN_UPDATE_MS` | Mirrored edit interval |
 | `NORDRELAY_WEB_CLI_MIRROR_MODE` | WebUI mirror override |
+| `NORDRELAY_WEB_CLI_MIRROR_MIN_UPDATE_MS` | WebUI mirror edit/update throttle |
 | `NORDRELAY_NOTIFY_MODE` | Completion notification mode |
 | `NORDRELAY_QUIET_HOURS` | Default quiet hours |
 | `NORDRELAY_ARTIFACTS_ENABLED` | Enable generated-artifact tracking |
 | `NORDRELAY_AUTO_SEND_ARTIFACTS` | Legacy artifact auto-summary switch |
 | `NORDRELAY_ARTIFACT_DELIVERY` | Default artifact delivery mode |
+| `TELEGRAM_CLI_MIRROR_MODE` | Telegram-specific CLI mirror override |
+| `TELEGRAM_CLI_MIRROR_MIN_UPDATE_MS` | Telegram mirror edit/update throttle |
+| `TELEGRAM_NOTIFY_MODE` | Telegram-specific completion notification override |
+| `TELEGRAM_QUIET_HOURS` | Telegram-specific quiet-hours override |
+| `TELEGRAM_REDACT_PATTERNS` | Additional comma-separated redaction regex patterns |
+| `NORDRELAY_UPDATE_METHOD` | Connector update method: `auto`, `npm`, or `git` |
 | `*_CLI_MIRROR_MODE` | Adapter-specific mirror override |
 | `*_NOTIFY_MODE` | Adapter-specific notify override |
 | `*_QUIET_HOURS` | Adapter-specific quiet hours |
@@ -138,6 +164,11 @@ This page summarizes the runtime keys generated in `.env.example`.
 | `ARTIFACT_MAX_INBOX_DIRS` | Retained inbox directories |
 | `ARTIFACT_IGNORE_DIRS` | Additional ignored directories |
 | `ARTIFACT_IGNORE_GLOBS` | Additional ignored globs |
+| `TELEGRAM_AUTO_SEND_ARTIFACTS` | Telegram-specific automatic artifact delivery override |
+| `TELEGRAM_ARTIFACT_DELIVERY` | Telegram-specific artifact delivery mode |
+| `DISCORD_ARTIFACT_DELIVERY` | Discord-specific artifact delivery mode |
+| `SLACK_ARTIFACT_DELIVERY` | Slack-specific artifact delivery mode |
+| `MATRIX_ARTIFACT_DELIVERY` | Matrix-specific artifact delivery mode |
 | `WORKSPACE_ALLOWED_ROOTS` | Workspace allow-list |
 | `WORKSPACE_WARN_ROOTS` | Broad-root warnings |
 | `NORDRELAY_WORKSPACE` | Default workspace |
@@ -168,7 +199,19 @@ This page summarizes the runtime keys generated in `.env.example`.
 | `VOICE_PREFERRED_BACKEND` | Voice backend preference |
 | `VOICE_DEFAULT_LANGUAGE` | Default transcription language |
 | `VOICE_TRANSCRIBE_ONLY` | Do not send transcripts as prompts |
-| `FASTER_WHISPER_*` | faster-whisper runtime settings |
-| `COHERE_TRANSCRIBE_*` | local Cohere Transcribe runtime settings |
+| `FFMPEG_PATH` | Optional absolute ffmpeg executable path |
+| `FASTER_WHISPER_PYTHON` | Python executable for faster-whisper |
+| `FASTER_WHISPER_MODEL` | faster-whisper model name |
+| `FASTER_WHISPER_DEVICE` | faster-whisper device |
+| `FASTER_WHISPER_COMPUTE_TYPE` | faster-whisper compute type |
+| `FASTER_WHISPER_LANGUAGE` | Fixed faster-whisper transcription language |
+| `FASTER_WHISPER_TIMEOUT_MS` | faster-whisper transcription timeout |
+| `COHERE_TRANSCRIBE_PYTHON` | Python executable for local Cohere Transcribe |
+| `COHERE_TRANSCRIBE_MODEL` | Hugging Face model id for local Cohere Transcribe |
+| `COHERE_TRANSCRIBE_DEVICE` | Local Cohere Transcribe device |
+| `COHERE_TRANSCRIBE_DTYPE` | Local Cohere Transcribe dtype |
+| `COHERE_TRANSCRIBE_PUNCTUATION` | Enable local Cohere punctuation/casing |
+| `COHERE_TRANSCRIBE_MAX_NEW_TOKENS` | Maximum generated local Cohere transcription tokens |
+| `COHERE_TRANSCRIBE_TIMEOUT_MS` | Local Cohere Transcribe timeout |
 | `OPENAI_API_KEY` | Optional Whisper fallback key |
 | `HF_TOKEN` | Optional Hugging Face token for gated model downloads |
