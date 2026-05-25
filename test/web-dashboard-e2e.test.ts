@@ -97,6 +97,7 @@ describe("web dashboard browser-flow assets", () => {
 
   it("includes plugin management in the local administration WebUI", () => {
     const js = dashboardJs();
+    const css = dashboardCss();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
     const navSource = readFileSync("src/web/web-dashboard-ui.ts", "utf8");
     const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
@@ -114,6 +115,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(contract).toContain('exact("/api/plugins"');
     expect(contract).toContain('dynamic("/api/plugins/:id/enable"');
     expect(webAssetManifestSources()).toContain("src/web/ui/client/admin-plugins.ts");
+    expect(css).toContain(".plugin-tab");
+    expect(css).toContain(".plugin-tab.active");
+    expect(css).toContain(".plugin-tab-heading");
   });
 
   it("includes workflow templates and workflow runs in the WebUI", () => {
