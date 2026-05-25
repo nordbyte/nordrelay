@@ -260,15 +260,16 @@
 .peer-status-table{--table-min-width:720px}
 .peer-status-table th:nth-child(1),.peer-status-table td:nth-child(1){width:22%}
 .peer-status-table th:nth-child(2),.peer-status-table td:nth-child(2){width:78%}
-.peers-table{--table-min-width:1220px}
+.peers-table{--table-min-width:1320px}
 .peers-table th:nth-child(1),.peers-table td:nth-child(1){width:10%}
 .peers-table th:nth-child(2),.peers-table td:nth-child(2){width:8%;white-space:nowrap}
 .peers-table th:nth-child(3),.peers-table td:nth-child(3){width:9%;white-space:nowrap}
-.peers-table th:nth-child(4),.peers-table td:nth-child(4){width:19%}
-.peers-table th:nth-child(5),.peers-table td:nth-child(5){width:23%}
-.peers-table th:nth-child(6),.peers-table td:nth-child(6){width:17%}
-.peers-table th:nth-child(7),.peers-table td:nth-child(7){width:10%;white-space:nowrap}
-.peers-table th:nth-child(8),.peers-table td:nth-child(8){width:90px}
+.peers-table th:nth-child(4),.peers-table td:nth-child(4){width:18%}
+.peers-table th:nth-child(5),.peers-table td:nth-child(5){width:21%}
+.peers-table th:nth-child(6),.peers-table td:nth-child(6){width:15%}
+.peers-table th:nth-child(7),.peers-table td:nth-child(7){width:92px;white-space:nowrap}
+.peers-table th:nth-child(8),.peers-table td:nth-child(8){width:96px;white-space:nowrap}
+.peers-table th:nth-child(9),.peers-table td:nth-child(9){width:92px}
 .peers-table .actions-cell{text-align:right;vertical-align:top}
 .peer-invites-table{--table-min-width:1260px}
 .peer-invites-table th:nth-child(1),.peer-invites-table td:nth-child(1){width:14%}
