@@ -218,9 +218,8 @@ import {
   relayRuntimeUnlockWebSession,
   relayRuntimeControlOptions,
   relayRuntimeAuthStatus,
-  relayRuntimeLogin,
-  relayRuntimeLogout,
-  relayRuntimeChatHistory,
+  relayRuntimeLogin, relayRuntimeLogout,
+  relayRuntimeChatHistory, relayRuntimeChatHistoryPage,
   relayRuntimeWebMirrorPreference,
   relayRuntimeSessionDetail, relayRuntimeSetSessionName,
   relayRuntimeClearChatHistory,
@@ -566,8 +565,9 @@ export class RelayRuntime {
   async authStatus(agentId?: AgentId): Promise<WebAuthDto> { return relayRuntimeAuthStatus(this, agentId); }
   async login(agentId?: AgentId, actor?: WebActivityActor): Promise<WebAuthDto & { result: LoginResult | null }> { return relayRuntimeLogin(this, agentId, actor); }
   async logout(agentId?: AgentId, actor?: WebActivityActor): Promise<WebAuthDto & { result: LoginResult | null }> { return relayRuntimeLogout(this, agentId, actor); }
-  async chatHistory(limit = 200): Promise<WebChatMessage[]> { return relayRuntimeChatHistory(this, limit); } async chatAttachment(messageId: string, attachmentId: string) { return relayRuntimeChatAttachment(this, messageId, attachmentId); }
-
+  async chatHistory(limit = 200): Promise<WebChatMessage[]> { return relayRuntimeChatHistory(this, limit); }
+  async chatHistoryPage(options: { limit?: number; cursor?: string | null } = {}): Promise<CursorPageDto<WebChatMessage>> { return relayRuntimeChatHistoryPage(this, options); }
+  async chatAttachment(messageId: string, attachmentId: string) { return relayRuntimeChatAttachment(this, messageId, attachmentId); }
   async webMirrorPreference(argument = "", actor?: WebActivityActor): Promise<{
     mode: string;
     minInterval: number;

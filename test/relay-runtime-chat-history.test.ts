@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { CODEX_AGENT_CAPABILITIES, type AgentSessionInfo } from "../src/agents/shared/agent.js";
-import { relayRuntimeChatHistory } from "../src/runtime/relay-runtime-sessions.js";
+import { relayRuntimeChatHistory, relayRuntimeChatHistoryPage } from "../src/runtime/relay-runtime-sessions.js";
 import type { RelayRuntimeDelegate } from "../src/runtime/relay-runtime-delegate.js";
 import type { WebChatMessage } from "../src/web/web-state.js";
 
@@ -79,7 +79,35 @@ describe("relayRuntimeChatHistory", () => {
     ]);
     expect(messages.filter((message) => message.text === "Done.")).toHaveLength(1);
   });
+
+  it("paginates chat history with an older-message cursor", async () => {
+    getExternalSnapshotForSession.mockReturnValue(null);
+    const runtime = fakeRuntime([
+      chatMessage("m1", "first", "2026-05-21T08:00:00.000Z"),
+      chatMessage("m2", "second", "2026-05-21T08:00:01.000Z"),
+      chatMessage("m3", "third", "2026-05-21T08:00:02.000Z"),
+    ]);
+
+    const firstPage = await relayRuntimeChatHistoryPage(runtime, { limit: 2 });
+    const secondPage = await relayRuntimeChatHistoryPage(runtime, { limit: 2, cursor: firstPage.pagination.nextCursor });
+
+    expect(firstPage.items.map((message) => message.id)).toEqual(["m2", "m3"]);
+    expect(firstPage.pagination).toMatchObject({ hasNext: true, nextCursor: "m2", total: 3 });
+    expect(secondPage.items.map((message) => message.id)).toEqual(["m1"]);
+    expect(secondPage.pagination).toMatchObject({ hasNext: false, nextCursor: null, total: 3 });
+  });
 });
+
+function chatMessage(id: string, text: string, timestamp: string): WebChatMessage {
+  return {
+    id,
+    threadId: "thread-1",
+    role: "agent",
+    text,
+    timestamp,
+    source: "web",
+  };
+}
 
 function fakeRuntime(webMessages: WebChatMessage[]): RelayRuntimeDelegate {
   const info: AgentSessionInfo = {

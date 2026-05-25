@@ -5,6 +5,11 @@ import { describe, expect, it } from "vitest";
 
 import { dashboardBundleAsset, dashboardCss, dashboardJs, dashboardStaticAsset } from "../src/web/web-dashboard-assets.js";
 
+function webAssetManifestSources(): string[] {
+  const manifest = JSON.parse(readFileSync("src/web/ui/asset-manifest.json", "utf8")) as { bundles?: Array<{ sources?: string[] }> };
+  return (manifest.bundles ?? []).flatMap((bundle) => bundle.sources ?? []).map((source) => `src/web/ui/${source}`);
+}
+
 describe("web dashboard browser-flow assets", () => {
   it("includes the agent feature matrix and dedicated agent update log flow", () => {
     const css = dashboardCss();
@@ -120,8 +125,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("Advanced JSON import/export");
     expect(js).not.toContain("Steps JSON");
     expect(js).not.toContain("JSON.parse(val('dlgWorkflowSteps'))");
-    expect(readFileSync("scripts/build-web-assets.mjs", "utf8")).toContain("src/web/ui/client/workflows-page.ts");
-    expect(readFileSync("scripts/build-web-assets.mjs", "utf8")).toContain("src/web/ui/client/workflow-builder.ts");
+    expect(webAssetManifestSources()).toContain("src/web/ui/client/workflows-page.ts");
+    expect(webAssetManifestSources()).toContain("src/web/ui/client/workflow-builder.ts");
     expect(js).toContain("/api/templates");
     expect(js).toContain("/versions/");
     expect(js).toContain("/api/workflows");
@@ -192,7 +197,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".queue-tab-heading");
     expect(contract).toContain('exact("/api/queue/plans"');
     expect(contract).toContain('dynamic("/api/queue/plans/:id/enqueue"');
-    expect(readFileSync("scripts/build-web-assets.mjs", "utf8")).toContain("src/web/ui/client/queue-planner.ts");
+    expect(webAssetManifestSources()).toContain("src/web/ui/client/queue-planner.ts");
   });
 
   it("renders Discord setting help icons from setting metadata", () => {

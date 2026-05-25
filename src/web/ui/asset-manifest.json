@@ -1,0 +1,55 @@
+{
+  "bundles": [
+    {
+      "name": "dashboard.js",
+      "loader": "ts",
+      "sources": [
+        "client/core/api-routes.generated.js",
+        "client/core/api-client.ts",
+        "client/core/api-state.ts",
+        "client/core/runtime.ts",
+        "client/core/components.ts",
+        "client/core/pagers.ts",
+        "client/profile.ts",
+        "client/header-target.ts",
+        "client/chat-tabs.ts",
+        "client/overview.ts",
+        "client/events.ts",
+        "client/workflows.ts",
+        "client/jobs.ts",
+        "client/metrics.ts",
+        "client/settings-panel.ts",
+        "client/admin-core.ts",
+        "client/admin-monitor.ts",
+        "client/admin-access.ts",
+        "client/admin-logs.ts",
+        "client/admin-adapters.ts",
+        "client/admin-version.ts",
+        "client/admin-peers.ts",
+        "client/diagnostics.ts",
+        "client/queue-planner.ts",
+        "client/workflow-builder.ts",
+        "client/workflows-page.ts",
+        "client/users.ts",
+        "client/settings-wizard.ts"
+      ]
+    },
+    {
+      "name": "dashboard.css",
+      "loader": "css",
+      "sources": [
+        "styles/theme.css",
+        "styles/components.css",
+        "styles/layout.css",
+        "styles/responsive.css"
+      ]
+    }
+  ],
+  "staticAssets": [
+    { "name": "favicon.ico", "contentType": "image/x-icon" },
+    { "name": "favicon.png", "contentType": "image/png" },
+    { "name": "logo.png", "contentType": "image/png" },
+    { "name": "manifest.webmanifest", "contentType": "application/manifest+json; charset=utf-8" },
+    { "name": "service-worker.js", "contentType": "application/javascript; charset=utf-8" }
+  ]
+}

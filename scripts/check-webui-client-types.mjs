@@ -24,6 +24,8 @@ assert(coreTypes.includes("interface DashboardState"), "WebUI core types must de
 
 const buildScript = read("scripts/build-web-assets.mjs");
 const runtimeAssets = read("src/web/web-dashboard-assets.ts");
+const assetManifest = JSON.parse(read("src/web/ui/asset-manifest.json"));
+const manifestSources = (assetManifest.bundles || []).flatMap((bundle) => bundle.sources || []);
 const expectedSources = [
   "chat-tabs.ts",
   "admin-core.ts",
@@ -35,9 +37,10 @@ const expectedSources = [
   "admin-peers.ts",
 ];
 
+assert(buildScript.includes("asset-manifest.json"), "WebUI build must read the central asset manifest.");
+assert(runtimeAssets.includes("asset-manifest.json"), "WebUI runtime fallback must read the central asset manifest.");
 for (const source of expectedSources) {
-  assert(buildScript.includes(source), `WebUI build is missing ${source}.`);
-  assert(runtimeAssets.includes(source), `WebUI runtime asset list is missing ${source}.`);
+  assert(manifestSources.some((item) => item.endsWith(source)), `WebUI asset manifest is missing ${source}.`);
 }
 
 const adminMarker = read("src/web/ui/client/admin.ts").trim();

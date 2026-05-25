@@ -59,6 +59,7 @@ import { canWriteWithLock } from "../../access/session-locks.js";
 import { SessionRegistry } from "../../state/session-registry.js";
 import { createSlackArtifactCommandHandler, sendRecentSlackArtifacts } from "./slack-artifacts.js";
 import { SlackBotChannelRuntime, actionFromSlackActionId, splitSlackMessage, trimSlackMessage } from "./slack-channel-runtime.js";
+import { registerSlackBridgeEvents } from "./slack-events.js";
 import type { SlackActionBody, SlackBoltApp, SlackBridge, SlackBusyReason, SlackBusyState, SlackExternalMirrorState, SlackPickState, SlackRequest, SlackSlashCommandPayload } from "./slack-types.js";
 import {
   canSendSystemMessagesToSlackContext,
@@ -74,6 +75,7 @@ import {
 import { isUnauthenticatedSlackCommandAllowed, parseSlackMessageCommand, parseSlackSlashCommand, permissionForSlackAction, requiredPermissionForSlackCommand } from "./slack-command-surface.js";
 import { collectSlackDiagnostics } from "./slack-diagnostics.js";
 import { getSlackRateLimitMetrics } from "./slack-rate-limit.js";
+import { logSlackStartupDiagnostics } from "./slack-startup.js";
 import { transcribeAudio, type TranscriptionBackend } from "../../artifacts/voice.js";
 import type { AuthenticatedUser } from "../../access/user-management.js";
 import type { WebActivityActor } from "../../web/web-state.js";
@@ -1446,24 +1448,17 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     }),
   });
 
-  (app as unknown as SlackBoltApp).event("message", async ({ event }) => {
-    await handleMessage(event as SlackMessageEvent);
-  });
-  (app as unknown as SlackBoltApp).event("app_mention", async ({ event }) => {
-    await handleMessage(event as SlackMessageEvent);
-  });
-  (app as unknown as SlackBoltApp).command(config.slackCommand, async ({ command, ack, respond }) => {
-    await ack();
-    await handleSlashCommand(command as SlackSlashCommandPayload, respond);
-  });
-  (app as unknown as SlackBoltApp).action(/^nr:/, async ({ action, body, ack, respond }) => {
-    await ack();
-    const actionId = String(action.action_id ?? "");
-    const parsedAction = actionFromSlackActionId(actionId);
-    if (!parsedAction) return;
-    const request = slackRequestFromAction(body as SlackActionBody, respond);
-    if (!await authenticate(request, permissionForSlackAction(parsedAction))) return;
-    await handleButtonAction(request, parsedAction);
+  registerSlackBridgeEvents(app as unknown as SlackBoltApp, config, {
+    handleMessage,
+    handleSlashCommand,
+    async handleAction({ action, body, respond }) {
+      const actionId = String(action.action_id ?? "");
+      const parsedAction = actionFromSlackActionId(actionId);
+      if (!parsedAction) return;
+      const request = slackRequestFromAction(body as SlackActionBody, respond);
+      if (!await authenticate(request, permissionForSlackAction(parsedAction))) return;
+      await handleButtonAction(request, parsedAction);
+    },
   });
 
   return {
@@ -1471,19 +1466,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     async start() {
       await (app as unknown as { start(port?: number): Promise<void> }).start(config.slackSocketMode ? undefined : config.slackPort);
       console.log(`Slack bot ready (${config.slackSocketMode ? "socket mode" : `port ${config.slackPort}`}).`);
-      void collectSlackDiagnostics({
-        config,
-        userStore,
-        timeoutMs: 3_500,
-        rateLimit: getSlackRateLimitMetrics(),
-      }).then((diagnostics) => {
-        for (const check of diagnostics.checks.filter((item) => item.status === "warn" || item.status === "error")) {
-          console.warn(`Slack ${check.status}: ${check.label}: ${check.detail}`);
-        }
-        for (const channel of diagnostics.channelChecks.filter((item) => item.status === "warn" || item.status === "error")) {
-          console.warn(`Slack ${channel.status}: channel ${channel.channelId}: ${channel.detail}`);
-        }
-      }).catch((error) => console.warn("Slack diagnostics failed:", friendlyErrorText(error)));
+      logSlackStartupDiagnostics(config, userStore);
       externalMonitor.start();
       peerMirrorController.startStoredContexts();
     },

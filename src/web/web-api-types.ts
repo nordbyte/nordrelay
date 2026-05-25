@@ -354,7 +354,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/queue/plans" ? QueuePlannerSnapshotDto | { plan: QueuePlanDto; snapshot: QueuePlannerSnapshotDto } :
   P extends `/api/queue/plans/${string}/approve` | `/api/queue/plans/${string}/enqueue` | `/api/queue/plans/${string}/move` ? { plan: QueuePlanDto; snapshot: QueuePlannerSnapshotDto } :
   P extends `/api/queue/plans/${string}` ? { plan?: QueuePlanDto; removed?: boolean; snapshot?: QueuePlannerSnapshotDto } :
-  P extends "/api/chat/history" ? { messages: WebChatMessage[]; removed?: number } :
+  P extends "/api/chat/history" ? { messages: WebChatMessage[]; pagination?: CursorPageDto<WebChatMessage>["pagination"]; removed?: number } :
   P extends "/api/chat/attachment" ? WebChatAttachmentFileDto :
   P extends "/api/chat/mirror" ? { mode: string; minInterval: number; response: { plain: string; html: string } } :
   P extends "/api/activity" ? { events: WebActivityEvent[]; pagination?: CursorPageDto<WebActivityEvent>["pagination"] } :

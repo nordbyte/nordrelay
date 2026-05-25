@@ -94,6 +94,8 @@ describe("loadConfig", () => {
     delete process.env.CODEX_SYNC_INTERVAL_MS;
     delete process.env.CODEX_EXTERNAL_BUSY_CHECK_MS;
     delete process.env.CODEX_EXTERNAL_BUSY_STALE_MS;
+    delete process.env.CODEX_EXTERNAL_APPROVAL_CONTROL;
+    delete process.env.CODEX_EXTERNAL_APPROVAL_SUDO_HELPER;
     delete process.env.CODEX_SANDBOX_MODE;
     delete process.env.CODEX_APPROVAL_POLICY;
     delete process.env.CODEX_LAUNCH_PROFILES_JSON;
@@ -116,6 +118,7 @@ describe("loadConfig", () => {
     delete process.env.NORDRELAY_PI_ENABLED;
     delete process.env.NORDRELAY_HERMES_ENABLED;
     delete process.env.NORDRELAY_OPENCLAW_ENABLED;
+    delete process.env.NORDRELAY_CLAUDE_CODE_ENABLED;
     delete process.env.NORDRELAY_DEFAULT_AGENT;
     delete process.env.PI_CLI_PATH;
     delete process.env.PI_SESSION_DIR;
@@ -140,6 +143,12 @@ describe("loadConfig", () => {
     delete process.env.OPENCLAW_DEFAULT_MODEL;
     delete process.env.OPENCLAW_DEFAULT_THINKING;
     delete process.env.OPENCLAW_DEFAULT_PROFILE;
+    delete process.env.CLAUDE_CODE_CLI_PATH;
+    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.CLAUDE_CODE_DEFAULT_MODEL;
+    delete process.env.CLAUDE_CODE_DEFAULT_EFFORT;
+    delete process.env.CLAUDE_CODE_DEFAULT_PROFILE;
+    delete process.env.CLAUDE_CODE_MAX_TURNS;
     delete process.env.WORKSPACE_ALLOWED_ROOTS;
     delete process.env.WORKSPACE_WARN_ROOTS;
     delete process.env.NORDRELAY_WORKSPACE;

@@ -227,6 +227,13 @@ interface WebuiChatTab extends WebuiRecord {
   lastActiveAt: string;
 }
 
+interface WebuiCursorPagination extends WebuiRecord {
+  limit?: number;
+  nextCursor?: string | null;
+  hasNext?: boolean;
+  total?: number;
+}
+
 interface WebuiActiveSessionsState extends WebuiRecord {
   sessions?: WebuiActiveSession[];
 }
@@ -419,6 +426,7 @@ interface WebuiAppendMessageOptions extends WebuiRecord {
 
 interface WebuiRenderChatOptions {
   forceScroll?: boolean;
+  preserveScrollOffset?: boolean;
 }
 
 interface WebuiLoadChatHistoryOptions extends WebuiRenderChatOptions {
@@ -498,6 +506,8 @@ interface DashboardState {
   sessionDetailRequestId: number;
   chatHistoryRequestId: number;
   chatRenderVersion: number;
+  chatHistoryPagination: WebuiCursorPagination | null;
+  chatHistoryLoadingOlder: boolean;
   chatTabs: WebuiChatTab[];
   activeChatTabId: string;
   activeSessions: WebuiActiveSessionsState | null;
@@ -528,7 +538,7 @@ interface DashboardState {
   activityEvents?: WebuiRecord[];
   auditEvents?: WebuiAuditEvent[];
   logsEntries?: WebuiRecord[];
-  chatMessages?: WebuiRecord[];
+  chatMessages?: WebuiChatMessage[];
   artifactReports?: WebuiArtifactReport[];
   artifactUsage?: WebuiRecord | null;
   artifactSearchTimer?: WebuiTimer | null;

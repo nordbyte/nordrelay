@@ -128,6 +128,7 @@ import {
 import { registerTelegramSupportCommands } from "./telegram-support-command.js";
 import { registerTelegramUpdateCommands } from "./telegram-update-commands.js";
 import { registerTelegramWorkflowCommands } from "./telegram-workflow-commands.js";
+import { registerTelegramErrorHandler } from "./telegram-errors.js";
 import {
   canSendSystemMessagesToTelegramContext,
   telegramChannelContextFromKey,
@@ -4047,10 +4048,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     await startUserPrompt(ctx, contextKey, chatId, session, { ...toPromptEnvelope(promptInput, outDir), attachments: webChatAttachmentsForStagedFiles([stagedFile], turnId) });
   });
 
-  bot.catch((error) => {
-    const message = error.error instanceof Error ? error.error.message : String(error.error);
-    console.error("Telegram bot error:", message);
-  });
+  registerTelegramErrorHandler(bot);
 
   peerMirrorController.startStoredContexts();
 

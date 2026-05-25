@@ -208,6 +208,17 @@ export class WebChatStore {
     return messages.slice(-Math.max(1, Math.min(this.maxMessages, limit)));
   }
 
+  listPage(threadId: string | null | undefined, options: { limit?: number; cursor?: string | null } = {}): CursorPage<WebChatMessage> {
+    const limit = normalizeCursorLimit(options.limit, 80, this.maxMessages);
+    const messages = this.readPayload().messagesByThread[threadId || "pending"] ?? [];
+    const newestFirst = [...messages].sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
+    const page = cursorPage(newestFirst, options.cursor, limit, (message) => message.id);
+    return {
+      items: page.items.sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp)),
+      pagination: page.pagination,
+    };
+  }
+
   findByCorrelationId(correlationId: string, limit = 100): WebChatMessage[] {
     const needle = correlationId.trim();
     if (!needle) {

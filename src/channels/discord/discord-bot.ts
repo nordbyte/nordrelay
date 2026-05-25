@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
   Client,
-  Events,
   GatewayIntentBits,
   Partials,
   REST,
@@ -69,6 +68,7 @@ import {
 import { createDiscordArtifactCommandHandler, sendRecentDiscordArtifacts } from "./discord-artifacts.js";
 import { argumentFromDiscordInteraction, discordCommands, isUnauthenticatedDiscordCommandAllowed, parseDiscordMessageCommand, permissionForDiscordAction, requiredPermissionForDiscordCommand } from "./discord-command-surface.js";
 import { discordRateLimiter, getDiscordRateLimitMetrics } from "./discord-rate-limit.js";
+import { registerDiscordBridgeEvents } from "./discord-events.js";
 import { friendlyErrorText } from "../../core/error-messages.js";
 import { spawnConnectorRestart, spawnSelfUpdate } from "../../support/operations.js";
 import { toPromptEnvelope, webChatAttachmentsForStagedFiles, type PromptEnvelope } from "../../state/prompt-store.js";
@@ -1716,21 +1716,13 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     console.log("Discord global slash commands registered.");
   };
 
-  client.on(Events.MessageCreate, (message) => {
-    void handleMessage(message).catch((error) => {
-      console.error("Discord message handling failed:", error);
-    });
-  });
-  client.on(Events.InteractionCreate, (interaction) => {
-    void handleInteraction(interaction).catch((error) => {
-      console.error("Discord interaction handling failed:", error);
-    });
-  });
-  client.once(Events.ClientReady, (readyClient) => {
-    console.log(`Discord bot ready as ${readyClient.user.tag}`);
-    void registerSlashCommands().catch((error) => {
-      console.error("Failed to register Discord slash commands:", error);
-    });
+  registerDiscordBridgeEvents(client, {
+    handleMessage,
+    handleInteraction,
+    async handleReady(tag) {
+      console.log(`Discord bot ready as ${tag}`);
+      await registerSlashCommands();
+    },
   });
 
   return {

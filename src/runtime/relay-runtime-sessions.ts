@@ -33,6 +33,7 @@ import { activeSessionSourceForContextKey, ChannelMirrorRegistry } from "../chan
 import type { LoginResult } from "../agents/codex/codex-auth.js";
 import { listThreads as listCodexThreads } from "../agents/codex/codex-state.js";
 import type { ConnectorConfig } from "../core/config.js";
+import { cursorPage, normalizeCursorLimit } from "../core/pagination.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import { friendlyErrorText } from "../core/error-messages.js";
 import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate } from "../support/operations.js";
@@ -376,6 +377,17 @@ export async function relayRuntimeChatHistory(runtime: RelayRuntimeDelegate, lim
     const external = getExternalSnapshotForSession(session, runtime.config, { maxEvents: limit });
     return mergeSessionDetailMessages(webMessages, externalSnapshotMessages(external, info.threadId), limit);
   }
+
+export async function relayRuntimeChatHistoryPage(runtime: RelayRuntimeDelegate, options: { limit?: number; cursor?: string | null } = {}): Promise<CursorPageDto<WebChatMessage>> {
+  const limit = normalizeCursorLimit(options.limit, 80, MAX_CHAT_HISTORY);
+  const messages = await relayRuntimeChatHistory(runtime, MAX_CHAT_HISTORY);
+  const newestFirst = [...messages].sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
+  const page = cursorPage(newestFirst, options.cursor, limit, (message) => message.id);
+  return {
+    items: page.items.sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp)),
+    pagination: page.pagination,
+  };
+}
 
 export async function relayRuntimeWebMirrorPreference(runtime: RelayRuntimeDelegate, argument = "", actor?: WebActivityActor): Promise<{
     mode: string;

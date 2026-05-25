@@ -73,6 +73,7 @@ import {
 import { isUnauthenticatedMatrixCommandAllowed, parseMatrixMessageCommand, permissionForMatrixAction, requiredPermissionForMatrixCommand } from "./matrix-command-surface.js";
 import { collectMatrixDiagnostics } from "./matrix-diagnostics.js";
 import { getMatrixRateLimitMetrics } from "./matrix-rate-limit.js";
+import { logMatrixStartupDiagnostics } from "./matrix-startup.js";
 import { transcribeAudio, type TranscriptionBackend } from "../../artifacts/voice.js";
 import type { AuthenticatedUser } from "../../access/user-management.js";
 import type { WebActivityActor } from "../../web/web-state.js";
@@ -1570,19 +1571,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
     async start() {
       syncLoop.start();
       console.log(`Matrix bot ready (${config.matrixHomeserverUrl}).`);
-      void collectMatrixDiagnostics({
-        config,
-        userStore,
-        timeoutMs: 3_500,
-        rateLimit: getMatrixRateLimitMetrics(),
-      }).then((diagnostics) => {
-        for (const check of diagnostics.checks.filter((item) => item.status === "warn" || item.status === "error")) {
-          console.warn(`Matrix ${check.status}: ${check.label}: ${check.detail}`);
-        }
-        for (const room of diagnostics.roomChecks.filter((item) => item.status === "warn" || item.status === "error")) {
-          console.warn(`Matrix ${room.status}: room ${room.roomId}: ${room.detail}`);
-        }
-      }).catch((error) => console.warn("Matrix diagnostics failed:", friendlyErrorText(error)));
+      logMatrixStartupDiagnostics(config, userStore);
       externalMonitor.start();
       peerMirrorController.startStoredContexts();
     },

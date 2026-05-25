@@ -19,8 +19,7 @@ import type { BotPreferencesStore } from "../state/bot-preferences.js";
 import type { UnifiedJobStore } from "../state/job-store.js";
 import type { PromptEnvelope, PromptStore } from "../state/prompt-store.js";
 import type { SessionNameStore } from "../state/session-names.js";
-import type { RelayWorkflowService } from "./relay-workflow-service.js";
-import type { WorkflowStore } from "../state/workflow-store.js";
+import type { WorkflowStore } from "../state/workflow-store.js"; import type { RelayWorkflowService } from "./relay-workflow-service.js";
 import type { QueuePlanStatus, QueuePlanStore } from "../state/queue-plan-store.js";
 import type { MetricsHistoryStore } from "../state/metrics-history-store.js";
 import type { QueuePlanInput } from "./relay-runtime-queue-planner.js";
@@ -167,6 +166,7 @@ export interface RelayRuntimeDelegate {
   login(agentId?: AgentId, actor?: WebActivityActor): Promise<WebAuthDto & { result: LoginResult | null }>;
   logout(agentId?: AgentId, actor?: WebActivityActor): Promise<WebAuthDto & { result: LoginResult | null }>;
   chatHistory(limit?: number): Promise<WebChatMessage[]>;
+  chatHistoryPage(options?: { limit?: number; cursor?: string | null }): Promise<CursorPageDto<WebChatMessage>>;
   webMirrorPreference(argument?: string, actor?: WebActivityActor): Promise<{
     mode: string;
     minInterval: number;

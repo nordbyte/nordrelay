@@ -7,50 +7,31 @@ import { fileURLToPath } from "node:url";
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 
-const clientSources = [
-  "client/core/api-routes.generated.js",
-  "client/core/api-client.ts",
-  "client/core/api-state.ts",
-  "client/core/runtime.ts",
-  "client/core/components.ts",
-  "client/core/pagers.ts",
-  "client/profile.ts",
-  "client/header-target.ts",
-  "client/chat-tabs.ts",
-  "client/overview.ts",
-  "client/events.ts",
-  "client/workflows.ts",
-  "client/jobs.ts",
-  "client/metrics.ts",
-  "client/settings-panel.ts",
-  "client/admin-core.ts",
-  "client/admin-monitor.ts",
-  "client/admin-access.ts",
-  "client/admin-logs.ts",
-  "client/admin-adapters.ts",
-  "client/admin-version.ts",
-  "client/admin-peers.ts",
-  "client/diagnostics.ts",
-  "client/queue-planner.ts",
-  "client/workflow-builder.ts",
-  "client/workflows-page.ts",
-  "client/users.ts",
-  "client/settings-wizard.ts",
-];
+interface DashboardAssetBundle {
+  name: "dashboard.css" | "dashboard.js";
+  loader: "css" | "ts";
+  sources: string[];
+}
 
-const styleSources = [
-  "styles/theme.css",
-  "styles/components.css",
-  "styles/layout.css",
-  "styles/responsive.css",
-];
+interface DashboardStaticAssetManifestEntry {
+  name: string;
+  contentType: string;
+}
+
+interface DashboardAssetManifest {
+  bundles: DashboardAssetBundle[];
+  staticAssets: DashboardStaticAssetManifestEntry[];
+}
+
+const assetManifest = readDashboardAssetManifest();
+const bundleSources = new Map(assetManifest.bundles.map((bundle) => [bundle.name, bundle.sources]));
 
 export function dashboardJs(): string {
-  return readDashboardAsset("dashboard.js", clientSources);
+  return readDashboardAsset("dashboard.js");
 }
 
 export function dashboardCss(): string {
-  return readDashboardAsset("dashboard.css", styleSources);
+  return readDashboardAsset("dashboard.css");
 }
 
 export function dashboardAssetVersion(): string {
@@ -69,13 +50,9 @@ export interface DashboardStaticAsset {
   gzipPath?: string;
 }
 
-const staticAssetTypes: Record<string, string> = {
-  "favicon.ico": "image/x-icon",
-  "favicon.png": "image/png",
-  "logo.png": "image/png",
-  "manifest.webmanifest": "application/manifest+json; charset=utf-8",
-  "service-worker.js": "application/javascript; charset=utf-8",
-};
+const staticAssetTypes: Record<string, string> = Object.fromEntries(
+  assetManifest.staticAssets.map((asset) => [asset.name, asset.contentType]),
+);
 
 export function dashboardStaticAsset(assetName: string): DashboardStaticAsset | null {
   const contentType = staticAssetTypes[assetName];
@@ -92,17 +69,32 @@ export function dashboardBundleAsset(assetName: "dashboard.css" | "dashboard.js"
   return existsSync(builtAsset) ? { filePath: builtAsset, contentType, ...compressedAssetPaths(builtAsset) } : null;
 }
 
-function readDashboardAsset(assetName: string, sourceFiles: string[]): string {
+function readDashboardAsset(assetName: "dashboard.css" | "dashboard.js"): string {
   const builtAsset = path.resolve(moduleDir, "..", "webui-assets", assetName);
   if (existsSync(builtAsset)) {
     return readFileSync(builtAsset, "utf8");
   }
 
+  const sourceFiles = bundleSources.get(assetName);
+  if (!sourceFiles) {
+    throw new Error(`Dashboard asset manifest does not define ${assetName}`);
+  }
   const sourceDir = path.join(moduleDir, "ui");
   const source = sourceFiles
     .map((file) => readFileSync(path.join(sourceDir, file), "utf8"))
     .join("\n");
   return assetName === "dashboard.js" ? transformDashboardJsSource(source) : source;
+}
+
+function readDashboardAssetManifest(): DashboardAssetManifest {
+  const builtManifest = path.resolve(moduleDir, "..", "webui-assets", "asset-manifest.json");
+  const sourceManifest = path.join(moduleDir, "ui", "asset-manifest.json");
+  const manifestPath = existsSync(builtManifest) ? builtManifest : sourceManifest;
+  const parsed = JSON.parse(readFileSync(manifestPath, "utf8")) as DashboardAssetManifest;
+  if (!Array.isArray(parsed.bundles) || !Array.isArray(parsed.staticAssets)) {
+    throw new Error(`Invalid dashboard asset manifest: ${manifestPath}`);
+  }
+  return parsed;
 }
 
 function transformDashboardJsSource(source: string): string {

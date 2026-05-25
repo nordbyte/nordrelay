@@ -436,7 +436,11 @@ export async function handleDashboardSessionRoute(
 
   if (req.method === "GET" && url.pathname === "/api/chat/history") {
     await options.assertCurrentSessionScope(authUser);
-    sendJson(res, 200, { messages: await runtime.chatHistory(numberParam(url, "limit", 200)) });
+    const page = await runtime.chatHistoryPage({
+      limit: numberParam(url, "limit", 80),
+      cursor: url.searchParams.get("cursor") || undefined,
+    });
+    sendJson(res, 200, { messages: page.items, pagination: page.pagination });
     return true;
   }
 
