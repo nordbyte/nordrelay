@@ -1,6 +1,7 @@
 import type { ConnectorConfig } from "../core/config.js";
 import { RemoteRelayClient } from "./peer-client.js";
 import { PeerStore } from "./peer-store.js";
+import { getObservabilityRegistry } from "../observability/observability-registry.js";
 
 export interface PeerHealthMonitorHandle {
   checkNow(): Promise<{ checked: number; failed: number }>;
@@ -17,16 +18,26 @@ export function startPeerHealthMonitor(options: {
   let timer: NodeJS.Timeout | undefined;
   let closed = false;
   let idleChecks = 0;
+  const poller = getObservabilityRegistry().registerPoller({
+    id: "peers:health-monitor",
+    owner: "peers",
+    kind: "peer-health",
+    intervalMs: options.config.peerHealthCheckMs,
+    currentDelayMs: options.config.peerHealthCheckMs,
+  });
 
   async function checkNow(): Promise<{ checked: number; failed: number }> {
     if (running) {
+      poller.skip("previous check still running");
       return { checked: 0, failed: 0 };
     }
     running = true;
+    const finish = poller.start();
     let failed = 0;
     try {
       const peers = store.list().filter((peer) => peer.enabled && peer.url);
       if (peers.length === 0) {
+        finish();
         return { checked: 0, failed: 0 };
       }
       await Promise.all(peers.map(async (peer) => {
@@ -50,7 +61,12 @@ export function startPeerHealthMonitor(options: {
           });
         }
       }));
-      return { checked: peers.length, failed };
+      const result = { checked: peers.length, failed };
+      finish(failed === peers.length && peers.length > 0 ? "all peer health checks failed" : undefined);
+      return result;
+    } catch (error) {
+      finish(error);
+      throw error;
     } finally {
       running = false;
     }
@@ -59,6 +75,7 @@ export function startPeerHealthMonitor(options: {
   if (options.config.peerHealthCheckMs > 0) {
     const schedule = (delayMs: number) => {
       if (closed) return;
+      poller.update({ currentDelayMs: delayMs, nextRunAt: Date.now() + delayMs });
       timer = setTimeout(async () => {
         try {
           const result = await checkNow();
@@ -80,6 +97,7 @@ export function startPeerHealthMonitor(options: {
     checkNow,
     close() {
       closed = true;
+      poller.close();
       if (timer) {
         clearTimeout(timer);
         timer = undefined;

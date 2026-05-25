@@ -286,6 +286,7 @@ ${faviconLinks}
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-metrics-tab="process">Process</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-metrics-tab="web">Web API</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-metrics-tab="rate">Rate Limits</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-metrics-tab="observability">Observability</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-metrics-tab="history">History</button>
             </div>
           </div>

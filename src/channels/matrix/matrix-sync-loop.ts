@@ -1,5 +1,6 @@
 import type { ConnectorConfig } from "../../core/config.js";
 import { friendlyErrorText } from "../../core/error-messages.js";
+import { getObservabilityRegistry } from "../../observability/observability-registry.js";
 import type { MatrixClient } from "./matrix-client.js";
 import type { MatrixMessageEvent } from "./matrix-types.js";
 
@@ -17,9 +18,18 @@ export interface MatrixSyncLoopOptions {
 export function createMatrixSyncLoop(options: MatrixSyncLoopOptions): MatrixSyncLoop {
   let running = false;
   let syncToken: string | undefined;
+  const poller = getObservabilityRegistry().registerPoller({
+    id: "matrix:sync-loop",
+    owner: "matrix",
+    kind: "matrix-sync",
+    intervalMs: options.config.matrixSyncTimeoutMs,
+    currentDelayMs: options.config.matrixSyncTimeoutMs,
+  });
 
   const loop = async (): Promise<void> => {
     while (running) {
+      poller.update({ currentDelayMs: options.config.matrixSyncTimeoutMs, nextRunAt: Date.now() });
+      const finish = poller.start();
       try {
         const response = await options.client.sync(syncToken);
         syncToken = response.next_batch ?? syncToken;
@@ -47,9 +57,12 @@ export function createMatrixSyncLoop(options: MatrixSyncLoopOptions): MatrixSync
             });
           }
         }
+        finish();
       } catch (error) {
+        finish(error);
         if (running) {
           console.warn(`Matrix sync failed: ${friendlyErrorText(error)}`);
+          poller.update({ currentDelayMs: 5_000, nextRunAt: Date.now() + 5_000 });
           await delay(5_000);
         }
       }
@@ -66,6 +79,7 @@ export function createMatrixSyncLoop(options: MatrixSyncLoopOptions): MatrixSync
     },
     stop() {
       running = false;
+      poller.close();
     },
   };
 }

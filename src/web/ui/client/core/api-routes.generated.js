@@ -18,6 +18,7 @@ const WEB_API_CLIENT_ROUTE_RULES = [
   { path: "/api/progress", methods: ['GET'] },
   { path: "/api/metrics", methods: ['GET'] },
   { path: "/api/metrics/history", methods: ['GET'] },
+  { path: "/api/metrics/observability", methods: ['GET'] },
   { path: "/api/jobs", methods: ['GET'] },
   { path: "/api/trace", methods: ['GET'] },
   { re: /^\/api\/jobs\/[^\/]+\/log$/, methods: ['GET'] },

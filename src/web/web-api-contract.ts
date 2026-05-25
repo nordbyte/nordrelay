@@ -36,6 +36,7 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   exact("/api/progress", ["GET"], "inspect"),
   exact("/api/metrics", ["GET"], "inspect"),
   exact("/api/metrics/history", ["GET"], "inspect"),
+  exact("/api/metrics/observability", ["GET"], "inspect"),
   exact("/api/jobs", ["GET"], "inspect"),
   exact("/api/trace", ["GET"], "sessions.read"),
   dynamic("/api/jobs/:id/log", "^/api/jobs/[^/]+/log$", ["GET"], "inspect", `/api/jobs/${stringToken}/log`),

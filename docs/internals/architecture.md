@@ -10,7 +10,7 @@ NordRelay is organized around a small runtime core with adapter-specific modules
 | Prompt queues and queue planner | `src/runtime/`, `src/state/queue-plan-store.ts` |
 | Workflows | `src/runtime/relay-workflow-service.ts`, `src/state/workflow-store.ts` |
 | Worktrees | `src/worktrees/` |
-| Metrics | `src/runtime/metrics.ts`, `src/state/metrics-history-store.ts` |
+| Metrics and observability | `src/runtime/metrics.ts`, `src/observability/`, `src/state/metrics-history-store.ts` |
 | State persistence | `src/state/` |
 
 ## Agents
@@ -78,3 +78,5 @@ src/support/
 ```
 
 This includes `doctor`, autostart integration, support bundles, and zip writing.
+
+Runtime observability is collected in memory and exposed through the login-protected Metrics page and `/api/metrics/observability`. It tracks pollers, cache hit/stale/miss behavior, peer roundtrips, active SSE streams, and CPU-near runtime signals without storing prompts or secrets.

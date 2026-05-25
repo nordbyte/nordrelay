@@ -33,6 +33,7 @@ import {
 } from "../peers/peer-types.js";
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
 import { mergeSessionDetailMessages } from "../runtime/relay-runtime-session-detail.js";
+import { getObservabilityRegistry } from "../observability/observability-registry.js";
 import type { WebActivityActor, WebChatMessage } from "./web-state.js";
 import {
   arrayStringField,
@@ -559,49 +560,87 @@ export async function handleDashboardPeerRoute(
       "cache-control": "no-cache, no-transform",
       connection: "keep-alive",
     });
+    const sse = getObservabilityRegistry().openSseConnection({
+      route: "/api/peers/:id/events",
+      target: peerId,
+      peerId,
+      user: options.authUser.user.email,
+    });
     if (!peer?.url) {
-      res.write("event: status\n");
-      res.write(`data: ${JSON.stringify({ type: "status", level: "info", message: "Peer uses outbound relay mode. Waiting for relayed live events.", at: new Date().toISOString() })}\n\n`);
+      const statusFrame = `event: status\ndata: ${JSON.stringify({ type: "status", level: "info", message: "Peer uses outbound relay mode. Waiting for relayed live events.", at: new Date().toISOString() })}\n\n`;
+      sse.event(Buffer.byteLength(statusFrame));
+      res.write(statusFrame);
       const eventStore = new PeerRelayEventStore(options.home);
       let lastId: string | undefined = eventStore.list(peerId).at(-1)?.id;
       const flush = () => {
         for (const envelope of eventStore.list(peerId, lastId)) {
           lastId = envelope.id;
           if (res.destroyed || res.writableEnded) return;
-          res.write(`event: ${envelope.event.type}\n`);
-          res.write(`data: ${JSON.stringify(envelope.event)}\n\n`);
+          const frame = `event: ${envelope.event.type}\ndata: ${JSON.stringify(envelope.event)}\n\n`;
+          sse.event(Buffer.byteLength(frame));
+          res.write(frame);
         }
       };
       flush();
-      const poll = setInterval(flush, 2_000);
+      const relayEventsPoller = getObservabilityRegistry().registerPoller({
+        id: `peer-events:${peerId}:${sse.id}`,
+        owner: "peers",
+        kind: "relay-events",
+        intervalMs: 2_000,
+        currentDelayMs: 2_000,
+        nextRunAt: Date.now() + 2_000,
+      });
+      const poll = setInterval(() => {
+        relayEventsPoller.update({ nextRunAt: Date.now() + 2_000 });
+        const finish = relayEventsPoller.start();
+        try {
+          flush();
+          finish();
+        } catch (error) {
+          finish(error);
+        }
+      }, 2_000);
       poll.unref?.();
       const heartbeat = setInterval(() => {
-        if (!res.destroyed && !res.writableEnded) res.write(": heartbeat\n\n");
+        if (!res.destroyed && !res.writableEnded) {
+          const frame = ": heartbeat\n\n";
+          sse.heartbeat(Buffer.byteLength(frame));
+          res.write(frame);
+        }
       }, 25_000);
       heartbeat.unref?.();
       req.on("close", () => {
         clearInterval(poll);
         clearInterval(heartbeat);
+        relayEventsPoller.close();
+        sse.close();
       });
       return true;
     }
     const sourceContextKey = url.searchParams.get("contextKey") || undefined;
     const subscription = new RemoteRelayClient(store, options.home).subscribe(peerId, (event) => {
       if (res.destroyed || res.writableEnded) return;
-      res.write(`event: ${event.type}\n`);
-      res.write(`data: ${JSON.stringify(event)}\n\n`);
+      const frame = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+      sse.event(Buffer.byteLength(frame));
+      res.write(frame);
     }, (error) => {
       if (!res.destroyed && !res.writableEnded) {
-        res.write("event: status\n");
-        res.write(`data: ${JSON.stringify({ type: "status", level: "error", message: error.message, at: new Date().toISOString() })}\n\n`);
+        const frame = `event: status\ndata: ${JSON.stringify({ type: "status", level: "error", message: error.message, at: new Date().toISOString() })}\n\n`;
+        sse.event(Buffer.byteLength(frame));
+        res.write(frame);
       }
     }, sourceContextKey);
     const heartbeat = setInterval(() => {
-      if (!res.destroyed && !res.writableEnded) res.write(": heartbeat\n\n");
+      if (!res.destroyed && !res.writableEnded) {
+        const frame = ": heartbeat\n\n";
+        sse.heartbeat(Buffer.byteLength(frame));
+        res.write(frame);
+      }
     }, 25_000);
     heartbeat.unref?.();
     req.on("close", () => {
       clearInterval(heartbeat);
+      sse.close();
       subscription.close();
     });
     return true;

@@ -63,6 +63,7 @@ import { renderSessionInfoPlain, renderSessionUsageRows } from "../channels/shar
 import { SessionLockStore, type SessionLock } from "../access/session-locks.js";
 import { SessionRegistry, type ContextMetadata } from "../state/session-registry.js";
 import { createSupportBundle, type SupportBundleResult } from "../support/support-bundle.js";
+import { getObservabilityRegistry, type ObservabilitySnapshot } from "../observability/observability-registry.js";
 import { transcribeAudio, type TranscriptionBackend } from "../artifacts/voice.js";
 import {
   WebActivityStore,
@@ -206,7 +207,11 @@ export async function relayRuntimeMetrics(runtime: RelayRuntimeDelegate): Promis
       activeTurnCount: active.sessions.length,
       jobs: jobs.jobs,
       activity: runtime.activity({ limit: 500 }),
-    });
+  });
+}
+
+export function relayRuntimeObservability(): ObservabilitySnapshot {
+    return getObservabilityRegistry().snapshot();
   }
 
 export function relayRuntimeAudit(runtime: RelayRuntimeDelegate, options: number | AuditListOptions = 50): AuditEvent[] {
@@ -221,6 +226,7 @@ export async function relayRuntimeSupportBundle(runtime: RelayRuntimeDelegate, a
     const bundle = await createSupportBundle({
       config: runtime.config,
       diagnostics: await runtime.diagnostics(),
+      observability: runtime.observability(),
       adapterHealth: await runtime.adapterHealth(),
       auditEvents: runtime.auditStore.list(100),
       agentUpdateJobs: runtime.agentUpdates.list(),
@@ -308,6 +314,10 @@ export function relayRuntimeDispose(runtime: RelayRuntimeDelegate): void {
     if (runtime.metricsHistoryTimer) {
       clearInterval(runtime.metricsHistoryTimer);
       runtime.metricsHistoryTimer = null;
+    }
+    if (runtime.metricsHistoryPoller) {
+      runtime.metricsHistoryPoller.close();
+      runtime.metricsHistoryPoller = null;
     }
     runtime.workflowService.dispose();
     runtime.dashboardService.stopBackgroundRefresh();

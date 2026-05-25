@@ -65,6 +65,7 @@ describe("access-control", () => {
     expect(permissionForWebRequest("GET", "/api/jobs")).toBe("inspect");
     expect(permissionForWebRequest("GET", "/api/trace")).toBe("sessions.read");
     expect(permissionForWebRequest("GET", "/api/metrics")).toBe("inspect");
+    expect(permissionForWebRequest("GET", "/api/metrics/observability")).toBe("inspect");
     expect(permissionForWebRequest("GET", "/api/peers")).toBe("peers.read");
     expect(permissionForWebRequest("POST", "/api/peers")).toBe("peers.write");
     expect(permissionForWebRequest("POST", "/api/peers/invite")).toBe("peers.write");

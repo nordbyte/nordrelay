@@ -7,6 +7,7 @@ import { getVoiceDiagnostics, type VoiceDiagnostics } from "../artifacts/voice.j
 import { getAgentDiagnostics } from "../agents/shared/agent-activity.js";
 import { getConnectorHealth, getVersionChecks, readConnectorState } from "../support/operations.js";
 import type { RuntimeSnapshotCache } from "./runtime-cache.js";
+import { getObservabilityRegistry, type ObservedPollerHandle } from "../observability/observability-registry.js";
 import { collectSlackDiagnostics } from "../channels/slack/slack-diagnostics.js";
 import { getSlackRateLimitMetrics } from "../channels/slack/slack-rate-limit.js";
 import { collectMatrixDiagnostics } from "../channels/matrix/matrix-diagnostics.js";
@@ -42,6 +43,7 @@ export interface RelayDashboardServiceOptions {
 export class RelayDashboardService {
   private readonly keys: RelayDashboardCacheKey[] = ["version", "adapterHealth", "diagnostics"];
   private warmTimers: NodeJS.Timeout[] = [];
+  private warmPollers: ObservedPollerHandle[] = [];
 
   constructor(private readonly options: RelayDashboardServiceOptions) {
     options.cache.register("version", () => this.produceVersion());
@@ -62,15 +64,51 @@ export class RelayDashboardService {
     }
     const diagnosticsIntervalMs = Math.max(5_000, ttlMs);
     const slowIntervalMs = Math.max(30_000, ttlMs * 6);
+    const observability = getObservabilityRegistry();
+    const diagnosticsPoller = observability.registerPoller({
+      id: "dashboard:diagnostics-warm",
+      owner: "dashboard",
+      kind: "cache-warm",
+      intervalMs: diagnosticsIntervalMs,
+      currentDelayMs: diagnosticsIntervalMs,
+      nextRunAt: Date.now() + diagnosticsIntervalMs,
+    });
+    const slowPoller = observability.registerPoller({
+      id: "dashboard:version-adapter-warm",
+      owner: "dashboard",
+      kind: "cache-warm",
+      intervalMs: slowIntervalMs,
+      currentDelayMs: slowIntervalMs,
+      nextRunAt: Date.now() + slowIntervalMs,
+    });
+    this.warmPollers = [diagnosticsPoller, slowPoller];
     this.warmTimers = [
       setInterval(() => {
-        if (this.isActive()) {
+        diagnosticsPoller.update({ nextRunAt: Date.now() + diagnosticsIntervalMs });
+        if (!this.isActive()) {
+          diagnosticsPoller.skip("dashboard inactive");
+          return;
+        }
+        const finish = diagnosticsPoller.start();
+        try {
           this.options.cache.warm(["diagnostics"]);
+          finish();
+        } catch (error) {
+          finish(error);
         }
       }, diagnosticsIntervalMs),
       setInterval(() => {
-        if (this.isActive()) {
+        slowPoller.update({ nextRunAt: Date.now() + slowIntervalMs });
+        if (!this.isActive()) {
+          slowPoller.skip("dashboard inactive");
+          return;
+        }
+        const finish = slowPoller.start();
+        try {
           this.options.cache.warm(["version", "adapterHealth"]);
+          finish();
+        } catch (error) {
+          finish(error);
         }
       }, slowIntervalMs),
     ];
@@ -80,6 +118,8 @@ export class RelayDashboardService {
   stopBackgroundRefresh(): void {
     this.warmTimers.forEach((timer) => clearInterval(timer));
     this.warmTimers = [];
+    this.warmPollers.forEach((poller) => poller.close());
+    this.warmPollers = [];
   }
 
   async version(options: { forceRefresh?: boolean } = {}): Promise<Record<string, unknown>> {

@@ -815,6 +815,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(metrics).toContain("function metricKvCard");
     expect(metrics).toContain("function metricWebRoutesTable");
     expect(metrics).toContain("function metricRateLimitTable");
+    expect(metrics).toContain("function metricObservabilityHtml");
     expect(metrics).toContain("function formatUptime");
     expect(metrics).toContain("if(hours<24)return hours+'h '+(min%60)+'m'");
     expect(metrics).toContain("return Math.floor(hours/24)+'d '+(hours%24)+'h'");
@@ -832,6 +833,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(pages).toContain('class="section-header adapter-section-header"');
     expect(pages).toContain('class="section-header metrics-section-header"');
     expect(pages).toContain('data-metrics-tab="web"');
+    expect(pages).toContain('data-metrics-tab="observability"');
     expect(pages).toContain('id="metricsAutoRefresh"');
     expect(pages).toContain('class="section-header diagnostics-section-header"');
     expect(pages).toContain('id="diagnosticsTabs"');

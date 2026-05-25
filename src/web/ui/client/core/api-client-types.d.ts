@@ -59,6 +59,7 @@ export type WebApiStaticPath =
   | "/api/matrix-rooms"
   | "/api/metrics"
   | "/api/metrics/history"
+  | "/api/metrics/observability"
   | "/api/models"
   | "/api/peers"
   | "/api/peers/discover"
@@ -242,6 +243,7 @@ export type WebApiResponseByPath = {
   "/api/matrix-rooms": ServerWebApiClientResponse<"/api/matrix-rooms">;
   "/api/metrics": ServerWebApiClientResponse<"/api/metrics">;
   "/api/metrics/history": ServerWebApiClientResponse<"/api/metrics/history">;
+  "/api/metrics/observability": ServerWebApiClientResponse<"/api/metrics/observability">;
   "/api/models": ServerWebApiClientResponse<"/api/models">;
   "/api/peers": ServerWebApiClientResponse<"/api/peers">;
   "/api/peers/discover": ServerWebApiClientResponse<"/api/peers/discover">;
@@ -344,6 +346,7 @@ export type WebApiRequestBodyByPath = {
   "/api/matrix-rooms": ServerWebApiRequestBody<"/api/matrix-rooms">;
   "/api/metrics": ServerWebApiRequestBody<"/api/metrics">;
   "/api/metrics/history": ServerWebApiRequestBody<"/api/metrics/history">;
+  "/api/metrics/observability": ServerWebApiRequestBody<"/api/metrics/observability">;
   "/api/models": ServerWebApiRequestBody<"/api/models">;
   "/api/peers": ServerWebApiRequestBody<"/api/peers">;
   "/api/peers/discover": ServerWebApiRequestBody<"/api/peers/discover">;

@@ -29,7 +29,7 @@ Only expose the dashboard to trusted networks. Use a reverse proxy with HTTPS fo
 | Adapters | Agent and chat adapter health and conformance |
 | Version | NordRelay and agent versions, updates, update jobs |
 | Logs | Connector logs and agent update logs |
-| Metrics | Runtime, sessions, queues, peers, adapters |
+| Metrics | Runtime, sessions, queues, peers, adapters, pollers, caches, SSE, and peer roundtrips |
 | Diagnostics | Doctor checks, support bundle, voice backend checks |
 | Users | Users, groups, channel links, locks, audit events |
 | Settings | Runtime settings and setup wizards |

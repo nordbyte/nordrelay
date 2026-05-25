@@ -100,6 +100,7 @@ import type {
 export type { RuntimeMetricsDto } from "./metrics.js";
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "../core/workspace-policy.js";
 import type { RelayRuntimeDelegate } from "./relay-runtime-delegate.js";
+import { getObservabilityRegistry } from "../observability/observability-registry.js";
 import {
   relayRuntimeDiscoverActiveClaudeCodeSessions,
   relayRuntimeDiscoverActiveCodexSessions,
@@ -572,12 +573,27 @@ export function relayRuntimeScheduleActiveSessionsBroadcast(runtime: RelayRuntim
       return;
     }
     const delayMs = Math.max(0, 1_000 - (Date.now() - runtime.activeSessionsLastBroadcastAt));
+    const poller = getObservabilityRegistry().registerPoller({
+      id: "runtime:active-sessions-broadcast",
+      owner: "runtime",
+      kind: "active-sessions-broadcast",
+      currentDelayMs: delayMs,
+      nextRunAt: Date.now() + delayMs,
+    });
     runtime.activeSessionsBroadcastTimer = setTimeout(() => {
       runtime.activeSessionsBroadcastTimer = null;
       runtime.activeSessionsLastBroadcastAt = Date.now();
+      const finish = poller.start();
       void runtime.activeSessions()
         .then((active) => runtime.broadcast({ type: "active_sessions_update", active }))
-        .catch(() => {});
+        .then(() => {
+          finish();
+          poller.close();
+        })
+        .catch((error) => {
+          finish(error);
+          poller.close();
+        });
     }, delayMs);
     runtime.activeSessionsBroadcastTimer.unref?.();
   }

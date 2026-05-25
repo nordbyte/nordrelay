@@ -127,6 +127,11 @@ export async function handleDashboardRuntimeRoute(
     return true;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/metrics/observability") {
+    sendJson(res, 200, runtime.observability());
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/jobs") {
     sendJson(res, 200, await runtime.jobs({
       limit: numberParam(url, "limit", 100),

@@ -11,6 +11,7 @@ import { signPeerRequest } from "./peer-auth.js";
 import { PeerRuntimeService, peerError } from "./peer-runtime-service.js";
 import { PeerStore } from "./peer-store.js";
 import type { PeerRecord, PeerRelayPollResponse, PeerRpcRequest, PeerRpcResult } from "./peer-types.js";
+import { getObservabilityRegistry, type ObservedPollerHandle } from "../observability/observability-registry.js";
 
 export interface PeerOutboundRelayHandle {
   close(): void;
@@ -59,6 +60,8 @@ export function startPeerOutboundRelay(options: {
   const allowedPeerIds = new Set(config.peerOutboundRelayPeerIds);
   const eventQueue = new Map<string, RelayEvent[]>();
   const eventTimers = new Map<string, NodeJS.Timeout>();
+  const pollers = new Map<string, ObservedPollerHandle>();
+  const observability = getObservabilityRegistry();
 
   const loop = async (peerId: string): Promise<void> => {
     if (closed) return;
@@ -104,12 +107,15 @@ export function startPeerOutboundRelay(options: {
   const schedule = (peerId: string, delayMs = config.peerOutboundRelayPollMs): void => {
     if (closed) return;
     if (timers.has(peerId)) return;
+    const poller = relayPoller(pollers, peerId, "poll", Math.max(250, delayMs));
+    poller.update({ currentDelayMs: Math.max(250, delayMs), nextRunAt: Date.now() + Math.max(250, delayMs) });
     const state = relayPeerState(peerState, peerId);
     state.nextPollAt = new Date(Date.now() + Math.max(250, delayMs)).toISOString();
     writeOutboundSnapshot(homeKey, config, peerState);
     const timer = setTimeout(() => {
       timers.delete(peerId);
-      void loop(peerId);
+      const finish = poller.start();
+      void loop(peerId).then(() => finish()).catch((error) => finish(error));
     }, Math.max(250, delayMs));
     timer.unref?.();
     timers.set(peerId, timer);
@@ -123,9 +129,12 @@ export function startPeerOutboundRelay(options: {
 
   const scheduleEventFlush = (peerId: string, delayMs = 500): void => {
     if (closed || eventTimers.has(peerId)) return;
+    const poller = relayPoller(pollers, peerId, "event-flush", delayMs);
+    poller.update({ currentDelayMs: delayMs, nextRunAt: Date.now() + delayMs });
     const timer = setTimeout(() => {
       eventTimers.delete(peerId);
-      void flushEvents(peerId);
+      const finish = poller.start();
+      void flushEvents(peerId).then(() => finish()).catch((error) => finish(error));
     }, delayMs);
     timer.unref?.();
     eventTimers.set(peerId, timer);
@@ -163,7 +172,25 @@ export function startPeerOutboundRelay(options: {
   });
 
   scheduleKnownPeers();
-  const refreshTimer = setInterval(scheduleKnownPeers, Math.max(30_000, config.peerOutboundRelayPollMs * 5));
+  const refreshIntervalMs = Math.max(30_000, config.peerOutboundRelayPollMs * 5);
+  const refreshPoller = observability.registerPoller({
+    id: "peers:outbound-relay-refresh",
+    owner: "peers",
+    kind: "outbound-relay-refresh",
+    intervalMs: refreshIntervalMs,
+    currentDelayMs: refreshIntervalMs,
+    nextRunAt: Date.now() + refreshIntervalMs,
+  });
+  const refreshTimer = setInterval(() => {
+    refreshPoller.update({ nextRunAt: Date.now() + refreshIntervalMs });
+    const finish = refreshPoller.start();
+    try {
+      scheduleKnownPeers();
+      finish();
+    } catch (error) {
+      finish(error);
+    }
+  }, refreshIntervalMs);
   refreshTimer.unref?.();
 
   console.log(`Peer outbound relay: ${allowedPeerIds.size > 0 ? [...allowedPeerIds].join(", ") : "all outbound peers"}`);
@@ -171,11 +198,14 @@ export function startPeerOutboundRelay(options: {
     close: () => {
       closed = true;
       clearInterval(refreshTimer);
+      refreshPoller.close();
       unsubscribeEvents();
       for (const timer of timers.values()) clearTimeout(timer);
       for (const timer of eventTimers.values()) clearTimeout(timer);
       timers.clear();
       eventTimers.clear();
+      for (const poller of pollers.values()) poller.close();
+      pollers.clear();
       outboundRelaySnapshots.set(homeKey, {
         enabled: false,
         allowedPeerIds: [...allowedPeerIds],
@@ -184,6 +214,21 @@ export function startPeerOutboundRelay(options: {
       });
     },
   };
+}
+
+function relayPoller(pollers: Map<string, ObservedPollerHandle>, peerId: string, kind: string, delayMs: number): ObservedPollerHandle {
+  const id = `peers:outbound-relay:${kind}:${peerId}`;
+  const existing = pollers.get(id);
+  if (existing) return existing;
+  const poller = getObservabilityRegistry().registerPoller({
+    id,
+    owner: "peers",
+    kind: `outbound-relay-${kind}`,
+    intervalMs: delayMs,
+    currentDelayMs: delayMs,
+  });
+  pollers.set(id, poller);
+  return poller;
 }
 
 function isRelayPeerAllowed(peer: PeerRecord, allowedPeerIds: Set<string>): boolean {
@@ -239,12 +284,20 @@ async function executeRelayRequest(service: PeerRuntimeService, peer: PeerRecord
 async function signedPeerPost<T>(peer: PeerRecord, route: string, body: unknown): Promise<T> {
   const bodyText = JSON.stringify(body);
   const signed = signPeerRequest(peer, "POST", route, bodyText);
-  return await requestJson<T>({
-    url: joinPeerUrl(requiredPeerUrl(peer), route),
-    bodyText,
-    headers: signed.headers,
-    expectedTlsFingerprint: peer.tlsFingerprint,
-  });
+  const startedAt = Date.now();
+  try {
+    const result = await requestJson<T>({
+      url: joinPeerUrl(requiredPeerUrl(peer), route),
+      bodyText,
+      headers: signed.headers,
+      expectedTlsFingerprint: peer.tlsFingerprint,
+    });
+    getObservabilityRegistry().recordPeerRoundtrip({ peerId: peer.id, method: route, durationMs: Date.now() - startedAt, ok: true, transport: "outbound-relay" });
+    return result;
+  } catch (error) {
+    getObservabilityRegistry().recordPeerRoundtrip({ peerId: peer.id, method: route, durationMs: Date.now() - startedAt, ok: false, error, transport: "outbound-relay" });
+    throw error;
+  }
 }
 
 async function requestJson<T>(options: {

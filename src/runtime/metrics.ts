@@ -1,4 +1,4 @@
-import { monitorEventLoopDelay } from "node:perf_hooks";
+import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 
 import { getDiscordRateLimitMetrics } from "../channels/discord/discord-rate-limit.js";
 import type { UnifiedJobDto } from "./relay-runtime-types.js";
@@ -6,11 +6,15 @@ import { getSlackRateLimitMetrics } from "../channels/slack/slack-rate-limit.js"
 import { getMatrixRateLimitMetrics } from "../channels/matrix/matrix-rate-limit.js";
 import { getTelegramRateLimitMetrics } from "../channels/telegram/telegram-rate-limit.js";
 import { getWebApiPerformanceMetrics } from "../web/web-performance.js";
+import { getObservabilityRegistry, type ObservabilitySnapshot } from "../observability/observability-registry.js";
 import type { WebActivityEvent } from "../web/web-state.js";
 
 const startedAt = Date.now();
 const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
 eventLoopDelay.enable();
+let previousCpuUsage = process.cpuUsage();
+let previousCpuSampleAt = Date.now();
+let previousEventLoopUtilization = performance.eventLoopUtilization();
 
 export interface RuntimeMetricsDto {
   generatedAt: string;
@@ -52,11 +56,13 @@ export interface RuntimeMetricsDto {
       systemMs: number;
       totalMs: number;
       percentSinceStart: number | null;
+      percentSinceLastSample: number | null;
     };
     eventLoop: {
       delayMeanMs: number | null;
       delayMaxMs: number | null;
       delayP95Ms: number | null;
+      utilizationPercent: number | null;
     };
   };
   adapters: {
@@ -66,6 +72,7 @@ export interface RuntimeMetricsDto {
     matrix: ReturnType<typeof getMatrixRateLimitMetrics>;
   };
   web: ReturnType<typeof getWebApiPerformanceMetrics>;
+  observability: ObservabilitySnapshot;
 }
 
 export interface RuntimeMetricHistorySample {
@@ -80,6 +87,7 @@ export interface RuntimeMetricHistorySample {
   heapUsedBytes: number;
   cpuPercent: number | null;
   eventLoopP95Ms: number | null;
+  eventLoopUtilizationPercent: number | null;
   webAverageMs: number | null;
   webMaxMs: number | null;
   rateLimitHits: {
@@ -131,6 +139,7 @@ export function buildRuntimeMetrics(input: {
       matrix: getMatrixRateLimitMetrics(),
     },
     web: getWebApiPerformanceMetrics(),
+    observability: getObservabilityRegistry().snapshot(),
   };
 }
 
@@ -154,6 +163,7 @@ export function runtimeMetricHistorySample(metrics: RuntimeMetricsDto): RuntimeM
     heapUsedBytes: metrics.process.memory.heapUsedBytes,
     cpuPercent: metrics.process.cpu.percentSinceStart,
     eventLoopP95Ms: metrics.process.eventLoop.delayP95Ms,
+    eventLoopUtilizationPercent: metrics.process.eventLoop.utilizationPercent,
     webAverageMs,
     webMaxMs,
     rateLimitHits: {
@@ -168,8 +178,16 @@ export function runtimeMetricHistorySample(metrics: RuntimeMetricsDto): RuntimeM
 function processMetrics(): RuntimeMetricsDto["process"] {
   const memory = process.memoryUsage();
   const cpu = process.cpuUsage();
+  const cpuDelta = process.cpuUsage(previousCpuUsage);
+  const now = Date.now();
+  const elapsedMs = Math.max(1, now - previousCpuSampleAt);
+  previousCpuUsage = cpu;
+  previousCpuSampleAt = now;
+  const eventLoopUtilization = performance.eventLoopUtilization(previousEventLoopUtilization);
+  previousEventLoopUtilization = performance.eventLoopUtilization();
   const uptimeMs = Math.max(0, Math.round(process.uptime() * 1000));
   const totalMs = Math.round((cpu.user + cpu.system) / 1000);
+  const cpuDeltaMs = (cpuDelta.user + cpuDelta.system) / 1000;
   return {
     pid: process.pid,
     nodeVersion: process.version,
@@ -189,11 +207,13 @@ function processMetrics(): RuntimeMetricsDto["process"] {
       systemMs: Math.round(cpu.system / 1000),
       totalMs,
       percentSinceStart: uptimeMs > 0 ? roundMetric((totalMs / uptimeMs) * 100) : null,
+      percentSinceLastSample: roundMetric((cpuDeltaMs / elapsedMs) * 100),
     },
     eventLoop: {
       delayMeanMs: nanosecondsToMilliseconds(eventLoopDelay.mean),
       delayMaxMs: nanosecondsToMilliseconds(eventLoopDelay.max),
       delayP95Ms: nanosecondsToMilliseconds(eventLoopDelay.percentile(95)),
+      utilizationPercent: roundMetric(eventLoopUtilization.utilization * 100),
     },
   };
 }

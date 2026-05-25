@@ -11,6 +11,7 @@ import {
 import { signPeerRequest } from "./peer-auth.js";
 import { getPeerRelayBroker } from "./peer-relay-broker.js";
 import { PeerStore } from "./peer-store.js";
+import { getObservabilityRegistry } from "../observability/observability-registry.js";
 import {
   PEER_PROTOCOL_VERSION,
   type PeerEventEnvelope,
@@ -167,14 +168,22 @@ export class RemoteRelayClient {
     };
     const bodyText = JSON.stringify(body);
     const signed = signPeerRequest(peer, "POST", "/peer/rpc", bodyText);
+    const startedAt = Date.now();
+    const transport = peer.url ? "direct" : "relay";
     try {
-      const startedAt = Date.now();
       if (!peer.url) {
         const result = await getPeerRelayBroker(this.home).enqueue(peer.id, body, options.timeoutMs);
         this.store.markSeen(peer.id, healthPatchFromRpc(type, result.ok ? result.data : null, Date.now() - startedAt));
         if (!result.ok) {
           throw new Error(result.error);
         }
+        getObservabilityRegistry().recordPeerRoundtrip({
+          peerId: peer.id,
+          method: type,
+          durationMs: Date.now() - startedAt,
+          ok: true,
+          transport,
+        });
         return result.data;
       }
       const result = await requestJson<PeerRpcResult>({
@@ -190,8 +199,23 @@ export class RemoteRelayClient {
       if (!result.data.ok) {
         throw new Error(result.data.error);
       }
+      getObservabilityRegistry().recordPeerRoundtrip({
+        peerId: peer.id,
+        method: type,
+        durationMs: Date.now() - startedAt,
+        ok: true,
+        transport,
+      });
       return result.data.data;
     } catch (error) {
+      getObservabilityRegistry().recordPeerRoundtrip({
+        peerId: peer.id,
+        method: type,
+        durationMs: Date.now() - startedAt,
+        ok: false,
+        error,
+        transport,
+      });
       this.store.markError(peer.id, error instanceof Error ? error.message : String(error));
       throw error;
     }

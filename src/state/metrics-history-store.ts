@@ -68,6 +68,7 @@ function normalizeSample(input: RuntimeMetricHistorySample): RuntimeMetricHistor
     heapUsedBytes: number(input.heapUsedBytes),
     cpuPercent: nullableNumber(input.cpuPercent),
     eventLoopP95Ms: nullableNumber(input.eventLoopP95Ms),
+    eventLoopUtilizationPercent: nullableNumber(input.eventLoopUtilizationPercent),
     webAverageMs: nullableNumber(input.webAverageMs),
     webMaxMs: nullableNumber(input.webMaxMs),
     rateLimitHits: {

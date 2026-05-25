@@ -25,6 +25,7 @@ import type {
   WebAdapterHealthDto,
   WebDiagnosticsDto,
 } from "../runtime/relay-runtime-types.js";
+import type { ObservabilitySnapshot } from "../observability/observability-registry.js";
 import { createZipBuffer, type ZipEntryInput } from "./zip-writer.js";
 
 export interface SupportBundleOptions {
@@ -32,6 +33,7 @@ export interface SupportBundleOptions {
   health?: ConnectorHealth;
   versionChecks?: VersionChecks;
   diagnostics?: WebDiagnosticsDto;
+  observability?: ObservabilitySnapshot;
   adapterHealth?: WebAdapterHealthDto[];
   auditEvents?: AuditEvent[];
   agentUpdateJobs?: AgentUpdateJobSnapshot[];
@@ -74,6 +76,9 @@ export async function createSupportBundle(options: SupportBundleOptions): Promis
   addJson(entries, "system/info.json", systemInfo());
   if (options.diagnostics) {
     addJson(entries, "runtime/diagnostics.json", redactValue(options.diagnostics));
+  }
+  if (options.observability) {
+    addJson(entries, "runtime/observability.json", redactValue(options.observability));
   }
   if (options.adapterHealth) {
     addJson(entries, "runtime/adapter-health.json", redactValue(options.adapterHealth));

@@ -1,3 +1,5 @@
+import { getObservabilityRegistry } from "../observability/observability-registry.js";
+
 export interface RuntimeCacheSnapshot<T> {
   value: T;
   refreshedAt: string;
@@ -13,6 +15,7 @@ interface RuntimeCacheEntry<T> {
 
 export class RuntimeSnapshotCache {
   private readonly entries = new Map<string, RuntimeCacheEntry<unknown>>();
+  private readonly observability = getObservabilityRegistry();
 
   register<T>(key: string, producer: () => Promise<T>): void {
     const entry = this.entries.get(key) as RuntimeCacheEntry<T> | undefined;
@@ -39,6 +42,7 @@ export class RuntimeSnapshotCache {
     }
     const hasFreshValue = entry?.value !== undefined && ttlMs > 0 && now - entry.refreshedAt <= ttlMs;
     if (hasFreshValue) {
+      this.observability.recordCacheAccess(key, "fresh", ttlMs);
       return {
         value: entry.value as T,
         refreshedAt: new Date(entry.refreshedAt).toISOString(),
@@ -47,14 +51,21 @@ export class RuntimeSnapshotCache {
     }
 
     if (entry?.value !== undefined) {
+      this.observability.recordCacheAccess(key, "stale", ttlMs);
       if (!entry.refresh) {
-        entry.refresh = activeProducer()
+        const finishRefresh = this.observability.startCacheRefresh(key);
+        entry.refresh = Promise.resolve()
+          .then(activeProducer)
           .then((value) => {
             entry.value = value;
             entry.refreshedAt = Date.now();
+            finishRefresh();
             return value;
           })
-          .catch(() => entry.value as T)
+          .catch((error) => {
+            finishRefresh(error);
+            return entry.value as T;
+          })
           .finally(() => {
             entry.refresh = undefined;
           });
@@ -66,10 +77,13 @@ export class RuntimeSnapshotCache {
       };
     }
 
-    const pending = entry?.refresh ?? activeProducer();
+    this.observability.recordCacheAccess(key, "miss", ttlMs);
+    const finishRefresh = entry?.refresh ? undefined : this.observability.startCacheRefresh(key);
+    const pending = entry?.refresh ?? Promise.resolve().then(activeProducer);
     this.entries.set(key, { ...entry, producer: activeProducer, refresh: pending, refreshedAt: now });
     try {
       const value = await pending;
+      finishRefresh?.();
       const refreshedAt = Date.now();
       this.entries.set(key, { value, refreshedAt, producer: activeProducer });
       return {
@@ -78,6 +92,7 @@ export class RuntimeSnapshotCache {
         stale: false,
       };
     } catch (error) {
+      finishRefresh?.(error);
       this.entries.delete(key);
       throw error;
     }
@@ -89,11 +104,18 @@ export class RuntimeSnapshotCache {
       throw new Error(`Runtime cache producer is not registered for ${key}.`);
     }
     if (!entry.refresh) {
-      entry.refresh = entry.producer()
+      const finishRefresh = this.observability.startCacheRefresh(key);
+      entry.refresh = Promise.resolve()
+        .then(entry.producer)
         .then((value) => {
           entry.value = value;
           entry.refreshedAt = Date.now();
+          finishRefresh();
           return value;
+        })
+        .catch((error) => {
+          finishRefresh(error);
+          throw error;
         })
         .finally(() => {
           entry.refresh = undefined;
@@ -110,6 +132,7 @@ export class RuntimeSnapshotCache {
     const targetKeys = keys ?? [...this.entries.keys()];
     for (const key of targetKeys) {
       if (!this.entries.get(key)?.producer) continue;
+      this.observability.recordCacheWarm(key);
       void this.refresh(key).catch(() => {
         // Best-effort dashboard warm-up. Foreground requests will surface errors.
       });
@@ -117,6 +140,7 @@ export class RuntimeSnapshotCache {
   }
 
   invalidate(key?: string): void {
+    this.observability.recordCacheInvalidate(key);
     if (key) {
       const entry = this.entries.get(key);
       if (entry?.producer) {

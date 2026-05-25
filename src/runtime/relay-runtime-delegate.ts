@@ -43,16 +43,12 @@ import type { AdaptiveExternalMonitorHandle } from "./relay-external-monitor-sch
 import type { RelayExternalActivityMonitor } from "./relay-external-activity-monitor.js";
 import type { RelayQueueAction, RelayQueueService } from "./relay-queue-service.js";
 import type { RuntimeMetricHistorySample, RuntimeMetricsDto } from "./metrics.js";
+import type { ObservabilitySnapshot, ObservedPollerHandle } from "../observability/observability-registry.js";
 import type { RuntimeSnapshotCache } from "./runtime-cache.js";
 import type { SessionWorktreeService } from "../worktrees/worktree-service.js";
 import type {
-  SessionWorktreeDiffSnapshot,
-  SessionWorktreeRecord,
-  SessionWorktreeUpdateResult,
-  WorktreeCleanupResult,
-  WorktreeDashboardSnapshot,
-  WorktreeFinalizeIntegrationOptions,
-  WorktreeFinalizeIntegrationResult,
+  SessionWorktreeDiffSnapshot, SessionWorktreeRecord, SessionWorktreeUpdateResult,
+  WorktreeCleanupResult, WorktreeDashboardSnapshot, WorktreeFinalizeIntegrationOptions, WorktreeFinalizeIntegrationResult,
   WorktreeIntegrationOptions, WorktreeIntegrationPatchExport, WorktreeIntegrationRun,
   WorktreeIntegrationPreview,
 } from "../worktrees/worktree-types.js";
@@ -126,7 +122,7 @@ export interface RelayRuntimeDelegate {
   readonly subscribers: Set<(event: RelayEvent) => void>;
   readonly agentUpdateActors: Map<string, WebActivityActor>;
   readonly agentUpdateStates: Map<string, { status: AgentUpdateJobSnapshot["status"]; needsInput: boolean }>;
-  externalMonitor?: AdaptiveExternalMonitorHandle; activeSessionsBroadcastTimer: NodeJS.Timeout | null; metricsHistoryTimer: NodeJS.Timeout | null; activeSessionsLastBroadcastAt: number;
+  externalMonitor?: AdaptiveExternalMonitorHandle; activeSessionsBroadcastTimer: NodeJS.Timeout | null; metricsHistoryTimer: NodeJS.Timeout | null; metricsHistoryPoller: ObservedPollerHandle | null; activeSessionsLastBroadcastAt: number;
   draining: boolean;
   currentTurnId: string | null;
   accumulatedText: string;
@@ -153,7 +149,7 @@ export interface RelayRuntimeDelegate {
   jobLog(id: string): Promise<{ job: UnifiedJobDto | null; plain: string }>;
   jobAction(id: string, action: "cancel" | "retry", actor?: WebActivityActor): Promise<UnifiedJobsDto>;
   activeSessions(): Promise<ActiveSessionsDto>;
-  metrics(): Promise<RuntimeMetricsDto>; metricsHistory(limit?: number): RuntimeMetricHistorySample[];
+  metrics(): Promise<RuntimeMetricsDto>; metricsHistory(limit?: number): RuntimeMetricHistorySample[]; observability(): ObservabilitySnapshot;
   audit(options?: number | AuditListOptions): AuditEvent[];
   auditPage(options?: AuditListOptions): CursorPageDto<AuditEvent>;
   trace(correlationId: string): Promise<TraceDetailDto>;

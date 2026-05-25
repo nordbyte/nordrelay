@@ -45,6 +45,7 @@ import { activeSettingsValues } from "./web-dashboard-settings-values.js";
 import { PeerDiscoveryJobManager } from "../peers/peer-discovery-jobs.js";
 import { applyAutostartSettings } from "../support/autostart.js";
 import { recordWebApiMetric } from "./web-performance.js";
+import { getObservabilityRegistry } from "../observability/observability-registry.js";
 import { createCspNonce, isMutatingWebApiRequest, requiresWebCsrf } from "./web-dashboard-security.js";
 import { consumeRateLimit, resetRateLimit, type RateLimitBucket } from "./web-rate-limit.js";
 import { firstRunSetupTokenError } from "./web-first-run-setup-policy.js";
@@ -481,13 +482,19 @@ async function handleEvents(req: IncomingMessage, res: ServerResponse): Promise<
     "cache-control": "no-cache, no-transform",
     connection: "keep-alive",
   });
+  const sse = getObservabilityRegistry().openSseConnection({
+    route: "/api/events",
+    target: "local",
+    user: authUser.user.email,
+  });
   const send = (event: RelayEvent) => {
     void scopeRelayEvent(authUser, event, canUseCurrentSession).then((scopedEvent) => {
       if (!scopedEvent || res.destroyed || res.writableEnded) {
         return;
       }
-      res.write(`event: ${scopedEvent.type}\n`);
-      res.write(`data: ${JSON.stringify(scopedEvent)}\n\n`);
+      const frame = `event: ${scopedEvent.type}\ndata: ${JSON.stringify(scopedEvent)}\n\n`;
+      sse.event(Buffer.byteLength(frame));
+      res.write(frame);
     }).catch(() => {});
   };
   let currentScopeCache: { allowed: boolean; expiresAt: number } | null = null;
@@ -502,11 +509,14 @@ async function handleEvents(req: IncomingMessage, res: ServerResponse): Promise<
   };
   const unsubscribe = runtime.subscribe(send);
   const heartbeat = setInterval(() => {
-    res.write(": heartbeat\n\n");
+    const frame = ": heartbeat\n\n";
+    sse.heartbeat(Buffer.byteLength(frame));
+    res.write(frame);
   }, 25_000);
   heartbeat.unref?.();
   req.on("close", () => {
     clearInterval(heartbeat);
+    sse.close();
     unsubscribe();
   });
 }

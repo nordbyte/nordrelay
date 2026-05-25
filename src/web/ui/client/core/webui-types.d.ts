@@ -545,6 +545,7 @@ interface DashboardState {
   metricsAutoRefresh?: boolean;
   metricsHistory?: WebuiRecord[];
   metricsLastData?: WebuiRecord | null;
+  metricsObservability?: WebuiRecord | null;
   metricsLastUpdatedAt?: number | null;
   metricsTab?: string;
   localBootstrap?: WebuiBootstrap | null;

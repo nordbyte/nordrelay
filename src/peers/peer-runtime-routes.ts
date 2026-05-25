@@ -36,6 +36,7 @@ const corePaths: Array<[WebHttpMethod, string]> = [
   ["GET", "/api/trace"],
   ["GET", "/api/metrics"],
   ["GET", "/api/metrics/history"],
+  ["GET", "/api/metrics/observability"],
   ["GET", "/api/active-sessions"],
   ["GET", "/api/adapters/health"],
   ["GET", "/api/adapters/conformance"],

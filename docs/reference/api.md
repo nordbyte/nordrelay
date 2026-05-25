@@ -24,6 +24,7 @@ The WebUI uses internal HTTP and SSE endpoints. They are part of the local dashb
 | `/api/progress` | Runtime progress stream/data |
 | `/api/metrics` | Current metrics |
 | `/api/metrics/history` | Metrics history |
+| `/api/metrics/observability` | Poller, cache, peer roundtrip, and SSE diagnostics |
 | `/api/jobs` | Unified jobs |
 | `/api/trace` | Trace timeline |
 

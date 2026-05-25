@@ -4,12 +4,14 @@ let metricsAutoRefreshTimer=null;
 let metricsAgeTimer=null;
 async function loadMetrics(options:{silent?:boolean}={}){
   if(!options.silent)setLoading('metricsPanel','Loading metrics...');
-  const [d,history]=await Promise.all([
+  const [d,history,observability]=await Promise.all([
     api('/api/metrics'),
-    api('/api/metrics/history',{query:{limit:240}}).catch(()=>({samples:[]}))
+    api('/api/metrics/history',{query:{limit:240}}).catch(()=>({samples:[]})),
+    api('/api/metrics/observability').catch(()=>null)
   ]);
   state.metricsLastData=d;
   state.metricsHistory=history.samples||[];
+  state.metricsObservability=observability||d.observability||null;
   state.metricsLastUpdatedAt=Date.now();
   renderMetrics(d);
 }
@@ -141,9 +143,11 @@ function metricProcessRows(d){
     ['CPU system',fmtDuration(cpu.systemMs)],
     ['CPU total',fmtDuration(cpu.totalMs)],
     ['CPU avg',metricPercent(cpu.percentSinceStart),metricCpuStatus(cpu.percentSinceStart)],
+    ['CPU sample',metricPercent(cpu.percentSinceLastSample),metricCpuStatus(cpu.percentSinceLastSample)],
     ['Event loop mean',formatMs(loop.delayMeanMs),metricLoopStatus(loop.delayMeanMs)],
     ['Event loop p95',formatMs(loop.delayP95Ms),metricLoopStatus(loop.delayP95Ms)],
-    ['Event loop max',formatMs(loop.delayMaxMs),metricLoopStatus(loop.delayMaxMs)]
+    ['Event loop max',formatMs(loop.delayMaxMs),metricLoopStatus(loop.delayMaxMs)],
+    ['Event loop usage',metricPercent(loop.utilizationPercent),metricCpuStatus(loop.utilizationPercent)]
   ];
 }
 function metricWebRouteRow(route){
@@ -210,6 +214,7 @@ function metricHistoryRow(sample){
     metricCell('RSS',esc(fmtBytes(sample.rssBytes||0)),'number-cell')+
     metricCell('CPU avg',metricValueHtml(metricPercent(sample.cpuPercent),metricCpuStatus(sample.cpuPercent)),'number-cell')+
     metricCell('Loop p95',metricValueHtml(formatMs(sample.eventLoopP95Ms),metricLoopStatus(sample.eventLoopP95Ms)),'number-cell')+
+    metricCell('Loop usage',metricValueHtml(metricPercent(sample.eventLoopUtilizationPercent),metricCpuStatus(sample.eventLoopUtilizationPercent)),'number-cell')+
     metricCell('Web avg/max',metricValueHtml(formatMs(sample.webAverageMs)+' / '+formatMs(sample.webMaxMs),metricLatencyStatus(sample.webMaxMs)),'number-cell')+
     metricCell('Rate hits','<span class="metric-kv-number">'+esc((hits.telegram||0)+' / '+(hits.discord||0)+' / '+(hits.slack||0))+'</span>','number-cell')+
     '</tr>';
@@ -217,7 +222,104 @@ function metricHistoryRow(sample){
 function metricHistoryTable(samples){
   const rows=(samples||[]).slice(0,120);
   if(!rows.length)return uiEmpty('No persisted metrics history yet.');
-  return '<div class="data-table-wrap"><table class="data-table metrics-table metrics-history-table"><thead><tr><th>Time</th><th>Queue</th><th>Turns</th><th>Jobs</th><th>Failed</th><th>Heap</th><th>RSS</th><th>CPU avg</th><th>Loop p95</th><th>Web avg/max</th><th>Rate hits T/D/S</th></tr></thead><tbody>'+rows.map(metricHistoryRow).join('')+'</tbody></table></div>';
+  return '<div class="data-table-wrap"><table class="data-table metrics-table metrics-history-table"><thead><tr><th>Time</th><th>Queue</th><th>Turns</th><th>Jobs</th><th>Failed</th><th>Heap</th><th>RSS</th><th>CPU avg</th><th>Loop p95</th><th>Loop usage</th><th>Web avg/max</th><th>Rate hits T/D/S</th></tr></thead><tbody>'+rows.map(metricHistoryRow).join('')+'</tbody></table></div>';
+}
+function metricStatusChip(status){
+  return metricChip(status||'ok',status==='error'?'error':status==='warn'?'warn':'ok');
+}
+function metricPercentValue(value){
+  return value===null||value===undefined?'-':value+'%';
+}
+function observabilitySummaryHtml(o){
+  const s=o?.summary||{};
+  return '<div class="metrics-summary">'+
+    metricKpi('Pollers',(s.pollers?.active??0)+' active / '+(s.pollers?.total??0)+' total',(s.pollers?.overdue??0)>0?'warn':'ok')+
+    metricKpi('Cache hit rate',metricPercentValue(s.caches?.hitRatePercent),(s.caches?.refreshFailures??0)>0?'error':(s.caches?.staleRatePercent??0)>40?'warn':'ok')+
+    metricKpi('Peer p95',formatMs(s.peers?.maxP95Ms),metricLatencyStatus(s.peers?.maxP95Ms))+
+    metricKpi('SSE active',s.sse?.active??0,(s.sse?.active??0)>20?'warn':'ok')+
+    '</div>';
+}
+function observabilityPollerRow(p){
+  return '<tr>'+
+    metricCell('Poller','<span class="truncate-cell" title="'+attr(p.id)+'">'+esc(short(p.id,120))+'</span>','primary-cell')+
+    metricCell('Owner',esc(p.owner||'-'),'status-cell')+
+    metricCell('Kind',esc(p.kind||'-'),'status-cell')+
+    metricCell('Status',metricStatusChip(p.status),'status-cell')+
+    metricCell('Active',metricChip(p.active?'yes':'no',p.active?'warn':'ok'),'status-cell')+
+    metricCell('Delay','<span class="metric-kv-number">'+esc(formatMs(p.currentDelayMs))+'</span>','number-cell')+
+    metricCell('Next',metricRelativeTimeHtml(p.nextRunAt,'Next run'),'updated-cell')+
+    metricCell('Last duration',metricValueHtml(formatMs(p.lastDurationMs),metricLatencyStatus(p.lastDurationMs)),'number-cell')+
+    metricCell('Runs','<span class="metric-kv-number">'+esc((p.successCount||0)+' / '+(p.failureCount||0)+' / '+(p.skipCount||0))+'</span>','number-cell')+
+    metricCell('Error','<span class="truncate-cell" title="'+attr(p.lastError||'')+'">'+esc(short(p.lastError||'-',100))+'</span>','detail-cell')+
+    '</tr>';
+}
+function observabilityPollerTable(pollers){
+  const rows=(pollers||[]).filter(p=>!p.closed).slice(0,80);
+  if(!rows.length)return uiEmpty('No active pollers recorded.');
+  return '<div class="data-table-wrap"><table class="data-table metrics-table"><thead><tr><th>Poller</th><th>Owner</th><th>Kind</th><th>Status</th><th>Active</th><th>Delay</th><th>Next</th><th>Last duration</th><th>Runs ok/fail/skip</th><th>Error</th></tr></thead><tbody>'+rows.map(observabilityPollerRow).join('')+'</tbody></table></div>';
+}
+function observabilityCacheRow(c){
+  return '<tr>'+
+    metricCell('Cache','<span class="truncate-cell" title="'+attr(c.key)+'">'+esc(short(c.key,140))+'</span>','primary-cell')+
+    metricCell('Status',metricStatusChip(c.status),'status-cell')+
+    metricCell('TTL','<span class="metric-kv-number">'+esc(formatMs(c.ttlMs))+'</span>','number-cell')+
+    metricCell('Hit rate',metricValueHtml(metricPercentValue(c.hitRatePercent),(c.refreshFailures||0)>0?'error':(c.staleRatePercent||0)>40?'warn':'ok'),'number-cell')+
+    metricCell('Fresh/Stale/Miss','<span class="metric-kv-number">'+esc((c.hitsFresh||0)+' / '+(c.hitsStale||0)+' / '+(c.misses||0))+'</span>','number-cell')+
+    metricCell('Refresh','<span class="metric-kv-number">'+esc((c.refreshes||0)+' / '+(c.refreshFailures||0))+'</span>','number-cell')+
+    metricCell('In-flight',metricValueHtml(c.inFlight||0,(c.inFlight||0)>0?'warn':''),'number-cell')+
+    metricCell('Age','<span class="metric-kv-number">'+esc(formatMs(c.ageMs))+'</span>','number-cell')+
+    metricCell('Last refresh',metricRelativeTimeHtml(c.lastRefreshAt,'Last refresh'),'updated-cell')+
+    metricCell('Error','<span class="truncate-cell" title="'+attr(c.lastError||'')+'">'+esc(short(c.lastError||'-',100))+'</span>','detail-cell')+
+    '</tr>';
+}
+function observabilityCacheTable(caches){
+  const rows=(caches||[]).slice(0,80);
+  if(!rows.length)return uiEmpty('No cache metrics recorded.');
+  return '<div class="data-table-wrap"><table class="data-table metrics-table"><thead><tr><th>Cache</th><th>Status</th><th>TTL</th><th>Hit rate</th><th>Fresh/Stale/Miss</th><th>Refresh ok/fail</th><th>In-flight</th><th>Age</th><th>Last refresh</th><th>Error</th></tr></thead><tbody>'+rows.map(observabilityCacheRow).join('')+'</tbody></table></div>';
+}
+function observabilityPeerRow(p){
+  return '<tr>'+
+    metricCell('Peer','<span class="truncate-cell" title="'+attr(p.peerId)+'">'+esc(short(p.peerId,90))+'</span>','primary-cell')+
+    metricCell('Method',esc(p.method||'-'),'status-cell')+
+    metricCell('Transport',esc(p.transport||'-'),'status-cell')+
+    metricCell('Status',metricStatusChip(p.status),'status-cell')+
+    metricCell('Avg',metricValueHtml(formatMs(p.averageMs),metricLatencyStatus(p.averageMs)),'number-cell')+
+    metricCell('P95',metricValueHtml(formatMs(p.p95Ms),metricLatencyStatus(p.p95Ms)),'number-cell')+
+    metricCell('Last',metricValueHtml(formatMs(p.lastMs),metricLatencyStatus(p.lastMs)),'number-cell')+
+    metricCell('Ok/Fail/Timeout','<span class="metric-kv-number">'+esc((p.success||0)+' / '+(p.failed||0)+' / '+(p.timeouts||0))+'</span>','number-cell')+
+    metricCell('Last seen',metricRelativeTimeHtml(p.lastAt,'Last roundtrip'),'updated-cell')+
+    metricCell('Error','<span class="truncate-cell" title="'+attr(p.lastError||'')+'">'+esc(short(p.lastError||'-',100))+'</span>','detail-cell')+
+    '</tr>';
+}
+function observabilityPeerTable(peers){
+  const rows=(peers||[]).slice(0,80);
+  if(!rows.length)return uiEmpty('No peer roundtrips recorded.');
+  return '<div class="data-table-wrap"><table class="data-table metrics-table"><thead><tr><th>Peer</th><th>Method</th><th>Transport</th><th>Status</th><th>Avg</th><th>P95</th><th>Last</th><th>Ok/Fail/Timeout</th><th>Last seen</th><th>Error</th></tr></thead><tbody>'+rows.map(observabilityPeerRow).join('')+'</tbody></table></div>';
+}
+function observabilitySseRow(s){
+  return '<tr>'+
+    metricCell('Route','<span class="truncate-cell" title="'+attr(s.route)+'">'+esc(short(s.route,100))+'</span>','primary-cell')+
+    metricCell('Target','<span class="truncate-cell" title="'+attr(s.target)+'">'+esc(short(s.target,90))+'</span>','detail-cell')+
+    metricCell('User','<span class="truncate-cell" title="'+attr(s.user||'')+'">'+esc(short(s.user||'-',80))+'</span>','detail-cell')+
+    metricCell('Age','<span class="metric-kv-number">'+esc(formatUptime(s.ageMs))+'</span>','number-cell')+
+    metricCell('Last event',metricRelativeTimeHtml(s.lastEventAt,'Last event'),'updated-cell')+
+    metricCell('Events','<span class="metric-kv-number">'+esc(s.eventsSent||0)+'</span>','number-cell')+
+    metricCell('Heartbeats','<span class="metric-kv-number">'+esc(s.heartbeatCount||0)+'</span>','number-cell')+
+    metricCell('Bytes','<span class="metric-kv-number">'+esc(fmtBytes(s.bytesSent||0))+'</span>','number-cell')+
+    '</tr>';
+}
+function observabilitySseTable(sse){
+  const rows=(sse?.active||[]).slice(0,80);
+  if(!rows.length)return uiEmpty('No active SSE connections.');
+  return '<div class="data-table-wrap"><table class="data-table metrics-table"><thead><tr><th>Route</th><th>Target</th><th>User</th><th>Age</th><th>Last event</th><th>Events</th><th>Heartbeats</th><th>Bytes</th></tr></thead><tbody>'+rows.map(observabilitySseRow).join('')+'</tbody></table></div>';
+}
+function metricObservabilityHtml(o){
+  if(!o)return uiEmpty('No observability snapshot available.');
+  return observabilitySummaryHtml(o)+
+    '<h2 class="task-section-title">Active pollers</h2>'+observabilityPollerTable(o.pollers)+
+    '<h2 class="task-section-title">Runtime caches</h2>'+observabilityCacheTable(o.caches)+
+    '<h2 class="task-section-title">Peer roundtrips</h2>'+observabilityPeerTable(o.peerRoundtrips)+
+    '<h2 class="task-section-title">SSE connections</h2>'+observabilitySseTable(o.sse);
 }
 function metricsTabPanel(id,html){
   return '<div class="metrics-tab '+(state.metricsTab===id?'active':'')+'" data-metrics-tab-panel="'+attr(id)+'">'+html+'</div>';
@@ -231,6 +333,7 @@ function renderMetrics(d){
     metricsTabPanel('process','<div class="metrics-grid">'+metricKvCard('Process',metricProcessRows(d))+'</div>')+
     metricsTabPanel('web','<h2 class="task-section-title">Web API latency</h2>'+metricWebRoutesTable(d.web?.routes||[])+'<h2 class="task-section-title">Slow Web API calls</h2>'+metricSlowWebTable(d.web?.slowest||[]))+
     metricsTabPanel('rate','<h2 class="task-section-title">Rate limits</h2>'+metricRateLimitTable(d.adapters||{}))+
+    metricsTabPanel('observability',metricObservabilityHtml(state.metricsObservability||d.observability))+
     metricsTabPanel('history','<h2 class="task-section-title">Persisted history</h2>'+metricHistoryTable(state.metricsHistory||[]));
   switchMetricsTab(state.metricsTab||'overview');
   updateMetricsToolbar();

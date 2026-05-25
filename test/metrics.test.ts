@@ -26,7 +26,10 @@ describe("runtime metrics", () => {
     expect(metrics.process.memory.rssBytes).toBeGreaterThan(0);
     expect(metrics.process.cpu.totalMs).toBeGreaterThanOrEqual(0);
     expect(metrics.process.cpu.percentSinceStart === null || metrics.process.cpu.percentSinceStart >= 0).toBe(true);
+    expect(metrics.process.cpu.percentSinceLastSample === null || metrics.process.cpu.percentSinceLastSample >= 0).toBe(true);
     expect(metrics.process.eventLoop).toHaveProperty("delayP95Ms");
+    expect(metrics.process.eventLoop).toHaveProperty("utilizationPercent");
+    expect(metrics.observability.summary.status).toMatch(/^(ok|warn|error)$/);
     expect(metrics.web.routes.some((route) => route.path === "/api/version" && route.averageMs >= 42)).toBe(true);
     expect(metrics.web.slowest.some((sample) => sample.path === "/api/version")).toBe(true);
   });
@@ -108,6 +111,7 @@ function makeHistorySample(at: string, queueLength: number): RuntimeMetricHistor
     heapUsedBytes: 1,
     cpuPercent: null,
     eventLoopP95Ms: null,
+    eventLoopUtilizationPercent: null,
     webAverageMs: null,
     webMaxMs: null,
     rateLimitHits: { telegram: 0, discord: 0, slack: 0, matrix: 0 },

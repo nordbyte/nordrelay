@@ -11,6 +11,7 @@ import type { PeerDiscoveryJobSnapshot, PeerDiscoveryResult, PeerIdentityBackup,
 import type { PeerOutboundRelaySnapshot } from "../peers/peer-outbound-relay.js";
 import type { PeerDebugReport, PeerEffectiveAccessReport, PeerRepairAction, PeerRepairResult } from "../peers/peer-diagnostics.js";
 import type { RuntimeMetricHistorySample, RuntimeMetricsDto } from "../runtime/metrics.js";
+import type { ObservabilitySnapshot } from "../observability/observability-registry.js";
 import type { WebChatAttachmentFileDto } from "../runtime/relay-runtime-types.js";
 import type { WebApiDynamicPathFromContract, WebApiStaticPathFromContract } from "./web-api-contract.js";
 import type {
@@ -261,6 +262,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/tasks" | "/api/progress" ? WebTasksDto :
   P extends "/api/metrics" ? RuntimeMetricsDto :
   P extends "/api/metrics/history" ? { samples: RuntimeMetricHistorySample[] } :
+  P extends "/api/metrics/observability" ? ObservabilitySnapshot :
   P extends "/api/jobs" ? UnifiedJobsDto :
   P extends "/api/trace" ? TraceDetailDto :
   P extends "/api/active-sessions" ? ActiveSessionsDto :

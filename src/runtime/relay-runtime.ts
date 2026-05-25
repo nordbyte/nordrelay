@@ -36,7 +36,6 @@ import type { LoginResult } from "../agents/codex/codex-auth.js";
 import { listThreads as listCodexThreads } from "../agents/codex/codex-state.js";
 import type { ConnectorConfig } from "../core/config.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
-import { friendlyErrorText } from "../core/error-messages.js";
 import { clearLogFile, getAgentUpdateLogPath, getConnectorHealth, getConnectorLogPath, getPackageVersion, getUpdateLogPath, getVersionChecks, readConnectorState, readFormattedLogTail, spawnConnectorRestart, spawnSelfUpdate, type FormattedLogReadOptions, type FormattedLogTail } from "../support/operations.js";
 import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "../state/prompt-store.js";
 import { UnifiedJobStore } from "../state/job-store.js";
@@ -45,7 +44,7 @@ import { QueuePlanStore, type QueuePlanStatus } from "../state/queue-plan-store.
 import { MetricsHistoryStore } from "../state/metrics-history-store.js";
 import { RelayWorkflowService } from "./relay-workflow-service.js";
 import { runPeerWorkflowPromptStep } from "./relay-peer-workflow.js";
-import { buildRuntimeMetrics, runtimeMetricHistorySample, type RuntimeMetricHistorySample, type RuntimeMetricsDto } from "./metrics.js";
+import { type RuntimeMetricHistorySample, type RuntimeMetricsDto } from "./metrics.js";
 import { RelayArtifactService } from "./relay-artifact-service.js";
 import { RelayAuthService } from "./relay-auth-service.js";
 import { RelayExternalActivityMonitor } from "./relay-external-activity-monitor.js";
@@ -68,6 +67,8 @@ import {
 } from "./relay-runtime-helpers.js";
 import { RelayDashboardService } from "./relay-dashboard-service.js";
 import { startAdaptiveExternalMonitor, type AdaptiveExternalMonitorHandle } from "./relay-external-monitor-scheduler.js";
+import { type ObservabilitySnapshot, type ObservedPollerHandle } from "../observability/observability-registry.js";
+import { startRuntimeMetricsHistory } from "./relay-metrics-history.js";
 import { capabilitiesOf } from "../channels/shared/bot-rendering.js";
 import { renderSessionInfoPlain, renderSessionUsageRows } from "../channels/shared/session-format.js";
 import { SessionLockStore, type SessionLock } from "../access/session-locks.js";
@@ -164,6 +165,7 @@ import {
   relayRuntimeAdapterHealth,
   relayRuntimePermissions,
   relayRuntimeMetrics,
+  relayRuntimeObservability,
   relayRuntimeAudit,
   relayRuntimeAuditPage,
   relayRuntimeSupportBundle,
@@ -321,6 +323,7 @@ export class RelayRuntime {
   externalMonitor?: AdaptiveExternalMonitorHandle;
   activeSessionsBroadcastTimer: NodeJS.Timeout | null = null;
   metricsHistoryTimer: NodeJS.Timeout | null = null;
+  metricsHistoryPoller: ObservedPollerHandle | null = null;
   activeSessionsLastBroadcastAt = 0;
   draining = false;
   currentTurnId: string | null = null;
@@ -389,16 +392,8 @@ export class RelayRuntime {
       cliPathOptions: () => this.cliPathOptions(),
     });
     this.dashboardService.startBackgroundRefresh();
-    const recordMetricsHistory = () => {
-      void this.metrics()
-        .then((metrics) => this.metricsHistoryStore.append(runtimeMetricHistorySample(metrics)))
-        .catch((error) => this.broadcastStatus(`Failed to record metrics history: ${friendlyErrorText(error)}`, "warn"));
-    };
     if (this.backgroundServicesEnabled) {
-      const initialMetricsTimer = setTimeout(recordMetricsHistory, 2_000);
-      initialMetricsTimer.unref?.();
-      this.metricsHistoryTimer = setInterval(recordMetricsHistory, 60_000);
-      this.metricsHistoryTimer.unref?.();
+      startRuntimeMetricsHistory(this);
     }
     if (this.backgroundServicesEnabled && config.codexExternalBusyCheckMs > 0) {
       this.externalMonitor = startAdaptiveExternalMonitor({
@@ -545,6 +540,10 @@ export class RelayRuntime {
 
   async metrics(): Promise<RuntimeMetricsDto> {
     return relayRuntimeMetrics(this);
+  }
+
+  observability(): ObservabilitySnapshot {
+    return relayRuntimeObservability();
   }
 
   metricsHistory(limit = 240): RuntimeMetricHistorySample[] {
