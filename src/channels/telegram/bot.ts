@@ -49,6 +49,7 @@ import { monitorChannelExternalContexts } from "../shared/channel-external-monit
 import { createChannelExternalMonitorLoop } from "../shared/channel-external-monitor-loop.js";
 import { configureChannelRuntime } from "../shared/channel-runtime-bootstrap.js";
 import { createChannelTurnLifecycle, createChannelTypingLoop } from "../shared/channel-turn-lifecycle.js";
+import { QUEUE_DRAIN_FOLLOW_UP_DELAY_MS, scheduleQueuedDrain } from "../shared/channel-prompt-queue.js";
 import {
   agentLabel,
   agentReasoningLabel,
@@ -1793,40 +1794,42 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
 
     drainingQueues.add(contextKey);
+    let startedPrompt = false;
     try {
-      while (true) {
-        if (promptStore.isPaused(contextKey)) {
-          await updateQueueStatusMessage(contextKey, `Queue paused. ${promptStore.list(contextKey).length} queued.`);
-          return;
-        }
-
-        const busy = getBusyReason(contextKey);
-        if (busy.busy) {
-          if (busy.kind === "external") {
-            scheduleExternalQueueDrain(ctx, contextKey, chatId, session);
-          }
-          return;
-        }
-
-        const next = promptStore.dequeue(contextKey);
-        if (!next) {
-          const nextRunnableAt = promptStore.nextRunnableAt(contextKey);
-          const queued = promptStore.list(contextKey).length;
-          if (nextRunnableAt && queued > 0) {
-            await updateQueueStatusMessage(contextKey, `Next queued prompt is scheduled for ${formatLocalDateTime(new Date(nextRunnableAt))}. ${queued} queued.`);
-          }
-          return;
-        }
-
-        const remainingBeforeRun = promptStore.list(contextKey).length + 1;
-        await updateQueueStatusMessage(contextKey, `Running queued prompt 1/${remainingBeforeRun}: ${next.description}`);
-        await safeReply(ctx, escapeHTML(`Processing queued prompt ${next.id}: ${next.description}`), {
-          fallbackText: `Processing queued prompt ${next.id}: ${next.description}`,
-        });
-        await handleUserPrompt(ctx, contextKey, chatId, session, next, { fromQueue: true });
+      if (promptStore.isPaused(contextKey)) {
+        await updateQueueStatusMessage(contextKey, `Queue paused. ${promptStore.list(contextKey).length} queued.`);
+        return;
       }
+
+      const busy = getBusyReason(contextKey);
+      if (busy.busy) {
+        if (busy.kind === "external") scheduleExternalQueueDrain(ctx, contextKey, chatId, session);
+        return;
+      }
+
+      const next = promptStore.dequeue(contextKey);
+      if (!next) {
+        const nextRunnableAt = promptStore.nextRunnableAt(contextKey);
+        const queued = promptStore.list(contextKey).length;
+        if (nextRunnableAt && queued > 0) {
+          await updateQueueStatusMessage(contextKey, `Next queued prompt is scheduled for ${formatLocalDateTime(new Date(nextRunnableAt))}. ${queued} queued.`);
+        }
+        return;
+      }
+
+      startedPrompt = true;
+      const remainingBeforeRun = promptStore.list(contextKey).length + 1;
+      await updateQueueStatusMessage(contextKey, `Running queued prompt 1/${remainingBeforeRun}: ${next.description}`);
+      await safeReply(ctx, escapeHTML(`Processing queued prompt ${next.id}: ${next.description}`), {
+        fallbackText: `Processing queued prompt ${next.id}: ${next.description}`,
+      });
+      await handleUserPrompt(ctx, contextKey, chatId, session, next, { fromQueue: true });
     } finally {
       drainingQueues.delete(contextKey);
+    }
+    if (startedPrompt && promptStore.list(contextKey).length > 0 && !promptStore.isPaused(contextKey)) {
+      scheduleQueuedDrain(() => void drainQueuedPrompts(ctx, contextKey, chatId, session)
+        .catch((error) => console.error("Failed to drain queued Telegram prompts:", error)), QUEUE_DRAIN_FOLLOW_UP_DELAY_MS);
     }
   };
 

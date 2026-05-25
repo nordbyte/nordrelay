@@ -25,7 +25,7 @@ import { createChannelBridgeEnvironment } from "../shared/channel-bridge-environ
 import { createSharedChannelCommandDispatcher } from "../shared/channel-command-core.js";
 import { slackHelpCommandList } from "../shared/channel-command-catalog.js";
 import { runChannelLocalPrompt } from "../shared/channel-local-prompt-runner.js";
-import { queueChannelPromptIfBusy } from "../shared/channel-prompt-queue.js";
+import { QUEUE_DRAIN_FOLLOW_UP_DELAY_MS, drainOneQueuedChannelPrompt, queueChannelPromptIfBusy, scheduleQueuedDrain } from "../shared/channel-prompt-queue.js";
 import { createChannelPeerMirrorController } from "../shared/channel-peer-mirror.js";
 import { runChannelPeerPrompt } from "../shared/channel-peer-prompt.js";
 import {
@@ -423,20 +423,30 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
   };
 
   const drainQueue = async (request: SlackRequest): Promise<void> => {
-    if (draining.has(request.contextKey)) return;
-    draining.add(request.contextKey);
-    try {
-      while (true) {
-        const session = await getSession(request, { deferThreadStart: true });
-        if (session.isProcessing() || getBusyReason(request.contextKey).busy || promptStore.isPaused(request.contextKey)) return;
-        const next = promptStore.dequeue(request.contextKey);
-        if (!next) return;
-        await reply(request, `Processing queued prompt ${next.id}: ${next.description}`);
-        await handlePrompt(request, next.input, next.artifactOutDir, { fromQueue: true, attachments: next.attachments });
-      }
-    } finally {
-      draining.delete(request.contextKey);
-    }
+    await drainOneQueuedChannelPrompt({
+      request,
+      promptStore,
+      draining,
+      isPaused: (req) => promptStore.isPaused(req.contextKey),
+      isBusy: async (req) => {
+        const session = await getSession(req, { deferThreadStart: true });
+        return session.isProcessing() || getBusyReason(req.contextKey).busy;
+      },
+      onPaused: async (req, queued) => {
+        await reply(req, `Queue paused. ${queued} queued.`);
+      },
+      onProcessing: async (req, next) => {
+        await reply(req, `Processing queued prompt ${next.id}: ${next.description}`);
+      },
+      runPrompt: async (req, next) => {
+        await handlePrompt(req, next.input, next.artifactOutDir, { fromQueue: true, attachments: next.attachments });
+      },
+      scheduleNext: (req) => {
+        scheduleQueuedDrain(() => {
+          void drainQueue(req).catch((error) => console.error("Failed to drain Slack queue:", error));
+        }, QUEUE_DRAIN_FOLLOW_UP_DELAY_MS);
+      },
+    });
   };
 
   const deliverCliGeneratedArtifacts = async (

@@ -133,6 +133,7 @@ const ACTIVE_CODEX_DISCOVERY_LIMIT = 200;
 const ACTIVE_ACTIVITY_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_WEB_SESSION_PAGE_SIZE = 50;
 const MAX_CHAT_HISTORY = 250;
+const QUEUE_DRAIN_FOLLOW_UP_DELAY_MS = 500;
 
 export async function relayRuntimeSendPrompt(runtime: RelayRuntimeDelegate, text: string, actor?: WebActivityActor, correlationId?: string): Promise<{ queued: boolean; queueId?: string; correlationId?: string }> {
     const trimmed = text.trim();
@@ -513,24 +514,32 @@ export async function relayRuntimeDrainQueue(runtime: RelayRuntimeDelegate): Pro
       return;
     }
     runtime.draining = true;
+    let completedPrompt = false;
     try {
       const session = await runtime.getSession(false);
-      while (!session.isProcessing()) {
-        const external = getExternalSnapshotForSession(session, runtime.config, { maxEvents: 0 });
-        if (external?.activity.active && !isExternalSnapshotSuppressedByManagedAbort(external, runtime.activityStore.list({ threadId: external.threadId, limit: 50 }))) {
-          runtime.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${runtime.queueService.length()} queued.`, "info");
-          return;
-        }
-        const next = runtime.queueService.dequeue();
-        runtime.broadcastQueue();
-        if (!next) {
-          return;
-        }
-        resolveQueuedPromptChatAction(runtime, next.id, `Queued prompt ${next.id} started`);
-        await runtime.runPrompt(session, next);
+      if (session.isProcessing()) {
+        return;
       }
+      const external = getExternalSnapshotForSession(session, runtime.config, { maxEvents: 0 });
+      if (external?.activity.active && !isExternalSnapshotSuppressedByManagedAbort(external, runtime.activityStore.list({ threadId: external.threadId, limit: 50 }))) {
+        runtime.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${runtime.queueService.length()} queued.`, "info");
+        return;
+      }
+      const next = runtime.queueService.dequeue();
+      runtime.broadcastQueue();
+      if (!next) {
+        return;
+      }
+      resolveQueuedPromptChatAction(runtime, next.id, `Queued prompt ${next.id} started`);
+      await runtime.runPrompt(session, next);
+      completedPrompt = true;
     } finally {
       runtime.draining = false;
+    }
+    if (completedPrompt && runtime.queueService.length() > 0 && !runtime.queueService.isPaused()) {
+      setTimeout(() => {
+        void runtime.drainQueue().catch((error: unknown) => runtime.broadcastStatus(friendlyErrorText(error), "error"));
+      }, QUEUE_DRAIN_FOLLOW_UP_DELAY_MS).unref?.();
     }
   }
 

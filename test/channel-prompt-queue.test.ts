@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { queueChannelPromptIfBusy } from "../src/channels/shared/channel-prompt-queue.js";
+import { drainOneQueuedChannelPrompt, queueChannelPromptIfBusy } from "../src/channels/shared/channel-prompt-queue.js";
 import { PromptStore, toPromptEnvelope } from "../src/state/prompt-store.js";
 
 describe("channel prompt queue", () => {
@@ -34,6 +34,65 @@ describe("channel prompt queue", () => {
 
       expect(wasQueued).toBe(true);
       expect(replies[0]).toContain("position 1");
+      expect(promptStore.list(contextKey).map((item) => item.id)).toEqual([queued.id]);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("drains only one queued prompt per drain cycle", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "channel-prompt-queue-"));
+    try {
+      const promptStore = new PromptStore(workspace);
+      const contextKey = "discord:test";
+      const first = promptStore.enqueue(contextKey, toPromptEnvelope("first queued"));
+      const second = promptStore.enqueue(contextKey, toPromptEnvelope("second queued"));
+      const draining = new Set<string>();
+      const processed: string[] = [];
+      let followUpScheduled = 0;
+
+      await drainOneQueuedChannelPrompt({
+        request: { contextKey, context: { channelId: "discord", chatId: "channel" } },
+        promptStore,
+        draining,
+        isBusy: () => false,
+        onProcessing: async () => undefined,
+        runPrompt: async (_request, item) => {
+          processed.push(item.id);
+        },
+        scheduleNext: () => {
+          followUpScheduled += 1;
+        },
+      });
+
+      expect(processed).toEqual([first.id]);
+      expect(promptStore.list(contextKey).map((item) => item.id)).toEqual([second.id]);
+      expect(followUpScheduled).toBe(1);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("does not dequeue a prompt while the channel is busy", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "channel-prompt-queue-"));
+    try {
+      const promptStore = new PromptStore(workspace);
+      const contextKey = "discord:test";
+      const queued = promptStore.enqueue(contextKey, toPromptEnvelope("queued"));
+      const processed: string[] = [];
+
+      await drainOneQueuedChannelPrompt({
+        request: { contextKey, context: { channelId: "discord", chatId: "channel" } },
+        promptStore,
+        draining: new Set<string>(),
+        isBusy: () => true,
+        onProcessing: async () => undefined,
+        runPrompt: async (_request, item) => {
+          processed.push(item.id);
+        },
+      });
+
+      expect(processed).toEqual([]);
       expect(promptStore.list(contextKey).map((item) => item.id)).toEqual([queued.id]);
     } finally {
       rmSync(workspace, { recursive: true, force: true });

@@ -3,6 +3,8 @@ import type { PromptStore, PromptEnvelope, QueuedPrompt } from "../../state/prom
 import type { ChannelBusyReason } from "./channel-bridge-state.js";
 import type { ChannelActivityInput, ChannelAuditInput, ChannelBridgeRequestBase } from "./channel-bridge-controller.js";
 
+export const QUEUE_DRAIN_FOLLOW_UP_DELAY_MS = 500;
+
 export async function queueChannelPromptIfBusy<Request extends ChannelBridgeRequestBase>(options: {
   request: Request;
   envelope: PromptEnvelope;
@@ -45,6 +47,69 @@ export async function queueChannelPromptIfBusy<Request extends ChannelBridgeRequ
     description: item.description,
   });
   return true;
+}
+
+export async function drainOneQueuedChannelPrompt<Request extends ChannelBridgeRequestBase>(options: {
+  request: Request;
+  promptStore: PromptStore;
+  draining: Set<string>;
+  isPaused?: (request: Request) => boolean;
+  isBusy: (request: Request) => boolean | Promise<boolean>;
+  onPaused?: (request: Request, queued: number) => Promise<unknown>;
+  onBusy?: (request: Request) => Promise<unknown>;
+  onScheduled?: (request: Request, nextRunnableAt: number, queued: number) => Promise<unknown>;
+  onProcessing: (request: Request, item: QueuedPrompt, totalBeforeRun: number) => Promise<unknown>;
+  runPrompt: (request: Request, item: QueuedPrompt) => Promise<unknown>;
+  scheduleNext?: (request: Request) => void;
+}): Promise<void> {
+  const contextKey = options.request.contextKey;
+  if (options.draining.has(contextKey)) {
+    return;
+  }
+
+  options.draining.add(contextKey);
+  let startedPrompt = false;
+  try {
+    if (options.isPaused?.(options.request)) {
+      await options.onPaused?.(options.request, options.promptStore.list(contextKey).length);
+      return;
+    }
+
+    if (await options.isBusy(options.request)) {
+      await options.onBusy?.(options.request);
+      return;
+    }
+
+    const next = options.promptStore.dequeue(contextKey);
+    if (!next) {
+      const nextRunnableAt = options.promptStore.nextRunnableAt(contextKey);
+      const queued = options.promptStore.list(contextKey).length;
+      if (nextRunnableAt && queued > 0) {
+        await options.onScheduled?.(options.request, nextRunnableAt, queued);
+      }
+      return;
+    }
+
+    startedPrompt = true;
+    const totalBeforeRun = options.promptStore.list(contextKey).length + 1;
+    await options.onProcessing(options.request, next, totalBeforeRun);
+    await options.runPrompt(options.request, next);
+  } finally {
+    options.draining.delete(contextKey);
+  }
+
+  if (
+    startedPrompt
+    && options.promptStore.list(contextKey).length > 0
+    && !options.isPaused?.(options.request)
+  ) {
+    options.scheduleNext?.(options.request);
+  }
+}
+
+export function scheduleQueuedDrain(callback: () => void, delayMs = 0): void {
+  const timer = setTimeout(callback, delayMs);
+  timer.unref?.();
 }
 
 function isQueuedPrompt(value: unknown): value is QueuedPrompt {
