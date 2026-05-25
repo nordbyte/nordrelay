@@ -54,10 +54,18 @@ describe("nordrelay CLI script", () => {
 
   it("supports doctor auto-fix hints and safe local fixes", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+    const serviceDoctor = readFileSync("plugins/nordrelay/scripts/service-doctor.mjs", "utf8");
 
     expect(source).toContain('arg === "--fix"');
     expect(source).toContain("async function runDoctorFixes");
     expect(source).toContain("function envValueFix");
+    expect(source).toContain("import { cliAutostartChecks } from \"./service-doctor.mjs\"");
+    expect(serviceDoctor).toContain("export async function cliAutostartChecks");
+    expect(serviceDoctor).toContain("systemdUserServiceDoctorCheck");
+    expect(serviceDoctor).toContain("launchdServiceDoctorCheck");
+    expect(serviceDoctor).toContain("windowsTaskDoctorCheck");
+    expect(serviceDoctor).toContain("cliServiceWorkspaceCheck");
+    expect(serviceDoctor).toContain("cliPortListeningCheck");
     expect(source).toContain("doctor [--fix]");
     expect(source).toContain("Run `nordrelay doctor --fix` to apply safe local fixes.");
   });

@@ -16,6 +16,7 @@ import {
   parseServiceFlags,
   serviceInstallSpec,
 } from "./service-installer.mjs";
+import { cliAutostartChecks } from "./service-doctor.mjs";
 
 const FALLBACK_VERSION = "0.3.1";
 const require = createRequire(import.meta.url);
@@ -1768,7 +1769,15 @@ async function commandDoctor(options) {
     "fail",
     envValueFix(options.home, "NORDRELAY_WEBUI_ENABLED", "true", "Enable WebUI so at least one access surface is available."),
   ));
-  checks.push(...cliAutostartChecks(options.home));
+  checks.push(...await cliAutostartChecks({
+    home: options.home,
+    workspace: resolveLaunchWorkspace(),
+    dashboardEndpoint: resolveDashboardEndpoint(options),
+    webuiRuntimeEnabled: isWebUiEnabled(),
+    runtimeRoot: RUNTIME_ROOT,
+    repairFix: autostartRepairFix(options.home),
+    lingerFix: hintFix("Enable linger with `loginctl enable-linger $USER` if NordRelay should start before the first interactive login."),
+  }));
   checks.push(check("Discord client ID", !discordUsable || Boolean(process.env.DISCORD_CLIENT_ID), discordUsable ? (process.env.DISCORD_CLIENT_ID ? "configured" : "missing; slash command auto-registration disabled") : "disabled", "warn", hintFix("Set DISCORD_CLIENT_ID from the Discord Developer Portal.")));
   checks.push(check("User store", Boolean(userStore), userStore ? userStore.filePath : "missing runtime", userStore ? "pass" : "fail", runtimeBuildFix()));
   checks.push(check("Admin user", Boolean(userSnapshot?.adminConfigured), userSnapshot?.adminConfigured ? "configured" : "missing", "fail", hintFix("Run `nordrelay user create-admin` to create the first admin.")));
@@ -1887,50 +1896,6 @@ async function checkOpenClawGateway() {
       finish({ ok: false, detail: `${gatewayUrl} failed` });
     }, { once: true });
   });
-}
-
-function cliAutostartChecks(home) {
-  const connectorEnabled = process.env.NORDRELAY_AUTOSTART_ENABLED === "true";
-  const webuiEnabled = process.env.NORDRELAY_WEBUI_AUTOSTART_ENABLED === "true";
-  if (!connectorEnabled && !webuiEnabled) {
-    return [check("Autostart", true, "disabled by config")];
-  }
-  if (process.platform !== "linux") {
-    return [check("Autostart", true, `${process.platform} autostart is managed by the platform service integration`)];
-  }
-
-  const checks = [];
-  const itemFix = autostartRepairFix(home);
-  if (connectorEnabled) {
-    checks.push(systemdUserServiceDoctorCheck("Connector autostart", "nordrelay.service", itemFix));
-  }
-  if (webuiEnabled) {
-    checks.push(systemdUserServiceDoctorCheck("WebUI autostart", "nordrelay-webui.service", itemFix));
-  }
-  const linger = quietCommand("loginctl", ["show-user", process.env.USER || "", "-p", "Linger", "--value"]);
-  const lingerValue = linger.stdout.trim();
-  checks.push(check(
-    "Linux user lingering",
-    linger.ok && lingerValue === "yes",
-    linger.ok ? `Linger=${lingerValue || "unknown"}` : `loginctl unavailable: ${linger.detail}`,
-    "warn",
-    hintFix("Enable linger with `loginctl enable-linger $USER` if NordRelay should start before the first interactive login."),
-  ));
-  return checks;
-}
-
-function systemdUserServiceDoctorCheck(name, unit, itemFix) {
-  const enabled = quietCommand("systemctl", ["--user", "is-enabled", unit]);
-  const active = quietCommand("systemctl", ["--user", "is-active", unit]);
-  const enabledValue = enabled.stdout.trim();
-  const activeValue = active.stdout.trim();
-  return check(
-    name,
-    enabledValue === "enabled" && activeValue === "active",
-    `enabled=${enabledValue || (enabled.ok ? "unknown" : "no")}; active=${activeValue || (active.ok ? "unknown" : "no")}`,
-    "warn",
-    itemFix,
-  );
 }
 
 function quietCommand(command, args) {
