@@ -189,6 +189,7 @@ declare function openTrace(correlationId: string): Promise<void>;
 declare function openUserDialog(value?: WebuiUserRecord): void;
 declare function page(name: string, options?: { persist?: boolean }): void;
 declare function populateNewSessionForm(agents?: string[]): void;
+declare function currentPluginPanelNonce(): string;
 declare function pluginPanelDocument(html: unknown, options?: WebuiRecord): string;
 declare function pluginPanelFrameHtml(html: unknown, title: string, options?: WebuiRecord, className?: string): string;
 declare function pluginPanelPageTitle(): string;

@@ -123,8 +123,17 @@ const NORDRELAY_PLUGIN_PANEL_BRIDGE_JS = `
 const pluginPanelObjectUrls = new Set<string>();
 
 function currentPluginPanelTheme(){return document.documentElement.dataset.theme==='dark'?'dark':'light'}
-function pluginPanelStyleTag(){return '<style data-nordrelay-plugin-ui>'+NORDRELAY_PLUGIN_PANEL_CSS+'</style>'}
-function pluginPanelBridgeTag(){return '<script data-nordrelay-plugin-bridge>'+NORDRELAY_PLUGIN_PANEL_BRIDGE_JS.replace(/<\/script/gi,'<\\/script')+'</script>'}
+function currentPluginPanelNonce(){
+  const script=document.querySelector('script[nonce]') as HTMLScriptElement|null;
+  const style=document.querySelector('style[nonce]') as HTMLStyleElement|null;
+  return script?.nonce||script?.getAttribute('nonce')||style?.nonce||style?.getAttribute('nonce')||'';
+}
+function pluginPanelNonceAttr(){
+  const nonce=currentPluginPanelNonce();
+  return nonce?' nonce="'+attr(nonce)+'"':'';
+}
+function pluginPanelStyleTag(){return '<style data-nordrelay-plugin-ui'+pluginPanelNonceAttr()+'>'+NORDRELAY_PLUGIN_PANEL_CSS+'</style>'}
+function pluginPanelBridgeTag(){return '<script data-nordrelay-plugin-bridge'+pluginPanelNonceAttr()+'>'+NORDRELAY_PLUGIN_PANEL_BRIDGE_JS.replace(/<\/script/gi,'<\\/script')+'</script>'}
 function pluginPanelBodyTag(attrs=''){
   const text=String(attrs||'');
   if(/class=["'][^"']*["']/i.test(text)){

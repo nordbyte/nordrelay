@@ -152,6 +152,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("window.NordRelayPanel");
     expect(js).toContain("reload:function(input)");
     expect(js).toContain("function reloadPluginPanelFrame");
+    expect(js).toContain("function currentPluginPanelNonce");
+    expect(js).toContain("function pluginPanelNonceAttr");
     expect(js).toContain("function createPluginPanelObjectUrl");
     expect(js).toContain("function pluginPanelFrameHtml");
     expect(js).toContain("function revokePluginPanelUrls");
