@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { isPermission, permissionForWebRequest, type Permission } from "../access/access-control.js";
+import { ALL_PERMISSIONS, isPermission, permissionForWebRequest, type Permission } from "../access/access-control.js";
 import { AGENT_IDS, isAgentId, type AgentId } from "../agents/shared/agent.js";
 import type { AuditEvent } from "../access/audit-log.js";
 import type { AuthenticatedUser, UserStore } from "../access/user-management.js";
@@ -672,6 +672,7 @@ function scopedPeerSnapshot(options: DashboardPeerRouteOptions, snapshot: Return
   const peers = snapshot.peers.filter((peer) => canUsePeer(options, peer.id));
   return {
     ...snapshot,
+    scopeOptions: ALL_PERMISSIONS,
     peers,
     groups: [...new Set(peers.map((peer) => peer.group).filter((group): group is string => Boolean(group)))].sort(),
   };

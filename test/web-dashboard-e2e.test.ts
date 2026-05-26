@@ -950,6 +950,7 @@ describe("web dashboard browser-flow assets", () => {
     const css = dashboardCss();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
     const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
+    const peerRoutes = readFileSync("src/web/web-dashboard-peer-routes.ts", "utf8");
 
     expect(pageSource).toContain('id="peerTabs"');
     expect(pageSource).toContain('data-peer-tab="status"');
@@ -978,8 +979,13 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("/api/peers/sync");
     expect(js).toContain("function bindTableActionMenus");
     expect(js).toContain("function positionTableActionMenu");
+    expect(js).toContain("function restorePeerActionMenu");
+    expect(js).toContain("data-peer-action-menu");
     expect(js).toContain("peer-action-menu");
     expect(js).toContain("bindTableActionMenus(document.getElementById('peersList')");
+    expect(js).toContain("function peerScopesChecklist");
+    expect(js).toContain("data-peer-scope");
+    expect(js).toContain("selectedPeerScopes()");
     expect(js).toContain("/debug/probe");
     expect(js).toContain("Peer debug");
     expect(js).toContain("/api/peers/discover");
@@ -990,8 +996,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".data-table .access-cell .truncate-cell");
     expect(css).not.toContain(".peers-table th:nth-child");
     expect(css).toContain(".peer-action-menu .peer-action-menu-panel");
+    expect(css).toContain(".peer-scope-grid");
     expect(css).toContain(".table-action-menu.is-floating .table-action-menu-list");
     expect(css).toContain("position:fixed");
+    expect(peerRoutes).toContain("scopeOptions: ALL_PERMISSIONS");
     expect(contract).toContain('exact("/api/peers/discover"');
     expect(contract).toContain('exact("/api/peers/sync"');
     expect(contract).toContain('/api/peers/:id/sync-candidates');

@@ -362,6 +362,11 @@
 .peer-probe-result.warn{border-color:#d9c27a;background:var(--warn)}
 .peer-health-history{margin:8px 0;padding:8px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface)}
 .peer-health-history summary{cursor:pointer;font-weight:700;color:var(--muted)}
+.peer-scope-field{border:1px solid var(--border-soft);border-radius:8px;padding:10px;margin:0;background:var(--surface-soft)}
+.peer-scope-field legend{padding:0 6px;color:var(--muted);font-size:13px;font-weight:700}
+.peer-scope-toolbar{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+.peer-scope-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px 10px;max-height:260px;overflow:auto;padding-right:4px}
+.peer-scope-option{min-height:28px;margin:0;font-size:13px}
 .plugin-panel-page{width:100%;min-width:0}
 .plugin-panel-page #pluginPanelPageResult{width:100%;min-width:0}
 .plugin-panel-frame{width:100%;min-height:320px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface)}
