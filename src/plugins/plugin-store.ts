@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -99,6 +99,20 @@ export class PluginStore {
   dataPath(id: string): string {
     return path.join(this.dataRoot, id);
   }
+
+  async installedVersions(id: string): Promise<string[]> {
+    try {
+      const entries = await readdir(path.join(this.installedRoot, id), { withFileTypes: true });
+      return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort(compareVersionsDesc);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+  }
+}
+
+function compareVersionsDesc(left: string, right: string): number {
+  return right.localeCompare(left, undefined, { numeric: true, sensitivity: "base" });
 }
 
 export function toPublicPluginRecord(plugin: InstalledPluginRecord): PublicPluginRecord {

@@ -28,7 +28,7 @@ This page summarizes the runtime keys generated in `.env.example`.
 | --- | --- |
 | `NORDRELAY_PLUGINS_ENABLED` | Enable local plugin metadata loading and plugin extension points |
 | `NORDRELAY_PLUGIN_GITHUB_INSTALL_ENABLED` | Allow installing plugins from GitHub repository URLs |
-| `NORDRELAY_PLUGIN_ALLOW_BUILD_SCRIPTS` | Reserved switch for trusted plugin build hooks |
+| `NORDRELAY_PLUGIN_ALLOW_BUILD_SCRIPTS` | Reserved switch for trusted plugin build hooks; keep disabled unless the source is trusted |
 
 ## Chat adapters
 

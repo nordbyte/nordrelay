@@ -6,10 +6,37 @@ export type PluginInstallStatus =
   | "disabled"
   | "error";
 
+export const PLUGIN_RUNTIME_PERMISSIONS = [
+  "runtime.read",
+  "sessions.read",
+  "activity.read",
+  "artifacts.read",
+  "artifacts.write",
+  "files.read",
+  "files.write",
+  "workflows.read",
+  "peers.read",
+  "diagnostics.read",
+  "settings.read",
+  "network",
+] as const;
+
+export type PluginRuntimePermission = typeof PLUGIN_RUNTIME_PERMISSIONS[number];
+
+export type PluginCapabilityType =
+  | "workflow-action"
+  | "command"
+  | "web-panel"
+  | "artifact-handler"
+  | "diagnostics";
+
 export interface PluginCommandManifest {
   name: string;
+  title?: string;
   description?: string;
   permission?: string;
+  inputSchema?: Record<string, unknown>;
+  timeoutMs?: number;
 }
 
 export interface PluginWorkflowActionManifest {
@@ -17,6 +44,8 @@ export interface PluginWorkflowActionManifest {
   title: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
+  outputVariables?: Record<string, string>;
+  timeoutMs?: number;
 }
 
 export interface PluginWebPanelManifest {
@@ -24,6 +53,8 @@ export interface PluginWebPanelManifest {
   title: string;
   path?: string;
   permission?: string;
+  inputSchema?: Record<string, unknown>;
+  timeoutMs?: number;
 }
 
 export interface PluginAdapterManifest {
@@ -31,6 +62,8 @@ export interface PluginAdapterManifest {
   title: string;
   description?: string;
   entry?: string;
+  inputSchema?: Record<string, unknown>;
+  timeoutMs?: number;
 }
 
 export interface PluginCapabilitiesManifest {
@@ -69,6 +102,17 @@ export interface PluginManifest {
   settings?: PluginSettingManifest[];
 }
 
+export interface PluginRuntimeMetrics {
+  invocations: number;
+  failures: number;
+  totalDurationMs: number;
+  lastStartedAt?: string;
+  lastFinishedAt?: string;
+  lastDurationMs?: number;
+  lastStatus?: "ok" | "failed";
+  lastError?: string;
+}
+
 export interface InstalledPluginSource {
   type: PluginSourceType;
   value: string;
@@ -98,6 +142,7 @@ export interface InstalledPluginRecord {
   capabilities: PluginCapabilitiesManifest;
   settingsSchema: PluginSettingManifest[];
   settings: Record<string, unknown>;
+  metrics?: PluginRuntimeMetrics;
   installedAt: string;
   updatedAt: string;
 }
@@ -138,5 +183,59 @@ export interface PluginRegistryPayload {
   plugins: InstalledPluginRecord[];
 }
 
-export const PLUGIN_MANIFEST_FILE = "nordrelay.plugin.json";
+export interface PluginHostContext {
+  runtime?: Record<string, unknown>;
+  session?: unknown;
+  sessions?: unknown[];
+  activity?: unknown[];
+  artifacts?: unknown[];
+  workflows?: Record<string, unknown>;
+  peers?: unknown[];
+  diagnostics?: unknown;
+  settings?: Record<string, unknown>;
+}
 
+export interface PluginInvokeRequest {
+  protocolVersion: 1;
+  type: PluginCapabilityType;
+  pluginId: string;
+  capabilityId?: string;
+  actionId?: string;
+  command?: string;
+  panelId?: string;
+  handlerId?: string;
+  input: Record<string, unknown>;
+  settings: Record<string, unknown>;
+  dataDir: string;
+  permissions: PluginRuntimePermission[];
+  context: PluginHostContext;
+}
+
+export interface PluginInvokeResult {
+  ok: boolean;
+  output?: unknown;
+  stdout?: string;
+  stderr?: string;
+  variables?: Record<string, string>;
+  html?: string;
+  text?: string;
+  artifacts?: unknown[];
+  diagnostics?: unknown;
+  durationMs?: number;
+  timedOut?: boolean;
+  exitCode?: number | null;
+}
+
+export interface PluginUpdateCheckResult {
+  id: string;
+  sourceType: PluginSourceType;
+  currentVersion: string;
+  latestVersion?: string;
+  currentRevision?: string;
+  latestRevision?: string;
+  updateAvailable: boolean;
+  checkedAt: string;
+  error?: string;
+}
+
+export const PLUGIN_MANIFEST_FILE = "nordrelay.plugin.json";

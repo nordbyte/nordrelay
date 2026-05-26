@@ -75,8 +75,8 @@ import type {
 } from "../access/user-management.js";
 import type { WebActivityEvent, WebChatMessage } from "./web-state.js";
 import type { VoiceDiagnostics } from "../artifacts/voice.js";
-import type { PluginCatalog, PluginInvokeResult } from "../plugins/plugin-service.js";
-import type { PluginInstallRequest, PluginScaffoldRequest, PluginValidationResult, PublicPluginRecord } from "../plugins/plugin-types.js";
+import type { PluginCatalog } from "../plugins/plugin-service.js";
+import type { PluginInstallRequest, PluginInvokeResult, PluginScaffoldRequest, PluginUpdateCheckResult, PluginValidationResult, PublicPluginRecord } from "../plugins/plugin-types.js";
 
 export type WebApiMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 export type WebApiQueryValue = string | number | boolean | null | undefined;
@@ -240,8 +240,13 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/plugins/validate" ? { source: string } :
   P extends "/api/plugins/scaffold" ? PluginScaffoldRequest :
   P extends `/api/plugins/${string}/enable` | `/api/plugins/${string}/disable` | `/api/plugins/${string}/manifest` ? Record<string, never> :
+  P extends `/api/plugins/${string}/update` | `/api/plugins/${string}/update-check` | `/api/plugins/${string}/diagnostics` ? Record<string, never> :
+  P extends `/api/plugins/${string}/rollback` ? { version?: string } :
   P extends `/api/plugins/${string}/settings` ? { settings: Record<string, unknown> } :
   P extends `/api/plugins/${string}/invoke` ? { actionId: string; input?: Record<string, unknown> } :
+  P extends `/api/plugins/${string}/command` ? { command: string; input?: Record<string, unknown> } :
+  P extends `/api/plugins/${string}/panel` ? { panelId: string; input?: Record<string, unknown> } :
+  P extends `/api/plugins/${string}/artifact-handler` ? { handlerId: string; input?: Record<string, unknown> } :
   P extends `/api/plugins/${string}` ? Record<string, never> :
   P extends "/api/templates" ? { name: string; prompt: string; description?: string; tags?: string[]; variables?: PromptTemplate["variables"]; scope?: "private" | "shared"; defaultAgentId?: AgentId; defaultWorkspace?: string; defaultModel?: string; defaultReasoning?: string; defaultLaunchProfile?: string } :
   P extends "/api/templates/import" ? { bundle: unknown } :
@@ -346,8 +351,11 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/plugins/validate" ? PluginValidationResult :
   P extends "/api/plugins/scaffold" ? { path: string } :
   P extends `/api/plugins/${string}/enable` | `/api/plugins/${string}/disable` | `/api/plugins/${string}/settings` | `/api/plugins/${string}/manifest` ? PublicPluginRecord :
+  P extends `/api/plugins/${string}/update` | `/api/plugins/${string}/rollback` ? PublicPluginRecord :
+  P extends `/api/plugins/${string}/update-check` ? PluginUpdateCheckResult :
   P extends `/api/plugins/${string}/log` ? { id: string; log: string } :
   P extends `/api/plugins/${string}/invoke` ? PluginInvokeResult :
+  P extends `/api/plugins/${string}/command` | `/api/plugins/${string}/panel` | `/api/plugins/${string}/artifact-handler` | `/api/plugins/${string}/diagnostics` ? PluginInvokeResult :
   P extends `/api/plugins/${string}` ? PublicPluginRecord | { ok: true } :
   P extends "/api/templates" ? { templates: PromptTemplate[] } | { template: PromptTemplate } :
   P extends "/api/templates/import" ? { template: PromptTemplate } :

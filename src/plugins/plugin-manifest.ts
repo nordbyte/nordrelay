@@ -5,6 +5,7 @@ import {
   type PluginManifest,
   type PluginValidationIssue,
   type PluginValidationResult,
+  PLUGIN_RUNTIME_PERMISSIONS,
   PLUGIN_MANIFEST_FILE,
 } from "./plugin-types.js";
 
@@ -20,6 +21,7 @@ const KNOWN_CAPABILITY_KEYS = new Set([
   "diagnostics",
 ]);
 const KNOWN_SETTING_TYPES = new Set(["string", "number", "boolean", "secret", "select"]);
+const KNOWN_PLUGIN_PERMISSIONS = new Set<string>(PLUGIN_RUNTIME_PERMISSIONS);
 
 export async function loadPluginManifest(pluginDir: string): Promise<PluginValidationResult> {
   const manifestPath = path.join(pluginDir, PLUGIN_MANIFEST_FILE);
@@ -73,6 +75,12 @@ export function validatePluginManifest(input: unknown): PluginValidationResult {
   if (manifest.permissions !== undefined) {
     if (!Array.isArray(manifest.permissions) || manifest.permissions.some((value) => typeof value !== "string")) {
       issues.push({ level: "error", message: "Manifest permissions must be an array of strings." });
+    } else {
+      for (const permission of manifest.permissions) {
+        if (!KNOWN_PLUGIN_PERMISSIONS.has(permission)) {
+          issues.push({ level: "error", message: `Unknown plugin permission: ${permission}.` });
+        }
+      }
     }
   }
   validateCapabilities(manifest, issues);
@@ -149,6 +157,15 @@ function validateCapabilityArray(
         issues.push({ level: "error", message: `capabilities.${key}[${index}].${field} is required.` });
       }
     }
+    if (item.inputSchema !== undefined && !isRecord(item.inputSchema)) {
+      issues.push({ level: "error", message: `capabilities.${key}[${index}].inputSchema must be an object when set.` });
+    }
+    if (item.outputVariables !== undefined && !isStringMap(item.outputVariables)) {
+      issues.push({ level: "error", message: `capabilities.${key}[${index}].outputVariables must be an object of strings.` });
+    }
+    if (item.timeoutMs !== undefined && (!Number.isFinite(Number(item.timeoutMs)) || Number(item.timeoutMs) < 100)) {
+      issues.push({ level: "error", message: `capabilities.${key}[${index}].timeoutMs must be at least 100ms when set.` });
+    }
   });
 }
 
@@ -191,6 +208,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isStringMap(value: unknown): value is Record<string, string> {
+  return isRecord(value) && Object.values(value).every((item) => typeof item === "string");
 }
 
 function uniqueStrings(values: string[]): string[] {

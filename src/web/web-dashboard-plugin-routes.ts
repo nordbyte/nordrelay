@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { URL } from "node:url";
 
 import type { ConnectorConfig } from "../core/config.js";
-import { PluginService } from "../plugins/plugin-service.js";
+import { PluginService, type PluginServiceOptions } from "../plugins/plugin-service.js";
 import type { AuthenticatedUser } from "../access/user-management.js";
 import type { AuditEvent } from "../access/audit-log.js";
 import {
@@ -30,18 +30,28 @@ export async function handleDashboardPluginRoute(
     return false;
   }
 
-  const plugins = new PluginService(options.home);
+  const plugins = createPluginService(options.home, options.config);
 
   if (req.method === "GET" && url.pathname === "/api/plugins") {
+    const catalog = options.config.pluginsEnabled ? await plugins.catalog() : {
+      workflowActions: [],
+      webPanels: [],
+      commands: [],
+      agentAdapters: [],
+      chatAdapters: [],
+      artifactHandlers: [],
+      diagnostics: [],
+    };
     sendJson(res, 200, {
       enabled: options.config.pluginsEnabled,
       plugins: await plugins.list(),
-      catalog: await plugins.catalog(),
+      catalog,
     });
     return true;
   }
 
   if (req.method === "GET" && url.pathname === "/api/plugins/catalog") {
+    assertPluginsWritable(options.config);
     sendJson(res, 200, await plugins.catalog());
     return true;
   }
@@ -147,14 +157,96 @@ export async function handleDashboardPluginRoute(
     return true;
   }
 
+  if (req.method === "GET" && url.pathname === `/api/plugins/${id}/update-check`) {
+    assertPluginsWritable(options.config);
+    sendJson(res, 200, await plugins.checkUpdate(id));
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === `/api/plugins/${id}/update`) {
+    assertPluginsWritable(options.config);
+    const plugin = await plugins.update(id);
+    options.auditPluginAction("plugin_updated", `Updated plugin ${id}`);
+    sendJson(res, 200, plugin);
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === `/api/plugins/${id}/rollback`) {
+    assertPluginsWritable(options.config);
+    const body = await readJsonBody(req);
+    const plugin = await plugins.rollback(id, optionalStringField(body, "version"));
+    options.auditPluginAction("plugin_updated", `Rolled back plugin ${id}`);
+    sendJson(res, 200, plugin);
+    return true;
+  }
+
   if (req.method === "POST" && url.pathname === `/api/plugins/${id}/invoke`) {
+    assertPluginsWritable(options.config);
     const body = await readJsonBody(req);
     const result = await plugins.invokeWorkflowAction(id, requiredString(body, "actionId"), objectRecord(body?.input));
     sendJson(res, 200, result);
     return true;
   }
 
+  if (req.method === "POST" && url.pathname === `/api/plugins/${id}/command`) {
+    assertPluginsWritable(options.config);
+    const body = await readJsonBody(req);
+    const result = await plugins.invokeCommand(id, requiredString(body, "command"), objectRecord(body?.input));
+    sendJson(res, 200, result);
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === `/api/plugins/${id}/panel`) {
+    assertPluginsWritable(options.config);
+    const body = await readJsonBody(req);
+    const result = await plugins.invokeWebPanel(id, requiredString(body, "panelId"), objectRecord(body?.input));
+    sendJson(res, 200, result);
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === `/api/plugins/${id}/artifact-handler`) {
+    assertPluginsWritable(options.config);
+    const body = await readJsonBody(req);
+    const result = await plugins.invokeArtifactHandler(id, requiredString(body, "handlerId"), objectRecord(body?.input));
+    sendJson(res, 200, result);
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === `/api/plugins/${id}/diagnostics`) {
+    assertPluginsWritable(options.config);
+    sendJson(res, 200, await plugins.invokeDiagnostics(id));
+    return true;
+  }
+
   return false;
+}
+
+function createPluginService(home: string, config: ConnectorConfig): PluginService {
+  const serviceOptions: PluginServiceOptions = {
+    enabled: config.pluginsEnabled,
+    nodeName: config.peerName,
+    platform: process.platform,
+    workspace: config.workspace,
+    hostContext: () => ({
+      runtime: {
+        nodeName: config.peerName,
+        platform: process.platform,
+        workspace: config.workspace,
+      },
+      settings: {
+        workspace: config.workspace,
+        stateBackend: config.stateBackend,
+        agents: {
+          codex: config.codexEnabled,
+          pi: config.piEnabled,
+          hermes: config.hermesEnabled,
+          openclaw: config.openClawEnabled,
+          claudeCode: config.claudeCodeEnabled,
+        },
+      },
+    }),
+  };
+  return new PluginService(home, serviceOptions);
 }
 
 function assertPluginsWritable(config: ConnectorConfig): void {

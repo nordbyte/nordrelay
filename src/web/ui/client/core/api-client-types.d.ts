@@ -156,12 +156,19 @@ export type WebApiDynamicPath =
   | `/api/peers/discovery-jobs/${string}/log`
   | `/api/peers/invitations/${string}`
   | `/api/plugins/${string}`
+  | `/api/plugins/${string}/artifact-handler`
+  | `/api/plugins/${string}/command`
+  | `/api/plugins/${string}/diagnostics`
   | `/api/plugins/${string}/disable`
   | `/api/plugins/${string}/enable`
   | `/api/plugins/${string}/invoke`
   | `/api/plugins/${string}/log`
   | `/api/plugins/${string}/manifest`
+  | `/api/plugins/${string}/panel`
+  | `/api/plugins/${string}/rollback`
   | `/api/plugins/${string}/settings`
+  | `/api/plugins/${string}/update`
+  | `/api/plugins/${string}/update-check`
   | `/api/profile/api-tokens/${string}`
   | `/api/profile/sessions/${string}`
   | `/api/profile/webauthn/${string}`

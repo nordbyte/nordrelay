@@ -11,7 +11,8 @@ async function loadPlugins(){
   const response=Array.isArray(data.plugins)?data:{enabled:true,plugins:[],catalog:{}};
   state.plugins=response.plugins||[];
   state.pluginCatalog=response.catalog||{};
-  document.getElementById('pluginStatus').innerHTML=response.enabled?'Plugins are enabled.':'Plugins are disabled by NORDRELAY_PLUGINS_ENABLED=false.';
+  state.pluginUpdateChecks=state.pluginUpdateChecks||{};
+  document.getElementById('pluginStatus').innerHTML=response.enabled?'Plugins are enabled on the local node. Remote peers need their own installed and enabled plugins.':'Plugins are disabled by NORDRELAY_PLUGINS_ENABLED=false.';
   renderPlugins();
 }
 function switchPluginTab(tab){
@@ -37,7 +38,7 @@ function renderPluginList(){
   renderIncrementalTable(target,plugins,{
     key:'plugins',
     emptyText:'No plugins installed.',
-    headHtml:'<tr><th>Status</th><th>Plugin</th><th>Version</th><th>Source</th><th>Permissions</th><th>Capabilities</th><th class="actions-heading">Actions</th></tr>',
+    headHtml:'<tr><th>Status</th><th>Plugin</th><th>Version</th><th>Runtime</th><th>Source</th><th>Permissions</th><th>Capabilities</th><th class="actions-heading">Actions</th></tr>',
     renderItem:plugin=>pluginRow(plugin),
     initialCount:30,
     batchSize:60,
@@ -47,19 +48,27 @@ function renderPluginList(){
 function pluginRow(plugin){
   const status=plugin.enabled?uiBadge('enabled','enabled'):uiBadge(plugin.status||'disabled','disabled');
   const source=plugin.source?.type==='github'?(plugin.source.value+(plugin.source.ref?'#'+plugin.source.ref:'')):(plugin.source?.value||plugin.installPath||'-');
-  const permissions=(plugin.permissions||[]).join(', ')||'none';
+  const pendingPermissions=(plugin.permissions||[]).filter(permission=>!(plugin.approvedPermissions||[]).includes(permission));
+  const permissions=((plugin.permissions||[]).join(', ')||'none')+(pendingPermissions.length?' · pending approval: '+pendingPermissions.join(', '):'');
   const capabilities=pluginCapabilitiesSummary(plugin);
+  const runtime=pluginMetricsSummary(plugin);
+  const updateCheck=state.pluginUpdateChecks?.[plugin.id];
+  const updateBadge=updateCheck?uiBadge(updateCheck.error?'check failed':updateCheck.updateAvailable?'update available':'current',updateCheck.error?'failed':updateCheck.updateAvailable?'warning':'enabled'):'';
   const actions=[
     plugin.enabled?uiButton('Disable',{mini:true,variant:'secondary',data:{pluginDisable:plugin.id},permission:'plugins.enable'}):uiButton('Enable',{mini:true,data:{pluginEnable:plugin.id},permission:'plugins.enable'}),
     uiButton('Settings',{mini:true,variant:'secondary',data:{pluginSettings:plugin.id},permission:'plugins.settings.write'}),
     uiButton('Log',{mini:true,variant:'secondary',data:{pluginLog:plugin.id}}),
     uiButton('Reload',{mini:true,variant:'secondary',data:{pluginReload:plugin.id},permission:'plugins.install'}),
+    uiButton('Check update',{mini:true,variant:'secondary',data:{pluginCheckUpdate:plugin.id},permission:'plugins.install'}),
+    uiButton('Update',{mini:true,variant:'secondary',data:{pluginUpdate:plugin.id},permission:'plugins.install'}),
+    uiButton('Rollback',{mini:true,variant:'secondary',data:{pluginRollback:plugin.id},permission:'plugins.install'}),
     uiButton('Remove',{mini:true,variant:'danger',data:{pluginRemove:plugin.id},permission:'plugins.install'}),
   ].join('');
   return '<tr>'+
     pluginCell('Status',status,'status-cell')+
     pluginCell('Plugin','<span class="truncate-cell" title="'+attr(plugin.name||plugin.id)+'">'+esc(plugin.name||plugin.id)+'</span><small>'+esc(plugin.id||'-')+'</small>','primary-cell')+
-    pluginCell('Version',esc(plugin.version||'-'))+
+    pluginCell('Version',esc(plugin.version||'-')+(updateBadge?'<br>'+updateBadge:''))+
+    pluginCell('Runtime','<span class="truncate-cell" title="'+attr(runtime)+'">'+esc(runtime)+'</span>')+
     pluginCell('Source','<span class="truncate-cell" title="'+attr(source)+'">'+esc(short(source,160))+'</span>')+
     pluginCell('Permissions','<span class="truncate-cell" title="'+attr(permissions)+'">'+esc(short(permissions,120))+'</span>')+
     pluginCell('Capabilities','<span class="truncate-cell" title="'+attr(capabilities)+'">'+esc(short(capabilities,140))+'</span>')+
@@ -80,24 +89,31 @@ function pluginCapabilitiesSummary(plugin){
   if(c.diagnostics)parts.push('diagnostics');
   return parts.join(', ')||'none';
 }
+function pluginMetricsSummary(plugin){
+  const m=plugin.metrics||{};
+  if(!m.invocations)return 'No invocations yet';
+  const avg=Math.round((Number(m.totalDurationMs)||0)/(Number(m.invocations)||1));
+  return `${m.invocations} run${Number(m.invocations)===1?'':'s'} · ${m.failures||0} failed · last ${m.lastDurationMs??'-'}ms · avg ${avg}ms`;
+}
 function renderPluginCatalog(){
   const catalog=state.pluginCatalog||{};
   const target=document.getElementById('pluginCatalog');
   if(!target)return;
   const sections=[
-    pluginCatalogSection('Workflow actions',catalog.workflowActions||[],item=>[item.pluginId,item.actionId,item.title,item.description||'']),
-    pluginCatalogSection('Web panels',catalog.webPanels||[],item=>[item.pluginId,item.panelId,item.title,item.path||item.permission||'']),
-    pluginCatalogSection('Commands',catalog.commands||[],item=>[item.pluginId,item.name,item.description||'',item.permission||'']),
+    pluginCatalogSection('Workflow actions',catalog.workflowActions||[],item=>[item.pluginId,item.actionId,item.title,item.description||''],'workflow-action'),
+    pluginCatalogSection('Web panels',catalog.webPanels||[],item=>[item.pluginId,item.panelId,item.title,item.path||item.permission||''],'web-panel'),
+    pluginCatalogSection('Commands',catalog.commands||[],item=>[item.pluginId,item.name,item.title||item.description||'',item.permission||''],'command'),
     pluginCatalogSection('Agent adapters',catalog.agentAdapters||[],item=>[item.pluginId,item.id,item.title,item.description||'']),
     pluginCatalogSection('Chat adapters',catalog.chatAdapters||[],item=>[item.pluginId,item.id,item.title,item.description||'']),
-    pluginCatalogSection('Artifact handlers',catalog.artifactHandlers||[],item=>[item.pluginId,item.id,item.title,item.description||'']),
+    pluginCatalogSection('Artifact handlers',catalog.artifactHandlers||[],item=>[item.pluginId,item.id,item.title,item.description||''],'artifact-handler'),
+    pluginCatalogSection('Diagnostics',catalog.diagnostics||[],item=>[item.pluginId,'diagnostics',item.title,''],'diagnostics'),
   ].join('');
   target.innerHTML=sections||uiEmpty('No enabled plugin extension points.');
 }
-function pluginCatalogSection(title,items,map){
+function pluginCatalogSection(title,items,map,capabilityType=''){
   if(!items.length)return '';
-  return '<h3 class="table-section-title">'+esc(title)+'</h3><div class="data-table-wrap"><table class="data-table plugin-catalog-table"><thead><tr><th>Plugin</th><th>ID</th><th>Title</th><th>Detail</th></tr></thead><tbody>'+
-    items.map(item=>{const row=map(item);return '<tr>'+pluginCell('Plugin',esc(row[0]),'primary-cell')+pluginCell('ID',esc(row[1]))+pluginCell('Title','<span class="truncate-cell" title="'+attr(row[2])+'">'+esc(short(row[2],120))+'</span>')+pluginCell('Detail','<span class="truncate-cell" title="'+attr(row[3])+'">'+esc(short(row[3],160))+'</span>')+'</tr>'}).join('')+
+  return '<h3 class="table-section-title">'+esc(title)+'</h3><div class="data-table-wrap"><table class="data-table plugin-catalog-table"><thead><tr><th>Plugin</th><th>ID</th><th>Title</th><th>Detail</th><th class="actions-heading">Actions</th></tr></thead><tbody>'+
+    items.map(item=>{const row=map(item);const actions=capabilityType?uiButton(capabilityType==='diagnostics'?'Run diagnostics':'Invoke',{mini:true,variant:'secondary',data:{pluginCapability:row[0],pluginCapabilityType:capabilityType,pluginCapabilityId:row[1]},permission:capabilityType==='diagnostics'?'diagnostics.read':'workflows.run'}):'';return '<tr>'+pluginCell('Plugin',esc(row[0]),'primary-cell')+pluginCell('ID',esc(row[1]))+pluginCell('Title','<span class="truncate-cell" title="'+attr(row[2])+'">'+esc(short(row[2],120))+'</span>')+pluginCell('Detail','<span class="truncate-cell" title="'+attr(row[3])+'">'+esc(short(row[3],160))+'</span>')+pluginCell('Actions','<div class="data-table-actions">'+actions+'</div>','actions-cell')+'</tr>'}).join('')+
   '</tbody></table></div>';
 }
 function renderPluginLogSelect(){
@@ -113,8 +129,55 @@ function bindPluginButtons(root:Element|Document=document){
   root.querySelectorAll?.('[data-plugin-disable]').forEach(b=>b.onclick=()=>safe(async()=>{await api('/api/plugins/'+encodeURIComponent(b.dataset.pluginDisable)+'/disable',{method:'POST',local:true,body:JSON.stringify({})});toast('Plugin disabled');await loadPlugins()}));
   root.querySelectorAll?.('[data-plugin-remove]').forEach(b=>b.onclick=()=>safe(async()=>{if(!confirm('Remove this plugin?'))return;await api('/api/plugins/'+encodeURIComponent(b.dataset.pluginRemove),{method:'DELETE',local:true});toast('Plugin removed');await loadPlugins()}));
   root.querySelectorAll?.('[data-plugin-reload]').forEach(b=>b.onclick=()=>safe(async()=>{await api('/api/plugins/'+encodeURIComponent(b.dataset.pluginReload)+'/manifest',{method:'POST',local:true,body:JSON.stringify({})});toast('Plugin manifest reloaded');await loadPlugins()}));
+  root.querySelectorAll?.('[data-plugin-check-update]').forEach(b=>b.onclick=()=>safe(async()=>{const id=b.dataset.pluginCheckUpdate;const result=await api('/api/plugins/'+encodeURIComponent(id)+'/update-check',{local:true});state.pluginUpdateChecks=state.pluginUpdateChecks||{};state.pluginUpdateChecks[id]=result;toast(result.updateAvailable?'Plugin update available':result.error?'Plugin update check failed':'Plugin is current');renderPlugins()}));
+  root.querySelectorAll?.('[data-plugin-update]').forEach(b=>b.onclick=()=>safe(async()=>{const id=b.dataset.pluginUpdate;if(!confirm('Update this plugin from its original source?'))return;await api('/api/plugins/'+encodeURIComponent(id)+'/update',{method:'POST',local:true,body:JSON.stringify({})});toast('Plugin updated');await loadPlugins()}));
+  root.querySelectorAll?.('[data-plugin-rollback]').forEach(b=>b.onclick=()=>safe(async()=>{const id=b.dataset.pluginRollback;const version=prompt('Rollback to version (leave empty for previous installed version):','')||'';await api('/api/plugins/'+encodeURIComponent(id)+'/rollback',{method:'POST',local:true,body:JSON.stringify({version:version.trim()||undefined})});toast('Plugin rolled back');await loadPlugins()}));
   root.querySelectorAll?.('[data-plugin-settings]').forEach(b=>b.onclick=()=>openPluginSettingsDialog(b.dataset.pluginSettings));
   root.querySelectorAll?.('[data-plugin-log]').forEach(b=>b.onclick=()=>{state.pluginTab='logs';switchPluginTab('logs');const select=document.getElementById('pluginLogSelect');if(select)select.value=b.dataset.pluginLog;safe(loadPluginLog)});
+  root.querySelectorAll?.('[data-plugin-capability]').forEach(b=>b.onclick=()=>openPluginCapabilityDialog(b.dataset.pluginCapability,b.dataset.pluginCapabilityType,b.dataset.pluginCapabilityId));
+}
+function openPluginCapabilityDialog(pluginId,type,capabilityId){
+  const item=findPluginCapability(pluginId,type,capabilityId);
+  const schema=item?.inputSchema||{};
+  const defaults=pluginInputDefaultsFromSchema(schema);
+  const fields='<label class="full-span"><span>Input JSON</span><textarea id="dlgPluginCapabilityInput" rows="8">'+esc(JSON.stringify(defaults,null,2))+'</textarea><small>Input is passed to the selected plugin capability. Plugin output appears in the catalog result panel.</small></label>';
+  adminDialog('Invoke '+type+': '+capabilityId,fields,async()=>{
+    const input=parseJsonObject(document.getElementById('dlgPluginCapabilityInput')?.value||'{}','Input JSON');
+    let endpoint='/invoke';
+    let body:WebuiRecord={input};
+    if(type==='workflow-action')body={actionId:capabilityId,input};
+    else if(type==='command'){endpoint='/command';body={command:capabilityId,input}}
+    else if(type==='web-panel'){endpoint='/panel';body={panelId:capabilityId,input}}
+    else if(type==='artifact-handler'){endpoint='/artifact-handler';body={handlerId:capabilityId,input}}
+    else if(type==='diagnostics'){endpoint='/diagnostics';body={}}
+    const result=await api('/api/plugins/'+encodeURIComponent(pluginId)+endpoint,{method:type==='diagnostics'?'GET':'POST',local:true,body:type==='diagnostics'?undefined:JSON.stringify(body)});
+    renderPluginCapabilityResult(pluginId,type,capabilityId,result);
+    await loadPlugins();
+  },{submitText:'Run',reloadAccess:false});
+}
+function findPluginCapability(pluginId,type,capabilityId){
+  const c=state.pluginCatalog||{};
+  const value=type==='workflow-action'?c.workflowActions:type==='command'?c.commands:type==='web-panel'?c.webPanels:type==='artifact-handler'?c.artifactHandlers:type==='diagnostics'?c.diagnostics:[];
+  const list:WebuiRecord[]=Array.isArray(value)?value:[];
+  return list.find(item=>item.pluginId===pluginId&&(item.actionId===capabilityId||item.name===capabilityId||item.panelId===capabilityId||item.id===capabilityId||capabilityId==='diagnostics'));
+}
+function pluginInputDefaultsFromSchema(schema){
+  const properties=schema&&typeof schema==='object'&&!Array.isArray(schema)?schema.properties:null;
+  if(!properties||typeof properties!=='object')return {};
+  return Object.fromEntries(Object.entries(properties).map(([key,value])=>{const meta=value as WebuiRecord;return [key,meta?.default??(meta?.type==='boolean'?false:meta?.type==='number'?0:'')]}));
+}
+function parseJsonObject(text,label){
+  const parsed=text.trim()?JSON.parse(text):{};
+  if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw new Error(label+' must be a JSON object.');
+  return parsed;
+}
+function renderPluginCapabilityResult(pluginId,type,capabilityId,result){
+  const target=document.getElementById('pluginCapabilityResult');
+  if(!target)return;
+  const output=result.html
+    ? '<iframe class="plugin-panel-frame" sandbox="" srcdoc="'+attr(result.html)+'"></iframe>'
+    : '<pre class="log-view">'+esc(JSON.stringify(result.output??result.diagnostics??result.text??result.stdout??result,null,2))+'</pre>';
+  target.innerHTML=uiItem(pluginId+' / '+capabilityId,{badge:{text:result.ok?'ok':'failed',status:result.ok?'enabled':'failed'},rows:[['Type',type],['Duration',result.durationMs?result.durationMs+'ms':'-']],body:output});
 }
 function openPluginSettingsDialog(pluginId){
   const plugin=(state.plugins||[]).find(item=>item.id===pluginId);

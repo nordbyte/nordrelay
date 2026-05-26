@@ -86,6 +86,7 @@ export interface WorkflowStep {
   pluginId?: string;
   pluginActionId?: string;
   pluginInput?: Record<string, unknown>;
+  pluginOutputVariables?: Record<string, string>;
   condition?: WorkflowStepCondition;
   retryPolicy?: WorkflowRetryPolicy;
   agentId?: AgentId;
@@ -180,6 +181,8 @@ export interface WorkflowStepRun {
   pauseReason?: string;
   inputPreview?: string;
   outputSummary?: string;
+  pluginOutput?: unknown;
+  variables?: Record<string, string>;
 }
 
 export interface WorkflowStepAttempt {
@@ -658,10 +661,14 @@ function normalizeStep(input: Partial<WorkflowStep>): WorkflowStep {
   return {
     id,
     name: String(input.name ?? `Step ${id.slice(0, 4)}`).trim() || "Step",
-    type: input.type === "workflow" ? "workflow" : "prompt",
+    type: input.type === "workflow" ? "workflow" : input.type === "plugin" ? "plugin" : "prompt",
     prompt: cleanOptional(input.prompt),
     templateId: cleanOptional(input.templateId),
     workflowId: cleanOptional(input.workflowId),
+    pluginId: cleanOptional(input.pluginId),
+    pluginActionId: cleanOptional(input.pluginActionId),
+    pluginInput: normalizeRecord(input.pluginInput),
+    pluginOutputVariables: normalizeStringRecord(input.pluginOutputVariables),
     condition: normalizeCondition(input.condition),
     retryPolicy: normalizeRetryPolicy(input.retryPolicy),
     agentId: input.agentId,
@@ -709,6 +716,8 @@ function normalizeStepRun(input: WorkflowStepRun): WorkflowStepRun {
     name: String(input.name ?? "Step").trim() || "Step",
     status: normalizeStepRunStatus(input.status),
     prompt: cleanOptional(input.prompt),
+    pluginId: cleanOptional(input.pluginId),
+    pluginActionId: cleanOptional(input.pluginActionId),
     correlationId: cleanOptional(input.correlationId),
     target: normalizeTarget(input.target),
     sessionMode: input.sessionMode === "new" || input.sessionMode === "attach" ? input.sessionMode : input.sessionMode === "current" ? "current" : undefined,
@@ -731,6 +740,8 @@ function normalizeStepRun(input: WorkflowStepRun): WorkflowStepRun {
     pauseReason: cleanOptional(input.pauseReason),
     inputPreview: cleanOptional(input.inputPreview),
     outputSummary: cleanOptional(input.outputSummary),
+    pluginOutput: input.pluginOutput,
+    variables: normalizeStringRecord(input.variables),
   };
 }
 
@@ -1002,6 +1013,19 @@ function normalizeCondition(input: unknown): WorkflowStepCondition | undefined {
     ? String(record.operator) as WorkflowConditionOperator
     : "exists";
   return { variable, operator, value: cleanOptional(record.value) };
+}
+
+function normalizeRecord(input: unknown): Record<string, unknown> | undefined {
+  return input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : undefined;
+}
+
+function normalizeStringRecord(input: unknown): Record<string, string> | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return undefined;
+  const output: Record<string, string> = {};
+  for (const [key, value] of Object.entries(input)) {
+    output[key] = String(value ?? "");
+  }
+  return Object.keys(output).length ? output : undefined;
 }
 
 function normalizeRetryPolicy(input: unknown): WorkflowRetryPolicy | undefined {

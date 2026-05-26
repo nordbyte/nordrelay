@@ -362,3 +362,4 @@
 .peer-probe-result.warn{border-color:#d9c27a;background:var(--warn)}
 .peer-health-history{margin:8px 0;padding:8px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface)}
 .peer-health-history summary{cursor:pointer;font-weight:700;color:var(--muted)}
+.plugin-panel-frame{width:100%;min-height:320px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface)}

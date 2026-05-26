@@ -81,9 +81,43 @@ export async function commandPlugin(options) {
     console.log(`Reloaded ${plugin.id}@${plugin.version}.`);
     return;
   }
+  if (flags.subcommand === "check-update") {
+    const id = requiredPluginId(flags);
+    console.log(JSON.stringify(await service.checkUpdate(id), null, 2));
+    return;
+  }
+  if (flags.subcommand === "update") {
+    const id = requiredPluginId(flags);
+    const plugin = await service.update(id);
+    console.log(`Updated ${plugin.id}@${plugin.version}.`);
+    return;
+  }
+  if (flags.subcommand === "rollback") {
+    const id = requiredPluginId(flags);
+    const plugin = await service.rollback(id, flags.version);
+    console.log(`Rolled back ${plugin.id}@${plugin.version}.`);
+    return;
+  }
   if (flags.subcommand === "catalog") {
     const catalog = await service.catalog();
     console.log(JSON.stringify(catalog, null, 2));
+    return;
+  }
+  if (flags.subcommand === "invoke") {
+    const id = requiredPluginId(flags);
+    const type = flags.args[1] || "workflow-action";
+    const capabilityId = flags.args[2];
+    if (!capabilityId) throw new Error("Usage: nordrelay plugin invoke <plugin-id> <workflow-action|command|web-panel|artifact-handler|diagnostics> <id> [--input-json '{...}']");
+    const input = parseInputJson(flags.inputJson);
+    const result =
+      type === "workflow-action" ? await service.invokeWorkflowAction(id, capabilityId, input) :
+      type === "command" ? await service.invokeCommand(id, capabilityId, input) :
+      type === "web-panel" ? await service.invokeWebPanel(id, capabilityId, input) :
+      type === "artifact-handler" ? await service.invokeArtifactHandler(id, capabilityId, input) :
+      type === "diagnostics" ? await service.invokeDiagnostics(id, input) :
+      null;
+    if (!result) throw new Error(`Unknown plugin capability type: ${type}`);
+    console.log(JSON.stringify(result, null, 2));
     return;
   }
   if (flags.subcommand === "settings") {
@@ -122,6 +156,8 @@ function parsePluginFlags(rawFlags) {
     approve: false,
     force: false,
     set: [],
+    inputJson: "{}",
+    version: undefined,
   };
   for (let index = 0; index < copy.length; index += 1) {
     const arg = copy[index];
@@ -129,6 +165,8 @@ function parsePluginFlags(rawFlags) {
     else if (arg === "--id") flags.id = requireValue(copy, ++index, arg);
     else if (arg === "--name") flags.name = requireValue(copy, ++index, arg);
     else if (arg === "--description") flags.description = requireValue(copy, ++index, arg);
+    else if (arg === "--input-json") flags.inputJson = requireValue(copy, ++index, arg);
+    else if (arg === "--version") flags.version = requireValue(copy, ++index, arg);
     else if (arg === "--enable") flags.enable = true;
     else if (arg === "--approve") flags.approve = true;
     else if (arg === "--force") flags.force = true;
@@ -151,6 +189,14 @@ function splitSetting(pair) {
   return [pair.slice(0, index), pair.slice(index + 1)];
 }
 
+function parseInputJson(raw) {
+  const parsed = JSON.parse(raw || "{}");
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("--input-json must be a JSON object");
+  }
+  return parsed;
+}
+
 function requireValue(argv, index, flag) {
   const value = argv[index];
   if (!value || value.startsWith("-")) {
@@ -165,7 +211,7 @@ async function createPluginService(home) {
     throw new Error(`Missing plugin runtime. Run \`npm run build\` in ${RUNTIME_ROOT}.`);
   }
   const mod = await import(pathToFileURL(modulePath).href);
-  return new mod.PluginService(home);
+  return new mod.PluginService(home, { enabled: process.env.NORDRELAY_PLUGINS_ENABLED !== "false" });
 }
 
 function findRuntimeRoot() {
@@ -198,8 +244,12 @@ function printPluginHelp() {
   console.log("  disable <id>                 Disable a plugin");
   console.log("  remove <id>                  Remove a plugin");
   console.log("  reload <id>                  Reload manifest metadata from the installed plugin");
+  console.log("  check-update <id>            Check whether the plugin source has changed");
+  console.log("  update <id>                  Reinstall from the original source/ref");
+  console.log("  rollback <id>                Switch back to an installed previous version");
   console.log("  settings <id> [--set K=V]    Show or update plugin settings");
   console.log("  catalog                      Print enabled extension points as JSON");
+  console.log("  invoke <id> <type> <cap>     Invoke an executable plugin capability");
   console.log("  log <id>                     Show plugin log output");
   console.log("");
   console.log("Install options:");
@@ -207,5 +257,6 @@ function printPluginHelp() {
   console.log("  --enable                     Enable after install");
   console.log("  --approve                    Approve declared permissions after install");
   console.log("  --force                      Reinstall same version");
+  console.log("  --input-json <json>          JSON object for plugin invoke");
+  console.log("  --version <version>          Explicit plugin version for rollback");
 }
-

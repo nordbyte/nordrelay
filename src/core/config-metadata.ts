@@ -113,7 +113,7 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   setting("NORDRELAY_WEBAUTHN_ORIGIN", "Passkey origin", "Security", "string", "Optional expected WebUI origin, for example https://relay.example.com. Leave empty to derive it from the request.", true),
   setting("NORDRELAY_PLUGINS_ENABLED", "Enable plugins", "Plugins", "boolean", "Allow NordRelay to load installed plugin metadata and expose plugin extension points.", true),
   setting("NORDRELAY_PLUGIN_GITHUB_INSTALL_ENABLED", "Allow GitHub plugin installs", "Plugins", "boolean", "Allow installing plugins directly from GitHub repository URLs.", true),
-  setting("NORDRELAY_PLUGIN_ALLOW_BUILD_SCRIPTS", "Allow plugin build scripts", "Plugins", "boolean", "Reserved for plugin package build hooks. Keep disabled unless you trust the plugin source.", true),
+  setting("NORDRELAY_PLUGIN_ALLOW_BUILD_SCRIPTS", "Allow plugin build scripts", "Plugins", "boolean", "Reserved for plugin package build hooks. Keep disabled unless you trust the plugin source.", false),
   telegramSetting("TELEGRAM_ENABLED", "Enable Telegram", "boolean", "Start the Telegram bot adapter.", true),
   telegramSetting("TELEGRAM_BOT_TOKEN", "Telegram bot token", "secret", "BotFather token.", true),
   telegramSetting("TELEGRAM_TRANSPORT", "Telegram transport", "string", "polling or webhook.", true, ["polling", "webhook"]),

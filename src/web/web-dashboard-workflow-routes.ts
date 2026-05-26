@@ -497,6 +497,7 @@ function parseWorkflowStep(value: unknown): WorkflowStep {
     pluginId: optionalStringField(record, "pluginId"),
     pluginActionId: optionalStringField(record, "pluginActionId"),
     pluginInput: objectRecord(record.pluginInput),
+    pluginOutputVariables: stringMap(record.pluginOutputVariables),
     condition: parseWorkflowCondition(record.condition),
     retryPolicy: parseRetryPolicy(record.retryPolicy),
     agentId: optionalStringField(record, "agentId") as WorkflowStep["agentId"],
@@ -511,6 +512,12 @@ function parseWorkflowStep(value: unknown): WorkflowStep {
     requiresApproval: Boolean(record.requiresApproval),
     continueOnError: Boolean(record.continueOnError),
   };
+}
+
+function stringMap(value: unknown): Record<string, string> | undefined {
+  const record = objectRecord(value);
+  const output = Object.fromEntries(Object.entries(record).map(([key, item]) => [key, String(item ?? "")]));
+  return Object.keys(output).length ? output : undefined;
 }
 
 function parseWorkspaceMode(value: string | undefined): WorkflowStep["workspaceMode"] {

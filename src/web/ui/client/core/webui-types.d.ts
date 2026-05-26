@@ -325,6 +325,8 @@ interface WebuiWorkflowBuilderStep extends WebuiRecord {
   pluginActionId?: string;
   pluginInput?: Record<string, unknown>;
   pluginInputJson?: string;
+  pluginOutputVariables?: Record<string, string>;
+  pluginOutputVariablesJson?: string;
   condition?: {
     variable?: string;
     operator?: string;
@@ -542,6 +544,7 @@ interface DashboardState {
   adapterConformance?: WebuiRecord | null;
   plugins?: WebuiRecord[];
   pluginCatalog?: WebuiRecord | null;
+  pluginUpdateChecks?: Record<string, WebuiRecord>;
   activityEvents?: WebuiRecord[];
   auditEvents?: WebuiAuditEvent[];
   logsEntries?: WebuiRecord[];

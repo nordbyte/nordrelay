@@ -584,6 +584,7 @@ ${faviconLinks}
               <div class="row plugin-heading-actions"><button id="reloadPluginCatalogBtn" class="secondary">Reload catalog</button></div>
             </div>
             <div id="pluginCatalog" class="list"></div>
+            <div id="pluginCapabilityResult" class="list"></div>
           </div>
           <div class="plugin-tab" data-plugin-tab-panel="developer">
             <div class="plugin-tab-heading">

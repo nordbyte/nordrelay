@@ -12,6 +12,7 @@ function workflowBuilderStep(step:WebuiWorkflowBuilderStep={},index=0){
     pluginId: step.pluginId||'',
     pluginActionId: step.pluginActionId||'',
     pluginInputJson: step.pluginInputJson||JSON.stringify(step.pluginInput||{},null,2),
+    pluginOutputVariablesJson: step.pluginOutputVariablesJson||JSON.stringify(step.pluginOutputVariables||{},null,2),
     conditionVariable: step.condition?.variable||'',
     conditionOperator: step.condition?.operator||'exists',
     conditionValue: step.condition?.value||'',
@@ -35,6 +36,7 @@ function workflowBuilderState(w){return {workflowId:w?.id||'',steps:(w?.steps?.l
 function workflowTemplateOptions(selected){return '<option value="">Select template...</option>'+(state.workflowTemplates||[]).map(t=>'<option value="'+attr(t.id)+'" '+(t.id===selected?'selected':'')+'>'+esc(t.name)+'</option>').join('')}
 function workflowOptions(selected,currentId){return '<option value="">Select workflow...</option>'+(state.workflows||[]).filter(w=>w.id!==currentId).map(w=>'<option value="'+attr(w.id)+'" '+(w.id===selected?'selected':'')+'>'+esc(w.name)+'</option>').join('')}
 function workflowPluginActionOptions(selectedPlugin,selectedAction){const actions=Array.isArray(state.pluginCatalog?.workflowActions)?state.pluginCatalog.workflowActions:[];if(!actions.length)return '<option value="">No plugin workflow actions</option>';return '<option value="">Select plugin action...</option>'+actions.map(action=>{const value=action.pluginId+'::'+action.actionId;const selected=value===(selectedPlugin+'::'+selectedAction);return '<option value="'+attr(value)+'" '+(selected?'selected':'')+'>'+esc((action.title||action.actionId)+' ('+action.pluginId+')')+'</option>'}).join('')}
+function workflowPluginAction(pluginId,actionId){const actions=Array.isArray(state.pluginCatalog?.workflowActions)?state.pluginCatalog.workflowActions:[];return actions.find(action=>action.pluginId===pluginId&&action.actionId===actionId)||null}
 function workflowAgentOptions(selected){return '<option value="">Active agent</option>'+(state.enabledAgents||[]).map(id=>'<option value="'+attr(id)+'" '+(id===selected?'selected':'')+'>'+esc(id)+'</option>').join('')}
 function workflowReasoningOptions(selected){return '<option value="">Default</option>'+((state.controls?.reasoningOptions||[]).map(v=>'<option value="'+attr(v)+'" '+(v===selected?'selected':'')+'>'+esc(v)+'</option>').join(''))}
 function workflowLaunchOptions(selected){return '<option value="">Default</option>'+((state.controls?.launchProfiles||[]).map(p=>'<option value="'+attr(p.id)+'" '+(p.id===selected?'selected':'')+'>'+esc(p.label+' - '+p.behavior+(p.unsafe?' - unsafe':''))+'</option>').join(''))}
@@ -46,6 +48,7 @@ function workflowWorkspaceDatalist(){return '<datalist id="workflowWorkspaceOpti
 function workflowBuilderStepHtml(step,index){
   const source=step.source||workflowStepSource(step);
   const template=source==='template'?(state.workflowTemplates||[]).find(t=>t.id===step.templateId):null;
+  const pluginAction=source==='plugin'?workflowPluginAction(step.pluginId,step.pluginActionId):null;
   const showNew=step.sessionMode==='new';
   const showAttach=step.sessionMode==='attach';
   return '<div class="workflow-builder-step" data-workflow-builder-step="'+attr(step._uid)+'">'+
@@ -63,7 +66,7 @@ function workflowBuilderStepHtml(step,index){
       : source==='workflow'
         ? '<label class="full-span">Subflow<select data-builder-field="workflowId">'+workflowOptions(step.workflowId,state.workflowBuilder.workflowId)+'</select></label>'
         : source==='plugin'
-          ? '<label class="full-span">Plugin action<select data-builder-field="pluginAction">'+workflowPluginActionOptions(step.pluginId,step.pluginActionId)+'</select></label><label class="full-span">Plugin input JSON<textarea data-builder-field="pluginInputJson" rows="6" placeholder="{ }">'+esc(step.pluginInputJson||'{}')+'</textarea><small>String values can use workflow variables like {{name}}.</small></label>'
+          ? '<label class="full-span">Plugin action<select data-builder-field="pluginAction">'+workflowPluginActionOptions(step.pluginId,step.pluginActionId)+'</select></label>'+workflowPluginInputBuilderHtml(step,pluginAction)+'<label class="full-span">Output variables JSON<textarea data-builder-field="pluginOutputVariablesJson" rows="4" placeholder="{ &quot;variableName&quot;: &quot;output.path&quot; }">'+esc(step.pluginOutputVariablesJson||JSON.stringify(pluginAction?.outputVariables||{},null,2))+'</textarea><small>Map plugin output paths to workflow variables for later steps.</small></label>'
           : '<label class="full-span">Prompt<textarea data-builder-field="prompt" rows="6" placeholder="Write the prompt for this workflow step...">'+esc(step.prompt||'')+'</textarea></label>')+
     '<label>Session<select data-builder-field="sessionMode"><option value="current" '+(step.sessionMode==='current'?'selected':'')+'>Current session</option><option value="new" '+(step.sessionMode==='new'?'selected':'')+'>New session</option><option value="attach" '+(step.sessionMode==='attach'?'selected':'')+'>Attach to thread</option></select></label>'+
     '<label>Agent<select data-builder-field="agentId">'+workflowAgentOptions(step.agentId)+'</select></label>'+
@@ -78,6 +81,20 @@ function workflowBuilderStepHtml(step,index){
     '<label class="checkbox workflow-builder-check"><input type="checkbox" data-builder-field="requiresApproval" '+(step.requiresApproval?'checked':'')+'> Require approval</label>'+
     '<label class="checkbox workflow-builder-check"><input type="checkbox" data-builder-field="continueOnError" '+(step.continueOnError?'checked':'')+'> Continue on error</label>'+
     '</div></div>';
+}
+function workflowPluginInputBuilderHtml(step,action){
+  const schema=action?.inputSchema;
+  const props=schema&&typeof schema==='object'&&!Array.isArray(schema)&&schema.properties&&typeof schema.properties==='object'?schema.properties:null;
+  if(!props)return '<label class="full-span">Plugin input JSON<textarea data-builder-field="pluginInputJson" rows="6" placeholder="{ }">'+esc(step.pluginInputJson||'{}')+'</textarea><small>String values can use workflow variables like {{name}}.</small></label>';
+  const current=safeJsonObject(step.pluginInputJson)||{};
+  const fields=Object.entries(props).map(([key,rawMeta])=>{
+    const meta=rawMeta as WebuiRecord;
+    const type=meta?.type||'string';
+    const value=current[key]??meta?.default??(type==='boolean'?false:type==='number'?0:'');
+    if(type==='boolean')return '<label class="checkbox workflow-builder-check"><input type="checkbox" data-builder-plugin-input-key="'+attr(key)+'" '+(value?'checked':'')+'> '+esc(meta?.title||key)+'</label>';
+    return '<label><span>'+esc(meta?.title||key)+'</span><input data-builder-plugin-input-key="'+attr(key)+'" type="'+(type==='number'?'number':'text')+'" value="'+attr(value)+'" placeholder="'+attr(meta?.description||'')+'"></label>';
+  }).join('');
+  return '<div class="full-span workflow-template-preview"><strong>Plugin input</strong><div class="workflow-builder-grid">'+fields+'</div><small>Generated from the plugin inputSchema. Values can use {{variables}}.</small></div>';
 }
 
 function workflowBuilderJsonFromState(){return JSON.stringify(workflowBuilderStepsPayload(false),null,2)}
@@ -124,7 +141,8 @@ function collectWorkflowBuilderFromDom(){
       workflowId:field('workflowId')?.value||'',
       pluginId:(field('pluginAction')?.value||'').split('::')[0]||'',
       pluginActionId:(field('pluginAction')?.value||'').split('::')[1]||'',
-      pluginInputJson:field('pluginInputJson')?.value||'{}',
+      pluginInputJson:collectPluginInputJson(card,field('pluginInputJson')?.value||'{}'),
+      pluginOutputVariablesJson:field('pluginOutputVariablesJson')?.value||'{}',
       conditionVariable:field('conditionVariable')?.value||'',
       conditionOperator:field('conditionOperator')?.value||'exists',
       conditionValue:field('conditionValue')?.value||'',
@@ -159,6 +177,7 @@ function workflowBuilderStepsPayload(collect=true){
       pluginId:source==='plugin'?(step.pluginId||undefined):undefined,
       pluginActionId:source==='plugin'?(step.pluginActionId||undefined):undefined,
       pluginInput:source==='plugin'?parseWorkflowPluginInput(step.pluginInputJson):undefined,
+      pluginOutputVariables:source==='plugin'?parseWorkflowPluginOutputVariables(step.pluginOutputVariablesJson):undefined,
       condition:step.conditionVariable?{variable:step.conditionVariable,operator:step.conditionOperator||'exists',value:step.conditionValue||undefined}:undefined,
       retryPolicy:(Number(step.retryAttempts)>1||Number(step.retryDelayMs)>0)?{maxAttempts:Number(step.retryAttempts)||1,delayMs:Number(step.retryDelayMs)||0}:undefined,
       agentId:step.agentId||undefined,
@@ -182,6 +201,20 @@ function parseWorkflowPluginInput(text){
   if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw new Error('Plugin input must be a JSON object.');
   return parsed;
 }
+function parseWorkflowPluginOutputVariables(text){
+  const raw=String(text||'{}').trim()||'{}';
+  const parsed=JSON.parse(raw);
+  if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw new Error('Plugin output variables must be a JSON object.');
+  return Object.fromEntries(Object.entries(parsed).filter(([,value])=>String(value||'').trim()).map(([key,value])=>[key,String(value)]));
+}
+function safeJsonObject(text){try{const parsed=JSON.parse(String(text||'{}'));return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed:null}catch{return null}}
+function collectPluginInputJson(card,fallback){
+  const fields=Array.from(card.querySelectorAll('[data-builder-plugin-input-key]'));
+  if(!fields.length)return fallback;
+  const output={};
+  fields.forEach(rawInput=>{const input=rawInput as HTMLInputElement;const key=input.dataset.builderPluginInputKey;if(!key)return;output[key]=input.type==='checkbox'?Boolean(input.checked):input.type==='number'?Number(input.value||0):input.value||''});
+  return JSON.stringify(output,null,2);
+}
 
 function validateWorkflowBuilder(){
   collectWorkflowBuilderFromDom();
@@ -198,6 +231,7 @@ function validateWorkflowBuilder(){
     if(step.workflowId&&!state.workflows.some(w=>w.id===step.workflowId))errors.push(label+': selected subflow was not found.');
     if((rawStep.source||workflowStepSource(rawStep))==='plugin'&&!step.pluginActionId)errors.push(label+': plugin action is required.');
     if((rawStep.source||workflowStepSource(rawStep))==='plugin'){try{parseWorkflowPluginInput(rawStep.pluginInputJson)}catch(error){errors.push(label+': plugin input JSON is invalid.');}}
+    if((rawStep.source||workflowStepSource(rawStep))==='plugin'){try{parseWorkflowPluginOutputVariables(rawStep.pluginOutputVariablesJson)}catch(error){errors.push(label+': output variables JSON is invalid.');}}
     if((rawStep.source||workflowStepSource(rawStep))==='prompt'&&!String(step.prompt||'').trim())errors.push(label+': prompt text is required.');
     if(step.sessionMode==='attach'&&!step.threadId)errors.push(label+': thread ID is required for attach mode.');
   });
@@ -218,6 +252,10 @@ function bindWorkflowBuilderControls(){
   document.querySelectorAll('[data-workflow-builder-step] [data-builder-field]').forEach(el=>{
     el.oninput=()=>{collectWorkflowBuilderFromDom();updateWorkflowBuilderPreview()};
     el.onchange=()=>{collectWorkflowBuilderFromDom();if(['source','sessionMode','templateId','pluginAction'].includes(el.dataset.builderField))renderWorkflowBuilder();else updateWorkflowBuilderPreview()};
+  });
+  document.querySelectorAll('[data-builder-plugin-input-key]').forEach(el=>{
+    el.oninput=()=>{collectWorkflowBuilderFromDom();updateWorkflowBuilderPreview()};
+    el.onchange=()=>{collectWorkflowBuilderFromDom();updateWorkflowBuilderPreview()};
   });
   document.querySelectorAll('[data-workflow-builder-move]').forEach(b=>b.onclick=()=>{collectWorkflowBuilderFromDom();const uid=b.closest('[data-workflow-builder-step]').dataset.workflowBuilderStep;const index=state.workflowBuilder.steps.findIndex(s=>s._uid===uid);const next=b.dataset.workflowBuilderMove==='up'?index-1:index+1;if(index<0||next<0||next>=state.workflowBuilder.steps.length)return;const steps=state.workflowBuilder.steps;[steps[index],steps[next]]=[steps[next],steps[index]];renderWorkflowBuilder()});
   document.querySelectorAll('[data-workflow-builder-delete]').forEach(b=>b.onclick=()=>{collectWorkflowBuilderFromDom();const uid=b.closest('[data-workflow-builder-step]').dataset.workflowBuilderStep;state.workflowBuilder.steps=state.workflowBuilder.steps.filter(s=>s._uid!==uid);if(!state.workflowBuilder.steps.length)state.workflowBuilder.steps.push(workflowBuilderStep({},0));renderWorkflowBuilder()});

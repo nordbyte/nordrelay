@@ -26,6 +26,7 @@ import {
 import type { WebActivityActor, WebActivityEvent } from "../web/web-state.js";
 import type { UnifiedJobDto, WorkflowDryRunDto, WorkflowPreviewDto } from "./relay-runtime-types.js";
 import type { PluginService } from "../plugins/plugin-service.js";
+import type { PluginInvokeResult } from "../plugins/plugin-types.js";
 
 export interface RelayWorkflowServiceOptions {
   store: WorkflowStore;
@@ -659,10 +660,11 @@ export class RelayWorkflowService {
     this.upsertRunJob(run, actor);
 
     try {
+      let pluginResult: PluginInvokeResult | undefined;
       if (step.type === "workflow") {
         await this.runSubflow(id, step, run.variables, actor, depth);
       } else if (step.type === "plugin") {
-        await this.runPluginStep(step, run.variables);
+        pluginResult = await this.runPluginStep(step, run.variables);
       } else if (step.target !== "local") {
         await this.runPeerStep(step, prompt, correlationId, actor);
       } else {
@@ -673,11 +675,15 @@ export class RelayWorkflowService {
       }
       const latest = this.options.store.getRun(id) ?? run;
       const finishedAt = new Date().toISOString();
+      const nextVariables = pluginResult?.variables ? { ...latest.variables, ...pluginResult.variables } : latest.variables;
       const next = this.options.store.patchRun(id, {
+        variables: nextVariables,
         steps: patchStep(latest.steps, step.id, {
           status: "completed",
           finishedAt,
           outputSummary: step.type === "workflow" ? "Subflow completed." : step.type === "plugin" ? "Plugin action completed." : step.target !== "local" ? "Peer step completed." : "Prompt completed.",
+          pluginOutput: pluginResult?.output,
+          variables: pluginResult?.variables,
           attemptHistory: finishAttemptHistory(latest.steps.find((candidate) => candidate.stepId === step.id)?.attemptHistory, attempt, "completed", finishedAt),
         }),
       });
@@ -892,7 +898,7 @@ export class RelayWorkflowService {
     return [...variables.values()];
   }
 
-  private async runPluginStep(step: WorkflowStep, variables: Record<string, string>): Promise<void> {
+  private async runPluginStep(step: WorkflowStep, variables: Record<string, string>): Promise<PluginInvokeResult> {
     if (!this.options.pluginService) {
       throw new Error("Plugin workflow actions are not available in this runtime.");
     }
@@ -904,6 +910,15 @@ export class RelayWorkflowService {
     if (!result.ok) {
       throw new Error(result.stderr || "Plugin workflow action failed.");
     }
+    if (step.pluginOutputVariables && Object.keys(step.pluginOutputVariables).length > 0) {
+      const mapped: Record<string, string> = { ...(result.variables ?? {}) };
+      for (const [variable, pathExpression] of Object.entries(step.pluginOutputVariables)) {
+        const value = valueAtPath(result.output, pathExpression);
+        if (value !== undefined) mapped[variable] = String(value);
+      }
+      result.variables = Object.keys(mapped).length ? mapped : undefined;
+    }
+    return result;
   }
 
   private assertWorkflowRequiredVariables(workflow: Workflow, variables: Record<string, string>): void {
@@ -1194,6 +1209,15 @@ function collectVariablesFromUnknown(input: unknown): PromptTemplate["variables"
 
 function renderPluginInput(input: Record<string, unknown>, variables: Record<string, string>): Record<string, unknown> {
   return renderUnknownTemplate(input, variables) as Record<string, unknown>;
+}
+
+function valueAtPath(value: unknown, expression: string): unknown {
+  let current: unknown = value;
+  for (const part of expression.split(".").map((item) => item.trim()).filter(Boolean)) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
 }
 
 function renderUnknownTemplate(value: unknown, variables: Record<string, string>): unknown {

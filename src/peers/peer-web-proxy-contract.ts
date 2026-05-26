@@ -88,7 +88,14 @@ const LOCAL_ONLY_ROUTE_PATHS = new Set([
   "/api/plugins/:id/settings",
   "/api/plugins/:id/log",
   "/api/plugins/:id/manifest",
+  "/api/plugins/:id/update-check",
+  "/api/plugins/:id/update",
+  "/api/plugins/:id/rollback",
   "/api/plugins/:id/invoke",
+  "/api/plugins/:id/command",
+  "/api/plugins/:id/panel",
+  "/api/plugins/:id/artifact-handler",
+  "/api/plugins/:id/diagnostics",
 ]);
 
 export function peerProxyCoverage(): {
