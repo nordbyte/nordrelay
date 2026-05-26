@@ -46,6 +46,7 @@ async function loadBootstrap(){
   document.getElementById('footerHealth').textContent='Health: '+footerHealthLabel(data.status.health?.state?.status);
   renderFooterUser(local.auth);
   syncActiveSessionsRefresh();
+  safe(loadPluginPanelNav);
   applyPermissions();
 }
 async function refreshChatMirrorPreferenceForBootstrap(){

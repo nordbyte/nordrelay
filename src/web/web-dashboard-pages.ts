@@ -553,7 +553,6 @@ ${faviconLinks}
           <div class="section-header plugins-section-header">
             <div id="pluginTabs" class="section-tabs plugin-tabs" role="tablist" aria-label="Plugin sections">
               <button type="button" role="tab" aria-selected="true" tabindex="0" data-plugin-tab="installed" class="active">Installed</button>
-              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="panels">Panels</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="install">Install</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="catalog">Extension Catalog</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="developer">Developer</button>
@@ -566,13 +565,6 @@ ${faviconLinks}
             </div>
             <div id="pluginStatus" class="callout muted"></div>
             <div id="pluginList" class="sessions-table-host"></div>
-          </div>
-          <div class="plugin-tab" data-plugin-tab-panel="panels">
-            <div class="plugin-tab-heading">
-              <div class="row plugin-heading-actions"><button id="reloadPluginPanelsBtn" class="secondary">Reload panels</button></div>
-            </div>
-            <div id="pluginPanels" class="list"></div>
-            <div id="pluginPanelResult" class="list"></div>
           </div>
           <div class="plugin-tab" data-plugin-tab-panel="install">
             <div class="plugin-tab-heading">
@@ -613,6 +605,22 @@ ${faviconLinks}
             </div>
             <pre id="pluginLog" class="log-view"></pre>
           </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-plugin-panel">
+        <div class="panel plugin-panel-page">
+          <div class="section-header plugin-panel-page-header">
+            <div>
+              <h2 id="pluginPanelPageTitle">Plugin panel</h2>
+              <p id="pluginPanelPageSubtitle"></p>
+            </div>
+            <div class="row plugin-heading-actions">
+              <button id="reloadPluginPanelPageBtn" class="secondary">Reload panel</button>
+            </div>
+          </div>
+          <div id="pluginPanelPageInput" class="callout muted" hidden></div>
+          <div id="pluginPanelPageResult" class="list"></div>
         </div>
       </section>
 

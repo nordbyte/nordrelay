@@ -102,13 +102,23 @@ describe("web dashboard browser-flow assets", () => {
     const navSource = readFileSync("src/web/web-dashboard-ui.ts", "utf8");
     const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
 
+    expect(navSource).toContain('id: "plugins",\n    label: "Plugins"');
     expect(navSource).toContain('{ id: "plugins", label: "Plugins", permission: "plugins.read" }');
+    expect(navSource).toContain('id="pluginPanelNavItems"');
     expect(pageSource).toContain('id="page-plugins"');
+    expect(pageSource).toContain('id="page-plugin-panel"');
     expect(pageSource).toContain('data-plugin-tab="installed"');
+    expect(pageSource).not.toContain('data-plugin-tab="panels"');
+    expect(pageSource).not.toContain('id="pluginPanels"');
+    expect(pageSource).not.toContain('id="pluginPanelResult"');
+    expect(pageSource).toContain('id="pluginPanelPageResult"');
     expect(pageSource).toContain('id="pluginInstallSource"');
     expect(pageSource).toContain('id="createPluginScaffoldBtn"');
     expect(js).toContain("function loadPlugins");
     expect(js).toContain("function renderPluginList");
+    expect(js).toContain("function renderPluginPanelNav");
+    expect(js).toContain("function loadPluginPanelPage");
+    expect(js).toContain("function selectPluginPanelPage");
     expect(js).toContain("function workflowPluginActionOptions");
     expect(js).toContain("/api/plugins/catalog");
     expect(js).toContain("data-plugin-enable");
@@ -118,6 +128,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".plugin-tab");
     expect(css).toContain(".plugin-tab.active");
     expect(css).toContain(".plugin-tab-heading");
+    expect(css).toContain(".plugin-panel-nav-button");
   });
 
   it("wraps plugin web panels with the shared NordRelay panel UI bridge", () => {

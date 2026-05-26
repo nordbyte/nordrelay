@@ -39,9 +39,15 @@ export const DASHBOARD_NAV_SECTIONS: DashboardNavSection[] = [
     label: "Administration",
     pages: [
       { id: "access", label: "Users", permission: "users.read" },
-      { id: "plugins", label: "Plugins", permission: "plugins.read" },
       { id: "settings", label: "Settings", permission: "settings.read" },
       { id: "peers", label: "Peers", permission: "peers.read" },
+    ],
+  },
+  {
+    id: "plugins",
+    label: "Plugins",
+    pages: [
+      { id: "plugins", label: "Plugins", permission: "plugins.read" },
     ],
   },
 ];
@@ -66,6 +72,7 @@ function renderDashboardNavSection(section: DashboardNavSection, activePage: str
           <button type="button" class="nav-section-toggle" data-nav-toggle="${section.id}" aria-expanded="${isOpen ? "true" : "false"}" aria-controls="${itemsId}">${section.label}</button>
           <div class="nav-section-items" id="${itemsId}"${isOpen ? "" : " hidden"}>
             ${section.pages.map((page) => renderDashboardPageButton(page, activePage)).join("\n            ")}
+            ${section.id === "plugins" ? '<div id="pluginPanelNavItems" class="plugin-panel-nav-items" aria-label="Plugin panels"></div>' : ""}
           </div>
         </div>`;
 }

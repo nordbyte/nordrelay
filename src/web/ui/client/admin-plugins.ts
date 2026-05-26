@@ -3,6 +3,7 @@ async function loadPlugins(){
   switchPluginTab(state.pluginTab||'installed');
   if(!can('plugins.read')){
     document.getElementById('pluginList').innerHTML=uiEmpty('Permission required: plugins.read');
+    renderPluginPanelNav();
     return;
   }
   if(!state.peers&&can('peers.read')){
@@ -10,15 +11,29 @@ async function loadPlugins(){
   }
   setLoading('pluginList','Loading plugins...');
   setLoading('pluginCatalog','Loading plugin catalog...');
+  const response=await refreshPluginState({force:true});
+  const target=headerTargetName(state.selectedPeer||'local');
+  document.getElementById('pluginStatus').innerHTML=response.enabled?'Plugins are enabled on '+esc(target)+'. Remote peers need their own installed and enabled plugins.':'Plugins are disabled on '+esc(target)+' by NORDRELAY_PLUGINS_ENABLED=false.';
+  renderPlugins();
+}
+async function refreshPluginState(options:WebuiRecord={}){
+  if(!can('plugins.read'))return{enabled:false,plugins:[],catalog:{}};
+  const peerId=state.selectedPeer||'local';
+  if(!options.force&&state.pluginCatalog&&state.pluginPanelNavPeer===peerId&&Date.now()-Number(state.pluginPanelNavLoadedAt||0)<30000){
+    renderPluginPanelNav();
+    return{enabled:true,plugins:state.plugins||[],catalog:state.pluginCatalog||{}};
+  }
   const data=await api('/api/plugins');
   const response=Array.isArray(data.plugins)?data:{enabled:true,plugins:[],catalog:{}};
   state.plugins=response.plugins||[];
   state.pluginCatalog=response.catalog||{};
   state.pluginUpdateChecks=state.pluginUpdateChecks||{};
-  const target=headerTargetName(state.selectedPeer||'local');
-  document.getElementById('pluginStatus').innerHTML=response.enabled?'Plugins are enabled on '+esc(target)+'. Remote peers need their own installed and enabled plugins.':'Plugins are disabled on '+esc(target)+' by NORDRELAY_PLUGINS_ENABLED=false.';
-  renderPlugins();
+  state.pluginPanelNavLoadedAt=Date.now();
+  state.pluginPanelNavPeer=peerId;
+  renderPluginPanelNav();
+  return response;
 }
+async function loadPluginPanelNav(){await refreshPluginState()}
 function switchPluginTab(tab){
   state.pluginTab=tab||'installed';
   document.querySelectorAll('[data-plugin-tab]').forEach(b=>{const active=b.dataset.pluginTab===state.pluginTab;b.classList.toggle('active',active);b.setAttribute('aria-selected',active?'true':'false');b.tabIndex=active?0:-1});
@@ -29,26 +44,61 @@ function bindPluginTabs(){
 }
 function renderPlugins(){
   renderPluginList();
-  renderPluginPanels();
   renderPluginCatalog();
   renderPluginLogSelect();
+  renderPluginPanelNav();
   bindPluginButtons();
   applyPermissions();
 }
-function renderPluginPanels(){
-  const target=document.getElementById('pluginPanels');
-  if(!target)return;
+function enabledPluginPanels(){
+  const enabledPlugins=new Set((state.plugins||[]).filter(plugin=>plugin.enabled!==false).map(plugin=>plugin.id));
   const panels=Array.isArray(state.pluginCatalog?.webPanels)?state.pluginCatalog.webPanels:[];
-  if(!panels.length){target.innerHTML=uiEmpty('No plugin panels available.');return}
-  target.innerHTML='<div class="data-table-wrap"><table class="data-table"><thead><tr><th>Plugin</th><th>Panel</th><th>Placement</th><th>Aggregate</th><th class="actions-heading">Actions</th></tr></thead><tbody>'+
-    panels.map(panel=>'<tr>'+
-      pluginCell('Plugin',esc(panel.pluginId),'primary-cell')+
-      pluginCell('Panel','<span class="truncate-cell" title="'+attr(panel.title||panel.panelId)+'">'+esc(panel.title||panel.panelId)+'</span><small>'+esc(panel.panelId||'-')+'</small>')+
-      pluginCell('Placement',esc(panel.placement||'plugins'))+
-      pluginCell('Aggregate',esc(panel.aggregateCommand||'-'))+
-      pluginCell('Actions','<div class="data-table-actions">'+uiButton('Open',{mini:true,variant:'secondary',data:{pluginPanelOpen:panel.pluginId,pluginPanelId:panel.panelId},permission:'workflows.run'})+'</div>','actions-cell')+
-    '</tr>').join('')+
-  '</tbody></table></div>';
+  return panels.filter(panel=>panel.pluginId&&panel.panelId&&enabledPlugins.has(panel.pluginId));
+}
+function pluginById(pluginId){return(state.plugins||[]).find(plugin=>plugin.id===pluginId)||null}
+function pluginPanelKey(pluginId,panelId){return String(pluginId||'')+'::'+String(panelId||'')}
+function pluginPanelTitle(panel){
+  const plugin=pluginById(panel.pluginId);
+  const title=panel.title||panel.panelId;
+  const pluginName=plugin?.name||panel.pluginId;
+  const count=enabledPluginPanels().filter(item=>item.pluginId===panel.pluginId).length;
+  return count>1?pluginName+': '+title:pluginName;
+}
+function pluginPanelPageTitle(){
+  const selected=state.pluginPanelPage;
+  if(!selected)return'Plugin Panel';
+  const panel=findPluginCapability(selected.pluginId,'web-panel',selected.panelId);
+  return panel?pluginPanelTitle(panel):(selected.title||'Plugin Panel');
+}
+function renderPluginPanelNav(){
+  const target=document.getElementById('pluginPanelNavItems');
+  if(!target)return;
+  if(!can('plugins.read')){target.innerHTML='';syncNavSections();return}
+  const selected=state.pluginPanelPage;
+  const panels=enabledPluginPanels();
+  target.innerHTML=panels.map(panel=>{
+    const key=pluginPanelKey(panel.pluginId,panel.panelId);
+    const active=state.currentPage==='plugin-panel'&&selected&&pluginPanelKey(selected.pluginId,selected.panelId)===key;
+    return '<button type="button" class="plugin-panel-nav-button '+(active?'active':'')+'" data-plugin-panel-nav="'+attr(key)+'" data-plugin-id="'+attr(panel.pluginId)+'" data-panel-id="'+attr(panel.panelId)+'" data-permission="plugins.read" title="'+attr(panel.title||panel.panelId)+'"><span class="nav-label">'+esc(pluginPanelTitle(panel))+'</span></button>';
+  }).join('');
+  bindPluginPanelNav();
+  syncNavSections();
+  applyPermissions();
+}
+function bindPluginPanelNav(){
+  document.querySelectorAll('[data-plugin-panel-nav]').forEach(button=>{
+    if(button.dataset.bound)return;
+    button.dataset.bound='true';
+    button.onclick=()=>selectPluginPanelPage(button.dataset.pluginId,button.dataset.panelId);
+  });
+}
+function selectPluginPanelPage(pluginId,panelId){
+  const panel=findPluginCapability(pluginId,'web-panel',panelId);
+  const next={pluginId,panelId,title:panel?pluginPanelTitle(panel):panelId};
+  state.pluginPanelPage=next;
+  writeStoredPluginPanelPage(next);
+  renderPluginPanelNav();
+  page('plugin-panel');
 }
 function renderPluginList(){
   const plugins=state.plugins||[];
@@ -135,7 +185,7 @@ function renderPluginCatalog(){
 function pluginCatalogSection(title,items,map,capabilityType=''){
   if(!items.length)return '';
   return '<h3 class="table-section-title">'+esc(title)+'</h3><div class="data-table-wrap"><table class="data-table plugin-catalog-table"><thead><tr><th>Plugin</th><th>ID</th><th>Title</th><th>Detail</th><th class="actions-heading">Actions</th></tr></thead><tbody>'+
-    items.map(item=>{const row=map(item);const actions=capabilityType?uiButton(capabilityType==='diagnostics'?'Run diagnostics':capabilityType==='collector'?'Run collector':'Invoke',{mini:true,variant:'secondary',data:{pluginCapability:row[0],pluginCapabilityType:capabilityType,pluginCapabilityId:row[1]},permission:capabilityType==='diagnostics'?'diagnostics.read':capabilityType==='collector'?'plugins.install':'workflows.run'}):'';return '<tr>'+pluginCell('Plugin',esc(row[0]),'primary-cell')+pluginCell('ID',esc(row[1]))+pluginCell('Title','<span class="truncate-cell" title="'+attr(row[2])+'">'+esc(short(row[2],120))+'</span>')+pluginCell('Detail','<span class="truncate-cell" title="'+attr(row[3])+'">'+esc(short(row[3],160))+'</span>')+pluginCell('Actions','<div class="data-table-actions">'+actions+'</div>','actions-cell')+'</tr>'}).join('')+
+    items.map(item=>{const row=map(item);const actions=capabilityType==='web-panel'?uiButton('Open',{mini:true,variant:'secondary',data:{pluginPanelOpen:row[0],pluginPanelId:row[1]},permission:'plugins.read'}):(capabilityType?uiButton(capabilityType==='diagnostics'?'Run diagnostics':capabilityType==='collector'?'Run collector':'Invoke',{mini:true,variant:'secondary',data:{pluginCapability:row[0],pluginCapabilityType:capabilityType,pluginCapabilityId:row[1]},permission:capabilityType==='diagnostics'?'diagnostics.read':capabilityType==='collector'?'plugins.install':'workflows.run'}):'');return '<tr>'+pluginCell('Plugin',esc(row[0]),'primary-cell')+pluginCell('ID',esc(row[1]))+pluginCell('Title','<span class="truncate-cell" title="'+attr(row[2])+'">'+esc(short(row[2],120))+'</span>')+pluginCell('Detail','<span class="truncate-cell" title="'+attr(row[3])+'">'+esc(short(row[3],160))+'</span>')+pluginCell('Actions','<div class="data-table-actions">'+actions+'</div>','actions-cell')+'</tr>'}).join('')+
   '</tbody></table></div>';
 }
 function renderPluginLogSelect(){
@@ -160,21 +210,70 @@ function bindPluginButtons(root:Element|Document=document){
   root.querySelectorAll?.('[data-plugin-capability]').forEach(b=>b.onclick=()=>openPluginCapabilityDialog(b.dataset.pluginCapability,b.dataset.pluginCapabilityType,b.dataset.pluginCapabilityId));
 }
 async function openPluginPanelDirect(pluginId,panelId){
-  const item=findPluginCapability(pluginId,'web-panel',panelId);
-  if(!item)throw new Error('Plugin panel not found.');
-  const schema=item.inputSchema||{};
-  if(pluginInputSchemaHasRequiredFields(schema)){
-    openPluginCapabilityDialog(pluginId,'web-panel',panelId);
+  selectPluginPanelPage(pluginId,panelId);
+}
+async function loadPluginPanelPage(){
+  if(!can('plugins.read')){
+    document.getElementById('pluginPanelPageResult').innerHTML=uiEmpty('Permission required: plugins.read');
+    renderPluginPanelNav();
     return;
   }
-  switchPluginTab('panels');
-  const target=document.getElementById('pluginPanelResult');
-  if(target)target.innerHTML=uiItem(item.title||panelId,{badge:{text:'loading',status:'planned'},rows:[['Plugin',pluginId],['Panel',panelId]],body:'<small>Opening panel...</small>'});
-  const input=pluginInputDefaultsFromSchema(schema);
-  const result=await invokePluginPanel(pluginId,panelId,item,input);
-  renderPluginCapabilityResult(pluginId,'web-panel',panelId,result);
-  await loadPlugins();
-  document.getElementById('pluginPanelResult')?.scrollIntoView({block:'start',behavior:'smooth'});
+  await refreshPluginState({force:true});
+  const selected=state.pluginPanelPage;
+  const titleEl=document.getElementById('pluginPanelPageTitle');
+  const subtitleEl=document.getElementById('pluginPanelPageSubtitle');
+  const inputEl=document.getElementById('pluginPanelPageInput');
+  const resultEl=document.getElementById('pluginPanelPageResult');
+  if(!selected?.pluginId||!selected?.panelId){
+    if(titleEl)titleEl.textContent='Plugin panel';
+    if(subtitleEl)subtitleEl.textContent='Select a plugin panel from the Plugins menu.';
+    if(inputEl)inputEl.hidden=true;
+    if(resultEl)resultEl.innerHTML=uiEmpty('No plugin panel selected.');
+    return;
+  }
+  const item=findPluginCapability(selected.pluginId,'web-panel',selected.panelId);
+  if(!item){
+    if(titleEl)titleEl.textContent=String(selected.title||'Plugin panel');
+    if(subtitleEl)subtitleEl.textContent='Panel is unavailable on '+headerTargetName(state.selectedPeer||'local')+'.';
+    if(inputEl)inputEl.hidden=true;
+    if(resultEl)resultEl.innerHTML='<div class="error-state">This plugin panel is no longer available or the plugin is disabled.</div>';
+    renderPluginPanelNav();
+    return;
+  }
+  state.pluginPanelPage={pluginId:item.pluginId,panelId:item.panelId,title:pluginPanelTitle(item)};
+  writeStoredPluginPanelPage(state.pluginPanelPage);
+  renderPageTitle();
+  renderPluginPanelNav();
+  if(titleEl)titleEl.textContent=pluginPanelTitle(item);
+  if(subtitleEl)subtitleEl.textContent=[item.pluginId,item.panelId,headerTargetName(state.selectedPeer||'local')].filter(Boolean).join(' · ');
+  if(inputEl){
+    const schema=item.inputSchema||{};
+    const defaults=pluginInputDefaultsFromSchema(schema);
+    inputEl.hidden=!pluginInputSchemaHasRequiredFields(schema);
+    inputEl.innerHTML=inputEl.hidden?'':'<div class="row"><strong>Input required</strong><button id="runPluginPanelPageBtn" class="secondary">Run panel</button></div><textarea id="pluginPanelPageInputJson" rows="6">'+esc(JSON.stringify(defaults,null,2))+'</textarea><small>Edit the panel input JSON, then run the panel.</small>';
+    const runButton=document.getElementById('runPluginPanelPageBtn');
+    if(runButton)runButton.onclick=()=>safe(()=>runPluginPanelPage(item,parseJsonObject(document.getElementById('pluginPanelPageInputJson')?.value||'{}','Input JSON')));
+  }
+  if(pluginInputSchemaHasRequiredFields(item.inputSchema||{})){
+    if(resultEl)resultEl.innerHTML=uiEmpty('Panel input is required before loading.');
+    return;
+  }
+  await runPluginPanelPage(item,pluginInputDefaultsFromSchema(item.inputSchema||{}));
+}
+async function runPluginPanelPage(item,input={}){
+  const resultEl=document.getElementById('pluginPanelPageResult');
+  if(resultEl)resultEl.innerHTML=loadingHtml('Loading plugin panel...');
+  const result=await invokePluginPanel(item.pluginId,item.panelId,item,input);
+  renderPluginPanelPageResult(item,result);
+}
+function renderPluginPanelPageResult(item,result){
+  const resultEl=document.getElementById('pluginPanelPageResult');
+  if(!resultEl)return;
+  const body=result.html
+    ? '<iframe class="plugin-panel-frame plugin-panel-page-frame" sandbox="allow-scripts" title="'+attr(pluginPanelTitle(item))+'" data-plugin-panel-frame srcdoc="'+attr(pluginPanelDocument(result.html,{pluginId:item.pluginId,capabilityId:item.panelId}))+'"></iframe>'
+    : '<pre class="log-view">'+esc(JSON.stringify(result.output??result.diagnostics??result.text??result.stdout??result,null,2))+'</pre>';
+  resultEl.innerHTML=uiItem(pluginPanelTitle(item),{badge:{text:result.ok?'ok':'failed',status:result.ok?'enabled':'failed'},rows:[['Plugin',item.pluginId],['Panel',item.panelId],['Duration',result.durationMs?result.durationMs+'ms':'-']],body});
+  resultEl.querySelectorAll('iframe.plugin-panel-frame').forEach(frame=>bindPluginPanelFrame(frame));
 }
 function openPluginCapabilityDialog(pluginId,type,capabilityId){
   const item=findPluginCapability(pluginId,type,capabilityId);
@@ -345,8 +444,8 @@ function renderPluginInstallResults(results){
   '</tbody></table></div>';
 }
 document.getElementById('reloadPluginsBtn').onclick=()=>safe(loadPlugins);
-document.getElementById('reloadPluginPanelsBtn').onclick=()=>safe(loadPlugins);
 document.getElementById('reloadPluginCatalogBtn').onclick=()=>safe(loadPlugins);
+document.getElementById('reloadPluginPanelPageBtn').onclick=()=>safe(loadPluginPanelPage);
 document.getElementById('installPluginBtn').onclick=()=>safe(installPluginFromForm);
 document.getElementById('validatePluginSourceBtn').onclick=()=>safe(validatePluginSource);
 document.getElementById('createPluginScaffoldBtn').onclick=()=>safe(createPluginScaffold);

@@ -76,12 +76,17 @@ Open **Plugins** in the Administration section to:
 - edit plugin settings
 - view plugin logs
 - inspect the extension catalog
-- run plugin commands, panels, artifact handlers, collectors, and diagnostics from the catalog
+- run plugin commands, artifact handlers, collectors, and diagnostics from the catalog
 - check for updates, reinstall from the original source/ref, and roll back to a previously installed version
 - view invocation metrics, failures, durations, and logs
 - scaffold a new plugin directory
 
 The Plugins page follows the selected node in the WebUI header. Select a peer before installing, enabling, configuring, or invoking plugins on that peer. The install form can also install the same GitHub plugin on all enabled peers. Remote plugin actions require the corresponding peer scopes such as `plugins.read`, `plugins.install`, `plugins.enable`, `plugins.settings.write`, `workflows.run`, and `diagnostics.read`.
+
+Enabled plugins that expose WebUI panels appear as direct entries in the
+**Plugins** navigation category. Opening one of those entries loads the panel as
+its own WebUI page instead of embedding it inside the plugin administration
+screen.
 
 ## Collectors
 

@@ -468,6 +468,9 @@ interface DashboardState {
   accessTab: string;
   adapterTab: string;
   pluginTab?: string;
+  pluginPanelPage?: WebuiRecord | null;
+  pluginPanelNavLoadedAt?: number;
+  pluginPanelNavPeer?: string;
   peerTab: string;
   workflowTab: string;
   queueTab: string;
