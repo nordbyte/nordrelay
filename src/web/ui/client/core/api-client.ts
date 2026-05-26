@@ -318,10 +318,6 @@ function isLocalAdminApi(path) {
     path === '/api/settings' ||
     path === '/api/doctor' ||
     path === '/api/doctor/fix' ||
-    path === '/api/plugins' ||
-    path === '/api/plugins/catalog' ||
-    path === '/api/plugins/validate' ||
-    path === '/api/plugins/scaffold' ||
     path === '/api/audit' ||
     path === '/api/locks' ||
     path === '/api/users' ||
@@ -335,8 +331,7 @@ function isLocalAdminApi(path) {
     /^\/api\/telegram-chats\//.test(path) ||
     /^\/api\/discord-channels\//.test(path) ||
     /^\/api\/slack-channels\//.test(path) ||
-    /^\/api\/matrix-rooms\//.test(path) ||
-    /^\/api\/plugins\//.test(path);
+    /^\/api\/matrix-rooms\//.test(path);
 }
 
 /**

@@ -107,7 +107,7 @@ export async function commandPlugin(options) {
     const id = requiredPluginId(flags);
     const type = flags.args[1] || "workflow-action";
     const capabilityId = flags.args[2];
-    if (!capabilityId) throw new Error("Usage: nordrelay plugin invoke <plugin-id> <workflow-action|command|web-panel|artifact-handler|diagnostics> <id> [--input-json '{...}']");
+    if (!capabilityId) throw new Error("Usage: nordrelay plugin invoke <plugin-id> <workflow-action|command|web-panel|artifact-handler|diagnostics|collector> <id> [--input-json '{...}']");
     const input = parseInputJson(flags.inputJson);
     const result =
       type === "workflow-action" ? await service.invokeWorkflowAction(id, capabilityId, input) :
@@ -115,6 +115,7 @@ export async function commandPlugin(options) {
       type === "web-panel" ? await service.invokeWebPanel(id, capabilityId, input) :
       type === "artifact-handler" ? await service.invokeArtifactHandler(id, capabilityId, input) :
       type === "diagnostics" ? await service.invokeDiagnostics(id, input) :
+      type === "collector" ? await service.invokeCollector(id, capabilityId, input) :
       null;
     if (!result) throw new Error(`Unknown plugin capability type: ${type}`);
     console.log(JSON.stringify(result, null, 2));

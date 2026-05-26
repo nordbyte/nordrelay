@@ -1,6 +1,6 @@
 # Plugins
 
-NordRelay plugins are explicit local or GitHub installs that can add workflow actions, WebUI panels, commands, adapter metadata, artifact handlers, and diagnostics.
+NordRelay plugins are explicit local or GitHub installs that can add workflow actions, WebUI panels, commands, adapter metadata, artifact handlers, diagnostics, and scheduled collectors.
 
 ## Storage
 
@@ -50,6 +50,14 @@ Each plugin must contain `nordrelay.plugin.json`:
     "artifactHandlers": [
       { "id": "artifact.inspect", "title": "Inspect artifact" }
     ],
+    "collectors": [
+      {
+        "id": "metrics.sample",
+        "title": "Collect metrics",
+        "intervalMs": 5000,
+        "runOnStart": true
+      }
+    ],
     "diagnostics": true
   },
   "settings": []
@@ -68,12 +76,18 @@ Open **Plugins** in the Administration section to:
 - edit plugin settings
 - view plugin logs
 - inspect the extension catalog
-- run plugin commands, panels, artifact handlers, and diagnostics from the catalog
+- run plugin commands, panels, artifact handlers, collectors, and diagnostics from the catalog
 - check for updates, reinstall from the original source/ref, and roll back to a previously installed version
 - view invocation metrics, failures, durations, and logs
 - scaffold a new plugin directory
 
-The Plugins page always acts on the local node. Remote peers do not execute local plugins unless the same plugin is installed and enabled on that peer and the request is sent to that peer explicitly through a peer API.
+The Plugins page follows the selected node in the WebUI header. Select a peer before installing, enabling, configuring, or invoking plugins on that peer. The install form can also install the same GitHub plugin on all enabled peers. Remote plugin actions require the corresponding peer scopes such as `plugins.read`, `plugins.install`, `plugins.enable`, `plugins.settings.write`, `workflows.run`, and `diagnostics.read`.
+
+## Collectors
+
+Enabled plugins can expose collectors for periodic local work, such as sampling system metrics. NordRelay schedules collectors for each node where the plugin is installed and enabled, invokes the plugin entry with `type: "collector"`, and leaves all collection/storage logic to the plugin.
+
+Collector results are recorded in plugin invocation metrics. If a collector fails, NordRelay applies a bounded backoff before trying again.
 
 ## Workflow actions
 
@@ -139,6 +153,8 @@ NordRelay invokes the configured `entry` with a sanitized environment, the plugi
 }
 ```
 
+For collector invocations, `type` is `collector` and `collectorId` contains the collector id.
+
 Return one JSON result on stdout:
 
 ```json
@@ -154,3 +170,13 @@ Return one JSON result on stdout:
 ## Security
 
 `NORDRELAY_PLUGINS_ENABLED=false` is a hard gate for the extension catalog and all plugin execution paths. Plugins are disabled until an admin enables them. Enabling a plugin approves the permissions declared in the manifest. Host context is filtered by approved plugin permissions, and plugin processes do not inherit the full NordRelay environment. Plugin execution is also bounded by a working directory, output limits, and timeouts; use operating-system isolation for untrusted third-party code. Keep `NORDRELAY_PLUGIN_ALLOW_BUILD_SCRIPTS=false` unless you explicitly trust the plugin source.
+
+## System Monitor example
+
+The first full plugin is available at:
+
+```sh
+nordrelay plugin install github:nordbyte/nordrelay-plugin-system-monitor --enable --approve
+```
+
+Install it on every peer where metrics should be collected. Peers without the plugin are shown as unavailable in the plugin dashboard instead of returning metrics.

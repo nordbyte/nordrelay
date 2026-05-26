@@ -3,7 +3,7 @@ globalThis.NORDRELAY_WEBUI_RUNTIME_STATE=state;
 const PAGE_LABELS={overview:'Overview',chat:'Chat',workflows:'Workflows',sessions:'Sessions',queue:'Queue',monitor:'Monitor',tasks:'Monitor',metrics:'Metrics',activity:'Monitor',trace:'Monitor',artifacts:'Monitor',adapters:'Adapters',peers:'Peers',plugins:'Plugins',access:'Users',version:'Version',settings:'Settings',logs:'Logs',diagnostics:'Diagnostics'};
 const PAGE_STORAGE_KEY='nordrelayLastPage';
 const MONITOR_PAGE_ALIASES=new Set(['activity','tasks','trace','artifacts']);
-const LOCAL_ONLY_PAGES=new Set(['access','settings','peers','plugins','workflows']);
+const LOCAL_ONLY_PAGES=new Set(['access','settings','peers','workflows']);
 const NAV_OPEN_STORAGE_KEY='nordrelayNavOpenSections';
 function toast(msg,options:WebuiToastOptions={}){const el=document.getElementById('toast');const text=String(msg??'');if(state.toastTimer)clearTimeout(state.toastTimer);state.toastTimer=null;if(options.sticky){state.stickyToastActive=true;state.stickyToastText=text;if(el.textContent!==text)el.textContent=text;if(el.style.display!=='block')el.style.display='block';return}el.textContent=text;el.style.display='block';state.toastTimer=setTimeout(()=>{state.toastTimer=null;if(state.stickyToastActive){el.textContent=state.stickyToastText;el.style.display='block';return}el.style.display='none'},options.duration||3500)}
 function clearStickyToast(){state.stickyToastActive=false;state.stickyToastText='';if(state.toastTimer)clearTimeout(state.toastTimer);state.toastTimer=null}

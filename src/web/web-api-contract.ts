@@ -139,6 +139,7 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   dynamic("/api/plugins/:id/panel", "^/api/plugins/[^/]+/panel$", ["POST"], "plugins.read", `/api/plugins/${stringToken}/panel`),
   dynamic("/api/plugins/:id/artifact-handler", "^/api/plugins/[^/]+/artifact-handler$", ["POST"], "files.write", `/api/plugins/${stringToken}/artifact-handler`),
   dynamic("/api/plugins/:id/diagnostics", "^/api/plugins/[^/]+/diagnostics$", ["GET"], "diagnostics.read", `/api/plugins/${stringToken}/diagnostics`),
+  dynamic("/api/plugins/:id/collector", "^/api/plugins/[^/]+/collector$", ["POST"], "plugins.install", `/api/plugins/${stringToken}/collector`),
   exact("/api/templates", ["GET", "POST"], readWrite("workflows.read", "workflows.write")),
   exact("/api/templates/import", ["POST"], "workflows.write"),
   dynamic("/api/templates/:id/versions", "^/api/templates/[^/]+/versions$", ["GET"], "workflows.read", `/api/templates/${stringToken}/versions`),

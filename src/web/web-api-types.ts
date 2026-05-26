@@ -247,6 +247,7 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends `/api/plugins/${string}/command` ? { command: string; input?: Record<string, unknown> } :
   P extends `/api/plugins/${string}/panel` ? { panelId: string; input?: Record<string, unknown> } :
   P extends `/api/plugins/${string}/artifact-handler` ? { handlerId: string; input?: Record<string, unknown> } :
+  P extends `/api/plugins/${string}/collector` ? { collectorId: string; input?: Record<string, unknown> } :
   P extends `/api/plugins/${string}` ? Record<string, never> :
   P extends "/api/templates" ? { name: string; prompt: string; description?: string; tags?: string[]; variables?: PromptTemplate["variables"]; scope?: "private" | "shared"; defaultAgentId?: AgentId; defaultWorkspace?: string; defaultModel?: string; defaultReasoning?: string; defaultLaunchProfile?: string } :
   P extends "/api/templates/import" ? { bundle: unknown } :
@@ -355,7 +356,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends `/api/plugins/${string}/update-check` ? PluginUpdateCheckResult :
   P extends `/api/plugins/${string}/log` ? { id: string; log: string } :
   P extends `/api/plugins/${string}/invoke` ? PluginInvokeResult :
-  P extends `/api/plugins/${string}/command` | `/api/plugins/${string}/panel` | `/api/plugins/${string}/artifact-handler` | `/api/plugins/${string}/diagnostics` ? PluginInvokeResult :
+  P extends `/api/plugins/${string}/command` | `/api/plugins/${string}/panel` | `/api/plugins/${string}/artifact-handler` | `/api/plugins/${string}/diagnostics` | `/api/plugins/${string}/collector` ? PluginInvokeResult :
   P extends `/api/plugins/${string}` ? PublicPluginRecord | { ok: true } :
   P extends "/api/templates" ? { templates: PromptTemplate[] } | { template: PromptTemplate } :
   P extends "/api/templates/import" ? { template: PromptTemplate } :

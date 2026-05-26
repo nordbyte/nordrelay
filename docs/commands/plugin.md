@@ -50,6 +50,7 @@ nordrelay plugin check-update my-plugin
 nordrelay plugin update my-plugin
 nordrelay plugin rollback my-plugin --version 0.1.0
 nordrelay plugin invoke my-plugin command example --input-json '{"text":"hello"}'
+nordrelay plugin invoke system-monitor collector system.sample
 nordrelay plugin settings my-plugin --set prefix=prod
 nordrelay plugin log my-plugin
 ```
@@ -70,3 +71,5 @@ Plugin management is permission-gated in the WebUI and API:
 | `plugins.settings.write` | Update plugin settings |
 
 Workflow action and command invocation also require the feature permission for the surface that invokes them, for example `workflows.run` for workflow execution.
+
+Collector invocation is intended for the NordRelay scheduler and administrative diagnostics. Plugins that read host metrics should declare `system.metrics.read`.

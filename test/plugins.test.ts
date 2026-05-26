@@ -15,7 +15,7 @@ async function createPluginFixture(): Promise<string> {
     version: "0.1.0",
     description: "Test plugin",
     entry: "index.js",
-    permissions: ["files.read", "runtime.read"],
+    permissions: ["files.read", "runtime.read", "system.metrics.read"],
     capabilities: {
       workflowActions: [
         { id: "example.echo", title: "Echo", inputSchema: { type: "object", properties: { text: { type: "string" } } }, outputVariables: { echoed: "input.text" } },
@@ -28,6 +28,9 @@ async function createPluginFixture(): Promise<string> {
       ],
       artifactHandlers: [
         { id: "artifact.echo", title: "Artifact Echo" },
+      ],
+      collectors: [
+        { id: "metrics.sample", title: "Metrics Sample", intervalMs: 1000, runOnStart: true },
       ],
       diagnostics: true,
     },
@@ -42,7 +45,7 @@ async function createPluginFixture(): Promise<string> {
     "process.stdin.on('data',chunk=>input+=chunk);",
     "process.stdin.on('end',()=>{",
     "  const payload=JSON.parse(input);",
-    "  process.stdout.write(JSON.stringify({ ok: true, output: { type: payload.type, actionId: payload.actionId, command: payload.command, panelId: payload.panelId, handlerId: payload.handlerId, input: payload.input, prefix: payload.settings.prefix, context: payload.context, leakedSecret: process.env.NORDRELAY_PLUGIN_TEST_SECRET || '' }, html: payload.type === 'web-panel' ? '<strong>Panel</strong>' : undefined, diagnostics: payload.type === 'diagnostics' ? { ok: true } : undefined })+'\\n');",
+    "  process.stdout.write(JSON.stringify({ ok: true, output: { type: payload.type, actionId: payload.actionId, command: payload.command, panelId: payload.panelId, handlerId: payload.handlerId, collectorId: payload.collectorId, input: payload.input, prefix: payload.settings.prefix, context: payload.context, leakedSecret: process.env.NORDRELAY_PLUGIN_TEST_SECRET || '' }, html: payload.type === 'web-panel' ? '<strong>Panel</strong>' : undefined, diagnostics: payload.type === 'diagnostics' ? { ok: true } : undefined })+'\\n');",
     "});",
   ].join("\n"));
   return dir;
@@ -95,6 +98,9 @@ describe("plugin system", () => {
     expect(catalog.commands).toEqual(expect.arrayContaining([
       expect.objectContaining({ pluginId: "example-plugin", name: "example" }),
     ]));
+    expect(catalog.collectors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ pluginId: "example-plugin", collectorId: "metrics.sample" }),
+    ]));
 
     process.env.NORDRELAY_PLUGIN_TEST_SECRET = "should-not-leak";
     const result = await service.invokeWorkflowAction("example-plugin", "example.echo", { text: "hello" });
@@ -121,8 +127,12 @@ describe("plugin system", () => {
     expect(diagnostics.ok).toBe(true);
     expect(diagnostics.diagnostics).toEqual({ ok: true });
 
+    const collector = await service.invokeCollector("example-plugin", "metrics.sample", {});
+    expect(collector.ok).toBe(true);
+    expect(collector.output).toMatchObject({ collectorId: "metrics.sample" });
+
     const afterInvoke = await service.get("example-plugin");
-    expect(afterInvoke?.metrics?.invocations).toBeGreaterThanOrEqual(4);
+    expect(afterInvoke?.metrics?.invocations).toBeGreaterThanOrEqual(5);
     expect(afterInvoke?.metrics?.failures).toBe(0);
   });
 
@@ -149,7 +159,7 @@ describe("plugin system", () => {
     await service.install({ source: fixture, enable: true, approvePermissions: true });
     const plugin = await service.store.get("example-plugin");
     expect(plugin).toBeTruthy();
-    plugin!.approvedPermissions = ["files.read", "runtime.read"];
+    plugin!.approvedPermissions = ["files.read", "runtime.read", "system.metrics.read"];
     await service.store.save(plugin!);
 
     const result = await service.invokeWorkflowAction("example-plugin", "example.echo", {});

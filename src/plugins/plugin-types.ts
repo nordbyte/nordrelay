@@ -18,6 +18,7 @@ export const PLUGIN_RUNTIME_PERMISSIONS = [
   "peers.read",
   "diagnostics.read",
   "settings.read",
+  "system.metrics.read",
   "network",
 ] as const;
 
@@ -28,7 +29,8 @@ export type PluginCapabilityType =
   | "command"
   | "web-panel"
   | "artifact-handler"
-  | "diagnostics";
+  | "diagnostics"
+  | "collector";
 
 export interface PluginCommandManifest {
   name: string;
@@ -54,6 +56,18 @@ export interface PluginWebPanelManifest {
   path?: string;
   permission?: string;
   inputSchema?: Record<string, unknown>;
+  aggregateCommand?: string;
+  placement?: "plugins" | "monitor" | "nav";
+  timeoutMs?: number;
+}
+
+export interface PluginCollectorManifest {
+  id: string;
+  title: string;
+  description?: string;
+  intervalMs?: number;
+  runOnStart?: boolean;
+  inputSchema?: Record<string, unknown>;
   timeoutMs?: number;
 }
 
@@ -74,6 +88,7 @@ export interface PluginCapabilitiesManifest {
   chatAdapters?: PluginAdapterManifest[];
   artifactHandlers?: PluginAdapterManifest[];
   diagnostics?: boolean;
+  collectors?: PluginCollectorManifest[];
 }
 
 export interface PluginSettingManifest {
@@ -204,6 +219,7 @@ export interface PluginInvokeRequest {
   command?: string;
   panelId?: string;
   handlerId?: string;
+  collectorId?: string;
   input: Record<string, unknown>;
   settings: Record<string, unknown>;
   dataDir: string;

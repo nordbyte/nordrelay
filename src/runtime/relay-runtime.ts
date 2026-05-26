@@ -44,6 +44,7 @@ import { QueuePlanStore, type QueuePlanStatus } from "../state/queue-plan-store.
 import { MetricsHistoryStore } from "../state/metrics-history-store.js";
 import { RelayWorkflowService } from "./relay-workflow-service.js";
 import { PluginService } from "../plugins/plugin-service.js";
+import { PluginCollectorScheduler } from "../plugins/plugin-collector-scheduler.js";
 import { runPeerWorkflowPromptStep } from "./relay-peer-workflow.js";
 import { type RuntimeMetricHistorySample, type RuntimeMetricsDto } from "./metrics.js";
 import { RelayArtifactService } from "./relay-artifact-service.js";
@@ -311,7 +312,7 @@ export class RelayRuntime {
   readonly workflowStore: WorkflowStore;
   readonly queuePlanStore: QueuePlanStore;
   readonly metricsHistoryStore: MetricsHistoryStore;
-  readonly workflowService: RelayWorkflowService; readonly pluginService: PluginService;
+  readonly workflowService: RelayWorkflowService; readonly pluginService: PluginService; readonly pluginCollectorScheduler: PluginCollectorScheduler;
   readonly artifactService: RelayArtifactService;
   readonly worktreeService: SessionWorktreeService;
   readonly mirrorRegistry: ChannelMirrorRegistry;
@@ -351,6 +352,7 @@ export class RelayRuntime {
     this.queuePlanStore = new QueuePlanStore(config.workspace, config.stateBackend);
     this.metricsHistoryStore = new MetricsHistoryStore(config.workspace, config.stateBackend);
     this.pluginService = createRuntimePluginService(this, options.home ?? process.env.NORDRELAY_HOME ?? (process.env.HOME ? `${process.env.HOME}/.nordrelay` : ".nordrelay"));
+    this.pluginCollectorScheduler = new PluginCollectorScheduler(this.pluginService);
     this.artifactService = new RelayArtifactService(config);
     this.authService = new RelayAuthService(config);
     this.mirrorRegistry = new ChannelMirrorRegistry(config, this.promptStore);
@@ -391,9 +393,7 @@ export class RelayRuntime {
       cliPathOptions: () => this.cliPathOptions(),
     });
     this.dashboardService.startBackgroundRefresh();
-    if (this.backgroundServicesEnabled) {
-      startRuntimeMetricsHistory(this);
-    }
+    if (this.backgroundServicesEnabled) { startRuntimeMetricsHistory(this); this.pluginCollectorScheduler.start(); }
     if (this.backgroundServicesEnabled && config.codexExternalBusyCheckMs > 0) {
       this.externalMonitor = startAdaptiveExternalMonitor({
         baseMs: config.codexExternalBusyCheckMs,

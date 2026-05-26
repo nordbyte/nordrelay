@@ -121,6 +121,7 @@ const WEB_API_CLIENT_ROUTE_RULES = [
   { re: /^\/api\/plugins\/[^\/]+\/panel$/, methods: ['POST'] },
   { re: /^\/api\/plugins\/[^\/]+\/artifact-handler$/, methods: ['POST'] },
   { re: /^\/api\/plugins\/[^\/]+\/diagnostics$/, methods: ['GET'] },
+  { re: /^\/api\/plugins\/[^\/]+\/collector$/, methods: ['POST'] },
   { path: "/api/templates", methods: ['GET', 'POST'] },
   { path: "/api/templates/import", methods: ['POST'] },
   { re: /^\/api\/templates\/[^\/]+\/versions$/, methods: ['GET'] },

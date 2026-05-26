@@ -41,6 +41,7 @@ export async function handleDashboardPluginRoute(
       chatAdapters: [],
       artifactHandlers: [],
       diagnostics: [],
+      collectors: [],
     };
     sendJson(res, 200, {
       enabled: options.config.pluginsEnabled,
@@ -215,6 +216,14 @@ export async function handleDashboardPluginRoute(
   if (req.method === "GET" && url.pathname === `/api/plugins/${id}/diagnostics`) {
     assertPluginsWritable(options.config);
     sendJson(res, 200, await plugins.invokeDiagnostics(id));
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === `/api/plugins/${id}/collector`) {
+    assertPluginsWritable(options.config);
+    const body = await readJsonBody(req);
+    const result = await plugins.invokeCollector(id, requiredString(body, "collectorId"), objectRecord(body?.input));
+    sendJson(res, 200, result);
     return true;
   }
 

@@ -109,6 +109,7 @@ export class PeerRuntimeService {
       case "chat": return this.handleChatWebRoute(context);
       case "activity": return this.handleActivityWebRoute(context);
       case "artifacts": return this.handleArtifactWebRoute(context);
+      case "plugins": return this.handlePluginWebRoute(context, route.params);
       case "operations": return this.handleOperationsWebRoute(context);
     }
   }
@@ -160,6 +161,131 @@ export class PeerRuntimeService {
         contextKey: stringValue(body.contextKey) || "web:peer-sync",
       }, remoteActor, "web:peer-sync", { timeoutMs: 12_000 }));
       return { ...created, peer: publicPeer(sourcePeer), remotePeer: created.peer };
+    }
+    throw unsupportedPeerRoute(method, path);
+  }
+
+  private async handlePluginWebRoute(context: PeerWebRouteContext, params: string[]): Promise<unknown> {
+    const { peer, runtime, method, path, body, query } = context;
+    const plugins = runtime.pluginService;
+    if (method === "GET" && path === "/api/plugins") {
+      this.assertScope(peer, "plugins.read");
+      const catalog = this.config.pluginsEnabled ? await plugins.catalog() : {
+        workflowActions: [],
+        webPanels: [],
+        commands: [],
+        agentAdapters: [],
+        chatAdapters: [],
+        artifactHandlers: [],
+        diagnostics: [],
+        collectors: [],
+      };
+      return { enabled: this.config.pluginsEnabled, plugins: await plugins.list(), catalog };
+    }
+    if (method === "POST" && path === "/api/plugins") {
+      this.assertScope(peer, "plugins.install");
+      const source = requiredString(body.source, "source");
+      if (!this.config.pluginGithubInstallEnabled && isGitHubSource(source)) {
+        throw new Error("GitHub plugin installation is disabled by NORDRELAY_PLUGIN_GITHUB_INSTALL_ENABLED=false.");
+      }
+      return await plugins.install({
+        source,
+        ref: stringValue(body.ref) || undefined,
+        enable: Boolean(body.enable),
+        approvePermissions: Boolean(body.approvePermissions),
+        force: Boolean(body.force),
+      });
+    }
+    if (method === "GET" && path === "/api/plugins/catalog") {
+      this.assertScope(peer, "plugins.read");
+      return await plugins.catalog();
+    }
+    if (method === "POST" && path === "/api/plugins/validate") {
+      this.assertScope(peer, "plugins.install");
+      return await plugins.validate(requiredString(body.source, "source"));
+    }
+    if (method === "POST" && path === "/api/plugins/scaffold") {
+      this.assertScope(peer, "plugins.install");
+      return {
+        path: await plugins.scaffold({
+          targetDir: requiredString(body.targetDir, "targetDir"),
+          id: requiredString(body.id, "id"),
+          name: stringValue(body.name) || undefined,
+          description: stringValue(body.description) || undefined,
+        }),
+      };
+    }
+    const id = params[0];
+    const action = params[1] || "";
+    if (!id) {
+      throw unsupportedPeerRoute(method, path);
+    }
+    if (method === "GET" && !action) {
+      this.assertScope(peer, "plugins.read");
+      const plugin = await plugins.get(id);
+      if (!plugin) throw new Error("Plugin not found.");
+      return plugin;
+    }
+    if (method === "DELETE" && !action) {
+      this.assertScope(peer, "plugins.install");
+      await plugins.remove(id);
+      return { ok: true };
+    }
+    if (method === "POST" && action === "enable") {
+      this.assertScope(peer, "plugins.enable");
+      return await plugins.enable(id);
+    }
+    if (method === "POST" && action === "disable") {
+      this.assertScope(peer, "plugins.enable");
+      return await plugins.disable(id);
+    }
+    if (method === "PATCH" && action === "settings") {
+      this.assertScope(peer, "plugins.settings.write");
+      return await plugins.updateSettings(id, objectRecord(body.settings));
+    }
+    if (method === "GET" && action === "log") {
+      this.assertScope(peer, "plugins.read");
+      return { id, log: await plugins.readLog(id, numberValue(query.maxBytes, 20000)) };
+    }
+    if (method === "POST" && action === "manifest") {
+      this.assertScope(peer, "plugins.install");
+      return await plugins.updateManifest(id);
+    }
+    if (method === "GET" && action === "update-check") {
+      this.assertScope(peer, "plugins.install");
+      return await plugins.checkUpdate(id);
+    }
+    if (method === "POST" && action === "update") {
+      this.assertScope(peer, "plugins.install");
+      return await plugins.update(id);
+    }
+    if (method === "POST" && action === "rollback") {
+      this.assertScope(peer, "plugins.install");
+      return await plugins.rollback(id, stringValue(body.version) || undefined);
+    }
+    if (method === "POST" && action === "invoke") {
+      this.assertScope(peer, "workflows.run");
+      return await plugins.invokeWorkflowAction(id, requiredString(body.actionId, "actionId"), objectRecord(body.input));
+    }
+    if (method === "POST" && action === "command") {
+      this.assertScope(peer, "workflows.run");
+      return await plugins.invokeCommand(id, requiredString(body.command, "command"), objectRecord(body.input));
+    }
+    if (method === "POST" && action === "panel") {
+      this.assertScope(peer, "plugins.read");
+      return await plugins.invokeWebPanel(id, requiredString(body.panelId, "panelId"), objectRecord(body.input));
+    }
+    if (method === "POST" && action === "artifact-handler") {
+      this.assertScope(peer, "files.write");
+      return await plugins.invokeArtifactHandler(id, requiredString(body.handlerId, "handlerId"), objectRecord(body.input));
+    }
+    if (method === "GET" && action === "diagnostics") {
+      this.assertScope(peer, "diagnostics.read");
+      return await plugins.invokeDiagnostics(id);
+    }
+    if (method === "POST" && action === "collector") {
+      this.assertScope(peer, "plugins.install");
+      return await plugins.invokeCollector(id, requiredString(body.collectorId, "collectorId"), objectRecord(body.input));
     }
     throw unsupportedPeerRoute(method, path);
   }
@@ -1389,6 +1515,10 @@ function variableRecord(value: unknown): Record<string, string> {
 function stringList(value: unknown): string[] {
   if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
   return String(value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function isGitHubSource(source: string): boolean {
+  return source.startsWith("github:") || /^https:\/\/github\.com\//i.test(source);
 }
 
 function uniqueStrings(values: string[]): string[] {

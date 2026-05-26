@@ -38,6 +38,8 @@ export interface PluginCatalog {
     path?: string;
     permission?: string;
     inputSchema?: Record<string, unknown>;
+    aggregateCommand?: string;
+    placement?: "plugins" | "monitor" | "nav";
     timeoutMs?: number;
   }>;
   commands: Array<{
@@ -60,6 +62,16 @@ export interface PluginCatalog {
     timeoutMs?: number;
   }>;
   diagnostics: Array<{ pluginId: string; title: string }>;
+  collectors: Array<{
+    pluginId: string;
+    collectorId: string;
+    title: string;
+    description?: string;
+    intervalMs?: number;
+    runOnStart?: boolean;
+    inputSchema?: Record<string, unknown>;
+    timeoutMs?: number;
+  }>;
 }
 
 export interface PluginServiceOptions {
@@ -184,6 +196,7 @@ export class PluginService {
       chatAdapters: [],
       artifactHandlers: [],
       diagnostics: [],
+      collectors: [],
     };
     for (const plugin of plugins) {
       for (const action of plugin.capabilities.workflowActions ?? []) {
@@ -205,6 +218,8 @@ export class PluginService {
           path: panel.path,
           permission: panel.permission,
           inputSchema: panel.inputSchema,
+          aggregateCommand: panel.aggregateCommand,
+          placement: panel.placement,
           timeoutMs: panel.timeoutMs,
         });
       }
@@ -237,6 +252,18 @@ export class PluginService {
       }
       if (plugin.capabilities.diagnostics) {
         catalog.diagnostics.push({ pluginId: plugin.id, title: `${plugin.name} diagnostics` });
+      }
+      for (const collector of plugin.capabilities.collectors ?? []) {
+        catalog.collectors.push({
+          pluginId: plugin.id,
+          collectorId: collector.id,
+          title: collector.title,
+          description: collector.description,
+          intervalMs: collector.intervalMs,
+          runOnStart: collector.runOnStart,
+          inputSchema: collector.inputSchema,
+          timeoutMs: collector.timeoutMs,
+        });
       }
     }
     return catalog;
@@ -353,6 +380,10 @@ export class PluginService {
     return this.invokeCapability(pluginId, "diagnostics", "diagnostics", input);
   }
 
+  async invokeCollector(pluginId: string, collectorId: string, input: Record<string, unknown> = {}): Promise<PluginInvokeResult> {
+    return this.invokeCapability(pluginId, "collector", collectorId, input);
+  }
+
   private async invokeCapability(
     pluginId: string,
     type: PluginCapabilityType,
@@ -383,6 +414,7 @@ export class PluginService {
       command: type === "command" ? capabilityId : undefined,
       panelId: type === "web-panel" ? capabilityId : undefined,
       handlerId: type === "artifact-handler" ? capabilityId : undefined,
+      collectorId: type === "collector" ? capabilityId : undefined,
       input,
       settings: plugin.settings,
       dataDir,
@@ -431,7 +463,17 @@ export class PluginService {
       return { id: handler.id, timeoutMs: handler.timeoutMs };
     }
     if (!plugin.capabilities.diagnostics) {
+      if (type === "collector") {
+        const collector = (plugin.capabilities.collectors ?? []).find((item) => item.id === capabilityId);
+        if (!collector) throw new Error(`Plugin ${plugin.id} does not provide collector ${capabilityId}.`);
+        return { id: collector.id, timeoutMs: collector.timeoutMs };
+      }
       throw new Error(`Plugin ${plugin.id} does not provide diagnostics.`);
+    }
+    if (type === "collector") {
+      const collector = (plugin.capabilities.collectors ?? []).find((item) => item.id === capabilityId);
+      if (!collector) throw new Error(`Plugin ${plugin.id} does not provide collector ${capabilityId}.`);
+      return { id: collector.id, timeoutMs: collector.timeoutMs };
     }
     return { id: "diagnostics" };
   }

@@ -19,6 +19,7 @@ const KNOWN_CAPABILITY_KEYS = new Set([
   "chatAdapters",
   "artifactHandlers",
   "diagnostics",
+  "collectors",
 ]);
 const KNOWN_SETTING_TYPES = new Set(["string", "number", "boolean", "secret", "select"]);
 const KNOWN_PLUGIN_PERMISSIONS = new Set<string>(PLUGIN_RUNTIME_PERMISSIONS);
@@ -105,6 +106,7 @@ export function normalizePluginManifest(manifest: PluginManifest): PluginManifes
       chatAdapters: manifest.capabilities?.chatAdapters ?? [],
       artifactHandlers: manifest.capabilities?.artifactHandlers ?? [],
       diagnostics: Boolean(manifest.capabilities?.diagnostics),
+      collectors: manifest.capabilities?.collectors ?? [],
     },
     settings: manifest.settings ?? [],
   };
@@ -129,6 +131,7 @@ function validateCapabilities(manifest: PluginManifest, issues: PluginValidation
   validateCapabilityArray(manifest.capabilities.agentAdapters, "agentAdapters", ["id", "title"], issues);
   validateCapabilityArray(manifest.capabilities.chatAdapters, "chatAdapters", ["id", "title"], issues);
   validateCapabilityArray(manifest.capabilities.artifactHandlers, "artifactHandlers", ["id", "title"], issues);
+  validateCapabilityArray(manifest.capabilities.collectors, "collectors", ["id", "title"], issues);
   if (manifest.capabilities.diagnostics !== undefined && typeof manifest.capabilities.diagnostics !== "boolean") {
     issues.push({ level: "error", message: "capabilities.diagnostics must be a boolean." });
   }

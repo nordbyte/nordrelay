@@ -553,6 +553,7 @@ ${faviconLinks}
           <div class="section-header plugins-section-header">
             <div id="pluginTabs" class="section-tabs plugin-tabs" role="tablist" aria-label="Plugin sections">
               <button type="button" role="tab" aria-selected="true" tabindex="0" data-plugin-tab="installed" class="active">Installed</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="panels">Panels</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="install">Install</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="catalog">Extension Catalog</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="developer">Developer</button>
@@ -566,6 +567,13 @@ ${faviconLinks}
             <div id="pluginStatus" class="callout muted"></div>
             <div id="pluginList" class="sessions-table-host"></div>
           </div>
+          <div class="plugin-tab" data-plugin-tab-panel="panels">
+            <div class="plugin-tab-heading">
+              <div class="row plugin-heading-actions"><button id="reloadPluginPanelsBtn" class="secondary">Reload panels</button></div>
+            </div>
+            <div id="pluginPanels" class="list"></div>
+            <div id="pluginPanelResult" class="list"></div>
+          </div>
           <div class="plugin-tab" data-plugin-tab-panel="install">
             <div class="plugin-tab-heading">
               <div class="row plugin-heading-actions"><button id="installPluginBtn">Install plugin</button><button id="validatePluginSourceBtn" class="secondary">Validate local path</button></div>
@@ -576,6 +584,7 @@ ${faviconLinks}
               <label class="checkbox"><input id="pluginInstallEnable" type="checkbox"> Enable after install</label>
               <label class="checkbox"><input id="pluginInstallApprove" type="checkbox"> Approve declared permissions</label>
               <label class="checkbox"><input id="pluginInstallForce" type="checkbox"> Force reinstall same version</label>
+              <label class="checkbox"><input id="pluginInstallAllPeers" type="checkbox"> Install on all enabled peers</label>
             </div>
             <div id="pluginInstallResult" class="list"></div>
           </div>

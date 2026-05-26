@@ -11,6 +11,7 @@ export type PeerWebRouteGroup =
   | "chat"
   | "activity"
   | "artifacts"
+  | "plugins"
   | "operations";
 
 export interface PeerWebRouteDefinition {
@@ -109,6 +110,14 @@ const artifactPaths: Array<[WebHttpMethod, string]> = [
   ["GET", "/api/artifacts/file"],
 ];
 
+const pluginPaths: Array<[WebHttpMethod, string]> = [
+  ["GET", "/api/plugins"],
+  ["POST", "/api/plugins"],
+  ["GET", "/api/plugins/catalog"],
+  ["POST", "/api/plugins/validate"],
+  ["POST", "/api/plugins/scaffold"],
+];
+
 export const PEER_WEB_ROUTES: PeerWebRouteDefinition[] = [
   ...corePaths.map(([method, path]) => exact(method, path, "core")),
   exact("GET", "/api/peers", "peers"),
@@ -140,6 +149,8 @@ export const PEER_WEB_ROUTES: PeerWebRouteDefinition[] = [
   ...chatPaths.map(([method, path]) => exact(method, path, "chat")),
   exact("GET", "/api/activity", "activity"),
   ...artifactPaths.map(([method, path]) => exact(method, path, "artifacts")),
+  ...pluginPaths.map(([method, path]) => exact(method, path, "plugins")),
+  pattern("*", /^\/api\/plugins\/([^/]+)(?:\/(enable|disable|settings|log|manifest|update-check|update|rollback|invoke|command|panel|artifact-handler|diagnostics|collector))?$/, "plugins"),
   exact("GET", "/api/logs", "operations"),
   exact("POST", "/api/logs/clear", "operations"),
   exact("POST", "/api/runtime/restart", "operations"),
@@ -190,6 +201,25 @@ export const PEER_WEB_ROUTE_CONTRACT_PATHS = new Set([
   "/api/sessions/worktrees/:id/update",
   "/api/sessions/worktrees/:id/commit",
   "/api/approvals/:id/respond",
+  "/api/plugins",
+  "/api/plugins/catalog",
+  "/api/plugins/validate",
+  "/api/plugins/scaffold",
+  "/api/plugins/:id",
+  "/api/plugins/:id/enable",
+  "/api/plugins/:id/disable",
+  "/api/plugins/:id/settings",
+  "/api/plugins/:id/log",
+  "/api/plugins/:id/manifest",
+  "/api/plugins/:id/update-check",
+  "/api/plugins/:id/update",
+  "/api/plugins/:id/rollback",
+  "/api/plugins/:id/invoke",
+  "/api/plugins/:id/command",
+  "/api/plugins/:id/panel",
+  "/api/plugins/:id/artifact-handler",
+  "/api/plugins/:id/diagnostics",
+  "/api/plugins/:id/collector",
   "/api/queue/plans/:id",
   "/api/queue/plans/:id/move",
   "/api/queue/plans/:id/approve",
