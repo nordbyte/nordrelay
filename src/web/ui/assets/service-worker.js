@@ -1,4 +1,4 @@
-const CACHE_NAME = "nordrelay-webui-v1";
+const CACHE_NAME = "nordrelay-webui-__NORDRELAY_WEBUI_CACHE_VERSION__";
 const STATIC_ASSETS = [
   "/",
   "/assets/dashboard.css",

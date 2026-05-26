@@ -272,7 +272,9 @@ function servePublicDashboardAsset(pathname: string, res: ServerResponse): boole
     sendText(res, 404, "not found\n", "text/plain; charset=utf-8");
     return true;
   }
-  sendStaticFile(res, asset.filePath, asset.contentType);
+  sendStaticFile(res, asset.filePath, asset.contentType, {
+    cacheControl: assetName === "service-worker.js" ? "no-cache" : undefined,
+  });
   return true;
 }
 

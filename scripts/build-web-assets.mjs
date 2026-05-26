@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +15,7 @@ const manifest = JSON.parse(readFileSync(path.join(uiRoot, "asset-manifest.json"
 
 const assets = manifest.bundles || [];
 const staticAssets = manifest.staticAssets || [];
+const assetHash = createHash("sha256");
 
 for (const asset of assets) {
   const source = asset.sources
@@ -31,6 +33,10 @@ for (const asset of assets) {
   if (!body.trim()) {
     throw new Error(`WebUI asset ${asset.name} is empty`);
   }
+  assetHash.update(asset.name);
+  assetHash.update("\0");
+  assetHash.update(body);
+  assetHash.update("\0");
 
   if (!checkOnly) {
     const outDir = path.join(root, "dist", "webui-assets");
@@ -48,10 +54,28 @@ for (const asset of staticAssets) {
   if (!existsSync(sourcePath)) {
     throw new Error(`WebUI static asset is missing: ${sourcePath}`);
   }
+  const source = readFileSync(sourcePath);
+  assetHash.update(assetName);
+  assetHash.update("\0");
+  assetHash.update(source);
+  assetHash.update("\0");
   if (!checkOnly) {
     const outDir = path.join(root, "dist", "webui-assets");
     mkdirSync(outDir, { recursive: true });
-    copyFileSync(sourcePath, path.join(outDir, assetName));
+    if (assetName === "service-worker.js") {
+      const cacheVersion = assetHash.copy().digest("hex").slice(0, 16);
+      const serviceWorker = source.toString("utf8");
+      if (!serviceWorker.includes("__NORDRELAY_WEBUI_CACHE_VERSION__")) {
+        throw new Error("WebUI service worker is missing the cache version placeholder.");
+      }
+      writeFileSync(
+        path.join(outDir, assetName),
+        serviceWorker.replaceAll("__NORDRELAY_WEBUI_CACHE_VERSION__", cacheVersion),
+        "utf8",
+      );
+    } else {
+      copyFileSync(sourcePath, path.join(outDir, assetName));
+    }
   }
 }
 

@@ -772,6 +772,7 @@ describe("web dashboard browser-flow assets", () => {
     const serverSource = readFileSync("src/web/web-dashboard.ts", "utf8");
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
     const buildSource = readFileSync("scripts/build-web-assets.mjs", "utf8");
+    const serviceWorkerSource = readFileSync("src/web/ui/assets/service-worker.js", "utf8");
 
     expect(serverSource).toContain('/assets/dashboard.css');
     expect(serverSource).toContain('/assets/dashboard.js');
@@ -808,6 +809,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(buildSource).toContain("minify: minifyAssets");
     expect(buildSource).toContain("gzipSync(body, { level: 9 })");
     expect(buildSource).toContain("brotliCompressSync(body");
+    expect(buildSource).toContain("assetHash.copy().digest");
+    expect(buildSource).toContain("__NORDRELAY_WEBUI_CACHE_VERSION__");
+    expect(serviceWorkerSource).toContain("nordrelay-webui-__NORDRELAY_WEBUI_CACHE_VERSION__");
+    expect(serverSource).toContain('assetName === "service-worker.js" ? "no-cache" : undefined');
     expect(serverSource).toContain("dashboardBundleAsset");
     expect(serverSource).toContain("private, max-age=31536000, immutable");
   });
