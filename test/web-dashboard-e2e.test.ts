@@ -304,7 +304,7 @@ describe("web dashboard browser-flow assets", () => {
     const runtimeSource = readFileSync("src/web/ui/client/core/runtime.ts", "utf8");
 
     expect(pageSource).toContain('id="pageTitle" class="page-title-heading"');
-    expect(runtimeSource).toContain("const LOCAL_ONLY_PAGES=new Set(['access','settings','peers','plugins','workflows'])");
+    expect(runtimeSource).toContain("const LOCAL_ONLY_PAGES=new Set(['access','settings','peers','workflows'])");
     expect(runtimeSource).toContain("function availableNodeCount()");
     expect(runtimeSource).toContain("function pageUsesSelectedPeer");
     expect(runtimeSource).toContain("function selectedNodeBadgeHtml");
