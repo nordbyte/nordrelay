@@ -12,7 +12,7 @@ export interface PluginCollectorSchedulerOptions {
   minIntervalMs?: number;
 }
 
-const DEFAULT_REFRESH_MS = 30_000;
+const DEFAULT_REFRESH_MS = 1_000;
 const DEFAULT_MIN_INTERVAL_MS = 1_000;
 
 export class PluginCollectorScheduler {
@@ -79,10 +79,11 @@ export class PluginCollectorScheduler {
   }
 
   private async runCollector(pluginId: string, collectorId: string, intervalMs: number, state: CollectorRunState): Promise<void> {
+    const startedAtMs = Date.now();
     try {
       const result = await this.service.invokeCollector(pluginId, collectorId, {
         scheduled: true,
-        startedAt: new Date().toISOString(),
+        startedAt: new Date(startedAtMs).toISOString(),
       });
       state.failures = result.ok ? 0 : state.failures + 1;
     } catch {
@@ -90,7 +91,8 @@ export class PluginCollectorScheduler {
     } finally {
       state.running = false;
       const backoff = state.failures > 0 ? Math.min(intervalMs * 6, intervalMs * 2 ** Math.min(state.failures, 4)) : intervalMs;
-      state.nextRunAt = Date.now() + backoff;
+      const nextBase = state.failures > 0 ? Date.now() : startedAtMs;
+      state.nextRunAt = nextBase + backoff;
     }
   }
 }

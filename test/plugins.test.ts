@@ -2,10 +2,11 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { PluginService } from "../src/plugins/plugin-service.js";
 import { validatePluginManifest } from "../src/plugins/plugin-manifest.js";
+import { PluginCollectorScheduler } from "../src/plugins/plugin-collector-scheduler.js";
 
 async function createPluginFixture(): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-fixture-"));
@@ -145,6 +146,49 @@ describe("plugin system", () => {
     const disabled = new PluginService(home, { enabled: false });
     await expect(disabled.catalog()).rejects.toThrow("Plugins are disabled");
     await expect(disabled.invokeWorkflowAction("example-plugin", "example.echo", {})).rejects.toThrow("Plugins are disabled");
+  });
+
+  it("schedules collectors according to their declared interval", async () => {
+    vi.useFakeTimers({ now: 0 });
+    try {
+      const invocations: number[] = [];
+      const service = {
+        isEnabled: () => true,
+        catalog: async () => ({
+          workflowActions: [],
+          webPanels: [],
+          commands: [],
+          agentAdapters: [],
+          chatAdapters: [],
+          artifactHandlers: [],
+          diagnostics: [],
+          collectors: [
+            { pluginId: "example-plugin", collectorId: "metrics.sample", intervalMs: 1000, runOnStart: true },
+          ],
+        }),
+        invokeCollector: async () => {
+          invocations.push(Date.now());
+          return { ok: true };
+        },
+      } as unknown as PluginService;
+      const scheduler = new PluginCollectorScheduler(service, { refreshMs: 1000, minIntervalMs: 1000 });
+
+      await scheduler.tick(true);
+      await Promise.resolve();
+      expect(invocations).toEqual([0]);
+
+      vi.setSystemTime(999);
+      await scheduler.tick();
+      await Promise.resolve();
+      expect(invocations).toEqual([0]);
+
+      vi.setSystemTime(1000);
+      await scheduler.tick();
+      await Promise.resolve();
+      expect(invocations).toEqual([0, 1000]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("filters host context by approved plugin permissions", async () => {
