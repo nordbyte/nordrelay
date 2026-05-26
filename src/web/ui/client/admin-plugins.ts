@@ -329,26 +329,40 @@ function renderPluginPanelPageResult(item,result){
   resultEl.querySelectorAll('iframe.plugin-panel-frame').forEach(frame=>bindPluginPanelFrame(frame));
 }
 function pluginPanelHtmlFromResult(result){
-  if(!result||typeof result!=='object')return '';
+  const normalized=pluginPanelJsonObject(result);
+  if(!normalized)return pluginPanelRawHtml(result);
+  return pluginPanelHtmlFromObject(normalized);
+}
+function pluginPanelHtmlFromObject(result){
   if(typeof result.html==='string'&&result.html.trim())return result.html;
-  const output=result.output;
-  if(output&&typeof output==='object'&&!Array.isArray(output)&&typeof output.html==='string'&&output.html.trim())return output.html;
-  const parsed=pluginPanelParseStdout(result.stdout);
-  if(parsed){
-    if(typeof parsed.html==='string'&&parsed.html.trim())return parsed.html;
-    const parsedOutput=parsed.output;
-    if(parsedOutput&&typeof parsedOutput==='object'&&!Array.isArray(parsedOutput)&&typeof parsedOutput.html==='string'&&parsedOutput.html.trim())return parsedOutput.html;
+  const outputHtml=pluginPanelRawHtml(result.output);
+  if(outputHtml)return outputHtml;
+  const output=pluginPanelJsonObject(result.output);
+  if(output){
+    const html=pluginPanelHtmlFromObject(output);
+    if(html)return html;
   }
+  const parsed=pluginPanelJsonObject(result.stdout);
+  if(parsed)return pluginPanelHtmlFromObject(parsed);
   return '';
 }
-function pluginPanelParseStdout(stdout){
-  if(typeof stdout!=='string'||!stdout.trim())return null;
-  try{
-    const parsed=JSON.parse(stdout.trim());
-    return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed:null;
-  }catch{
-    return null;
+function pluginPanelJsonObject(value,depth=0){
+  if(!value||depth>4)return null;
+  if(typeof value==='string'){
+    const text=value.trim();
+    if(!text)return null;
+    try{
+      return pluginPanelJsonObject(JSON.parse(text),depth+1);
+    }catch{
+      return null;
+    }
   }
+  return typeof value==='object'&&!Array.isArray(value)?value:null;
+}
+function pluginPanelRawHtml(value){
+  if(typeof value!=='string')return '';
+  const text=value.trim();
+  return text.startsWith('<')?text:'';
 }
 function openPluginCapabilityDialog(pluginId,type,capabilityId){
   const item=findPluginCapability(pluginId,type,capabilityId);
