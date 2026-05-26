@@ -106,6 +106,25 @@ describe("PeerStore", () => {
     expect(updated).not.toHaveProperty("secret");
   });
 
+  it("keeps the last known peer version when later seen updates omit it", () => {
+    const store = newStore();
+    const peer = store.upsertPeer({
+      name: "Remote",
+      url: "https://remote.example:31979",
+      nodeId: "node-remote",
+      publicKey: "public-key",
+      fingerprint: "sha256:abc",
+      secret: "shared-secret",
+    });
+
+    store.markSeen(peer.id, { latencyMs: 21, remoteVersion: "0.9.9", remoteStatus: "online" });
+    store.markSeen(peer.id, { remoteStatus: "online" });
+
+    const [updated] = store.listPublic();
+    expect(updated.remoteVersion).toBe("0.9.9");
+    expect(updated.healthHistory?.at(-1)).toMatchObject({ status: "online", remoteVersion: "0.9.9" });
+  });
+
   it("reports peer trust and creates rotation invitations from existing access", () => {
     const store = newStore();
     const peer = store.upsertPeer({

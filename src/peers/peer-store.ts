@@ -262,28 +262,32 @@ export class PeerStore {
 
   markSeen(id: string, patch: PeerHealthPatch = {}): void {
     const checkedAt = new Date().toISOString();
-    this.patchPeer(id, (peer) => ({
-      lastSeenAt: checkedAt,
-      lastCheckedAt: checkedAt,
-      lastLatencyMs: patch.latencyMs,
-      remoteVersion: patch.remoteVersion,
-      remoteStatus: patch.remoteStatus ?? "online",
-      lastError: undefined,
-      healthHistory: appendHealthSample(peer.healthHistory, {
-        checkedAt,
-        status: "online",
-        check: patch.check,
-        code: patch.code,
-        latencyMs: patch.latencyMs,
-        statusCode: patch.statusCode,
-        tlsFingerprint: patch.tlsFingerprint,
-        expectedTlsFingerprint: patch.expectedTlsFingerprint,
-        remoteVersion: patch.remoteVersion,
-        remoteStatus: patch.remoteStatus ?? "online",
-        detail: patch.detail,
-        remediation: patch.remediation,
-      }),
-    }));
+    this.patchPeer(id, (peer) => {
+      const remoteVersion = patch.remoteVersion ?? peer.remoteVersion;
+      const remoteStatus = patch.remoteStatus ?? "online";
+      return {
+        lastSeenAt: checkedAt,
+        lastCheckedAt: checkedAt,
+        lastLatencyMs: patch.latencyMs,
+        remoteVersion,
+        remoteStatus,
+        lastError: undefined,
+        healthHistory: appendHealthSample(peer.healthHistory, {
+          checkedAt,
+          status: "online",
+          check: patch.check,
+          code: patch.code,
+          latencyMs: patch.latencyMs,
+          statusCode: patch.statusCode,
+          tlsFingerprint: patch.tlsFingerprint,
+          expectedTlsFingerprint: patch.expectedTlsFingerprint,
+          remoteVersion,
+          remoteStatus,
+          detail: patch.detail,
+          remediation: patch.remediation,
+        }),
+      };
+    });
   }
 
   markError(id: string, error: string, patch: PeerHealthPatch = {}): void {
