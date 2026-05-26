@@ -10,6 +10,10 @@ function webAssetManifestSources(): string[] {
   return (manifest.bundles ?? []).flatMap((bundle) => bundle.sources ?? []).map((source) => `src/web/ui/${source}`);
 }
 
+function normalizedSource(file: string): string {
+  return readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+}
+
 describe("web dashboard browser-flow assets", () => {
   it("includes the agent feature matrix and dedicated agent update log flow", () => {
     const css = dashboardCss();
@@ -98,9 +102,9 @@ describe("web dashboard browser-flow assets", () => {
   it("includes plugin management in the local administration WebUI", () => {
     const js = dashboardJs();
     const css = dashboardCss();
-    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
-    const navSource = readFileSync("src/web/web-dashboard-ui.ts", "utf8");
-    const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
+    const pageSource = normalizedSource("src/web/web-dashboard-pages.ts");
+    const navSource = normalizedSource("src/web/web-dashboard-ui.ts");
+    const contract = normalizedSource("src/web/web-api-contract.ts");
 
     expect(navSource).toContain('id: "plugins",\n    label: "Plugins"');
     expect(navSource).toContain('{ id: "plugins", label: "Plugins", permission: "plugins.read" }');
