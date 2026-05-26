@@ -152,6 +152,25 @@ describe("PromptStore", () => {
     }
   });
 
+  it("coordinates queue drain locks across store instances", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "prompt-store-"));
+    try {
+      const first = new PromptStore(workspace);
+      const second = new PromptStore(workspace);
+
+      expect(first.acquireDrainLock("web:dashboard", "owner-a", 60_000)).toBe(true);
+      expect(second.acquireDrainLock("web:dashboard", "owner-b", 60_000)).toBe(false);
+      expect(second.getDrainLock("web:dashboard")).toMatchObject({ owner: "owner-a" });
+      expect(first.renewDrainLock("web:dashboard", "owner-a", 60_000)).toBe(true);
+      expect(second.releaseDrainLock("web:dashboard", "owner-b")).toBe(false);
+      expect(first.releaseDrainLock("web:dashboard", "owner-a")).toBe(true);
+      expect(second.acquireDrainLock("web:dashboard", "owner-b", 60_000)).toBe(true);
+      expect(first.acquireDrainLock("web:dashboard", "owner-a", -1)).toBe(false);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("recovers persisted prompts from the atomic-write backup", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "prompt-store-"));
     try {

@@ -25,6 +25,18 @@ export class RelayQueueService {
     return this.promptStore.isPaused(this.contextKey);
   }
 
+  acquireDrainLock(owner: string, ttlMs: number): boolean {
+    return this.promptStore.acquireDrainLock(this.contextKey, owner, ttlMs);
+  }
+
+  renewDrainLock(owner: string, ttlMs: number): boolean {
+    return this.promptStore.renewDrainLock(this.contextKey, owner, ttlMs);
+  }
+
+  releaseDrainLock(owner: string): boolean {
+    return this.promptStore.releaseDrainLock(this.contextKey, owner);
+  }
+
   enqueue(envelope: PromptEnvelope): QueuedPrompt {
     return this.promptStore.enqueue(this.contextKey, envelope);
   }

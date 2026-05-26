@@ -26,16 +26,25 @@ export interface QueuedPrompt extends PromptEnvelope {
   lastError?: string;
 }
 
+export interface QueueDrainLock {
+  owner: string;
+  acquiredAt: number;
+  updatedAt: number;
+  expiresAt: number;
+}
+
 interface PersistedPromptStore {
   lastPrompts: Record<ChannelContextKey, PromptEnvelope>;
   queues: Record<ChannelContextKey, QueuedPrompt[]>;
   pausedContexts?: ChannelContextKey[];
+  drainLocks?: Record<ChannelContextKey, QueueDrainLock>;
 }
 
 interface PromptStoreState {
   lastPrompts: Map<ChannelContextKey, PromptEnvelope>;
   queues: Map<ChannelContextKey, QueuedPrompt[]>;
   pausedContexts: Set<ChannelContextKey>;
+  drainLocks: Map<ChannelContextKey, QueueDrainLock>;
 }
 
 export class PromptStore {
@@ -43,6 +52,7 @@ export class PromptStore {
   private lastPrompts = new Map<ChannelContextKey, PromptEnvelope>();
   private queues = new Map<ChannelContextKey, QueuedPrompt[]>();
   private pausedContexts = new Set<ChannelContextKey>();
+  private drainLocks = new Map<ChannelContextKey, QueueDrainLock>();
 
   constructor(workspace: string, backend: StateBackendKind = "json") {
     this.store = createDocumentStore<PersistedPromptStore>({
@@ -245,6 +255,56 @@ export class PromptStore {
     return this.pausedContexts.has(contextKey);
   }
 
+  acquireDrainLock(contextKey: ChannelContextKey, owner: string, ttlMs: number): boolean {
+    return this.updateState((state) => {
+      const now = Date.now();
+      const existing = state.drainLocks.get(contextKey);
+      if (existing && existing.owner !== owner && existing.expiresAt > now) {
+        return false;
+      }
+      state.drainLocks.set(contextKey, {
+        owner,
+        acquiredAt: existing?.owner === owner ? existing.acquiredAt : now,
+        updatedAt: now,
+        expiresAt: now + Math.max(1_000, ttlMs),
+      });
+      return true;
+    });
+  }
+
+  renewDrainLock(contextKey: ChannelContextKey, owner: string, ttlMs: number): boolean {
+    return this.updateState((state) => {
+      const now = Date.now();
+      const existing = state.drainLocks.get(contextKey);
+      if (!existing || existing.owner !== owner) {
+        return false;
+      }
+      state.drainLocks.set(contextKey, {
+        ...existing,
+        updatedAt: now,
+        expiresAt: now + Math.max(1_000, ttlMs),
+      });
+      return true;
+    });
+  }
+
+  releaseDrainLock(contextKey: ChannelContextKey, owner: string): boolean {
+    return this.updateState((state) => {
+      const existing = state.drainLocks.get(contextKey);
+      if (!existing || existing.owner !== owner) {
+        return false;
+      }
+      state.drainLocks.delete(contextKey);
+      return true;
+    });
+  }
+
+  getDrainLock(contextKey: ChannelContextKey): QueueDrainLock | undefined {
+    this.refresh();
+    const lock = this.drainLocks.get(contextKey);
+    return lock ? { ...lock } : undefined;
+  }
+
   private updateState<TResult>(mutator: (state: PromptStoreState) => TResult): TResult {
     let result: TResult;
     try {
@@ -273,6 +333,7 @@ export class PromptStore {
     this.lastPrompts = state.lastPrompts;
     this.queues = state.queues;
     this.pausedContexts = state.pausedContexts;
+    this.drainLocks = state.drainLocks;
   }
 }
 
@@ -366,6 +427,7 @@ function stateFromPayload(payload: PersistedPromptStore | undefined): PromptStor
     lastPrompts: new Map(),
     queues: new Map(),
     pausedContexts: new Set(),
+    drainLocks: new Map(),
   };
   if (!payload) {
     return state;
@@ -388,6 +450,11 @@ function stateFromPayload(payload: PersistedPromptStore | undefined): PromptStor
       payload.pausedContexts.filter((contextKey): contextKey is string => typeof contextKey === "string"),
     );
   }
+  for (const [contextKey, lock] of Object.entries(payload.drainLocks ?? {})) {
+    if (isQueueDrainLock(lock)) {
+      state.drainLocks.set(contextKey, lock);
+    }
+  }
   return state;
 }
 
@@ -396,7 +463,19 @@ function payloadFromState(state: PromptStoreState): PersistedPromptStore {
     lastPrompts: Object.fromEntries(state.lastPrompts.entries()),
     queues: Object.fromEntries([...state.queues.entries()].filter(([, queue]) => queue.length > 0)),
     pausedContexts: [...state.pausedContexts],
+    drainLocks: Object.fromEntries(state.drainLocks.entries()),
   };
+}
+
+function isQueueDrainLock(value: unknown): value is QueueDrainLock {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as QueueDrainLock;
+  return typeof candidate.owner === "string" &&
+    typeof candidate.acquiredAt === "number" &&
+    typeof candidate.updatedAt === "number" &&
+    typeof candidate.expiresAt === "number";
 }
 
 function isPromptEnvelope(value: unknown): value is PromptEnvelope {

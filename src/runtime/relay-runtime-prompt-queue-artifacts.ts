@@ -44,6 +44,7 @@ import { RelayAuthService } from "./relay-auth-service.js";
 import { RelayExternalActivityMonitor } from "./relay-external-activity-monitor.js";
 import { RelayQueueService, type RelayQueueAction } from "./relay-queue-service.js";
 import { RuntimeSnapshotCache } from "./runtime-cache.js";
+import { withQueueDrainLock } from "./relay-queue-drain-lock.js";
 import { appendQueuedPromptChatMessage, resolveQueuedPromptChatAction } from "./relay-runtime-chat-sync.js";
 import {
   activeSessionPriority,
@@ -510,32 +511,29 @@ export async function relayRuntimeRunPrompt(runtime: RelayRuntimeDelegate, sessi
   }
 
 export async function relayRuntimeDrainQueue(runtime: RelayRuntimeDelegate): Promise<void> {
-    if (runtime.draining || runtime.queueService.isPaused()) {
-      return;
-    }
-    runtime.draining = true;
+    if (runtime.draining || runtime.queueService.isPaused()) return;
     let completedPrompt = false;
-    try {
+    const locked = await withQueueDrainLock(runtime, async () => {
+      runtime.draining = true;
       const session = await runtime.getSession(false);
-      if (session.isProcessing()) {
-        return;
+      try {
+        if (session.isProcessing()) return;
+        const external = getExternalSnapshotForSession(session, runtime.config, { maxEvents: 0 });
+        if (external?.activity.active && !isExternalSnapshotSuppressedByManagedAbort(external, runtime.activityStore.list({ threadId: external.threadId, limit: 50 }))) {
+          runtime.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${runtime.queueService.length()} queued.`, "info");
+          return;
+        }
+        const next = runtime.queueService.dequeue();
+        runtime.broadcastQueue();
+        if (!next) return;
+        resolveQueuedPromptChatAction(runtime, next.id, `Queued prompt ${next.id} started`);
+        await runtime.runPrompt(session, next);
+        completedPrompt = true;
+      } finally {
+        runtime.draining = false;
       }
-      const external = getExternalSnapshotForSession(session, runtime.config, { maxEvents: 0 });
-      if (external?.activity.active && !isExternalSnapshotSuppressedByManagedAbort(external, runtime.activityStore.list({ threadId: external.threadId, limit: 50 }))) {
-        runtime.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${runtime.queueService.length()} queued.`, "info");
-        return;
-      }
-      const next = runtime.queueService.dequeue();
-      runtime.broadcastQueue();
-      if (!next) {
-        return;
-      }
-      resolveQueuedPromptChatAction(runtime, next.id, `Queued prompt ${next.id} started`);
-      await runtime.runPrompt(session, next);
-      completedPrompt = true;
-    } finally {
-      runtime.draining = false;
-    }
+    });
+    if (!locked) return;
     if (completedPrompt && runtime.queueService.length() > 0 && !runtime.queueService.isPaused()) {
       setTimeout(() => {
         void runtime.drainQueue().catch((error: unknown) => runtime.broadcastStatus(friendlyErrorText(error), "error"));

@@ -307,7 +307,7 @@ export class RelayRuntime {
   readonly preferencesStore: BotPreferencesStore; readonly sessionNameStore: SessionNameStore;
   readonly lockStore: SessionLockStore;
   readonly agentUpdates: AgentUpdateManager;
-  readonly queueService: RelayQueueService;
+  readonly queueService: RelayQueueService; readonly queueDrainOwnerId = `${process.pid}:${randomUUID().slice(0, 8)}`;
   readonly jobStore: UnifiedJobStore;
   readonly workflowStore: WorkflowStore;
   readonly queuePlanStore: QueuePlanStore;

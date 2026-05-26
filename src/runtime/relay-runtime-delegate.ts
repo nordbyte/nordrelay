@@ -109,6 +109,7 @@ export interface RelayRuntimeDelegate {
   readonly lockStore: SessionLockStore;
   readonly agentUpdates: AgentUpdateManager;
   readonly queueService: RelayQueueService;
+  readonly queueDrainOwnerId: string;
   readonly jobStore: UnifiedJobStore;
   readonly workflowStore: WorkflowStore; readonly queuePlanStore: QueuePlanStore; readonly metricsHistoryStore: MetricsHistoryStore; readonly workflowService: RelayWorkflowService;
   readonly artifactService: RelayArtifactService;
