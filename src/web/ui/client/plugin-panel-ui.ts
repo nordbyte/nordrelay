@@ -6,8 +6,8 @@ const NORDRELAY_PLUGIN_PANEL_CSS = `
 *::-webkit-scrollbar-track{background:var(--scrollbar-track)}
 *::-webkit-scrollbar-thumb{background:var(--scrollbar-thumb);border:2px solid var(--scrollbar-track);border-radius:999px}
 *::-webkit-scrollbar-thumb:hover{background:var(--scrollbar-thumb-hover)}
-html{font-size:16px;-webkit-text-size-adjust:100%;text-size-adjust:100%}
-body.nordrelay-plugin-panel{margin:0;padding:16px;background:var(--bg);color:var(--text);font-family:Inter,"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif;line-height:1.4;font-synthesis:none}
+html{min-height:100%;font-size:16px;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body.nordrelay-plugin-panel{min-height:100vh;margin:0;padding:16px;background:var(--bg);color:var(--text);font-family:Inter,"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif;line-height:1.4;font-synthesis:none}
 h1{font-size:22px;margin:0 0 14px;line-height:1.15}
 h2{font-size:16px;margin:0 0 12px;line-height:1.2}
 h3{font-size:14px;margin:0 0 10px;line-height:1.25}
@@ -47,6 +47,8 @@ input,select,textarea{font-size:15px}
 button{appearance:none;-webkit-appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;height:36px;padding:0 12px;background:var(--accent);color:white;border-color:var(--accent);cursor:pointer;line-height:1;text-align:center;white-space:nowrap}
 button:hover{background:var(--accent-strong)}
 button.secondary{background:var(--surface);color:var(--text)}
+button.secondary:hover,button.secondary:focus{background:var(--accent);border-color:var(--accent);color:white;outline:none}
+button.active,button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:white}
 button.danger{background:var(--danger);border-color:var(--danger);color:white}
 button.mini-button,.mini-button{min-height:28px;height:28px;padding:0 8px;font-size:13px;line-height:1}
 button:disabled{opacity:.65;cursor:not-allowed}
@@ -78,6 +80,10 @@ label.checkbox{display:flex;align-items:center;gap:8px;color:var(--text)}
 .data-table-actions button{min-height:28px;height:28px;padding:0 8px;font-size:13px;line-height:1}
 .actions-cell,.actions-heading{white-space:nowrap}
 .actions-heading{text-align:right!important}
+svg{display:block;max-width:100%;color:var(--muted)}
+.chart-hit{cursor:crosshair}
+.chart-hit:hover{fill:color-mix(in srgb,var(--accent) 12%,transparent)!important}
+.chart-tooltip-note{font-size:12px;color:var(--muted)}
 pre,.log-view,.code-block{max-width:100%;overflow:auto;margin:8px 0;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--pre);color:var(--pre-text);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.45;white-space:pre}
 code,.inline-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--link)}
 .code-diff span{display:block;min-height:1.35em}
@@ -143,11 +149,27 @@ function pluginPanelDocument(html,options:WebuiRecord={}){
 function asPluginPanelFrame(frame):HTMLIFrameElement|null{
   return frame instanceof HTMLIFrameElement?frame:null;
 }
+function pluginPanelAvailableHeight(frame){
+  frame=asPluginPanelFrame(frame);
+  if(!frame||!frame.classList.contains('plugin-panel-page-frame'))return 320;
+  const rect=frame.getBoundingClientRect();
+  const footer=document.querySelector('footer');
+  const footerHeight=footer?footer.getBoundingClientRect().height:0;
+  return Math.max(420,Math.floor(window.innerHeight-rect.top-footerHeight-24));
+}
+function applyPluginPanelFrameHeight(frame,contentHeight=0){
+  frame=asPluginPanelFrame(frame);
+  if(!frame)return;
+  const minimum=pluginPanelAvailableHeight(frame);
+  const height=Math.max(minimum,Math.min(2400,Number(contentHeight)||0));
+  frame.style.height=height+'px';
+}
 function bindPluginPanelFrame(frame){
   frame=asPluginPanelFrame(frame);
   if(!frame||frame.dataset.pluginPanelBound)return;
   frame.dataset.pluginPanelBound='true';
-  frame.addEventListener('load',()=>postPluginPanelTheme(frame));
+  frame.addEventListener('load',()=>{postPluginPanelTheme(frame);applyPluginPanelFrameHeight(frame)});
+  applyPluginPanelFrameHeight(frame);
 }
 function postPluginPanelTheme(frame){
   frame=asPluginPanelFrame(frame);
@@ -166,8 +188,7 @@ window.addEventListener('message',event=>{
   const payload=data.payload||{};
   if(data.type==='resize'){
     const frame=pluginPanelFrameForWindow(event.source);
-    const height=Math.max(320,Math.min(2400,Number(payload.height)||0));
-    if(frame)frame.style.height=height+'px';
+    if(frame)applyPluginPanelFrameHeight(frame,Number(payload.height)||0);
   }else if(data.type==='toast'){
     toast(String(payload.message||'Plugin panel'));
   }else if(data.type==='copy'){
@@ -181,3 +202,4 @@ window.addEventListener('message',event=>{
 function syncPluginPanelThemes(){
   document.querySelectorAll('iframe.plugin-panel-frame').forEach(frame=>postPluginPanelTheme(frame));
 }
+window.addEventListener('resize',()=>document.querySelectorAll('iframe.plugin-panel-page-frame').forEach(frame=>applyPluginPanelFrameHeight(frame)));

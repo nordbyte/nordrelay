@@ -367,7 +367,8 @@
 .peer-scope-toolbar{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap}
 .peer-scope-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px 10px;max-height:260px;overflow:auto;padding-right:4px}
 .peer-scope-option{min-height:28px;margin:0;font-size:13px}
-.plugin-panel-page{width:100%;min-width:0}
-.plugin-panel-page #pluginPanelPageResult{width:100%;min-width:0}
+#page-plugin-panel.active{display:flex;flex:1;flex-direction:column;min-height:calc(100dvh - var(--dashboard-header-height) - 56px)}
+.plugin-panel-page{display:flex;flex:1;flex-direction:column;width:100%;min-width:0;min-height:0}
+.plugin-panel-page #pluginPanelPageResult{display:flex;flex:1;flex-direction:column;width:100%;min-width:0;min-height:0}
 .plugin-panel-frame{width:100%;min-height:320px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface)}
-.plugin-panel-page-frame{min-height:640px;border:0;border-radius:0;background:transparent}
+.plugin-panel-page-frame{flex:1;min-height:calc(100dvh - var(--dashboard-header-height) - 100px);border:0;border-radius:0;background:transparent}
