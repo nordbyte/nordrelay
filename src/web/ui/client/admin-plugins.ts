@@ -322,10 +322,33 @@ function renderPluginPanelPageResult(item,result){
   const resultEl=document.getElementById('pluginPanelPageResult');
   if(!resultEl)return;
   revokePluginPanelUrls(resultEl);
-  resultEl.innerHTML=result.html
-    ? pluginPanelFrameHtml(result.html,pluginPanelTitle(item),{pluginId:item.pluginId,capabilityId:item.panelId},'plugin-panel-page-frame')
+  const html=pluginPanelHtmlFromResult(result);
+  resultEl.innerHTML=html
+    ? pluginPanelFrameHtml(html,pluginPanelTitle(item),{pluginId:item.pluginId,capabilityId:item.panelId},'plugin-panel-page-frame')
     : '<pre class="log-view">'+esc(JSON.stringify(result.output??result.diagnostics??result.text??result.stdout??result,null,2))+'</pre>';
   resultEl.querySelectorAll('iframe.plugin-panel-frame').forEach(frame=>bindPluginPanelFrame(frame));
+}
+function pluginPanelHtmlFromResult(result){
+  if(!result||typeof result!=='object')return '';
+  if(typeof result.html==='string'&&result.html.trim())return result.html;
+  const output=result.output;
+  if(output&&typeof output==='object'&&!Array.isArray(output)&&typeof output.html==='string'&&output.html.trim())return output.html;
+  const parsed=pluginPanelParseStdout(result.stdout);
+  if(parsed){
+    if(typeof parsed.html==='string'&&parsed.html.trim())return parsed.html;
+    const parsedOutput=parsed.output;
+    if(parsedOutput&&typeof parsedOutput==='object'&&!Array.isArray(parsedOutput)&&typeof parsedOutput.html==='string'&&parsedOutput.html.trim())return parsedOutput.html;
+  }
+  return '';
+}
+function pluginPanelParseStdout(stdout){
+  if(typeof stdout!=='string'||!stdout.trim())return null;
+  try{
+    const parsed=JSON.parse(stdout.trim());
+    return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed:null;
+  }catch{
+    return null;
+  }
 }
 function openPluginCapabilityDialog(pluginId,type,capabilityId){
   const item=findPluginCapability(pluginId,type,capabilityId);
@@ -378,8 +401,9 @@ function renderPluginCapabilityResult(pluginId,type,capabilityId,result){
   const target=document.getElementById('pluginCapabilityResult');
   if(!target)return;
   revokePluginPanelUrls(target);
-  const output=result.html
-    ? pluginPanelFrameHtml(result.html,pluginId+' / '+capabilityId,{pluginId,capabilityId})
+  const html=pluginPanelHtmlFromResult(result);
+  const output=html
+    ? pluginPanelFrameHtml(html,pluginId+' / '+capabilityId,{pluginId,capabilityId})
     : '<pre class="log-view">'+esc(JSON.stringify(result.output??result.diagnostics??result.text??result.stdout??result,null,2))+'</pre>';
   target.innerHTML=uiItem(pluginId+' / '+capabilityId,{badge:{text:result.ok?'ok':'failed',status:result.ok?'enabled':'failed'},rows:[['Type',type],['Duration',result.durationMs?result.durationMs+'ms':'-']],body:output});
   const panelTarget=document.getElementById('pluginPanelResult');

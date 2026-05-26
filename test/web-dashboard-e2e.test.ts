@@ -156,6 +156,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function pluginPanelNonceAttr");
     expect(js).toContain("function createPluginPanelObjectUrl");
     expect(js).toContain("function pluginPanelFrameHtml");
+    expect(js).toContain("function pluginPanelHtmlFromResult");
+    expect(js).toContain("function pluginPanelParseStdout");
+    expect(js).toContain("JSON.parse(stdout.trim())");
     expect(js).toContain("function revokePluginPanelUrls");
     expect(js).toContain("function pluginPanelAvailableHeight");
     expect(js).toContain("applyPluginPanelFrameHeight(frame");
