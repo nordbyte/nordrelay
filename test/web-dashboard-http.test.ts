@@ -50,6 +50,7 @@ describe("web dashboard HTTP helpers", () => {
     const csp = webSecurityHeaders("abc123")["content-security-policy"];
 
     expect(csp).toContain("'nonce-abc123'");
+    expect(csp).toContain("frame-src 'self' blob:");
     expect(csp).not.toContain("'unsafe-inline'");
   });
 

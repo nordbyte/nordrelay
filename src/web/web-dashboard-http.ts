@@ -289,7 +289,7 @@ export function webSecurityHeaders(cspNonce?: string): Record<string, string> {
   const styleSrc = cspNonce ? `'self' 'nonce-${cspNonce}'` : "'self'";
   return {
     ...BASE_SECURITY_HEADERS,
-    "content-security-policy": `default-src 'self'; script-src ${scriptSrc}; style-src ${styleSrc}; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
+    "content-security-policy": `default-src 'self'; script-src ${scriptSrc}; style-src ${styleSrc}; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; frame-src 'self' blob:; child-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
   };
 }
 

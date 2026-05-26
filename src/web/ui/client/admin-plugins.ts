@@ -269,8 +269,9 @@ async function reloadPluginPanelFrame(_frame,input={}){
 function renderPluginPanelPageResult(item,result){
   const resultEl=document.getElementById('pluginPanelPageResult');
   if(!resultEl)return;
+  revokePluginPanelUrls(resultEl);
   resultEl.innerHTML=result.html
-    ? '<iframe class="plugin-panel-frame plugin-panel-page-frame" sandbox="allow-scripts" title="'+attr(pluginPanelTitle(item))+'" data-plugin-panel-frame srcdoc="'+attr(pluginPanelDocument(result.html,{pluginId:item.pluginId,capabilityId:item.panelId}))+'"></iframe>'
+    ? pluginPanelFrameHtml(result.html,pluginPanelTitle(item),{pluginId:item.pluginId,capabilityId:item.panelId},'plugin-panel-page-frame')
     : '<pre class="log-view">'+esc(JSON.stringify(result.output??result.diagnostics??result.text??result.stdout??result,null,2))+'</pre>';
   resultEl.querySelectorAll('iframe.plugin-panel-frame').forEach(frame=>bindPluginPanelFrame(frame));
 }
@@ -324,8 +325,9 @@ function parseJsonObject(text,label){
 function renderPluginCapabilityResult(pluginId,type,capabilityId,result){
   const target=document.getElementById('pluginCapabilityResult');
   if(!target)return;
+  revokePluginPanelUrls(target);
   const output=result.html
-    ? '<iframe class="plugin-panel-frame" sandbox="allow-scripts" title="'+attr(pluginId+' / '+capabilityId)+'" data-plugin-panel-frame srcdoc="'+attr(pluginPanelDocument(result.html,{pluginId,capabilityId}))+'"></iframe>'
+    ? pluginPanelFrameHtml(result.html,pluginId+' / '+capabilityId,{pluginId,capabilityId})
     : '<pre class="log-view">'+esc(JSON.stringify(result.output??result.diagnostics??result.text??result.stdout??result,null,2))+'</pre>';
   target.innerHTML=uiItem(pluginId+' / '+capabilityId,{badge:{text:result.ok?'ok':'failed',status:result.ok?'enabled':'failed'},rows:[['Type',type],['Duration',result.durationMs?result.durationMs+'ms':'-']],body:output});
   const panelTarget=document.getElementById('pluginPanelResult');
