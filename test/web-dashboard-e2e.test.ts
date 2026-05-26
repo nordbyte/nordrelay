@@ -140,6 +140,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("data-nordrelay-plugin-ui");
     expect(js).toContain("data-nordrelay-plugin-bridge");
     expect(js).toContain("window.NordRelayPanel");
+    expect(js).toContain("reload:function(input)");
+    expect(js).toContain("function reloadPluginPanelFrame");
     expect(js).toContain('sandbox="allow-scripts"');
     expect(js).toContain("data-plugin-panel-frame");
     expect(js).toContain("function syncPluginPanelThemes");

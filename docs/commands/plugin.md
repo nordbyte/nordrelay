@@ -51,6 +51,7 @@ nordrelay plugin update my-plugin
 nordrelay plugin rollback my-plugin --version 0.1.0
 nordrelay plugin invoke my-plugin command example --input-json '{"text":"hello"}'
 nordrelay plugin invoke system-monitor collector system.sample
+nordrelay plugin invoke system-monitor command panel-data --input-json '{"range":"24h","maxPoints":300}'
 nordrelay plugin settings my-plugin --set prefix=prod
 nordrelay plugin log my-plugin
 ```

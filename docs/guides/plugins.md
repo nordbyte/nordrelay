@@ -210,3 +210,8 @@ nordrelay plugin install github:nordbyte/nordrelay-plugin-system-monitor --enabl
 ```
 
 Install it on every peer where metrics should be collected. Peers without the plugin are shown as unavailable in the plugin dashboard instead of returning metrics.
+
+The System Monitor plugin keeps its own SQLite database under
+`~/.nordrelay/plugins/data/system-monitor/metrics.sqlite`. It owns collection,
+retention cleanup, range summaries, and downsampled chart data; NordRelay only
+hosts the panel and routes plugin invocations to peers.

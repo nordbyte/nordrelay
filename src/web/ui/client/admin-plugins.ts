@@ -266,6 +266,14 @@ async function runPluginPanelPage(item,input={}){
   const result=await invokePluginPanel(item.pluginId,item.panelId,item,input);
   renderPluginPanelPageResult(item,result);
 }
+async function reloadPluginPanelFrame(_frame,input={}){
+  const selected=state.pluginPanelPage;
+  if(!selected?.pluginId||!selected?.panelId)return;
+  const item=findPluginCapability(selected.pluginId,'web-panel',selected.panelId);
+  if(!item)return;
+  const defaults=pluginInputDefaultsFromSchema(item.inputSchema||{});
+  await runPluginPanelPage(item,{...defaults,...(input&&typeof input==='object'?input:{})});
+}
 function renderPluginPanelPageResult(item,result){
   const resultEl=document.getElementById('pluginPanelPageResult');
   if(!resultEl)return;

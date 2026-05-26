@@ -98,6 +98,7 @@ const NORDRELAY_PLUGIN_PANEL_BRIDGE_JS = `
     toast:function(message){post('toast',{message:String(message||'')})},
     copyText:function(value,label){post('copy',{value:String(value||''),label:label?String(label):'Copied'})},
     ready:function(){post('ready',{})},
+    reload:function(input){post('reload',{input:input&&typeof input==='object'?input:{}})},
     resize:sendResize
   };
   window.addEventListener('message',function(event){
@@ -154,20 +155,27 @@ function postPluginPanelTheme(frame){
   try{frame.contentWindow?.postMessage({source:'nordrelay-host',type:'theme',theme:currentPluginPanelTheme()},'*')}catch{}
 }
 function isPluginPanelWindow(source){
-  return Array.from(document.querySelectorAll('iframe.plugin-panel-frame')).some(frame=>asPluginPanelFrame(frame)?.contentWindow===source);
+  return Boolean(pluginPanelFrameForWindow(source));
+}
+function pluginPanelFrameForWindow(source){
+  return Array.from(document.querySelectorAll('iframe.plugin-panel-frame')).map(asPluginPanelFrame).find(item=>item?.contentWindow===source)||null;
 }
 window.addEventListener('message',event=>{
   const data=event.data||{};
   if(data.source!=='nordrelay-plugin-panel'||!isPluginPanelWindow(event.source))return;
   const payload=data.payload||{};
   if(data.type==='resize'){
-    const frame=Array.from(document.querySelectorAll('iframe.plugin-panel-frame')).map(asPluginPanelFrame).find(item=>item?.contentWindow===event.source);
+    const frame=pluginPanelFrameForWindow(event.source);
     const height=Math.max(320,Math.min(2400,Number(payload.height)||0));
     if(frame)frame.style.height=height+'px';
   }else if(data.type==='toast'){
     toast(String(payload.message||'Plugin panel'));
   }else if(data.type==='copy'){
     copyText(String(payload.value||''),String(payload.label||'Copied'));
+  }else if(data.type==='reload'){
+    const frame=pluginPanelFrameForWindow(event.source);
+    const reload=(globalThis as WebuiRecord).reloadPluginPanelFrame;
+    if(frame&&typeof reload==='function')void reload(frame,payload.input&&typeof payload.input==='object'?payload.input:{});
   }
 });
 function syncPluginPanelThemes(){
