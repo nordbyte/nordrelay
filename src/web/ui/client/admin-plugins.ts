@@ -46,7 +46,7 @@ function renderPluginPanels(){
       pluginCell('Panel','<span class="truncate-cell" title="'+attr(panel.title||panel.panelId)+'">'+esc(panel.title||panel.panelId)+'</span><small>'+esc(panel.panelId||'-')+'</small>')+
       pluginCell('Placement',esc(panel.placement||'plugins'))+
       pluginCell('Aggregate',esc(panel.aggregateCommand||'-'))+
-      pluginCell('Actions','<div class="data-table-actions">'+uiButton('Open',{mini:true,variant:'secondary',data:{pluginCapability:panel.pluginId,pluginCapabilityType:'web-panel',pluginCapabilityId:panel.panelId}})+'</div>','actions-cell')+
+      pluginCell('Actions','<div class="data-table-actions">'+uiButton('Open',{mini:true,variant:'secondary',data:{pluginPanelOpen:panel.pluginId,pluginPanelId:panel.panelId},permission:'workflows.run'})+'</div>','actions-cell')+
     '</tr>').join('')+
   '</tbody></table></div>';
 }
@@ -156,7 +156,25 @@ function bindPluginButtons(root:Element|Document=document){
   root.querySelectorAll?.('[data-plugin-rollback]').forEach(b=>b.onclick=()=>safe(async()=>{const id=b.dataset.pluginRollback;const version=prompt('Rollback to version (leave empty for previous installed version):','')||'';await api('/api/plugins/'+encodeURIComponent(id)+'/rollback',{method:'POST',body:JSON.stringify({version:version.trim()||undefined})});toast('Plugin rolled back');await loadPlugins()}));
   root.querySelectorAll?.('[data-plugin-settings]').forEach(b=>b.onclick=()=>openPluginSettingsDialog(b.dataset.pluginSettings));
   root.querySelectorAll?.('[data-plugin-log]').forEach(b=>b.onclick=()=>{state.pluginTab='logs';switchPluginTab('logs');const select=document.getElementById('pluginLogSelect');if(select)select.value=b.dataset.pluginLog;safe(loadPluginLog)});
+  root.querySelectorAll?.('[data-plugin-panel-open]').forEach(b=>b.onclick=()=>safe(()=>openPluginPanelDirect(b.dataset.pluginPanelOpen,b.dataset.pluginPanelId)));
   root.querySelectorAll?.('[data-plugin-capability]').forEach(b=>b.onclick=()=>openPluginCapabilityDialog(b.dataset.pluginCapability,b.dataset.pluginCapabilityType,b.dataset.pluginCapabilityId));
+}
+async function openPluginPanelDirect(pluginId,panelId){
+  const item=findPluginCapability(pluginId,'web-panel',panelId);
+  if(!item)throw new Error('Plugin panel not found.');
+  const schema=item.inputSchema||{};
+  if(pluginInputSchemaHasRequiredFields(schema)){
+    openPluginCapabilityDialog(pluginId,'web-panel',panelId);
+    return;
+  }
+  switchPluginTab('panels');
+  const target=document.getElementById('pluginPanelResult');
+  if(target)target.innerHTML=uiItem(item.title||panelId,{badge:{text:'loading',status:'planned'},rows:[['Plugin',pluginId],['Panel',panelId]],body:'<small>Opening panel...</small>'});
+  const input=pluginInputDefaultsFromSchema(schema);
+  const result=await invokePluginPanel(pluginId,panelId,item,input);
+  renderPluginCapabilityResult(pluginId,'web-panel',panelId,result);
+  await loadPlugins();
+  document.getElementById('pluginPanelResult')?.scrollIntoView({block:'start',behavior:'smooth'});
 }
 function openPluginCapabilityDialog(pluginId,type,capabilityId){
   const item=findPluginCapability(pluginId,type,capabilityId);
@@ -173,14 +191,17 @@ function openPluginCapabilityDialog(pluginId,type,capabilityId){
     else if(type==='artifact-handler'){endpoint='/artifact-handler';body={handlerId:capabilityId,input}}
     else if(type==='collector'){endpoint='/collector';body={collectorId:capabilityId,input}}
     else if(type==='diagnostics'){endpoint='/diagnostics';body={}}
-    if(type==='web-panel'&&item?.aggregateCommand){
-      input={...input,aggregate:await collectPluginAggregate(pluginId,item.aggregateCommand,input)};
-      body={panelId:capabilityId,input};
-    }
-    const result=await api('/api/plugins/'+encodeURIComponent(pluginId)+endpoint,{method:type==='diagnostics'?'GET':'POST',body:type==='diagnostics'?undefined:JSON.stringify(body),timeoutMs:type==='web-panel'&&item?.aggregateCommand?30000:undefined});
+    const result=type==='web-panel'
+      ? await invokePluginPanel(pluginId,capabilityId,item,input)
+      : await api('/api/plugins/'+encodeURIComponent(pluginId)+endpoint,{method:type==='diagnostics'?'GET':'POST',body:type==='diagnostics'?undefined:JSON.stringify(body)});
     renderPluginCapabilityResult(pluginId,type,capabilityId,result);
     await loadPlugins();
   },{submitText:'Run',reloadAccess:false});
+}
+async function invokePluginPanel(pluginId,panelId,item,input={}){
+  let panelInput={...input};
+  if(item?.aggregateCommand)panelInput={...panelInput,aggregate:await collectPluginAggregate(pluginId,item.aggregateCommand,panelInput)};
+  return api('/api/plugins/'+encodeURIComponent(pluginId)+'/panel',{method:'POST',body:JSON.stringify({panelId,input:panelInput}),timeoutMs:item?.aggregateCommand?30000:undefined});
 }
 function findPluginCapability(pluginId,type,capabilityId){
   const c=state.pluginCatalog||{};
@@ -192,6 +213,10 @@ function pluginInputDefaultsFromSchema(schema){
   const properties=schema&&typeof schema==='object'&&!Array.isArray(schema)?schema.properties:null;
   if(!properties||typeof properties!=='object')return {};
   return Object.fromEntries(Object.entries(properties).map(([key,value])=>{const meta=value as WebuiRecord;return [key,meta?.default??(meta?.type==='boolean'?false:meta?.type==='number'?0:'')]}));
+}
+function pluginInputSchemaHasRequiredFields(schema){
+  if(!schema||typeof schema!=='object'||Array.isArray(schema))return false;
+  return Array.isArray(schema.required)&&schema.required.length>0;
 }
 function parseJsonObject(text,label){
   const parsed=text.trim()?JSON.parse(text):{};
