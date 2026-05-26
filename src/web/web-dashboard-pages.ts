@@ -553,6 +553,7 @@ ${faviconLinks}
           <div class="section-header plugins-section-header">
             <div id="pluginTabs" class="section-tabs plugin-tabs" role="tablist" aria-label="Plugin sections">
               <button type="button" role="tab" aria-selected="true" tabindex="0" data-plugin-tab="installed" class="active">Installed</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="marketplace">Marketplace</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="install">Install</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="catalog">Extension Catalog</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="developer">Developer</button>
@@ -565,6 +566,14 @@ ${faviconLinks}
             </div>
             <div id="pluginStatus" class="callout muted"></div>
             <div id="pluginList" class="sessions-table-host"></div>
+          </div>
+          <div class="plugin-tab" data-plugin-tab-panel="marketplace">
+            <div class="plugin-tab-heading">
+              <div class="row plugin-heading-actions"><button id="reloadPluginMarketplaceBtn" class="secondary">Refresh marketplace</button></div>
+            </div>
+            <div class="callout muted">Install official or approved plugins on the selected node. Marketplace installs use the same permission checks and audit log as manual plugin installs.</div>
+            <div id="pluginMarketplace" class="sessions-table-host"></div>
+            <div id="pluginMarketplaceResult" class="list"></div>
           </div>
           <div class="plugin-tab" data-plugin-tab-panel="install">
             <div class="plugin-tab-heading">

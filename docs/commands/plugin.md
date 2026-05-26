@@ -58,7 +58,7 @@ nordrelay plugin log my-plugin
 
 ## Requirements
 
-Plugins live under `~/.nordrelay/plugins`. GitHub installs and update checks require `git` on `PATH` and are disabled when `NORDRELAY_PLUGIN_GITHUB_INSTALL_ENABLED=false`.
+Plugins live under `~/.nordrelay/plugins`. GitHub installs, Marketplace installs, and update checks require `git` on `PATH` and are disabled when `NORDRELAY_PLUGIN_GITHUB_INSTALL_ENABLED=false`.
 
 `NORDRELAY_PLUGINS_ENABLED=false` blocks plugin extension catalogs and execution. It also blocks install, update, enable, scaffold, and settings changes.
 
@@ -66,7 +66,7 @@ Plugin management is permission-gated in the WebUI and API:
 
 | Permission | Allows |
 | --- | --- |
-| `plugins.read` | View installed plugins, logs, and extension catalog |
+| `plugins.read` | View installed plugins, logs, Marketplace entries, and extension catalog |
 | `plugins.install` | Install, remove, scaffold, validate, and reload plugins |
 | `plugins.enable` | Enable or disable plugins |
 | `plugins.settings.write` | Update plugin settings |

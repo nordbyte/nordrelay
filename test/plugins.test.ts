@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { PluginService } from "../src/plugins/plugin-service.js";
 import { validatePluginManifest } from "../src/plugins/plugin-manifest.js";
 import { PluginCollectorScheduler } from "../src/plugins/plugin-collector-scheduler.js";
+import { pluginMarketplaceEntries } from "../src/plugins/plugin-marketplace.js";
 
 async function createPluginFixture(): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-fixture-"));
@@ -53,6 +54,19 @@ async function createPluginFixture(): Promise<string> {
 }
 
 describe("plugin system", () => {
+  it("exposes official marketplace entries with installable GitHub sources", () => {
+    const entries = pluginMarketplaceEntries();
+    const systemMonitor = entries.find((entry) => entry.id === "system-monitor");
+
+    expect(systemMonitor).toMatchObject({
+      name: "System Monitor",
+      source: "github:nordbyte/nordrelay-plugin-system-monitor",
+      official: true,
+      approved: true,
+    });
+    expect(systemMonitor?.permissions).toContain("system.metrics.read");
+  });
+
   it("validates required manifest fields", () => {
     const result = validatePluginManifest({ id: "Bad ID", name: "", version: "latest" });
 

@@ -547,6 +547,7 @@ interface DashboardState {
   adapterConformance?: WebuiRecord | null;
   plugins?: WebuiRecord[];
   pluginCatalog?: WebuiRecord | null;
+  pluginMarketplace?: WebuiRecord | null;
   pluginUpdateChecks?: Record<string, WebuiRecord>;
   activityEvents?: WebuiRecord[];
   auditEvents?: WebuiAuditEvent[];

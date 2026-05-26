@@ -301,6 +301,7 @@ function shouldProxyApi(path) {
     path === '/api/peers/identity/backup' ||
     path === '/api/peers/identity/restore' ||
     path === '/api/settings/wizard/test' ||
+    path === '/api/plugins/marketplace' ||
     isLocalWorkflowApi(path) ||
     /^\/api\/peers\/discovery-jobs\//.test(path) ||
     /^\/api\/peers\/[^/]+(?:\/events|\/proxy)?$/.test(path) ||

@@ -123,6 +123,7 @@ export const WEB_API_ROUTE_DEFINITIONS = [
   exact("/api/settings/wizard/test", ["POST"], "settings.write"),
   exact("/api/plugins", ["GET", "POST"], readWrite("plugins.read", "plugins.install")),
   exact("/api/plugins/catalog", ["GET"], "plugins.read"),
+  exact("/api/plugins/marketplace", ["GET"], "plugins.read"),
   exact("/api/plugins/validate", ["POST"], "plugins.install"),
   exact("/api/plugins/scaffold", ["POST"], "plugins.install"),
   dynamic("/api/plugins/:id", "^/api/plugins/[^/]+$", ["GET", "DELETE"], readWrite("plugins.read", "plugins.install"), `/api/plugins/${stringToken}`),

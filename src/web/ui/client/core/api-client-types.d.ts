@@ -75,6 +75,7 @@ export type WebApiStaticPath =
   | "/api/permissions"
   | "/api/plugins"
   | "/api/plugins/catalog"
+  | "/api/plugins/marketplace"
   | "/api/plugins/scaffold"
   | "/api/plugins/validate"
   | "/api/profile"
@@ -289,6 +290,7 @@ export type WebApiResponseByPath = {
   "/api/permissions": ServerWebApiClientResponse<"/api/permissions">;
   "/api/plugins": ServerWebApiClientResponse<"/api/plugins">;
   "/api/plugins/catalog": ServerWebApiClientResponse<"/api/plugins/catalog">;
+  "/api/plugins/marketplace": ServerWebApiClientResponse<"/api/plugins/marketplace">;
   "/api/plugins/scaffold": ServerWebApiClientResponse<"/api/plugins/scaffold">;
   "/api/plugins/validate": ServerWebApiClientResponse<"/api/plugins/validate">;
   "/api/profile": ServerWebApiClientResponse<"/api/profile">;
@@ -404,6 +406,7 @@ export type WebApiRequestBodyByPath = {
   "/api/permissions": ServerWebApiRequestBody<"/api/permissions">;
   "/api/plugins": ServerWebApiRequestBody<"/api/plugins">;
   "/api/plugins/catalog": ServerWebApiRequestBody<"/api/plugins/catalog">;
+  "/api/plugins/marketplace": ServerWebApiRequestBody<"/api/plugins/marketplace">;
   "/api/plugins/scaffold": ServerWebApiRequestBody<"/api/plugins/scaffold">;
   "/api/plugins/validate": ServerWebApiRequestBody<"/api/plugins/validate">;
   "/api/profile": ServerWebApiRequestBody<"/api/profile">;

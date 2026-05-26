@@ -76,6 +76,7 @@ import type {
 import type { WebActivityEvent, WebChatMessage } from "./web-state.js";
 import type { VoiceDiagnostics } from "../artifacts/voice.js";
 import type { PluginCatalog } from "../plugins/plugin-service.js";
+import type { PluginMarketplaceResponse } from "../plugins/plugin-marketplace.js";
 import type { PluginInstallRequest, PluginInvokeResult, PluginScaffoldRequest, PluginUpdateCheckResult, PluginValidationResult, PublicPluginRecord } from "../plugins/plugin-types.js";
 
 export type WebApiMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -237,6 +238,7 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends "/api/doctor/fix" ? { fixIds?: string[] } :
   P extends "/api/settings" ? { settings: Record<string, string | null | undefined> } :
   P extends "/api/plugins" ? PluginInstallRequest :
+  P extends "/api/plugins/marketplace" ? Record<string, never> :
   P extends "/api/plugins/validate" ? { source: string } :
   P extends "/api/plugins/scaffold" ? PluginScaffoldRequest :
   P extends `/api/plugins/${string}/enable` | `/api/plugins/${string}/disable` | `/api/plugins/${string}/manifest` ? Record<string, never> :
@@ -349,6 +351,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends "/api/settings" ? SettingsSnapshot | SettingsUpdateResult :
   P extends "/api/plugins" ? { enabled: boolean; plugins: PublicPluginRecord[]; catalog: PluginCatalog } | PublicPluginRecord :
   P extends "/api/plugins/catalog" ? PluginCatalog :
+  P extends "/api/plugins/marketplace" ? PluginMarketplaceResponse :
   P extends "/api/plugins/validate" ? PluginValidationResult :
   P extends "/api/plugins/scaffold" ? { path: string } :
   P extends `/api/plugins/${string}/enable` | `/api/plugins/${string}/disable` | `/api/plugins/${string}/settings` | `/api/plugins/${string}/manifest` ? PublicPluginRecord :

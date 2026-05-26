@@ -10,8 +10,9 @@ async function loadPlugins(){
     state.peers=await api('/api/peers',{local:true}).catch(()=>state.peers);
   }
   setLoading('pluginList','Loading plugins...');
+  setLoading('pluginMarketplace','Loading marketplace...');
   setLoading('pluginCatalog','Loading plugin catalog...');
-  const response=await refreshPluginState({force:true});
+  const [response]=await Promise.all([refreshPluginState({force:true}),refreshPluginMarketplace()]);
   const target=headerTargetName(state.selectedPeer||'local');
   document.getElementById('pluginStatus').innerHTML=response.enabled?'Plugins are enabled on '+esc(target)+'. Remote peers need their own installed and enabled plugins.':'Plugins are disabled on '+esc(target)+' by NORDRELAY_PLUGINS_ENABLED=false.';
   renderPlugins();
@@ -34,6 +35,12 @@ async function refreshPluginState(options:WebuiRecord={}){
   return response;
 }
 async function loadPluginPanelNav(){await refreshPluginState()}
+async function refreshPluginMarketplace(){
+  if(!can('plugins.read'))return{entries:[]};
+  const response=await api('/api/plugins/marketplace',{local:true});
+  state.pluginMarketplace=response;
+  return response;
+}
 function switchPluginTab(tab){
   state.pluginTab=tab||'installed';
   document.querySelectorAll('[data-plugin-tab]').forEach(b=>{const active=b.dataset.pluginTab===state.pluginTab;b.classList.toggle('active',active);b.setAttribute('aria-selected',active?'true':'false');b.tabIndex=active?0:-1});
@@ -44,6 +51,7 @@ function bindPluginTabs(){
 }
 function renderPlugins(){
   renderPluginList();
+  renderPluginMarketplace();
   renderPluginCatalog();
   renderPluginLogSelect();
   renderPluginPanelNav();
@@ -166,6 +174,48 @@ function pluginMetricsSummary(plugin){
   const avg=Math.round((Number(m.totalDurationMs)||0)/(Number(m.invocations)||1));
   return `${m.invocations} run${Number(m.invocations)===1?'':'s'} · ${m.failures||0} failed · last ${m.lastDurationMs??'-'}ms · avg ${avg}ms`;
 }
+function pluginMarketplaceEntriesList(){
+  return Array.isArray(state.pluginMarketplace?.entries)?state.pluginMarketplace.entries:[];
+}
+function renderPluginMarketplace(){
+  const target=document.getElementById('pluginMarketplace');
+  if(!target)return;
+  const entries=pluginMarketplaceEntriesList();
+  if(!entries.length){target.innerHTML=uiEmpty('No marketplace plugins available.');return}
+  renderIncrementalTable(target,entries,{
+    key:'plugin-marketplace',
+    emptyText:'No marketplace plugins available.',
+    headHtml:'<tr><th>Status</th><th>Plugin</th><th>Category</th><th>Source</th><th>Permissions</th><th>Capabilities</th><th class="actions-heading">Actions</th></tr>',
+    renderItem:entry=>pluginMarketplaceRow(entry),
+    initialCount:30,
+    batchSize:60,
+    onDone:root=>{bindPluginButtons(root);applyPermissions()},
+  });
+}
+function pluginMarketplaceRow(entry){
+  const installed=(state.plugins||[]).find(plugin=>plugin.id===entry.id);
+  const status=installed?(installed.enabled?uiBadge('installed · enabled','enabled'):uiBadge('installed','disabled')):uiBadge('available','disabled');
+  const trust=[entry.official?uiBadge('official','enabled'):'',entry.approved?uiBadge('approved','enabled'):''].filter(Boolean).join(' ');
+  const source=entry.source+(entry.ref?'#'+entry.ref:'');
+  const permissions=(entry.permissions||[]).join(', ')||'none';
+  const capabilities=(entry.capabilities||[]).join(', ')||'none';
+  const tags=(entry.tags||[]).map(tag=>'<span class="chip">'+esc(tag)+'</span>').join('');
+  const installLabel=installed?'Reinstall':'Install';
+  const actions=[
+    installed&&!installed.enabled?uiButton('Enable',{mini:true,data:{pluginEnable:installed.id},permission:'plugins.enable'}):'',
+    uiButton(installLabel,{mini:true,data:{marketplaceInstall:entry.id,marketplaceForce:installed?'true':'false'},permission:'plugins.install'}),
+    uiButton('Install all nodes',{mini:true,variant:'secondary',data:{marketplaceInstallAll:entry.id,marketplaceForce:installed?'true':'false'},permission:'plugins.install'}),
+  ].filter(Boolean).join('');
+  return '<tr>'+
+    pluginCell('Status',status,'status-cell')+
+    pluginCell('Plugin','<span class="truncate-cell" title="'+attr(entry.name||entry.id)+'">'+esc(entry.name||entry.id)+'</span><small>'+esc(entry.id||'-')+'</small><div class="row">'+trust+'</div>'+(tags?'<div class="row">'+tags+'</div>':''),'primary-cell')+
+    pluginCell('Category',esc(entry.category||'-'))+
+    pluginCell('Source','<span class="truncate-cell" title="'+attr(source)+'">'+esc(short(source,160))+'</span><small>'+esc(entry.packageName||'')+'</small>')+
+    pluginCell('Permissions','<span class="truncate-cell" title="'+attr(permissions)+'">'+esc(short(permissions,120))+'</span>')+
+    pluginCell('Capabilities','<span class="truncate-cell" title="'+attr(capabilities)+'">'+esc(short(capabilities,140))+'</span>')+
+    pluginCell('Actions','<div class="data-table-actions">'+actions+'</div>','actions-cell')+
+  '</tr>';
+}
 function renderPluginCatalog(){
   const catalog=state.pluginCatalog||{};
   const target=document.getElementById('pluginCatalog');
@@ -208,6 +258,8 @@ function bindPluginButtons(root:Element|Document=document){
   root.querySelectorAll?.('[data-plugin-log]').forEach(b=>b.onclick=()=>{state.pluginTab='logs';switchPluginTab('logs');const select=document.getElementById('pluginLogSelect');if(select)select.value=b.dataset.pluginLog;safe(loadPluginLog)});
   root.querySelectorAll?.('[data-plugin-panel-open]').forEach(b=>b.onclick=()=>safe(()=>openPluginPanelDirect(b.dataset.pluginPanelOpen,b.dataset.pluginPanelId)));
   root.querySelectorAll?.('[data-plugin-capability]').forEach(b=>b.onclick=()=>openPluginCapabilityDialog(b.dataset.pluginCapability,b.dataset.pluginCapabilityType,b.dataset.pluginCapabilityId));
+  root.querySelectorAll?.('[data-marketplace-install]').forEach(b=>b.onclick=()=>safe(()=>installMarketplacePlugin(b.dataset.marketplaceInstall,false,b.dataset.marketplaceForce==='true')));
+  root.querySelectorAll?.('[data-marketplace-install-all]').forEach(b=>b.onclick=()=>safe(()=>installMarketplacePlugin(b.dataset.marketplaceInstallAll,true,b.dataset.marketplaceForce==='true')));
 }
 async function openPluginPanelDirect(pluginId,panelId){
   selectPluginPanelPage(pluginId,panelId);
@@ -381,6 +433,29 @@ async function installPluginFromForm(){
   toast('Plugin installed');
   await loadPlugins();
 }
+async function installMarketplacePlugin(entryId,allTargets=false,force=false){
+  const entry=pluginMarketplaceEntriesList().find(item=>item.id===entryId);
+  if(!entry)throw new Error('Marketplace plugin not found.');
+  const payload={
+    source:entry.source,
+    ref:entry.ref||undefined,
+    enable:true,
+    approvePermissions:entry.approved!==false,
+    force:Boolean(force),
+  };
+  if(!entry.approved&&!confirm('This plugin is not marked as approved. Install without approving permissions?'))return;
+  if(allTargets){
+    const results=await installPluginOnAllTargets(payload);
+    document.getElementById('pluginMarketplaceResult').innerHTML=renderPluginInstallResults(results);
+    toast('Marketplace install completed on '+results.length+' node(s)');
+    await loadPlugins();
+    return;
+  }
+  const result=await api('/api/plugins',{method:'POST',body:JSON.stringify(payload),timeoutMs:30000});
+  document.getElementById('pluginMarketplaceResult').innerHTML=uiItem('Installed '+(result.name||result.id),{badge:{text:result.enabled?'enabled':'disabled',status:result.enabled?'enabled':'disabled'},rows:[['Node',headerTargetName(state.selectedPeer||'local')],['ID',result.id],['Version',result.version],['Permissions',(result.permissions||[]).join(', ')||'none']]});
+  toast('Marketplace plugin installed');
+  await loadPlugins();
+}
 async function validatePluginSource(){
   const source=val('pluginInstallSource');
   if(!source)throw new Error('Local plugin path is required.');
@@ -445,6 +520,7 @@ function renderPluginInstallResults(results){
   '</tbody></table></div>';
 }
 document.getElementById('reloadPluginsBtn').onclick=()=>safe(loadPlugins);
+document.getElementById('reloadPluginMarketplaceBtn').onclick=()=>safe(async()=>{await refreshPluginMarketplace();renderPluginMarketplace();toast('Marketplace refreshed')});
 document.getElementById('reloadPluginCatalogBtn').onclick=()=>safe(loadPlugins);
 const reloadPluginPanelPageBtn=document.getElementById('reloadPluginPanelPageBtn');
 if(reloadPluginPanelPageBtn)reloadPluginPanelPageBtn.onclick=()=>safe(loadPluginPanelPage);

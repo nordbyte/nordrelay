@@ -105,6 +105,7 @@ const WEB_API_CLIENT_ROUTE_RULES = [
   { path: "/api/settings/wizard/test", methods: ['POST'] },
   { path: "/api/plugins", methods: ['GET', 'POST'] },
   { path: "/api/plugins/catalog", methods: ['GET'] },
+  { path: "/api/plugins/marketplace", methods: ['GET'] },
   { path: "/api/plugins/validate", methods: ['POST'] },
   { path: "/api/plugins/scaffold", methods: ['POST'] },
   { re: /^\/api\/plugins\/[^\/]+$/, methods: ['GET', 'DELETE'] },

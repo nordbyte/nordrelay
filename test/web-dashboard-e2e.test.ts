@@ -112,6 +112,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('id="page-plugins"');
     expect(pageSource).toContain('id="page-plugin-panel"');
     expect(pageSource).toContain('data-plugin-tab="installed"');
+    expect(pageSource).toContain('data-plugin-tab="marketplace"');
+    expect(pageSource).toContain('id="pluginMarketplace"');
     expect(pageSource).not.toContain('data-plugin-tab="panels"');
     expect(pageSource).not.toContain('id="pluginPanels"');
     expect(pageSource).not.toContain('id="pluginPanelResult"');
@@ -120,13 +122,17 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('id="createPluginScaffoldBtn"');
     expect(js).toContain("function loadPlugins");
     expect(js).toContain("function renderPluginList");
+    expect(js).toContain("function renderPluginMarketplace");
+    expect(js).toContain("function installMarketplacePlugin");
     expect(js).toContain("function renderPluginPanelNav");
     expect(js).toContain("function loadPluginPanelPage");
     expect(js).toContain("function selectPluginPanelPage");
     expect(js).toContain("function workflowPluginActionOptions");
     expect(js).toContain("/api/plugins/catalog");
+    expect(js).toContain("/api/plugins/marketplace");
     expect(js).toContain("data-plugin-enable");
     expect(contract).toContain('exact("/api/plugins"');
+    expect(contract).toContain('exact("/api/plugins/marketplace"');
     expect(contract).toContain('dynamic("/api/plugins/:id/enable"');
     expect(webAssetManifestSources()).toContain("src/web/ui/client/admin-plugins.ts");
     expect(css).toContain(".plugin-tab");

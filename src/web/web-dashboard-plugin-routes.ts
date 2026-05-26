@@ -3,6 +3,7 @@ import type { URL } from "node:url";
 
 import type { ConnectorConfig } from "../core/config.js";
 import { PluginService, type PluginServiceOptions } from "../plugins/plugin-service.js";
+import { pluginMarketplaceEntries } from "../plugins/plugin-marketplace.js";
 import type { AuthenticatedUser } from "../access/user-management.js";
 import type { AuditEvent } from "../access/audit-log.js";
 import {
@@ -54,6 +55,11 @@ export async function handleDashboardPluginRoute(
   if (req.method === "GET" && url.pathname === "/api/plugins/catalog") {
     assertPluginsWritable(options.config);
     sendJson(res, 200, await plugins.catalog());
+    return true;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/plugins/marketplace") {
+    sendJson(res, 200, { entries: pluginMarketplaceEntries() });
     return true;
   }
 

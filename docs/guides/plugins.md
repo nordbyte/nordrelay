@@ -71,6 +71,7 @@ Plugin ids must be lowercase and may contain letters, numbers, dots, underscores
 Open **Plugins** in the Administration section to:
 
 - inspect installed plugins
+- install official or approved plugins from the Marketplace tab
 - install local or GitHub plugins
 - enable or disable plugins
 - edit plugin settings
@@ -81,7 +82,9 @@ Open **Plugins** in the Administration section to:
 - view invocation metrics, failures, durations, and logs
 - scaffold a new plugin directory
 
-The Plugins page follows the selected node in the WebUI header. Select a peer before installing, enabling, configuring, or invoking plugins on that peer. The install form can also install the same GitHub plugin on all enabled peers. Remote plugin actions require the corresponding peer scopes such as `plugins.read`, `plugins.install`, `plugins.enable`, `plugins.settings.write`, `workflows.run`, and `diagnostics.read`.
+The Plugins page follows the selected node in the WebUI header. Select a peer before installing, enabling, configuring, or invoking plugins on that peer. The Marketplace and Install tabs can also install the same GitHub plugin on all enabled peers. Remote plugin actions require the corresponding peer scopes such as `plugins.read`, `plugins.install`, `plugins.enable`, `plugins.settings.write`, `workflows.run`, and `diagnostics.read`.
+
+Marketplace entries are curated by NordRelay. Official approved entries install with their declared permissions approved and enabled by default. Manual local/GitHub installs remain available in the Install tab for custom or private plugins.
 
 Enabled plugins that expose WebUI panels appear as direct entries in the
 **Plugins** navigation category. Opening one of those entries loads the panel as
