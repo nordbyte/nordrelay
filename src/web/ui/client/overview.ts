@@ -35,7 +35,7 @@ async function loadBootstrap(){
   applyPermissions();
   await refreshChatMirrorPreferenceForBootstrap();
   renderSnapshot(state.snapshot);
-  void refreshRemoteHeaderTargets(local,remoteBootstrapError?null:data).catch(()=>renderHeaderTargetMenu(state.snapshot));
+  void refreshRemoteHeaderTargets(local,remoteBootstrapError?null:data).catch(()=>renderHeaderTargetMenuIfClosed(state.snapshot));
   safe(loadActiveSessions);
   renderSessionControls();
   syncCurrentSessionChatTab({activate:state.currentPage==='chat'&&!state.activeChatTabId});
@@ -73,7 +73,7 @@ function renderFooterUser(auth){
   if(link)link.onclick=event=>safe(openProfileDialog,event);
 }
 function renderSnapshot(s){
-  renderHeaderTargetMenu(s);
+  renderHeaderTargetMenuIfClosed(s);
   const fastValue=s.session.capabilities&&s.session.capabilities.fastMode?(s.session.fastMode?'on':'off'):'n/a';
   const metrics=document.getElementById('metrics');
   metrics.innerHTML=[

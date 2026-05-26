@@ -332,6 +332,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("data-target-sessions-toggle");
     expect(js).toContain("function toggleHeaderTargetSessions");
     expect(js).toContain("function selectHeaderTargetSession");
+    expect(js).toContain("function isHeaderTargetMenuOpen");
+    expect(js).toContain("function renderHeaderTargetMenuIfClosed");
+    expect(headerTargetSource).toContain("if (isHeaderTargetMenuOpen()) return false;");
     expect(js).toContain("HEADER_TARGET_PEER_TIMEOUT_MS");
     expect(js).toContain("function markHeaderTargetError");
     expect(js).toContain("Switch to Local node");
@@ -984,6 +987,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function refreshPeersTable");
     expect(js).toContain("function startPeerTableRefresh");
     expect(js).toContain("function stopPeerTableRefresh");
+    expect(js).toContain("renderHeaderTargetMenuIfClosed(state.snapshot)");
     expect(js).toContain("state.peerRefreshTimer=setInterval");
     expect(js).toContain("state.currentPage!=='peers'");
     expect(js).toContain("function peerVersionHtml");

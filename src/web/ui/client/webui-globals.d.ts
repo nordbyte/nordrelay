@@ -207,6 +207,7 @@ declare function renderChatTabs(): void;
 declare function renderChatWorkspaceLine(): void;
 declare let renderDiscordChannels: (channels?: WebuiChannelRecord[]) => void;
 declare function renderHeaderTargetMenu(snapshot: WebuiSnapshot | null): void;
+declare function renderHeaderTargetMenuIfClosed(snapshot: WebuiSnapshot | null): boolean;
 declare function renderPageTitle(name?: string): void;
 declare function renderApiState(): void;
 declare function renderChatWorkingIndicator(): void;

@@ -18,6 +18,17 @@ function applyHeaderPeerSnapshot(peers: WebuiPeerState | null, local = state.loc
   state.peerTargets = [localTarget].concat(available.map((p: WebuiPeerRecord) => ({ id: p.id, name: p.name || p.id, agents: p.allowedAgents || [], snapshot: null, loading: true, error: '' })));
 }
 
+function isHeaderTargetMenuOpen() {
+  const list = document.querySelector<HTMLElement>('[data-header-target-menu] .header-target-list');
+  return Boolean(list && !list.hidden);
+}
+
+function renderHeaderTargetMenuIfClosed(s = state.snapshot) {
+  if (isHeaderTargetMenuOpen()) return false;
+  renderHeaderTargetMenu(s);
+  return true;
+}
+
 async function loadHeaderTargetCandidates(local: WebuiBootstrap) {
   const localTarget = localHeaderTarget(local);
   if (!can('peers.read')) {
@@ -73,7 +84,7 @@ async function refreshRemoteHeaderTargets(local: WebuiBootstrap, selectedData: W
       markHeaderTargetError(target.id, error);
     }
   }));
-  renderHeaderTargetMenu(state.snapshot);
+  renderHeaderTargetMenuIfClosed(state.snapshot);
 }
 
 function renderHeaderTargetMenu(s = state.snapshot) {
