@@ -9,6 +9,7 @@
         "client/core/api-state.ts",
         "client/core/runtime.ts",
         "client/core/components.ts",
+        "client/plugin-panel-ui.ts",
         "client/core/pagers.ts",
         "client/profile.ts",
         "client/header-target.ts",

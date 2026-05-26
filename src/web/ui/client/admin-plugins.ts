@@ -227,11 +227,12 @@ function renderPluginCapabilityResult(pluginId,type,capabilityId,result){
   const target=document.getElementById('pluginCapabilityResult');
   if(!target)return;
   const output=result.html
-    ? '<iframe class="plugin-panel-frame" sandbox="" srcdoc="'+attr(result.html)+'"></iframe>'
+    ? '<iframe class="plugin-panel-frame" sandbox="allow-scripts" title="'+attr(pluginId+' / '+capabilityId)+'" data-plugin-panel-frame srcdoc="'+attr(pluginPanelDocument(result.html,{pluginId,capabilityId}))+'"></iframe>'
     : '<pre class="log-view">'+esc(JSON.stringify(result.output??result.diagnostics??result.text??result.stdout??result,null,2))+'</pre>';
   target.innerHTML=uiItem(pluginId+' / '+capabilityId,{badge:{text:result.ok?'ok':'failed',status:result.ok?'enabled':'failed'},rows:[['Type',type],['Duration',result.durationMs?result.durationMs+'ms':'-']],body:output});
   const panelTarget=document.getElementById('pluginPanelResult');
   if(panelTarget&&type==='web-panel')panelTarget.innerHTML=target.innerHTML;
+  document.querySelectorAll('iframe.plugin-panel-frame').forEach(frame=>bindPluginPanelFrame(frame));
 }
 function openPluginSettingsDialog(pluginId){
   const plugin=(state.plugins||[]).find(item=>item.id===pluginId);

@@ -120,6 +120,22 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".plugin-tab-heading");
   });
 
+  it("wraps plugin web panels with the shared NordRelay panel UI bridge", () => {
+    const js = dashboardJs();
+    const css = dashboardCss();
+
+    expect(webAssetManifestSources()).toContain("src/web/ui/client/plugin-panel-ui.ts");
+    expect(js).toContain("function pluginPanelDocument");
+    expect(js).toContain("data-nordrelay-plugin-ui");
+    expect(js).toContain("data-nordrelay-plugin-bridge");
+    expect(js).toContain("window.NordRelayPanel");
+    expect(js).toContain('sandbox="allow-scripts"');
+    expect(js).toContain("data-plugin-panel-frame");
+    expect(js).toContain("function syncPluginPanelThemes");
+    expect(js).toContain("syncPluginPanelThemes?.()");
+    expect(css).toContain(".plugin-panel-frame{width:100%");
+  });
+
   it("includes workflow templates and workflow runs in the WebUI", () => {
     const js = dashboardJs();
     const css = dashboardCss();

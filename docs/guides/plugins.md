@@ -135,6 +135,31 @@ runPlugin(async ({ input, host }) => {
 });
 ```
 
+For WebUI panels, return an HTML fragment in `html`. NordRelay wraps the
+fragment in an isolated iframe, injects the current light/dark theme, and
+provides shared WebUI classes for panels, section headers, tabs, tables, badges,
+chips, metrics, progress bars, buttons, inputs, empty/loading/error states,
+code/log blocks, diffs, and media previews. Use the SDK `ui` helpers where
+possible:
+
+```js
+import { ok, runWebPanel, ui } from "@nordbyte/nordrelay-plugin-sdk";
+
+runWebPanel(async () => {
+  return ok(undefined, {
+    html: ui.panel(
+      "Status",
+      ui.metric("Health", "ok") +
+        ui.table([{ key: "name", label: "Name" }], [{ name: "Local node" }])
+    )
+  });
+});
+```
+
+Panel scripts can call `window.NordRelayPanel.toast(message)`,
+`window.NordRelayPanel.copyText(value, label)`, and
+`window.NordRelayPanel.resize()` from inside the iframe.
+
 ## Runtime request
 
 NordRelay invokes the configured `entry` with a sanitized environment, the plugin data directory as working directory, and one JSON request on stdin:
