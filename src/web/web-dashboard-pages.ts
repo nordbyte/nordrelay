@@ -609,18 +609,9 @@ ${faviconLinks}
       </section>
 
       <section class="page" id="page-plugin-panel">
-        <div class="panel plugin-panel-page">
-          <div class="section-header plugin-panel-page-header">
-            <div>
-              <h2 id="pluginPanelPageTitle">Plugin panel</h2>
-              <p id="pluginPanelPageSubtitle"></p>
-            </div>
-            <div class="row plugin-heading-actions">
-              <button id="reloadPluginPanelPageBtn" class="secondary">Reload panel</button>
-            </div>
-          </div>
+        <div class="plugin-panel-page">
           <div id="pluginPanelPageInput" class="callout muted" hidden></div>
-          <div id="pluginPanelPageResult" class="list"></div>
+          <div id="pluginPanelPageResult"></div>
         </div>
       </section>
 
