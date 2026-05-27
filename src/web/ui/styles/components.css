@@ -385,6 +385,7 @@
 .plugin-panel-surface .monitor-comparison-panel>.section-header,.plugin-panel-surface .monitor-node-panel>.section-header{align-items:center;margin:0 -16px 8px;padding:0 16px}
 .plugin-panel-surface .monitor-comparison-panel>.section-header h2,.plugin-panel-surface .monitor-node-panel>.section-header h2{margin:0;line-height:1.25}
 .plugin-panel-surface .monitor-comparison-panel{padding-top:14px}
+.plugin-panel-surface [data-range-button].active{background:var(--accent);border-color:var(--accent);color:white}
 .plugin-panel-surface [data-monitor-node-row]{cursor:pointer}
 .plugin-panel-surface [data-monitor-node-row].selected{background:color-mix(in srgb,var(--success,#1d8a5b) 10%,transparent)}
 .plugin-panel-surface .monitor-node-select{justify-content:flex-start;width:auto;min-height:0;padding:0;border:0;background:transparent;color:var(--link);font:inherit;font-weight:700;text-align:left}

@@ -312,13 +312,20 @@ async function runPluginPanelPage(item,input={}){
   const result=await invokePluginPanel(item.pluginId,item.panelId,item,input);
   renderPluginPanelPageResult(item,result,input);
 }
-async function reloadPluginPanelSurface(_surface,input={}){
+async function reloadPluginPanelSurface(surface,input={}){
   const selected=state.pluginPanelPage;
   if(!selected?.pluginId||!selected?.panelId)return;
   const item=findPluginCapability(selected.pluginId,'web-panel',selected.panelId);
   if(!item)return;
   const defaults=pluginInputDefaultsFromSchema(item.inputSchema||{});
-  await runPluginPanelPage(item,{...defaults,...(input&&typeof input==='object'?input:{})});
+  const nextInput={...defaults,...(input&&typeof input==='object'?input:{})};
+  const result=await invokePluginPanel(item.pluginId,item.panelId,item,nextInput);
+  const target=surface instanceof HTMLElement?surface:null;
+  if(target&&target.isConnected){
+    renderPluginPanelSurfaceResult(target,item,result,nextInput);
+    return;
+  }
+  renderPluginPanelPageResult(item,result,nextInput);
 }
 (globalThis as WebuiRecord).reloadPluginPanelSurface=reloadPluginPanelSurface;
 function renderPluginPanelPageResult(item,result,input={}){
@@ -332,6 +339,20 @@ function renderPluginPanelPageResult(item,result,input={}){
     ? pluginPanelInlineHtml(extracted.html,pluginPanelTitle(item),{pluginId:item.pluginId,capabilityId:item.panelId},'plugin-panel-page-surface')
     : '<pre class="log-view">'+esc(JSON.stringify(result.output??result.diagnostics??result.text??result.stdout??result,null,2))+'</pre>';
   resultEl.querySelectorAll<HTMLElement>('[data-plugin-panel-surface]').forEach(surface=>bindPluginPanelSurface(surface,item,renderResult,input));
+}
+function renderPluginPanelSurfaceResult(surface,item,result,input={}){
+  const html=pluginPanelHtmlFromResult(result);
+  const extracted=html?pluginPanelExtractExecutableHtml(html):null;
+  const renderResult={...result,__pluginPanelScripts:extracted?.scripts||[],__pluginPanelStyles:extracted?.styles||[]};
+  cleanupPluginPanelSurface(surface);
+  surface.removeAttribute('data-plugin-panel-bound');
+  surface.dataset.pluginId=item.pluginId||'';
+  surface.dataset.pluginPanelId=item.panelId||'';
+  surface.dataset.pluginTitle=pluginPanelTitle(item);
+  surface.innerHTML=extracted
+    ? extracted.html
+    : '<pre class="log-view">'+esc(JSON.stringify(result.output??result.diagnostics??result.text??result.stdout??result,null,2))+'</pre>';
+  if(extracted)bindPluginPanelSurface(surface,item,renderResult,input);
 }
 function pluginPanelHtmlFromResult(result){
   if(result?.panel&&typeof result.panel==='object'&&!Array.isArray(result.panel)){

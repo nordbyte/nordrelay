@@ -92,6 +92,7 @@ declare function connectEvents(): void;
 declare function copyText(value: string, label?: string): void;
 declare function currentChatWorkingSession(): WebuiRecord | null;
 declare function cssEscape(value: string): string;
+declare function cleanupPluginPanelSurface(surface: HTMLElement | null): void;
 declare function cleanupPluginPanelSurfaces(root?: ParentNode): void;
 declare function csv(value: unknown): string;
 declare function csvToList(value: string): string[];

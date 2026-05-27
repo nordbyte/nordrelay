@@ -6,7 +6,7 @@
 *::-webkit-scrollbar-thumb{background:var(--scrollbar-thumb);border:2px solid var(--scrollbar-track);border-radius:999px}
 *::-webkit-scrollbar-thumb:hover{background:var(--scrollbar-thumb-hover)}
 *::-webkit-scrollbar-corner{background:var(--scrollbar-track)}
-html{font-size:16px;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+html{font-size:14px;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif;line-height:1.4;font-synthesis:none}
 .app{min-height:100vh;display:grid;grid-template-columns:260px 1fr}
 .sidebar{position:sticky;top:0;height:100vh;background:var(--sidebar);color:var(--sidebar-text);display:flex;flex-direction:column;gap:0;overflow:hidden}
