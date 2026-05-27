@@ -113,7 +113,8 @@ code,.inline-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospa
 
 const NORDRELAY_PLUGIN_PANEL_BRIDGE_JS = `
 (function(){
-  function post(type,payload){try{parent.postMessage({source:'nordrelay-plugin-panel',type:type,payload:payload||{}},'*')}catch{}}
+  var panelToken=__NORDRELAY_PLUGIN_PANEL_TOKEN__;
+  function post(type,payload){try{parent.postMessage({source:'nordrelay-plugin-panel',token:panelToken,type:type,payload:payload||{}},'*')}catch{}}
   function height(){return Math.max(document.documentElement.scrollHeight||0,document.body?document.body.scrollHeight:0,320)}
   function sendResize(){post('resize',{height:height()})}
   window.NordRelayPanel={
@@ -147,7 +148,12 @@ function pluginPanelNonceAttr(){
   return nonce?' nonce="'+attr(nonce)+'"':'';
 }
 function pluginPanelStyleTag(){return '<style data-nordrelay-plugin-ui'+pluginPanelNonceAttr()+'>'+NORDRELAY_PLUGIN_PANEL_CSS+'</style>'}
-function pluginPanelBridgeTag(){return '<script data-nordrelay-plugin-bridge'+pluginPanelNonceAttr()+'>'+NORDRELAY_PLUGIN_PANEL_BRIDGE_JS.replace(/<\/script/gi,'<\\/script')+'</script>'}
+function pluginPanelBridgeTag(panelToken=''){
+  const script=NORDRELAY_PLUGIN_PANEL_BRIDGE_JS
+    .replace('__NORDRELAY_PLUGIN_PANEL_TOKEN__',JSON.stringify(String(panelToken||'')))
+    .replace(/<\/script/gi,'<\\/script');
+  return '<script data-nordrelay-plugin-bridge'+pluginPanelNonceAttr()+'>'+script+'</script>';
+}
 function pluginPanelNonceInlineTags(html){
   const nonce=pluginPanelNonceAttr();
   if(!nonce)return String(html||'');
@@ -165,7 +171,7 @@ function pluginPanelBodyTag(attrs=''){
 function pluginPanelDocument(html,options:WebuiRecord={}){
   const raw=pluginPanelNonceInlineTags(html);
   const theme=String(options.theme||currentPluginPanelTheme());
-  const headExtra='<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+pluginPanelStyleTag()+pluginPanelBridgeTag();
+  const headExtra='<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+pluginPanelStyleTag()+pluginPanelBridgeTag(String(options.panelToken||''));
   if(/<!doctype|<html[\s>]/i.test(raw)){
     let doc=raw;
     if(/<html[\s>]/i.test(doc))doc=doc.replace(/<html([^>]*)>/i,(_match,attrs)=>'<html'+attrs+' data-theme="'+attr(theme)+'">');
@@ -179,9 +185,15 @@ function pluginPanelDocument(html,options:WebuiRecord={}){
   return '<!doctype html><html data-theme="'+attr(theme)+'"><head>'+headExtra+'</head><body class="nordrelay-plugin-panel">'+raw+'</body></html>';
 }
 function pluginPanelFrameHtml(html,title,options:WebuiRecord={},className=''){
-  const documentHtml=pluginPanelDocument(html,options);
+  const panelToken=createPluginPanelToken();
+  const documentHtml=pluginPanelDocument(html,{...options,panelToken});
   const classes=['plugin-panel-frame',String(className||'').trim()].filter(Boolean).join(' ');
-  return '<iframe class="'+attr(classes)+'" sandbox="allow-scripts" title="'+attr(title)+'" data-plugin-panel-frame srcdoc="'+attr(documentHtml)+'"></iframe>';
+  return '<iframe class="'+attr(classes)+'" sandbox="allow-scripts" title="'+attr(title)+'" data-plugin-panel-frame data-plugin-panel-token="'+attr(panelToken)+'" srcdoc="'+attr(documentHtml)+'"></iframe>';
+}
+function createPluginPanelToken(){
+  const cryptoApi=(globalThis as WebuiRecord).crypto as WebuiRecord|undefined;
+  if(cryptoApi&&typeof cryptoApi.randomUUID==='function')return String(cryptoApi.randomUUID());
+  return 'panel-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
 }
 function revokePluginPanelUrls(_root:ParentNode=document){}
 function asPluginPanelFrame(frame):HTMLIFrameElement|null{
@@ -220,19 +232,29 @@ function isPluginPanelWindow(source){
 function pluginPanelFrameForWindow(source){
   return Array.from(document.querySelectorAll('iframe.plugin-panel-frame')).map(asPluginPanelFrame).find(item=>item?.contentWindow===source)||null;
 }
+function pluginPanelFrameForMessage(event:MessageEvent){
+  const data=event.data||{};
+  const token=String(data.token||'');
+  if(token){
+    const frame=Array.from(document.querySelectorAll('iframe.plugin-panel-frame'))
+      .map(asPluginPanelFrame)
+      .find(item=>item?.dataset.pluginPanelToken===token);
+    if(frame)return frame;
+  }
+  return pluginPanelFrameForWindow(event.source);
+}
 window.addEventListener('message',event=>{
   const data=event.data||{};
-  if(data.source!=='nordrelay-plugin-panel'||!isPluginPanelWindow(event.source))return;
+  const frame=pluginPanelFrameForMessage(event);
+  if(data.source!=='nordrelay-plugin-panel'||!frame)return;
   const payload=data.payload||{};
   if(data.type==='resize'){
-    const frame=pluginPanelFrameForWindow(event.source);
-    if(frame)applyPluginPanelFrameHeight(frame,Number(payload.height)||0);
+    applyPluginPanelFrameHeight(frame,Number(payload.height)||0);
   }else if(data.type==='toast'){
     toast(String(payload.message||'Plugin panel'));
   }else if(data.type==='copy'){
     copyText(String(payload.value||''),String(payload.label||'Copied'));
   }else if(data.type==='reload'){
-    const frame=pluginPanelFrameForWindow(event.source);
     const reload=(globalThis as WebuiRecord).reloadPluginPanelFrame;
     if(frame&&typeof reload==='function')void reload(frame,payload.input&&typeof payload.input==='object'?payload.input:{});
   }
