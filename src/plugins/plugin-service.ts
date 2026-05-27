@@ -779,10 +779,22 @@ function parsePluginResultRecord(value: unknown, depth = 0): Record<string, unkn
     try {
       return parsePluginResultRecord(JSON.parse(text) as unknown, depth + 1);
     } catch {
-      return undefined;
+      const unescaped = parseEscapedPluginResultString(text);
+      return unescaped === undefined ? undefined : parsePluginResultRecord(unescaped, depth + 1);
     }
   }
   return recordField(value);
+}
+
+function parseEscapedPluginResultString(text: string): string | undefined {
+  if (!/^[{\[]/.test(text) || !text.includes("\\\"")) return undefined;
+  const normalized = text.replace(/\\"/g, "\"");
+  try {
+    JSON.parse(normalized);
+    return normalized;
+  } catch {
+    return undefined;
+  }
 }
 
 function pluginResultLike(value: Record<string, unknown> | undefined): value is Record<string, unknown> {

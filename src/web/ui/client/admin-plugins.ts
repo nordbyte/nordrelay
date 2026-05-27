@@ -354,10 +354,21 @@ function pluginPanelJsonObject(value,depth=0){
     try{
       return pluginPanelJsonObject(JSON.parse(text),depth+1);
     }catch{
-      return null;
+      const unescaped=pluginPanelEscapedJsonString(text);
+      return unescaped===null?null:pluginPanelJsonObject(unescaped,depth+1);
     }
   }
   return typeof value==='object'&&!Array.isArray(value)?value:null;
+}
+function pluginPanelEscapedJsonString(text){
+  if(!/^[{\[]/.test(text)||!text.includes('\\"'))return null;
+  const normalized=text.replace(/\\"/g,'"');
+  try{
+    JSON.parse(normalized);
+    return normalized;
+  }catch{
+    return null;
+  }
 }
 function pluginPanelRawHtml(value){
   if(typeof value!=='string')return '';

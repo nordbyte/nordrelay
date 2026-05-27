@@ -77,6 +77,31 @@ async function createStringifiedPanelPluginFixture(): Promise<string> {
   return dir;
 }
 
+async function createEscapedPanelPluginFixture(): Promise<string> {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-escaped-panel-"));
+  await writeFile(path.join(dir, "nordrelay.plugin.json"), JSON.stringify({
+    id: "escaped-panel-plugin",
+    name: "Escaped Panel Plugin",
+    version: "0.1.0",
+    description: "Test escaped panel output",
+    entry: "index.js",
+    capabilities: {
+      webPanels: [
+        { id: "panel", title: "Panel" },
+      ],
+    },
+  }, null, 2));
+  await writeFile(path.join(dir, "index.js"), [
+    "process.stdin.resume();",
+    "process.stdin.on('end',()=>{",
+    "  const nested = { ok: true, html: '<strong>Escaped Panel</strong>' };",
+    "  const escaped = JSON.stringify(nested).replace(/\\\"/g, '\\\\\\\"');",
+    "  process.stdout.write(JSON.stringify({ ok: true, output: escaped })+'\\n');",
+    "});",
+  ].join("\n"));
+  return dir;
+}
+
 describe("plugin system", () => {
   it("exposes official marketplace entries with installable GitHub sources", () => {
     const entries = pluginMarketplaceEntries();
@@ -187,6 +212,18 @@ describe("plugin system", () => {
     expect(panel.html).toBe("<strong>Nested Panel</strong>");
     expect(panel.variables).toEqual({ panel: "ok" });
     expect(panel.diagnostics).toEqual({ nested: true });
+  });
+
+  it("promotes escaped plugin result output for web panels", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-home-"));
+    const fixture = await createEscapedPanelPluginFixture();
+    const service = new PluginService(home);
+    await service.install({ source: fixture, enable: true, approvePermissions: true });
+
+    const panel = await service.invokeWebPanel("escaped-panel-plugin", "panel", {});
+
+    expect(panel.ok).toBe(true);
+    expect(panel.html).toBe("<strong>Escaped Panel</strong>");
   });
 
   it("blocks executable capabilities when plugins are disabled", async () => {
