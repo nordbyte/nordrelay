@@ -116,6 +116,7 @@ declare function toggleNotifications(): Promise<void>;
 declare function toggleCompletionSound(): Promise<void>;
 declare function esc(value: unknown): string;
 declare function fmtAge(value: number): string;
+declare function finishBootstrapNavigation(): Promise<void>;
 declare function headerTargetRequest(peerId: string, requestPath: string, options?: WebuiRecord): Promise<WebuiRecord>;
 declare function shouldRefreshActiveSessions(): boolean;
 declare function ensureChatTabs(): WebuiChatTab[];

@@ -15,6 +15,20 @@ function normalizedSource(file: string): string {
 }
 
 describe("web dashboard browser-flow assets", () => {
+  it("defers restored page reloads until bootstrap permissions are available", () => {
+    const runtimeSource = normalizedSource("src/web/ui/client/core/runtime.ts");
+    const adminCoreSource = normalizedSource("src/web/ui/client/admin-core.ts");
+    const stateTypes = normalizedSource("src/web/ui/client/core/webui-types.d.ts");
+
+    expect(runtimeSource).toContain("bootstrapReady:false");
+    expect(runtimeSource).toContain("pendingPageReload:null");
+    expect(runtimeSource).toContain("if(!state.bootstrapReady){state.pendingPageReload=name;return}");
+    expect(runtimeSource).toContain("async function finishBootstrapNavigation()");
+    expect(adminCoreSource).toContain("await finishBootstrapNavigation();connectEvents()");
+    expect(stateTypes).toContain("bootstrapReady: boolean;");
+    expect(stateTypes).toContain("pendingPageReload: string | null;");
+  });
+
   it("includes the agent feature matrix and dedicated agent update log flow", () => {
     const css = dashboardCss();
     const js = dashboardJs();

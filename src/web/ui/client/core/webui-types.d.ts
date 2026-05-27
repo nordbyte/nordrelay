@@ -456,6 +456,8 @@ interface DashboardState {
   csrfToken: string | null;
   apiStatus: WebuiApiStatusState;
   authReloading: boolean;
+  bootstrapReady: boolean;
+  pendingPageReload: string | null;
   permissions: string[];
   settings: WebuiSettingRecord[];
   settingsDraft: Record<string, string>;
