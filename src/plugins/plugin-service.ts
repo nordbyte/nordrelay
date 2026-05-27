@@ -39,6 +39,7 @@ export interface PluginCatalog {
     permission?: string;
     inputSchema?: Record<string, unknown>;
     aggregateCommand?: string;
+    allowClientScript?: boolean;
     placement?: "plugins" | "monitor" | "nav";
     timeoutMs?: number;
   }>;
@@ -219,6 +220,7 @@ export class PluginService {
           permission: panel.permission,
           inputSchema: panel.inputSchema,
           aggregateCommand: panel.aggregateCommand,
+          allowClientScript: Boolean(panel.allowClientScript),
           placement: panel.placement,
           timeoutMs: panel.timeoutMs,
         });
@@ -741,16 +743,27 @@ function normalizePluginResult(result: PluginInvokeResult): PluginInvokeResult {
   const stdout = parsePluginResultRecord(result.stdout);
   const promoted = pluginResultLike(output) ? output : pluginResultLike(stdout) ? stdout : undefined;
   const fields = promoted ?? output;
+  const panel = normalizePluginPanel(result.panel ?? recordField(fields?.panel));
   return {
     ...result,
     ok: typeof promoted?.ok === "boolean" ? promoted.ok : result.ok,
     output: promoted && "output" in promoted ? promoted.output : result.output,
     variables: normalizeVariables(result.variables ?? recordField(fields?.variables)),
+    panel,
     html: extractPluginHtml(result.html) ?? extractPluginHtml(fields?.html),
     text: stringField(result.text ?? fields?.text),
     artifacts: Array.isArray(result.artifacts) ? result.artifacts : Array.isArray(fields?.artifacts) ? fields.artifacts : undefined,
     diagnostics: result.diagnostics ?? fields?.diagnostics,
   };
+}
+
+function normalizePluginPanel(value: unknown): PluginInvokeResult["panel"] | undefined {
+  const record = parsePluginResultRecord(value);
+  if (!record) return undefined;
+  const html = extractPluginHtml(record.html);
+  const script = stringField(record.script);
+  const styles = stringField(record.styles);
+  return html || script || styles ? { html, script, styles } : undefined;
 }
 
 function mergeOutputVariables(result: PluginInvokeResult, mapping?: Record<string, string>): Record<string, string> | undefined {

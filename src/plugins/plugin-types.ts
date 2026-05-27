@@ -57,6 +57,7 @@ export interface PluginWebPanelManifest {
   permission?: string;
   inputSchema?: Record<string, unknown>;
   aggregateCommand?: string;
+  allowClientScript?: boolean;
   placement?: "plugins" | "monitor" | "nav";
   timeoutMs?: number;
 }
@@ -233,6 +234,11 @@ export interface PluginInvokeResult {
   stdout?: string;
   stderr?: string;
   variables?: Record<string, string>;
+  panel?: {
+    html?: string;
+    script?: string;
+    styles?: string;
+  };
   html?: string;
   text?: string;
   artifacts?: unknown[];

@@ -370,5 +370,30 @@
 #page-plugin-panel.active{display:flex;flex:1;flex-direction:column;min-height:calc(100dvh - var(--dashboard-header-height) - 56px)}
 .plugin-panel-page{display:flex;flex:1;flex-direction:column;width:100%;min-width:0;min-height:0}
 .plugin-panel-page #pluginPanelPageResult{display:flex;flex:1;flex-direction:column;width:100%;min-width:0;min-height:0}
-.plugin-panel-frame{width:100%;min-height:320px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface)}
-.plugin-panel-page-frame{flex:1;min-height:calc(100dvh - var(--dashboard-header-height) - 100px);border:0;border-radius:0;background:transparent}
+.plugin-panel-surface{width:100%;min-height:320px;color:var(--text)}
+.plugin-panel-page-surface{flex:1;min-height:calc(100dvh - var(--dashboard-header-height) - 100px)}
+.plugin-panel-surface .compact-panel{padding:12px}
+.plugin-panel-surface .mini-control{display:flex;align-items:center;gap:6px}
+.plugin-panel-surface .metric-label{font-size:12px;text-transform:uppercase;color:var(--muted)}
+.plugin-panel-surface .metric-value{font-size:18px;font-weight:750;margin-top:4px;overflow:hidden;text-overflow:ellipsis}
+.plugin-panel-surface .metric-row{display:grid;grid-template-columns:minmax(110px,0.65fr) minmax(0,1fr);gap:8px;align-items:center;margin:6px 0;font-size:13px}
+.plugin-panel-surface .metric-kv-number{font-variant-numeric:tabular-nums;font-weight:700}
+.plugin-panel-surface .progress-svg{display:block;width:100%;height:7px;border-radius:999px;overflow:hidden}
+.plugin-panel-surface .progress-svg .progress-track{fill:color-mix(in srgb,var(--border) 50%,transparent)}
+.plugin-panel-surface .progress-svg .progress-fill{fill:var(--success)}
+.plugin-panel-surface .progress-svg.warn .progress-fill{fill:var(--warn-text)}
+.plugin-panel-surface .progress-svg.error .progress-fill{fill:var(--danger)}
+.plugin-panel-surface .sparkline{display:inline-block;vertical-align:middle;margin-left:8px}
+.plugin-panel-surface .metrics-grid+.metrics-chart-stack{margin-top:16px}
+.plugin-panel-surface .chart-wrap{position:relative;width:100%;min-height:180px}
+.plugin-panel-surface .chart-axis-label{position:absolute;left:4px;z-index:1;pointer-events:none;color:var(--muted);font-size:11px;line-height:1.2;letter-spacing:0;font-family:inherit}
+.plugin-panel-surface .chart-axis-label-top{top:4px}
+.plugin-panel-surface .chart-axis-label-bottom{bottom:26px}
+.plugin-panel-surface .chart-hit{cursor:crosshair}
+.plugin-panel-surface .chart-hit:hover{fill:color-mix(in srgb,var(--accent) 12%,transparent)!important}
+.plugin-panel-surface .chart-tooltip{position:absolute;left:0;top:0;z-index:20;max-width:280px;white-space:pre-line;pointer-events:none;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);box-shadow:var(--shadow);font-size:12px;line-height:1.35;letter-spacing:0;font-family:inherit}
+.plugin-panel-surface .chart-tooltip[hidden]{display:none}
+.plugin-panel-surface .chart-tooltip-note{font-size:12px;color:var(--muted)}
+.plugin-panel-surface .chart-legend{align-items:center;gap:6px}
+.plugin-panel-surface .chart-legend-item{display:inline-flex;align-items:center;gap:6px;font-size:12px;line-height:1.25;font-family:inherit;letter-spacing:0;transform:none;font-stretch:normal}
+.plugin-panel-surface .chart-legend-dot{display:inline-block;width:9px;height:9px;min-width:9px;color:inherit}

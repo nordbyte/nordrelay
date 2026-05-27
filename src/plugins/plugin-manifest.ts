@@ -169,6 +169,9 @@ function validateCapabilityArray(
     if (item.timeoutMs !== undefined && (!Number.isFinite(Number(item.timeoutMs)) || Number(item.timeoutMs) < 100)) {
       issues.push({ level: "error", message: `capabilities.${key}[${index}].timeoutMs must be at least 100ms when set.` });
     }
+    if (item.allowClientScript !== undefined && typeof item.allowClientScript !== "boolean") {
+      issues.push({ level: "error", message: `capabilities.${key}[${index}].allowClientScript must be a boolean when set.` });
+    }
   });
 }
 

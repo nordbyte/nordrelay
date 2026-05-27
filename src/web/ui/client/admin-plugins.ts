@@ -156,6 +156,7 @@ function pluginRow(plugin){
 function pluginCell(label,html,cls=''){return '<td data-label="'+attr(label)+'"'+(cls?' class="'+attr(cls)+'"':'')+'>'+html+'</td>'}
 function pluginCapabilitiesSummary(plugin){
   const c=plugin.capabilities||{};
+  const clientScripts=(Array.isArray(c.webPanels)?c.webPanels:[]).filter(panel=>panel.allowClientScript).length;
   const parts=[
     ['commands',c.commands?.length],
     ['workflow actions',c.workflowActions?.length],
@@ -166,6 +167,7 @@ function pluginCapabilitiesSummary(plugin){
     ['collectors',c.collectors?.length],
   ].filter(([,count])=>Number(count)>0).map(([label,count])=>count+' '+label);
   if(c.diagnostics)parts.push('diagnostics');
+  if(clientScripts)parts.push(clientScripts+' trusted UI script'+(clientScripts===1?'':'s'));
   return parts.join(', ')||'none';
 }
 function pluginMetricsSummary(plugin){
@@ -222,7 +224,7 @@ function renderPluginCatalog(){
   if(!target)return;
   const sections=[
     pluginCatalogSection('Workflow actions',catalog.workflowActions||[],item=>[item.pluginId,item.actionId,item.title,item.description||''],'workflow-action'),
-    pluginCatalogSection('Web panels',catalog.webPanels||[],item=>[item.pluginId,item.panelId,item.title,item.path||item.permission||''],'web-panel'),
+    pluginCatalogSection('Web panels',catalog.webPanels||[],item=>[item.pluginId,item.panelId,item.title,[item.path||item.permission||'',item.allowClientScript?'client script allowed':'static panel'].filter(Boolean).join(' · ')],'web-panel'),
     pluginCatalogSection('Commands',catalog.commands||[],item=>[item.pluginId,item.name,item.title||item.description||'',item.permission||''],'command'),
     pluginCatalogSection('Agent adapters',catalog.agentAdapters||[],item=>[item.pluginId,item.id,item.title,item.description||'']),
     pluginCatalogSection('Chat adapters',catalog.chatAdapters||[],item=>[item.pluginId,item.id,item.title,item.description||'']),
@@ -308,9 +310,9 @@ async function runPluginPanelPage(item,input={}){
   const resultEl=document.getElementById('pluginPanelPageResult');
   if(resultEl)resultEl.innerHTML=loadingHtml('Loading plugin panel...');
   const result=await invokePluginPanel(item.pluginId,item.panelId,item,input);
-  renderPluginPanelPageResult(item,result);
+  renderPluginPanelPageResult(item,result,input);
 }
-async function reloadPluginPanelFrame(_frame,input={}){
+async function reloadPluginPanelSurface(_surface,input={}){
   const selected=state.pluginPanelPage;
   if(!selected?.pluginId||!selected?.panelId)return;
   const item=findPluginCapability(selected.pluginId,'web-panel',selected.panelId);
@@ -318,18 +320,24 @@ async function reloadPluginPanelFrame(_frame,input={}){
   const defaults=pluginInputDefaultsFromSchema(item.inputSchema||{});
   await runPluginPanelPage(item,{...defaults,...(input&&typeof input==='object'?input:{})});
 }
-(globalThis as WebuiRecord).reloadPluginPanelFrame=reloadPluginPanelFrame;
-function renderPluginPanelPageResult(item,result){
+(globalThis as WebuiRecord).reloadPluginPanelSurface=reloadPluginPanelSurface;
+function renderPluginPanelPageResult(item,result,input={}){
   const resultEl=document.getElementById('pluginPanelPageResult');
   if(!resultEl)return;
-  revokePluginPanelUrls(resultEl);
+  cleanupPluginPanelSurfaces(resultEl);
   const html=pluginPanelHtmlFromResult(result);
-  resultEl.innerHTML=html
-    ? pluginPanelFrameHtml(html,pluginPanelTitle(item),{pluginId:item.pluginId,capabilityId:item.panelId},'plugin-panel-page-frame')
+  const extracted=html?pluginPanelExtractExecutableHtml(html):null;
+  const renderResult={...result,__pluginPanelScripts:extracted?.scripts||[],__pluginPanelStyles:extracted?.styles||[]};
+  resultEl.innerHTML=extracted
+    ? pluginPanelInlineHtml(extracted.html,pluginPanelTitle(item),{pluginId:item.pluginId,capabilityId:item.panelId},'plugin-panel-page-surface')
     : '<pre class="log-view">'+esc(JSON.stringify(result.output??result.diagnostics??result.text??result.stdout??result,null,2))+'</pre>';
-  resultEl.querySelectorAll('iframe.plugin-panel-frame').forEach(frame=>bindPluginPanelFrame(frame));
+  resultEl.querySelectorAll<HTMLElement>('[data-plugin-panel-surface]').forEach(surface=>bindPluginPanelSurface(surface,item,renderResult,input));
 }
 function pluginPanelHtmlFromResult(result){
+  if(result?.panel&&typeof result.panel==='object'&&!Array.isArray(result.panel)){
+    const html=pluginPanelRawHtml(result.panel.html)||pluginPanelLooseHtml(result.panel.html);
+    if(html)return html;
+  }
   const looseHtml=pluginPanelLooseHtml(result);
   if(looseHtml)return looseHtml;
   const normalized=pluginPanelJsonObject(result);
@@ -493,15 +501,19 @@ function parseJsonObject(text,label){
 function renderPluginCapabilityResult(pluginId,type,capabilityId,result){
   const target=document.getElementById('pluginCapabilityResult');
   if(!target)return;
-  revokePluginPanelUrls(target);
+  cleanupPluginPanelSurfaces(target);
   const html=pluginPanelHtmlFromResult(result);
+  const item=findPluginCapability(pluginId,type,capabilityId)||{};
+  const extracted=html?pluginPanelExtractExecutableHtml(html):null;
+  const renderResult={...result,__pluginPanelScripts:extracted?.scripts||[],__pluginPanelStyles:extracted?.styles||[]};
   const output=html
-    ? pluginPanelFrameHtml(html,pluginId+' / '+capabilityId,{pluginId,capabilityId})
+    ? pluginPanelInlineHtml(extracted?.html||html,pluginId+' / '+capabilityId,{pluginId,capabilityId})
     : '<pre class="log-view">'+esc(JSON.stringify(result.output??result.diagnostics??result.text??result.stdout??result,null,2))+'</pre>';
   target.innerHTML=uiItem(pluginId+' / '+capabilityId,{badge:{text:result.ok?'ok':'failed',status:result.ok?'enabled':'failed'},rows:[['Type',type],['Duration',result.durationMs?result.durationMs+'ms':'-']],body:output});
   const panelTarget=document.getElementById('pluginPanelResult');
   if(panelTarget&&type==='web-panel')panelTarget.innerHTML=target.innerHTML;
-  document.querySelectorAll('iframe.plugin-panel-frame').forEach(frame=>bindPluginPanelFrame(frame));
+  target.querySelectorAll<HTMLElement>('[data-plugin-panel-surface]').forEach(surface=>bindPluginPanelSurface(surface,item,renderResult,{}));
+  if(panelTarget&&type==='web-panel')panelTarget.querySelectorAll<HTMLElement>('[data-plugin-panel-surface]').forEach(surface=>bindPluginPanelSurface(surface,item,renderResult,{}));
 }
 function openPluginSettingsDialog(pluginId){
   const plugin=(state.plugins||[]).find(item=>item.id===pluginId);

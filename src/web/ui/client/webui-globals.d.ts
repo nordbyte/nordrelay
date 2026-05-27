@@ -44,6 +44,7 @@ interface HTMLElement {
 
 interface Window {
   webkitAudioContext?: typeof AudioContext;
+  NordRelayPluginPanels?: WebuiRecord;
 }
 
 declare const state: DashboardState;
@@ -78,7 +79,7 @@ declare function bindSlackChannelButtons(root?: Element | Document): void;
 declare function bindSlackUserButtons(root?: Element | Document): void;
 declare function bindTableActionMenus(root?: Document | Element): void;
 declare function bindUiCopyButtons(root?: Element | Document): void;
-declare function bindPluginPanelFrame(frame: Element): void;
+declare function bindPluginPanelSurface(surface: HTMLElement, item: WebuiRecord, result: WebuiRecord, input?: WebuiRecord): void;
 declare function bindUiTraceButtons(root?: Element | Document): void;
 declare let bindUserButtons: (root?: Element | Document) => void;
 declare function can(permission: string): boolean;
@@ -91,6 +92,7 @@ declare function connectEvents(): void;
 declare function copyText(value: string, label?: string): void;
 declare function currentChatWorkingSession(): WebuiRecord | null;
 declare function cssEscape(value: string): string;
+declare function cleanupPluginPanelSurfaces(root?: ParentNode): void;
 declare function csv(value: unknown): string;
 declare function csvToList(value: string): string[];
 declare function disabledAttr(permission?: string): string;
@@ -143,6 +145,8 @@ declare function isCliRunningStatus(value: unknown): boolean;
 declare function isMonitorTabActive(tab?: string): boolean;
 declare function jobStatusClass(status: string): string;
 declare function loadingHtml(text: string): string;
+declare function pluginPanelExtractExecutableHtml(html: string): { html: string; scripts: WebuiRecord[]; styles: WebuiRecord[] };
+declare function pluginPanelInlineHtml(html: string, title: string, options?: WebuiRecord, className?: string): string;
 declare function loadAccess(): Promise<void>;
 declare function loadActiveSessions(options?: { silent?: boolean; fresh?: boolean }): Promise<void>;
 declare function loadActivity(reset?: boolean): Promise<void>;
@@ -192,10 +196,7 @@ declare function openUserDialog(value?: WebuiUserRecord): void;
 declare function page(name: string, options?: { persist?: boolean }): void;
 declare function populateNewSessionForm(agents?: string[]): void;
 declare function currentPluginPanelNonce(): string;
-declare function pluginPanelDocument(html: unknown, options?: WebuiRecord): string;
-declare function pluginPanelFrameHtml(html: unknown, title: string, options?: WebuiRecord, className?: string): string;
 declare function pluginPanelPageTitle(): string;
-declare function revokePluginPanelUrls(root?: ParentNode): void;
 declare function reloadCurrentPage(options?: { agentId?: string }): Promise<void>;
 declare function renderAccessTab(tab?: string): void;
 declare function renderActiveSessions(value?: WebuiActiveSession[]): void;

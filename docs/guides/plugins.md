@@ -143,30 +143,33 @@ runPlugin(async ({ input, host }) => {
 });
 ```
 
-For WebUI panels, return an HTML fragment in `html`. NordRelay wraps the
-fragment in an isolated iframe, injects the current light/dark theme, and
-provides shared WebUI classes for panels, section headers, tabs, tables, badges,
-chips, metrics, progress bars, buttons, inputs, empty/loading/error states,
-code/log blocks, diffs, and media previews. Use the SDK `ui` helpers where
-possible:
+For WebUI panels, return an HTML fragment in `panel.html`. NordRelay mounts the
+fragment directly into the WebUI and provides shared WebUI classes for panels,
+section headers, tabs, tables, badges, chips, metrics, progress bars, buttons,
+inputs, empty/loading/error states, code/log blocks, diffs, and media previews.
+Use the SDK `ui` helpers where possible:
 
 ```js
 import { ok, runWebPanel, ui } from "@nordbyte/nordrelay-plugin-sdk";
 
 runWebPanel(async () => {
   return ok(undefined, {
-    html: ui.panel(
-      "Status",
-      ui.metric("Health", "ok") +
-        ui.table([{ key: "name", label: "Name" }], [{ name: "Local node" }])
-    )
+    panel: {
+      html: ui.panel(
+        "Status",
+        ui.metric("Health", "ok") +
+          ui.table([{ key: "name", label: "Name" }], [{ name: "Local node" }])
+      )
+    }
   });
 });
 ```
 
-Panel scripts can call `window.NordRelayPanel.toast(message)`,
-`window.NordRelayPanel.copyText(value, label)`, and
-`window.NordRelayPanel.resize()` from inside the iframe.
+Interactive panels can return `panel.script` when the web panel manifest sets
+`allowClientScript: true`. The script is mounted directly in the WebUI and gets
+an `api` object with `api.root`, `api.reload(input)`, `api.toast(message)`,
+`api.copyText(value, label)`, `api.setInterval(fn, ms)`, and
+`api.onCleanup(fn)`.
 
 ## Runtime request
 
