@@ -27,6 +27,36 @@ describe("nordrelay CLI script", () => {
     expect(config.adminName).toBe("Admin");
   });
 
+  it("hides chat adapter detail fields until the adapter is enabled", async () => {
+    const { initTuiRows } = await import("../plugins/nordrelay/scripts/init-tui.mjs");
+    const base = {
+      enableTelegram: "false",
+      enableDiscord: "false",
+      enableSlack: "false",
+      enableMatrix: "false",
+      enableWebui: "true",
+      enableCodex: "true",
+      stateBackend: "json",
+    };
+
+    const disabledLabels = initTuiRows(base).map((row) => row.label);
+    expect(disabledLabels).toContain("Telegram enabled");
+    expect(disabledLabels).toContain("Discord enabled");
+    expect(disabledLabels).toContain("Slack enabled");
+    expect(disabledLabels).toContain("Matrix enabled");
+    expect(disabledLabels).not.toContain("Telegram bot token");
+    expect(disabledLabels).not.toContain("Discord bot token");
+    expect(disabledLabels).not.toContain("Slack bot token");
+    expect(disabledLabels).not.toContain("Matrix homeserver URL");
+
+    const enabledLabels = initTuiRows({ ...base, enableTelegram: "true", enableMatrix: "true" }).map((row) => row.label);
+    expect(enabledLabels).toContain("Telegram bot token");
+    expect(enabledLabels).toContain("Link Telegram user ID");
+    expect(enabledLabels).toContain("Matrix homeserver URL");
+    expect(enabledLabels).toContain("Matrix bot user ID");
+    expect(enabledLabels).not.toContain("Discord bot token");
+  });
+
   it("exposes a first-class update command", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
 
@@ -44,6 +74,8 @@ describe("nordrelay CLI script", () => {
     expect(initTui).toContain("async function runInitTui");
     expect(initTui).toContain("Use Up/Down to select, Enter to edit");
     expect(initTui).toContain("function renderInitScreen");
+    expect(initTui).toContain("function initStyle");
+    expect(initTui).toContain('dependsOn: "enableTelegram"');
     expect(initTui).toContain("Save config and create admin");
     expect(initTui).toContain("select another field to revise it");
     expect(initTui).toContain("Enter - to clear an optional value.");

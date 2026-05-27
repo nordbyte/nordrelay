@@ -1,6 +1,17 @@
 import { ask, askChoice, askSecret } from "./prompt-utils.mjs";
 
 let initRenderLineCount = 0;
+const INIT_COLORS = Object.freeze({
+  reset: "\x1b[0m",
+  bold: "\x1b[1m",
+  dim: "\x1b[2m",
+  red: "\x1b[31m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  blue: "\x1b[34m",
+  cyan: "\x1b[36m",
+  inverse: "\x1b[7m",
+});
 
 export async function collectInitConfig(options) {
   const values = initialInitConfig(options);
@@ -194,8 +205,8 @@ async function runInitTui(values) {
   }
 }
 
-function initTuiRows(values) {
-  const fields = initFieldDefinitions();
+export function initTuiRows(values) {
+  const fields = initFieldDefinitions(values);
   const rows = [];
   for (const field of fields) {
     if (field.section) {
@@ -217,7 +228,7 @@ function initTuiRows(values) {
   return rows;
 }
 
-function initFieldDefinitions() {
+function initFieldDefinitions(values) {
   return [
     { section: "Access surfaces" },
     { key: "enableWebui", label: "WebUI enabled", type: "bool", hint: "Login-protected dashboard." },
@@ -225,28 +236,28 @@ function initFieldDefinitions() {
     { key: "enableWebuiAutostart", label: "WebUI autostart", type: "bool", hint: "Start dashboard at system boot." },
     { section: "Telegram" },
     { key: "enableTelegram", label: "Telegram enabled", type: "bool" },
-    { key: "telegramBotToken", label: "Telegram bot token", type: "secret" },
-    { key: "telegramUserId", label: "Link Telegram user ID", type: "text" },
+    { key: "telegramBotToken", label: "Telegram bot token", type: "secret", dependsOn: "enableTelegram" },
+    { key: "telegramUserId", label: "Link Telegram user ID", type: "text", dependsOn: "enableTelegram" },
     { section: "Discord" },
     { key: "enableDiscord", label: "Discord enabled", type: "bool" },
-    { key: "discordBotToken", label: "Discord bot token", type: "secret" },
-    { key: "discordClientId", label: "Discord client ID", type: "text" },
-    { key: "discordUserId", label: "Link Discord user ID", type: "text" },
+    { key: "discordBotToken", label: "Discord bot token", type: "secret", dependsOn: "enableDiscord" },
+    { key: "discordClientId", label: "Discord client ID", type: "text", dependsOn: "enableDiscord" },
+    { key: "discordUserId", label: "Link Discord user ID", type: "text", dependsOn: "enableDiscord" },
     { section: "Slack" },
     { key: "enableSlack", label: "Slack enabled", type: "bool" },
-    { key: "slackBotToken", label: "Slack bot token", type: "secret" },
-    { key: "slackAppToken", label: "Slack app-level token", type: "secret" },
-    { key: "slackSigningSecret", label: "Slack signing secret", type: "secret" },
-    { key: "slackUserId", label: "Link Slack user ID", type: "text" },
-    { key: "slackTeamId", label: "Link Slack team ID", type: "text" },
+    { key: "slackBotToken", label: "Slack bot token", type: "secret", dependsOn: "enableSlack" },
+    { key: "slackAppToken", label: "Slack app-level token", type: "secret", dependsOn: "enableSlack" },
+    { key: "slackSigningSecret", label: "Slack signing secret", type: "secret", dependsOn: "enableSlack" },
+    { key: "slackUserId", label: "Link Slack user ID", type: "text", dependsOn: "enableSlack" },
+    { key: "slackTeamId", label: "Link Slack team ID", type: "text", dependsOn: "enableSlack" },
     { section: "Matrix" },
     { key: "enableMatrix", label: "Matrix enabled", type: "bool" },
-    { key: "matrixHomeserverUrl", label: "Matrix homeserver URL", type: "text" },
-    { key: "matrixAccessToken", label: "Matrix access token", type: "secret" },
-    { key: "matrixUserId", label: "Matrix bot user ID", type: "text" },
-    { key: "matrixDeviceId", label: "Matrix device ID", type: "text" },
-    { key: "linkedMatrixUserId", label: "Link Matrix user ID", type: "text" },
-    { key: "linkedMatrixHomeserver", label: "Link Matrix homeserver", type: "text" },
+    { key: "matrixHomeserverUrl", label: "Matrix homeserver URL", type: "text", dependsOn: "enableMatrix" },
+    { key: "matrixAccessToken", label: "Matrix access token", type: "secret", dependsOn: "enableMatrix" },
+    { key: "matrixUserId", label: "Matrix bot user ID", type: "text", dependsOn: "enableMatrix" },
+    { key: "matrixDeviceId", label: "Matrix device ID", type: "text", dependsOn: "enableMatrix" },
+    { key: "linkedMatrixUserId", label: "Link Matrix user ID", type: "text", dependsOn: "enableMatrix" },
+    { key: "linkedMatrixHomeserver", label: "Link Matrix homeserver", type: "text", dependsOn: "enableMatrix" },
     { section: "Admin user" },
     { key: "adminEmail", label: "Admin email", type: "text" },
     { key: "adminName", label: "Admin name", type: "text" },
@@ -259,7 +270,11 @@ function initFieldDefinitions() {
     { key: "enableClaudeCode", label: "Claude Code enabled", type: "bool" },
     { section: "Storage" },
     { key: "stateBackend", label: "State backend", type: "enum", choices: ["json", "sqlite"] },
-  ];
+  ].filter((field) => initFieldVisible(values, field));
+}
+
+function initFieldVisible(values, field) {
+  return !field.dependsOn || values[field.dependsOn] === "true";
 }
 
 function renderInitTui(rows, selected, message) {
@@ -269,24 +284,25 @@ function renderInitTui(rows, selected, message) {
   const first = initViewportStart(rows, selected, listHeight);
   const visible = rows.slice(first, first + listHeight);
   const lines = [
-    "NordRelay init",
-    "Configure all setup options below. Existing answers can be selected again and changed before saving.",
-    "Keys: Up/Down select | Enter edit | Space toggle booleans | s save | q cancel",
-    "-".repeat(Math.min(width, 120)),
+    initStyle("title", "NordRelay init"),
+    initStyle("help", "Configure all setup options below. Existing answers can be selected again and changed before saving."),
+    initStyle("help", "Keys: Up/Down select | Enter edit | Space toggle booleans | s save | q cancel"),
+    initStyle("rule", "-".repeat(Math.min(width, 120))),
   ];
   for (let index = 0; index < visible.length; index += 1) {
     const rowIndex = first + index;
     const row = visible[index];
     if (row.type === "section") {
-      lines.push("", row.label);
+      lines.push("", initStyle("section", row.label));
       continue;
     }
-    const pointer = rowIndex === selected ? ">" : " ";
-    const label = String(row.label).padEnd(28, " ");
-    const value = row.value ? String(row.value) : "";
+    const isSelected = rowIndex === selected;
+    const pointer = initStyle(isSelected ? "selectedPointer" : "pointer", isSelected ? ">" : " ");
+    const label = initStyle(isSelected ? "selectedLabel" : "label", String(row.label).padEnd(28, " "));
+    const value = initStyledRowValue(row);
     lines.push(`${pointer} ${label} ${value}`);
     if (rowIndex === selected && row.hint) {
-      lines.push(`  ${"".padEnd(28, " ")} ${row.hint}`);
+      lines.push(`  ${"".padEnd(28, " ")} ${initStyle("hint", row.hint)}`);
     }
   }
   if (rows.length > listHeight) {
@@ -296,7 +312,8 @@ function renderInitTui(rows, selected, message) {
   }
   const errors = String(message || "").split("\n").filter(Boolean).slice(0, 5);
   if (errors.length) {
-    lines.push("", ...errors.map((line) => `! ${line}`));
+    const level = errors.some((line) => /required|must|At least|missing/i.test(line)) ? "error" : "success";
+    lines.push("", ...errors.map((line) => initStyle(level, `! ${line}`)));
   }
   renderInitScreen(lines);
 }
@@ -342,8 +359,8 @@ async function editInitField(values, field, key) {
     return;
   }
   process.stdout.write("\x1b[2J\x1b[H\x1b[?25h");
-  console.log(`Edit ${field.label}`);
-  console.log("Press Enter to keep the current value. Enter - to clear an optional value.\n");
+  console.log(initStyle("title", `Edit ${field.label}`));
+  console.log(initStyle("help", "Press Enter to keep the current value. Enter - to clear an optional value.") + "\n");
   const current = values[field.key] || "";
   const next = field.type === "secret"
     ? await askSecret(null, `${field.label} (hidden)`, current)
@@ -355,10 +372,11 @@ async function selectInitOption(label, choices, current) {
   let selected = Math.max(0, choices.indexOf(current));
   let message = "Use Up/Down and Enter to select. Esc cancels.";
   while (true) {
-    const lines = [label, message, ""];
+    const lines = [initStyle("title", label), initStyle("help", message), ""];
     choices.forEach((choice, index) => {
-      const pointer = index === selected ? ">" : " ";
-      lines.push(`${pointer} ${choice}`);
+      const isSelected = index === selected;
+      const pointer = initStyle(isSelected ? "selectedPointer" : "pointer", isSelected ? ">" : " ");
+      lines.push(`${pointer} ${initStyle(isSelected ? "selectedLabel" : "label", choice)}`);
     });
     renderInitScreen(lines);
     const key = await readInitKey();
@@ -415,6 +433,49 @@ function initFieldDisplay(values, field) {
   if (field.type === "bool") return value === "true" ? "true" : "false";
   if (field.type === "secret") return value ? `configured (${String(value).length} chars)` : missingInitFieldLabel(values, field);
   return value || missingInitFieldLabel(values, field);
+}
+
+function initStyledRowValue(row) {
+  if (row.type === "action") return initStyle(row.action === "save" ? "action" : "danger", row.value ? String(row.value) : "");
+  if (!row.field) return row.value ? String(row.value) : "";
+  const value = row.value ? String(row.value) : "";
+  if (row.field.type === "bool") return initStyle(value === "true" ? "enabled" : "disabled", value);
+  if (value === "missing") return initStyle("missing", value);
+  if (value === "(empty)") return initStyle("empty", value);
+  if (row.field.type === "secret" && value.startsWith("configured")) return initStyle("configured", value);
+  return initStyle("value", value);
+}
+
+function initStyle(kind, text) {
+  if (!useInitColors()) return text;
+  const color = INIT_COLORS;
+  const styles = {
+    title: `${color.bold}${color.cyan}`,
+    help: color.dim,
+    rule: color.dim,
+    section: `${color.bold}${color.blue}`,
+    pointer: color.dim,
+    selectedPointer: `${color.bold}${color.green}`,
+    label: color.reset,
+    selectedLabel: color.bold,
+    hint: color.dim,
+    enabled: color.green,
+    disabled: color.yellow,
+    missing: `${color.bold}${color.red}`,
+    empty: color.dim,
+    configured: color.green,
+    value: color.cyan,
+    action: color.green,
+    danger: color.yellow,
+    success: color.green,
+    error: color.red,
+  };
+  const prefix = styles[kind] ?? "";
+  return prefix ? `${prefix}${text}${color.reset}` : text;
+}
+
+function useInitColors() {
+  return Boolean(process.stdout.isTTY) && !process.env.NO_COLOR && process.env.TERM !== "dumb";
 }
 
 function missingInitFieldLabel(values, field) {
