@@ -1194,6 +1194,7 @@ function parsePeerFlags(argv) {
     else if (arg === "--code") flags.code = requireValue(copy, ++i, arg);
     else if (arg === "--expect-fingerprint") flags.expectFingerprint = requireValue(copy, ++i, arg);
     else if (arg === "--public-url") flags.publicUrl = requireValue(copy, ++i, arg);
+    else if (arg === "--no-public-url") flags.noPublicUrl = true;
     else if (arg === "--expires" || arg === "--expires-minutes") flags.expiresMinutes = Number.parseInt(requireValue(copy, ++i, arg), 10);
     else if (arg === "--scopes") flags.scopes = requireValue(copy, ++i, arg);
     else if (arg === "--agents") flags.agents = requireValue(copy, ++i, arg);
@@ -1211,7 +1212,6 @@ function parsePeerFlags(argv) {
   }
   return flags;
 }
-
 function csv(value) {
   return value ? value.split(",").map((item) => item.trim()).filter(Boolean) : undefined;
 }
@@ -1291,8 +1291,8 @@ async function commandPeer(options) {
   if (flags.subcommand === "add") {
     const url = flags.url || await ask(null, "Peer URL", "");
     const code = flags.code || await ask(null, "Pairing code", "");
-    const configuredPublicUrl = process.env.NORDRELAY_PEER_ENABLED === "true" ? process.env.NORDRELAY_PEER_PUBLIC_URL : undefined;
-    const publicUrl = flags.publicUrl || configuredPublicUrl;
+    const configuredPublicUrl = !flags.noPublicUrl && process.env.NORDRELAY_PEER_ENABLED === "true" ? process.env.NORDRELAY_PEER_PUBLIC_URL : undefined;
+    const publicUrl = flags.noPublicUrl ? undefined : flags.publicUrl || configuredPublicUrl;
     const result = await clientMod.pairPeer({
       url,
       code,

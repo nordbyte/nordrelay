@@ -34,6 +34,12 @@ nordrelay peer add https://host.example:31979 --code <pairing-code>
 
 NordRelay stores the peer identity, node fingerprint, and TLS fingerprint.
 
+If the controlling machine has a local `NORDRELAY_PEER_PUBLIC_URL` configured but the remote host cannot reach it, add the peer without sharing that URL:
+
+```bash
+nordrelay peer add https://host.example:31979 --code <pairing-code> --no-public-url
+```
+
 ## Limit peer access by group
 
 Open **Users** in the WebUI, edit a group, and use **Peer scope** to select which paired nodes users in that group may access.

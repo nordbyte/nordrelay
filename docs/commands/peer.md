@@ -34,6 +34,7 @@ nordrelay peer <subcommand> [options]
 | `--code <code>` | Pairing code for `add` |
 | `--expect-fingerprint <sha256>` | Expected TLS fingerprint for `check` |
 | `--public-url <url>` | Public URL to share back during pairing |
+| `--no-public-url` | Do not share this node's configured public URL during `add` |
 | `--expires <minutes>` / `--expires-minutes <minutes>` | Invitation lifetime |
 | `--scopes <list>` | Comma-separated peer scopes |
 | `--agents <list>` | Comma-separated allowed agents |
@@ -54,6 +55,7 @@ nordrelay peer <subcommand> [options]
 nordrelay peer identity
 nordrelay peer invite --name laptop --expires 30
 nordrelay peer add https://192.168.1.20:31979 --code <pairing-code>
+nordrelay peer add https://server.example:31979 --code <pairing-code> --no-public-url
 nordrelay peer check https://192.168.1.20:31979
 nordrelay peer debug <peer-id>
 nordrelay peer access <peer-id> --email admin@example.com
@@ -74,6 +76,8 @@ NORDRELAY_PEER_TLS_ENABLED=true
 ```
 
 Pairing is authenticated and TLS fingerprint-pinned. Do not bypass fingerprint mismatch warnings.
+
+When this node has `NORDRELAY_PEER_PUBLIC_URL` configured, `peer add` shares it back automatically so the remote node can call this node too. Use `--no-public-url` for one-way controller setups, especially when the configured URL is a LAN address that the remote server cannot reach.
 
 ## Diagnostics
 
