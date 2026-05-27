@@ -334,7 +334,13 @@ function pluginPanelHtmlFromResult(result){
   return pluginPanelHtmlFromObject(normalized);
 }
 function pluginPanelHtmlFromObject(result){
-  if(typeof result.html==='string'&&result.html.trim())return result.html;
+  const directHtml=pluginPanelRawHtml(result.html);
+  if(directHtml)return directHtml;
+  const htmlObject=pluginPanelJsonObject(result.html);
+  if(htmlObject){
+    const html=pluginPanelHtmlFromObject(htmlObject);
+    if(html)return html;
+  }
   const outputHtml=pluginPanelRawHtml(result.output);
   if(outputHtml)return outputHtml;
   const output=pluginPanelJsonObject(result.output);

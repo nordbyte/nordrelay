@@ -746,7 +746,7 @@ function normalizePluginResult(result: PluginInvokeResult): PluginInvokeResult {
     ok: typeof promoted?.ok === "boolean" ? promoted.ok : result.ok,
     output: promoted && "output" in promoted ? promoted.output : result.output,
     variables: normalizeVariables(result.variables ?? recordField(fields?.variables)),
-    html: stringField(result.html ?? fields?.html),
+    html: extractPluginHtml(result.html) ?? extractPluginHtml(fields?.html),
     text: stringField(result.text ?? fields?.text),
     artifacts: Array.isArray(result.artifacts) ? result.artifacts : Array.isArray(fields?.artifacts) ? fields.artifacts : undefined,
     diagnostics: result.diagnostics ?? fields?.diagnostics,
@@ -807,6 +807,20 @@ function pluginResultLike(value: Record<string, unknown> | undefined): value is 
     "artifacts" in value ||
     "diagnostics" in value
   ));
+}
+
+function extractPluginHtml(value: unknown, depth = 0): string | undefined {
+  if (value === undefined || value === null || depth > 4) return undefined;
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (!text) return undefined;
+    if (text.startsWith("<")) return value;
+    const parsed = parsePluginResultRecord(text);
+    if (parsed) return extractPluginHtml(parsed.html, depth + 1) ?? extractPluginHtml(parsed.output, depth + 1) ?? extractPluginHtml(parsed.stdout, depth + 1);
+    return undefined;
+  }
+  const record = recordField(value);
+  return record ? extractPluginHtml(record.html, depth + 1) ?? extractPluginHtml(record.output, depth + 1) ?? extractPluginHtml(record.stdout, depth + 1) : undefined;
 }
 
 function normalizeVariables(value: unknown): Record<string, string> | undefined {
