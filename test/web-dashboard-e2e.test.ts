@@ -168,6 +168,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function reloadPluginPanelFrame");
     expect(js).toContain("function currentPluginPanelNonce");
     expect(js).toContain("function pluginPanelNonceAttr");
+    expect(js).toContain("function pluginPanelNonceInlineTags");
     expect(js).toContain("function createPluginPanelObjectUrl");
     expect(js).toContain("function pluginPanelFrameHtml");
     expect(js).toContain("function pluginPanelHtmlFromResult");
@@ -188,6 +189,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".plugin-panel-frame{width:100%");
     expect(css).toContain("#page-plugin-panel.active{display:flex");
     expect(css).toContain(".plugin-panel-page-frame{flex:1");
+    expect(js).toContain(".metrics-grid+.metrics-chart-stack");
+    expect(js).toContain(".progress-svg");
+    expect(js).toContain(".chart-tooltip[hidden]");
   });
 
   it("includes workflow templates and workflow runs in the WebUI", () => {
