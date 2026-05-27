@@ -966,8 +966,8 @@ async function startMockDashboardServer(): Promise<MockServer> {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (url.pathname === "/") return sendText(res, 200, renderDashboardApp(), "text/html; charset=utf-8");
-    if (url.pathname === "/assets/dashboard.css") return sendText(res, 200, dashboardCss(), "text/css; charset=utf-8");
-    if (url.pathname === "/assets/dashboard.js") return sendText(res, 200, dashboardJs(), "application/javascript; charset=utf-8");
+    if (/^\/assets\/(?:[^/]+\/)?dashboard\.css$/.test(url.pathname)) return sendText(res, 200, dashboardCss(), "text/css; charset=utf-8");
+    if (/^\/assets\/(?:[^/]+\/)?dashboard\.js$/.test(url.pathname)) return sendText(res, 200, dashboardJs(), "application/javascript; charset=utf-8");
     if (url.pathname === "/assets/logo.png") return sendDashboardAsset(res, "logo.png");
     if (url.pathname === "/assets/favicon.png") return sendDashboardAsset(res, "favicon.png");
     if (url.pathname === "/api/events") return sendSse(res);
