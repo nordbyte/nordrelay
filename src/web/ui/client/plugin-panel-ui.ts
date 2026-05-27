@@ -187,15 +187,21 @@ function pluginPanelDocument(html,options:WebuiRecord={}){
 function pluginPanelFrameHtml(html,title,options:WebuiRecord={},className=''){
   const panelToken=createPluginPanelToken();
   const documentHtml=pluginPanelDocument(html,{...options,panelToken});
+  const url=URL.createObjectURL(new Blob([documentHtml],{type:'text/html'}));
   const classes=['plugin-panel-frame',String(className||'').trim()].filter(Boolean).join(' ');
-  return '<iframe class="'+attr(classes)+'" sandbox="allow-scripts" title="'+attr(title)+'" data-plugin-panel-frame data-plugin-panel-token="'+attr(panelToken)+'" srcdoc="'+attr(documentHtml)+'"></iframe>';
+  return '<iframe class="'+attr(classes)+'" sandbox="allow-scripts" title="'+attr(title)+'" data-plugin-panel-frame data-plugin-panel-token="'+attr(panelToken)+'" data-plugin-panel-url="'+attr(url)+'" src="'+attr(url)+'"></iframe>';
 }
 function createPluginPanelToken(){
   const cryptoApi=(globalThis as WebuiRecord).crypto as WebuiRecord|undefined;
   if(cryptoApi&&typeof cryptoApi.randomUUID==='function')return String(cryptoApi.randomUUID());
   return 'panel-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
 }
-function revokePluginPanelUrls(_root:ParentNode=document){}
+function revokePluginPanelUrls(root:ParentNode=document){
+  root.querySelectorAll?.('iframe.plugin-panel-frame[data-plugin-panel-url]').forEach(frame=>{
+    const url=(frame as HTMLIFrameElement).dataset.pluginPanelUrl;
+    if(url)try{URL.revokeObjectURL(url)}catch{}
+  });
+}
 function asPluginPanelFrame(frame):HTMLIFrameElement|null{
   return frame instanceof HTMLIFrameElement?frame:null;
 }

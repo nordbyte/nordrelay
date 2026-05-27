@@ -192,8 +192,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("applyPluginPanelFrameHeight(frame");
     expect(js).toContain('sandbox="allow-scripts"');
     expect(js).toContain("data-plugin-panel-frame");
-    expect(js).toContain("srcdoc");
-    expect(js).not.toContain("data-plugin-panel-url");
+    expect(js).toContain("data-plugin-panel-url");
+    expect(js).toContain("URL.createObjectURL(new Blob([documentHtml],{type:'text/html'}))");
+    expect(js).toContain("URL.revokeObjectURL(url)");
+    expect(js).not.toContain("srcdoc");
     expect(js).toContain("function syncPluginPanelThemes");
     expect(js).toContain("syncPluginPanelThemes?.()");
     expect(css).toContain(".plugin-panel-frame{width:100%");
