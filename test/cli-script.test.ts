@@ -117,6 +117,19 @@ describe("nordrelay CLI script", () => {
     expect(initState).toContain("nordrelay user create-admin");
   });
 
+  it("keeps init config writes when the admin user already exists", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+    const commandInit = source.match(/async function commandInit[\s\S]*?\r?\n}\r?\n\r?\nasync function createUserStore/)?.[0] ?? "";
+
+    expect(commandInit.indexOf("await fsp.writeFile(envPath"))
+      .toBeLessThan(commandInit.indexOf("userStore.createAdmin"));
+    expect(commandInit).toContain("isUserAlreadyExistsError(error, adminEmail)");
+    expect(commandInit).toContain("User already exists: ${adminEmail}");
+    expect(commandInit).toContain("nordrelay user reset-password --email");
+    expect(commandInit.indexOf("isUserAlreadyExistsError(error, adminEmail)"))
+      .toBeLessThan(commandInit.indexOf("await applyInitialAutostartSettings"));
+  });
+
   it("configures init autostart entries from the selected settings", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
 

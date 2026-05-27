@@ -1109,24 +1109,45 @@ async function commandInit(options) {
 
   await fsp.writeFile(envPath, lines.join("\n"), { mode: 0o600 });
   await fsp.chmod(envPath, 0o600).catch(() => {});
-  userStore.createAdmin({
-    email: adminEmail,
-    displayName: adminName || adminEmail,
-    password: adminPassword,
-    telegramUserId: telegramUserId ? Number(telegramUserId) : undefined,
-    discordUserId: discordUserId || undefined,
-    slackUserId: slackUserId || undefined,
-    slackTeamId: slackTeamId || undefined,
-    matrixUserId: linkedMatrixUserId || undefined,
-    matrixHomeserver: linkedMatrixHomeserver || undefined,
-  });
+  let adminCreated = false;
+  try {
+    userStore.createAdmin({
+      email: adminEmail,
+      displayName: adminName || adminEmail,
+      password: adminPassword,
+      telegramUserId: telegramUserId ? Number(telegramUserId) : undefined,
+      discordUserId: discordUserId || undefined,
+      slackUserId: slackUserId || undefined,
+      slackTeamId: slackTeamId || undefined,
+      matrixUserId: linkedMatrixUserId || undefined,
+      matrixHomeserver: linkedMatrixHomeserver || undefined,
+    });
+    adminCreated = true;
+  } catch (error) {
+    if (!isUserAlreadyExistsError(error, adminEmail)) throw error;
+    console.log(`User already exists: ${adminEmail}`);
+    console.log(`Reset the password with: nordrelay user reset-password --email ${shellQuote(adminEmail)}`);
+  }
   console.log(`Wrote ${envPath}`);
-  console.log(`Created admin user ${adminEmail}.`);
+  if (adminCreated) console.log(`Created admin user ${adminEmail}.`);
   await applyInitialAutostartSettings(options, {
     NORDRELAY_AUTOSTART_ENABLED: enableAutostart,
     NORDRELAY_WEBUI_AUTOSTART_ENABLED: enableWebuiAutostart,
   });
   console.log("Run `nordrelay doctor` to validate the setup.");
+}
+
+function isUserAlreadyExistsError(error, email) {
+  if (!(error instanceof Error)) return false;
+  const prefix = "User already exists:";
+  if (!error.message.startsWith(prefix)) return false;
+  const existingEmail = error.message.slice(prefix.length).trim().toLowerCase();
+  return existingEmail === String(email).trim().toLowerCase();
+}
+
+function shellQuote(value) {
+  const text = String(value);
+  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(text) ? text : `'${text.replace(/'/g, "'\"'\"'")}'`;
 }
 
 async function createUserStore(home) {
