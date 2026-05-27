@@ -122,6 +122,7 @@ const ROUTE_CHECKS: Array<{ id: string; label: string; permission: Permission; m
   { id: "route-active-sessions", label: "Active sessions API", permission: "sessions.read", method: "GET", path: "/api/active-sessions" },
   { id: "route-diagnostics", label: "Diagnostics API", permission: "diagnostics.read", method: "GET", path: "/api/diagnostics" },
   { id: "route-logs", label: "Logs API", permission: "logs.read", method: "GET", path: "/api/logs", query: { limit: 1 } },
+  { id: "route-plugins", label: "Plugins API", permission: "plugins.read", method: "GET", path: "/api/plugins" },
 ];
 
 const ACCESS_FEATURES: Array<{ id: string; label: string; permission: Permission; fix?: string }> = [
@@ -137,6 +138,10 @@ const ACCESS_FEATURES: Array<{ id: string; label: string; permission: Permission
   { id: "diagnostics", label: "Read diagnostics", permission: "diagnostics.read", fix: "Add diagnostics.read to the peer scopes and user permissions." },
   { id: "logs", label: "Read logs", permission: "logs.read", fix: "Add logs.read to the peer scopes and user permissions." },
   { id: "workflows", label: "Use shared workflows", permission: "workflows.run", fix: "Add workflows.run to the peer scopes and user permissions." },
+  { id: "plugins-read", label: "Read plugins", permission: "plugins.read", fix: "Add plugins.read to the peer scopes and user permissions." },
+  { id: "plugins-install", label: "Install plugins", permission: "plugins.install", fix: "Add plugins.install to the peer scopes and user permissions." },
+  { id: "plugins-enable", label: "Enable plugins", permission: "plugins.enable", fix: "Add plugins.enable to the peer scopes and user permissions." },
+  { id: "plugins-settings", label: "Update plugin settings", permission: "plugins.settings.write", fix: "Add plugins.settings.write to the peer scopes and user permissions." },
   { id: "updates", label: "Run remote updates", permission: "updates.run", fix: "Add updates.run to the peer scopes and user permissions." },
   { id: "restart", label: "Restart remote runtime", permission: "system.restart", fix: "Add system.restart to the peer scopes and user permissions." },
 ];
@@ -452,6 +457,7 @@ async function runPeerProbes(peer: PeerRecord, store: PeerStore, options: PeerDe
       `${route.method} ${route.path}`,
     ));
   }
+  checks.push(await remoteScopeReflectionCheck(peer, client, store, options));
 
   if (!peer.url) {
     checks.push(check("events", "Live event stream", "skipped", "peer.relay.only", "Direct SSE events require a peer URL. Relay mode stores and forwards events through relay polling.", "Use a direct peer URL for live event streaming, or rely on outbound relay events."));
@@ -475,6 +481,66 @@ async function runPeerProbes(peer: PeerRecord, store: PeerStore, options: PeerDe
   ));
 
   return checks;
+}
+
+async function remoteScopeReflectionCheck(
+  peer: PeerRecord,
+  client: RemoteRelayClient,
+  store: PeerStore,
+  options: PeerDebugOptions,
+): Promise<PeerDiagnosticCheck> {
+  const started = Date.now();
+  try {
+    const data = await client.webProxy(peer.id, {
+      method: "GET",
+      path: "/api/bootstrap",
+      query: {},
+      body: {},
+      contextKey: "web:peer-debug",
+    }, options.actor, "web:peer-debug", { timeoutMs: options.timeoutMs ?? 4_000 });
+    const permissions = remoteBootstrapPermissions(data);
+    const missing = peer.scopes.filter((permission) => !permissions.includes(permission));
+    if (missing.length) {
+      const detail = `Remote reciprocal peer record is missing scope(s): ${missing.join(", ")}.`;
+      const result = check("remote-scope-reflection", "Remote reciprocal scopes", "error", "peer.scope.missing", detail, "Update this peer on the remote node or rotate/re-pair it with the same scopes.", {
+        latencyMs: Date.now() - started,
+        route: "GET /api/bootstrap",
+      });
+      store.markError(peer.id, result.detail, {
+        check: "remote-scope-reflection",
+        code: result.code,
+        detail: result.detail,
+        remediation: result.remediation,
+      });
+      return result;
+    }
+    return check("remote-scope-reflection", "Remote reciprocal scopes", "ok", "peer.ok", "The remote node grants the same peer scopes back to this node.", undefined, {
+      latencyMs: Date.now() - started,
+      route: "GET /api/bootstrap",
+    });
+  } catch (error) {
+    const classified = classifyPeerError(error);
+    const result = check("remote-scope-reflection", "Remote reciprocal scopes", "error", classified.code, classified.detail, classified.remediation, {
+      latencyMs: Date.now() - started,
+      route: "GET /api/bootstrap",
+    });
+    store.markError(peer.id, result.detail, {
+      check: "remote-scope-reflection",
+      code: result.code,
+      detail: result.detail,
+      remediation: result.remediation,
+    });
+    return result;
+  }
+}
+
+function remoteBootstrapPermissions(data: unknown): Permission[] {
+  const auth = data && typeof data === "object" && !Array.isArray(data) ? (data as { auth?: unknown }).auth : undefined;
+  const permissions = auth && typeof auth === "object" && !Array.isArray(auth) ? (auth as { permissions?: unknown }).permissions : undefined;
+  if (!Array.isArray(permissions)) {
+    return [];
+  }
+  return permissions.filter((permission): permission is Permission => typeof permission === "string");
 }
 
 async function rpcCheck(

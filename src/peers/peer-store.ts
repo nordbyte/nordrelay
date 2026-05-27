@@ -406,7 +406,19 @@ export function verifySecret(value: string, stored: string): boolean {
 
 function normalizeScopes(values: readonly string[]): Permission[] {
   const allowed = new Set(ALL_PERMISSIONS);
-  return [...new Set(values.filter((value): value is Permission => allowed.has(value as Permission)))];
+  const scopes = [...new Set(values.filter((value): value is Permission => allowed.has(value as Permission)))];
+  return isLegacyFullAccessScopeSet(scopes) ? [...ALL_PERMISSIONS] : scopes;
+}
+
+function isLegacyFullAccessScopeSet(scopes: readonly Permission[]): boolean {
+  const scopeSet = new Set(scopes);
+  const pluginScopes = ALL_PERMISSIONS.filter((permission) => permission.startsWith("plugins."));
+  if (pluginScopes.length === 0 || pluginScopes.every((permission) => scopeSet.has(permission))) {
+    return false;
+  }
+  return ALL_PERMISSIONS
+    .filter((permission) => !permission.startsWith("plugins."))
+    .every((permission) => scopeSet.has(permission));
 }
 
 function normalizeAgents(values: readonly string[]): AgentId[] {

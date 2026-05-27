@@ -212,7 +212,7 @@ describe("peer server pairing", () => {
       method: "POST",
       path: "/api/prompt",
       body: { text: "should be denied" },
-    })).rejects.toThrow(/access denied|permission denied/i);
+    })).rejects.toThrow(/Peer permission denied: prompt\.send/i);
   });
 
   it("creates a transitive sync invite without copying peer secrets", async () => {

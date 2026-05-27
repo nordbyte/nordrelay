@@ -8,7 +8,6 @@ import { permissionForWebRequest, type Permission } from "../access/access-contr
 import { listChannelDescriptors } from "../channels/shared/channel-adapter.js";
 import type { ConnectorConfig } from "../core/config.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
-import { friendlyErrorText } from "../core/error-messages.js";
 import { getPackageVersion } from "../support/operations.js";
 import { checkPeerEndpoint, RemoteRelayClient } from "./peer-client.js";
 import { loadOrCreatePeerIdentity } from "./peer-identity.js";
@@ -1248,7 +1247,12 @@ export class PeerRuntimeService {
 }
 
 export function peerError(error: unknown): string {
-  return friendlyErrorText(error);
+  if (error instanceof Error) {
+    const cause = (error as Error & { cause?: Error }).cause;
+    const base = error.message || String(error);
+    return cause?.message ? `${base}: ${cause.message}` : base;
+  }
+  return String(error);
 }
 
 function peerActor(peer: PeerRecord, actor?: WebActivityActor): WebActivityActor {

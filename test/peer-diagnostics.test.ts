@@ -64,6 +64,10 @@ describe("peer diagnostics", () => {
       allowed: false,
       reason: expect.stringContaining("authenticated user is missing prompt.send"),
     });
+    expect(report.checks.find((check) => check.id === "plugins-read")).toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining("authenticated user is missing plugins.read"),
+    });
   });
 
   it("builds a lightweight debug report and repair actions without running network probes", async () => {

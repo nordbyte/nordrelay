@@ -183,7 +183,7 @@ export async function startPeerServer(options: {
       sendJson(res, 404, { error: "not found" });
     } catch (error) {
       const status = isAuthError(error) ? 403 : 500;
-      sendJson(res, status, { error: friendlyErrorText(error) });
+      sendJson(res, status, { error: peerServerErrorText(error) });
     }
   }
 
@@ -300,6 +300,14 @@ function isLoopbackHost(host: string): boolean {
 function isAuthError(error: unknown): boolean {
   const message = peerError(error).toLowerCase();
   return /peer|signature|timestamp|replay|permission|denied|auth|disabled/.test(message);
+}
+
+function peerServerErrorText(error: unknown): string {
+  const message = peerError(error);
+  if (/^Peer permission denied: /i.test(message) || /^Peer is not allowed to /i.test(message)) {
+    return message;
+  }
+  return friendlyErrorText(error);
 }
 
 function numberValue(value: unknown, fallback: number): number {

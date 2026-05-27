@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { ALL_PERMISSIONS } from "../src/access/access-control.js";
 import { PeerStore } from "../src/peers/peer-store.js";
 
 const tmpDirs: string[] = [];
@@ -104,6 +105,22 @@ describe("PeerStore", () => {
       workspaceAliases: { demo: "/srv/demo" },
     });
     expect(updated).not.toHaveProperty("secret");
+  });
+
+  it("keeps legacy full-access peers aligned when new permission groups are added", () => {
+    const store = newStore();
+    const legacyFullAccessScopes = ALL_PERMISSIONS.filter((permission) => !permission.startsWith("plugins."));
+    store.upsertPeer({
+      name: "Remote",
+      url: "https://remote.example:31979",
+      nodeId: "node-remote",
+      publicKey: "public-key",
+      fingerprint: "sha256:abc",
+      secret: "shared-secret",
+      scopes: legacyFullAccessScopes,
+    });
+
+    expect(store.listPublic()[0].scopes).toEqual(ALL_PERMISSIONS);
   });
 
   it("keeps the last known peer version when later seen updates omit it", () => {
