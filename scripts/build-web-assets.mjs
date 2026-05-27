@@ -16,6 +16,7 @@ const manifest = JSON.parse(readFileSync(path.join(uiRoot, "asset-manifest.json"
 const assets = manifest.bundles || [];
 const staticAssets = manifest.staticAssets || [];
 const assetHash = createHash("sha256");
+const bundleBodies = new Map();
 
 for (const asset of assets) {
   const source = asset.sources
@@ -37,6 +38,7 @@ for (const asset of assets) {
   assetHash.update("\0");
   assetHash.update(body);
   assetHash.update("\0");
+  bundleBodies.set(asset.name, body);
 
   if (!checkOnly) {
     const outDir = path.join(root, "dist", "webui-assets");
@@ -64,13 +66,24 @@ for (const asset of staticAssets) {
     mkdirSync(outDir, { recursive: true });
     if (assetName === "service-worker.js") {
       const cacheVersion = assetHash.copy().digest("hex").slice(0, 16);
+      const webuiAssetVersion = createHash("sha256")
+        .update(bundleBodies.get("dashboard.css") || "")
+        .update("\n")
+        .update(bundleBodies.get("dashboard.js") || "")
+        .digest("hex")
+        .slice(0, 12);
       const serviceWorker = source.toString("utf8");
       if (!serviceWorker.includes("__NORDRELAY_WEBUI_CACHE_VERSION__")) {
         throw new Error("WebUI service worker is missing the cache version placeholder.");
       }
+      if (!serviceWorker.includes("__NORDRELAY_WEBUI_ASSET_VERSION__")) {
+        throw new Error("WebUI service worker is missing the asset version placeholder.");
+      }
       writeFileSync(
         path.join(outDir, assetName),
-        serviceWorker.replaceAll("__NORDRELAY_WEBUI_CACHE_VERSION__", cacheVersion),
+        serviceWorker
+          .replaceAll("__NORDRELAY_WEBUI_CACHE_VERSION__", cacheVersion)
+          .replaceAll("__NORDRELAY_WEBUI_ASSET_VERSION__", webuiAssetVersion),
         "utf8",
       );
     } else {

@@ -789,11 +789,12 @@ describe("web dashboard browser-flow assets", () => {
     const buildSource = readFileSync("scripts/build-web-assets.mjs", "utf8");
     const serviceWorkerSource = readFileSync("src/web/ui/assets/service-worker.js", "utf8");
 
-    expect(serverSource).toContain('/assets/dashboard.css');
-    expect(serverSource).toContain('/assets/dashboard.js');
+    expect(serverSource).toContain('dashboardAssetMatch');
+    expect(serverSource).toContain('dashboard\\.(?:css|js)');
     expect(serverSource).toContain('/assets/logo.png');
     expect(serverSource).toContain('/favicon.ico');
-    expect(pageSource).toContain('href="/assets/dashboard.css?v=');
+    expect(pageSource).toContain("const dashboardAssetPrefix = `/assets/${assetVersion}`;");
+    expect(pageSource).toContain('href="${dashboardAssetPrefix}/dashboard.css"');
     expect(pageSource).toContain('href="/favicon.ico"');
     expect(pageSource).toContain('src="/assets/logo.png"');
     expect(pageSource).toContain('id="brandHomeBtn"');
@@ -801,7 +802,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('class="footer-label">Connection:</span>');
     expect(pageSource).toContain('width="44" height="44"');
     expect(pageSource).toContain('class="brand-separator"');
-    expect(pageSource).toContain('src="/assets/dashboard.js?v=');
+    expect(pageSource).toContain('src="${dashboardAssetPrefix}/dashboard.js"');
     expect(pageSource).not.toContain("<style>${dashboardCss()}</style>");
     expect(pageSource).not.toContain("<script>${dashboardJs()}</script>");
     expect(dashboardCss()).toContain("--sidebar-border:#2a3a30");
@@ -826,7 +827,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(buildSource).toContain("brotliCompressSync(body");
     expect(buildSource).toContain("assetHash.copy().digest");
     expect(buildSource).toContain("__NORDRELAY_WEBUI_CACHE_VERSION__");
+    expect(buildSource).toContain("__NORDRELAY_WEBUI_ASSET_VERSION__");
     expect(serviceWorkerSource).toContain("nordrelay-webui-__NORDRELAY_WEBUI_CACHE_VERSION__");
+    expect(serviceWorkerSource).toContain("`/assets/${ASSET_VERSION}/dashboard.js`");
     expect(serverSource).toContain('assetName === "service-worker.js" ? "no-cache" : undefined');
     expect(serverSource).toContain("dashboardBundleAsset");
     expect(serverSource).toContain("private, max-age=31536000, immutable");

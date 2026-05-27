@@ -1,8 +1,9 @@
 const CACHE_NAME = "nordrelay-webui-__NORDRELAY_WEBUI_CACHE_VERSION__";
+const ASSET_VERSION = "__NORDRELAY_WEBUI_ASSET_VERSION__";
 const STATIC_ASSETS = [
   "/",
-  "/assets/dashboard.css",
-  "/assets/dashboard.js",
+  `/assets/${ASSET_VERSION}/dashboard.css`,
+  `/assets/${ASSET_VERSION}/dashboard.js`,
   "/assets/logo.png",
   "/assets/favicon.png",
   "/favicon.ico",

@@ -229,12 +229,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
-  if (url.pathname === "/assets/dashboard.css") {
+  const dashboardAssetMatch = url.pathname.match(/^\/assets\/(?:[^/]+\/)?(dashboard\.(?:css|js))$/);
+  if (dashboardAssetMatch?.[1] === "dashboard.css") {
     sendDashboardBundle(res, "dashboard.css", dashboardCss);
     return;
   }
 
-  if (url.pathname === "/assets/dashboard.js") {
+  if (dashboardAssetMatch?.[1] === "dashboard.js") {
     sendDashboardBundle(res, "dashboard.js", dashboardJs);
     return;
   }

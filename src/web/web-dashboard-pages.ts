@@ -178,6 +178,7 @@ ${faviconLinks}
 export function renderDashboardApp(options: DashboardAppOptions = {}): string {
   const nonce = nonceAttr(options.cspNonce);
   const assetVersion = encodeURIComponent(options.assetVersion ?? "dev");
+  const dashboardAssetPrefix = `/assets/${assetVersion}`;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -192,7 +193,7 @@ ${faviconLinks}
       document.documentElement.dataset.theme = resolved;
     })();
   </script>
-  <link rel="stylesheet" href="/assets/dashboard.css?v=${assetVersion}">
+  <link rel="stylesheet" href="${dashboardAssetPrefix}/dashboard.css">
 </head>
 <body>
   <div class="app">
@@ -849,7 +850,7 @@ ${faviconLinks}
   </dialog>
   <div id="toolTooltip" class="tool-tooltip"></div>
   <div id="toast"></div>
-  <script src="/assets/dashboard.js?v=${assetVersion}"></script>
+  <script src="${dashboardAssetPrefix}/dashboard.js"></script>
 </body>
 </html>`;
 }
