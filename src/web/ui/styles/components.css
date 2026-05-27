@@ -382,6 +382,14 @@
 .plugin-panel-surface .progress-svg .progress-track{fill:color-mix(in srgb,var(--border) 50%,transparent)}
 .plugin-panel-surface .progress-svg .progress-fill{fill:var(--success,#1d8a5b)}
 .plugin-panel-surface .sparkline{display:inline-block;vertical-align:middle;margin-left:8px}
+.plugin-panel-surface .monitor-comparison-panel>.section-header,.plugin-panel-surface .monitor-node-panel>.section-header{align-items:center;margin:0 -16px 8px;padding:0 16px}
+.plugin-panel-surface .monitor-comparison-panel>.section-header h2,.plugin-panel-surface .monitor-node-panel>.section-header h2{margin:0;line-height:1.25}
+.plugin-panel-surface .monitor-comparison-panel{padding-top:14px}
+.plugin-panel-surface [data-monitor-node-row]{cursor:pointer}
+.plugin-panel-surface [data-monitor-node-row].selected{background:color-mix(in srgb,var(--success,#1d8a5b) 10%,transparent)}
+.plugin-panel-surface .monitor-node-select{justify-content:flex-start;width:auto;min-height:0;padding:0;border:0;background:transparent;color:var(--link);font:inherit;font-weight:700;text-align:left}
+.plugin-panel-surface .monitor-node-select:hover,.plugin-panel-surface .monitor-node-select:focus{background:transparent;color:var(--accent-strong);text-decoration:underline;outline:none}
+.plugin-panel-surface [data-monitor-node-row].selected .monitor-node-select{color:var(--text)}
 .plugin-panel-surface .metrics-grid+.metrics-chart-stack{margin-top:16px}
 .plugin-panel-surface .chart-wrap{position:relative;width:100%;min-height:180px}
 .plugin-panel-surface .chart-axis-label{position:absolute;left:4px;z-index:1;pointer-events:none;color:var(--muted);font-size:11px;line-height:1.2;letter-spacing:0;font-family:inherit}
