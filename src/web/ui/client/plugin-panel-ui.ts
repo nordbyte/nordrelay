@@ -154,8 +154,8 @@ function pluginPanelNonceInlineTags(html){
   const nonce=pluginPanelNonceAttr();
   if(!nonce)return String(html||'');
   return String(html||'')
-    .replace(/<script\\b(?![^>]*\\bnonce=)([^>]*)>/gi,(_match,attrs)=>'<script'+attrs+nonce+'>')
-    .replace(/<style\\b(?![^>]*\\bnonce=)([^>]*)>/gi,(_match,attrs)=>'<style'+attrs+nonce+'>');
+    .replace(/<script\b(?![^>]*\bnonce=)([^>]*)>/gi,(_match,attrs)=>'<script'+attrs+nonce+'>')
+    .replace(/<style\b(?![^>]*\bnonce=)([^>]*)>/gi,(_match,attrs)=>'<style'+attrs+nonce+'>');
 }
 function pluginPanelBodyTag(attrs=''){
   const text=String(attrs||'');

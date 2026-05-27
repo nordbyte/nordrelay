@@ -156,6 +156,7 @@ describe("web dashboard browser-flow assets", () => {
   });
 
   it("wraps plugin web panels with the shared NordRelay panel UI bridge", () => {
+    const pluginPanelSource = normalizedSource("src/web/ui/client/plugin-panel-ui.ts");
     const js = dashboardJs();
     const css = dashboardCss();
 
@@ -169,6 +170,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function currentPluginPanelNonce");
     expect(js).toContain("function pluginPanelNonceAttr");
     expect(js).toContain("function pluginPanelNonceInlineTags");
+    expect(pluginPanelSource).toContain(".replace(/<script\\b");
+    expect(pluginPanelSource).toContain(".replace(/<style\\b");
+    expect(pluginPanelSource).not.toContain(".replace(/<script\\\\b");
+    expect(pluginPanelSource).not.toContain(".replace(/<style\\\\b");
     expect(js).toContain("function createPluginPanelObjectUrl");
     expect(js).toContain("function pluginPanelFrameHtml");
     expect(js).toContain("function pluginPanelHtmlFromResult");
