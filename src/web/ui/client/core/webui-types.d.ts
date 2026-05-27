@@ -603,6 +603,13 @@ interface UiCardOptions {
   className?: string;
 }
 
+interface TableActionMenuOptions {
+  id?: unknown;
+  attrs?: string;
+  className?: string;
+  panelClassName?: string;
+}
+
 interface UiItemOptions {
   badge?: { text: string; status?: string } | null;
   rows?: WebuiRows;

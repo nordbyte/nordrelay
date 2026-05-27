@@ -218,6 +218,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function loadWorkflows");
     expect(js).toContain("document.addEventListener('click'");
     expect(js).toContain("[data-workflow-tab]");
+    expect(js).toContain("function workflowActionMenu");
+    expect(js).toContain("tableActionMenuHtml(buttons");
+    expect(js).toContain("bindTableActionMenus(document.getElementById('templateList')");
+    expect(js).toContain("bindTableActionMenus(document.getElementById('workflowList')");
     expect(js).toContain("function renderTemplatesTable");
     expect(js).toContain("function openTemplatePickerMenu");
     expect(js).toContain("data-template-pick");
@@ -1042,6 +1046,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function bindTableActionMenus");
     expect(js).toContain("function positionTableActionMenu");
     expect(js).toContain("function restorePeerActionMenu");
+    expect(js).toContain("function tableActionMenuHtml");
+    expect(js).toContain("function restoreTableActionMenu");
     expect(js).toContain("data-peer-action-menu");
     expect(js).toContain("peer-action-menu");
     expect(js).toContain("bindTableActionMenus(document.getElementById('peersList')");
@@ -1057,7 +1063,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".peers-table{--table-min-width:1120px}");
     expect(css).toContain(".data-table .access-cell .truncate-cell");
     expect(css).not.toContain(".peers-table th:nth-child");
-    expect(css).toContain(".peer-action-menu .peer-action-menu-panel");
+    expect(css).toContain(".table-action-menu .table-action-menu-panel");
     expect(css).toContain(".peer-scope-grid");
     expect(css).toContain(".table-action-menu.is-floating .table-action-menu-list");
     expect(css).toContain("position:fixed");

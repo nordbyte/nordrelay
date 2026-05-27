@@ -32,13 +32,13 @@ async function loadWorkflows(){
   renderWorkflowSections();
 }
 
-function renderWorkflowSections(){renderTemplates();renderWorkflowList();renderWorkflowRuns();applyPermissions()}
+function renderWorkflowSections(){renderTemplates();renderWorkflowList();renderWorkflowRuns();bindTableActionMenus(document.getElementById('page-workflows')||document);applyPermissions()}
 function workflowFilter(value,id){const q=(document.getElementById(id)?.value||'').toLowerCase();if(!q)return true;return [value.name,value.description,(value.tags||[]).join(' '),value.id].join(' ').toLowerCase().includes(q)}
 function workflowTags(tags){return (tags||[]).map(t=>'<span class="chip">'+esc(t)+'</span>').join('')}
 function workflowCell(label,html,cls=''){return '<td data-label="'+attr(label)+'"'+(cls?' class="'+cls+'"':'')+'>'+html+'</td>'}
 function templateUpdatedHtml(t){return t.updatedAt?'<span title="'+attr(fmtDate(t.updatedAt))+'">'+esc(fmtSessionAge(t.updatedAt))+'</span>':'-'}
 function templateVariablesText(t){const count=(t.variables||[]).length;return count+' variable'+(count===1?'':'s')}
-function workflowActionMenu(buttons){return '<details class="table-action-menu workflow-action-menu"><summary>More</summary><div class="table-action-menu-list">'+buttons.join('')+'</div></details>'}
+function workflowActionMenu(buttons){return tableActionMenuHtml(buttons,{className:'workflow-action-menu',panelClassName:'workflow-action-menu-panel'})}
 function workflowRowActions(primary,menuButtons){return '<div class="data-table-actions workflow-row-actions">'+primary+(menuButtons.length?workflowActionMenu(menuButtons):'')+'</div>'}
 function renderTemplateRow(t){const summary=t.description||t.prompt||'';const tags=workflowTags(t.tags)||'-';const scope='<span class="adapter-status '+(t.scope==='shared'?'enabled':'planned')+'">'+esc(t.scope||'private')+'</span>';const actions=workflowRowActions('<button data-template-run="'+attr(t.id)+'"'+disabledAttr('workflows.run')+'>Run</button>',['<button class="secondary" data-template-insert="'+attr(t.id)+'">Insert</button>','<button class="secondary" data-template-preview="'+attr(t.id)+'">Preview</button>','<button class="secondary" data-template-history="'+attr(t.id)+'">History</button>','<button class="secondary" data-template-export="'+attr(t.id)+'">Export</button>','<button class="secondary" data-template-edit="'+attr(t.id)+'"'+disabledAttr('workflows.write')+'>Edit</button>','<button class="danger" data-template-delete="'+attr(t.id)+'"'+disabledAttr('workflows.write')+'>Delete</button>']);return '<tr>'+workflowCell('Updated',templateUpdatedHtml(t),'updated-cell')+workflowCell('Name','<span class="truncate-cell" title="'+attr(t.name||'')+'">'+esc(short(t.name||'-',120))+'</span>','primary-cell')+workflowCell('Scope',scope,'scope-cell')+workflowCell('Tags',tags,'tags-cell')+workflowCell('Variables',esc(templateVariablesText(t)),'variables-cell')+workflowCell('Prompt','<span class="truncate-cell" title="'+attr(summary)+'">'+esc(short(summary||'-',180))+'</span>','prompt-cell')+workflowCell('Actions',actions,'actions-cell')+'</tr>'}
 function renderTemplatesTable(templates){if(!templates.length)return uiEmpty('No templates.');return '<div class="data-table-wrap"><table class="data-table templates-table"><thead><tr><th>Updated</th><th>Name</th><th>Scope</th><th>Tags</th><th>Variables</th><th>Prompt</th><th class="actions-heading">Actions</th></tr></thead><tbody>'+templates.map(renderTemplateRow).join('')+'</tbody></table></div>'}
@@ -47,16 +47,19 @@ function renderTemplates(){
   const list=(state.workflowTemplates||[]).filter(t=>workflowFilter(t,'templateSearch'));
   document.getElementById('templateList').innerHTML=renderTemplatesTable(list);
   bindTemplateButtons();
+  bindTableActionMenus(document.getElementById('templateList')||document);
 }
 
 function renderWorkflowList(){
   const list=(state.workflows||[]).filter(w=>workflowFilter(w,'workflowSearch'));
   document.getElementById('workflowList').innerHTML=renderWorkflowsTable(list);
   bindWorkflowButtons();
+  bindTableActionMenus(document.getElementById('workflowList')||document);
 }
 
 function renderWorkflowRuns(){
   document.getElementById('workflowRunList').innerHTML=renderWorkflowRunsTable(state.workflowRuns||[]);
+  bindTableActionMenus(document.getElementById('workflowRunList')||document);
   bindUiTraceButtons(document.getElementById('workflowRunList'));
   document.querySelectorAll('[data-workflow-run-cancel]').forEach(b=>b.onclick=()=>safe(async()=>{if(!can('workflows.run')){toast('Permission required: workflows.run');return}await api('/api/workflow-runs/'+encodeURIComponent(b.dataset.workflowRunCancel)+'/cancel',{method:'POST'});toast('Workflow run cancelled');await loadWorkflows()}));
   document.querySelectorAll('[data-workflow-run-resume]').forEach(b=>b.onclick=()=>safe(async()=>{if(!can('workflows.run')){toast('Permission required: workflows.run');return}await api('/api/jobs/'+encodeURIComponent('workflow-run:'+b.dataset.workflowRunResume)+'/action',{method:'POST',body:JSON.stringify({action:'retry'})});toast('Workflow resumed');await loadWorkflows()}));
