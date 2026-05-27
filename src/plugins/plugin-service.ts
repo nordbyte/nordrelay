@@ -95,6 +95,7 @@ interface ResolvedCapability {
 
 const DEFAULT_PLUGIN_TIMEOUT_MS = 120_000;
 const DEFAULT_OUTPUT_LIMIT_BYTES = 1024 * 1024;
+const DEFAULT_WEB_PANEL_OUTPUT_LIMIT_BYTES = 4 * 1024 * 1024;
 const KNOWN_PLUGIN_PERMISSIONS = new Set<string>(PLUGIN_RUNTIME_PERMISSIONS);
 
 export class PluginService {
@@ -430,7 +431,7 @@ export class PluginService {
       pluginId,
       dataDir,
       timeoutMs: capability.timeoutMs ?? this.options.defaultTimeoutMs ?? DEFAULT_PLUGIN_TIMEOUT_MS,
-      outputLimitBytes: this.options.outputLimitBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES,
+      outputLimitBytes: this.options.outputLimitBytes ?? (type === "web-panel" ? DEFAULT_WEB_PANEL_OUTPUT_LIMIT_BYTES : DEFAULT_OUTPUT_LIMIT_BYTES),
     });
     const durationMs = Date.now() - startedMs;
     const normalizedResult = normalizePluginResult(result);

@@ -126,6 +126,30 @@ async function createNestedHtmlPanelPluginFixture(): Promise<string> {
   return dir;
 }
 
+async function createLargePanelPluginFixture(): Promise<string> {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-large-panel-"));
+  await writeFile(path.join(dir, "nordrelay.plugin.json"), JSON.stringify({
+    id: "large-panel-plugin",
+    name: "Large Panel Plugin",
+    version: "0.1.0",
+    description: "Test large web panel output",
+    entry: "index.js",
+    capabilities: {
+      webPanels: [
+        { id: "panel", title: "Panel" },
+      ],
+    },
+  }, null, 2));
+  await writeFile(path.join(dir, "index.js"), [
+    "process.stdin.resume();",
+    "process.stdin.on('end',()=>{",
+    "  const html = '<div>'+('x'.repeat(2 * 1024 * 1024))+'</div>';",
+    "  process.stdout.write(JSON.stringify({ ok: true, html, panel: { script: 'window.__largePanelLoaded=true;' } })+'\\n');",
+    "});",
+  ].join("\n"));
+  return dir;
+}
+
 describe("plugin system", () => {
   it("exposes official marketplace entries with installable GitHub sources", () => {
     const entries = pluginMarketplaceEntries();
@@ -260,6 +284,19 @@ describe("plugin system", () => {
 
     expect(panel.ok).toBe(true);
     expect(panel.html).toBe("<strong>Nested HTML Field Panel</strong>");
+  });
+
+  it("allows data-rich web panels to return scripts without hitting the command output limit", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-home-"));
+    const fixture = await createLargePanelPluginFixture();
+    const service = new PluginService(home);
+    await service.install({ source: fixture, enable: true, approvePermissions: true });
+
+    const panel = await service.invokeWebPanel("large-panel-plugin", "panel", {});
+
+    expect(panel.ok).toBe(true);
+    expect(panel.html?.length).toBeGreaterThan(1024 * 1024);
+    expect(panel.panel?.script).toContain("__largePanelLoaded");
   });
 
   it("blocks executable capabilities when plugins are disabled", async () => {
