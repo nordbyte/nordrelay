@@ -136,8 +136,6 @@ const NORDRELAY_PLUGIN_PANEL_BRIDGE_JS = `
 })();
 `;
 
-const pluginPanelObjectUrls = new Set<string>();
-
 function currentPluginPanelTheme(){return document.documentElement.dataset.theme==='dark'?'dark':'light'}
 function currentPluginPanelNonce(){
   const script=document.querySelector('script[nonce]') as HTMLScriptElement|null;
@@ -180,27 +178,12 @@ function pluginPanelDocument(html,options:WebuiRecord={}){
   }
   return '<!doctype html><html data-theme="'+attr(theme)+'"><head>'+headExtra+'</head><body class="nordrelay-plugin-panel">'+raw+'</body></html>';
 }
-function createPluginPanelObjectUrl(html,options:WebuiRecord={}){
-  const documentHtml=pluginPanelDocument(html,options);
-  const blob=new Blob([documentHtml],{type:'text/html;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  pluginPanelObjectUrls.add(url);
-  return url;
-}
 function pluginPanelFrameHtml(html,title,options:WebuiRecord={},className=''){
-  const url=createPluginPanelObjectUrl(html,options);
+  const documentHtml=pluginPanelDocument(html,options);
   const classes=['plugin-panel-frame',String(className||'').trim()].filter(Boolean).join(' ');
-  return '<iframe class="'+attr(classes)+'" sandbox="allow-scripts" title="'+attr(title)+'" data-plugin-panel-frame data-plugin-panel-url="'+attr(url)+'" src="'+attr(url)+'"></iframe>';
+  return '<iframe class="'+attr(classes)+'" sandbox="allow-scripts" title="'+attr(title)+'" data-plugin-panel-frame srcdoc="'+attr(documentHtml)+'"></iframe>';
 }
-function revokePluginPanelUrls(root:ParentNode=document){
-  root.querySelectorAll?.('iframe.plugin-panel-frame[data-plugin-panel-url]').forEach(frame=>{
-    const url=(frame as HTMLElement).dataset.pluginPanelUrl;
-    if(url&&pluginPanelObjectUrls.has(url)){
-      URL.revokeObjectURL(url);
-      pluginPanelObjectUrls.delete(url);
-    }
-  });
-}
+function revokePluginPanelUrls(_root:ParentNode=document){}
 function asPluginPanelFrame(frame):HTMLIFrameElement|null{
   return frame instanceof HTMLIFrameElement?frame:null;
 }
@@ -257,5 +240,4 @@ window.addEventListener('message',event=>{
 function syncPluginPanelThemes(){
   document.querySelectorAll('iframe.plugin-panel-frame').forEach(frame=>postPluginPanelTheme(frame));
 }
-window.addEventListener('beforeunload',()=>revokePluginPanelUrls(document));
 window.addEventListener('resize',()=>document.querySelectorAll('iframe.plugin-panel-page-frame').forEach(frame=>applyPluginPanelFrameHeight(frame)));

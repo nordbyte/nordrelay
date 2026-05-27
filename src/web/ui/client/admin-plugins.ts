@@ -594,7 +594,7 @@ async function loadPluginLog(){
   document.getElementById('pluginLog').textContent=result.log||'No plugin log entries.';
 }
 async function collectPluginAggregate(pluginId,command,input={}){
-  const targets=await pluginAggregateTargets();
+  const targets=await pluginAggregateTargets(pluginId);
   const results=[];
   await Promise.all(targets.map(async target=>{
     try{
@@ -609,11 +609,22 @@ async function collectPluginAggregate(pluginId,command,input={}){
   }));
   return {command,generatedAt:new Date().toISOString(),results:results.sort((a,b)=>String(a.node.name).localeCompare(String(b.node.name)))};
 }
-async function pluginAggregateTargets(){
+async function pluginAggregateTargets(pluginId=''){
   if(!state.peers&&can('peers.read'))state.peers=await api('/api/peers',{local:true}).catch(()=>state.peers);
   const local={id:'local',name:'Local node',platform:navigator.platform||'local'};
-  const peers=(state.peers?.peers||[]).filter(peer=>peer.enabled!==false&&peer.id).map(peer=>({id:peer.id,name:peer.name||peer.id,platform:peer.platform||peer.remotePlatform||''}));
-  return [local,...peers];
+  const peers=(state.peers?.peers||[]).filter(peer=>peer.enabled!==false&&peer.id).map(peer=>({id:String(peer.id),name:String(peer.name||peer.id),platform:String(peer.platform||peer.remotePlatform||'')}));
+  if(!pluginId)return [local,...peers];
+  const targets=[local];
+  await Promise.all(peers.map(async peer=>{
+    try{
+      const data=await apiPeer(peer.id,'/api/plugins',{method:'GET',timeoutMs:5000});
+      const plugins=Array.isArray(data.plugins)?data.plugins:[];
+      if(plugins.some(plugin=>plugin.id===pluginId&&plugin.enabled!==false))targets.push(peer);
+    }catch{
+      // Plugin aggregate panels should keep loading with available nodes only.
+    }
+  }));
+  return targets;
 }
 async function installPluginOnAllTargets(payload){
   const targets=await pluginAggregateTargets();

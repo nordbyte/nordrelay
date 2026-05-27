@@ -157,6 +157,7 @@ describe("web dashboard browser-flow assets", () => {
 
   it("wraps plugin web panels with the shared NordRelay panel UI bridge", () => {
     const pluginPanelSource = normalizedSource("src/web/ui/client/plugin-panel-ui.ts");
+    const adminPluginsSource = normalizedSource("src/web/ui/client/admin-plugins.ts");
     const js = dashboardJs();
     const css = dashboardCss();
 
@@ -174,7 +175,6 @@ describe("web dashboard browser-flow assets", () => {
     expect(pluginPanelSource).toContain(".replace(/<style\\b");
     expect(pluginPanelSource).not.toContain(".replace(/<script\\\\b");
     expect(pluginPanelSource).not.toContain(".replace(/<style\\\\b");
-    expect(js).toContain("function createPluginPanelObjectUrl");
     expect(js).toContain("function pluginPanelFrameHtml");
     expect(js).toContain("function pluginPanelHtmlFromResult");
     expect(js).toContain("function pluginPanelLooseHtml");
@@ -187,8 +187,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("applyPluginPanelFrameHeight(frame");
     expect(js).toContain('sandbox="allow-scripts"');
     expect(js).toContain("data-plugin-panel-frame");
-    expect(js).toContain("data-plugin-panel-url");
-    expect(js).not.toContain("srcdoc");
+    expect(js).toContain("srcdoc");
+    expect(js).not.toContain("data-plugin-panel-url");
     expect(js).toContain("function syncPluginPanelThemes");
     expect(js).toContain("syncPluginPanelThemes?.()");
     expect(css).toContain(".plugin-panel-frame{width:100%");
@@ -197,6 +197,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain(".metrics-grid+.metrics-chart-stack");
     expect(js).toContain(".progress-svg");
     expect(js).toContain(".chart-tooltip[hidden]");
+    expect(adminPluginsSource).toContain("pluginAggregateTargets(pluginId)");
+    expect(adminPluginsSource).toContain("apiPeer(peer.id,'/api/plugins'");
   });
 
   it("includes workflow templates and workflow runs in the WebUI", () => {
