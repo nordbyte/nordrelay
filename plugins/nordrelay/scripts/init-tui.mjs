@@ -1,4 +1,6 @@
-import readline from "node:readline/promises";
+import { ask, askChoice, askSecret } from "./prompt-utils.mjs";
+
+let initRenderLineCount = 0;
 
 export async function collectInitConfig(options) {
   const values = initialInitConfig(options);
@@ -266,35 +268,44 @@ function renderInitTui(rows, selected, message) {
   const listHeight = Math.max(8, height - 8);
   const first = initViewportStart(rows, selected, listHeight);
   const visible = rows.slice(first, first + listHeight);
-  process.stdout.write("\x1b[2J\x1b[H\x1b[?25l");
-  console.log("NordRelay init");
-  console.log("Configure all setup options below. Existing answers can be selected again and changed before saving.");
-  console.log("Keys: Up/Down select | Enter edit | Space toggle booleans | s save | q cancel");
-  console.log("-".repeat(Math.min(width, 120)));
+  const lines = [
+    "NordRelay init",
+    "Configure all setup options below. Existing answers can be selected again and changed before saving.",
+    "Keys: Up/Down select | Enter edit | Space toggle booleans | s save | q cancel",
+    "-".repeat(Math.min(width, 120)),
+  ];
   for (let index = 0; index < visible.length; index += 1) {
     const rowIndex = first + index;
     const row = visible[index];
     if (row.type === "section") {
-      console.log(`\n${row.label}`);
+      lines.push("", row.label);
       continue;
     }
     const pointer = rowIndex === selected ? ">" : " ";
     const label = String(row.label).padEnd(28, " ");
     const value = row.value ? String(row.value) : "";
-    console.log(`${pointer} ${label} ${value}`);
+    lines.push(`${pointer} ${label} ${value}`);
     if (rowIndex === selected && row.hint) {
-      console.log(`  ${"".padEnd(28, " ")} ${row.hint}`);
+      lines.push(`  ${"".padEnd(28, " ")} ${row.hint}`);
     }
   }
   if (rows.length > listHeight) {
     const from = first + 1;
     const to = Math.min(rows.length, first + listHeight);
-    console.log(`\nShowing ${from}-${to} of ${rows.length}`);
+    lines.push("", `Showing ${from}-${to} of ${rows.length}`);
   }
   const errors = String(message || "").split("\n").filter(Boolean).slice(0, 5);
   if (errors.length) {
-    console.log("\n" + errors.map((line) => `! ${line}`).join("\n"));
+    lines.push("", ...errors.map((line) => `! ${line}`));
   }
+  renderInitScreen(lines);
+}
+
+function renderInitScreen(lines) {
+  const padded = [...lines];
+  while (padded.length < initRenderLineCount) padded.push("");
+  initRenderLineCount = lines.length;
+  process.stdout.write(`\x1b[?25l\x1b[H${padded.join("\n")}\x1b[J`);
 }
 
 function initViewportStart(rows, selected, listHeight) {
@@ -344,14 +355,12 @@ async function selectInitOption(label, choices, current) {
   let selected = Math.max(0, choices.indexOf(current));
   let message = "Use Up/Down and Enter to select. Esc cancels.";
   while (true) {
-    process.stdout.write("\x1b[2J\x1b[H\x1b[?25l");
-    console.log(label);
-    console.log(message);
-    console.log("");
+    const lines = [label, message, ""];
     choices.forEach((choice, index) => {
       const pointer = index === selected ? ">" : " ";
-      console.log(`${pointer} ${choice}`);
+      lines.push(`${pointer} ${choice}`);
     });
+    renderInitScreen(lines);
     const key = await readInitKey();
     if (key === "ctrl-c") {
       process.stdout.write("\x1b[?25h\n");
