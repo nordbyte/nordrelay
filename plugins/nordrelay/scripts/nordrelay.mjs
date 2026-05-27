@@ -11,6 +11,7 @@ import { printExistingInitState } from "./init-state.mjs";
 import { collectInitConfig, validateInitConfig } from "./init-tui.mjs";
 import { commandPlugin } from "./plugin-manager.mjs";
 import { ask, askSecret } from "./prompt-utils.mjs";
+import { tuiStyle } from "./tui-style.mjs";
 import {
   buildLaunchdServiceSpec,
   buildSystemdUserServiceSpec,
@@ -1893,19 +1894,29 @@ async function commandDoctor(options) {
   checks.push(check("Runtime entry", Boolean(await resolveRuntimeEntry()), RUNTIME_ROOT, "fail", runtimeBuildFix()));
 
   for (const item of checks) {
-    console.log(`${item.icon} ${item.name}: ${item.detail}`);
-    if (!item.ok && item.fix?.summary) console.log(`   Fix: ${item.fix.summary}`);
+    console.log(doctorCheckLine(item));
+    if (!item.ok && item.fix?.summary) console.log(`   ${tuiStyle("danger", "Fix:")} ${tuiStyle("hint", item.fix.summary)}`);
   }
 
   const failed = checks.filter((item) => item.status === "fail" && !item.ok);
   const warned = checks.filter((item) => item.status === "warn" && !item.ok);
-  console.log(`\nSummary: ${failed.length} failed, ${warned.length} warnings.`);
+  console.log(`\n${tuiStyle("section", "Summary:")} ${tuiStyle(failed.length ? "error" : "success", `${failed.length} failed`)}, ${tuiStyle(warned.length ? "warning" : "success", `${warned.length} warnings`)}.`);
   if (options.fix) {
     await runDoctorFixes(checks);
   } else if ([...failed, ...warned].some((item) => item.fix?.apply)) {
-    console.log("Run `nordrelay doctor --fix` to apply safe local fixes.");
+    console.log(tuiStyle("help", "Run `nordrelay doctor --fix` to apply safe local fixes."));
   }
   if (failed.length > 0) process.exitCode = 1;
+}
+
+function doctorCheckLine(item) {
+  const kind = doctorStatusStyle(item);
+  return `${tuiStyle(kind, item.icon)} ${tuiStyle(kind, item.name)}: ${tuiStyle("value", item.detail)}`;
+}
+
+function doctorStatusStyle(item) {
+  if (item.ok) return "success";
+  return item.status === "warn" ? "warning" : "error";
 }
 
 async function checkHermesApiServer() {
@@ -2556,17 +2567,17 @@ async function runDoctorFixes(checks) {
     console.log("\nNo automatic fixes are available for the current findings.");
     return;
   }
-  console.log("\nAuto-fixes:");
+  console.log(`\n${tuiStyle("section", "Auto-fixes:")}`);
   for (const item of fixable) {
     try {
       const message = await item.fix.apply();
-      console.log(`✅ ${item.name}: ${message}`);
+      console.log(`${tuiStyle("success", "✅")} ${tuiStyle("success", item.name)}: ${tuiStyle("value", message)}`);
     } catch (error) {
-      console.log(`❌ ${item.name}: ${error instanceof Error ? error.message : String(error)}`);
+      console.log(`${tuiStyle("error", "❌")} ${tuiStyle("error", item.name)}: ${tuiStyle("value", error instanceof Error ? error.message : String(error))}`);
       process.exitCode = 1;
     }
   }
-  console.log("\nRun `nordrelay doctor` again to verify the updated setup.");
+  console.log(`\n${tuiStyle("help", "Run `nordrelay doctor` again to verify the updated setup.")}`);
 }
 
 async function writeEnvValue(home, key, value) {
