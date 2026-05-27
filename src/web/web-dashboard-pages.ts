@@ -620,7 +620,6 @@ ${faviconLinks}
 
       <section class="page" id="page-plugin-panel">
         <div class="plugin-panel-page">
-          <div id="pluginPanelBuildMarker" class="callout muted">Plugin panel test marker: NordRelay WebUI build 2026-05-27 07:45</div>
           <div id="pluginPanelPageInput" class="callout muted" hidden></div>
           <div id="pluginPanelPageResult"></div>
         </div>

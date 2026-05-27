@@ -329,11 +329,15 @@ function renderPluginPanelPageResult(item,result){
   resultEl.querySelectorAll('iframe.plugin-panel-frame').forEach(frame=>bindPluginPanelFrame(frame));
 }
 function pluginPanelHtmlFromResult(result){
+  const looseHtml=pluginPanelLooseHtml(result);
+  if(looseHtml)return looseHtml;
   const normalized=pluginPanelJsonObject(result);
-  if(!normalized)return pluginPanelRawHtml(result);
+  if(!normalized)return '';
   return pluginPanelHtmlFromObject(normalized);
 }
 function pluginPanelHtmlFromObject(result){
+  const looseHtml=pluginPanelLooseHtml(result.html)||pluginPanelLooseHtml(result.output)||pluginPanelLooseHtml(result.stdout)||pluginPanelLooseHtml(result.text);
+  if(looseHtml)return looseHtml;
   const directHtml=pluginPanelRawHtml(result.html);
   if(directHtml)return directHtml;
   const htmlObject=pluginPanelJsonObject(result.html);
@@ -352,8 +356,65 @@ function pluginPanelHtmlFromObject(result){
   if(parsed)return pluginPanelHtmlFromObject(parsed);
   return '';
 }
+function pluginPanelLooseHtml(value,depth=0){
+  if(value===undefined||value===null||depth>10)return '';
+  const raw=pluginPanelRawHtml(value);
+  if(raw)return raw;
+  if(typeof value==='object'&&!Array.isArray(value)){
+    return pluginPanelLooseHtml(value.html,depth+1)||pluginPanelLooseHtml(value.output,depth+1)||pluginPanelLooseHtml(value.stdout,depth+1)||pluginPanelLooseHtml(value.text,depth+1);
+  }
+  if(typeof value!=='string')return '';
+  const text=value.trim();
+  if(!text)return '';
+  try{
+    return pluginPanelLooseHtml(JSON.parse(text),depth+1);
+  }catch{
+    const normalized=pluginPanelNormalizeSerializedText(text);
+    if(normalized!==text){
+      const parsed=pluginPanelJsonObject(normalized);
+      if(parsed)return pluginPanelHtmlFromObject(parsed);
+      const rawHtml=pluginPanelRawHtml(normalized);
+      if(rawHtml)return rawHtml;
+      return pluginPanelExtractEmbeddedHtml(normalized);
+    }
+    return pluginPanelExtractEmbeddedHtml(text);
+  }
+}
+function pluginPanelNormalizeSerializedText(text){
+  let current=String(text||'').trim();
+  for(let i=0;i<8;i++){
+    const next=current
+      .replace(/&quot;/g,'"')
+      .replace(/&#34;/g,'"')
+      .replace(/&lt;/g,'<')
+      .replace(/&gt;/g,'>')
+      .replace(/&amp;/g,'&')
+      .replace(/\\\\n/g,'\n')
+      .replace(/\\n/g,'\n')
+      .replace(/\\\\r/g,'')
+      .replace(/\\r/g,'')
+      .replace(/\\\\"/g,'\\"')
+      .replace(/\\"/g,'"');
+    if(next===current)break;
+    current=next;
+  }
+  return current;
+}
+function pluginPanelExtractEmbeddedHtml(text){
+  const normalized=pluginPanelNormalizeSerializedText(text);
+  const match=normalized.match(/"html"\s*:\s*"([\s\S]*?)"\s*(?:[,}])/);
+  if(match?.[1]){
+    const raw=pluginPanelNormalizeSerializedText(match[1]);
+    if(pluginPanelRawHtml(raw))return raw;
+  }
+  const start=normalized.search(/<(?:!doctype|html|body|main|section|article|div|table|svg|canvas|pre|h1|h2|p|span)\b/i);
+  if(start<0)return '';
+  let html=normalized.slice(start).replace(/"\s*}\s*"?\s*$/,'');
+  html=pluginPanelNormalizeSerializedText(html);
+  return pluginPanelRawHtml(html)?html:'';
+}
 function pluginPanelJsonObject(value,depth=0){
-  if(!value||depth>4)return null;
+  if(!value||depth>10)return null;
   if(typeof value==='string'){
     const text=value.trim();
     if(!text)return null;

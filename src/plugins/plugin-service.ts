@@ -772,7 +772,7 @@ function recordField(value: unknown): Record<string, unknown> | undefined {
 }
 
 function parsePluginResultRecord(value: unknown, depth = 0): Record<string, unknown> | undefined {
-  if (value === undefined || value === null || depth > 4) return undefined;
+  if (value === undefined || value === null || depth > 10) return undefined;
   if (typeof value === "string") {
     const text = value.trim();
     if (!text) return undefined;
@@ -810,7 +810,7 @@ function pluginResultLike(value: Record<string, unknown> | undefined): value is 
 }
 
 function extractPluginHtml(value: unknown, depth = 0): string | undefined {
-  if (value === undefined || value === null || depth > 4) return undefined;
+  if (value === undefined || value === null || depth > 10) return undefined;
   if (typeof value === "string") {
     const text = value.trim();
     if (!text) return undefined;

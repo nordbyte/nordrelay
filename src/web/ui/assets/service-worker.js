@@ -32,5 +32,19 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(fetch(request).catch(() => caches.match("/")));
     return;
   }
+  if (/^\/assets\/[^/]+\/dashboard\.(?:css|js)$/.test(url.pathname)) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => undefined);
+          }
+          return response;
+        })
+        .catch(() => caches.match(request)),
+    );
+    return;
+  }
   event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
 });

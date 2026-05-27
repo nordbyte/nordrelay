@@ -171,6 +171,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function createPluginPanelObjectUrl");
     expect(js).toContain("function pluginPanelFrameHtml");
     expect(js).toContain("function pluginPanelHtmlFromResult");
+    expect(js).toContain("function pluginPanelLooseHtml");
+    expect(js).toContain("function pluginPanelExtractEmbeddedHtml");
     expect(js).toContain("function pluginPanelJsonObject");
     expect(js).toContain("function pluginPanelRawHtml");
     expect(js).toContain("pluginPanelJsonObject(JSON.parse(text),depth+1)");
@@ -830,6 +832,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(buildSource).toContain("__NORDRELAY_WEBUI_ASSET_VERSION__");
     expect(serviceWorkerSource).toContain("nordrelay-webui-__NORDRELAY_WEBUI_CACHE_VERSION__");
     expect(serviceWorkerSource).toContain("`/assets/${ASSET_VERSION}/dashboard.js`");
+    expect(serviceWorkerSource).toContain('dashboard\\.(?:css|js)');
+    expect(serviceWorkerSource).toContain("cache.put(request, copy)");
     expect(serverSource).toContain('assetName === "service-worker.js" ? "no-cache" : undefined');
     expect(serverSource).toContain("dashboardBundleAsset");
     expect(serverSource).toContain("private, max-age=31536000, immutable");
