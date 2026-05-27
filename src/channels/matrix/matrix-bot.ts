@@ -342,6 +342,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
       contextKey: request.contextKey,
       prompt: envelope,
       remoteClient,
+      mirrorMode: () => preferencesStore.get(request.contextKey).mirrorMode ?? config.matrixMirrorMode,
       canUsePeer: (peerId) => userStore.canUsePeer(request.authUser, peerId),
       editMinIntervalMs: EDIT_DEBOUNCE_MS,
       typingIntervalMs: TYPING_INTERVAL_MS,

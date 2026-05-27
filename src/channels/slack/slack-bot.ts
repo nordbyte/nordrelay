@@ -337,6 +337,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
       contextKey: request.contextKey,
       prompt: envelope,
       remoteClient,
+      mirrorMode: () => preferencesStore.get(request.contextKey).mirrorMode ?? config.slackMirrorMode,
       canUsePeer: (peerId) => userStore.canUsePeer(request.authUser, peerId),
       editMinIntervalMs: EDIT_DEBOUNCE_MS,
       typingIntervalMs: TYPING_INTERVAL_MS,

@@ -369,6 +369,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       contextKey: request.contextKey,
       prompt: envelope,
       remoteClient,
+      mirrorMode: () => preferencesStore.get(request.contextKey).mirrorMode ?? config.discordMirrorMode,
       canUsePeer: (peerId) => userStore.canUsePeer(request.authUser, peerId),
       editMinIntervalMs: EDIT_DEBOUNCE_MS,
       typingIntervalMs: TYPING_INTERVAL_MS,

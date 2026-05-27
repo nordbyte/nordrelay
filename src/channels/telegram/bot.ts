@@ -1006,13 +1006,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     prompt: PromptEnvelope,
   ): Promise<boolean> => {
     const targetPeerId = preferencesStore.get(contextKey).targetPeerId ?? undefined;
-    const parsed = parseContextKey(contextKey);
-    const messageThreadId = parsed.messageThreadId;
+    const { messageThreadId } = parseContextKey(contextKey);
     return runChannelPeerPrompt<number>({
       targetPeerId,
       contextKey,
       prompt,
       remoteClient,
+      mirrorMode: () => getEffectiveMirrorMode(contextKey),
       canUsePeer: (peerId) => userStore.canUsePeer(getAuthenticatedUser(ctx), peerId),
       editMinIntervalMs: config.telegramEditMinIntervalMs,
       typingIntervalMs: TYPING_INTERVAL_MS,

@@ -3,6 +3,7 @@ import { RemoteRelayClient } from "../../peers/peer-client.js";
 import type { PromptEnvelope } from "../../state/prompt-store.js";
 import { peerPromptProxyPayload } from "../../runtime/remote-prompt.js";
 import type { PeerEventEnvelope } from "../../peers/peer-types.js";
+import type { ChannelMirrorMode } from "../../state/bot-preferences.js";
 import type { WebActivityActor } from "../../web/web-state.js";
 
 export interface RemotePromptClient {
@@ -20,6 +21,7 @@ export interface ChannelPeerPromptOptions<MessageId> {
   contextKey: string;
   prompt: PromptEnvelope;
   remoteClient?: RemotePromptClient;
+  mirrorMode?: ChannelMirrorMode | (() => ChannelMirrorMode);
   editMinIntervalMs: number;
   typingIntervalMs: number;
   sendTyping(): Promise<void>;
@@ -86,7 +88,9 @@ export async function runChannelPeerPrompt<MessageId>(options: ChannelPeerPrompt
         accumulated += event.delta;
         void flush(false).catch(() => {});
       } else if (event.type === "tool_start") {
-        void options.sendToolStart(event.toolName).catch(() => {});
+        if (currentMirrorMode(options) === "full") {
+          void options.sendToolStart(event.toolName).catch(() => {});
+        }
       } else if (event.type === "turn_complete") {
         completed = true;
         finish();
@@ -131,4 +135,11 @@ export async function runChannelPeerPrompt<MessageId>(options: ChannelPeerPrompt
 
 function isQueuedRemoteResult(value: unknown): value is { queued: true; queueId?: unknown } {
   return Boolean(value && typeof value === "object" && "queued" in value && (value as { queued?: unknown }).queued);
+}
+
+function currentMirrorMode<MessageId>(options: ChannelPeerPromptOptions<MessageId>): ChannelMirrorMode {
+  if (typeof options.mirrorMode === "function") {
+    return options.mirrorMode();
+  }
+  return options.mirrorMode ?? "full";
 }
