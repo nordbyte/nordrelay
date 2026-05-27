@@ -2,10 +2,15 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { URL } from "node:url";
 
 import type { ConnectorConfig } from "../core/config.js";
+import { RemoteRelayClient } from "../peers/peer-client.js";
+import { PeerStore } from "../peers/peer-store.js";
 import { PluginService, type PluginServiceOptions } from "../plugins/plugin-service.js";
 import { pluginMarketplaceEntries } from "../plugins/plugin-marketplace.js";
-import type { AuthenticatedUser } from "../access/user-management.js";
+import type { AuthenticatedUser, UserStore } from "../access/user-management.js";
 import type { AuditEvent } from "../access/audit-log.js";
+import type { PublicPeerRecord } from "../peers/peer-types.js";
+import type { PluginInvokeResult } from "../plugins/plugin-types.js";
+import type { WebActivityActor } from "./web-state.js";
 import {
   objectRecord,
   optionalBooleanField,
@@ -18,7 +23,22 @@ interface DashboardPluginRouteOptions {
   config: ConnectorConfig;
   home: string;
   authUser: AuthenticatedUser;
+  users: UserStore;
+  activityActor: WebActivityActor;
   auditPluginAction: (action: AuditEvent["action"], description: string) => void;
+}
+
+interface PluginAggregateNode {
+  id: string;
+  name: string;
+  platform?: string;
+}
+
+interface PluginAggregateResult {
+  node: PluginAggregateNode;
+  ok: boolean;
+  result?: unknown;
+  error?: string;
 }
 
 export async function handleDashboardPluginRoute(
@@ -203,6 +223,15 @@ export async function handleDashboardPluginRoute(
     return true;
   }
 
+  if (req.method === "POST" && url.pathname === `/api/plugins/${id}/aggregate-command`) {
+    assertPluginsWritable(options.config);
+    const body = await readJsonBody(req);
+    const command = requiredString(body, "command");
+    const input = objectRecord(body?.input);
+    sendJson(res, 200, await invokePluginAggregateCommand(id, command, input, plugins, options));
+    return true;
+  }
+
   if (req.method === "POST" && url.pathname === `/api/plugins/${id}/panel`) {
     assertPluginsWritable(options.config);
     const body = await readJsonBody(req);
@@ -262,6 +291,79 @@ function createPluginService(home: string, config: ConnectorConfig): PluginServi
     }),
   };
   return new PluginService(home, serviceOptions);
+}
+
+async function invokePluginAggregateCommand(
+  pluginId: string,
+  command: string,
+  input: Record<string, unknown>,
+  plugins: PluginService,
+  options: DashboardPluginRouteOptions,
+): Promise<{ command: string; generatedAt: string; results: PluginAggregateResult[] }> {
+  const results: PluginAggregateResult[] = [];
+  const localNode: PluginAggregateNode = {
+    id: "local",
+    name: "Local node",
+    platform: process.platform,
+  };
+  try {
+    const result = await plugins.invokeCommand(pluginId, command, input);
+    results.push({ node: localNode, ok: result.ok !== false, result });
+  } catch (error) {
+    results.push({ node: localNode, ok: false, error: errorMessage(error) });
+  }
+
+  const store = new PeerStore(options.home);
+  const client = new RemoteRelayClient(store, options.home);
+  const peers = store.listPublic()
+    .filter((peer) => peer.enabled !== false && canUsePluginAggregatePeer(peer, options));
+  await Promise.all(peers.map(async (peer) => {
+    const node = pluginAggregatePeerNode(peer);
+    try {
+      const result = await client.webProxy(peer.id, {
+        method: "POST",
+        path: `/api/plugins/${pluginId}/command`,
+        query: {},
+        body: { command, input },
+        contextKey: `web:plugin-aggregate:${pluginId}`,
+      }, options.activityActor, `web:plugin-aggregate:${pluginId}`, { timeoutMs: 12_000 });
+      results.push({ node, ok: (result as PluginInvokeResult | undefined)?.ok !== false, result });
+    } catch (error) {
+      const message = errorMessage(error);
+      if (!shouldSkipPluginAggregateError(message)) {
+        results.push({ node, ok: false, error: message });
+      }
+    }
+  }));
+
+  return {
+    command,
+    generatedAt: new Date().toISOString(),
+    results: results.sort((a, b) => String(a.node.name).localeCompare(String(b.node.name))),
+  };
+}
+
+function canUsePluginAggregatePeer(peer: PublicPeerRecord, options: DashboardPluginRouteOptions): boolean {
+  if (!options.users.canUsePeerStrict(options.authUser, peer.id)) {
+    return false;
+  }
+  return Boolean(peer.url || peer.direction === "inbound");
+}
+
+function pluginAggregatePeerNode(peer: PublicPeerRecord): PluginAggregateNode {
+  return {
+    id: peer.id,
+    name: peer.name || peer.id,
+    platform: peer.remoteStatus ? `${peer.remoteStatus}${peer.remoteVersion ? ` · ${peer.remoteVersion}` : ""}` : undefined,
+  };
+}
+
+function shouldSkipPluginAggregateError(message: string): boolean {
+  return /plugin not found|plugins are disabled|plugin is disabled|access denied|api key permissions/i.test(message);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function assertPluginsWritable(config: ConnectorConfig): void {

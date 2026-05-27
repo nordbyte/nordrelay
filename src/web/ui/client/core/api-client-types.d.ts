@@ -157,6 +157,7 @@ export type WebApiDynamicPath =
   | `/api/peers/discovery-jobs/${string}/log`
   | `/api/peers/invitations/${string}`
   | `/api/plugins/${string}`
+  | `/api/plugins/${string}/aggregate-command`
   | `/api/plugins/${string}/artifact-handler`
   | `/api/plugins/${string}/collector`
   | `/api/plugins/${string}/command`

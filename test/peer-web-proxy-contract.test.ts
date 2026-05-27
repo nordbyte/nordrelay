@@ -14,5 +14,6 @@ describe("peer web proxy contract", () => {
     expect(coverage.localOnly.map((route) => `${route.method} ${route.path}`)).toContain("POST /api/peers/sync");
     expect(coverage.localOnly.map((route) => `${route.method} ${route.path}`)).toContain("GET /api/peers/:id/sync-candidates");
     expect(coverage.localOnly.map((route) => `${route.method} ${route.path}`)).toContain("GET /api/plugins/marketplace");
+    expect(coverage.localOnly.map((route) => `${route.method} ${route.path}`)).toContain("POST /api/plugins/:id/aggregate-command");
   });
 });

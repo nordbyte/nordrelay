@@ -119,6 +119,7 @@ const WEB_API_CLIENT_ROUTE_RULES = [
   { re: /^\/api\/plugins\/[^\/]+\/rollback$/, methods: ['POST'] },
   { re: /^\/api\/plugins\/[^\/]+\/invoke$/, methods: ['POST'] },
   { re: /^\/api\/plugins\/[^\/]+\/command$/, methods: ['POST'] },
+  { re: /^\/api\/plugins\/[^\/]+\/aggregate-command$/, methods: ['POST'] },
   { re: /^\/api\/plugins\/[^\/]+\/panel$/, methods: ['POST'] },
   { re: /^\/api\/plugins\/[^\/]+\/artifact-handler$/, methods: ['POST'] },
   { re: /^\/api\/plugins\/[^\/]+\/diagnostics$/, methods: ['GET'] },

@@ -28,6 +28,7 @@ const LOCAL_ONLY_ROUTE_PATHS = new Set([
   "/api/doctor",
   "/api/doctor/fix",
   "/api/plugins/marketplace",
+  "/api/plugins/:id/aggregate-command",
   "/api/peers",
   "/api/peers/invite",
   "/api/peers/pair",

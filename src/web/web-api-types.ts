@@ -147,6 +147,21 @@ export interface WebVersionResponse {
   versionChecks: VersionChecks;
 }
 
+export interface PluginAggregateCommandResponse {
+  command: string;
+  generatedAt: string;
+  results: Array<{
+    node: {
+      id: string;
+      name: string;
+      platform?: string;
+    };
+    ok: boolean;
+    result?: unknown;
+    error?: string;
+  }>;
+}
+
 export interface WebUserManagementResponse {
   users: Array<PublicUser & {
     groups: GroupRecord[];
@@ -246,7 +261,7 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends `/api/plugins/${string}/rollback` ? { version?: string } :
   P extends `/api/plugins/${string}/settings` ? { settings: Record<string, unknown> } :
   P extends `/api/plugins/${string}/invoke` ? { actionId: string; input?: Record<string, unknown> } :
-  P extends `/api/plugins/${string}/command` ? { command: string; input?: Record<string, unknown> } :
+  P extends `/api/plugins/${string}/command` | `/api/plugins/${string}/aggregate-command` ? { command: string; input?: Record<string, unknown> } :
   P extends `/api/plugins/${string}/panel` ? { panelId: string; input?: Record<string, unknown> } :
   P extends `/api/plugins/${string}/artifact-handler` ? { handlerId: string; input?: Record<string, unknown> } :
   P extends `/api/plugins/${string}/collector` ? { collectorId: string; input?: Record<string, unknown> } :
@@ -359,6 +374,7 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends `/api/plugins/${string}/update-check` ? PluginUpdateCheckResult :
   P extends `/api/plugins/${string}/log` ? { id: string; log: string } :
   P extends `/api/plugins/${string}/invoke` ? PluginInvokeResult :
+  P extends `/api/plugins/${string}/aggregate-command` ? PluginAggregateCommandResponse :
   P extends `/api/plugins/${string}/command` | `/api/plugins/${string}/panel` | `/api/plugins/${string}/artifact-handler` | `/api/plugins/${string}/diagnostics` | `/api/plugins/${string}/collector` ? PluginInvokeResult :
   P extends `/api/plugins/${string}` ? PublicPluginRecord | { ok: true } :
   P extends "/api/templates" ? { templates: PromptTemplate[] } | { template: PromptTemplate } :

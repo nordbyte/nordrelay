@@ -197,8 +197,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain(".metrics-grid+.metrics-chart-stack");
     expect(js).toContain(".progress-svg");
     expect(js).toContain(".chart-tooltip[hidden]");
-    expect(adminPluginsSource).toContain("pluginAggregateTargets(pluginId)");
-    expect(adminPluginsSource).toContain("apiPeer(peer.id,'/api/plugins'");
+    expect(adminPluginsSource).toContain("/aggregate-command");
+    expect(adminPluginsSource).not.toContain("pluginAggregateTargets(pluginId)");
+    expect(adminPluginsSource).not.toContain("apiPeer(peer.id,'/api/plugins'");
   });
 
   it("includes workflow templates and workflow runs in the WebUI", () => {

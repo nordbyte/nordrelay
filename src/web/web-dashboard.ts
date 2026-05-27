@@ -459,6 +459,8 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
     config,
     home: options.home,
     authUser,
+    users,
+    activityActor: webActivityActor(authUser),
     auditPluginAction: (action, description) => auditUserAction(authUser, action, description),
   })) {
     return;

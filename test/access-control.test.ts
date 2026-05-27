@@ -64,6 +64,7 @@ describe("access-control", () => {
     expect(permissionForWebRequest("POST", "/api/plugins/example/disable")).toBe("plugins.enable");
     expect(permissionForWebRequest("PATCH", "/api/plugins/example/settings")).toBe("plugins.settings.write");
     expect(permissionForWebRequest("GET", "/api/plugins/example/log")).toBe("plugins.read");
+    expect(permissionForWebRequest("POST", "/api/plugins/example/aggregate-command")).toBe("plugins.read");
     expect(permissionForWebRequest("POST", "/api/prompt")).toBe("prompt.send");
     expect(permissionForWebRequest("GET", "/api/queue")).toBe("queue.read");
     expect(permissionForWebRequest("POST", "/api/queue")).toBe("queue.write");

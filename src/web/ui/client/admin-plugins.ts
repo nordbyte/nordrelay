@@ -594,37 +594,13 @@ async function loadPluginLog(){
   document.getElementById('pluginLog').textContent=result.log||'No plugin log entries.';
 }
 async function collectPluginAggregate(pluginId,command,input={}){
-  const targets=await pluginAggregateTargets(pluginId);
-  const results=[];
-  await Promise.all(targets.map(async target=>{
-    try{
-      const path='/api/plugins/'+encodeURIComponent(pluginId)+'/command';
-      const result=target.id==='local'
-        ? await api(path,{method:'POST',local:true,body:JSON.stringify({command,input}),timeoutMs:12000})
-        : await apiPeer(target.id,path,{method:'POST',body:JSON.stringify({command,input}),timeoutMs:12000});
-      results.push({node:target,ok:result.ok!==false,result});
-    }catch(error){
-      results.push({node:target,ok:false,error:error instanceof Error?error.message:String(error)});
-    }
-  }));
-  return {command,generatedAt:new Date().toISOString(),results:results.sort((a,b)=>String(a.node.name).localeCompare(String(b.node.name)))};
+  return api('/api/plugins/'+encodeURIComponent(pluginId)+'/aggregate-command',{method:'POST',local:true,body:JSON.stringify({command,input}),timeoutMs:30000});
 }
-async function pluginAggregateTargets(pluginId=''){
+async function pluginAggregateTargets(){
   if(!state.peers&&can('peers.read'))state.peers=await api('/api/peers',{local:true}).catch(()=>state.peers);
   const local={id:'local',name:'Local node',platform:navigator.platform||'local'};
   const peers=(state.peers?.peers||[]).filter(peer=>peer.enabled!==false&&peer.id).map(peer=>({id:String(peer.id),name:String(peer.name||peer.id),platform:String(peer.platform||peer.remotePlatform||'')}));
-  if(!pluginId)return [local,...peers];
-  const targets=[local];
-  await Promise.all(peers.map(async peer=>{
-    try{
-      const data=await apiPeer(peer.id,'/api/plugins',{method:'GET',timeoutMs:5000});
-      const plugins=Array.isArray(data.plugins)?data.plugins:[];
-      if(plugins.some(plugin=>plugin.id===pluginId&&plugin.enabled!==false))targets.push(peer);
-    }catch{
-      // Plugin aggregate panels should keep loading with available nodes only.
-    }
-  }));
-  return targets;
+  return [local,...peers];
 }
 async function installPluginOnAllTargets(payload){
   const targets=await pluginAggregateTargets();
