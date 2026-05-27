@@ -380,9 +380,7 @@
 .plugin-panel-surface .metric-kv-number{font-variant-numeric:tabular-nums;font-weight:700}
 .plugin-panel-surface .progress-svg{display:block;width:100%;height:7px;border-radius:999px;overflow:hidden}
 .plugin-panel-surface .progress-svg .progress-track{fill:color-mix(in srgb,var(--border) 50%,transparent)}
-.plugin-panel-surface .progress-svg .progress-fill{fill:var(--success)}
-.plugin-panel-surface .progress-svg.warn .progress-fill{fill:var(--warn-text)}
-.plugin-panel-surface .progress-svg.error .progress-fill{fill:var(--danger)}
+.plugin-panel-surface .progress-svg .progress-fill{fill:var(--success,#1d8a5b)}
 .plugin-panel-surface .sparkline{display:inline-block;vertical-align:middle;margin-left:8px}
 .plugin-panel-surface .metrics-grid+.metrics-chart-stack{margin-top:16px}
 .plugin-panel-surface .chart-wrap{position:relative;width:100%;min-height:180px}
