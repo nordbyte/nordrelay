@@ -318,6 +318,7 @@ async function reloadPluginPanelFrame(_frame,input={}){
   const defaults=pluginInputDefaultsFromSchema(item.inputSchema||{});
   await runPluginPanelPage(item,{...defaults,...(input&&typeof input==='object'?input:{})});
 }
+(globalThis as WebuiRecord).reloadPluginPanelFrame=reloadPluginPanelFrame;
 function renderPluginPanelPageResult(item,result){
   const resultEl=document.getElementById('pluginPanelPageResult');
   if(!resultEl)return;
