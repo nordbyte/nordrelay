@@ -26,7 +26,7 @@ function initialInitConfig(options) {
     enableWebui: options.disableWebui ? "false" : "true",
     enableAutostart: options.disableAutostart ? "false" : "true",
     enableWebuiAutostart: options.disableWebui || options.disableWebuiAutostart ? "false" : "true",
-    enableTelegram: options.disableTelegram ? "false" : "true",
+    enableTelegram: options.disableTelegram ? "false" : options.telegramBotToken ? "true" : "false",
     telegramBotToken: options.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || "",
     enableDiscord: options.enableDiscord ? "true" : "false",
     discordBotToken: options.discordBotToken || process.env.DISCORD_BOT_TOKEN || "",
@@ -64,7 +64,7 @@ async function collectSequentialInitConfig(options) {
   const enableWebuiAutostart = enableWebui === "true"
     ? (options.disableWebuiAutostart ? "false" : await askChoice(null, "Enable WebUI autostart", "true"))
     : "false";
-  const enableTelegram = options.disableTelegram ? "false" : await askChoice(null, "Enable Telegram", "true");
+  const enableTelegram = options.disableTelegram ? "false" : await askChoice(null, "Enable Telegram", options.telegramBotToken ? "true" : "false");
   const telegramBotToken = enableTelegram === "true"
     ? options.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN || await ask(null, "Telegram bot token", "")
     : "";
@@ -303,6 +303,7 @@ function renderInitTui(rows, selected, message) {
     lines.push(`${pointer} ${label} ${value}`);
     if (rowIndex === selected && row.hint) {
       lines.push(`  ${"".padEnd(28, " ")} ${initStyle("hint", row.hint)}`);
+      lines.push("");
     }
   }
   if (rows.length > listHeight) {
@@ -319,10 +320,14 @@ function renderInitTui(rows, selected, message) {
 }
 
 function renderInitScreen(lines) {
-  const padded = [...lines];
-  while (padded.length < initRenderLineCount) padded.push("");
+  const lineCount = Math.max(lines.length, initRenderLineCount);
+  const output = ["\x1b[?25l\x1b[H"];
+  for (let index = 0; index < lineCount; index += 1) {
+    output.push("\x1b[2K", lines[index] ?? "");
+    if (index < lineCount - 1) output.push("\n");
+  }
   initRenderLineCount = lines.length;
-  process.stdout.write(`\x1b[?25l\x1b[H${padded.join("\n")}\x1b[J`);
+  process.stdout.write(`${output.join("")}\x1b[J`);
 }
 
 function initViewportStart(rows, selected, listHeight) {

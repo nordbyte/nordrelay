@@ -17,7 +17,6 @@ describe("nordrelay CLI script", () => {
     const { collectInitConfig } = await import("../plugins/nordrelay/scripts/init-tui.mjs");
 
     const config = await collectInitConfig({
-      disableTelegram: true,
       disableAutostart: true,
       disableWebuiAutostart: true,
     });
@@ -25,6 +24,19 @@ describe("nordrelay CLI script", () => {
     expect(config.enableWebui).toBe("true");
     expect(config.enableTelegram).toBe("false");
     expect(config.adminName).toBe("Admin");
+  });
+
+  it("enables Telegram by default only when a Telegram token was supplied", async () => {
+    const { collectInitConfig } = await import("../plugins/nordrelay/scripts/init-tui.mjs");
+
+    const config = await collectInitConfig({
+      telegramBotToken: "123456:abcdefghijklmnopqrstuvwxyz",
+      disableAutostart: true,
+      disableWebuiAutostart: true,
+    });
+
+    expect(config.enableTelegram).toBe("true");
+    expect(config.telegramBotToken).toBe("123456:abcdefghijklmnopqrstuvwxyz");
   });
 
   it("hides chat adapter detail fields until the adapter is enabled", async () => {
