@@ -53,6 +53,30 @@ async function createPluginFixture(): Promise<string> {
   return dir;
 }
 
+async function createStringifiedPanelPluginFixture(): Promise<string> {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-stringified-panel-"));
+  await writeFile(path.join(dir, "nordrelay.plugin.json"), JSON.stringify({
+    id: "stringified-panel-plugin",
+    name: "Stringified Panel Plugin",
+    version: "0.1.0",
+    description: "Test stringified panel output",
+    entry: "index.js",
+    capabilities: {
+      webPanels: [
+        { id: "panel", title: "Panel" },
+      ],
+    },
+  }, null, 2));
+  await writeFile(path.join(dir, "index.js"), [
+    "process.stdin.resume();",
+    "process.stdin.on('end',()=>{",
+    "  const nested = { ok: true, html: '<strong>Nested Panel</strong>', variables: { panel: 'ok' }, diagnostics: { nested: true } };",
+    "  process.stdout.write(JSON.stringify({ ok: true, output: JSON.stringify(nested) })+'\\n');",
+    "});",
+  ].join("\n"));
+  return dir;
+}
+
 describe("plugin system", () => {
   it("exposes official marketplace entries with installable GitHub sources", () => {
     const entries = pluginMarketplaceEntries();
@@ -149,6 +173,20 @@ describe("plugin system", () => {
     const afterInvoke = await service.get("example-plugin");
     expect(afterInvoke?.metrics?.invocations).toBeGreaterThanOrEqual(5);
     expect(afterInvoke?.metrics?.failures).toBe(0);
+  });
+
+  it("promotes stringified plugin result output for web panels", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-home-"));
+    const fixture = await createStringifiedPanelPluginFixture();
+    const service = new PluginService(home);
+    await service.install({ source: fixture, enable: true, approvePermissions: true });
+
+    const panel = await service.invokeWebPanel("stringified-panel-plugin", "panel", {});
+
+    expect(panel.ok).toBe(true);
+    expect(panel.html).toBe("<strong>Nested Panel</strong>");
+    expect(panel.variables).toEqual({ panel: "ok" });
+    expect(panel.diagnostics).toEqual({ nested: true });
   });
 
   it("blocks executable capabilities when plugins are disabled", async () => {

@@ -431,9 +431,10 @@ export class PluginService {
       outputLimitBytes: this.options.outputLimitBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES,
     });
     const durationMs = Date.now() - startedMs;
+    const normalizedResult = normalizePluginResult(result);
     const normalized = {
-      ...normalizePluginResult(result),
-      variables: mergeOutputVariables(result, capability.outputVariables),
+      ...normalizedResult,
+      variables: mergeOutputVariables(normalizedResult, capability.outputVariables),
       durationMs,
     };
     await this.recordInvocation(plugin, normalized, startedAt, new Date().toISOString(), durationMs);
@@ -736,18 +737,20 @@ function filterHostContext(context: PluginHostContext, permissions: PluginRuntim
 }
 
 function normalizePluginResult(result: PluginInvokeResult): PluginInvokeResult {
-  if (result.output && typeof result.output === "object" && !Array.isArray(result.output)) {
-    const output = result.output as Record<string, unknown>;
-    return {
-      ...result,
-      variables: normalizeVariables(result.variables ?? recordField(output.variables)),
-      html: stringField(result.html ?? output.html),
-      text: stringField(result.text ?? output.text),
-      artifacts: Array.isArray(result.artifacts) ? result.artifacts : Array.isArray(output.artifacts) ? output.artifacts : undefined,
-      diagnostics: result.diagnostics ?? output.diagnostics,
-    };
-  }
-  return { ...result, variables: normalizeVariables(result.variables) };
+  const output = parsePluginResultRecord(result.output);
+  const stdout = parsePluginResultRecord(result.stdout);
+  const promoted = pluginResultLike(output) ? output : pluginResultLike(stdout) ? stdout : undefined;
+  const fields = promoted ?? output;
+  return {
+    ...result,
+    ok: typeof promoted?.ok === "boolean" ? promoted.ok : result.ok,
+    output: promoted && "output" in promoted ? promoted.output : result.output,
+    variables: normalizeVariables(result.variables ?? recordField(fields?.variables)),
+    html: stringField(result.html ?? fields?.html),
+    text: stringField(result.text ?? fields?.text),
+    artifacts: Array.isArray(result.artifacts) ? result.artifacts : Array.isArray(fields?.artifacts) ? fields.artifacts : undefined,
+    diagnostics: result.diagnostics ?? fields?.diagnostics,
+  };
 }
 
 function mergeOutputVariables(result: PluginInvokeResult, mapping?: Record<string, string>): Record<string, string> | undefined {
@@ -766,6 +769,32 @@ function mergeOutputVariables(result: PluginInvokeResult, mapping?: Record<strin
 
 function recordField(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function parsePluginResultRecord(value: unknown, depth = 0): Record<string, unknown> | undefined {
+  if (value === undefined || value === null || depth > 4) return undefined;
+  if (typeof value === "string") {
+    const text = value.trim();
+    if (!text) return undefined;
+    try {
+      return parsePluginResultRecord(JSON.parse(text) as unknown, depth + 1);
+    } catch {
+      return undefined;
+    }
+  }
+  return recordField(value);
+}
+
+function pluginResultLike(value: Record<string, unknown> | undefined): value is Record<string, unknown> {
+  return Boolean(value && (
+    "ok" in value ||
+    "html" in value ||
+    "text" in value ||
+    "output" in value ||
+    "variables" in value ||
+    "artifacts" in value ||
+    "diagnostics" in value
+  ));
 }
 
 function normalizeVariables(value: unknown): Record<string, string> | undefined {
