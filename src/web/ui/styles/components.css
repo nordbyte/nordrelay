@@ -391,11 +391,16 @@
 .plugin-panel-surface .monitor-node-select{justify-content:flex-start;width:auto;min-height:0;padding:0;border:0;background:transparent;color:var(--link);font:inherit;font-weight:700;text-align:left}
 .plugin-panel-surface .monitor-node-select:hover,.plugin-panel-surface .monitor-node-select:focus{background:transparent;color:var(--accent-strong);text-decoration:underline;outline:none}
 .plugin-panel-surface [data-monitor-node-row].selected .monitor-node-select{color:var(--text)}
+.plugin-panel-surface .monitor-node-tab[data-monitor-node-tab-panel="overview"]{margin-top:12px}
 .plugin-panel-surface .metrics-grid+.metrics-chart-stack{margin-top:16px}
 .plugin-panel-surface .chart-wrap{position:relative;width:100%;min-height:180px}
 .plugin-panel-surface .chart-axis-label{position:absolute;left:4px;z-index:1;pointer-events:none;color:var(--muted);font-size:11px;line-height:1.2;letter-spacing:0;font-family:inherit}
 .plugin-panel-surface .chart-axis-label-top{top:4px}
 .plugin-panel-surface .chart-axis-label-bottom{bottom:26px}
+.plugin-panel-surface .chart-time-axis{display:flex;justify-content:space-between;gap:10px;margin:6px 0 0;padding-left:42px;padding-right:14px;color:var(--muted);font-size:11px;line-height:1.2;font-family:inherit;letter-spacing:0}
+.plugin-panel-surface .chart-time-axis span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
+.plugin-panel-surface .chart-time-axis span:first-child{text-align:left}
+.plugin-panel-surface .chart-time-axis span:last-child{text-align:right}
 .plugin-panel-surface .chart-hit{cursor:crosshair}
 .plugin-panel-surface .chart-hit:hover{fill:color-mix(in srgb,var(--accent) 12%,transparent)!important}
 .plugin-panel-surface .chart-tooltip{position:absolute;left:0;top:0;z-index:20;max-width:280px;white-space:pre-line;pointer-events:none;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);box-shadow:var(--shadow);font-size:12px;line-height:1.35;letter-spacing:0;font-family:inherit}
