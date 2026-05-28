@@ -61,6 +61,8 @@ function renderDashboardPageButton(page: DashboardPage, activePage: string): str
   const label =
     page.id === "overview"
       ? `<span class="nav-label">${page.label}</span><span id="overviewActiveBadge" class="nav-badge" aria-hidden="true" hidden>0</span>`
+      : page.id === "queue"
+        ? `<span class="nav-label">${page.label}</span><span id="queueNavBadge" class="nav-badge" aria-hidden="true" hidden>0</span>`
       : `<span class="nav-label">${page.label}</span>`;
   return `<button type="button" data-page="${page.id}" data-permission="${page.permission}"${page.id === activePage ? ' class="active"' : ""}>${label}</button>`;
 }

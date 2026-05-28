@@ -93,10 +93,21 @@ function metricThreadCopyHtml(thread){
   return thread?' <button type="button" class="copy-id metric-thread-copy" data-copy-value="'+attr(thread)+'" data-copy-label="Thread ID copied" title="Copy thread ID" aria-label="Copy thread ID"><span class="copy-icon" aria-hidden="true"></span></button>':'';
 }
 function updateSnapshotQueue(queue,paused){
+  const items=Array.isArray(queue)?queue:[];
+  updateQueueNavBadge(items);
   if(!state.snapshot)return;
-  state.snapshot.queue=Array.isArray(queue)?queue:[];
+  state.snapshot.queue=items;
   state.snapshot.queuePaused=Boolean(paused);
   if(state.currentPage==='chat')renderChatWorkspaceLine();
+}
+function updateQueueNavBadge(queue){
+  const count=Array.isArray(queue)?queue.length:0;
+  const badge=document.getElementById('queueNavBadge');
+  if(!badge)return;
+  badge.textContent=String(count);
+  badge.hidden=count<1;
+  badge.title='Queued prompts';
+  badge.setAttribute('aria-label',count+' queued prompt'+(count===1?'':'s'));
 }
 function currentChatQueueState(){
   const queue=state.snapshot?.queue;
