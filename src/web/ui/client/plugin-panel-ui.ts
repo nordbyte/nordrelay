@@ -57,6 +57,11 @@ function cleanupPluginPanelSurface(surface:HTMLElement|null){
   const instanceId=surface.dataset.pluginPanelInstance||'';
   registry.cleanup(instanceId);
 }
+function isPluginPanelSurfaceVisible(surface:HTMLElement|null){
+  if(!surface||!surface.isConnected||surface.hidden)return false;
+  const page=surface.closest('.page');
+  return !page||page.classList.contains('active');
+}
 type PluginPanelApi = {
   id: string;
   root: HTMLElement;
@@ -66,6 +71,8 @@ type PluginPanelApi = {
   setInterval: (fn: () => void, ms: unknown) => number;
   setTimeout: (fn: () => void, ms: unknown) => number;
   addEventListener: (target: EventTarget, type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => void;
+  isVisible: () => boolean;
+  isActivePage: () => boolean;
   onCleanup: (fn: () => void) => void;
   cleanup: () => void;
 };
@@ -102,6 +109,8 @@ function pluginPanelRegistry():PluginPanelRegistry{
           target.addEventListener(type,listener,options);
           cleanup.push(()=>target.removeEventListener(type,listener,options));
         },
+        isVisible:()=>isPluginPanelSurfaceVisible(surface),
+        isActivePage:()=>isPluginPanelSurfaceVisible(surface),
         onCleanup:(fn:()=>void)=>{if(typeof fn==='function')cleanup.push(fn)},
         cleanup:()=>registry.cleanup(instanceId),
       };
