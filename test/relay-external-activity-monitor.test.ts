@@ -49,6 +49,55 @@ describe("RelayExternalActivityMonitor", () => {
 
     expect(broadcasts).toContainEqual({ type: "chat_history", messages: chatMessages });
   });
+
+  it("stores external status mirror updates as separate WebUI chat messages", async () => {
+    getExternalSnapshotForSession
+      .mockReturnValueOnce(activeSnapshot({ lineCount: 1, latestToolName: "read_file" }))
+      .mockReturnValueOnce(activeSnapshot({ lineCount: 2, latestToolName: "exec_command" }));
+    const appendWithResult = vi.fn((input: any) => ({
+      message: {
+        id: `message-${appendWithResult.mock.calls.length}`,
+        timestamp: "2026-05-25T07:00:00.000Z",
+        ...input,
+        threadId: input.threadId ?? "pending",
+      },
+      inserted: true,
+    }));
+    const upsertByKey = vi.fn();
+    const monitor = new RelayExternalActivityMonitor({
+      config: { workspace: "/workspace", codexExternalBusyStaleMs: 60_000 } as never,
+      getSession: async () => session(),
+      publicInfo: () => sessionInfo(),
+      queueLength: () => 0,
+      mirrorMode: () => "status",
+      mirrorMinUpdateMs: () => 0,
+      chatStore: {
+        appendWithResult,
+        upsertByKey,
+      } as never,
+      chatHistory: async () => [],
+      activity: () => [],
+      persistWorkspaceArtifactsForTurn: async () => {},
+      drainQueue: async () => {},
+      appendActivity: vi.fn((input) => ({ ...input, id: "activity-1", timestamp: "2026-05-25T07:00:00.000Z" })),
+      broadcast: vi.fn(),
+      broadcastStatus: vi.fn(),
+      scheduleActiveSessionsBroadcast: vi.fn(),
+    });
+
+    await monitor.monitorSafe();
+    await monitor.monitorSafe();
+
+    expect(upsertByKey).not.toHaveBeenCalled();
+    expect(appendWithResult).toHaveBeenCalledWith(expect.objectContaining({
+      key: "external:status:codex:thread-1:turn-1:1",
+      text: expect.stringContaining("Last tool: read_file"),
+    }));
+    expect(appendWithResult).toHaveBeenCalledWith(expect.objectContaining({
+      key: "external:status:codex:thread-1:turn-1:2",
+      text: expect.stringContaining("Last tool: exec_command"),
+    }));
+  });
 });
 
 function session(): AgentSessionService {
@@ -77,8 +126,8 @@ function sessionInfo(): AgentSessionInfo {
   };
 }
 
-function activeSnapshot(): AgentExternalSnapshot {
-  return {
+function activeSnapshot(overrides: Partial<AgentExternalSnapshot> = {}): AgentExternalSnapshot {
+  const snapshot: AgentExternalSnapshot = {
     agentId: "codex",
     agentLabel: "Codex",
     threadId: "thread-1",
@@ -111,5 +160,14 @@ function activeSnapshot(): AgentExternalSnapshot {
     latestAgentMessage: null,
     latestUserMessage: "Build the feature",
     latestToolName: null,
+  };
+  return {
+    ...snapshot,
+    ...overrides,
+    activity: {
+      ...snapshot.activity,
+      ...overrides.activity,
+    },
+    events: overrides.events ?? snapshot.events,
   };
 }

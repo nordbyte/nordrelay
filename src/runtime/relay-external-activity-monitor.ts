@@ -426,17 +426,19 @@ export class RelayExternalActivityMonitor {
     if (!text && mirror.latestStatusAt && now - mirror.latestStatusAt < minInterval) {
       return;
     }
-    this.options.chatStore.upsertByKey({
+    const stored = this.options.chatStore.appendWithResult({
       threadId: snapshot.threadId,
       role: "system",
       text: text ?? renderExternalMirrorStatus(snapshot, this.options.queueLength()).plain,
       source: "cli",
       correlationId: externalCorrelationId(snapshot),
       turnId: snapshot.activity.turnId ?? undefined,
-      key: externalMessageKey("status", snapshot),
+      key: externalMessageKey(text ? "status-terminal" : "status", snapshot, snapshot.lineCount),
     });
     mirror.latestStatusAt = now;
-    await this.broadcastChatHistory();
+    if (stored.inserted) {
+      await this.broadcastChatHistory();
+    }
   }
 
   private async handlePendingApprovals(
