@@ -551,7 +551,7 @@ ${faviconLinks}
 
       <section class="page" id="page-plugins">
         <div class="panel">
-          <div class="section-header plugins-section-header">
+          <div class="section-header plugin-section-header">
             <div id="pluginTabs" class="section-tabs plugin-tabs" role="tablist" aria-label="Plugin sections">
               <button type="button" role="tab" aria-selected="true" tabindex="0" data-plugin-tab="installed" class="active">Installed</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="marketplace">Marketplace</button>
