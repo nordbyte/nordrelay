@@ -374,6 +374,7 @@
 .plugin-panel-page-surface{flex:1;min-height:calc(100dvh - var(--dashboard-header-height) - 100px)}
 .plugin-panel-surface .compact-panel{padding:12px}
 .plugin-panel-surface .mini-control{display:flex;align-items:center;gap:6px}
+.plugin-panel-surface [data-custom-minutes]{width:7ch;min-width:0;max-width:7ch}
 .plugin-panel-surface .metric-label{font-size:12px;text-transform:uppercase;color:var(--muted)}
 .plugin-panel-surface .metric-value{font-size:18px;font-weight:750;margin-top:4px;overflow:hidden;text-overflow:ellipsis}
 .plugin-panel-surface .metric-row{display:grid;grid-template-columns:minmax(110px,0.65fr) minmax(0,1fr);gap:8px;align-items:center;margin:6px 0;font-size:13px}
