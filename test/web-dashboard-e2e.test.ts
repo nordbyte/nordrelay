@@ -366,7 +366,11 @@ describe("web dashboard browser-flow assets", () => {
     expect(readFileSync("src/agents/shared/agent.ts", "utf8")).toContain("sessionName?: string;");
     expect(readFileSync("src/runtime/relay-runtime-sessions.ts", "utf8")).toContain("sessionNameStore.get(record.agentId, record.id)?.name");
     expect(readFileSync("src/runtime/relay-runtime-active-sessions.ts", "utf8")).toContain("sessionNameRecord?.name");
-    expect(readFileSync("src/web/ui/client/workflows.ts", "utf8")).toContain("await loadBootstrap();await loadActiveSessions();");
+    const workflowsSource = readFileSync("src/web/ui/client/workflows.ts", "utf8");
+    expect(workflowsSource).toContain("await loadBootstrap();await loadActiveSessions();");
+    expect(workflowsSource).toContain("const sessionName=String(s.sessionName||'').trim();");
+    expect(workflowsSource).toContain("const threadLabel=sessionName||shortMiddle(s.id);");
+    expect(workflowsSource).toContain("data-copy-id=\"'+attr(s.id)+'\"");
     expect(js).toContain("data-target-peer");
     expect(js).toContain("data-target-agent");
     expect(js).toContain("data-target-sessions-toggle");
@@ -438,8 +442,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("class=\"data-table sessions-table\"");
     expect(js).toContain("<th>Updated</th><th>Title");
     expect(js).toContain("sessionCell('Updated',sessionRelativeTimeHtml(s.updatedAt)");
-    expect(js).toContain("esc(shortMiddle(s.id))");
-    expect(js).toContain('data-copy-id="\'+attr(s.id)+\'" title="\'+attr(s.id)+\'"');
+    expect(js).toContain("const threadLabel=sessionName||shortMiddle(s.id)");
+    expect(js).toContain("const threadTitle=sessionName?('Copy thread ID: '+s.id):s.id");
+    expect(js).toContain('data-copy-id="\'+attr(s.id)+\'" title="\'+attr(threadTitle)+\'"');
     expect(js).toContain("data-label=\"'+attr(label)+'\"");
     expect(js).toContain('class="session-age"');
     expect(js).toContain("data-session-age-at");
