@@ -21,7 +21,7 @@ afterEach(async () => {
     await handle.close().catch(() => {});
   }
   for (const dir of tmpDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
+    await removeTmpDir(dir);
   }
 });
 
@@ -267,6 +267,36 @@ function tmpHome(): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), "nordrelay-peer-e2e-"));
   tmpDirs.push(dir);
   return dir;
+}
+
+async function removeTmpDir(dir: string): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 25 });
+      return;
+    } catch (error) {
+      if (!isRetriableRmError(error)) {
+        throw error;
+      }
+      lastError = error;
+      await delay(25 * (attempt + 1));
+    }
+  }
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  } catch (error) {
+    throw lastError ?? error;
+  }
+}
+
+function isRetriableRmError(error: unknown): boolean {
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
+  return ["ENOTEMPTY", "EBUSY", "EPERM", "EMFILE", "ENFILE"].includes(code);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function peerConfig(workspace: string, options: { tls?: boolean; name?: string } = {}): ConnectorConfig {
