@@ -74,6 +74,7 @@ export class SessionRegistry {
     const meta = this.metadata.get(contextKey);
     const agentId = options?.agentId ?? meta?.agentId ?? this.config.defaultAgent ?? "codex";
     const launchProfileId = resolveLaunchProfileId(this.config, meta);
+    const activeLaunchProfileId = resolveActiveLaunchProfileId(this.config, meta);
     const mode = meta?.workspaceMode ?? this.config.sessionWorkspaceMode;
     let workspace = meta?.workspace;
     let worktreeId = meta?.worktreeId;
@@ -93,8 +94,8 @@ export class SessionRegistry {
       resumeThreadId: meta?.threadId ?? undefined,
       sessionPath: meta?.sessionPath,
     };
-    if (meta?.activeLaunchProfileId) {
-      Object.assign(createOptions, { activeLaunchProfileId: meta.activeLaunchProfileId });
+    if (activeLaunchProfileId) {
+      Object.assign(createOptions, { activeLaunchProfileId });
     }
     session = await createAgentSessionService(this.config, agentId, createOptions);
 
@@ -403,8 +404,36 @@ function resolveLaunchProfileId(
     return meta.launchProfileId;
   }
 
+  if (meta.launchProfileId === "attached-thread") {
+    return undefined;
+  }
+
   console.warn(
     `Unknown persisted launch profile "${meta.launchProfileId}" for ${meta.contextKey}. Falling back to ${config.defaultLaunchProfileId}.`,
   );
+  return undefined;
+}
+
+function resolveActiveLaunchProfileId(
+  config: ConnectorConfig,
+  meta: ContextMetadata | undefined,
+): string | undefined {
+  if (!meta?.activeLaunchProfileId) {
+    return undefined;
+  }
+
+  if (meta.agentId === "pi" || meta.agentId === "hermes" || meta.agentId === "openclaw" || meta.agentId === "claude-code") {
+    return meta.activeLaunchProfileId;
+  }
+
+  if (findLaunchProfile(config.launchProfiles, meta.activeLaunchProfileId) || meta.activeLaunchProfileId === "full-access") {
+    return meta.activeLaunchProfileId;
+  }
+
+  if (meta.activeLaunchProfileId !== "attached-thread") {
+    console.warn(
+      `Unknown persisted active launch profile "${meta.activeLaunchProfileId}" for ${meta.contextKey}. Re-detecting from the active thread.`,
+    );
+  }
   return undefined;
 }

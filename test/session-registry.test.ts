@@ -415,6 +415,43 @@ describe("SessionRegistry", () => {
     }));
   });
 
+  it("ignores dynamic attached-thread active launch metadata when restoring a Codex dashboard context", async () => {
+    const config = createConfig();
+    mockFsState.files.set(
+      stateBackendPath(config.workspace, config.stateBackend, "contexts.json"),
+      JSON.stringify([
+        {
+          contextKey: "web:dashboard",
+          agentId: "codex",
+          threadId: "thread-a",
+          workspace: "/workspace/a",
+          activeLaunchProfileId: "attached-thread",
+          launchProfileId: "attached-thread",
+          launchProfileLabel: "Attached Thread",
+          launchProfileBehavior: "danger-full-access / never",
+          sandboxMode: "danger-full-access",
+          approvalPolicy: "never",
+          unsafeLaunch: true,
+          updatedAt: 10,
+        },
+      ]),
+    );
+
+    const registry = new SessionRegistry(config);
+    await registry.getOrCreate("web:dashboard");
+
+    expect(mockSessionState.create).toHaveBeenCalledWith(config, {
+      workspace: "/workspace/a",
+      workspaceMode: undefined,
+      model: undefined,
+      reasoningEffort: undefined,
+      launchProfileId: undefined,
+      deferThreadStart: undefined,
+      resumeThreadId: "thread-a",
+      sessionPath: undefined,
+    });
+  });
+
   it("updates metadata and lists contexts sorted by newest first", async () => {
     const registry = new SessionRegistry(createConfig());
     const first = (await registry.getOrCreate("123")) as any;
