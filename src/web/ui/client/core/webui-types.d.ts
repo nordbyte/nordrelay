@@ -284,6 +284,7 @@ interface WebuiPeerTarget extends WebuiRecord {
 interface WebuiHeaderSessionRecord extends WebuiRecord {
   id: string;
   title?: string;
+  sessionName?: string;
   firstUserMessage?: string;
   cwd?: string;
   model?: string;

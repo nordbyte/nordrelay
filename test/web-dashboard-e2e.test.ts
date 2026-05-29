@@ -358,9 +358,13 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function headerSessionLabel");
     expect(js).toContain("session.sessionName");
     expect(js).toContain("headerSessionLabel(session)");
+    expect(headerTargetSource).toContain("const sessionName = String(session.sessionName || '').trim();");
+    expect(headerTargetSource).toContain("const title = sessionName || session.title || session.firstUserMessage || session.id;");
+    expect(headerTargetSource).toContain("sessionName ? '' : shortMiddle(session.id)");
     expect(headerTargetSource).toContain("await loadBootstrap(); await reloadCurrentPage({ agentId: selected });");
     expect(headerTargetSource).toContain("headerSessionLabel(snapshot)");
     expect(readFileSync("src/agents/shared/agent.ts", "utf8")).toContain("sessionName?: string;");
+    expect(readFileSync("src/runtime/relay-runtime-sessions.ts", "utf8")).toContain("sessionNameStore.get(record.agentId, record.id)?.name");
     expect(readFileSync("src/runtime/relay-runtime-active-sessions.ts", "utf8")).toContain("sessionNameRecord?.name");
     expect(readFileSync("src/web/ui/client/workflows.ts", "utf8")).toContain("await loadBootstrap();await loadActiveSessions();");
     expect(js).toContain("data-target-peer");

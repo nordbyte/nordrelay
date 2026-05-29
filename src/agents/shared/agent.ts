@@ -274,6 +274,7 @@ export interface AgentLaunchProfileRecord {
 export interface AgentThreadRecord {
   id: string;
   title: string | null;
+  sessionName?: string;
   cwd: string;
   model: string | null;
   reasoningEffort: string | null;

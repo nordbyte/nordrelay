@@ -598,24 +598,25 @@ export function relayRuntimeFilteredSessions(runtime: RelayRuntimeDelegate, sess
       })
       .sort((left, right) => sessionUpdatedAtMs(right) - sessionUpdatedAtMs(left));
   }
-
 function sessionUpdatedAtMs(record: AgentThreadRecord): number {
     const value = record.updatedAt instanceof Date ? record.updatedAt.getTime() : Date.parse(String(record.updatedAt));
     return Number.isFinite(value) ? value : 0;
   }
-
 function enrichThreadRecord(runtime: RelayRuntimeDelegate, record: AgentThreadRecord): AgentThreadRecord {
     const worktree = runtime.worktreeService.getByThreadId(record.id) ?? runtime.worktreeService.getByWorkspace(record.cwd);
     const metadata = runtime.listKnownContextMetadata().find((meta) => meta.threadId === record.id);
+    const sessionName = runtime.sessionNameStore.get(record.agentId, record.id)?.name;
     if (!worktree) {
       return {
         ...record,
+        sessionName,
         workspaceMode: metadata?.workspaceMode ?? "attached",
       };
     }
     const snapshot = runtime.worktreeService.snapshot(worktree);
     return {
       ...record,
+      sessionName,
       workspaceMode: "worktree",
       worktree: {
         id: snapshot.id,

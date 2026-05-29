@@ -289,8 +289,9 @@ function renderHeaderTargetSessions(peerId: string, agentId: string, sessions: W
 
 function renderHeaderTargetSessionItems(peerId: string, agentId: string, sessions: WebuiHeaderSessionRecord[]) {
   return sessions.slice(0, 5).map(session => {
-    const title = session.title || session.firstUserMessage || session.id;
-    const meta = [shortMiddle(session.id), session.model || '', session.cwd || '', session.updatedAt ? fmtSessionAge(session.updatedAt) + ' ago' : ''].filter(Boolean).join(' · ');
+    const sessionName = String(session.sessionName || '').trim();
+    const title = sessionName || session.title || session.firstUserMessage || session.id;
+    const meta = [sessionName ? '' : shortMiddle(session.id), session.model || '', session.cwd || '', session.updatedAt ? fmtSessionAge(session.updatedAt) + ' ago' : ''].filter(Boolean).join(' · ');
     return '<button type="button" class="header-target-session" data-target-session-switch="' + attr(session.id) + '" data-target-peer="' + attr(peerId) + '" data-target-agent="' + attr(agentId) + '" title="' + attr([title, session.id, session.cwd || '', fmtDate(session.updatedAt)].filter(Boolean).join(' | ')) + '"' + disabledAttr('sessions.write') + '><span>' + esc(short(title, 92)) + '</span><small>' + esc(short(meta, 140)) + '</small></button>';
   }).join('');
 }
