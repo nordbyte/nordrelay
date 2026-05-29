@@ -24,6 +24,7 @@ import { getExternalSnapshotForSession } from "../agents/shared/agent-activity.j
 import { listAgentAdapterDescriptors } from "../agents/shared/agent-adapter.js";
 import { AgentUpdateManager, type AgentUpdateJobSnapshot, type AgentUpdateOperation } from "../agents/shared/agent-updates.js";
 import { createAgentSessionService, enabledAgents } from "../agents/shared/agent-factory.js";
+import { readCodexFastMode } from "../agents/codex/codex-config.js";
 import { findLaunchProfile, formatLaunchProfileBehavior } from "../agents/codex/codex-launch.js";
 import { AuditLogStore, type AuditEvent, type AuditListOptions } from "../access/audit-log.js";
 import { BotPreferencesStore } from "../state/bot-preferences.js";
@@ -413,7 +414,7 @@ export function relayRuntimeSessionStubForMetadata(runtime: RelayRuntimeDelegate
       launchProfileBehavior: launch.behavior,
       sandboxMode: launch.sandboxMode,
       approvalPolicy: launch.approvalPolicy,
-      fastMode: false,
+      fastMode: metadataFastMode(meta, agentId),
       unsafeLaunch: launch.unsafe,
       nextLaunchProfileId,
       nextLaunchProfileLabel: nextLaunchProfileId ? meta.nextLaunchProfileLabel ?? nextLaunchProfileId : undefined,
@@ -440,6 +441,13 @@ export function relayRuntimeSessionStubForMetadata(runtime: RelayRuntimeDelegate
       getActiveThreadId: () => meta.threadId,
     } as AgentSessionService;
   }
+
+function metadataFastMode(meta: ContextMetadata, agentId: AgentId): boolean {
+  if (agentId !== "codex") {
+    return false;
+  }
+  return readCodexFastMode() ?? meta.fastMode ?? false;
+}
 
 function launchInfoFromMetadata(runtime: RelayRuntimeDelegate, meta: ContextMetadata, agentId: AgentId): {
   id: string;

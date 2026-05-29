@@ -21,6 +21,7 @@ export interface ContextMetadata {
   launchProfileBehavior?: string;
   sandboxMode?: string;
   approvalPolicy?: string;
+  fastMode?: boolean;
   unsafeLaunch?: boolean;
   launchProfileId?: string;
   nextLaunchProfileLabel?: string;
@@ -196,10 +197,15 @@ export class SessionRegistry {
       launchProfileBehavior: info.launchProfileBehavior,
       sandboxMode: info.sandboxMode,
       approvalPolicy: info.approvalPolicy,
-      unsafeLaunch: info.unsafeLaunch,
       launchProfileId: info.nextLaunchProfileId ?? info.launchProfileId,
       updatedAt: Date.now(),
     };
+    if (typeof info.fastMode === "boolean") {
+      next.fastMode = info.fastMode;
+    }
+    if (typeof info.unsafeLaunch === "boolean") {
+      next.unsafeLaunch = info.unsafeLaunch;
+    }
     if (info.nextLaunchProfileId) {
       next.nextLaunchProfileLabel = info.nextLaunchProfileLabel;
       next.nextLaunchProfileBehavior = info.nextLaunchProfileBehavior;

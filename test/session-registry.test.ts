@@ -36,6 +36,7 @@ const mockSessionState = vi.hoisted(() => {
       launchProfileBehavior: string;
       sandboxMode: string;
       approvalPolicy: string;
+      fastMode?: boolean;
       unsafeLaunch: boolean;
       nextLaunchProfileId?: string;
       nextLaunchProfileLabel?: string;
@@ -649,7 +650,7 @@ describe("SessionRegistry", () => {
         unsafeLaunch: false,
       },
     });
-    session.setInfo({ threadId: "thread-synced", model: "gpt-5.5" });
+    session.setInfo({ threadId: "thread-synced", model: "gpt-5.5", fastMode: true });
 
     const results = registry.syncAllFromAgentState({ reattach: true });
 
@@ -658,6 +659,7 @@ describe("SessionRegistry", () => {
     expect(registry.listContexts()[0]).toEqual(expect.objectContaining({
       threadId: "thread-synced",
       model: "gpt-5.5",
+      fastMode: true,
     }));
   });
 
@@ -689,6 +691,7 @@ describe("SessionRegistry", () => {
       launchProfileBehavior: "workspace-write / never",
       sandboxMode: "workspace-write",
       approvalPolicy: "never",
+      fastMode: true,
       unsafeLaunch: false,
     });
     registry.updateMetadata("123", session as any);
@@ -710,6 +713,7 @@ describe("SessionRegistry", () => {
         launchProfileBehavior: "workspace-write / never",
         sandboxMode: "workspace-write",
         approvalPolicy: "never",
+        fastMode: true,
         unsafeLaunch: false,
         launchProfileId: "default",
         updatedAt: expect.any(Number),
