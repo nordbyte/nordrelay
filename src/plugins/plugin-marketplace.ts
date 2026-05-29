@@ -53,7 +53,7 @@ const MARKETPLACE_ENTRIES: PluginMarketplaceEntry[] = [
     packageName: "@nordbyte/nordrelay-auto-updater",
     license: "MIT",
     tags: ["updates", "npm", "package-manager", "peers"],
-    permissions: ["runtime.read", "peers.read", "system.packages.read", "system.updates.read", "network"],
+    permissions: ["runtime.read", "peers.read", "system.packages.read", "system.packages.write", "system.updates.read", "system.updates.write", "network"],
     capabilities: ["collector", "commands", "web panel", "diagnostics"],
   },
 ];

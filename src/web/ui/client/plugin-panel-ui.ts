@@ -66,6 +66,7 @@ type PluginPanelApi = {
   id: string;
   root: HTMLElement;
   reload: (input?: WebuiRecord) => Promise<void> | void;
+  invokeCommand: (command: unknown, input?: WebuiRecord, options?: WebuiRecord) => Promise<unknown>;
   toast: (message: unknown, options?: WebuiRecord) => void;
   copyText: (value: unknown, label?: unknown) => void;
   setInterval: (fn: () => void, ms: unknown) => number;
@@ -89,10 +90,19 @@ function pluginPanelRegistry():PluginPanelRegistry{
     register(instanceId:string,surface:HTMLElement,reload:(input:WebuiRecord)=>Promise<void>|void){
       this.cleanup(instanceId);
       const cleanup:Array<()=>void>=[];
-      const api={
+      const panelApi={
         id:instanceId,
         root:surface,
         reload:(input:WebuiRecord={})=>reload(input&&typeof input==='object'?input:{}),
+        invokeCommand:(command:unknown,input:WebuiRecord={},options:WebuiRecord={})=>{
+          const pluginId=surface.dataset.pluginId||'';
+          if(!pluginId)throw new Error('Plugin panel has no plugin id.');
+          const requestPath=('/api/plugins/'+encodeURIComponent(pluginId)+'/command') as `/api/plugins/${string}/command`;
+          const peerId=String(options.peerId||input.peerId||'local');
+          const timeoutMs=Math.max(1000,Number(options.timeoutMs)||600000);
+          const payload={method:'POST' as const,body:JSON.stringify({command:String(command||''),input:input&&typeof input==='object'?input:{}}),timeoutMs};
+          return peerId&&peerId!=='local'?apiPeer(peerId,requestPath,payload):api(requestPath,{...payload,local:true});
+        },
         toast:(message:unknown,options?:WebuiRecord)=>toast(String(message||'Plugin panel'),options as {duration?:number;sticky?:boolean}|undefined),
         copyText:(value:unknown,label?:unknown)=>copyText(String(value||''),label?String(label):'Copied'),
         setInterval:(fn:()=>void,ms:unknown)=>{
@@ -114,8 +124,8 @@ function pluginPanelRegistry():PluginPanelRegistry{
         onCleanup:(fn:()=>void)=>{if(typeof fn==='function')cleanup.push(fn)},
         cleanup:()=>registry.cleanup(instanceId),
       };
-      instances.set(instanceId,{surface,api,cleanup});
-      return api;
+      instances.set(instanceId,{surface,api:panelApi,cleanup});
+      return panelApi;
     },
     api(instanceId:string){
       return (instances.get(instanceId)?.api as PluginPanelApi|undefined)||null;

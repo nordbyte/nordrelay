@@ -20,7 +20,9 @@ export const PLUGIN_RUNTIME_PERMISSIONS = [
   "settings.read",
   "system.metrics.read",
   "system.packages.read",
+  "system.packages.write",
   "system.updates.read",
+  "system.updates.write",
   "network",
 ] as const;
 
