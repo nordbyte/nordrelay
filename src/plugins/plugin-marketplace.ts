@@ -39,6 +39,23 @@ const MARKETPLACE_ENTRIES: PluginMarketplaceEntry[] = [
     permissions: ["runtime.read", "peers.read", "system.metrics.read"],
     capabilities: ["collector", "commands", "web panel", "diagnostics"],
   },
+  {
+    id: "auto-updater",
+    name: "Auto Updater",
+    description: "Checks Linux/macOS package-manager updates and global npm package versions across peers.",
+    source: "github:nordbyte/nordrelay-plugin-auto-updater",
+    category: "Operations",
+    official: true,
+    approved: true,
+    author: "Ricardo <github@nordbyte.de>",
+    homepage: "https://github.com/nordbyte/nordrelay-plugin-auto-updater",
+    repository: "https://github.com/nordbyte/nordrelay-plugin-auto-updater",
+    packageName: "@nordbyte/nordrelay-auto-updater",
+    license: "MIT",
+    tags: ["updates", "npm", "package-manager", "peers"],
+    permissions: ["runtime.read", "peers.read", "system.packages.read", "system.updates.read", "network"],
+    capabilities: ["collector", "commands", "web panel", "diagnostics"],
+  },
 ];
 
 export function pluginMarketplaceEntries(): PluginMarketplaceEntry[] {

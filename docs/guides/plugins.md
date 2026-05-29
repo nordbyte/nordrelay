@@ -207,9 +207,9 @@ Return one JSON result on stdout:
 
 `NORDRELAY_PLUGINS_ENABLED=false` is a hard gate for the extension catalog and all plugin execution paths. Plugins are disabled until an admin enables them. Enabling a plugin approves the permissions declared in the manifest. Host context is filtered by approved plugin permissions, and plugin processes do not inherit the full NordRelay environment. Plugin execution is also bounded by a working directory, output limits, and timeouts; use operating-system isolation for untrusted third-party code. Keep `NORDRELAY_PLUGIN_ALLOW_BUILD_SCRIPTS=false` unless you explicitly trust the plugin source.
 
-## System Monitor example
+## Official plugins
 
-The first full plugin is available at:
+Install System Monitor for peer metrics:
 
 ```sh
 nordrelay plugin install github:nordbyte/nordrelay-plugin-system-monitor --enable --approve
@@ -221,3 +221,15 @@ The System Monitor plugin keeps its own SQLite database under
 `~/.nordrelay/plugins/data/system-monitor/metrics.sqlite`. It owns collection,
 retention cleanup, range summaries, and downsampled chart data; NordRelay only
 hosts the panel and routes plugin invocations to peers.
+
+Install Auto Updater for read-only OS and npm update visibility:
+
+```sh
+nordrelay plugin install github:nordbyte/nordrelay-plugin-auto-updater --enable --approve
+```
+
+Auto Updater checks Linux/macOS package-manager updates and global npm package
+versions on each node where the plugin is installed. It stores its own SQLite
+database under `~/.nordrelay/plugins/data/auto-updater/updates.sqlite`.
+Required permissions are `system.packages.read` and `system.updates.read`. The
+plugin is intentionally read-only and does not run package upgrades.

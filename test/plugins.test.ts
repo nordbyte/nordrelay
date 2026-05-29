@@ -162,6 +162,15 @@ describe("plugin system", () => {
       approved: true,
     });
     expect(systemMonitor?.permissions).toContain("system.metrics.read");
+
+    const autoUpdater = entries.find((entry) => entry.id === "auto-updater");
+    expect(autoUpdater).toMatchObject({
+      name: "Auto Updater",
+      source: "github:nordbyte/nordrelay-plugin-auto-updater",
+      official: true,
+      approved: true,
+    });
+    expect(autoUpdater?.permissions).toEqual(expect.arrayContaining(["system.packages.read", "system.updates.read"]));
   });
 
   it("validates required manifest fields", () => {

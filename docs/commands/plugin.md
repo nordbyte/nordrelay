@@ -73,4 +73,4 @@ Plugin management is permission-gated in the WebUI and API:
 
 Workflow action and command invocation also require the feature permission for the surface that invokes them, for example `workflows.run` for workflow execution.
 
-Collector invocation is intended for the NordRelay scheduler and administrative diagnostics. Plugins that read host metrics should declare `system.metrics.read`.
+Collector invocation is intended for the NordRelay scheduler and administrative diagnostics. Plugins that read host metrics should declare `system.metrics.read`. Plugins that inspect installed packages or available updates should declare `system.packages.read` and `system.updates.read`.
