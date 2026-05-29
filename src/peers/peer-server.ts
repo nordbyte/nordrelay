@@ -29,7 +29,8 @@ import {
   type PeerRpcRequest,
   type PeerRpcResult,
 } from "./peer-types.js";
-import { RelayRuntime } from "../runtime/relay-runtime.js";
+import { RelayRuntime, type RelayRuntimeOptions } from "../runtime/relay-runtime.js";
+import type { ChannelContextKey } from "../channels/shared/context-key.js";
 
 export interface PeerServerHandle {
   close(): Promise<void>;
@@ -59,12 +60,7 @@ export async function startPeerServer(options: {
       const contextKey = peerRuntimeContextKey(peer, sourceContextKey);
       let scoped = contextRuntimes.get(contextKey);
       if (!scoped) {
-        scoped = new RelayRuntime(config, {
-          contextKey,
-          registryFileName: "peer-contexts.json",
-          registrySqliteKey: "peer-contexts",
-          home,
-        });
+        scoped = new RelayRuntime(config, scopedPeerRuntimeOptions(contextKey, home));
         contextRuntimes.set(contextKey, scoped);
       }
       return scoped;
@@ -264,6 +260,16 @@ export async function startPeerServer(options: {
     store.markSeen(peer.id);
     return peer;
   }
+}
+
+export function scopedPeerRuntimeOptions(contextKey: ChannelContextKey, home?: string): RelayRuntimeOptions {
+  return {
+    contextKey,
+    registryFileName: "peer-contexts.json",
+    registrySqliteKey: "peer-contexts",
+    backgroundServices: false,
+    home,
+  };
 }
 
 async function readBody(req: IncomingMessage, maxBytes: number): Promise<string> {

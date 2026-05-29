@@ -8,7 +8,7 @@ import { loadOrCreatePeerIdentity } from "../src/peers/peer-identity.js";
 import { createPairingSignaturePayload, signPeerPayload } from "../src/peers/peer-identity.js";
 import { signPeerRequest } from "../src/peers/peer-auth.js";
 import { pairPeer, RemoteRelayClient } from "../src/peers/peer-client.js";
-import { startPeerServer, type PeerServerHandle } from "../src/peers/peer-server.js";
+import { scopedPeerRuntimeOptions, startPeerServer, type PeerServerHandle } from "../src/peers/peer-server.js";
 import { PeerStore } from "../src/peers/peer-store.js";
 import type { ConnectorConfig } from "../src/core/config.js";
 import type { RelayRuntime } from "../src/runtime/relay-runtime.js";
@@ -26,6 +26,16 @@ afterEach(async () => {
 });
 
 describe("peer server pairing", () => {
+  it("creates scoped peer runtime options without background services", () => {
+    expect(scopedPeerRuntimeOptions("peer:test", "/tmp/nordrelay-test")).toMatchObject({
+      contextKey: "peer:test",
+      registryFileName: "peer-contexts.json",
+      registrySqliteKey: "peer-contexts",
+      backgroundServices: false,
+      home: "/tmp/nordrelay-test",
+    });
+  });
+
   it("pairs two local NordRelay nodes and records ping health", async () => {
     const serverHome = tmpHome();
     const clientHome = tmpHome();
