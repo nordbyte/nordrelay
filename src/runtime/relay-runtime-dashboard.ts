@@ -98,6 +98,7 @@ import type {
   WebTaskDto,
   WebTasksDto,
 } from "./relay-runtime-types.js";
+import { ensureSubscriberExternalMonitor, stopSubscriberExternalMonitorIfIdle } from "./relay-subscriber-external-monitor.js";
 export type { RuntimeMetricsDto } from "./metrics.js";
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "../core/workspace-policy.js";
 import type { RelayRuntimeDelegate } from "./relay-runtime-delegate.js";
@@ -132,12 +133,16 @@ const MAX_CHAT_HISTORY = 250;
 
 export function relayRuntimeSubscribe(runtime: RelayRuntimeDelegate, callback: (event: RelayEvent) => void): () => void {
     runtime.subscribers.add(callback);
+    ensureSubscriberExternalMonitor(runtime);
     void runtime.snapshot().then((data) => callback({ type: "snapshot", data })).catch(() => {});
     void runtime.chatHistory().then((messages) => callback({ type: "chat_history", messages })).catch(() => {});
     callback({ type: "queue_update", queue: runtime.queue(), paused: runtime.queuePaused() });
     void runtime.activeSessions().then((active) => callback({ type: "active_sessions_update", active })).catch(() => {});
     callback({ type: "activity_update", events: runtime.activity({ limit: 50 }) });
-    return () => runtime.subscribers.delete(callback);
+    return () => {
+      runtime.subscribers.delete(callback);
+      stopSubscriberExternalMonitorIfIdle(runtime);
+    };
   }
 
 export async function relayRuntimeSnapshot(runtime: RelayRuntimeDelegate): Promise<RelaySnapshot> {

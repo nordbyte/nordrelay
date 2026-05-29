@@ -1,8 +1,10 @@
 import type { PeerEventEnvelope } from "../../peers/peer-types.js";
 import type { BotPreferencesStore, ChannelMirrorMode } from "../../state/bot-preferences.js";
 import type { WebChatAction, WebChatMessage } from "../../web/web-state.js";
+import type { ActiveSessionDto, RelaySnapshot } from "../../runtime/relay-runtime-types.js";
 import type { ChannelActionButton } from "./channel-actions.js";
 import type { ChannelContext, ChannelRuntime } from "./channel-adapter.js";
+import { formatDurationSeconds, trimLine } from "./bot-rendering.js";
 import { escapeHTML } from "../../core/format.js";
 
 export interface ChannelPeerMirrorRemoteClient {
@@ -41,6 +43,11 @@ interface SubscriptionState {
   initializedHistory: boolean;
   statusMessageId?: string;
   lastStatusEditAt?: number;
+  currentThreadId?: string | null;
+  currentAgentId?: string;
+  currentAgentLabel?: string;
+  activeSessionKey?: string;
+  activeSessionLabel?: string;
   pending: Promise<void>;
 }
 
@@ -126,8 +133,12 @@ async function handlePeerEvent(
     }
     return;
   }
-  if (event.type === "active_sessions_update" && event.active.sessions.length > 0) {
-    await options.runtime.sendTyping(state.context).catch(() => {});
+  if (event.type === "snapshot") {
+    rememberSnapshot(state, event.data);
+    return;
+  }
+  if (event.type === "active_sessions_update") {
+    await handlePeerActiveSessionsUpdate(options, state, event.active.sessions, mode);
     return;
   }
   if (event.type !== "chat_history") {
@@ -155,6 +166,9 @@ async function mirrorChatHistory(
       continue;
     }
     state.seenMessageIds.add(id);
+    if (state.currentThreadId && message.threadId && message.threadId !== state.currentThreadId) {
+      continue;
+    }
     if (!shouldMirrorMessage(message, mode)) {
       continue;
     }
@@ -178,9 +192,10 @@ async function sendPeerMirrorStatus(
   state: SubscriptionState,
   message: string,
   level: "info" | "warn" | "error",
+  optionsOverride: { force?: boolean } = {},
 ): Promise<void> {
   const now = Date.now();
-  if (state.statusMessageId && state.lastStatusEditAt && now - state.lastStatusEditAt < options.mirrorMinUpdateMs) {
+  if (!optionsOverride.force && state.statusMessageId && state.lastStatusEditAt && now - state.lastStatusEditAt < options.mirrorMinUpdateMs) {
     return;
   }
   const text = `<b>Remote ${escapeHTML(level)}:</b> ${escapeHTML(message)}`;
@@ -206,6 +221,79 @@ async function sendPeerMirrorStatus(
     });
   }
   state.lastStatusEditAt = now;
+}
+
+async function handlePeerActiveSessionsUpdate(
+  options: ChannelPeerMirrorControllerOptions,
+  state: SubscriptionState,
+  sessions: ActiveSessionDto[],
+  mode: ChannelMirrorMode,
+): Promise<void> {
+  const active = selectPeerActiveSession(state, sessions);
+  if (active) {
+    state.activeSessionKey = activeSessionKey(active);
+    state.activeSessionLabel = active.agentLabel || active.agentId || "Agent";
+    await options.runtime.sendTyping(state.context).catch(() => {});
+    if (mode === "status" || mode === "full") {
+      await sendPeerMirrorStatus(options, state, renderPeerActiveSessionStatus(active), "info");
+    }
+    return;
+  }
+
+  if (state.activeSessionKey) {
+    const label = state.activeSessionLabel || state.currentAgentLabel || "Remote";
+    state.activeSessionKey = undefined;
+    state.activeSessionLabel = undefined;
+    if (mode === "status" || mode === "full") {
+      await sendPeerMirrorStatus(options, state, `${label} CLI task finished.`, "info", { force: true });
+    }
+  }
+}
+
+function rememberSnapshot(state: SubscriptionState, snapshot: RelaySnapshot): void {
+  const session = snapshot.session;
+  state.currentThreadId = session.threadId ?? null;
+  state.currentAgentId = session.agentId;
+  state.currentAgentLabel = session.agentLabel || session.agentId;
+}
+
+function selectPeerActiveSession(state: SubscriptionState, sessions: ActiveSessionDto[]): ActiveSessionDto | undefined {
+  if (!sessions.length) {
+    return undefined;
+  }
+  if (state.currentThreadId) {
+    const byThread = sessions.find((session) =>
+      session.threadId === state.currentThreadId &&
+      (!state.currentAgentId || !session.agentId || session.agentId === state.currentAgentId)
+    );
+    if (byThread) {
+      return byThread;
+    }
+  }
+  return sessions.find((session) => session.threadId) ?? sessions[0];
+}
+
+function renderPeerActiveSessionStatus(session: ActiveSessionDto): string {
+  const label = session.agentLabel || session.agentId || "Agent";
+  const status = session.source === "cli" ? "CLI running" : `${session.source} running`;
+  const duration = formatDurationSeconds((activeDurationMs(session) ?? 0) / 1000);
+  const tool = session.currentTool || session.lastTool;
+  const queue = `${Math.max(0, Number(session.queueLength) || 0)} queued`;
+  const prompt = session.prompt ? ` · ${trimLine(session.prompt.replace(/\s+/g, " "), 120)}` : "";
+  return [label, status, duration, tool ? `tool ${tool}` : "", queue].filter(Boolean).join(" · ") + prompt;
+}
+
+function activeDurationMs(session: ActiveSessionDto): number | null {
+  const startedAt = Date.parse(session.startedAt);
+  if (Number.isFinite(startedAt)) {
+    return Math.max(0, Date.now() - startedAt);
+  }
+  const duration = Number(session.durationMs);
+  return Number.isFinite(duration) ? Math.max(0, duration) : null;
+}
+
+function activeSessionKey(session: ActiveSessionDto): string {
+  return session.threadId || session.id || session.contextKey;
 }
 
 function effectiveMode(options: ChannelPeerMirrorControllerOptions, contextKey: string): ChannelMirrorMode {
