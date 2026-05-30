@@ -307,6 +307,10 @@ async function loadPluginPanelPage(){
   await runPluginPanelPage(item,pluginInputDefaultsFromSchema(item.inputSchema||{}));
 }
 async function runPluginPanelPage(item,input={}){
+  if(item?.aggregateCommand){
+    await runAggregatePluginPanelPage(item,input);
+    return;
+  }
   const resultEl=document.getElementById('pluginPanelPageResult');
   if(resultEl)resultEl.innerHTML=loadingHtml('Loading plugin panel...');
   const result=await invokePluginPanel(item.pluginId,item.panelId,item,input);
@@ -319,6 +323,10 @@ async function reloadPluginPanelSurface(surface,input={}){
   if(!item)return;
   const defaults=pluginInputDefaultsFromSchema(item.inputSchema||{});
   const nextInput={...defaults,...(input&&typeof input==='object'?input:{})};
+  if(item?.aggregateCommand){
+    await reloadAggregatePluginPanelSurface(surface,item,nextInput);
+    return;
+  }
   const result=await invokePluginPanel(item.pluginId,item.panelId,item,nextInput);
   const target=surface instanceof HTMLElement?surface:null;
   if(target&&target.isConnected){
@@ -328,6 +336,77 @@ async function reloadPluginPanelSurface(surface,input={}){
   renderPluginPanelPageResult(item,result,nextInput);
 }
 (globalThis as WebuiRecord).reloadPluginPanelSurface=reloadPluginPanelSurface;
+let pluginPanelAggregateRequestSeq=0;
+function pluginAggregateTargetSummary(target){
+  return {id:String(target?.id||''),name:String(target?.name||target?.id||'Node'),platform:String(target?.platform||'')};
+}
+function pluginAggregateResultKey(item){
+  const node=item?.node||{};
+  return String(node.id||node.nodeId||node.name||'');
+}
+function pluginAggregatePendingTargets(targets,results){
+  const done=new Set((Array.isArray(results)?results:[]).map(pluginAggregateResultKey).filter(Boolean));
+  return (Array.isArray(targets)?targets:[]).map(pluginAggregateTargetSummary).filter(target=>target.id&&!done.has(target.id));
+}
+function pluginAggregateSnapshot(command,input,targets,results){
+  const pending=pluginAggregatePendingTargets(targets,results);
+  const sortedResults=[...(Array.isArray(results)?results:[])].sort((a,b)=>String(a?.node?.name||a?.node?.id||'').localeCompare(String(b?.node?.name||b?.node?.id||'')));
+  return {command:String(command||''),generatedAt:new Date().toISOString(),input,results:sortedResults,pending,totalTargets:(Array.isArray(targets)?targets:[]).length};
+}
+async function renderAggregatePluginPanel(item,input,targets,results,requestId,targetSurface=null){
+  if(requestId!==pluginPanelAggregateRequestSeq)return;
+  const panelInput={...input,aggregate:pluginAggregateSnapshot(item.aggregateCommand,input,targets,results)};
+  let result;
+  try{
+    result=await api('/api/plugins/'+encodeURIComponent(item.pluginId)+'/panel',{method:'POST',body:JSON.stringify({panelId:item.panelId,input:panelInput}),timeoutMs:12000});
+  }catch(error){
+    result={ok:false,error:error instanceof Error?error.message:String(error)};
+  }
+  if(requestId!==pluginPanelAggregateRequestSeq)return;
+  if(targetSurface instanceof HTMLElement&&targetSurface.isConnected){
+    renderPluginPanelSurfaceResult(targetSurface,item,result,panelInput);
+  }else{
+    renderPluginPanelPageResult(item,result,panelInput);
+  }
+}
+function shouldSkipPluginAggregateClientError(message){
+  return /plugin not found|plugins are disabled|plugin is disabled|access denied|api key permissions|remote endpoint is not allowed/i.test(String(message||''));
+}
+async function invokePluginAggregateTarget(pluginId,command,input,target){
+  const body=JSON.stringify({command:String(command||''),input});
+  return target.id==='local'
+    ? api('/api/plugins/'+encodeURIComponent(pluginId)+'/command',{method:'POST',local:true,body,timeoutMs:12000})
+    : apiPeer(target.id,'/api/plugins/'+encodeURIComponent(pluginId)+'/command',{method:'POST',body,timeoutMs:12000});
+}
+async function runAggregatePluginPanelPage(item,input={}){
+  const resultEl=document.getElementById('pluginPanelPageResult');
+  if(resultEl)resultEl.innerHTML=loadingHtml('Preparing plugin panel...');
+  const requestId=++pluginPanelAggregateRequestSeq;
+  const targets=await pluginAggregateTargets();
+  const results=[];
+  await renderAggregatePluginPanel(item,input,targets,results,requestId);
+  await runPluginAggregateTargets(item,input,targets,results,requestId,null);
+}
+async function reloadAggregatePluginPanelSurface(surface,item,input={}){
+  const requestId=++pluginPanelAggregateRequestSeq;
+  const target=surface instanceof HTMLElement?surface:null;
+  const targets=await pluginAggregateTargets();
+  const results=[];
+  await renderAggregatePluginPanel(item,input,targets,results,requestId,target);
+  await runPluginAggregateTargets(item,input,targets,results,requestId,target);
+}
+async function runPluginAggregateTargets(item,input,targets,results,requestId,targetSurface){
+  await Promise.all((targets||[]).map(async target=>{
+    try{
+      const result=await invokePluginAggregateTarget(item.pluginId,item.aggregateCommand,input,target);
+      results.push({node:pluginAggregateTargetSummary(target),ok:result?.ok!==false,result});
+    }catch(error){
+      const message=error instanceof Error?error.message:String(error);
+      if(!shouldSkipPluginAggregateClientError(message))results.push({node:pluginAggregateTargetSummary(target),ok:false,error:message});
+    }
+    await renderAggregatePluginPanel(item,input,targets,results,requestId,targetSurface);
+  }));
+}
 function renderPluginPanelPageResult(item,result,input={}){
   const resultEl=document.getElementById('pluginPanelPageResult');
   if(!resultEl)return;

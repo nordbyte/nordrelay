@@ -367,6 +367,10 @@
 .peer-scope-field{border:1px solid var(--border-soft);border-radius:8px;padding:10px;margin:0;background:var(--surface-soft)}
 .peer-scope-field legend{padding:0 6px;color:var(--muted);font-size:13px;font-weight:700}
 .peer-scope-toolbar{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+.peer-scope-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.peer-scope-section{min-width:0;margin:0;border:1px solid var(--border-soft);border-radius:8px;padding:9px;background:var(--surface)}
+.peer-scope-section legend{padding:0 4px;color:var(--muted);font-size:12px;font-weight:700}
+.peer-scope-section-toolbar{display:flex;align-items:center;gap:5px;margin-bottom:6px;flex-wrap:wrap}
 .peer-scope-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px 10px;max-height:260px;overflow:auto;padding-right:4px}
 .peer-scope-option{min-height:28px;margin:0;font-size:13px}
 #page-plugin-panel.active{display:flex;flex:1;flex-direction:column;min-height:calc(100dvh - var(--dashboard-header-height) - 56px)}
