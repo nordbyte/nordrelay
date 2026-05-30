@@ -5,7 +5,7 @@ import type { ConnectorConfig } from "../core/config.js";
 import { RemoteRelayClient } from "../peers/peer-client.js";
 import { PeerStore } from "../peers/peer-store.js";
 import { PluginService, type PluginServiceOptions } from "../plugins/plugin-service.js";
-import { pluginMarketplaceEntries } from "../plugins/plugin-marketplace.js";
+import { pluginMarketplaceEntriesWithVersions } from "../plugins/plugin-marketplace.js";
 import type { AuthenticatedUser, UserStore } from "../access/user-management.js";
 import type { AuditEvent } from "../access/audit-log.js";
 import type { PublicPeerRecord } from "../peers/peer-types.js";
@@ -79,7 +79,8 @@ export async function handleDashboardPluginRoute(
   }
 
   if (req.method === "GET" && url.pathname === "/api/plugins/marketplace") {
-    sendJson(res, 200, { entries: pluginMarketplaceEntries() });
+    const forceRefresh = url.searchParams.get("force") === "true" || url.searchParams.get("fresh") === "true";
+    sendJson(res, 200, { entries: await pluginMarketplaceEntriesWithVersions({ forceRefresh }) });
     return true;
   }
 

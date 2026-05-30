@@ -737,7 +737,7 @@ async function buildVersionCheck(options: {
   };
 }
 
-async function detectLatestNpmVersion(packageName: string, options: { forceRefresh?: boolean } = {}): Promise<{ version: string | null; error?: string }> {
+export async function detectLatestNpmVersion(packageName: string, options: { forceRefresh?: boolean } = {}): Promise<{ version: string | null; error?: string }> {
   const cached = options.forceRefresh ? null : readVersionCache(packageName);
   if (cached) {
     return cached;

@@ -137,6 +137,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function loadPlugins");
     expect(js).toContain("function renderPluginList");
     expect(js).toContain("function renderPluginMarketplace");
+    expect(js).toContain("function openPluginMarketplaceInfoDialog");
+    expect(js).toContain("data-marketplace-info");
+    expect(js).toContain("Installed</th><th>Latest");
     expect(js).toContain("function installMarketplacePlugin");
     expect(js).toContain("function renderPluginPanelNav");
     expect(js).toContain("function loadPluginPanelPage");

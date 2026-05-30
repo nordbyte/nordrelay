@@ -35,9 +35,9 @@ async function refreshPluginState(options:WebuiRecord={}){
   return response;
 }
 async function loadPluginPanelNav(){await refreshPluginState()}
-async function refreshPluginMarketplace(){
+async function refreshPluginMarketplace(options:WebuiRecord={}){
   if(!can('plugins.read'))return{entries:[]};
-  const response=await api('/api/plugins/marketplace',{local:true});
+  const response=await api('/api/plugins/marketplace',{local:true,query:options.force?{force:true}:undefined});
   state.pluginMarketplace=response;
   return response;
 }
@@ -179,6 +179,39 @@ function pluginMetricsSummary(plugin){
 function pluginMarketplaceEntriesList(){
   return Array.isArray(state.pluginMarketplace?.entries)?state.pluginMarketplace.entries:[];
 }
+function marketplaceEntryById(entryId){return pluginMarketplaceEntriesList().find(item=>item.id===entryId)||null}
+function marketplaceInstalledPlugin(entry){return(state.plugins||[]).find(plugin=>plugin.id===entry.id)||null}
+function marketplaceCount(value){return Array.isArray(value)?value.length:0}
+function marketplaceCountCell(value,label){
+  const count=marketplaceCount(value);
+  const text=count+' '+label+(count===1?'':'s');
+  return '<span class="truncate-cell" title="'+attr((value||[]).join(', ')||'none')+'">'+esc(text)+'</span>';
+}
+function marketplaceCompareVersions(left,right){
+  if(!left||!right)return 0;
+  const a=String(left).split(/[.-]/).slice(0,3).map(part=>Number.parseInt(part,10)||0);
+  const b=String(right).split(/[.-]/).slice(0,3).map(part=>Number.parseInt(part,10)||0);
+  for(let i=0;i<Math.max(a.length,b.length);i++){const diff=(a[i]||0)-(b[i]||0);if(diff)return diff}
+  return 0;
+}
+function marketplaceVersionState(installed,entry){
+  if(!installed)return 'not-installed';
+  if(entry.latestVersion&&marketplaceCompareVersions(installed.version,entry.latestVersion)<0)return 'outdated';
+  return 'current';
+}
+function marketplaceInstalledCell(installed){
+  if(!installed)return '<span class="muted">not installed</span>';
+  return '<span class="truncate-cell" title="'+attr(installed.version||'-')+'">'+esc(installed.version||'-')+'</span>';
+}
+function marketplaceLatestCell(entry,installed){
+  const latest=entry.latestVersion||'unknown';
+  const state=marketplaceVersionState(installed,entry);
+  const badge=installed&&entry.latestVersion
+    ? uiBadge(state==='outdated'?'outdated':'latest',state==='outdated'?'planned':'enabled')
+    : '';
+  const error=entry.latestVersionError?'<small class="error">'+esc(short(entry.latestVersionError,120))+'</small>':'';
+  return '<span class="truncate-cell" title="'+attr(entry.latestVersionError||latest)+'">'+esc(latest)+'</span>'+(badge?'<br>'+badge:'')+error;
+}
 function renderPluginMarketplace(){
   const target=document.getElementById('pluginMarketplace');
   if(!target)return;
@@ -187,7 +220,7 @@ function renderPluginMarketplace(){
   renderIncrementalTable(target,entries,{
     key:'plugin-marketplace',
     emptyText:'No marketplace plugins available.',
-    headHtml:'<tr><th>Status</th><th>Plugin</th><th>Category</th><th>Source</th><th>Permissions</th><th>Capabilities</th><th class="actions-heading">Actions</th></tr>',
+    headHtml:'<tr><th>Status</th><th>Plugin</th><th>Category</th><th>Installed</th><th>Latest</th><th>Source</th><th>Permissions</th><th>Capabilities</th><th class="actions-heading">Actions</th></tr>',
     renderItem:entry=>pluginMarketplaceRow(entry),
     initialCount:30,
     batchSize:60,
@@ -195,15 +228,15 @@ function renderPluginMarketplace(){
   });
 }
 function pluginMarketplaceRow(entry){
-  const installed=(state.plugins||[]).find(plugin=>plugin.id===entry.id);
+  const installed=marketplaceInstalledPlugin(entry);
+  const versionState=marketplaceVersionState(installed,entry);
   const status=installed?(installed.enabled?uiBadge('installed · enabled','enabled'):uiBadge('installed','disabled')):uiBadge('available','disabled');
   const trust=[entry.official?uiBadge('official','enabled'):'',entry.approved?uiBadge('approved','enabled'):''].filter(Boolean).join(' ');
   const source=entry.source+(entry.ref?'#'+entry.ref:'');
-  const permissions=(entry.permissions||[]).join(', ')||'none';
-  const capabilities=(entry.capabilities||[]).join(', ')||'none';
   const tags=(entry.tags||[]).map(tag=>'<span class="chip">'+esc(tag)+'</span>').join('');
-  const installLabel=installed?'Reinstall':'Install';
+  const installLabel=installed&&versionState==='outdated'?'Update':installed?'Reinstall':'Install';
   const actions=[
+    uiButton('Info',{mini:true,variant:'secondary',data:{marketplaceInfo:entry.id}}),
     installed&&!installed.enabled?uiButton('Enable',{mini:true,data:{pluginEnable:installed.id},permission:'plugins.enable'}):'',
     uiButton(installLabel,{mini:true,data:{marketplaceInstall:entry.id,marketplaceForce:installed?'true':'false'},permission:'plugins.install'}),
     uiButton('Install all nodes',{mini:true,variant:'secondary',data:{marketplaceInstallAll:entry.id,marketplaceForce:installed?'true':'false'},permission:'plugins.install'}),
@@ -212,11 +245,65 @@ function pluginMarketplaceRow(entry){
     pluginCell('Status',status,'status-cell')+
     pluginCell('Plugin','<span class="truncate-cell" title="'+attr(entry.name||entry.id)+'">'+esc(entry.name||entry.id)+'</span><small>'+esc(entry.id||'-')+'</small><div class="row">'+trust+'</div>'+(tags?'<div class="row">'+tags+'</div>':''),'primary-cell')+
     pluginCell('Category',esc(entry.category||'-'))+
+    pluginCell('Installed',marketplaceInstalledCell(installed),'version-cell')+
+    pluginCell('Latest',marketplaceLatestCell(entry,installed),'version-cell')+
     pluginCell('Source','<span class="truncate-cell" title="'+attr(source)+'">'+esc(short(source,160))+'</span><small>'+esc(entry.packageName||'')+'</small>')+
-    pluginCell('Permissions','<span class="truncate-cell" title="'+attr(permissions)+'">'+esc(short(permissions,120))+'</span>')+
-    pluginCell('Capabilities','<span class="truncate-cell" title="'+attr(capabilities)+'">'+esc(short(capabilities,140))+'</span>')+
+    pluginCell('Permissions',marketplaceCountCell(entry.permissions||[],'permission'))+
+    pluginCell('Capabilities',marketplaceCountCell(entry.capabilities||[],'capability'))+
     pluginCell('Actions','<div class="data-table-actions">'+actions+'</div>','actions-cell')+
   '</tr>';
+}
+function marketplaceDetailRow(label,value){
+  return '<tr>'+pluginCell('Field',esc(label),'primary-cell')+pluginCell('Value','<span class="truncate-cell" title="'+attr(value??'-')+'">'+esc(value??'-')+'</span>')+'</tr>';
+}
+function marketplaceDetailList(title,values){
+  const list=Array.isArray(values)?values:[];
+  return '<details class="workflow-run-timeline" open><summary>'+esc(title+' ('+list.length+')')+'</summary>'+(list.length?'<ul>'+list.map(value=>'<li>'+esc(String(value))+'</li>').join('')+'</ul>':uiEmpty('No entries.'))+'</details>';
+}
+function marketplaceRawDetails(entry,installed){
+  const raw={
+    marketplace:entry,
+    installed:installed||null,
+  };
+  return '<details class="workflow-run-timeline"><summary>Raw details</summary><pre class="log-view">'+esc(JSON.stringify(raw,null,2))+'</pre></details>';
+}
+function openPluginMarketplaceInfoDialog(entryId){
+  const entry=marketplaceEntryById(entryId);
+  if(!entry)return;
+  const installed=marketplaceInstalledPlugin(entry);
+  const source=entry.source+(entry.ref?'#'+entry.ref:'');
+  const versionState=marketplaceVersionState(installed,entry);
+  const rows=[
+    ['ID',entry.id],
+    ['Name',entry.name],
+    ['Description',entry.description],
+    ['Category',entry.category],
+    ['Status',installed?(installed.enabled?'installed and enabled':'installed'):'available'],
+    ['Version state',installed?(versionState==='outdated'?'outdated':'latest'):'not installed'],
+    ['Installed version',installed?.version||'-'],
+    ['Latest version',entry.latestVersion||'unknown'],
+    ['Latest checked',entry.latestVersionCheckedAt?fmtDate(entry.latestVersionCheckedAt):'-'],
+    ['Latest lookup error',entry.latestVersionError||'-'],
+    ['Source',source],
+    ['Package',entry.packageName||'-'],
+    ['Repository',entry.repository||'-'],
+    ['Homepage',entry.homepage||'-'],
+    ['Author',entry.author||'-'],
+    ['License',entry.license||'-'],
+    ['Official',entry.official?'yes':'no'],
+    ['Approved',entry.approved?'yes':'no'],
+    ['Installed path',installed?.installPath||'-'],
+    ['Installed updated',installed?.updatedAt?fmtDate(installed.updatedAt):'-'],
+  ];
+  const table='<div class="data-table-wrap"><table class="data-table"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>'+rows.map(row=>marketplaceDetailRow(row[0],row[1])).join('')+'</tbody></table></div>';
+  const body='<div class="full-span">'+table+
+    marketplaceDetailList('Permissions',entry.permissions||[])+
+    marketplaceDetailList('Capabilities',entry.capabilities||[])+
+    marketplaceDetailList('Tags',entry.tags||[])+
+    (installed?marketplaceDetailList('Approved permissions',installed.approvedPermissions||[]):'')+
+    marketplaceRawDetails(entry,installed)+
+    '</div>';
+  adminDialog('Marketplace plugin: '+(entry.name||entry.id),body,async()=>{}, {submitText:'Close',reloadAccess:false});
 }
 function renderPluginCatalog(){
   const catalog=state.pluginCatalog||{};
@@ -260,6 +347,7 @@ function bindPluginButtons(root:Element|Document=document){
   root.querySelectorAll?.('[data-plugin-log]').forEach(b=>b.onclick=()=>{state.pluginTab='logs';switchPluginTab('logs');const select=document.getElementById('pluginLogSelect');if(select)select.value=b.dataset.pluginLog;safe(loadPluginLog)});
   root.querySelectorAll?.('[data-plugin-panel-open]').forEach(b=>b.onclick=()=>safe(()=>openPluginPanelDirect(b.dataset.pluginPanelOpen,b.dataset.pluginPanelId)));
   root.querySelectorAll?.('[data-plugin-capability]').forEach(b=>b.onclick=()=>openPluginCapabilityDialog(b.dataset.pluginCapability,b.dataset.pluginCapabilityType,b.dataset.pluginCapabilityId));
+  root.querySelectorAll?.('[data-marketplace-info]').forEach(b=>b.onclick=()=>openPluginMarketplaceInfoDialog(b.dataset.marketplaceInfo));
   root.querySelectorAll?.('[data-marketplace-install]').forEach(b=>b.onclick=()=>safe(()=>installMarketplacePlugin(b.dataset.marketplaceInstall,false,b.dataset.marketplaceForce==='true')));
   root.querySelectorAll?.('[data-marketplace-install-all]').forEach(b=>b.onclick=()=>safe(()=>installMarketplacePlugin(b.dataset.marketplaceInstallAll,true,b.dataset.marketplaceForce==='true')));
 }
@@ -736,7 +824,7 @@ function renderPluginInstallResults(results){
   '</tbody></table></div>';
 }
 document.getElementById('reloadPluginsBtn').onclick=()=>safe(loadPlugins);
-document.getElementById('reloadPluginMarketplaceBtn').onclick=()=>safe(async()=>{await refreshPluginMarketplace();renderPluginMarketplace();toast('Marketplace refreshed')});
+document.getElementById('reloadPluginMarketplaceBtn').onclick=()=>safe(async()=>{await refreshPluginMarketplace({force:true});renderPluginMarketplace();toast('Marketplace refreshed')});
 document.getElementById('reloadPluginCatalogBtn').onclick=()=>safe(loadPlugins);
 const reloadPluginPanelPageBtn=document.getElementById('reloadPluginPanelPageBtn');
 if(reloadPluginPanelPageBtn)reloadPluginPanelPageBtn.onclick=()=>safe(loadPluginPanelPage);

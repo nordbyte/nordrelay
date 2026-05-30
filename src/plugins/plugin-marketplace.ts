@@ -1,3 +1,5 @@
+import { detectLatestNpmVersion } from "../support/operations.js";
+
 export interface PluginMarketplaceEntry {
   id: string;
   name: string;
@@ -15,10 +17,17 @@ export interface PluginMarketplaceEntry {
   tags?: string[];
   permissions?: string[];
   capabilities?: string[];
+  latestVersion?: string;
+  latestVersionError?: string;
+  latestVersionCheckedAt?: string;
 }
 
 export interface PluginMarketplaceResponse {
   entries: PluginMarketplaceEntry[];
+}
+
+export interface PluginMarketplaceVersionOptions {
+  forceRefresh?: boolean;
 }
 
 const MARKETPLACE_ENTRIES: PluginMarketplaceEntry[] = [
@@ -64,5 +73,25 @@ export function pluginMarketplaceEntries(): PluginMarketplaceEntry[] {
     tags: [...(entry.tags ?? [])],
     permissions: [...(entry.permissions ?? [])],
     capabilities: [...(entry.capabilities ?? [])],
+  }));
+}
+
+export async function pluginMarketplaceEntriesWithVersions(
+  options: PluginMarketplaceVersionOptions = {},
+): Promise<PluginMarketplaceEntry[]> {
+  const checkedAt = new Date().toISOString();
+  return Promise.all(pluginMarketplaceEntries().map(async (entry) => {
+    if (!entry.packageName) {
+      return entry;
+    }
+    const latest = await detectLatestNpmVersion(entry.packageName, {
+      forceRefresh: options.forceRefresh,
+    });
+    return {
+      ...entry,
+      latestVersion: latest.version ?? undefined,
+      latestVersionError: latest.error,
+      latestVersionCheckedAt: checkedAt,
+    };
   }));
 }
