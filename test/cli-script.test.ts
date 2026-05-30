@@ -69,6 +69,29 @@ describe("nordrelay CLI script", () => {
     expect(enabledLabels).not.toContain("Discord bot token");
   });
 
+  it("lets init select marketplace plugins for installation", async () => {
+    const { collectInitConfig, initTuiRows } = await import("../plugins/nordrelay/scripts/init-tui.mjs");
+
+    const config = await collectInitConfig({
+      disableAutostart: true,
+      disableWebuiAutostart: true,
+      marketplacePlugins: ["system-monitor"],
+    });
+
+    expect(config.marketplacePlugins).toBe("system-monitor");
+    const row = initTuiRows({
+      enableTelegram: "false",
+      enableDiscord: "false",
+      enableSlack: "false",
+      enableMatrix: "false",
+      enableWebui: "true",
+      enableCodex: "true",
+      stateBackend: "json",
+      marketplacePlugins: "system-monitor",
+    }).find((item) => item.label === "Marketplace plugins");
+    expect(row?.value).toContain("System Monitor");
+  });
+
   it("exposes a first-class update command", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
 
@@ -82,7 +105,7 @@ describe("nordrelay CLI script", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
     const initTui = readFileSync("plugins/nordrelay/scripts/init-tui.mjs", "utf8");
 
-    expect(source).toContain("collectInitConfig(options)");
+    expect(source).toContain("collectInitConfig({ ...options, marketplaceEntries })");
     expect(initTui).toContain("async function runInitTui");
     expect(initTui).toContain("Use Up/Down to select, Enter to edit");
     expect(initTui).toContain("function renderInitScreen");
@@ -95,9 +118,13 @@ describe("nordrelay CLI script", () => {
     expect(initTui).toContain('await askChoice(null, "Enable WebUI", "true")');
     expect(initTui).toContain('await askChoice(null, "Enable NordRelay autostart", "true")');
     expect(initTui).toContain('await askChoice(null, "Enable WebUI autostart", "true")');
+    expect(initTui).toContain("Marketplace plugins");
+    expect(source).toContain("installInitialMarketplacePlugins");
+    expect(source).toContain('arg === "--marketplace-plugin"');
     expect(source).toContain("NORDRELAY_WEBUI_ENABLED");
     expect(source).toContain("NORDRELAY_AUTOSTART_ENABLED");
     expect(source).toContain("NORDRELAY_WEBUI_AUTOSTART_ENABLED");
+    expect(source).toContain("NORDRELAY_PLUGINS_ENABLED=true");
     expect(initTui).toContain("At least WebUI or one chat adapter must be enabled.");
   });
 

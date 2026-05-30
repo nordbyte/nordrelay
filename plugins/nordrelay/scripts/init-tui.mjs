@@ -1,9 +1,16 @@
 import { ask, askChoice, askSecret } from "./prompt-utils.mjs";
 import { tuiStyle } from "./tui-style.mjs";
+import {
+  marketplacePluginChoices,
+  marketplacePluginDisplay,
+  normalizeMarketplacePluginSelection,
+  setInitMarketplaceEntries,
+} from "./init-marketplace.mjs";
 
 let initRenderLineCount = 0;
 
 export async function collectInitConfig(options) {
+  setInitMarketplaceEntries(options.marketplaceEntries);
   const values = initialInitConfig(options);
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     return await collectSequentialInitConfig(options);
@@ -45,6 +52,7 @@ function initialInitConfig(options) {
     enableOpenClaw: options.enableOpenClaw ? "true" : "false",
     enableClaudeCode: options.enableClaudeCode ? "true" : "false",
     stateBackend: options.stateBackend || "json",
+    marketplacePlugins: normalizeMarketplacePluginSelection(options.marketplacePlugins).join(", "),
   });
 }
 
@@ -103,6 +111,8 @@ async function collectSequentialInitConfig(options) {
   const enableOpenClaw = options.enableOpenClaw ? "true" : await askChoice(null, "Enable OpenClaw", "false");
   const enableClaudeCode = options.enableClaudeCode ? "true" : await askChoice(null, "Enable Claude Code", "false");
   const stateBackend = options.stateBackend || await askChoice(null, "State backend (json/sqlite)", "json");
+  const marketplacePlugins = normalizeMarketplacePluginSelection(options.marketplacePlugins).join(", ")
+    || await ask(null, "Marketplace plugins to install (comma-separated ids, optional)", "");
   return normalizeInitConfig({
     enableWebui,
     enableAutostart,
@@ -136,6 +146,7 @@ async function collectSequentialInitConfig(options) {
     enableOpenClaw,
     enableClaudeCode,
     stateBackend,
+    marketplacePlugins,
   });
 }
 
@@ -258,6 +269,8 @@ function initFieldDefinitions(values) {
     { key: "enableHermes", label: "Hermes enabled", type: "bool" },
     { key: "enableOpenClaw", label: "OpenClaw enabled", type: "bool" },
     { key: "enableClaudeCode", label: "Claude Code enabled", type: "bool" },
+    { section: "Plugins" },
+    { key: "marketplacePlugins", label: "Marketplace plugins", type: "multi", choices: marketplacePluginChoices(), hint: "Selected plugins are installed, enabled, and approved after saving." },
     { section: "Storage" },
     { key: "stateBackend", label: "State backend", type: "enum", choices: ["json", "sqlite"] },
   ].filter((field) => initFieldVisible(values, field));
@@ -350,6 +363,10 @@ async function editInitField(values, field, key) {
     values[field.key] = await selectInitOption(field.label, field.choices, values[field.key]);
     return;
   }
+  if (field.type === "multi") {
+    values[field.key] = await selectInitMultiOption(field.label, field.choices, values[field.key]);
+    return;
+  }
   if (key === "space") {
     return;
   }
@@ -384,6 +401,43 @@ async function selectInitOption(label, choices, current) {
     else if (key === "down") selected = (selected + 1) % choices.length;
     else if (key === "enter" || key === "space") return choices[selected];
     else message = "Use Up/Down and Enter to select. Esc cancels.";
+  }
+}
+
+async function selectInitMultiOption(label, choices, current) {
+  const selectedValues = new Set(normalizeMarketplacePluginSelection(current));
+  let selected = 0;
+  let message = "Use Up/Down to select, Space to toggle, Enter to keep, Esc cancels.";
+  while (true) {
+    const lines = [initStyle("title", label), initStyle("help", message), ""];
+    choices.forEach((choice, index) => {
+      const isSelected = index === selected;
+      const checked = selectedValues.has(choice.value);
+      const pointer = initStyle(isSelected ? "selectedPointer" : "pointer", isSelected ? ">" : " ");
+      const marker = initStyle(checked ? "enabled" : "disabled", checked ? "[x]" : "[ ]");
+      lines.push(`${pointer} ${marker} ${initStyle(isSelected ? "selectedLabel" : "label", choice.label)}`);
+      if (isSelected && choice.description) lines.push(`    ${initStyle("hint", choice.description)}`);
+    });
+    renderInitScreen(lines);
+    const key = await readInitKey();
+    if (key === "ctrl-c") {
+      process.stdout.write("\x1b[?25h\n");
+      throw new Error("Init cancelled.");
+    }
+    if (key === "escape" || key === "q") return current;
+    if (key === "up") selected = (selected - 1 + choices.length) % choices.length;
+    else if (key === "down") selected = (selected + 1) % choices.length;
+    else if (key === "space") {
+      const value = choices[selected]?.value;
+      if (value) {
+        if (selectedValues.has(value)) selectedValues.delete(value);
+        else selectedValues.add(value);
+      }
+    } else if (key === "enter") {
+      return choices.map((choice) => choice.value).filter((value) => selectedValues.has(value)).join(", ");
+    } else {
+      message = "Use Up/Down to select, Space to toggle, Enter to keep, Esc cancels.";
+    }
   }
 }
 
@@ -427,6 +481,7 @@ function initFieldDisplay(values, field) {
   const value = values[field.key] ?? "";
   if (field.type === "bool") return value === "true" ? "true" : "false";
   if (field.type === "secret") return value ? `configured (${String(value).length} chars)` : missingInitFieldLabel(values, field);
+  if (field.type === "multi") return marketplacePluginDisplay(value);
   return value || missingInitFieldLabel(values, field);
 }
 
@@ -528,6 +583,7 @@ function normalizeInitConfig(values) {
     normalized.enableWebuiAutostart = "false";
   }
   normalized.stateBackend = String(normalized.stateBackend || "json").trim().toLowerCase();
+  normalized.marketplacePlugins = normalizeMarketplacePluginSelection(normalized.marketplacePlugins).join(", ");
   for (const [key, value] of Object.entries(normalized)) {
     if (typeof value === "string" && key !== "adminPassword") {
       normalized[key] = value.trim();
@@ -535,6 +591,7 @@ function normalizeInitConfig(values) {
   }
   return normalized;
 }
+
 
 function normalizeBoolString(value) {
   const text = String(value ?? "").trim().toLowerCase();

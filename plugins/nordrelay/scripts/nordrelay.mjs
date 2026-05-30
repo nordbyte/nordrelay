@@ -8,6 +8,7 @@ import process from "node:process";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { printExistingInitState } from "./init-state.mjs";
+import { installInitialMarketplacePlugins, loadInitMarketplaceEntries } from "./init-marketplace.mjs";
 import { collectInitConfig, validateInitConfig } from "./init-tui.mjs";
 import { commandPlugin } from "./plugin-manager.mjs";
 import { ask, askSecret } from "./prompt-utils.mjs";
@@ -93,6 +94,7 @@ function parseArgs(argv) {
     buildBeforeStart: false,
     fix: false,
     secretArgWarnings: [],
+    marketplacePlugins: [],
   };
 
   for (let i = 0; i < copy.length; i += 1) {
@@ -146,6 +148,7 @@ function parseArgs(argv) {
     else if (arg === "--enable-openclaw") options.enableOpenClaw = true;
     else if (arg === "--enable-claude-code") options.enableClaudeCode = true;
     else if (arg === "--disable-codex") options.disableCodex = true;
+    else if (arg === "--marketplace-plugin" || arg === "--plugin") options.marketplacePlugins.push(requireValue(copy, ++i, arg));
   }
 
   options.pidFile = path.join(options.home, "nordrelay.pid");
@@ -1003,7 +1006,8 @@ async function commandInit(options) {
   }
 
   const userStore = await createUserStore(options.home);
-  const init = await collectInitConfig(options);
+  const marketplaceEntries = await loadInitMarketplaceEntries(RUNTIME_ROOT);
+  const init = await collectInitConfig({ ...options, marketplaceEntries });
   const enableWebui = init.enableWebui;
   const enableAutostart = init.enableAutostart;
   const enableWebuiAutostart = enableWebui === "true" ? init.enableWebuiAutostart : "false";
@@ -1036,6 +1040,7 @@ async function commandInit(options) {
   const enableOpenClaw = init.enableOpenClaw;
   const enableClaudeCode = init.enableClaudeCode;
   const stateBackend = init.stateBackend;
+  const marketplacePlugins = csv(init.marketplacePlugins) ?? [];
 
   const initErrors = validateInitConfig(init);
   if (initErrors.length) {
@@ -1097,6 +1102,7 @@ async function commandInit(options) {
     "CLAUDE_CODE_MAX_TURNS=100",
     "NORDRELAY_ARTIFACTS_ENABLED=false",
     "NORDRELAY_ARTIFACT_DELIVERY=manual-only",
+    "NORDRELAY_PLUGINS_ENABLED=true",
     "NORDRELAY_PEER_ENABLED=false",
     "NORDRELAY_PEER_HOST=127.0.0.1",
     "NORDRELAY_PEER_PORT=31979",
@@ -1135,6 +1141,7 @@ async function commandInit(options) {
     NORDRELAY_AUTOSTART_ENABLED: enableAutostart,
     NORDRELAY_WEBUI_AUTOSTART_ENABLED: enableWebuiAutostart,
   });
+  await installInitialMarketplacePlugins(options.home, marketplacePlugins, marketplaceEntries, RUNTIME_ROOT);
   console.log("Run `nordrelay doctor` to validate the setup.");
 }
 
@@ -2808,6 +2815,8 @@ function printHelp() {
   console.log("  --disable-autostart  Disable connector autostart during init");
   console.log("  --disable-webui-autostart");
   console.log("                       Disable WebUI autostart during init");
+  console.log("  --marketplace-plugin <id>");
+  console.log("                       Install and enable a marketplace plugin during init");
   console.log("  --*-file <path>      Read init secrets from files instead of command-line values");
   console.log("  --help, -h           Show this help");
   console.log("  --version, -v        Show the installed version");
