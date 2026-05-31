@@ -50,6 +50,16 @@ describe("codex-config", () => {
     expect(readCodexFastMode()).toBe(true);
   });
 
+  it("prefers top-level service_tier over legacy fast_default_opt_out", () => {
+    writeFileSync(configPath, "service_tier = \"fast\"\n\n[notice]\nfast_default_opt_out = true\n", "utf8");
+
+    expect(readCodexFastMode()).toBe(true);
+
+    writeFileSync(configPath, "service_tier = \"default\"\n\n[notice]\nfast_default_opt_out = false\n", "utf8");
+
+    expect(readCodexFastMode()).toBe(false);
+  });
+
   it("returns null when fast mode is not configured", () => {
     writeFileSync(configPath, "[notice]\nhide_full_access_warning = true\n", "utf8");
 
@@ -61,7 +71,7 @@ describe("codex-config", () => {
 
     writeCodexFastMode(true);
 
-    expect(readFileSync(configPath, "utf8")).toBe("[notice]\nfast_default_opt_out = false # comment\n");
+    expect(readFileSync(configPath, "utf8")).toBe("service_tier = \"fast\"\n[notice]\nfast_default_opt_out = false # comment\n");
   });
 
   it("adds fast mode under an existing notice section", () => {
@@ -70,7 +80,7 @@ describe("codex-config", () => {
     writeCodexFastMode(false);
 
     expect(readFileSync(configPath, "utf8")).toBe(
-      "[notice]\nfast_default_opt_out = true\nhide_full_access_warning = true\n",
+      "service_tier = \"default\"\n[notice]\nfast_default_opt_out = true\nhide_full_access_warning = true\n",
     );
   });
 
@@ -79,7 +89,7 @@ describe("codex-config", () => {
 
     writeCodexFastMode(true);
 
-    expect(readFileSync(configPath, "utf8")).toBe("[notice]\nfast_default_opt_out = false\n");
+    expect(readFileSync(configPath, "utf8")).toBe("service_tier = \"fast\"\n\n[notice]\nfast_default_opt_out = false\n");
   });
 
   it("uses USERPROFILE for the Codex config path when HOME is not set", () => {
@@ -89,6 +99,6 @@ describe("codex-config", () => {
 
     writeCodexFastMode(false);
 
-    expect(readFileSync(configPath, "utf8")).toBe("[notice]\nfast_default_opt_out = true\n");
+    expect(readFileSync(configPath, "utf8")).toBe("service_tier = \"default\"\n\n[notice]\nfast_default_opt_out = true\n");
   });
 });
