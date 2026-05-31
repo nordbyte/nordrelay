@@ -1,5 +1,5 @@
 import type { PeerEventEnvelope } from "../../peers/peer-types.js";
-import type { BotPreferencesStore, ChannelMirrorMode } from "../../state/bot-preferences.js";
+import type { BotPreferencesStore, ChannelMirrorMode, ContextPreferences } from "../../state/bot-preferences.js";
 import type { WebChatAction, WebChatMessage } from "../../web/web-state.js";
 import type { ActiveSessionDto, RelaySnapshot } from "../../runtime/relay-runtime-types.js";
 import type { ChannelActionButton } from "./channel-actions.js";
@@ -48,6 +48,8 @@ interface SubscriptionState {
   currentThreadId?: string | null;
   currentAgentId?: string;
   currentAgentLabel?: string;
+  targetThreadId?: string | null;
+  targetAgentId?: string | null;
   activeSessionKey?: string;
   activeSessionLabel?: string;
   workingNoticeKey?: string;
@@ -67,7 +69,12 @@ export function createChannelPeerMirrorController(options: ChannelPeerMirrorCont
     subscriptions.delete(contextKey);
   };
 
-  const ensure = (contextKey: string, context: ChannelContext, peerId: string): void => {
+  const ensure = (contextKey: string, context: ChannelContext, preferences: ContextPreferences): void => {
+    const peerId = preferences.targetPeerId ?? undefined;
+    if (!peerId) {
+      close(contextKey);
+      return;
+    }
     const currentMode = effectiveMode(options, contextKey);
     if (currentMode === "off") {
       close(contextKey);
@@ -76,6 +83,7 @@ export function createChannelPeerMirrorController(options: ChannelPeerMirrorCont
     const existing = subscriptions.get(contextKey);
     if (existing && existing.peerId === peerId) {
       existing.context = context;
+      applyTargetPreferences(existing, preferences);
       return;
     }
     close(contextKey);
@@ -88,6 +96,7 @@ export function createChannelPeerMirrorController(options: ChannelPeerMirrorCont
       initializedHistory: false,
       pending: Promise.resolve(),
     };
+    applyTargetPreferences(state, preferences);
     const subscription = options.remoteClient.subscribe(peerId, (event) => {
       state.pending = state.pending
         .then(() => handlePeerEvent(options, state, event))
@@ -102,12 +111,12 @@ export function createChannelPeerMirrorController(options: ChannelPeerMirrorCont
 
   return {
     sync(contextKey, context) {
-      const targetPeerId = options.preferencesStore.get(contextKey).targetPeerId ?? undefined;
-      if (!targetPeerId) {
+      const preferences = options.preferencesStore.get(contextKey);
+      if (!preferences.targetPeerId) {
         close(contextKey);
         return;
       }
-      ensure(contextKey, context, targetPeerId);
+      ensure(contextKey, context, preferences);
     },
     close,
     closeAll() {
@@ -118,7 +127,7 @@ export function createChannelPeerMirrorController(options: ChannelPeerMirrorCont
         if (!entry.preferences.targetPeerId) continue;
         if ((entry.preferences.mirrorMode ?? options.defaultMirrorMode()) === "off") continue;
         const context = options.contextForKey(entry.contextKey);
-        if (context) ensure(entry.contextKey, context, entry.preferences.targetPeerId);
+        if (context) ensure(entry.contextKey, context, entry.preferences);
       }
     },
   };
@@ -130,6 +139,7 @@ async function handlePeerEvent(
   event: PeerEventEnvelope,
 ): Promise<void> {
   const mode = effectiveMode(options, state.contextKey);
+  applyTargetPreferences(state, options.preferencesStore.get(state.contextKey));
   if (mode === "off") {
     stopPeerTyping(state);
     return;
@@ -172,13 +182,14 @@ async function mirrorChatHistory(
     state.initializedHistory = true;
     return;
   }
+  const selectedThreadId = state.targetThreadId || state.currentThreadId;
   for (const message of messages) {
     const id = messageMirrorId(message);
     if (state.seenMessageIds.has(id)) {
       continue;
     }
     state.seenMessageIds.add(id);
-    if (state.currentThreadId && message.threadId && message.threadId !== state.currentThreadId) {
+    if (selectedThreadId && message.threadId && message.threadId !== selectedThreadId) {
       continue;
     }
     if (!shouldMirrorMessage(options, message, mode)) {
@@ -342,6 +353,12 @@ function selectPeerActiveSession(state: SubscriptionState, sessions: ActiveSessi
   if (!sessions.length) {
     return undefined;
   }
+  if (state.targetThreadId) {
+    return sessions.find((session) =>
+      session.threadId === state.targetThreadId &&
+      (!state.targetAgentId || !session.agentId || session.agentId === state.targetAgentId)
+    );
+  }
   if (state.currentThreadId) {
     const byThread = sessions.find((session) =>
       session.threadId === state.currentThreadId &&
@@ -350,8 +367,27 @@ function selectPeerActiveSession(state: SubscriptionState, sessions: ActiveSessi
     if (byThread) {
       return byThread;
     }
+    return undefined;
   }
   return sessions.find((session) => session.threadId) ?? sessions[0];
+}
+
+function applyTargetPreferences(state: SubscriptionState, preferences: ContextPreferences): void {
+  const nextThreadId = preferences.targetThreadId ?? null;
+  const nextAgentId = preferences.targetAgentId ?? null;
+  if (state.targetThreadId === nextThreadId && state.targetAgentId === nextAgentId) {
+    return;
+  }
+  stopPeerTyping(state);
+  state.targetThreadId = nextThreadId;
+  state.targetAgentId = nextAgentId;
+  state.activeSessionKey = undefined;
+  state.activeSessionLabel = undefined;
+  state.workingNoticeKey = undefined;
+  state.statusMessageId = undefined;
+  state.lastStatusEditAt = undefined;
+  state.seenMessageIds.clear();
+  state.initializedHistory = false;
 }
 
 function renderPeerActiveSessionStatus(session: ActiveSessionDto): string {

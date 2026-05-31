@@ -109,10 +109,16 @@ export async function switchTargetPeerSession(
     path: "/api/sessions/switch",
     body: { threadId: options.threadId },
   });
+  const info = parseSessionInfoResult(result);
+  options.preferencesStore.update(options.contextKey, {
+    targetPeerId,
+    targetThreadId: info.threadId ?? options.threadId,
+    targetAgentId: info.agentId ?? null,
+  });
   return {
     peerId: targetPeerId,
     peerLabel: selectedTargetPeerLabel(targetPeerId),
-    info: parseSessionInfoResult(result),
+    info,
   };
 }
 

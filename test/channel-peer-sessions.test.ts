@@ -42,6 +42,11 @@ describe("channel peer session helpers", () => {
 
     const switched = await switchTargetPeerSession({ contextKey: "telegram:1", preferencesStore, remoteClient: client, threadId: "thread-2" });
     expect(switched?.info.threadId).toBe("thread-2");
+    expect(preferencesStore.get("telegram:1")).toMatchObject({
+      targetPeerId: "peer-a",
+      targetThreadId: "thread-2",
+      targetAgentId: "codex",
+    });
     expect(parseRemoteSessionChoice(remoteSessionChoiceValue("peer-a", "thread-2"))).toEqual({ peerId: "peer-a", threadId: "thread-2" });
   });
 

@@ -97,6 +97,96 @@ describe("ChannelPeerMirrorController", () => {
     expect(edited.at(-1)).toContain("Codex CLI task finished.");
   });
 
+  it("uses the persisted remote target thread for peer typing and status updates", async () => {
+    const preferences = new BotPreferencesStore(workspace);
+    preferences.update("123:456", {
+      targetPeerId: "peer-1",
+      targetThreadId: "thread-gitstars",
+      targetAgentId: "codex",
+      mirrorMode: "status",
+    });
+    const client = new FakeRemoteClient();
+    const sent: string[] = [];
+    let typing = 0;
+    const runtime = fakeRuntime({
+      sendMessage: async (_context, message) => {
+        sent.push(message.text);
+        return { messageId: `message-${sent.length}` };
+      },
+      sendTyping: async () => {
+        typing++;
+      },
+    });
+    const controller = createChannelPeerMirrorController({
+      label: "Telegram",
+      runtime,
+      preferencesStore: preferences,
+      remoteClient: client,
+      contextForKey: () => context({ topicId: "456" }),
+      defaultMirrorMode: () => "status",
+      mirrorMinUpdateMs: 0,
+      typingIntervalMs: 1000,
+    });
+
+    controller.sync("123:456", context({ topicId: "456" }));
+    client.emit(snapshot("thread-other"));
+    client.emit({
+      type: "active_sessions_update",
+      active: {
+        updatedAt: new Date().toISOString(),
+        sessions: [
+          activeSession("thread-other", "wrong prompt"),
+          activeSession("thread-gitstars", "target prompt"),
+        ],
+      },
+    });
+    await flushAsync();
+
+    expect(typing).toBeGreaterThan(0);
+    expect(sent.at(-1)).toContain("target prompt");
+    expect(sent.at(-1)).not.toContain("wrong prompt");
+  });
+
+  it("does not type for unrelated remote active sessions when a target thread is selected", async () => {
+    const preferences = new BotPreferencesStore(workspace);
+    preferences.update("123:456", {
+      targetPeerId: "peer-1",
+      targetThreadId: "thread-gitstars",
+      targetAgentId: "codex",
+      mirrorMode: "status",
+    });
+    const client = new FakeRemoteClient();
+    let typing = 0;
+    const runtime = fakeRuntime({
+      sendTyping: async () => {
+        typing++;
+      },
+    });
+    const controller = createChannelPeerMirrorController({
+      label: "Telegram",
+      runtime,
+      preferencesStore: preferences,
+      remoteClient: client,
+      contextForKey: () => context({ topicId: "456" }),
+      defaultMirrorMode: () => "status",
+      mirrorMinUpdateMs: 0,
+      typingIntervalMs: 1000,
+    });
+
+    controller.sync("123:456", context({ topicId: "456" }));
+    client.emit(snapshot("thread-other"));
+    client.emit({
+      type: "active_sessions_update",
+      active: {
+        updatedAt: new Date().toISOString(),
+        sessions: [activeSession("thread-other", "wrong prompt")],
+      },
+    });
+    await flushAsync();
+
+    expect(typing).toBe(0);
+  });
+
   it("keeps typing active for remote peer sessions until the session finishes", async () => {
     const preferences = new BotPreferencesStore(workspace);
     preferences.update("123:456", { targetPeerId: "peer-1", mirrorMode: "final" });

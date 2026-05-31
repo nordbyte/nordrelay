@@ -75,7 +75,7 @@ export function renderNodeTargetAction(options: NodeTargetActionOptions): Channe
 export function applyNodeTargetAction(options: NodeTargetActionOptions): NodeTargetSelection {
   const action = options.action.trim();
   if (action === "node_target:local") {
-    options.preferencesStore.update(options.contextKey, { targetPeerId: null });
+    options.preferencesStore.update(options.contextKey, { targetPeerId: null, targetThreadId: null, targetAgentId: null });
     return { kind: "local", label: "Local node" };
   }
   const match = /^node_target:peer:(.+)$/.exec(action);
@@ -99,7 +99,7 @@ export function applyNodeTargetAction(options: NodeTargetActionOptions): NodeTar
   if (!peer.enabled || !peer.url) {
     throw new Error(`Peer is not selectable: ${peerLabel(peer)}.`);
   }
-  options.preferencesStore.update(options.contextKey, { targetPeerId: peer.id });
+  options.preferencesStore.update(options.contextKey, { targetPeerId: peer.id, targetThreadId: null, targetAgentId: null });
   return { kind: "peer", peerId: peer.id, label: peerLabel(peer) };
 }
 
