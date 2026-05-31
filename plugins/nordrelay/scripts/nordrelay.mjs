@@ -830,6 +830,7 @@ async function runNpmSelfUpdate(sourceRoot, log) {
     ...npm.argsPrefix,
     "install",
     "-g",
+    "--ignore-scripts",
     "@nordbyte/nordrelay@latest",
   ], { cwd: os.homedir(), shell: npm.shell });
   await runVerifyNordRelayCli(sourceRoot, log);

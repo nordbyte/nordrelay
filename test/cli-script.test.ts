@@ -100,6 +100,7 @@ describe("nordrelay CLI script", () => {
     expect(source).toContain('options.command === "update"');
     expect(source).toContain("nordrelay [init|user|peer|plugin|service|doctor|web|start|stop|restart|status|update|foreground|version]");
     expect(source).toContain("@nordbyte/nordrelay@latest");
+    expect(source).toContain('"--ignore-scripts"');
   });
 
   it("treats WebUI as a first-class init access surface", () => {

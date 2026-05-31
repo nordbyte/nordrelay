@@ -27,4 +27,4 @@ nordrelay update --method git --restart
 
 ## Notes
 
-`auto` uses npm for npm installs and git for source checkouts. Update logs are written below `~/.nordrelay`.
+`auto` uses npm for npm installs and git for source checkouts. npm self-updates skip package lifecycle scripts because NordRelay verifies the CLI and restarts explicitly after installation. Update logs are written below `~/.nordrelay`.
