@@ -73,6 +73,22 @@ export function validatePluginManifest(input: unknown): PluginValidationResult {
   if (manifest.entry && (manifest.entry.includes("..") || path.isAbsolute(manifest.entry))) {
     issues.push({ level: "error", message: "Manifest entry must be a relative path inside the plugin directory." });
   }
+  if (manifest.signature !== undefined) {
+    if (!isRecord(manifest.signature)) {
+      issues.push({ level: "error", message: "Manifest signature must be an object when set." });
+    } else {
+      const signature = manifest.signature as Record<string, unknown>;
+      if (signature.algorithm !== undefined && signature.algorithm !== "ed25519") {
+        issues.push({ level: "error", message: "Manifest signature.algorithm must be ed25519 when set." });
+      }
+      if (signature.value !== undefined && typeof signature.value !== "string") {
+        issues.push({ level: "error", message: "Manifest signature.value must be a base64 string when set." });
+      }
+      if (signature.keyId !== undefined && typeof signature.keyId !== "string") {
+        issues.push({ level: "error", message: "Manifest signature.keyId must be a string when set." });
+      }
+    }
+  }
   if (manifest.permissions !== undefined) {
     if (!Array.isArray(manifest.permissions) || manifest.permissions.some((value) => typeof value !== "string")) {
       issues.push({ level: "error", message: "Manifest permissions must be an array of strings." });

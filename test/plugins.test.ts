@@ -399,6 +399,45 @@ describe("plugin system", () => {
     expect(rolledBack.version).toBe("0.1.0");
   });
 
+  it("locks plugin installs and requires approval for permission escalation", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-home-"));
+    const fixture = await createPluginFixture();
+    const service = new PluginService(home);
+    const installed = await service.install({ source: fixture, enable: true, approvePermissions: true });
+    const locks = await service.store.readLocks();
+
+    expect(installed.manifestHash.value).toMatch(/^[a-f0-9]{64}$/);
+    expect(installed.packageHash.value).toMatch(/^[a-f0-9]{64}$/);
+    expect(installed.trustLevel).toBe("local");
+    expect(installed.signature.status).toBe("unsigned");
+    expect(locks.plugins).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "example-plugin",
+        manifestHash: installed.manifestHash,
+        packageHash: installed.packageHash,
+        trustLevel: "local",
+      }),
+    ]));
+
+    const manifestPath = path.join(fixture, "nordrelay.plugin.json");
+    const raw = JSON.parse(await readFile(manifestPath, "utf8"));
+    await writeFile(manifestPath, JSON.stringify({
+      ...raw,
+      version: "0.2.0",
+      permissions: [...raw.permissions, "network"],
+    }, null, 2));
+
+    const check = await service.checkUpdate("example-plugin");
+    expect(check.permissionDiff?.addedPermissions).toContain("network");
+    expect(check.permissionDiff?.hasEscalation).toBe(true);
+    await expect(service.update("example-plugin")).rejects.toThrow("requires permission approval");
+
+    const updated = await service.update("example-plugin", { approvePermissionDiff: true });
+    expect(updated.version).toBe("0.2.0");
+    expect(updated.permissions).toContain("network");
+    expect(updated.approvedPermissions).not.toContain("network");
+  });
+
   it("scaffolds a valid plugin template", async () => {
     const home = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-home-"));
     const target = path.join(home, "new-plugin");

@@ -3,39 +3,66 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
+import { assertExpectedHash, hashDirectory, hashManifest } from "./plugin-integrity.js";
 import { loadPluginManifest, validatePluginManifest } from "./plugin-manifest.js";
+import { diffPluginManifestPermissions } from "./plugin-permission-diff.js";
+import { verifyPluginManifestSignature } from "./plugin-signatures.js";
 import { PluginStore } from "./plugin-store.js";
 import {
   type InstalledPluginRecord,
+  type PluginIntegrity,
   type PluginInstallRequest,
+  type PluginManifest,
+  type PluginPermissionDiff,
   type PluginScaffoldRequest,
+  type PluginSignatureVerification,
+  type PluginTrustLevel,
   PLUGIN_MANIFEST_FILE,
 } from "./plugin-types.js";
 
 interface ResolvedPluginSource {
-  type: "local" | "github";
+  type: "local" | "github" | "npm";
   value: string;
   ref?: string;
   revision?: string;
+  packageName?: string;
+  resolvedRef?: string;
+  packageHash: PluginIntegrity;
   pluginDir: string;
   cleanup?: () => Promise<void>;
+}
+
+export interface PluginInstallAnalysis {
+  manifest: PluginManifest;
+  source: Omit<ResolvedPluginSource, "pluginDir" | "cleanup">;
+  manifestHash: PluginIntegrity;
+  packageHash: PluginIntegrity;
+  trustLevel: PluginTrustLevel;
+  signature: PluginSignatureVerification;
+  permissionDiff: PluginPermissionDiff;
 }
 
 export class PluginInstaller {
   constructor(private readonly store: PluginStore) {}
 
+  async analyze(request: PluginInstallRequest): Promise<PluginInstallAnalysis> {
+    const prepared = await this.prepareInstall(request);
+    await prepared.resolved.cleanup?.();
+    return prepared.analysis;
+  }
+
   async install(request: PluginInstallRequest): Promise<InstalledPluginRecord> {
-    const resolved = await this.resolveSource(request);
+    const prepared = await this.prepareInstall(request);
+    const { resolved, analysis } = prepared;
     try {
-      const validation = await loadPluginManifest(resolved.pluginDir);
-      if (!validation.ok || !validation.manifest) {
-        throw new Error(validation.issues.map((issue) => issue.message).join("; ") || "Invalid plugin manifest.");
-      }
-      const manifest = validation.manifest;
+      const manifest = analysis.manifest;
       const destination = this.store.installVersionPath(manifest.id, manifest.version);
       const existing = await this.store.get(manifest.id);
       if (existing && !request.force && existing.version === manifest.version) {
         throw new Error(`Plugin ${manifest.id}@${manifest.version} is already installed. Use --force to reinstall.`);
+      }
+      if (existing && analysis.permissionDiff.hasEscalation && !request.approvePermissionDiff && !request.approvePermissions) {
+        throw new Error(`Plugin update requires permission approval: ${analysis.permissionDiff.riskyChanges.join("; ") || analysis.permissionDiff.addedPermissions.join(", ")}`);
       }
       await rm(destination, { recursive: true, force: true });
       await mkdir(path.dirname(destination), { recursive: true });
@@ -64,11 +91,22 @@ export class PluginInstaller {
           value: resolved.value,
           ref: resolved.ref,
           revision: resolved.revision,
+          packageName: resolved.packageName,
+          resolvedRef: resolved.resolvedRef,
+          integrity: resolved.packageHash,
         },
+        manifestHash: analysis.manifestHash,
+        packageHash: analysis.packageHash,
+        trustLevel: analysis.trustLevel,
+        signature: analysis.signature,
+        signaturePublicKey: request.signaturePublicKey,
+        permissionDiff: analysis.permissionDiff,
         enabled: Boolean(request.enable),
         status: request.enable ? "enabled" : "installed",
         permissions: manifest.permissions ?? [],
-        approvedPermissions: request.approvePermissions ? manifest.permissions ?? [] : existing?.approvedPermissions ?? [],
+        approvedPermissions: request.approvePermissions
+          ? manifest.permissions ?? []
+          : (existing?.approvedPermissions ?? []).filter((permission) => (manifest.permissions ?? []).includes(permission)),
         capabilities: manifest.capabilities ?? {},
         settingsSchema: manifest.settings ?? [],
         settings,
@@ -76,6 +114,21 @@ export class PluginInstaller {
         updatedAt: now,
       };
       await this.store.save(record);
+      await this.store.saveLock({
+        id: record.id,
+        version: record.version,
+        source: record.source,
+        manifestHash: record.manifestHash,
+        packageHash: record.packageHash,
+        permissions: record.permissions,
+        approvedPermissions: record.approvedPermissions,
+        capabilities: record.capabilities,
+        trustLevel: record.trustLevel,
+        signature: record.signature,
+        signaturePublicKey: record.signaturePublicKey,
+        installedAt: record.installedAt,
+        updatedAt: record.updatedAt,
+      });
       return record;
     } finally {
       await resolved.cleanup?.();
@@ -167,12 +220,61 @@ export class PluginInstaller {
     if (isGitHubSource(source)) {
       return this.cloneGitHubSource(source, request.ref);
     }
+    if (isNpmSource(source)) {
+      return this.unpackNpmSource(source);
+    }
     const pluginDir = path.resolve(source);
     return {
       type: "local",
       value: pluginDir,
       pluginDir,
+      packageHash: await hashDirectory(pluginDir),
     };
+  }
+
+  private async prepareInstall(request: PluginInstallRequest): Promise<{ resolved: ResolvedPluginSource; analysis: PluginInstallAnalysis }> {
+    const resolved = await this.resolveSource(request);
+    try {
+      const validation = await loadPluginManifest(resolved.pluginDir);
+      if (!validation.ok || !validation.manifest) {
+        throw new Error(validation.issues.map((issue) => issue.message).join("; ") || "Invalid plugin manifest.");
+      }
+      const manifest = validation.manifest;
+      const manifestHash = hashManifest(manifest);
+      const packageHash = resolved.packageHash;
+      assertExpectedHash(manifestHash, request.expectedManifestHash, "Plugin manifest");
+      assertExpectedHash(packageHash, request.expectedPackageHash, "Plugin package");
+      const signature = verifyPluginManifestSignature(manifest, request.signaturePublicKey, request.requireSignature);
+      if (request.requireSignature && signature.status !== "verified") {
+        throw new Error(signature.message || "Plugin manifest signature verification failed.");
+      }
+      const existing = await this.store.get(manifest.id);
+      const permissionDiff = diffPluginManifestPermissions(existing, manifest);
+      const trustLevel = request.trustLevel ?? defaultTrustLevel(resolved);
+      return {
+        resolved,
+        analysis: {
+          manifest,
+          source: {
+            type: resolved.type,
+            value: resolved.value,
+            ref: resolved.ref,
+            revision: resolved.revision,
+            packageName: resolved.packageName,
+            resolvedRef: resolved.resolvedRef,
+            packageHash: resolved.packageHash,
+          },
+          manifestHash,
+          packageHash,
+          trustLevel,
+          signature,
+          permissionDiff,
+        },
+      };
+    } catch (error) {
+      await resolved.cleanup?.();
+      throw error;
+    }
   }
 
   private async cloneGitHubSource(source: string, ref?: string): Promise<ResolvedPluginSource> {
@@ -194,12 +296,53 @@ export class PluginInstaller {
       }
     }
     const revision = spawnSync("git", ["rev-parse", "HEAD"], { cwd: tmp, encoding: "utf8", stdio: "pipe" });
+    const resolvedRef = revision.status === 0 ? revision.stdout.trim() : undefined;
     return {
       type: "github",
       value: parsed.repoUrl,
       ref: parsed.ref,
-      revision: revision.status === 0 ? revision.stdout.trim() : undefined,
+      revision: resolvedRef,
+      resolvedRef,
+      packageHash: await hashDirectory(tmp),
       pluginDir: tmp,
+      cleanup: () => rm(tmp, { recursive: true, force: true }),
+    };
+  }
+
+  private async unpackNpmSource(source: string): Promise<ResolvedPluginSource> {
+    const spec = source.slice("npm:".length).trim();
+    if (!spec) {
+      throw new Error("npm plugin source must look like npm:@scope/package[@version].");
+    }
+    const tmp = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-npm-"));
+    const extractDir = path.join(tmp, "package");
+    await mkdir(extractDir, { recursive: true });
+    const pack = spawnSync("npm", ["pack", spec, "--json", "--pack-destination", tmp], {
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+    if (pack.status !== 0) {
+      await rm(tmp, { recursive: true, force: true });
+      throw new Error(`npm pack failed: ${pack.stderr || pack.stdout || pack.error?.message || "unknown error"}`);
+    }
+    const packed = parseNpmPackResult(pack.stdout);
+    const tarball = path.join(tmp, packed.filename);
+    const unpack = spawnSync("tar", ["-xzf", tarball, "-C", extractDir, "--strip-components", "1"], {
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+    if (unpack.status !== 0) {
+      await rm(tmp, { recursive: true, force: true });
+      throw new Error(`npm package extract failed: ${unpack.stderr || unpack.stdout || "unknown error"}`);
+    }
+    return {
+      type: "npm",
+      value: spec,
+      packageName: packed.name,
+      revision: packed.version,
+      resolvedRef: `${packed.name}@${packed.version}`,
+      packageHash: await hashDirectory(extractDir),
+      pluginDir: extractDir,
       cleanup: () => rm(tmp, { recursive: true, force: true }),
     };
   }
@@ -207,6 +350,10 @@ export class PluginInstaller {
 
 function isGitHubSource(source: string): boolean {
   return source.startsWith("github:") || /^https:\/\/github\.com\/[^/]+\/[^/#]+/i.test(source);
+}
+
+function isNpmSource(source: string): boolean {
+  return source.startsWith("npm:");
 }
 
 function parseGitHubSource(source: string, ref?: string): { repoUrl: string; ref?: string } {
@@ -246,4 +393,28 @@ function buildDefaultSettings(
     }
   }
   return settings;
+}
+
+function parseNpmPackResult(raw: string): { filename: string; name: string; version: string } {
+  const parsed = JSON.parse(raw || "[]") as unknown;
+  const first = Array.isArray(parsed) ? parsed[0] : parsed;
+  if (!first || typeof first !== "object") {
+    throw new Error("npm pack did not return package metadata.");
+  }
+  const record = first as Record<string, unknown>;
+  const filename = typeof record.filename === "string" ? record.filename : "";
+  const name = typeof record.name === "string" ? record.name : "";
+  const version = typeof record.version === "string" ? record.version : "";
+  if (!filename || !name || !version) {
+    throw new Error("npm pack metadata is missing filename, name, or version.");
+  }
+  return { filename, name, version };
+}
+
+function defaultTrustLevel(source: ResolvedPluginSource): PluginTrustLevel {
+  if (source.type === "local") return "local";
+  if (/github\.com\/nordbyte\//i.test(source.value) || String(source.packageName ?? "").startsWith("@nordbyte/")) {
+    return "verified";
+  }
+  return "community";
 }

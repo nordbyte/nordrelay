@@ -15,7 +15,18 @@ const configMetadataPath = path.join(rootDir, "src", "core", "config-metadata.ts
 const channelCommandCatalogPath = path.join(rootDir, "src", "channels", "shared", "channel-command-catalog.ts");
 const settingsReferencePath = path.join(docsDir, "reference", "settings.md");
 const chatCommandsReferencePath = path.join(docsDir, "reference", "chat-commands.md");
+const pluginGuidePath = path.join(docsDir, "guides", "plugins.md");
 const execFileAsync = promisify(execFile);
+const officialPluginDocs = [
+  {
+    id: "system-monitor",
+    repoDir: path.resolve(rootDir, "..", "nordrelay-plugin-system-monitor"),
+  },
+  {
+    id: "auto-updater",
+    repoDir: path.resolve(rootDir, "..", "nordrelay-plugin-auto-updater"),
+  },
+];
 
 const pageExtensions = new Set(["", ".md", ".html"]);
 const assetExtensions = new Set([
@@ -53,6 +64,7 @@ async function main() {
   await checkCommandDocs(markdownFiles);
   await checkSettingsReferenceDocs();
   await checkChatCommandReferenceDocs();
+  await checkOfficialPluginDocs();
 
   if (errors.length > 0) {
     console.error(`Docs check failed with ${errors.length} issue(s):`);
@@ -331,6 +343,34 @@ async function checkChatCommandReferenceDocs() {
   for (const command of catalogCommands) {
     if (!documentedCommands.has(command)) {
       fail(`${relative(chatCommandsReferencePath)}: missing chat command '/${command}' from channel command catalog`);
+    }
+  }
+}
+
+async function checkOfficialPluginDocs() {
+  const guideSource = await fs.readFile(pluginGuidePath, "utf8");
+  for (const plugin of officialPluginDocs) {
+    const manifestPath = path.join(plugin.repoDir, "nordrelay.plugin.json");
+    const readmePath = path.join(plugin.repoDir, "README.md");
+    if (!existsSync(manifestPath) || !existsSync(readmePath)) {
+      continue;
+    }
+    const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+    const readme = await fs.readFile(readmePath, "utf8");
+    const docsSource = `${guideSource}\n${readme}`;
+    for (const permission of manifest.permissions ?? []) {
+      if (!docsSource.includes(permission)) {
+        fail(`${relative(readmePath)} / ${relative(pluginGuidePath)}: missing plugin permission '${permission}' from ${plugin.id} manifest`);
+      }
+    }
+    for (const command of manifest.capabilities?.commands ?? []) {
+      if (!readme.includes(`\`${command.name}\``) && !readme.includes(command.name)) {
+        fail(`${relative(readmePath)}: missing plugin command '${command.name}' from ${plugin.id} manifest`);
+      }
+    }
+    const hasWritePermission = (manifest.permissions ?? []).some((permission) => String(permission).endsWith(".write"));
+    if (hasWritePermission && /\bread[- ]only\b|intentionally read-only|does not run package upgrades/i.test(docsSource)) {
+      fail(`${plugin.id}: docs describe plugin as read-only, but manifest declares write permissions`);
     }
   }
 }

@@ -1,4 +1,5 @@
 import { detectLatestNpmVersion } from "../support/operations.js";
+import type { PluginTrustLevel } from "./plugin-types.js";
 
 export interface PluginMarketplaceEntry {
   id: string;
@@ -9,6 +10,12 @@ export interface PluginMarketplaceEntry {
   category: string;
   official: boolean;
   approved: boolean;
+  trustLevel: PluginTrustLevel;
+  signatureRequired?: boolean;
+  verifiedSource?: string;
+  expectedManifestHash?: string;
+  expectedPackageHash?: string;
+  signaturePublicKeyId?: string;
   author?: string;
   homepage?: string;
   repository?: string;
@@ -39,6 +46,9 @@ const MARKETPLACE_ENTRIES: PluginMarketplaceEntry[] = [
     category: "Monitoring",
     official: true,
     approved: true,
+    trustLevel: "official",
+    signatureRequired: false,
+    verifiedSource: "github:nordbyte/nordrelay-plugin-system-monitor",
     author: "Ricardo <github@nordbyte.de>",
     homepage: "https://github.com/nordbyte/nordrelay-plugin-system-monitor",
     repository: "https://github.com/nordbyte/nordrelay-plugin-system-monitor",
@@ -56,6 +66,9 @@ const MARKETPLACE_ENTRIES: PluginMarketplaceEntry[] = [
     category: "Operations",
     official: true,
     approved: true,
+    trustLevel: "official",
+    signatureRequired: false,
+    verifiedSource: "github:nordbyte/nordrelay-plugin-auto-updater",
     author: "Ricardo <github@nordbyte.de>",
     homepage: "https://github.com/nordbyte/nordrelay-plugin-auto-updater",
     repository: "https://github.com/nordbyte/nordrelay-plugin-auto-updater",

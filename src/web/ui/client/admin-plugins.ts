@@ -132,6 +132,8 @@ function pluginRow(plugin){
   const runtime=pluginMetricsSummary(plugin);
   const updateCheck=state.pluginUpdateChecks?.[plugin.id];
   const updateBadge=updateCheck?uiBadge(updateCheck.error?'check failed':updateCheck.updateAvailable?'update available':'current',updateCheck.error?'failed':updateCheck.updateAvailable?'warning':'enabled'):'';
+  const trust=uiBadge(plugin.trustLevel||'untrusted',plugin.trustLevel==='official'||plugin.trustLevel==='verified'?'enabled':plugin.trustLevel==='local'?'disabled':'warning');
+  const signature=plugin.signature?.status?uiBadge(plugin.signature.status,plugin.signature.status==='verified'?'enabled':plugin.signature.status==='invalid'?'failed':'warning'):'';
   const actions=[
     plugin.enabled?uiButton('Disable',{mini:true,variant:'secondary',data:{pluginDisable:plugin.id},permission:'plugins.enable'}):uiButton('Enable',{mini:true,data:{pluginEnable:plugin.id},permission:'plugins.enable'}),
     uiButton('Settings',{mini:true,variant:'secondary',data:{pluginSettings:plugin.id},permission:'plugins.settings.write'}),
@@ -144,7 +146,7 @@ function pluginRow(plugin){
   ].join('');
   return '<tr>'+
     pluginCell('Status',status,'status-cell')+
-    pluginCell('Plugin','<span class="truncate-cell" title="'+attr(plugin.name||plugin.id)+'">'+esc(plugin.name||plugin.id)+'</span><small>'+esc(plugin.id||'-')+'</small>','primary-cell')+
+    pluginCell('Plugin','<span class="truncate-cell" title="'+attr(plugin.name||plugin.id)+'">'+esc(plugin.name||plugin.id)+'</span><small>'+esc(plugin.id||'-')+'</small><div class="row">'+trust+signature+'</div>','primary-cell')+
     pluginCell('Version',esc(plugin.version||'-')+(updateBadge?'<br>'+updateBadge:''))+
     pluginCell('Runtime','<span class="truncate-cell" title="'+attr(runtime)+'">'+esc(runtime)+'</span>')+
     pluginCell('Source','<span class="truncate-cell" title="'+attr(source)+'">'+esc(short(source,160))+'</span>')+
@@ -231,7 +233,11 @@ function pluginMarketplaceRow(entry){
   const installed=marketplaceInstalledPlugin(entry);
   const versionState=marketplaceVersionState(installed,entry);
   const status=installed?(installed.enabled?uiBadge('installed · enabled','enabled'):uiBadge('installed','disabled')):uiBadge('available','disabled');
-  const trust=[entry.official?uiBadge('official','enabled'):'',entry.approved?uiBadge('approved','enabled'):''].filter(Boolean).join(' ');
+  const trust=[
+    uiBadge(entry.trustLevel||'community',entry.trustLevel==='official'||entry.trustLevel==='verified'?'enabled':entry.trustLevel==='untrusted'?'failed':'warning'),
+    entry.approved?uiBadge('approved','enabled'):'',
+    entry.signatureRequired?uiBadge('signed','enabled'):uiBadge('unsigned ok','disabled'),
+  ].filter(Boolean).join(' ');
   const source=entry.source+(entry.ref?'#'+entry.ref:'');
   const tags=(entry.tags||[]).map(tag=>'<span class="chip">'+esc(tag)+'</span>').join('');
   const installLabel=installed&&versionState==='outdated'?'Update':installed?'Reinstall':'Install';
@@ -292,6 +298,11 @@ function openPluginMarketplaceInfoDialog(entryId){
     ['License',entry.license||'-'],
     ['Official',entry.official?'yes':'no'],
     ['Approved',entry.approved?'yes':'no'],
+    ['Trust level',entry.trustLevel||'-'],
+    ['Signature required',entry.signatureRequired?'yes':'no'],
+    ['Verified source',entry.verifiedSource||'-'],
+    ['Expected manifest hash',entry.expectedManifestHash||'-'],
+    ['Expected package hash',entry.expectedPackageHash||'-'],
     ['Installed path',installed?.installPath||'-'],
     ['Installed updated',installed?.updatedAt?fmtDate(installed.updatedAt):'-'],
   ];
@@ -341,7 +352,26 @@ function bindPluginButtons(root:Element|Document=document){
   root.querySelectorAll?.('[data-plugin-remove]').forEach(b=>b.onclick=()=>safe(async()=>{if(!confirm('Remove this plugin?'))return;await api('/api/plugins/'+encodeURIComponent(b.dataset.pluginRemove),{method:'DELETE'});toast('Plugin removed');await loadPlugins()}));
   root.querySelectorAll?.('[data-plugin-reload]').forEach(b=>b.onclick=()=>safe(async()=>{await api('/api/plugins/'+encodeURIComponent(b.dataset.pluginReload)+'/manifest',{method:'POST',body:JSON.stringify({})});toast('Plugin manifest reloaded');await loadPlugins()}));
   root.querySelectorAll?.('[data-plugin-check-update]').forEach(b=>b.onclick=()=>safe(async()=>{const id=b.dataset.pluginCheckUpdate;const result=await api('/api/plugins/'+encodeURIComponent(id)+'/update-check');state.pluginUpdateChecks=state.pluginUpdateChecks||{};state.pluginUpdateChecks[id]=result;toast(result.updateAvailable?'Plugin update available':result.error?'Plugin update check failed':'Plugin is current');renderPlugins()}));
-  root.querySelectorAll?.('[data-plugin-update]').forEach(b=>b.onclick=()=>safe(async()=>{const id=b.dataset.pluginUpdate;if(!confirm('Update this plugin from its original source?'))return;await api('/api/plugins/'+encodeURIComponent(id)+'/update',{method:'POST',body:JSON.stringify({})});toast('Plugin updated');await loadPlugins()}));
+  root.querySelectorAll?.('[data-plugin-update]').forEach(b=>b.onclick=()=>safe(async()=>{
+    const id=b.dataset.pluginUpdate;
+    let check=state.pluginUpdateChecks?.[id];
+    if(!check){
+      check=await api('/api/plugins/'+encodeURIComponent(id)+'/update-check');
+      state.pluginUpdateChecks=state.pluginUpdateChecks||{};
+      state.pluginUpdateChecks[id]=check;
+    }
+    const diff=check?.permissionDiff&&typeof check.permissionDiff==='object'&&!Array.isArray(check.permissionDiff)?check.permissionDiff as WebuiRecord:null;
+    const addedPermissions=Array.isArray(diff?.addedPermissions)?diff.addedPermissions.map(String):[];
+    const riskyChanges=Array.isArray(diff?.riskyChanges)?diff.riskyChanges.map(String):[];
+    const approve=Boolean(diff?.hasEscalation);
+    const message=approve
+      ? 'Update requires permission approval.\n\nAdded permissions: '+(addedPermissions.join(', ')||'none')+'\nRisk: '+(riskyChanges.join('; ')||'none')
+      : 'Update this plugin from its original source?';
+    if(!confirm(message))return;
+    await api('/api/plugins/'+encodeURIComponent(id)+'/update',{method:'POST',body:JSON.stringify({approvePermissionDiff:approve})});
+    toast('Plugin updated');
+    await loadPlugins();
+  }));
   root.querySelectorAll?.('[data-plugin-rollback]').forEach(b=>b.onclick=()=>safe(async()=>{const id=b.dataset.pluginRollback;const version=prompt('Rollback to version (leave empty for previous installed version):','')||'';await api('/api/plugins/'+encodeURIComponent(id)+'/rollback',{method:'POST',body:JSON.stringify({version:version.trim()||undefined})});toast('Plugin rolled back');await loadPlugins()}));
   root.querySelectorAll?.('[data-plugin-settings]').forEach(b=>b.onclick=()=>openPluginSettingsDialog(b.dataset.pluginSettings));
   root.querySelectorAll?.('[data-plugin-log]').forEach(b=>b.onclick=()=>{state.pluginTab='logs';switchPluginTab('logs');const select=document.getElementById('pluginLogSelect');if(select)select.value=b.dataset.pluginLog;safe(loadPluginLog)});
@@ -735,7 +765,13 @@ async function installPluginFromForm(){
     ref:val('pluginInstallRef')||undefined,
     enable:document.getElementById('pluginInstallEnable')?.checked===true,
     approvePermissions:document.getElementById('pluginInstallApprove')?.checked===true,
+    approvePermissionDiff:document.getElementById('pluginInstallApprove')?.checked===true,
     force:document.getElementById('pluginInstallForce')?.checked===true,
+    trustLevel:val('pluginInstallTrust')||undefined,
+    expectedManifestHash:val('pluginInstallManifestHash')||undefined,
+    expectedPackageHash:val('pluginInstallPackageHash')||undefined,
+    signaturePublicKey:val('pluginInstallSignatureKey')||undefined,
+    requireSignature:document.getElementById('pluginInstallRequireSignature')?.checked===true,
   };
   const allPeers=document.getElementById('pluginInstallAllPeers')?.checked===true;
   if(allPeers){
@@ -758,6 +794,11 @@ async function installMarketplacePlugin(entryId,allTargets=false,force=false){
     ref:entry.ref||undefined,
     enable:true,
     approvePermissions:entry.approved!==false,
+    approvePermissionDiff:entry.approved!==false,
+    trustLevel:entry.trustLevel||undefined,
+    expectedManifestHash:entry.expectedManifestHash||undefined,
+    expectedPackageHash:entry.expectedPackageHash||undefined,
+    requireSignature:Boolean(entry.signatureRequired),
     force:Boolean(force),
   };
   if(!entry.approved&&!confirm('This plugin is not marked as approved. Install without approving permissions?'))return;

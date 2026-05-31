@@ -581,10 +581,15 @@ ${faviconLinks}
               <div class="row plugin-heading-actions"><button id="installPluginBtn">Install plugin</button><button id="validatePluginSourceBtn" class="secondary">Validate local path</button></div>
             </div>
             <div class="settings-grid compact-settings-grid">
-              <label><span>Source</span><input id="pluginInstallSource" placeholder="github:owner/repo, https://github.com/owner/repo, or local path"></label>
+              <label><span>Source</span><input id="pluginInstallSource" placeholder="github:owner/repo, https://github.com/owner/repo, npm:@scope/pkg, or local path"></label>
               <label><span>Git ref</span><input id="pluginInstallRef" placeholder="Optional branch, tag, or commit"></label>
+              <label><span>Trust level</span><select id="pluginInstallTrust"><option value="">Auto</option><option value="official">Official</option><option value="verified">Verified</option><option value="community">Community</option><option value="local">Local</option><option value="untrusted">Untrusted</option></select></label>
+              <label><span>Expected manifest hash</span><input id="pluginInstallManifestHash" placeholder="Optional sha256"></label>
+              <label><span>Expected package hash</span><input id="pluginInstallPackageHash" placeholder="Optional sha256"></label>
+              <label class="full-span"><span>Signature public key</span><textarea id="pluginInstallSignatureKey" rows="4" placeholder="Optional Ed25519 public key PEM"></textarea></label>
               <label class="checkbox"><input id="pluginInstallEnable" type="checkbox"> Enable after install</label>
               <label class="checkbox"><input id="pluginInstallApprove" type="checkbox"> Approve declared permissions</label>
+              <label class="checkbox"><input id="pluginInstallRequireSignature" type="checkbox"> Require valid manifest signature</label>
               <label class="checkbox"><input id="pluginInstallForce" type="checkbox"> Force reinstall same version</label>
               <label class="checkbox"><input id="pluginInstallAllPeers" type="checkbox"> Install on all enabled peers</label>
             </div>

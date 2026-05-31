@@ -35,7 +35,13 @@ export async function commandPlugin(options) {
       ref: flags.ref,
       enable: flags.enable,
       approvePermissions: flags.approve,
+      approvePermissionDiff: flags.approveDiff,
       force: flags.force,
+      trustLevel: flags.trustLevel,
+      expectedManifestHash: flags.expectedManifestHash,
+      expectedPackageHash: flags.expectedPackageHash,
+      signaturePublicKey: flags.signaturePublicKey,
+      requireSignature: flags.requireSignature,
     });
     console.log(`Installed ${plugin.id}@${plugin.version}.`);
     console.log(plugin.enabled ? "Plugin is enabled." : "Plugin is installed but disabled.");
@@ -63,6 +69,21 @@ export async function commandPlugin(options) {
     }
     return;
   }
+  if (flags.subcommand === "analyze") {
+    const source = flags.args[0];
+    if (!source) throw new Error("Usage: nordrelay plugin analyze <path|github:owner/repo|npm:package>");
+    const result = await service.analyzeInstall({
+      source,
+      ref: flags.ref,
+      trustLevel: flags.trustLevel,
+      expectedManifestHash: flags.expectedManifestHash,
+      expectedPackageHash: flags.expectedPackageHash,
+      signaturePublicKey: flags.signaturePublicKey,
+      requireSignature: flags.requireSignature,
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
   if (flags.subcommand === "enable" || flags.subcommand === "disable") {
     const id = requiredPluginId(flags);
     const plugin = flags.subcommand === "enable" ? await service.enable(id) : await service.disable(id);
@@ -88,8 +109,24 @@ export async function commandPlugin(options) {
   }
   if (flags.subcommand === "update") {
     const id = requiredPluginId(flags);
-    const plugin = await service.update(id);
+    const plugin = await service.update(id, {
+      approvePermissionDiff: flags.approveDiff,
+      signaturePublicKey: flags.signaturePublicKey,
+      requireSignature: flags.requireSignature,
+    });
     console.log(`Updated ${plugin.id}@${plugin.version}.`);
+    return;
+  }
+  if (flags.subcommand === "jobs") {
+    const id = requiredPluginId(flags);
+    console.log(JSON.stringify(await service.listJobs(id), null, 2));
+    return;
+  }
+  if (flags.subcommand === "start-job") {
+    const id = requiredPluginId(flags);
+    const command = flags.args[1];
+    if (!command) throw new Error("Usage: nordrelay plugin start-job <plugin-id> <command> [--input-json '{...}']");
+    console.log(JSON.stringify(await service.startCommandJob(id, command, parseInputJson(flags.inputJson)), null, 2));
     return;
   }
   if (flags.subcommand === "rollback") {
@@ -155,7 +192,13 @@ function parsePluginFlags(rawFlags) {
     description: undefined,
     enable: false,
     approve: false,
+    approveDiff: false,
     force: false,
+    trustLevel: undefined,
+    expectedManifestHash: undefined,
+    expectedPackageHash: undefined,
+    signaturePublicKey: undefined,
+    requireSignature: false,
     set: [],
     inputJson: "{}",
     version: undefined,
@@ -168,8 +211,15 @@ function parsePluginFlags(rawFlags) {
     else if (arg === "--description") flags.description = requireValue(copy, ++index, arg);
     else if (arg === "--input-json") flags.inputJson = requireValue(copy, ++index, arg);
     else if (arg === "--version") flags.version = requireValue(copy, ++index, arg);
+    else if (arg === "--trust") flags.trustLevel = requireTrustLevel(requireValue(copy, ++index, arg));
+    else if (arg === "--expected-manifest-hash") flags.expectedManifestHash = requireValue(copy, ++index, arg);
+    else if (arg === "--expected-package-hash") flags.expectedPackageHash = requireValue(copy, ++index, arg);
+    else if (arg === "--signature-public-key") flags.signaturePublicKey = requireValue(copy, ++index, arg);
+    else if (arg === "--signature-public-key-file") flags.signaturePublicKey = fs.readFileSync(requireValue(copy, ++index, arg), "utf8");
     else if (arg === "--enable") flags.enable = true;
     else if (arg === "--approve") flags.approve = true;
+    else if (arg === "--approve-diff") flags.approveDiff = true;
+    else if (arg === "--require-signature") flags.requireSignature = true;
     else if (arg === "--force") flags.force = true;
     else if (arg === "--set") flags.set.push(requireValue(copy, ++index, arg));
     else if (arg === "--help" || arg === "-h") flags.subcommand = "help";
@@ -206,6 +256,14 @@ function requireValue(argv, index, flag) {
   return value;
 }
 
+function requireTrustLevel(value) {
+  const allowed = new Set(["official", "verified", "community", "local", "untrusted"]);
+  if (!allowed.has(value)) {
+    throw new Error("--trust must be one of official, verified, community, local, or untrusted");
+  }
+  return value;
+}
+
 async function createPluginService(home) {
   const modulePath = path.join(RUNTIME_ROOT, "dist", "plugins", "plugin-service.js");
   if (!fs.existsSync(modulePath)) {
@@ -238,7 +296,8 @@ function printPluginHelp() {
   console.log("");
   console.log("Commands:");
   console.log("  list                         List installed plugins");
-  console.log("  install <source>             Install from a local path or GitHub repository");
+  console.log("  install <source>             Install from a local path, GitHub repository, or npm:package");
+  console.log("  analyze <source>             Inspect manifest, hashes, signature, and permission diff");
   console.log("  create <dir> --id <id>       Scaffold a new plugin");
   console.log("  validate <path>              Validate a plugin manifest");
   console.log("  enable <id>                  Enable a plugin and approve declared permissions");
@@ -247,6 +306,8 @@ function printPluginHelp() {
   console.log("  reload <id>                  Reload manifest metadata from the installed plugin");
   console.log("  check-update <id>            Check whether the plugin source has changed");
   console.log("  update <id>                  Reinstall from the original source/ref");
+  console.log("  jobs <id>                    List plugin jobs");
+  console.log("  start-job <id> <command>     Run a plugin command as a tracked job");
   console.log("  rollback <id>                Switch back to an installed previous version");
   console.log("  settings <id> [--set K=V]    Show or update plugin settings");
   console.log("  catalog                      Print enabled extension points as JSON");
@@ -257,6 +318,13 @@ function printPluginHelp() {
   console.log("  --ref <ref>                  Git branch, tag, or commit for GitHub installs");
   console.log("  --enable                     Enable after install");
   console.log("  --approve                    Approve declared permissions after install");
+  console.log("  --approve-diff               Approve update permission/capability diff");
+  console.log("  --trust <level>              Trust level: official, verified, community, local, untrusted");
+  console.log("  --expected-manifest-hash <h>  Require this manifest sha256 hash");
+  console.log("  --expected-package-hash <h>   Require this package/source sha256 hash");
+  console.log("  --signature-public-key <pem>  Trusted Ed25519 public key PEM");
+  console.log("  --signature-public-key-file <path>");
+  console.log("  --require-signature          Require a valid manifest signature");
   console.log("  --force                      Reinstall same version");
   console.log("  --input-json <json>          JSON object for plugin invoke");
   console.log("  --version <version>          Explicit plugin version for rollback");

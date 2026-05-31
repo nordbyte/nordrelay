@@ -4,6 +4,8 @@ import path from "node:path";
 
 import {
   type InstalledPluginRecord,
+  type PluginLockPayload,
+  type PluginLockRecord,
   type PluginRegistryPayload,
   type PublicPluginRecord,
 } from "./plugin-types.js";
@@ -14,6 +16,7 @@ export class PluginStore {
   readonly logRoot: string;
   readonly dataRoot: string;
   readonly registryPath: string;
+  readonly lockPath: string;
 
   constructor(home: string) {
     this.root = path.join(home, "plugins");
@@ -21,6 +24,7 @@ export class PluginStore {
     this.logRoot = path.join(this.root, "logs");
     this.dataRoot = path.join(this.root, "data");
     this.registryPath = path.join(this.root, "plugins.json");
+    this.lockPath = path.join(this.root, "plugins.lock.json");
   }
 
   async ensure(): Promise<void> {
@@ -61,6 +65,7 @@ export class PluginStore {
     if (plugin?.installPath) {
       await rm(plugin.installPath, { recursive: true, force: true });
     }
+    await this.removeLock(id);
     return true;
   }
 
@@ -86,6 +91,49 @@ export class PluginStore {
     const tmp = path.join(this.root, `.plugins-${process.pid}-${Date.now()}.json.tmp`);
     await writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
     await rename(tmp, this.registryPath);
+  }
+
+  async readLocks(): Promise<PluginLockPayload> {
+    await this.ensure();
+    try {
+      const raw = await readFile(this.lockPath, "utf8");
+      const parsed = JSON.parse(raw) as Partial<PluginLockPayload>;
+      if (parsed.version !== 1 || !Array.isArray(parsed.plugins)) {
+        return { version: 1, plugins: [] };
+      }
+      return { version: 1, plugins: parsed.plugins as PluginLockRecord[] };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return { version: 1, plugins: [] };
+      }
+      throw error;
+    }
+  }
+
+  async saveLock(record: PluginLockRecord): Promise<void> {
+    const payload = await this.readLocks();
+    const index = payload.plugins.findIndex((item) => item.id === record.id);
+    if (index >= 0) {
+      payload.plugins[index] = record;
+    } else {
+      payload.plugins.push(record);
+    }
+    await this.writeLocks(payload);
+  }
+
+  async removeLock(id: string): Promise<void> {
+    const payload = await this.readLocks();
+    const next = payload.plugins.filter((item) => item.id !== id);
+    if (next.length !== payload.plugins.length) {
+      await this.writeLocks({ ...payload, plugins: next });
+    }
+  }
+
+  private async writeLocks(payload: PluginLockPayload): Promise<void> {
+    await this.ensure();
+    const tmp = path.join(this.root, `.plugins-lock-${process.pid}-${Date.now()}.json.tmp`);
+    await writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    await rename(tmp, this.lockPath);
   }
 
   installVersionPath(id: string, version: string): string {

@@ -74,6 +74,7 @@ export type WebApiStaticPath =
   | "/api/peers/sync"
   | "/api/permissions"
   | "/api/plugins"
+  | "/api/plugins/analyze"
   | "/api/plugins/catalog"
   | "/api/plugins/marketplace"
   | "/api/plugins/scaffold"
@@ -164,7 +165,11 @@ export type WebApiDynamicPath =
   | `/api/plugins/${string}/diagnostics`
   | `/api/plugins/${string}/disable`
   | `/api/plugins/${string}/enable`
+  | `/api/plugins/${string}/events`
   | `/api/plugins/${string}/invoke`
+  | `/api/plugins/${string}/jobs`
+  | `/api/plugins/${string}/jobs/${string}`
+  | `/api/plugins/${string}/jobs/${string}/cancel`
   | `/api/plugins/${string}/log`
   | `/api/plugins/${string}/manifest`
   | `/api/plugins/${string}/panel`
@@ -290,6 +295,7 @@ export type WebApiResponseByPath = {
   "/api/peers/sync": ServerWebApiClientResponse<"/api/peers/sync">;
   "/api/permissions": ServerWebApiClientResponse<"/api/permissions">;
   "/api/plugins": ServerWebApiClientResponse<"/api/plugins">;
+  "/api/plugins/analyze": ServerWebApiClientResponse<"/api/plugins/analyze">;
   "/api/plugins/catalog": ServerWebApiClientResponse<"/api/plugins/catalog">;
   "/api/plugins/marketplace": ServerWebApiClientResponse<"/api/plugins/marketplace">;
   "/api/plugins/scaffold": ServerWebApiClientResponse<"/api/plugins/scaffold">;
@@ -406,6 +412,7 @@ export type WebApiRequestBodyByPath = {
   "/api/peers/sync": ServerWebApiRequestBody<"/api/peers/sync">;
   "/api/permissions": ServerWebApiRequestBody<"/api/permissions">;
   "/api/plugins": ServerWebApiRequestBody<"/api/plugins">;
+  "/api/plugins/analyze": ServerWebApiRequestBody<"/api/plugins/analyze">;
   "/api/plugins/catalog": ServerWebApiRequestBody<"/api/plugins/catalog">;
   "/api/plugins/marketplace": ServerWebApiRequestBody<"/api/plugins/marketplace">;
   "/api/plugins/scaffold": ServerWebApiRequestBody<"/api/plugins/scaffold">;

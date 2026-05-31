@@ -1,4 +1,17 @@
-export type PluginSourceType = "local" | "github";
+export type PluginSourceType = "local" | "github" | "npm";
+
+export type PluginTrustLevel =
+  | "official"
+  | "verified"
+  | "community"
+  | "local"
+  | "untrusted";
+
+export type PluginSignatureStatus =
+  | "verified"
+  | "unsigned"
+  | "invalid"
+  | "not-required";
 
 export type PluginInstallStatus =
   | "installed"
@@ -120,6 +133,11 @@ export interface PluginManifest {
   permissions?: string[];
   capabilities?: PluginCapabilitiesManifest;
   settings?: PluginSettingManifest[];
+  signature?: {
+    keyId?: string;
+    algorithm?: "ed25519";
+    value?: string;
+  };
 }
 
 export interface PluginRuntimeMetrics {
@@ -138,6 +156,47 @@ export interface InstalledPluginSource {
   value: string;
   ref?: string;
   revision?: string;
+  packageName?: string;
+  resolvedRef?: string;
+  integrity?: PluginIntegrity;
+}
+
+export interface PluginIntegrity {
+  algorithm: "sha256" | "sha512";
+  value: string;
+}
+
+export interface PluginSignatureVerification {
+  status: PluginSignatureStatus;
+  keyId?: string;
+  message?: string;
+}
+
+export interface PluginPermissionDiff {
+  addedPermissions: string[];
+  removedPermissions: string[];
+  unchangedPermissions: string[];
+  addedCapabilities: string[];
+  removedCapabilities: string[];
+  changedCapabilities: string[];
+  riskyChanges: string[];
+  hasEscalation: boolean;
+}
+
+export interface PluginLockRecord {
+  id: string;
+  version: string;
+  source: InstalledPluginSource;
+  manifestHash: PluginIntegrity;
+  packageHash: PluginIntegrity;
+  permissions: string[];
+  approvedPermissions: string[];
+  capabilities: PluginCapabilitiesManifest;
+  trustLevel: PluginTrustLevel;
+  signature: PluginSignatureVerification;
+  signaturePublicKey?: string;
+  installedAt: string;
+  updatedAt: string;
 }
 
 export interface InstalledPluginRecord {
@@ -154,6 +213,12 @@ export interface InstalledPluginRecord {
   installPath: string;
   manifestPath: string;
   source: InstalledPluginSource;
+  manifestHash: PluginIntegrity;
+  packageHash: PluginIntegrity;
+  trustLevel: PluginTrustLevel;
+  signature: PluginSignatureVerification;
+  signaturePublicKey?: string;
+  permissionDiff?: PluginPermissionDiff;
   enabled: boolean;
   status: PluginInstallStatus;
   lastError?: string;
@@ -188,7 +253,13 @@ export interface PluginInstallRequest {
   ref?: string;
   enable?: boolean;
   approvePermissions?: boolean;
+  approvePermissionDiff?: boolean;
   force?: boolean;
+  trustLevel?: PluginTrustLevel;
+  expectedManifestHash?: string;
+  expectedPackageHash?: string;
+  signaturePublicKey?: string;
+  requireSignature?: boolean;
 }
 
 export interface PluginScaffoldRequest {
@@ -201,6 +272,11 @@ export interface PluginScaffoldRequest {
 export interface PluginRegistryPayload {
   version: 1;
   plugins: InstalledPluginRecord[];
+}
+
+export interface PluginLockPayload {
+  version: 1;
+  plugins: PluginLockRecord[];
 }
 
 export interface PluginHostContext {
@@ -259,9 +335,38 @@ export interface PluginUpdateCheckResult {
   latestVersion?: string;
   currentRevision?: string;
   latestRevision?: string;
+  permissionDiff?: PluginPermissionDiff;
+  manifestHash?: PluginIntegrity;
+  packageHash?: PluginIntegrity;
+  trustLevel?: PluginTrustLevel;
+  signature?: PluginSignatureVerification;
   updateAvailable: boolean;
   checkedAt: string;
   error?: string;
+}
+
+export interface PluginJobRecord {
+  id: string;
+  pluginId: string;
+  title: string;
+  command?: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  input: Record<string, unknown>;
+  result?: PluginInvokeResult;
+  logs: Array<{ timestamp: string; level: "info" | "warn" | "error"; message: string }>;
+  progress?: { current?: number; total?: number; label?: string };
+  cancelRequested?: boolean;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+}
+
+export interface PluginEventRecord {
+  id: string;
+  pluginId: string;
+  type: string;
+  timestamp: string;
+  payload: unknown;
 }
 
 export const PLUGIN_MANIFEST_FILE = "nordrelay.plugin.json";

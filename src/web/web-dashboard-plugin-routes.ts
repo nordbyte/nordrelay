@@ -90,6 +90,21 @@ export async function handleDashboardPluginRoute(
     return true;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/plugins/analyze") {
+    assertPluginsWritable(options.config);
+    const body = await readJsonBody(req);
+    sendJson(res, 200, await plugins.analyzeInstall({
+      source: requiredString(body, "source"),
+      ref: optionalStringField(body, "ref"),
+      trustLevel: trustLevelField(body),
+      expectedManifestHash: optionalStringField(body, "expectedManifestHash"),
+      expectedPackageHash: optionalStringField(body, "expectedPackageHash"),
+      signaturePublicKey: optionalStringField(body, "signaturePublicKey"),
+      requireSignature: optionalBooleanField(body, "requireSignature"),
+    }));
+    return true;
+  }
+
   if (req.method === "POST" && url.pathname === "/api/plugins/scaffold") {
     assertPluginsWritable(options.config);
     const body = await readJsonBody(req);
@@ -116,7 +131,13 @@ export async function handleDashboardPluginRoute(
       ref: optionalStringField(body, "ref"),
       enable: optionalBooleanField(body, "enable") ?? false,
       approvePermissions: optionalBooleanField(body, "approvePermissions") ?? false,
+      approvePermissionDiff: optionalBooleanField(body, "approvePermissionDiff") ?? false,
       force: optionalBooleanField(body, "force") ?? false,
+      trustLevel: trustLevelField(body),
+      expectedManifestHash: optionalStringField(body, "expectedManifestHash"),
+      expectedPackageHash: optionalStringField(body, "expectedPackageHash"),
+      signaturePublicKey: optionalStringField(body, "signaturePublicKey"),
+      requireSignature: optionalBooleanField(body, "requireSignature"),
     });
     options.auditPluginAction("plugin_installed", `Installed plugin ${plugin.id} ${plugin.version}`);
     sendJson(res, 201, plugin);
@@ -185,6 +206,26 @@ export async function handleDashboardPluginRoute(
     return true;
   }
 
+  if (req.method === "GET" && url.pathname === `/api/plugins/${id}/events`) {
+    res.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+    });
+    const write = async () => {
+      const jobs = await plugins.listJobs(id);
+      res.write(`event: jobs\ndata: ${JSON.stringify({ pluginId: id, jobs, at: new Date().toISOString() })}\n\n`);
+    };
+    await write();
+    const timer = setInterval(() => {
+      void write().catch((error) => {
+        res.write(`event: error\ndata: ${JSON.stringify({ error: errorMessage(error) })}\n\n`);
+      });
+    }, 2000);
+    req.on("close", () => clearInterval(timer));
+    return true;
+  }
+
   if (req.method === "GET" && url.pathname === `/api/plugins/${id}/update-check`) {
     assertPluginsWritable(options.config);
     sendJson(res, 200, await plugins.checkUpdate(id));
@@ -193,10 +234,45 @@ export async function handleDashboardPluginRoute(
 
   if (req.method === "POST" && url.pathname === `/api/plugins/${id}/update`) {
     assertPluginsWritable(options.config);
-    const plugin = await plugins.update(id);
+    const body = await readJsonBody(req);
+    const plugin = await plugins.update(id, {
+      approvePermissionDiff: optionalBooleanField(body, "approvePermissionDiff") ?? false,
+      signaturePublicKey: optionalStringField(body, "signaturePublicKey"),
+      requireSignature: optionalBooleanField(body, "requireSignature"),
+    });
     options.auditPluginAction("plugin_updated", `Updated plugin ${id}`);
     sendJson(res, 200, plugin);
     return true;
+  }
+
+  if (req.method === "GET" && url.pathname === `/api/plugins/${id}/jobs`) {
+    sendJson(res, 200, { jobs: await plugins.listJobs(id) });
+    return true;
+  }
+
+  if (req.method === "POST" && url.pathname === `/api/plugins/${id}/jobs`) {
+    assertPluginsWritable(options.config);
+    const body = await readJsonBody(req);
+    const job = await plugins.startCommandJob(id, requiredString(body, "command"), objectRecord(body?.input));
+    options.auditPluginAction("plugin_updated", `Started plugin job ${job.id} for ${id}`);
+    sendJson(res, 202, job);
+    return true;
+  }
+
+  const jobMatch = new RegExp(`^/api/plugins/${escapeRegExp(id)}/jobs/([^/]+)(?:/(cancel))?$`).exec(url.pathname);
+  if (jobMatch?.[1]) {
+    const jobId = decodeURIComponent(jobMatch[1]);
+    if (req.method === "GET" && !jobMatch[2]) {
+      const job = await plugins.getJob(id, jobId);
+      if (!job) sendJson(res, 404, { error: "Plugin job not found." });
+      else sendJson(res, 200, job);
+      return true;
+    }
+    if (req.method === "POST" && jobMatch[2] === "cancel") {
+      assertPluginsWritable(options.config);
+      sendJson(res, 200, await plugins.cancelJob(id, jobId));
+      return true;
+    }
   }
 
   if (req.method === "POST" && url.pathname === `/api/plugins/${id}/rollback`) {
@@ -384,6 +460,15 @@ function requiredString(body: unknown, key: string): string {
     throw new Error(`${key} is required.`);
   }
   return value;
+}
+
+function trustLevelField(body: unknown) {
+  const value = optionalStringField(objectRecord(body), "trustLevel");
+  return ["official", "verified", "community", "local", "untrusted"].includes(value ?? "") ? value as "official" | "verified" | "community" | "local" | "untrusted" : undefined;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function isGitHubSource(source: string): boolean {

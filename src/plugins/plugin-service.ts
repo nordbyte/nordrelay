@@ -3,6 +3,7 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 
 import { PluginInstaller } from "./plugin-installer.js";
+import { hashManifest } from "./plugin-integrity.js";
 import { validatePluginManifest } from "./plugin-manifest.js";
 import { PluginStore, toPublicPluginRecord } from "./plugin-store.js";
 import {
@@ -14,6 +15,7 @@ import {
   type PluginInstallRequest,
   type PluginInvokeRequest,
   type PluginInvokeResult,
+  type PluginJobRecord,
   type PluginRuntimePermission,
   type PluginScaffoldRequest,
   type PluginUpdateCheckResult,
@@ -97,6 +99,7 @@ const DEFAULT_PLUGIN_TIMEOUT_MS = 120_000;
 const DEFAULT_OUTPUT_LIMIT_BYTES = 1024 * 1024;
 const DEFAULT_WEB_PANEL_OUTPUT_LIMIT_BYTES = 4 * 1024 * 1024;
 const KNOWN_PLUGIN_PERMISSIONS = new Set<string>(PLUGIN_RUNTIME_PERMISSIONS);
+const PLUGIN_JOBS = new Map<string, PluginJobRecord[]>();
 
 export class PluginService {
   readonly store: PluginStore;
@@ -126,6 +129,11 @@ export class PluginService {
     const plugin = await this.installer.install(request);
     await this.log(plugin.id, `Installed ${plugin.name} ${plugin.version} from ${plugin.source.value}`);
     return toPublicPluginRecord(plugin);
+  }
+
+  async analyzeInstall(request: PluginInstallRequest) {
+    this.assertEnabled();
+    return this.installer.analyze(request);
   }
 
   async validate(sourcePath: string): Promise<PluginValidationResult> {
@@ -181,6 +189,21 @@ export class PluginService {
     this.assertEnabled();
     const plugin = await this.requirePlugin(id);
     await applyManifestToPlugin(plugin, plugin.manifestPath);
+    plugin.manifestHash = hashManifest({
+      id: plugin.id,
+      name: plugin.name,
+      version: plugin.version,
+      description: plugin.description,
+      author: plugin.author,
+      homepage: plugin.homepage,
+      repository: plugin.repository,
+      license: plugin.license,
+      nordrelay: plugin.nordrelay,
+      entry: plugin.entry,
+      permissions: plugin.permissions,
+      capabilities: plugin.capabilities,
+      settings: plugin.settingsSchema,
+    });
     plugin.updatedAt = new Date().toISOString();
     await this.store.save(plugin);
     await this.log(id, "Reloaded plugin manifest.");
@@ -293,24 +316,47 @@ export class PluginService {
     try {
       if (plugin.source.type === "github") {
         const latestRevision = gitLsRemote(plugin.source.value, plugin.source.ref);
+        const analysis = await this.installer.analyze({
+          source: plugin.source.value,
+          ref: plugin.source.ref,
+          trustLevel: plugin.trustLevel,
+          signaturePublicKey: plugin.signaturePublicKey,
+          requireSignature: plugin.signature?.status === "verified",
+        });
         return {
           id,
           sourceType: plugin.source.type,
           currentVersion: plugin.version,
+          latestVersion: analysis.manifest.version,
           currentRevision: plugin.source.revision,
           latestRevision,
-          updateAvailable: Boolean(latestRevision && latestRevision !== plugin.source.revision),
+          permissionDiff: analysis.permissionDiff,
+          manifestHash: analysis.manifestHash,
+          packageHash: analysis.packageHash,
+          trustLevel: analysis.trustLevel,
+          signature: analysis.signature,
+          updateAvailable: Boolean(latestRevision && latestRevision !== plugin.source.revision) || analysis.manifest.version !== plugin.version,
           checkedAt,
         };
       }
-      const raw = await readFile(path.join(plugin.source.value, "nordrelay.plugin.json"), "utf8");
-      const validation = validatePluginManifest(JSON.parse(raw) as unknown);
-      const latestVersion = validation.manifest?.version;
+      const analysis = await this.installer.analyze({
+        source: plugin.source.type === "npm" ? `npm:${plugin.source.value}` : plugin.source.value,
+        ref: plugin.source.ref,
+        trustLevel: plugin.trustLevel,
+        signaturePublicKey: plugin.signaturePublicKey,
+        requireSignature: plugin.signature?.status === "verified",
+      });
+      const latestVersion = analysis.manifest.version;
       return {
         id,
         sourceType: plugin.source.type,
         currentVersion: plugin.version,
         latestVersion,
+        permissionDiff: analysis.permissionDiff,
+        manifestHash: analysis.manifestHash,
+        packageHash: analysis.packageHash,
+        trustLevel: analysis.trustLevel,
+        signature: analysis.signature,
         updateAvailable: Boolean(latestVersion && latestVersion !== plugin.version),
         checkedAt,
       };
@@ -326,18 +372,90 @@ export class PluginService {
     }
   }
 
-  async update(id: string): Promise<PublicPluginRecord> {
+  async update(id: string, options: { approvePermissionDiff?: boolean; signaturePublicKey?: string; requireSignature?: boolean } = {}): Promise<PublicPluginRecord> {
     this.assertEnabled();
     const plugin = await this.requirePlugin(id);
     const updated = await this.installer.install({
-      source: plugin.source.value,
+      source: plugin.source.type === "npm" ? `npm:${plugin.source.value}` : plugin.source.value,
       ref: plugin.source.ref,
       enable: plugin.enabled,
       approvePermissions: false,
+      approvePermissionDiff: options.approvePermissionDiff,
+      trustLevel: plugin.trustLevel,
+      signaturePublicKey: options.signaturePublicKey ?? plugin.signaturePublicKey,
+      requireSignature: options.requireSignature ?? plugin.signature?.status === "verified",
       force: true,
     });
     await this.log(id, `Updated plugin from ${plugin.version} to ${updated.version}.`);
     return toPublicPluginRecord(updated);
+  }
+
+  async listJobs(pluginId?: string): Promise<PluginJobRecord[]> {
+    const jobs = PLUGIN_JOBS.get(this.home) ?? [];
+    return (pluginId ? jobs.filter((job) => job.pluginId === pluginId) : jobs)
+      .slice()
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async getJob(pluginId: string, jobId: string): Promise<PluginJobRecord | undefined> {
+    return (await this.listJobs(pluginId)).find((job) => job.id === jobId);
+  }
+
+  async startCommandJob(pluginId: string, command: string, input: Record<string, unknown>): Promise<PluginJobRecord> {
+    this.assertEnabled();
+    await this.requireEnabledPlugin(pluginId);
+    const job: PluginJobRecord = {
+      id: randomJobId(),
+      pluginId,
+      title: `${pluginId} ${command}`,
+      command,
+      status: "queued",
+      input,
+      logs: [{ timestamp: new Date().toISOString(), level: "info", message: "Job queued." }],
+      createdAt: new Date().toISOString(),
+    };
+    const jobs = PLUGIN_JOBS.get(this.home) ?? [];
+    jobs.unshift(job);
+    PLUGIN_JOBS.set(this.home, jobs.slice(0, 200));
+    void this.runCommandJob(job);
+    return { ...job, logs: [...job.logs] };
+  }
+
+  async cancelJob(pluginId: string, jobId: string): Promise<PluginJobRecord> {
+    const job = await this.getJob(pluginId, jobId);
+    if (!job) throw new Error(`Plugin job not found: ${jobId}`);
+    job.cancelRequested = true;
+    if (job.status === "queued" || job.status === "running") {
+      job.status = "cancelled";
+      job.finishedAt = new Date().toISOString();
+      job.logs.push({ timestamp: job.finishedAt, level: "warn", message: "Cancellation requested." });
+    }
+    return { ...job, logs: [...job.logs] };
+  }
+
+  private async runCommandJob(job: PluginJobRecord): Promise<void> {
+    job.status = "running";
+    job.startedAt = new Date().toISOString();
+    job.logs.push({ timestamp: job.startedAt, level: "info", message: "Job started." });
+    try {
+      if (job.cancelRequested) {
+        job.status = "cancelled";
+        return;
+      }
+      const result = await this.invokeCommand(job.pluginId, job.command ?? "", job.input);
+      job.result = result;
+      job.status = result.ok === false ? "failed" : "completed";
+      job.finishedAt = new Date().toISOString();
+      job.logs.push({
+        timestamp: job.finishedAt,
+        level: result.ok === false ? "error" : "info",
+        message: result.ok === false ? result.stderr ?? "Plugin command failed." : "Job completed.",
+      });
+    } catch (error) {
+      job.status = "failed";
+      job.finishedAt = new Date().toISOString();
+      job.logs.push({ timestamp: job.finishedAt, level: "error", message: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   async rollback(id: string, version?: string): Promise<PublicPluginRecord> {
@@ -868,6 +986,10 @@ function stringOutput(value: unknown): string | undefined {
   } catch {
     return String(value);
   }
+}
+
+function randomJobId(): string {
+  return `job_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function gitLsRemote(repoUrl: string, ref?: string): string | undefined {

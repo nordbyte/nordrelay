@@ -1,6 +1,6 @@
 # Plugins
 
-NordRelay plugins are explicit local or GitHub installs that can add workflow actions, WebUI panels, commands, adapter metadata, artifact handlers, diagnostics, and scheduled collectors.
+NordRelay plugins are explicit local, GitHub, or npm installs that can add workflow actions, WebUI panels, commands, adapter metadata, artifact handlers, diagnostics, and scheduled collectors.
 
 ## Storage
 
@@ -86,6 +86,22 @@ The Plugins page follows the selected node in the WebUI header. Select a peer be
 
 Marketplace entries are curated by NordRelay. Official approved entries install with their declared permissions approved and enabled by default. Manual local/GitHub installs remain available in the Install tab for custom or private plugins.
 
+## Supply-chain safety
+
+New plugin installs write an integrity lock to
+`~/.nordrelay/plugins/plugins.lock.json`. The lock records the source, resolved
+Git commit or npm package version, manifest hash, package hash, trust level,
+signature status, and approved permission snapshot. Updates compare the new
+manifest against the locked installation and require explicit approval when a
+plugin adds permissions, trusted client-side panel scripts, or other capability
+changes.
+
+Marketplace plugins show trust badges such as `official`, `verified`,
+`community`, `local`, or `untrusted`. Optional Ed25519 manifest signatures can be
+verified when a trusted public key is configured for the install source. The CLI
+supports `--require-signature`, `--signature-public-key-file`, and expected
+manifest/package hashes for pinned installs.
+
 Enabled plugins that expose WebUI panels appear as direct entries in the
 **Plugins** navigation category. Opening one of those entries loads the panel as
 its own WebUI page instead of embedding it inside the plugin administration
@@ -100,6 +116,13 @@ Collector results are recorded in plugin invocation metrics. If a collector fail
 ## Workflow actions
 
 Enabled plugins can expose workflow actions. A workflow step with `type: "plugin"` calls the plugin entry with JSON on stdin and reads JSON or text from stdout. If the action defines `inputSchema`, the workflow builder shows a form instead of forcing raw JSON. `outputVariables` can map result paths into workflow variables for later steps.
+
+## Jobs and panel events
+
+Long-running plugin commands can run as tracked jobs. Jobs expose status, logs,
+progress metadata, and final results through the plugin API so panels can start
+work without blocking the page request. Plugin panels can subscribe to the
+plugin event stream to update job or collector state live.
 
 Example step:
 
@@ -167,7 +190,10 @@ runWebPanel(async () => {
 
 Interactive panels can return `panel.script` when the web panel manifest sets
 `allowClientScript: true`. The script is mounted directly in the WebUI and gets
-an `api` object with `api.root`, `api.reload(input)`, `api.toast(message)`,
+an `api` object with `api.root`, `api.reload(input)`,
+`api.invokeCommand(command, input)`, `api.jobs.list()`,
+`api.jobs.start(command, input)`, `api.jobs.cancel(jobId)`,
+`api.events.subscribe(eventName, listener)`, `api.toast(message)`,
 `api.copyText(value, label)`, `api.setInterval(fn, ms)`, and
 `api.onCleanup(fn)`.
 
@@ -222,7 +248,8 @@ The System Monitor plugin keeps its own SQLite database under
 retention cleanup, range summaries, and downsampled chart data; NordRelay only
 hosts the panel and routes plugin invocations to peers.
 
-Install Auto Updater for read-only OS and npm update visibility:
+Install Auto Updater for OS and npm update visibility plus explicit admin-run
+update actions:
 
 ```sh
 nordrelay plugin install github:nordbyte/nordrelay-plugin-auto-updater --enable --approve
@@ -231,5 +258,9 @@ nordrelay plugin install github:nordbyte/nordrelay-plugin-auto-updater --enable 
 Auto Updater checks Linux/macOS package-manager updates and global npm package
 versions on each node where the plugin is installed. It stores its own SQLite
 database under `~/.nordrelay/plugins/data/auto-updater/updates.sqlite`.
-Required permissions are `system.packages.read` and `system.updates.read`. The
-plugin is intentionally read-only and does not run package upgrades.
+Required permissions are `runtime.read`, `peers.read`, `system.packages.read`,
+`system.packages.write`, `system.updates.read`, `system.updates.write`, and
+`network`. Admins can explicitly start OS update, global npm update, npm
+auto-install, and npm uninstall actions from the plugin panel. Those actions run
+as the same operating-system user that runs NordRelay and still require the
+plugin permissions to be approved.

@@ -69,6 +69,12 @@ type PluginPanelApi = {
   invokeCommand: (command: unknown, input?: WebuiRecord, options?: WebuiRecord) => Promise<unknown>;
   toast: (message: unknown, options?: WebuiRecord) => void;
   copyText: (value: unknown, label?: unknown) => void;
+  jobs: {
+    list: (options?: WebuiRecord) => Promise<unknown>;
+    start: (command: unknown, input?: WebuiRecord, options?: WebuiRecord) => Promise<unknown>;
+    cancel: (jobId: unknown, options?: WebuiRecord) => Promise<unknown>;
+  };
+  events: { subscribe: (eventName: string, listener: (event: unknown) => void) => EventSource };
   setInterval: (fn: () => void, ms: unknown) => number;
   setTimeout: (fn: () => void, ms: unknown) => number;
   addEventListener: (target: EventTarget, type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => void;
@@ -105,6 +111,43 @@ function pluginPanelRegistry():PluginPanelRegistry{
         },
         toast:(message:unknown,options?:WebuiRecord)=>toast(String(message||'Plugin panel'),options as {duration?:number;sticky?:boolean}|undefined),
         copyText:(value:unknown,label?:unknown)=>copyText(String(value||''),label?String(label):'Copied'),
+        jobs:{
+          list:(options:WebuiRecord={})=>{
+            const pluginId=surface.dataset.pluginId||'';
+            if(!pluginId)throw new Error('Plugin panel has no plugin id.');
+            const requestPath=('/api/plugins/'+encodeURIComponent(pluginId)+'/jobs') as `/api/plugins/${string}/jobs`;
+            const peerId=String(options.peerId||'local');
+            return peerId&&peerId!=='local'?apiPeer(peerId,requestPath,{method:'GET'}):api(requestPath,{local:true});
+          },
+          start:(command:unknown,input:WebuiRecord={},options:WebuiRecord={})=>{
+            const pluginId=surface.dataset.pluginId||'';
+            if(!pluginId)throw new Error('Plugin panel has no plugin id.');
+            const requestPath=('/api/plugins/'+encodeURIComponent(pluginId)+'/jobs') as `/api/plugins/${string}/jobs`;
+            const peerId=String(options.peerId||input.peerId||'local');
+            const payload={method:'POST' as const,body:JSON.stringify({command:String(command||''),input:input&&typeof input==='object'?input:{}}),timeoutMs:Math.max(1000,Number(options.timeoutMs)||600000)};
+            return peerId&&peerId!=='local'?apiPeer(peerId,requestPath,payload):api(requestPath,{...payload,local:true});
+          },
+          cancel:(jobId:unknown,options:WebuiRecord={})=>{
+            const pluginId=surface.dataset.pluginId||'';
+            if(!pluginId)throw new Error('Plugin panel has no plugin id.');
+            const requestPath=('/api/plugins/'+encodeURIComponent(pluginId)+'/jobs/'+encodeURIComponent(String(jobId||''))+'/cancel') as `/api/plugins/${string}/jobs/${string}/cancel`;
+            const peerId=String(options.peerId||'local');
+            return peerId&&peerId!=='local'?apiPeer(peerId,requestPath,{method:'POST',body:JSON.stringify({})}):api(requestPath,{method:'POST',body:JSON.stringify({}),local:true});
+          },
+        },
+        events:{
+          subscribe:(eventName:string,listener:(event:unknown)=>void)=>{
+            const pluginId=surface.dataset.pluginId||'';
+            if(!pluginId)throw new Error('Plugin panel has no plugin id.');
+            const source=new EventSource('/api/plugins/'+encodeURIComponent(pluginId)+'/events');
+            const handler=(event:MessageEvent)=>{
+              try{listener(JSON.parse(event.data))}catch{listener(event.data)}
+            };
+            source.addEventListener(eventName||'message',handler as EventListener);
+            cleanup.push(()=>source.close());
+            return source;
+          },
+        },
         setInterval:(fn:()=>void,ms:unknown)=>{
           const id=window.setInterval(fn,Math.max(100,Number(ms)||1000));
           cleanup.push(()=>window.clearInterval(id));
