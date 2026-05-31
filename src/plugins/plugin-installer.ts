@@ -8,6 +8,7 @@ import { loadPluginManifest, validatePluginManifest } from "./plugin-manifest.js
 import { diffPluginManifestPermissions } from "./plugin-permission-diff.js";
 import { verifyPluginManifestSignature } from "./plugin-signatures.js";
 import { PluginStore } from "./plugin-store.js";
+import { formatShellCommand, resolveNpmSpawnCommand } from "../support/operations.js";
 import {
   type InstalledPluginRecord,
   type PluginIntegrity,
@@ -30,6 +31,13 @@ interface ResolvedPluginSource {
   packageHash: PluginIntegrity;
   pluginDir: string;
   cleanup?: () => Promise<void>;
+}
+
+interface TextSpawnSyncResult {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+  error?: Error;
 }
 
 export interface PluginInstallAnalysis {
@@ -317,10 +325,7 @@ export class PluginInstaller {
     const tmp = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-npm-"));
     const extractDir = path.join(tmp, "package");
     await mkdir(extractDir, { recursive: true });
-    const pack = spawnSync("npm", ["pack", spec, "--json", "--pack-destination", tmp], {
-      encoding: "utf8",
-      stdio: "pipe",
-    });
+    const pack = spawnNpmSync(["pack", spec, "--json", "--pack-destination", tmp]);
     if (pack.status !== 0) {
       await rm(tmp, { recursive: true, force: true });
       throw new Error(`npm pack failed: ${pack.stderr || pack.stdout || pack.error?.message || "unknown error"}`);
@@ -335,11 +340,7 @@ export class PluginInstaller {
       await rm(tmp, { recursive: true, force: true });
       throw new Error(`npm package extract failed: ${unpack.stderr || unpack.stdout || "unknown error"}`);
     }
-    const install = spawnSync("npm", ["install", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund", "--install-links=true"], {
-      cwd: extractDir,
-      encoding: "utf8",
-      stdio: "pipe",
-    });
+    const install = spawnNpmSync(["install", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund", "--install-links=true"], { cwd: extractDir });
     if (install.status !== 0) {
       await rm(tmp, { recursive: true, force: true });
       throw new Error(`npm dependency install failed: ${install.stderr || install.stdout || install.error?.message || "unknown error"}`);
@@ -355,6 +356,30 @@ export class PluginInstaller {
       cleanup: () => rm(tmp, { recursive: true, force: true }),
     };
   }
+}
+
+function spawnNpmSync(args: string[], options: { cwd?: string } = {}): TextSpawnSyncResult {
+  const npm = resolveNpmSpawnCommand();
+  if (!npm) {
+    return {
+      status: 1,
+      stdout: "",
+      stderr: "npm was not found. Install Node.js/npm or add npm to PATH.",
+      error: undefined,
+    };
+  }
+  const fullArgs = [...npm.argsPrefix, ...args];
+  return spawnSync(
+    npm.shell ? formatShellCommand(npm.command, fullArgs) : npm.command,
+    npm.shell ? [] : fullArgs,
+    {
+      cwd: options.cwd,
+      encoding: "utf8",
+      shell: npm.shell,
+      stdio: "pipe",
+      windowsHide: true,
+    },
+  ) as TextSpawnSyncResult;
 }
 
 function isGitHubSource(source: string): boolean {

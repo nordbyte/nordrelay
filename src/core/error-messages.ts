@@ -11,7 +11,7 @@ export interface FriendlyError {
 const ERROR_PATTERNS: Array<{ pattern: RegExp; message: string }> = [
   {
     pattern: /ECONNREFUSED|ENOTFOUND|ENETUNREACH|fetch failed/i,
-    message: "Cannot reach the Codex API. Check your network connection.",
+    message: "The network connection failed. Check the remote peer or Codex API connectivity.",
   },
   {
     pattern: /429|rate.?limit|too many requests/i,

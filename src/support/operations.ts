@@ -792,7 +792,7 @@ function runCommand(command: string, args: string[], options: { shell?: boolean;
   });
 }
 
-function formatShellCommand(command: string, args: string[]): string {
+export function formatShellCommand(command: string, args: string[]): string {
   return [command, ...args].map(quoteShellArg).join(" ");
 }
 
