@@ -786,8 +786,6 @@ function pluginInstallFormHtml(){
 function setPluginInstallResult(html){
   const modalTarget=document.getElementById('pluginInstallResult');
   if(modalTarget)modalTarget.innerHTML=html;
-  const pageTarget=document.getElementById('pluginMarketplaceResult');
-  if(pageTarget)pageTarget.innerHTML=html;
 }
 function openPluginInstallDialog(){
   adminDialog('Install plugin',pluginInstallFormHtml(),async()=>{
@@ -844,13 +842,14 @@ async function installMarketplacePlugin(entryId,allTargets=false,force=false){
   if(!entry.approved&&!confirm('This plugin is not marked as approved. Install without approving permissions?'))return;
   if(allTargets){
     const results=await installPluginOnAllTargets(payload);
-    document.getElementById('pluginMarketplaceResult').innerHTML=renderPluginInstallResults(results);
+    const failures=results.filter(item=>!item.ok);
+    document.getElementById('pluginMarketplaceResult').innerHTML=failures.length?renderPluginInstallResults(results):'';
     toast('Marketplace install completed on '+results.length+' node(s)');
     await loadPlugins();
     return;
   }
   const result=await api('/api/plugins',{method:'POST',body:JSON.stringify(payload),timeoutMs:30000});
-  document.getElementById('pluginMarketplaceResult').innerHTML=uiItem('Installed '+(result.name||result.id),{badge:{text:result.enabled?'enabled':'disabled',status:result.enabled?'enabled':'disabled'},rows:[['Node',headerTargetName(state.selectedPeer||'local')],['ID',result.id],['Version',result.version],['Permissions',(result.permissions||[]).join(', ')||'none']]});
+  document.getElementById('pluginMarketplaceResult').innerHTML='';
   toast('Marketplace plugin installed');
   await loadPlugins();
 }

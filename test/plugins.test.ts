@@ -53,6 +53,49 @@ async function createPluginFixture(): Promise<string> {
   return dir;
 }
 
+async function createNpmPluginFixtureWithDependency(): Promise<string> {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "nordrelay-npm-plugin-fixture-"));
+  const depDir = path.join(dir, "dep");
+  await mkdir(depDir, { recursive: true });
+  await writeFile(path.join(depDir, "package.json"), JSON.stringify({
+    name: "nordrelay-fixture-plugin-dep",
+    version: "1.0.0",
+    type: "module",
+    main: "index.js",
+  }, null, 2));
+  await writeFile(path.join(depDir, "index.js"), "export const depValue = 'dependency-loaded';\n");
+  await writeFile(path.join(dir, "package.json"), JSON.stringify({
+    name: "nordrelay-npm-plugin-fixture",
+    version: "0.1.0",
+    type: "module",
+    main: "index.js",
+    files: ["index.js", "nordrelay.plugin.json", "dep"],
+    dependencies: {
+      "nordrelay-fixture-plugin-dep": "file:dep",
+    },
+  }, null, 2));
+  await writeFile(path.join(dir, "nordrelay.plugin.json"), JSON.stringify({
+    id: "npm-dep-plugin",
+    name: "Npm Dep Plugin",
+    version: "0.1.0",
+    description: "Test npm dependency install",
+    entry: "index.js",
+    capabilities: {
+      commands: [
+        { name: "check", title: "Check dependency" },
+      ],
+    },
+  }, null, 2));
+  await writeFile(path.join(dir, "index.js"), [
+    "import { depValue } from 'nordrelay-fixture-plugin-dep';",
+    "process.stdin.resume();",
+    "process.stdin.on('end',()=>{",
+    "  process.stdout.write(JSON.stringify({ ok: true, output: { depValue } })+'\\n');",
+    "});",
+  ].join("\n"));
+  return dir;
+}
+
 async function createStringifiedPanelPluginFixture(): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-stringified-panel-"));
   await writeFile(path.join(dir, "nordrelay.plugin.json"), JSON.stringify({
@@ -490,6 +533,19 @@ describe("plugin system", () => {
     expect(result.ok).toBe(true);
     expect(result.output).toMatchObject({ context: { runtime: { version: "test" } } });
     expect((result.output as { context?: { sessions?: unknown[] } }).context?.sessions).toBeUndefined();
+  });
+
+  it("installs npm plugin production dependencies", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-home-"));
+    const fixture = await createNpmPluginFixtureWithDependency();
+    const service = new PluginService(home);
+    const installed = await service.install({ source: `npm:${fixture}`, enable: true, approvePermissions: true });
+
+    expect(installed.source.type).toBe("npm");
+    const result = await service.invokeCommand("npm-dep-plugin", "check", {});
+
+    expect(result.ok).toBe(true);
+    expect(result.output).toMatchObject({ depValue: "dependency-loaded" });
   });
 
   it("updates and rolls back local plugin versions", async () => {

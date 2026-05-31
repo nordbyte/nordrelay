@@ -68,7 +68,7 @@ export class PluginInstaller {
       await mkdir(path.dirname(destination), { recursive: true });
       await cp(resolved.pluginDir, destination, {
         recursive: true,
-        filter: (source) => !shouldSkipPath(source),
+        filter: (source) => !shouldSkipPath(source, resolved.type),
       });
 
       const now = new Date().toISOString();
@@ -335,6 +335,15 @@ export class PluginInstaller {
       await rm(tmp, { recursive: true, force: true });
       throw new Error(`npm package extract failed: ${unpack.stderr || unpack.stdout || "unknown error"}`);
     }
+    const install = spawnSync("npm", ["install", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund", "--install-links=true"], {
+      cwd: extractDir,
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+    if (install.status !== 0) {
+      await rm(tmp, { recursive: true, force: true });
+      throw new Error(`npm dependency install failed: ${install.stderr || install.stdout || install.error?.message || "unknown error"}`);
+    }
     return {
       type: "npm",
       value: spec,
@@ -373,9 +382,9 @@ function parseGitHubSource(source: string, ref?: string): { repoUrl: string; ref
   return { repoUrl: `https://github.com/${match[1]}/${match[2]}.git`, ref: ref ?? inlineRef };
 }
 
-function shouldSkipPath(source: string): boolean {
+function shouldSkipPath(source: string, sourceType: ResolvedPluginSource["type"]): boolean {
   const parts = source.split(path.sep);
-  return parts.includes(".git") || parts.includes("node_modules") || parts.includes(".DS_Store");
+  return parts.includes(".git") || (sourceType !== "npm" && parts.includes("node_modules")) || parts.includes(".DS_Store");
 }
 
 function buildDefaultSettings(
