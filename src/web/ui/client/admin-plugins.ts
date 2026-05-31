@@ -541,7 +541,7 @@ async function renderAggregatePluginPanel(item,input,targets,results,requestId,t
   const panelInput={...input,aggregate:pluginAggregateSnapshot(item.aggregateCommand,input,targets,results)};
   let result;
   try{
-    result=await api('/api/plugins/'+encodeURIComponent(item.pluginId)+'/panel',{method:'POST',body:JSON.stringify({panelId:item.panelId,input:panelInput}),timeoutMs:12000});
+    result=await api('/api/plugins/'+encodeURIComponent(item.pluginId)+'/panel',{method:'POST',local:true,body:JSON.stringify({panelId:item.panelId,input:panelInput}),timeoutMs:12000});
   }catch(error){
     result={ok:false,error:error instanceof Error?error.message:String(error)};
   }
