@@ -284,7 +284,10 @@ ${faviconLinks}
               </div>
             </div>
             <div class="control-grid" id="sessionControls"></div>
-            <div id="messages" class="messages"></div>
+            <div class="chat-messages-wrap">
+              <div id="messages" class="messages"></div>
+              <button id="chatJumpLatestBtn" class="chat-jump-latest" type="button" title="Jump to latest message" aria-label="Jump to latest message" hidden><span aria-hidden="true"></span></button>
+            </div>
             <form id="promptForm" class="composer">
               <div class="composer-fields">
                 <textarea id="promptInput" placeholder="Send a message to the active coding agent..." rows="3"></textarea>
