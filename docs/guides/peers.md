@@ -24,6 +24,14 @@ nordrelay peer invite --name workstation --expires 30
 
 The output includes a one-time pairing command.
 
+For an admin-to-admin peer where the remote node should expose every current peer permission, create the invitation with:
+
+```bash
+nordrelay peer invite --name workstation --all-scopes
+```
+
+`--scopes all` is accepted as an equivalent shorthand.
+
 ## Add a peer
 
 On the controlling machine:

@@ -1206,7 +1206,12 @@ async function peerModules() {
     }
   }
   const [store, identity, client, diagnostics] = await Promise.all(required.map((file) => import(pathToFileURL(path.join(RUNTIME_ROOT, "dist", "peers", file)).href)));
-  return { store, identity, client, diagnostics };
+  const accessPath = path.join(RUNTIME_ROOT, "dist", "access", "access-control.js");
+  if (!fs.existsSync(accessPath)) {
+    throw new Error(`Missing access runtime. Run \`npm run build\` in ${RUNTIME_ROOT}.`);
+  }
+  const access = await import(pathToFileURL(accessPath).href);
+  return { store, identity, client, diagnostics, access };
 }
 
 function parsePeerFlags(argv) {
@@ -1226,6 +1231,7 @@ function parsePeerFlags(argv) {
     else if (arg === "--no-public-url") flags.noPublicUrl = true;
     else if (arg === "--expires" || arg === "--expires-minutes") flags.expiresMinutes = Number.parseInt(requireValue(copy, ++i, arg), 10);
     else if (arg === "--scopes") flags.scopes = requireValue(copy, ++i, arg);
+    else if (arg === "--all-scopes") flags.allScopes = true;
     else if (arg === "--agents") flags.agents = requireValue(copy, ++i, arg);
     else if (arg === "--workspaces") flags.workspaces = requireValue(copy, ++i, arg);
     else if (arg === "--workspace-aliases" || arg === "--aliases") flags.workspaceAliases = requireValue(copy, ++i, arg);
@@ -1254,7 +1260,7 @@ async function commandPeer(options) {
   await mkdirp(options.home);
   loadEnvFiles(options.home);
   const flags = parsePeerFlags(options.rawFlags);
-  const { store: storeMod, identity: identityMod, client: clientMod, diagnostics: diagnosticsMod } = await peerModules();
+  const { store: storeMod, identity: identityMod, client: clientMod, diagnostics: diagnosticsMod, access: accessMod } = await peerModules();
   const store = new storeMod.PeerStore(options.home);
   const identity = identityMod.loadOrCreatePeerIdentity(options.home, process.env.NORDRELAY_PEER_NAME);
 
@@ -1305,7 +1311,7 @@ async function commandPeer(options) {
     const created = store.createInvitation({
       name: flags.name,
       expiresInMs: Number.isFinite(flags.expiresMinutes) ? flags.expiresMinutes * 60 * 1000 : undefined,
-      scopes: csv(flags.scopes),
+      scopes: peerInviteScopes(flags, accessMod),
       allowedAgents: csv(flags.agents),
       allowedWorkspaceRoots: csv(flags.workspaces),
       workspaceAliases: aliasMap(flags.workspaceAliases),
@@ -1444,6 +1450,15 @@ async function commandPeer(options) {
   }
 
   throw new Error("Usage: nordrelay peer [identity|list|invite|add|test|check|debug|access|health|repair|trust|rotate|revoke]");
+}
+
+function peerInviteScopes(flags, accessMod) {
+  if (flags.allScopes) return [...accessMod.ALL_PERMISSIONS];
+  const scopes = csv(flags.scopes);
+  if (scopes?.some((scope) => scope.toLowerCase() === "all" || scope === "*")) {
+    return [...accessMod.ALL_PERMISSIONS];
+  }
+  return scopes;
 }
 
 async function peerUserContext(options, flags) {

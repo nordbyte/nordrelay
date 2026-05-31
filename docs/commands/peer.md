@@ -37,6 +37,7 @@ nordrelay peer <subcommand> [options]
 | `--no-public-url` | Do not share this node's configured public URL during `add` |
 | `--expires <minutes>` / `--expires-minutes <minutes>` | Invitation lifetime |
 | `--scopes <list>` | Comma-separated peer scopes |
+| `--all-scopes` | Create an invitation with every current peer permission |
 | `--agents <list>` | Comma-separated allowed agents |
 | `--workspaces <list>` | Comma-separated allowed workspace roots |
 | `--workspace-aliases <list>` / `--aliases <list>` | Workspace aliases for remote use |
@@ -54,6 +55,8 @@ nordrelay peer <subcommand> [options]
 ```bash
 nordrelay peer identity
 nordrelay peer invite --name laptop --expires 30
+nordrelay peer invite --name full-access-peer --all-scopes
+nordrelay peer invite --name full-access-peer --scopes all
 nordrelay peer add https://192.168.1.20:31979 --code <pairing-code>
 nordrelay peer add https://server.example:31979 --code <pairing-code> --no-public-url
 nordrelay peer check https://192.168.1.20:31979
