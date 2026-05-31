@@ -233,14 +233,38 @@ export async function handleDashboardPeerRoute(
 
   if (req.method === "POST" && (url.pathname === "/api/peers" || url.pathname === "/api/peers/pair")) {
     const body = await readJsonBody(req);
+    const replacePeerId = optionalStringField(body, "replacePeerId");
+    const replacedPeer = replacePeerId ? store.get(replacePeerId) : null;
+    if (replacePeerId) {
+      assertPeerAccess(options, replacePeerId);
+      if (!replacedPeer) {
+        throw new Error("Peer to replace was not found.");
+      }
+    }
     const result = await pairPeer({
       url: requiredString(body, "url"),
       code: requiredString(body, "code"),
       name: optionalStringField(body, "name"),
       publicUrl: optionalStringField(body, "publicUrl"),
     }, identity, store);
-    sendJson(res, 201, { peer: publicPeer(result.peer), tlsFingerprint: result.tlsFingerprint });
-    options.auditPeerAction?.("peer_paired", `${result.peer.name} (${result.peer.id})`);
+    let peer = result.peer;
+    const localName = optionalStringField(body, "name");
+    const localGroup = optionalStringField(body, "group") ?? replacedPeer?.group;
+    if (localName || localGroup) {
+      peer = store.updatePeer(result.peer.id, { name: localName || result.peer.name, group: localGroup });
+    }
+    let replacedPeerId: string | undefined;
+    if (replacedPeer && replacedPeer.id !== peer.id) {
+      store.revokePeer(replacedPeer.id);
+      replacedPeerId = replacedPeer.id;
+    }
+    sendJson(res, 201, {
+      peer: publicPeer(peer),
+      tlsFingerprint: result.tlsFingerprint,
+      replacedPeerId,
+      replacedPeerName: replacedPeer?.name,
+    });
+    options.auditPeerAction?.(replacedPeerId ? "peer_updated" : "peer_paired", `${peer.name} (${peer.id})${replacedPeerId ? ` replaced ${replacedPeerId}` : ""}`);
     return true;
   }
 

@@ -14,7 +14,18 @@ function applyHeaderPeerSnapshot(peers: WebuiPeerState | null, local = state.loc
   const localTarget = localHeaderTarget(local || { enabledAgents: state.enabledAgents || [], status: { snapshot: state.snapshot } });
   state.peers = peers;
   const available = (peers?.peers || []).filter((p: WebuiPeerRecord) => p.enabled && p.url);
-  if (state.selectedPeer !== 'local' && !available.some((p: WebuiPeerRecord) => p.id === state.selectedPeer)) state.selectedPeer = 'local';
+  if (state.selectedPeer !== 'local' && !available.some((p: WebuiPeerRecord) => p.id === state.selectedPeer)) {
+    const missingPeerId = state.selectedPeer;
+    const knownPeer = (peers?.peers || []).find((p: WebuiPeerRecord) => p.id === missingPeerId);
+    localStorage.setItem('nordrelayRePairPeerId', missingPeerId);
+    state.selectedPeer = 'local';
+    localStorage.setItem('nordrelayPeerTarget', 'local');
+    if (state.lastMissingPeerNotice !== missingPeerId) {
+      state.lastMissingPeerNotice = missingPeerId;
+      toast('Selected peer ' + (knownPeer?.name || missingPeerId) + ' is unavailable. Switched to Local node; use Peers > Add peer to re-pair it.', { duration: 9000 });
+      setApiState('peer-unreachable', { message: 'Selected peer is no longer available. Re-pair it from the Peers page.', retryAfterMs: 5000 });
+    }
+  }
   state.peerTargets = [localTarget].concat(available.map((p: WebuiPeerRecord) => ({ id: p.id, name: p.name || p.id, agents: p.allowedAgents || [], snapshot: null, loading: true, error: '' })));
 }
 
@@ -125,7 +136,9 @@ function headerTargetGroupHtml(target: WebuiHeaderTarget, currentSession: WebuiS
 
 function headerTargetOfflineHtml(target: WebuiHeaderTarget) {
   const switchButton = target.id !== 'local' ? '<button type="button" class="secondary mini-button" data-header-switch-local="true">Switch to Local node</button>' : '';
-  return '<div class="header-target-session-state error" title="' + attr(target.error || '') + '">Peer unreachable. Session data cannot be loaded right now.</div><div class="header-target-peer-actions">' + switchButton + '<button type="button" class="secondary mini-button" data-header-retry-peer="' + attr(target.id) + '">Retry</button></div>';
+  const repairButton = target.id !== 'local' ? '<button type="button" class="secondary mini-button" data-header-repair-peer="' + attr(target.id) + '">Re-pair</button>' : '';
+  const hint = /fingerprint|identity|certificate/i.test(target.error || '') ? 'Peer identity changed. Re-pair this node with a fresh invite.' : 'Peer unreachable. Session data cannot be loaded right now.';
+  return '<div class="header-target-session-state error" title="' + attr(target.error || '') + '">' + esc(hint) + '</div><div class="header-target-peer-actions">' + switchButton + '<button type="button" class="secondary mini-button" data-header-retry-peer="' + attr(target.id) + '">Retry</button>' + repairButton + '</div>';
 }
 
 function headerTargetAgentHtml(target: WebuiHeaderTarget, agent: string, selected: boolean) {
@@ -151,6 +164,10 @@ function bindHeaderTargetMenu(root: ParentNode = document) {
   root.querySelectorAll?.<HTMLElement>('[data-header-retry-peer]').forEach(option => option.onclick = event => safe(async () => {
     event.preventDefault(); event.stopPropagation();
     await retryHeaderTargetPeer(option.dataset.headerRetryPeer || '');
+  }, event));
+  root.querySelectorAll?.<HTMLElement>('[data-header-repair-peer]').forEach(option => option.onclick = event => safe(async () => {
+    event.preventDefault(); event.stopPropagation();
+    openHeaderPeerRepair(option.dataset.headerRepairPeer || '');
   }, event));
   root.querySelectorAll?.<HTMLElement>('[data-target-agent]').forEach(option => option.onclick = event => safe(async () => {
     event.preventDefault(); event.stopPropagation();
@@ -230,6 +247,17 @@ async function retryHeaderTargetPeer(peerId: string) {
   }
 }
 
+function openHeaderPeerRepair(peerId: string) {
+  if (peerId && peerId !== 'local') {
+    localStorage.setItem('nordrelayRePairPeerId', peerId);
+  }
+  state.selectedPeer = 'local';
+  localStorage.setItem('nordrelayPeerTarget', 'local');
+  if (typeof page === 'function') page('peers');
+  else location.hash = '#peers';
+  toast('Create a fresh invite on the remote node, then use Add peer and Replace existing peer to re-pair.', { duration: 10000 });
+}
+
 async function selectHeaderTargetSession(peerId: string, agentId: string, threadId: string) {
   if (!threadId) return;
   await openChatSession({
@@ -278,7 +306,7 @@ async function loadHeaderTargetSessionsPage(panel: HTMLElement, peerId: string, 
 }
 
 function headerTargetSessionErrorHtml(peerId: string, error: unknown) {
-  const actions = peerId !== 'local' ? '<div class="header-target-peer-actions"><button type="button" class="secondary mini-button" data-header-switch-local="true">Switch to Local node</button><button type="button" class="secondary mini-button" data-header-retry-peer="' + attr(peerId) + '">Retry</button></div>' : '';
+  const actions = peerId !== 'local' ? '<div class="header-target-peer-actions"><button type="button" class="secondary mini-button" data-header-switch-local="true">Switch to Local node</button><button type="button" class="secondary mini-button" data-header-retry-peer="' + attr(peerId) + '">Retry</button><button type="button" class="secondary mini-button" data-header-repair-peer="' + attr(peerId) + '">Re-pair</button></div>' : '';
   return '<div class="header-target-session-state error">' + esc(headerTargetErrorMessage(error)) + '</div>' + actions;
 }
 

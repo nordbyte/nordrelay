@@ -546,6 +546,7 @@ interface DashboardState {
   peerDiscoveryJobs: WebuiRecord[];
   incrementalRenders: Record<string, WebuiIncrementalRenderToken>;
   selectedPeer: string;
+  lastMissingPeerNotice?: string;
   activePeerDiscoveryJobId?: string;
   peerTargets?: WebuiPeerTarget[];
   adapterConformance?: WebuiRecord | null;

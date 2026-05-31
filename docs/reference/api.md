@@ -79,4 +79,65 @@ Browser sessions use the `nr_session` cookie plus CSRF tokens for mutations. Aut
 | `/api/workflow-triggers/:token/run` | Token-authenticated workflow trigger webhook |
 | `/api/peers` | Peer management and proxying |
 
+## Runtime contract coverage
+
+The docs check verifies that every namespace below exists in the generated WebUI
+route contract:
+
+| Namespace | Area |
+| --- | --- |
+| `/api/abort/*` | Prompt abort alias |
+| `/api/active-sessions/*` | Active local and peer sessions |
+| `/api/activity/*` | Session activity |
+| `/api/adapters/*` | Adapter health and conformance |
+| `/api/agent/*` | Selected agent |
+| `/api/agent-update/*` | Agent update job detail |
+| `/api/agent-updates/*` | Agent update jobs |
+| `/api/approvals/*` | Runtime approval responses |
+| `/api/artifacts/*` | Artifact management |
+| `/api/audit/*` | Audit events |
+| `/api/auth/*` | Authentication |
+| `/api/bootstrap/*` | WebUI bootstrap |
+| `/api/chat/*` | WebUI chat state |
+| `/api/control-options/*` | Control dropdown data |
+| `/api/dashboard/*` | Dashboard session lifecycle |
+| `/api/diagnostics/*` | Diagnostics and support bundles |
+| `/api/discord-channels/*` | Discord channel access |
+| `/api/doctor/*` | Doctor checks and fixes |
+| `/api/groups/*` | User groups |
+| `/api/handback/*` | Session handback |
+| `/api/health/*` | Health |
+| `/api/jobs/*` | Unified jobs |
+| `/api/locks/*` | Locks |
+| `/api/logs/*` | Logs |
+| `/api/matrix-rooms/*` | Matrix room access |
+| `/api/metrics/*` | Metrics and observability |
+| `/api/models/*` | Agent model choices |
+| `/api/peers/*` | Peer management, proxying, relay, and debugging |
+| `/api/permissions/*` | Permission metadata |
+| `/api/plugins/*` | Plugins, marketplace, panels, jobs, and commands |
+| `/api/profile/*` | Profile, MFA, passkeys, tokens, and sessions |
+| `/api/progress/*` | Runtime progress |
+| `/api/prompt/*` | Prompt submission and uploads |
+| `/api/queue/*` | Runtime and planned queues |
+| `/api/retry/*` | Prompt retry |
+| `/api/runtime/*` | Runtime control |
+| `/api/session/*` | Session settings |
+| `/api/sessions/*` | Session listing, details, names, attach, and worktrees |
+| `/api/settings/*` | Settings and setup wizard |
+| `/api/slack-channels/*` | Slack channel access |
+| `/api/snapshot/*` | Dashboard snapshot |
+| `/api/stop/*` | Prompt stop alias |
+| `/api/sync/*` | Session sync |
+| `/api/tasks/*` | Tasks |
+| `/api/telegram-chats/*` | Telegram chat access |
+| `/api/templates/*` | Workflow templates |
+| `/api/trace/*` | Trace timeline |
+| `/api/update/*` | NordRelay update |
+| `/api/users/*` | Users and linked identities |
+| `/api/version/*` | Version checks |
+| `/api/workflow-runs/*` | Workflow run lifecycle |
+| `/api/workflow-triggers/*` | Token-authenticated workflow triggers |
+| `/api/workflows/*` | Workflows, versions, triggers, and runs |
+
 Use the generated route and type files in `src/web/` when integrating with the internal WebUI contract.

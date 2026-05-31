@@ -53,8 +53,17 @@ Docs use VitePress installed with `docs:prepare` as a no-save dependency, matchi
 Generated outputs are ignored:
 
 - `dist/`
+- `coverage/`
+- `test-results/`
+- `playwright-report/`
 - `docs/.vitepress/cache/`
 - `docs/.vitepress/dist/`
 - local runtime state in `~/.nordrelay/`
+
+Clean local ignored outputs with:
+
+```bash
+npm run clean:local
+```
 
 Do not commit runtime logs, private state, tokens, or support bundles.

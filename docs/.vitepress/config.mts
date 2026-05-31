@@ -83,6 +83,7 @@ export default defineConfig({
           { text: "CLI command reference", link: "/commands/" },
           { text: "Configuration", link: "/reference/configuration" },
           { text: "Settings keys", link: "/reference/settings" },
+          { text: "Permissions", link: "/reference/permissions" },
           { text: "Paths and state", link: "/reference/locations" },
           { text: "Web API", link: "/reference/api" },
           { text: "Chat commands", link: "/reference/chat-commands" }

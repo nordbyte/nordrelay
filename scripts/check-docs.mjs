@@ -13,8 +13,13 @@ const configPath = path.join(docsDir, ".vitepress", "config.mts");
 const cliPath = path.join(rootDir, "plugins", "nordrelay", "scripts", "nordrelay.mjs");
 const configMetadataPath = path.join(rootDir, "src", "core", "config-metadata.ts");
 const channelCommandCatalogPath = path.join(rootDir, "src", "channels", "shared", "channel-command-catalog.ts");
+const accessControlPath = path.join(rootDir, "src", "access", "access-control.ts");
+const webApiContractPath = path.join(rootDir, "src", "web", "web-api-contract.ts");
+const pluginMarketplacePath = path.join(rootDir, "src", "plugins", "plugin-marketplace.ts");
 const settingsReferencePath = path.join(docsDir, "reference", "settings.md");
 const chatCommandsReferencePath = path.join(docsDir, "reference", "chat-commands.md");
+const permissionsReferencePath = path.join(docsDir, "reference", "permissions.md");
+const apiReferencePath = path.join(docsDir, "reference", "api.md");
 const pluginGuidePath = path.join(docsDir, "guides", "plugins.md");
 const execFileAsync = promisify(execFile);
 const officialPluginDocs = [
@@ -64,6 +69,9 @@ async function main() {
   await checkCommandDocs(markdownFiles);
   await checkSettingsReferenceDocs();
   await checkChatCommandReferenceDocs();
+  await checkPermissionReferenceDocs();
+  await checkWebApiReferenceDocs();
+  await checkPluginMarketplaceDocs();
   await checkOfficialPluginDocs();
 
   if (errors.length > 0) {
@@ -347,6 +355,52 @@ async function checkChatCommandReferenceDocs() {
   }
 }
 
+async function checkPermissionReferenceDocs() {
+  const accessSource = await fs.readFile(accessControlPath, "utf8");
+  const docsSource = await fs.readFile(permissionsReferencePath, "utf8");
+  const permissions = extractAllPermissions(accessSource);
+
+  for (const permission of permissions) {
+    if (!docsSource.includes(`\`${permission}\``)) {
+      fail(`${relative(permissionsReferencePath)}: missing permission '${permission}' from access-control.ts`);
+    }
+  }
+}
+
+async function checkWebApiReferenceDocs() {
+  const contractSource = await fs.readFile(webApiContractPath, "utf8");
+  const docsSource = await fs.readFile(apiReferencePath, "utf8");
+  const namespaces = extractWebApiNamespaces(contractSource);
+
+  for (const namespace of namespaces) {
+    if (!docsSource.includes(`\`${namespace}`) && !docsSource.includes(`\`${namespace}/*\``)) {
+      fail(`${relative(apiReferencePath)}: missing Web API namespace '${namespace}' from web-api-contract.ts`);
+    }
+  }
+}
+
+async function checkPluginMarketplaceDocs() {
+  const marketplaceSource = await fs.readFile(pluginMarketplacePath, "utf8");
+  const guideSource = await fs.readFile(pluginGuidePath, "utf8");
+  const entries = extractMarketplaceEntries(marketplaceSource);
+
+  for (const entry of entries) {
+    if (!guideSource.includes(entry.id) || !guideSource.includes(entry.packageName || entry.source)) {
+      fail(`${relative(pluginGuidePath)}: missing marketplace plugin '${entry.id}'`);
+    }
+    for (const permission of entry.permissions) {
+      if (!guideSource.includes(permission)) {
+        fail(`${relative(pluginGuidePath)}: missing marketplace permission '${permission}' for plugin '${entry.id}'`);
+      }
+    }
+    for (const capability of entry.capabilities) {
+      if (!guideSource.toLowerCase().includes(capability.toLowerCase())) {
+        fail(`${relative(pluginGuidePath)}: missing marketplace capability '${capability}' for plugin '${entry.id}'`);
+      }
+    }
+  }
+}
+
 async function checkOfficialPluginDocs() {
   const guideSource = await fs.readFile(pluginGuidePath, "utf8");
   for (const plugin of officialPluginDocs) {
@@ -434,6 +488,57 @@ function extractDocumentedChatCommands(source) {
     commands.add(match[1]);
   }
   return commands;
+}
+
+function extractAllPermissions(source) {
+  const match = /export const ALL_PERMISSIONS:[\s\S]*?=\s*\[([\s\S]*?)\];/.exec(source);
+  if (!match) {
+    fail("src/access/access-control.ts: could not parse ALL_PERMISSIONS");
+    return [];
+  }
+  return [...match[1].matchAll(/"([^"]+)"/g)].map((item) => item[1]).sort();
+}
+
+function extractWebApiNamespaces(source) {
+  const namespaces = new Set();
+  const regex = /\b(?:exact|dynamic)\(\s*"([^"]+)"/g;
+  let match;
+  while ((match = regex.exec(source))) {
+    const route = match[1];
+    const parts = route.split("/").filter(Boolean);
+    if (parts.length >= 2) {
+      namespaces.add(`/${parts[0]}/${parts[1]}`);
+    }
+  }
+  return [...namespaces].sort();
+}
+
+function extractMarketplaceEntries(source) {
+  const block = /const MARKETPLACE_ENTRIES:[\s\S]*?=\s*\[([\s\S]*?)\];/.exec(source)?.[1] || "";
+  const entries = [];
+  const objectRegex = /\{\s*id:\s*"([^"]+)"([\s\S]*?)\n\s*\}/g;
+  let match;
+  while ((match = objectRegex.exec(block))) {
+    const body = match[2];
+    entries.push({
+      id: match[1],
+      source: extractStringField(body, "source"),
+      packageName: extractStringField(body, "packageName"),
+      permissions: extractStringArrayField(body, "permissions"),
+      capabilities: extractStringArrayField(body, "capabilities"),
+    });
+  }
+  return entries;
+}
+
+function extractStringField(source, name) {
+  return new RegExp(`\\b${escapeRegExp(name)}:\\s*"([^"]+)"`).exec(source)?.[1] || "";
+}
+
+function extractStringArrayField(source, name) {
+  const match = new RegExp(`\\b${escapeRegExp(name)}:\\s*\\[([^\\]]*)\\]`).exec(source);
+  if (!match) return [];
+  return [...match[1].matchAll(/"([^"]+)"/g)].map((item) => item[1]);
 }
 
 function extractVisibleCommandGroups(source) {

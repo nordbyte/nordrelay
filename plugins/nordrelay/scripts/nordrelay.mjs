@@ -13,6 +13,7 @@ import { collectInitConfig, validateInitConfig } from "./init-tui.mjs";
 import { commandPlugin } from "./plugin-manager.mjs";
 import { ask, askSecret } from "./prompt-utils.mjs";
 import { tuiStyle } from "./tui-style.mjs";
+import { codexConfigDoctorCheck, pidFileDoctorCheck } from "./doctor-fixes.mjs";
 import {
   buildLaunchdServiceSpec,
   buildSystemdUserServiceSpec,
@@ -1894,6 +1895,8 @@ async function commandDoctor(options) {
     repairFix: autostartRepairFix(options.home),
     lingerFix: hintFix("Enable linger with `loginctl enable-linger $USER` if NordRelay should start before the first interactive login."),
   }));
+  checks.push(await pidFileDoctorCheck("Connector PID file", options.pidFile, { isProcessRunning, isManaged: (pid) => isManagedConnectorPid(options, pid) }));
+  checks.push(await pidFileDoctorCheck("WebUI PID file", options.webPidFile, { isProcessRunning, isManaged: (pid) => isManagedWebPid(options, pid) }));
   checks.push(check("Discord client ID", !discordUsable || Boolean(process.env.DISCORD_CLIENT_ID), discordUsable ? (process.env.DISCORD_CLIENT_ID ? "configured" : "missing; slash command auto-registration disabled") : "disabled", "warn", hintFix("Set DISCORD_CLIENT_ID from the Discord Developer Portal.")));
   checks.push(check("User store", Boolean(userStore), userStore ? userStore.filePath : "missing runtime", userStore ? "pass" : "fail", runtimeBuildFix()));
   checks.push(check("Admin user", Boolean(userSnapshot?.adminConfigured), userSnapshot?.adminConfigured ? "configured" : "missing", "fail", hintFix("Run `nordrelay user create-admin` to create the first admin.")));
@@ -1913,6 +1916,7 @@ async function commandDoctor(options) {
   checks.push(check("OpenClaw enabled flag", process.env.NORDRELAY_OPENCLAW_ENABLED === "true", `NORDRELAY_OPENCLAW_ENABLED=${process.env.NORDRELAY_OPENCLAW_ENABLED ?? "false"}`, process.env.NORDRELAY_OPENCLAW_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("Claude Code enabled flag", process.env.NORDRELAY_CLAUDE_CODE_ENABLED === "true", `NORDRELAY_CLAUDE_CODE_ENABLED=${process.env.NORDRELAY_CLAUDE_CODE_ENABLED ?? "false"}`, process.env.NORDRELAY_CLAUDE_CODE_ENABLED === "true" ? "pass" : "warn"));
   checks.push(check("Codex CLI", Boolean(findExecutable(process.env.CODEX_CLI_PATH || "codex")), process.env.CODEX_CLI_PATH || findExecutable("codex") || "not found", process.env.NORDRELAY_CODEX_ENABLED === "false" ? "warn" : "fail", hintFix("Install Codex CLI or set CODEX_CLI_PATH to its executable.")));
+  checks.push(codexConfigDoctorCheck());
   checks.push(check("Pi CLI", Boolean(findExecutable(process.env.PI_CLI_PATH || "pi")), process.env.PI_CLI_PATH || findExecutable("pi") || "not found", process.env.NORDRELAY_PI_ENABLED === "true" ? "fail" : "warn", hintFix("Install Pi CLI or set PI_CLI_PATH to its executable.")));
   checks.push(check("Hermes CLI", Boolean(findExecutable(process.env.HERMES_CLI_PATH || "hermes")), process.env.HERMES_CLI_PATH || findExecutable("hermes") || "not found", process.env.NORDRELAY_HERMES_ENABLED === "true" ? "fail" : "warn", hintFix("Install Hermes CLI or set HERMES_CLI_PATH to its executable.")));
   checks.push(check("OpenClaw CLI", Boolean(findExecutable(process.env.OPENCLAW_CLI_PATH || "openclaw")), process.env.OPENCLAW_CLI_PATH || findExecutable("openclaw") || "not found", process.env.NORDRELAY_OPENCLAW_ENABLED === "true" ? "fail" : "warn", hintFix("Install OpenClaw CLI or set OPENCLAW_CLI_PATH to its executable.")));

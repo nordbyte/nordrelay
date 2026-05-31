@@ -241,12 +241,16 @@ Install System Monitor for peer metrics:
 nordrelay plugin install github:nordbyte/nordrelay-plugin-system-monitor --enable --approve
 ```
 
+Marketplace id: `system-monitor`. npm package: `@nordbyte/nordrelay-system-monitor`.
+
 Install it on every peer where metrics should be collected. Peers without the plugin are shown as unavailable in the plugin dashboard instead of returning metrics.
 
 The System Monitor plugin keeps its own SQLite database under
 `~/.nordrelay/plugins/data/system-monitor/metrics.sqlite`. It owns collection,
 retention cleanup, range summaries, and downsampled chart data; NordRelay only
-hosts the panel and routes plugin invocations to peers.
+hosts the panel and routes plugin invocations to peers. Required permissions are
+`runtime.read`, `peers.read`, and `system.metrics.read`. Marketplace
+capabilities are `collector`, `commands`, `web panel`, and `diagnostics`.
 
 Install Auto Updater for OS and npm update visibility plus explicit admin-run
 update actions:
@@ -254,6 +258,8 @@ update actions:
 ```sh
 nordrelay plugin install github:nordbyte/nordrelay-plugin-auto-updater --enable --approve
 ```
+
+Marketplace id: `auto-updater`. npm package: `@nordbyte/nordrelay-auto-updater`.
 
 Auto Updater checks Linux/macOS package-manager updates and global npm package
 versions on each node where the plugin is installed. It stores its own SQLite
@@ -263,7 +269,8 @@ Required permissions are `runtime.read`, `peers.read`, `system.packages.read`,
 `network`. Admins can explicitly start OS update, global npm update, npm
 auto-install, and npm uninstall actions from the plugin panel. Those actions run
 as the same operating-system user that runs NordRelay and still require the
-plugin permissions to be approved.
+plugin permissions to be approved. Marketplace capabilities are `collector`,
+`commands`, `web panel`, and `diagnostics`.
 
 Install RepoVista for repository scans and report browsing:
 
@@ -278,4 +285,5 @@ installed RepoVista version supports it. It requires `runtime.read`,
 `peers.read`, `files.read`, `files.write`, and `network`. Use the plugin
 settings to restrict allowed repository roots and to decide whether write
 actions such as triage, baseline changes, fixes, CI workflow creation, or GitHub
-publishing are available from the panel.
+publishing are available from the panel. Marketplace capabilities are
+`commands`, `web panel`, and `diagnostics`.
