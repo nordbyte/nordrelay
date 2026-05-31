@@ -656,6 +656,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function renderChatWorkingIndicator");
     expect(js).toContain("function activeSessionMatchesCurrentChat");
     expect(js).toContain("function localTurnIsStaleWithoutActive");
+    expect(js).toContain("String(active.id||'')!==completion.turnId");
+    expect(js).toContain("updated>completedAt+1000");
+    expect(js).toContain("clearChatVisibleCompletionForCurrentSession();tool('tool','Started '+d.toolName)");
     expect(js).toContain("state.localTurnPeerId=state.selectedPeer||'local'");
     expect(js).toContain("state.currentPage==='chat'?await loadActiveSessionsForChatTabs()");
     expect(js).toContain("Working...");
