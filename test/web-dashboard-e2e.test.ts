@@ -232,6 +232,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function workflowActionMenu");
     expect(js).toContain("tableActionMenuHtml(buttons");
     expect(js).toContain("bindTableActionMenus(document.getElementById('templateList')");
+    expect(js).toContain("function workflowPromptCopyButton");
+    expect(js).toContain('class="copy-id workflow-prompt-copy"');
+    expect(js).toContain('data-copy-label="Prompt copied"');
+    expect(js).toContain("bindUiCopyButtons(document.getElementById('templateList')");
     expect(js).toContain("bindTableActionMenus(document.getElementById('workflowList')");
     expect(js).toContain("function renderTemplatesTable");
     expect(js).toContain("function openTemplatePickerMenu");
@@ -253,6 +257,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("/api/workflows");
     expect(js).toContain("/api/workflow-runs/");
     expect(css).toContain(".workflow-section-header");
+    expect(css).toContain(".workflow-prompt-cell");
+    expect(css).toContain(".copy-id.workflow-prompt-copy");
     expect(css).toContain(".workflow-tab-heading");
     expect(css).toContain(".workflow-builder-step");
     expect(css).toContain(".workflow-builder-json");

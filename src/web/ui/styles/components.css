@@ -152,6 +152,14 @@
 .data-table .thread-cell .copy-id{max-width:18ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .data-table .age-cell,.data-table .number-cell,.data-table .scope-cell,.data-table .status-cell,.data-table .updated-cell,.data-table .version-cell{white-space:nowrap}
 .data-table .variables-cell{max-width:min(24vw,220px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.workflow-prompt-cell{display:flex;align-items:center;gap:8px;min-width:0}
+.workflow-prompt-cell .truncate-cell{flex:1 1 auto}
+.copy-id.workflow-prompt-copy{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:24px;min-width:24px;height:24px;min-height:24px;padding:0;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--muted);font-family:inherit}
+.copy-id.workflow-prompt-copy:hover{background:var(--accent-soft);border-color:var(--accent);color:var(--link);text-decoration:none}
+.copy-id.workflow-prompt-copy .copy-icon{width:12px;height:12px}
+.copy-id.workflow-prompt-copy .copy-icon::before,.copy-id.workflow-prompt-copy .copy-icon::after{width:7px;height:8px}
+.copy-id.workflow-prompt-copy .copy-icon::after{left:4px}
+.copy-id.workflow-prompt-copy:hover .copy-icon::before,.copy-id.workflow-prompt-copy:hover .copy-icon::after{background:var(--accent-soft)}
 .data-table-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:nowrap;white-space:nowrap}
 .data-table-actions button{min-height:28px;height:28px;padding:0 8px;font-size:13px;line-height:1}
 .actions-cell,.actions-heading{white-space:nowrap}
