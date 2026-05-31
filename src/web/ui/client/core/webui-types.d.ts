@@ -511,6 +511,7 @@ interface DashboardState {
   sessionAgeTimer: WebuiInterval | null;
   activityAgeTimer: WebuiInterval | null;
   chatWorkingTimer: WebuiInterval | null;
+  chatVisibleCompletion: WebuiRecord | null;
   sessionDetailRefreshTimer: WebuiInterval | null;
   sessionDetailAgeTimer: WebuiInterval | null;
   sessionDetailThreadId: string | null;

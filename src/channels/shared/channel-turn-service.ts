@@ -247,6 +247,9 @@ export class ChannelTurnService {
         this.updateCurrentProgress({ outputChars: nextText.length });
         this.options.broadcast({ type: "text_delta", id: turnId, delta, correlationId });
       },
+      onAssistantMessageComplete: () => {
+        this.options.broadcast({ type: "assistant_message_complete", id: turnId, at: new Date().toISOString(), correlationId });
+      },
       onToolStart: (toolName, toolCallId) => {
         this.addCurrentTool(toolName);
         this.options.appendActivity({

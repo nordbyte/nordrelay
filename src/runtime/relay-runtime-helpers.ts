@@ -86,6 +86,7 @@ export function shouldRefreshActiveSessions(event: RelayEvent): boolean {
     event.type === "status" ||
     event.type === "turn_start" ||
     event.type === "text_delta" ||
+    event.type === "assistant_message_complete" ||
     event.type === "tool_start" ||
     event.type === "tool_update" ||
     event.type === "tool_end" ||

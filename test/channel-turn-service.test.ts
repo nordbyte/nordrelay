@@ -188,6 +188,58 @@ describe("ChannelTurnService", () => {
       rmSync(workspace, { recursive: true, force: true });
     }
   });
+
+  it("broadcasts assistant message completion before the turn is fully finalized", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-turn-assistant-complete-"));
+    try {
+      const chatStore = new WebChatStore(workspace, "json", 10);
+      const events: RelayEvent[] = [];
+      let progress: WebTaskDto | null = null;
+      let currentTurnStartedAt = Date.now();
+      let accumulatedText = "";
+      const prompt = vi.fn(async (_input, callbacks) => {
+        callbacks.onTextDelta("done");
+        callbacks.onAssistantMessageComplete?.();
+        callbacks.onAgentEnd();
+      });
+      const service = new ChannelTurnService({
+        source: "web",
+        contextKey: "web:dashboard",
+        chatStore,
+        artifactService: {
+          persistWorkspaceArtifactsForTurn: async () => undefined,
+        } as unknown as RelayArtifactService,
+        checkAuth: async () => ({ authenticated: true, detail: "ok" }),
+        ensureActiveThread: async () => undefined,
+        updateSession: () => undefined,
+        appendActivity: (input) => ({ id: "activity", timestamp: new Date().toISOString(), ...input }) as WebActivityEvent,
+        appendAudit: (input) => ({ id: "audit", timestamp: new Date().toISOString(), channelId: "web", ...input }) as AuditEvent,
+        broadcast: (event) => events.push(event),
+        chatHistory: async () => chatStore.list("thread-1"),
+        setLastPrompt: () => undefined,
+        getCurrentProgress: () => progress,
+        setCurrentProgress: (next) => { progress = next; },
+        setCurrentTurn: (_id, startedAt, text) => {
+          currentTurnStartedAt = startedAt ?? Date.now();
+          accumulatedText = text ?? "";
+        },
+        getCurrentTurnStartedAt: () => currentTurnStartedAt,
+        getAccumulatedText: () => accumulatedText,
+        setAccumulatedText: (text) => { accumulatedText = text; },
+      });
+
+      await service.run(fakeSession({ prompt }), toPromptEnvelope("continue"));
+
+      const eventTypes = events.map((event) => event.type);
+      expect(eventTypes).toContain("assistant_message_complete");
+      expect(eventTypes.indexOf("assistant_message_complete")).toBeLessThan(eventTypes.indexOf("turn_complete"));
+      expect(events.find((event) => event.type === "assistant_message_complete")).toMatchObject({
+        correlationId: expect.any(String),
+      });
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
 });
 
 function fakeSession(overrides: Partial<AgentSessionService> = {}): AgentSessionService {

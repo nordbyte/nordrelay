@@ -34,6 +34,7 @@ export type RelayEvent =
   | { type: "active_sessions_update"; active: ActiveSessionsDto }
   | { type: "turn_start"; id: string; messageId?: string; prompt: string; text?: string; meta?: string[]; attachments?: WebChatAttachment[]; at: string; source?: WebActivitySource; correlationId?: string }
   | { type: "text_delta"; id: string; delta: string; correlationId?: string }
+  | { type: "assistant_message_complete"; id: string; at: string; correlationId?: string }
   | { type: "tool_start"; id: string; toolCallId: string; toolName: string; correlationId?: string }
   | { type: "tool_update"; id: string; toolCallId: string; partialResult: string; correlationId?: string }
   | { type: "tool_end"; id: string; toolCallId: string; isError: boolean; correlationId?: string }

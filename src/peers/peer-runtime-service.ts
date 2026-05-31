@@ -1243,6 +1243,7 @@ export class PeerRuntimeService {
       case "queue_update":
       case "turn_start":
       case "text_delta":
+      case "assistant_message_complete":
       case "tool_start":
       case "tool_update":
       case "tool_end":

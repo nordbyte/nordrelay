@@ -203,6 +203,7 @@ describe("CodexSessionService", () => {
     onToolStart: vi.fn(),
     onToolUpdate: vi.fn(),
     onToolEnd: vi.fn(),
+    onAssistantMessageComplete: vi.fn(),
     onAgentEnd: vi.fn(),
     onTodoUpdate: vi.fn(),
     onTurnComplete: vi.fn(),
@@ -760,6 +761,7 @@ describe("CodexSessionService", () => {
     await service.prompt("hello", callbacks);
 
     expect(callbacks.onTextDelta.mock.calls.map(([delta]) => delta)).toEqual(["Hel", "lo", " world"]);
+    expect(callbacks.onAssistantMessageComplete).toHaveBeenCalledTimes(1);
     expect(callbacks.onAgentEnd).toHaveBeenCalledTimes(1);
     expect(service.getInfo().threadId).toBe("thread-123");
   });

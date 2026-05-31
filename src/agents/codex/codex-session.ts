@@ -287,6 +287,9 @@ export class CodexSessionService {
                 callbacks.onTextDelta(delta);
               }
               lastAgentText = item.text;
+              if (item.text.trim()) {
+                callbacks.onAssistantMessageComplete?.();
+              }
             } else if (item.type === "command_execution") {
               // Pass any output that arrived only in the completion event (e.g. fast
               // commands that never fired item.updated).

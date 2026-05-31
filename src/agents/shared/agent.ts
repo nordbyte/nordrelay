@@ -245,6 +245,7 @@ export interface AgentSessionCallbacks {
   onToolStart: (toolName: string, toolCallId: string) => void;
   onToolUpdate: (toolCallId: string, partialResult: string) => void;
   onToolEnd: (toolCallId: string, isError: boolean) => void;
+  onAssistantMessageComplete?: () => void;
   onAgentEnd: () => void;
   onTodoUpdate?: (items: Array<{ text: string; completed: boolean }>) => void;
   onTurnComplete?: (usage: {
