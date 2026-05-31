@@ -190,7 +190,7 @@ async function waitForJob(
 }
 
 describe("plugin system", () => {
-  it("exposes official marketplace entries with installable GitHub sources", () => {
+  it("exposes official marketplace entries with installable sources", () => {
     const entries = pluginMarketplaceEntries();
     const systemMonitor = entries.find((entry) => entry.id === "system-monitor");
 
@@ -214,7 +214,7 @@ describe("plugin system", () => {
     const repoVista = entries.find((entry) => entry.id === "repovista");
     expect(repoVista).toMatchObject({
       name: "RepoVista",
-      source: "github:nordbyte/nordrelay-plugin-repovista",
+      source: "npm:@nordbyte/nordrelay-repovista",
       official: true,
       approved: true,
     });

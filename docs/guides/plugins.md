@@ -268,7 +268,7 @@ plugin permissions to be approved.
 Install RepoVista for repository scans and report browsing:
 
 ```sh
-nordrelay plugin install github:nordbyte/nordrelay-plugin-repovista --enable --approve
+nordrelay plugin install npm:@nordbyte/nordrelay-repovista --enable --approve
 ```
 
 RepoVista runs scans on the node where the plugin is installed, reads completed
