@@ -87,9 +87,10 @@ describe("nordrelay CLI script", () => {
       enableWebui: "true",
       enableCodex: "true",
       stateBackend: "json",
-      marketplacePlugins: "system-monitor",
+      marketplacePlugins: "system-monitor,repovista",
     }).find((item) => item.label === "Marketplace plugins");
     expect(row?.value).toContain("System Monitor");
+    expect(row?.value).toContain("RepoVista");
   });
 
   it("exposes a first-class update command", () => {

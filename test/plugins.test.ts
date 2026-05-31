@@ -210,6 +210,15 @@ describe("plugin system", () => {
       approved: true,
     });
     expect(autoUpdater?.permissions).toEqual(expect.arrayContaining(["system.packages.read", "system.updates.read"]));
+
+    const repoVista = entries.find((entry) => entry.id === "repovista");
+    expect(repoVista).toMatchObject({
+      name: "RepoVista",
+      source: "github:nordbyte/nordrelay-plugin-repovista",
+      official: true,
+      approved: true,
+    });
+    expect(repoVista?.permissions).toEqual(expect.arrayContaining(["files.read", "files.write", "network"]));
   });
 
   it("validates required manifest fields", () => {

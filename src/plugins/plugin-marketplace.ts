@@ -78,6 +78,26 @@ const MARKETPLACE_ENTRIES: PluginMarketplaceEntry[] = [
     permissions: ["runtime.read", "peers.read", "system.packages.read", "system.packages.write", "system.updates.read", "system.updates.write", "network"],
     capabilities: ["collector", "commands", "web panel", "diagnostics"],
   },
+  {
+    id: "repovista",
+    name: "RepoVista",
+    description: "Runs RepoVista scans, tracks live status, and browses generated audit reports across peers.",
+    source: "github:nordbyte/nordrelay-plugin-repovista",
+    category: "Code Quality",
+    official: true,
+    approved: true,
+    trustLevel: "official",
+    signatureRequired: false,
+    verifiedSource: "github:nordbyte/nordrelay-plugin-repovista",
+    author: "Ricardo <github@nordbyte.de>",
+    homepage: "https://github.com/nordbyte/nordrelay-plugin-repovista",
+    repository: "https://github.com/nordbyte/nordrelay-plugin-repovista",
+    packageName: "@nordbyte/nordrelay-repovista",
+    license: "MIT",
+    tags: ["repovista", "reports", "audit", "code-quality"],
+    permissions: ["runtime.read", "peers.read", "files.read", "files.write", "network"],
+    capabilities: ["commands", "web panel", "diagnostics"],
+  },
 ];
 
 export function pluginMarketplaceEntries(): PluginMarketplaceEntry[] {

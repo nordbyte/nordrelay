@@ -13,6 +13,11 @@ export const INIT_MARKETPLACE_PLUGINS = [
     name: "Auto Updater",
     description: "OS and global npm package update checks across peers.",
   },
+  {
+    id: "repovista",
+    name: "RepoVista",
+    description: "Run RepoVista scans and browse audit reports from the WebUI.",
+  },
 ];
 
 let activeMarketplacePlugins = INIT_MARKETPLACE_PLUGINS;

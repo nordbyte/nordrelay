@@ -264,3 +264,18 @@ Required permissions are `runtime.read`, `peers.read`, `system.packages.read`,
 auto-install, and npm uninstall actions from the plugin panel. Those actions run
 as the same operating-system user that runs NordRelay and still require the
 plugin permissions to be approved.
+
+Install RepoVista for repository scans and report browsing:
+
+```sh
+nordrelay plugin install github:nordbyte/nordrelay-plugin-repovista --enable --approve
+```
+
+RepoVista runs scans on the node where the plugin is installed, reads completed
+report runs from the configured repository output directory, and shows reports,
+findings, compare/review output, and live `status.json` progress when the
+installed RepoVista version supports it. It requires `runtime.read`,
+`peers.read`, `files.read`, `files.write`, and `network`. Use the plugin
+settings to restrict allowed repository roots and to decide whether write
+actions such as triage, baseline changes, fixes, CI workflow creation, or GitHub
+publishing are available from the panel.
