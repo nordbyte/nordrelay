@@ -130,7 +130,7 @@ function pluginRow(plugin){
   const runtime=pluginMetricsSummary(plugin);
   const updateCheck=state.pluginUpdateChecks?.[plugin.id];
   const updateBadge=updateCheck?uiBadge(updateCheck.error?'check failed':updateCheck.updateAvailable?'update available':'current',updateCheck.error?'failed':updateCheck.updateAvailable?'warning':'enabled'):'';
-  const trust=uiBadge(plugin.trustLevel||'untrusted',plugin.trustLevel==='official'||plugin.trustLevel==='verified'?'enabled':plugin.trustLevel==='local'?'disabled':'warning');
+  const trust=pluginTrustBadge(plugin);
   const signature=plugin.signature?.status?uiBadge(plugin.signature.status,plugin.signature.status==='verified'?'enabled':plugin.signature.status==='invalid'?'failed':'warning'):'';
   const visibleActions=[
     uiButton('Info',{mini:true,variant:'secondary',data:{pluginInfo:plugin.id}}),
@@ -148,7 +148,7 @@ function pluginRow(plugin){
   const actions=visibleActions+tableActionMenuHtml(moreActions,{id:plugin.id,className:'plugin-action-menu',panelClassName:'plugin-action-menu-panel'});
   return '<tr>'+
     pluginCell('Status',status,'status-cell')+
-    pluginCell('Plugin','<span class="truncate-cell" title="'+attr(plugin.name||plugin.id)+'">'+esc(plugin.name||plugin.id)+'</span><small>'+esc(plugin.id||'-')+'</small><div class="row">'+trust+signature+'</div>','primary-cell')+
+    pluginCell('Plugin','<span class="truncate-cell" title="'+attr(plugin.name||plugin.id)+'">'+esc(plugin.name||plugin.id)+'</span><div class="row">'+trust+signature+'</div>','primary-cell')+
     pluginCell('Version',esc(plugin.version||'-')+(updateBadge?'<br>'+updateBadge:''))+
     pluginCell('Runtime','<span class="truncate-cell" title="'+attr(runtime)+'">'+esc(runtime)+'</span>')+
     pluginCell('Source','<span class="truncate-cell" title="'+attr(source)+'">'+esc(short(source,160))+'</span>')+
@@ -182,21 +182,16 @@ function pluginCapabilitiesList(plugin){
 function pluginCapabilitiesCountCell(plugin){
   return marketplaceCountCell(pluginCapabilitiesList(plugin),'capability');
 }
-function pluginCapabilitiesSummary(plugin){
-  const c=plugin.capabilities||{};
-  const clientScripts=(Array.isArray(c.webPanels)?c.webPanels:[]).filter(panel=>panel.allowClientScript).length;
-  const parts=[
-    ['commands',c.commands?.length],
-    ['workflow actions',c.workflowActions?.length],
-    ['web panels',c.webPanels?.length],
-    ['agent adapters',c.agentAdapters?.length],
-    ['chat adapters',c.chatAdapters?.length],
-    ['artifact handlers',c.artifactHandlers?.length],
-    ['collectors',c.collectors?.length],
-  ].filter(([,count])=>Number(count)>0).map(([label,count])=>count+' '+label);
-  if(c.diagnostics)parts.push('diagnostics');
-  if(clientScripts)parts.push(clientScripts+' trusted UI script'+(clientScripts===1?'':'s'));
-  return parts.join(', ')||'none';
+function pluginTrustLevel(plugin){
+  if(plugin.trustLevel)return plugin.trustLevel;
+  const source=plugin.source&&typeof plugin.source==='object'&&!Array.isArray(plugin.source)?plugin.source:null;
+  if(source?.type==='local')return 'local';
+  return 'untrusted';
+}
+function pluginTrustBadge(plugin){
+  const trustLevel=pluginTrustLevel(plugin);
+  const status=trustLevel==='official'||trustLevel==='verified'?'enabled':trustLevel==='local'?'disabled':'warning';
+  return uiBadge(trustLevel,status);
 }
 function pluginMetricsSummary(plugin){
   const m=plugin.metrics||{};
@@ -323,7 +318,7 @@ function openPluginInfoDialog(pluginId){
     ['Runtime',pluginMetricsSummary(plugin)],
     ['Source',source],
     ['Install path',plugin.installPath||'-'],
-    ['Trust level',plugin.trustLevel||'-'],
+    ['Trust level',pluginTrustLevel(plugin)],
     ['Signature',signature?.status||'-'],
     ['Updated',plugin.updatedAt?fmtDate(plugin.updatedAt):'-'],
   ];
