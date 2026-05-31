@@ -69,6 +69,7 @@ describe("ChannelPeerMirrorController", () => {
       contextForKey: () => context(),
       defaultMirrorMode: () => "status",
       mirrorMinUpdateMs: 0,
+      typingIntervalMs: 1000,
     });
 
     controller.sync("123", context());
@@ -95,12 +96,58 @@ describe("ChannelPeerMirrorController", () => {
 
     expect(edited.at(-1)).toContain("Codex CLI task finished.");
   });
+
+  it("keeps typing active for remote peer sessions until the session finishes", async () => {
+    const preferences = new BotPreferencesStore(workspace);
+    preferences.update("123:456", { targetPeerId: "peer-1", mirrorMode: "final" });
+    const client = new FakeRemoteClient();
+    const typingContexts: ChannelContext[] = [];
+    const runtime = fakeRuntime({
+      sendTyping: async (target) => {
+        typingContexts.push({ ...target });
+      },
+    });
+    const topicContext = context({ topicId: "456" });
+    const controller = createChannelPeerMirrorController({
+      label: "Telegram",
+      runtime,
+      preferencesStore: preferences,
+      remoteClient: client,
+      contextForKey: () => topicContext,
+      defaultMirrorMode: () => "final",
+      mirrorMinUpdateMs: 0,
+      typingIntervalMs: 20,
+    });
+
+    controller.sync("123:456", topicContext);
+    client.emit(snapshot("thread-a"));
+    client.emit({
+      type: "active_sessions_update",
+      active: {
+        updatedAt: new Date().toISOString(),
+        sessions: [activeSession("thread-a", "target prompt")],
+      },
+    });
+    await sleep(75);
+
+    expect(typingContexts.length).toBeGreaterThanOrEqual(3);
+    expect(typingContexts.every((target) => target.topicId === "456")).toBe(true);
+
+    client.emit({ type: "active_sessions_update", active: { updatedAt: new Date().toISOString(), sessions: [] } });
+    await flushAsync();
+    const stoppedAt = typingContexts.length;
+    await sleep(60);
+
+    expect(typingContexts).toHaveLength(stoppedAt);
+    controller.close("123:456");
+  });
 });
 
-function context(): ChannelContext {
+function context(overrides: Partial<ChannelContext> = {}): ChannelContext {
   return {
     channelId: "telegram",
     chatId: "123",
+    ...overrides,
   };
 }
 
@@ -160,4 +207,8 @@ function activeSession(threadId: string, prompt: string): ActiveSessionDto {
 async function flushAsync(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -185,6 +185,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     contextForKey: discordContextForKey,
     defaultMirrorMode: () => config.discordMirrorMode,
     mirrorMinUpdateMs: EDIT_DEBOUNCE_MS,
+    typingIntervalMs: TYPING_INTERVAL_MS,
   });
 
   const hasPermission = createChannelPermissionChecker<DiscordRequest>(userStore);

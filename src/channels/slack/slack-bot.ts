@@ -174,6 +174,7 @@ export function createSlackBridge(config: ConnectorConfig, registry: SessionRegi
     contextForKey: slackContextForKey,
     defaultMirrorMode: () => config.slackMirrorMode,
     mirrorMinUpdateMs: EDIT_DEBOUNCE_MS,
+    typingIntervalMs: TYPING_INTERVAL_MS,
   });
 
   const hasPermission = createChannelPermissionChecker<SlackRequest>(userStore);

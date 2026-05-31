@@ -6,6 +6,7 @@ import type { ChannelActionButton } from "./channel-actions.js";
 import type { ChannelContext, ChannelRuntime } from "./channel-adapter.js";
 import { formatDurationSeconds, trimLine } from "./bot-rendering.js";
 import { escapeHTML } from "../../core/format.js";
+import { createChannelTypingLoop, type ChannelTypingLoop } from "./channel-turn-lifecycle.js";
 
 export interface ChannelPeerMirrorRemoteClient {
   subscribe(
@@ -31,6 +32,7 @@ export interface ChannelPeerMirrorControllerOptions {
   contextForKey(contextKey: string): ChannelContext | null;
   defaultMirrorMode(): ChannelMirrorMode;
   mirrorMinUpdateMs: number;
+  typingIntervalMs: number;
   actionForWebAction?(peerId: string, action: WebChatAction): ChannelActionButton | null;
 }
 
@@ -48,6 +50,8 @@ interface SubscriptionState {
   currentAgentLabel?: string;
   activeSessionKey?: string;
   activeSessionLabel?: string;
+  typingLoop?: ChannelTypingLoop;
+  typingSessionKey?: string;
   pending: Promise<void>;
 }
 
@@ -57,6 +61,7 @@ export function createChannelPeerMirrorController(options: ChannelPeerMirrorCont
   const close = (contextKey: string): void => {
     const existing = subscriptions.get(contextKey);
     if (!existing) return;
+    stopPeerTyping(existing);
     existing.close();
     subscriptions.delete(contextKey);
   };
@@ -87,6 +92,7 @@ export function createChannelPeerMirrorController(options: ChannelPeerMirrorCont
         .then(() => handlePeerEvent(options, state, event))
         .catch(() => {});
     }, (error) => {
+      stopPeerTyping(state);
       state.pending = state.pending.then(() => sendPeerMirrorStatus(options, state, `${options.label} remote mirror stream failed: ${error.message}`, "error")).catch(() => {});
     }, contextKey);
     state.close = subscription.close;
@@ -124,6 +130,7 @@ async function handlePeerEvent(
 ): Promise<void> {
   const mode = effectiveMode(options, state.contextKey);
   if (mode === "off") {
+    stopPeerTyping(state);
     return;
   }
   if (event.type === "status") {
@@ -231,9 +238,10 @@ async function handlePeerActiveSessionsUpdate(
 ): Promise<void> {
   const active = selectPeerActiveSession(state, sessions);
   if (active) {
-    state.activeSessionKey = activeSessionKey(active);
+    const key = activeSessionKey(active);
+    state.activeSessionKey = key;
     state.activeSessionLabel = active.agentLabel || active.agentId || "Agent";
-    await options.runtime.sendTyping(state.context).catch(() => {});
+    startPeerTyping(options, state, key);
     if (mode === "status" || mode === "full") {
       await sendPeerMirrorStatus(options, state, renderPeerActiveSessionStatus(active), "info");
     }
@@ -244,10 +252,30 @@ async function handlePeerActiveSessionsUpdate(
     const label = state.activeSessionLabel || state.currentAgentLabel || "Remote";
     state.activeSessionKey = undefined;
     state.activeSessionLabel = undefined;
+    stopPeerTyping(state);
     if (mode === "status" || mode === "full") {
       await sendPeerMirrorStatus(options, state, `${label} CLI task finished.`, "info", { force: true });
     }
   }
+}
+
+function startPeerTyping(options: ChannelPeerMirrorControllerOptions, state: SubscriptionState, sessionKey: string): void {
+  if (state.typingLoop && state.typingSessionKey === sessionKey) {
+    return;
+  }
+  stopPeerTyping(state);
+  state.typingSessionKey = sessionKey;
+  state.typingLoop = createChannelTypingLoop({
+    intervalMs: options.typingIntervalMs,
+    sendTyping: () => options.runtime.sendTyping(state.context),
+  });
+  state.typingLoop.start();
+}
+
+function stopPeerTyping(state: SubscriptionState): void {
+  state.typingLoop?.stop();
+  state.typingLoop = undefined;
+  state.typingSessionKey = undefined;
 }
 
 function rememberSnapshot(state: SubscriptionState, snapshot: RelaySnapshot): void {

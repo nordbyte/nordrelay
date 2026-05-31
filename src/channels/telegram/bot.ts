@@ -454,7 +454,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const getEffectiveMirrorMode = (contextKey: TelegramContextKey): TelegramMirrorMode =>
     getPreferences(contextKey).mirrorMode ?? config.telegramMirrorMode;
 
-  const peerMirrorController = createChannelPeerMirrorController({ label: "Telegram", runtime: telegramChannelRuntime, preferencesStore, remoteClient, contextForKey: (contextKey) => isTelegramContextKey(contextKey) ? telegramChannelContextFromKey(contextKey as TelegramContextKey) : null, defaultMirrorMode: () => config.telegramMirrorMode, mirrorMinUpdateMs: config.telegramEditMinIntervalMs });
+  const peerMirrorController = createChannelPeerMirrorController({ label: "Telegram", runtime: telegramChannelRuntime, preferencesStore, remoteClient, contextForKey: (contextKey) => isTelegramContextKey(contextKey) ? telegramChannelContextFromKey(contextKey as TelegramContextKey) : null, defaultMirrorMode: () => config.telegramMirrorMode, mirrorMinUpdateMs: config.telegramEditMinIntervalMs, typingIntervalMs: TYPING_INTERVAL_MS });
 
   const getEffectiveNotifyMode = (contextKey: TelegramContextKey): TelegramNotifyMode =>
     getPreferences(contextKey).notifyMode ?? config.telegramNotifyMode;

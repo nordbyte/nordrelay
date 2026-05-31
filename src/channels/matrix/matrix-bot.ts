@@ -179,6 +179,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
     contextForKey: matrixContextForKey,
     defaultMirrorMode: () => config.matrixMirrorMode,
     mirrorMinUpdateMs: EDIT_DEBOUNCE_MS,
+    typingIntervalMs: TYPING_INTERVAL_MS,
   });
 
   const hasPermission = createChannelPermissionChecker<MatrixRequest>(userStore);
