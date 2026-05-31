@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -148,6 +148,45 @@ async function createLargePanelPluginFixture(): Promise<string> {
     "});",
   ].join("\n"));
   return dir;
+}
+
+async function createSlowCommandPluginFixture(): Promise<string> {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-slow-command-"));
+  await writeFile(path.join(dir, "nordrelay.plugin.json"), JSON.stringify({
+    id: "slow-command-plugin",
+    name: "Slow Command Plugin",
+    version: "0.1.0",
+    description: "Test plugin job cancellation",
+    entry: "index.js",
+    capabilities: {
+      commands: [
+        { name: "wait", title: "Wait", timeoutMs: 10000 },
+      ],
+    },
+  }, null, 2));
+  await writeFile(path.join(dir, "index.js"), [
+    "process.stdin.resume();",
+    "process.stdin.on('end',()=>{",
+    "  setTimeout(()=>process.stdout.write(JSON.stringify({ ok: true, output: { done: true } })+'\\n'),5000);",
+    "});",
+  ].join("\n"));
+  return dir;
+}
+
+async function waitForJob(
+  service: PluginService,
+  pluginId: string,
+  jobId: string,
+  predicate: (job: Awaited<ReturnType<PluginService["getJob"]>>) => boolean,
+  timeoutMs = 2500,
+) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const job = await service.getJob(pluginId, jobId);
+    if (predicate(job)) return job;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return service.getJob(pluginId, jobId);
 }
 
 describe("plugin system", () => {
@@ -306,6 +345,67 @@ describe("plugin system", () => {
     expect(panel.ok).toBe(true);
     expect(panel.html?.length).toBeGreaterThan(1024 * 1024);
     expect(panel.panel?.script).toContain("__largePanelLoaded");
+  });
+
+  it("persists plugin command jobs across service instances", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-home-"));
+    const fixture = await createPluginFixture();
+    const service = new PluginService(home);
+    await service.install({ source: fixture, enable: true, approvePermissions: true });
+
+    const job = await service.startCommandJob("example-plugin", "example", { text: "persisted" });
+    const completed = await waitForJob(service, "example-plugin", job.id, (item) => item?.status === "completed");
+    expect(completed).toMatchObject({ id: job.id, status: "completed" });
+
+    const reloaded = new PluginService(home);
+    await expect(reloaded.getJob("example-plugin", job.id)).resolves.toMatchObject({
+      id: job.id,
+      status: "completed",
+      result: expect.objectContaining({ ok: true }),
+    });
+  });
+
+  it("cancels running plugin command jobs by terminating the child process", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-home-"));
+    const fixture = await createSlowCommandPluginFixture();
+    const service = new PluginService(home);
+    await service.install({ source: fixture, enable: true, approvePermissions: true });
+
+    const job = await service.startCommandJob("slow-command-plugin", "wait", {});
+    await waitForJob(service, "slow-command-plugin", job.id, (item) => item?.status === "running");
+
+    const cancelled = await service.cancelJob("slow-command-plugin", job.id);
+    expect(cancelled.status).toBe("cancelled");
+    const settled = await waitForJob(service, "slow-command-plugin", job.id, (item) => item?.status === "cancelled" && item.result?.cancelled === true);
+
+    expect(settled).toMatchObject({ status: "cancelled", cancelRequested: true });
+    expect(settled?.result?.cancelled).toBe(true);
+  });
+
+  it("marks interrupted plugin jobs after restart recovery", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-home-"));
+    const pluginsDir = path.join(home, "plugins");
+    await mkdir(pluginsDir, { recursive: true });
+    await writeFile(path.join(pluginsDir, "jobs.json"), JSON.stringify({
+      version: 1,
+      jobs: [{
+        id: "job-running",
+        pluginId: "example-plugin",
+        title: "example-plugin example",
+        command: "example",
+        status: "running",
+        input: {},
+        logs: [],
+        createdAt: "2026-05-31T10:00:00.000Z",
+        startedAt: "2026-05-31T10:00:01.000Z",
+      }],
+    }, null, 2));
+
+    const service = new PluginService(home);
+    const recovered = await service.getJob("example-plugin", "job-running");
+
+    expect(recovered).toMatchObject({ id: "job-running", status: "failed" });
+    expect(recovered?.logs.at(-1)?.message).toContain("interrupted");
   });
 
   it("blocks executable capabilities when plugins are disabled", async () => {

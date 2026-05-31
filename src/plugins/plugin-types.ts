@@ -325,6 +325,7 @@ export interface PluginInvokeResult {
   diagnostics?: unknown;
   durationMs?: number;
   timedOut?: boolean;
+  cancelled?: boolean;
   exitCode?: number | null;
 }
 
@@ -359,6 +360,11 @@ export interface PluginJobRecord {
   createdAt: string;
   startedAt?: string;
   finishedAt?: string;
+}
+
+export interface PluginJobsPayload {
+  version: 1;
+  jobs: PluginJobRecord[];
 }
 
 export interface PluginEventRecord {

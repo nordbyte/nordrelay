@@ -175,6 +175,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("window.NordRelayPluginPanels");
     expect(js).toContain("data-plugin-panel-surface");
     expect(js).toContain("data-plugin-panel-instance");
+    expect(js).toContain("data-plugin-peer-id");
     expect(js).toContain("allowClientScript");
     expect(js).toContain("function reloadPluginPanelSurface");
     expect(adminPluginsSource).toContain("(globalThis as WebuiRecord).reloadPluginPanelSurface=reloadPluginPanelSurface");
@@ -195,6 +196,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).not.toContain("srcdoc");
     expect(js).toContain("function syncPluginPanelThemes");
     expect(js).toContain("syncPluginPanelThemes?.()");
+    expect(pluginPanelSource).toContain("apiPeer(peerId,requestPath,{method:'GET'})");
+    expect(pluginPanelSource).toContain("surface.dataset.pluginPeerId");
     expect(css).toContain(".plugin-panel-surface{width:100%");
     expect(css).toContain("#page-plugin-panel.active{display:flex");
     expect(css).toContain(".plugin-panel-page-surface{flex:1");

@@ -532,8 +532,9 @@ function renderPluginPanelPageResult(item,result,input={}){
   const html=pluginPanelHtmlFromResult(result);
   const extracted=html?pluginPanelExtractExecutableHtml(html):null;
   const renderResult={...result,__pluginPanelScripts:extracted?.scripts||[],__pluginPanelStyles:extracted?.styles||[]};
+  const peerId=String(state.selectedPeer||'local');
   resultEl.innerHTML=extracted
-    ? pluginPanelInlineHtml(extracted.html,pluginPanelTitle(item),{pluginId:item.pluginId,capabilityId:item.panelId},'plugin-panel-page-surface')
+    ? pluginPanelInlineHtml(extracted.html,pluginPanelTitle(item),{pluginId:item.pluginId,capabilityId:item.panelId,peerId},'plugin-panel-page-surface')
     : '<pre class="log-view">'+esc(JSON.stringify(result.output??result.diagnostics??result.text??result.stdout??result,null,2))+'</pre>';
   resultEl.querySelectorAll<HTMLElement>('[data-plugin-panel-surface]').forEach(surface=>bindPluginPanelSurface(surface,item,renderResult,input));
 }
@@ -545,6 +546,7 @@ function renderPluginPanelSurfaceResult(surface,item,result,input={}){
   surface.removeAttribute('data-plugin-panel-bound');
   surface.dataset.pluginId=item.pluginId||'';
   surface.dataset.pluginPanelId=item.panelId||'';
+  surface.dataset.pluginPeerId=String(state.selectedPeer||'local');
   surface.dataset.pluginTitle=pluginPanelTitle(item);
   surface.innerHTML=extracted
     ? extracted.html
@@ -725,7 +727,7 @@ function renderPluginCapabilityResult(pluginId,type,capabilityId,result){
   const extracted=html?pluginPanelExtractExecutableHtml(html):null;
   const renderResult={...result,__pluginPanelScripts:extracted?.scripts||[],__pluginPanelStyles:extracted?.styles||[]};
   const output=html
-    ? pluginPanelInlineHtml(extracted?.html||html,pluginId+' / '+capabilityId,{pluginId,capabilityId})
+    ? pluginPanelInlineHtml(extracted?.html||html,pluginId+' / '+capabilityId,{pluginId,capabilityId,peerId:String(state.selectedPeer||'local')})
     : '<pre class="log-view">'+esc(JSON.stringify(result.output??result.diagnostics??result.text??result.stdout??result,null,2))+'</pre>';
   target.innerHTML=uiItem(pluginId+' / '+capabilityId,{badge:{text:result.ok?'ok':'failed',status:result.ok?'enabled':'failed'},rows:[['Type',type],['Duration',result.durationMs?result.durationMs+'ms':'-']],body:output});
   const panelTarget=document.getElementById('pluginPanelResult');

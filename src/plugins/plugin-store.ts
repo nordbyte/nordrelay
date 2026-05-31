@@ -4,11 +4,16 @@ import path from "node:path";
 
 import {
   type InstalledPluginRecord,
+  type PluginJobRecord,
+  type PluginJobsPayload,
   type PluginLockPayload,
   type PluginLockRecord,
   type PluginRegistryPayload,
   type PublicPluginRecord,
 } from "./plugin-types.js";
+
+const PLUGIN_JOB_LIMIT = 200;
+const PLUGIN_JOB_WRITE_LOCKS = new Map<string, Promise<unknown>>();
 
 export class PluginStore {
   readonly root: string;
@@ -17,6 +22,7 @@ export class PluginStore {
   readonly dataRoot: string;
   readonly registryPath: string;
   readonly lockPath: string;
+  readonly jobsPath: string;
 
   constructor(home: string) {
     this.root = path.join(home, "plugins");
@@ -25,6 +31,7 @@ export class PluginStore {
     this.dataRoot = path.join(this.root, "data");
     this.registryPath = path.join(this.root, "plugins.json");
     this.lockPath = path.join(this.root, "plugins.lock.json");
+    this.jobsPath = path.join(this.root, "jobs.json");
   }
 
   async ensure(): Promise<void> {
@@ -136,6 +143,81 @@ export class PluginStore {
     await rename(tmp, this.lockPath);
   }
 
+  async readJobs(): Promise<PluginJobsPayload> {
+    await this.ensure();
+    try {
+      const raw = await readFile(this.jobsPath, "utf8");
+      const parsed = JSON.parse(raw) as Partial<PluginJobsPayload>;
+      if (parsed.version !== 1 || !Array.isArray(parsed.jobs)) {
+        return { version: 1, jobs: [] };
+      }
+      return { version: 1, jobs: parsed.jobs as PluginJobRecord[] };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return { version: 1, jobs: [] };
+      }
+      throw error;
+    }
+  }
+
+  async writeJobs(payload: PluginJobsPayload): Promise<void> {
+    await this.withJobWriteLock(async () => {
+      await this.ensure();
+      const tmp = path.join(this.root, `.plugins-jobs-${process.pid}-${Date.now()}.json.tmp`);
+      const jobs = payload.jobs.slice(0, PLUGIN_JOB_LIMIT).map(cloneJob);
+      await writeFile(tmp, `${JSON.stringify({ version: 1, jobs }, null, 2)}\n`, "utf8");
+      await rename(tmp, this.jobsPath);
+    });
+  }
+
+  async listJobs(pluginId?: string): Promise<PluginJobRecord[]> {
+    const payload = await this.readJobs();
+    const jobs = pluginId ? payload.jobs.filter((job) => job.pluginId === pluginId) : payload.jobs;
+    return jobs.map(cloneJob);
+  }
+
+  async getJob(pluginId: string, jobId: string): Promise<PluginJobRecord | undefined> {
+    const payload = await this.readJobs();
+    const job = payload.jobs.find((item) => item.pluginId === pluginId && item.id === jobId);
+    return job ? cloneJob(job) : undefined;
+  }
+
+  async upsertJob(job: PluginJobRecord): Promise<PluginJobRecord> {
+    return this.withJobWriteLock(async () => {
+      const payload = await this.readJobs();
+      const next = cloneJob(job);
+      const index = payload.jobs.findIndex((item) => item.pluginId === next.pluginId && item.id === next.id);
+      if (index >= 0) {
+        payload.jobs[index] = next;
+      } else {
+        payload.jobs.unshift(next);
+      }
+      payload.jobs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      const tmp = path.join(this.root, `.plugins-jobs-${process.pid}-${Date.now()}.json.tmp`);
+      await writeFile(tmp, `${JSON.stringify({ version: 1, jobs: payload.jobs.slice(0, PLUGIN_JOB_LIMIT) }, null, 2)}\n`, "utf8");
+      await rename(tmp, this.jobsPath);
+      return cloneJob(next);
+    });
+  }
+
+  private async withJobWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+    const key = this.jobsPath;
+    const previous = PLUGIN_JOB_WRITE_LOCKS.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    const queued = previous.catch(() => undefined).then(() => current);
+    PLUGIN_JOB_WRITE_LOCKS.set(key, queued);
+    try {
+      await previous.catch(() => undefined);
+      return await fn();
+    } finally {
+      release();
+      if (PLUGIN_JOB_WRITE_LOCKS.get(key) === queued) {
+        PLUGIN_JOB_WRITE_LOCKS.delete(key);
+      }
+    }
+  }
+
   installVersionPath(id: string, version: string): string {
     return path.join(this.installedRoot, id, version);
   }
@@ -157,6 +239,10 @@ export class PluginStore {
       throw error;
     }
   }
+}
+
+function cloneJob(job: PluginJobRecord): PluginJobRecord {
+  return JSON.parse(JSON.stringify(job)) as PluginJobRecord;
 }
 
 function compareVersionsDesc(left: string, right: string): number {

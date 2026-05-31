@@ -46,7 +46,7 @@ function pluginPanelExtractExecutableHtml(html){
 function pluginPanelInlineHtml(html,title,options:WebuiRecord={},className=''){
   const instanceId=createPluginPanelInstanceId();
   const classes=['plugin-panel-surface',String(className||'').trim()].filter(Boolean).join(' ');
-  return '<div class="'+attr(classes)+'" data-plugin-panel-surface data-plugin-panel-instance="'+attr(instanceId)+'" data-plugin-id="'+attr(options.pluginId||'')+'" data-plugin-panel-id="'+attr(options.capabilityId||options.panelId||'')+'" data-plugin-title="'+attr(title)+'">'+html+'</div>';
+  return '<div class="'+attr(classes)+'" data-plugin-panel-surface data-plugin-panel-instance="'+attr(instanceId)+'" data-plugin-id="'+attr(options.pluginId||'')+'" data-plugin-panel-id="'+attr(options.capabilityId||options.panelId||'')+'" data-plugin-peer-id="'+attr(options.peerId||'local')+'" data-plugin-title="'+attr(title)+'">'+html+'</div>';
 }
 function cleanupPluginPanelSurfaces(root:ParentNode=document){
   root.querySelectorAll?.('[data-plugin-panel-surface]').forEach(surface=>cleanupPluginPanelSurface(surface as HTMLElement));
@@ -74,7 +74,7 @@ type PluginPanelApi = {
     start: (command: unknown, input?: WebuiRecord, options?: WebuiRecord) => Promise<unknown>;
     cancel: (jobId: unknown, options?: WebuiRecord) => Promise<unknown>;
   };
-  events: { subscribe: (eventName: string, listener: (event: unknown) => void) => EventSource };
+  events: { subscribe: (eventName: string, listener: (event: unknown) => void, options?: WebuiRecord) => { close: () => void } };
   setInterval: (fn: () => void, ms: unknown) => number;
   setTimeout: (fn: () => void, ms: unknown) => number;
   addEventListener: (target: EventTarget, type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => void;
@@ -136,9 +136,33 @@ function pluginPanelRegistry():PluginPanelRegistry{
           },
         },
         events:{
-          subscribe:(eventName:string,listener:(event:unknown)=>void)=>{
+          subscribe:(eventName:string,listener:(event:unknown)=>void,options:WebuiRecord={})=>{
             const pluginId=surface.dataset.pluginId||'';
             if(!pluginId)throw new Error('Plugin panel has no plugin id.');
+            const requestPath=('/api/plugins/'+encodeURIComponent(pluginId)+'/events') as `/api/plugins/${string}/events`;
+            const peerId=String(options.peerId||surface.dataset.pluginPeerId||'local');
+            if(peerId&&peerId!=='local'){
+              let closed=false;
+              const intervalMs=Math.max(1000,Number(options.intervalMs)||2000);
+              const emit=(value:unknown)=>{
+                if(closed)return;
+                listener(value);
+              };
+              const poll=()=>{void (async()=>{
+                if(closed)return;
+                try{
+                  const payload=await apiPeer(peerId,requestPath,{method:'GET'});
+                  emit(payload);
+                }catch(error){
+                  emit({error:error instanceof Error?error.message:String(error)});
+                }
+              })()};
+              poll();
+              const id=window.setInterval(poll,intervalMs);
+              const close=()=>{if(closed)return;closed=true;window.clearInterval(id)};
+              cleanup.push(close);
+              return{close};
+            }
             const source=new EventSource('/api/plugins/'+encodeURIComponent(pluginId)+'/events');
             const handler=(event:MessageEvent)=>{
               try{listener(JSON.parse(event.data))}catch{listener(event.data)}

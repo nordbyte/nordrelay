@@ -1,6 +1,6 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 
 import { PluginInstaller } from "./plugin-installer.js";
 import { hashManifest } from "./plugin-integrity.js";
@@ -99,11 +99,17 @@ const DEFAULT_PLUGIN_TIMEOUT_MS = 120_000;
 const DEFAULT_OUTPUT_LIMIT_BYTES = 1024 * 1024;
 const DEFAULT_WEB_PANEL_OUTPUT_LIMIT_BYTES = 4 * 1024 * 1024;
 const KNOWN_PLUGIN_PERMISSIONS = new Set<string>(PLUGIN_RUNTIME_PERMISSIONS);
-const PLUGIN_JOBS = new Map<string, PluginJobRecord[]>();
+const RUNNING_PLUGIN_JOBS = new Map<string, { controller: AbortController }>();
+
+interface PluginRunOptions {
+  signal?: AbortSignal;
+  onChild?: (child: ChildProcessWithoutNullStreams) => void;
+}
 
 export class PluginService {
   readonly store: PluginStore;
   private readonly installer: PluginInstaller;
+  private jobsRecovered = false;
 
   constructor(private readonly home: string, private readonly options: PluginServiceOptions = {}) {
     this.store = new PluginStore(home);
@@ -391,14 +397,16 @@ export class PluginService {
   }
 
   async listJobs(pluginId?: string): Promise<PluginJobRecord[]> {
-    const jobs = PLUGIN_JOBS.get(this.home) ?? [];
+    await this.recoverInterruptedJobs();
+    const jobs = await this.store.listJobs(pluginId);
     return (pluginId ? jobs.filter((job) => job.pluginId === pluginId) : jobs)
       .slice()
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   async getJob(pluginId: string, jobId: string): Promise<PluginJobRecord | undefined> {
-    return (await this.listJobs(pluginId)).find((job) => job.id === jobId);
+    await this.recoverInterruptedJobs();
+    return this.store.getJob(pluginId, jobId);
   }
 
   async startCommandJob(pluginId: string, command: string, input: Record<string, unknown>): Promise<PluginJobRecord> {
@@ -414,9 +422,8 @@ export class PluginService {
       logs: [{ timestamp: new Date().toISOString(), level: "info", message: "Job queued." }],
       createdAt: new Date().toISOString(),
     };
-    const jobs = PLUGIN_JOBS.get(this.home) ?? [];
-    jobs.unshift(job);
-    PLUGIN_JOBS.set(this.home, jobs.slice(0, 200));
+    await this.recoverInterruptedJobs();
+    await this.store.upsertJob(job);
     void this.runCommandJob(job);
     return { ...job, logs: [...job.logs] };
   }
@@ -425,36 +432,80 @@ export class PluginService {
     const job = await this.getJob(pluginId, jobId);
     if (!job) throw new Error(`Plugin job not found: ${jobId}`);
     job.cancelRequested = true;
+    const running = RUNNING_PLUGIN_JOBS.get(pluginJobKey(this.home, job.id));
+    if (running) running.controller.abort();
     if (job.status === "queued" || job.status === "running") {
       job.status = "cancelled";
       job.finishedAt = new Date().toISOString();
       job.logs.push({ timestamp: job.finishedAt, level: "warn", message: "Cancellation requested." });
     }
-    return { ...job, logs: [...job.logs] };
+    const persisted = await this.store.upsertJob(job);
+    return { ...persisted, logs: [...persisted.logs] };
   }
 
   private async runCommandJob(job: PluginJobRecord): Promise<void> {
+    const latest = await this.store.getJob(job.pluginId, job.id);
+    if (latest) Object.assign(job, latest);
+    if (job.cancelRequested || job.status === "cancelled") {
+      job.status = "cancelled";
+      job.finishedAt = job.finishedAt ?? new Date().toISOString();
+      await this.store.upsertJob(job);
+      return;
+    }
+    const controller = new AbortController();
+    RUNNING_PLUGIN_JOBS.set(pluginJobKey(this.home, job.id), { controller });
     job.status = "running";
     job.startedAt = new Date().toISOString();
     job.logs.push({ timestamp: job.startedAt, level: "info", message: "Job started." });
+    await this.store.upsertJob(job);
     try {
       if (job.cancelRequested) {
         job.status = "cancelled";
+        job.finishedAt = new Date().toISOString();
+        await this.store.upsertJob(job);
         return;
       }
-      const result = await this.invokeCommand(job.pluginId, job.command ?? "", job.input);
+      const result = await this.invokeCapability(job.pluginId, "command", job.command ?? "", job.input, { signal: controller.signal });
       job.result = result;
-      job.status = result.ok === false ? "failed" : "completed";
+      job.cancelRequested = job.cancelRequested || controller.signal.aborted || result.cancelled || undefined;
+      job.status = controller.signal.aborted || result.cancelled || job.cancelRequested ? "cancelled" : result.ok === false ? "failed" : "completed";
       job.finishedAt = new Date().toISOString();
       job.logs.push({
         timestamp: job.finishedAt,
-        level: result.ok === false ? "error" : "info",
-        message: result.ok === false ? result.stderr ?? "Plugin command failed." : "Job completed.",
+        level: job.status === "cancelled" ? "warn" : result.ok === false ? "error" : "info",
+        message: job.status === "cancelled" ? "Job cancelled." : result.ok === false ? result.stderr ?? "Plugin command failed." : "Job completed.",
       });
     } catch (error) {
-      job.status = "failed";
+      job.status = controller.signal.aborted || job.cancelRequested ? "cancelled" : "failed";
       job.finishedAt = new Date().toISOString();
-      job.logs.push({ timestamp: job.finishedAt, level: "error", message: error instanceof Error ? error.message : String(error) });
+      job.logs.push({
+        timestamp: job.finishedAt,
+        level: job.status === "cancelled" ? "warn" : "error",
+        message: job.status === "cancelled" ? "Job cancelled." : error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      RUNNING_PLUGIN_JOBS.delete(pluginJobKey(this.home, job.id));
+      await this.store.upsertJob(job);
+    }
+  }
+
+  private async recoverInterruptedJobs(): Promise<void> {
+    if (this.jobsRecovered) return;
+    this.jobsRecovered = true;
+    const payload = await this.store.readJobs();
+    let changed = false;
+    const now = new Date().toISOString();
+    for (const job of payload.jobs) {
+      if ((job.status === "queued" || job.status === "running") && !RUNNING_PLUGIN_JOBS.has(pluginJobKey(this.home, job.id))) {
+        job.status = "failed";
+        job.finishedAt = job.finishedAt ?? now;
+        job.logs = Array.isArray(job.logs) ? job.logs : [];
+        job.logs.push({ timestamp: now, level: "error", message: "Job interrupted by NordRelay restart." });
+        changed = true;
+      }
+    }
+    if (changed) {
+      await this.store.writeJobs(payload);
     }
   }
 
@@ -510,6 +561,7 @@ export class PluginService {
     type: PluginCapabilityType,
     capabilityId: string,
     input: Record<string, unknown>,
+    runOptions: PluginRunOptions = {},
   ): Promise<PluginInvokeResult> {
     this.assertEnabled();
     const plugin = await this.requireEnabledPlugin(pluginId);
@@ -550,6 +602,7 @@ export class PluginService {
       dataDir,
       timeoutMs: capability.timeoutMs ?? this.options.defaultTimeoutMs ?? DEFAULT_PLUGIN_TIMEOUT_MS,
       outputLimitBytes: this.options.outputLimitBytes ?? (type === "web-panel" ? DEFAULT_WEB_PANEL_OUTPUT_LIMIT_BYTES : DEFAULT_OUTPUT_LIMIT_BYTES),
+      ...runOptions,
     });
     const durationMs = Date.now() - startedMs;
     const normalizedResult = normalizePluginResult(result);
@@ -558,8 +611,10 @@ export class PluginService {
       variables: mergeOutputVariables(normalizedResult, capability.outputVariables),
       durationMs,
     };
-    await this.recordInvocation(plugin, normalized, startedAt, new Date().toISOString(), durationMs);
-    await this.log(pluginId, `${type} ${capabilityId} completed: ${normalized.ok ? "ok" : "failed"} (${durationMs}ms).`);
+    if (!normalized.cancelled) {
+      await this.recordInvocation(plugin, normalized, startedAt, new Date().toISOString(), durationMs);
+    }
+    await this.log(pluginId, `${type} ${capabilityId} completed: ${normalized.cancelled ? "cancelled" : normalized.ok ? "ok" : "failed"} (${durationMs}ms).`);
     return normalized;
   }
 
@@ -733,9 +788,13 @@ function coerceSettingValue(type: string, value: unknown): unknown {
 function runPlugin(
   entry: string,
   payload: PluginInvokeRequest,
-  options: { pluginId: string; dataDir: string; timeoutMs: number; outputLimitBytes: number },
+  options: { pluginId: string; dataDir: string; timeoutMs: number; outputLimitBytes: number; signal?: AbortSignal; onChild?: (child: ChildProcessWithoutNullStreams) => void },
 ): Promise<PluginInvokeResult> {
   return new Promise((resolve) => {
+    if (options.signal?.aborted) {
+      resolve({ ok: false, stderr: "Plugin job cancelled.", cancelled: true, exitCode: null });
+      return;
+    }
     let settled = false;
     let stdout = "";
     let stderr = "";
@@ -745,36 +804,47 @@ function runPlugin(
       shell: false,
       env: safePluginEnv(options.pluginId, options.dataDir),
     });
+    options.onChild?.(child);
+    let timeout: NodeJS.Timeout | undefined;
+    let killTimer: NodeJS.Timeout | undefined;
+    const forceKillSoon = () => {
+      killTimer = setTimeout(() => child.kill("SIGKILL"), 1000);
+      killTimer.unref?.();
+    };
+    const terminate = (message: string, extra: Partial<PluginInvokeResult> = {}) => {
+      if (settled) return;
+      if (!child.killed) child.kill("SIGTERM");
+      forceKillSoon();
+      finish({ ok: false, stderr: `${stderr}\n${message}`.trim(), exitCode: null, ...extra });
+    };
+    const abortHandler = () => terminate("Plugin job cancelled.", { cancelled: true });
+    options.signal?.addEventListener("abort", abortHandler, { once: true });
     const finish = (result: PluginInvokeResult) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
+      options.signal?.removeEventListener("abort", abortHandler);
       resolve({
         ...result,
         stdout,
         stderr: result.stderr ?? stderr,
       });
     };
-    const timeout = setTimeout(() => {
-      child.kill("SIGTERM");
-      const killTimer = setTimeout(() => child.kill("SIGKILL"), 1000);
-      killTimer.unref?.();
-      finish({ ok: false, stderr: `${stderr}\nPlugin timed out.`.trim(), timedOut: true, exitCode: null });
+    timeout = setTimeout(() => {
+      terminate("Plugin timed out.", { timedOut: true });
     }, Math.max(100, options.timeoutMs));
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
       stdout = appendLimited(stdout, chunk, options.outputLimitBytes);
       if (stdout.length >= options.outputLimitBytes) {
-        child.kill("SIGTERM");
-        finish({ ok: false, stderr: "Plugin stdout exceeded output limit.", exitCode: null });
+        terminate("Plugin stdout exceeded output limit.");
       }
     });
     child.stderr.on("data", (chunk) => {
       stderr = appendLimited(stderr, chunk, options.outputLimitBytes);
       if (stderr.length >= options.outputLimitBytes) {
-        child.kill("SIGTERM");
-        finish({ ok: false, stderr: "Plugin stderr exceeded output limit.", exitCode: null });
+        terminate("Plugin stderr exceeded output limit.");
       }
     });
     child.on("error", (error) => {
@@ -790,6 +860,10 @@ function runPlugin(
     });
     child.stdin.end(`${JSON.stringify(payload)}\n`);
   });
+}
+
+function pluginJobKey(home: string, jobId: string): string {
+  return `${home}\0${jobId}`;
 }
 
 function parsePluginOutput(stdout: string, stderr: string, exitCode: number | null): PluginInvokeResult {
