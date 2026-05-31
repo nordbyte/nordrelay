@@ -232,7 +232,7 @@ function renderPluginMarketplace(){
 function pluginMarketplaceRow(entry){
   const installed=marketplaceInstalledPlugin(entry);
   const versionState=marketplaceVersionState(installed,entry);
-  const status=installed?(installed.enabled?uiBadge('installed · enabled','enabled'):uiBadge('installed','disabled')):uiBadge('available','disabled');
+  const status=installed?uiBadge('installed',installed.enabled?'enabled':'disabled'):uiBadge('available','disabled');
   const trust=[
     uiBadge(entry.trustLevel||'community',entry.trustLevel==='official'||entry.trustLevel==='verified'?'enabled':entry.trustLevel==='untrusted'?'failed':'warning'),
     entry.approved?uiBadge('approved','enabled'):'',
@@ -249,7 +249,7 @@ function pluginMarketplaceRow(entry){
   ].filter(Boolean).join('');
   return '<tr>'+
     pluginCell('Status',status,'status-cell')+
-    pluginCell('Plugin','<span class="truncate-cell" title="'+attr(entry.name||entry.id)+'">'+esc(entry.name||entry.id)+'</span><small>'+esc(entry.id||'-')+'</small><div class="row">'+trust+'</div>'+(tags?'<div class="row">'+tags+'</div>':''),'primary-cell')+
+    pluginCell('Plugin','<span class="truncate-cell" title="'+attr(entry.name||entry.id)+'">'+esc(entry.name||entry.id)+'</span><div class="row">'+trust+'</div>'+(tags?'<div class="row">'+tags+'</div>':''),'primary-cell')+
     pluginCell('Category',esc(entry.category||'-'))+
     pluginCell('Installed',marketplaceInstalledCell(installed),'version-cell')+
     pluginCell('Latest',marketplaceLatestCell(entry,installed),'version-cell')+
@@ -264,14 +264,17 @@ function marketplaceDetailRow(label,value){
 }
 function marketplaceDetailList(title,values){
   const list=Array.isArray(values)?values:[];
-  return '<details class="workflow-run-timeline" open><summary>'+esc(title+' ('+list.length+')')+'</summary>'+(list.length?'<ul>'+list.map(value=>'<li>'+esc(String(value))+'</li>').join('')+'</ul>':uiEmpty('No entries.'))+'</details>';
+  const body=list.length
+    ? '<div class="marketplace-detail-values">'+list.map(value=>'<span class="chip">'+esc(String(value))+'</span>').join('')+'</div>'
+    : '<div class="marketplace-detail-empty">No entries.</div>';
+  return '<details class="marketplace-detail-section" open><summary><span>'+esc(title)+'</span><span class="adapter-status disabled">'+esc(String(list.length))+'</span></summary>'+body+'</details>';
 }
 function marketplaceRawDetails(entry,installed){
   const raw={
     marketplace:entry,
     installed:installed||null,
   };
-  return '<details class="workflow-run-timeline"><summary>Raw details</summary><pre class="log-view">'+esc(JSON.stringify(raw,null,2))+'</pre></details>';
+  return '<details class="marketplace-detail-section marketplace-detail-section-wide"><summary><span>Raw details</span><span class="adapter-status disabled">JSON</span></summary><pre class="log-view">'+esc(JSON.stringify(raw,null,2))+'</pre></details>';
 }
 function openPluginMarketplaceInfoDialog(entryId){
   const entry=marketplaceEntryById(entryId);
@@ -307,12 +310,14 @@ function openPluginMarketplaceInfoDialog(entryId){
     ['Installed updated',installed?.updatedAt?fmtDate(installed.updatedAt):'-'],
   ];
   const table='<div class="data-table-wrap"><table class="data-table"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>'+rows.map(row=>marketplaceDetailRow(row[0],row[1])).join('')+'</tbody></table></div>';
-  const body='<div class="full-span">'+table+
-    marketplaceDetailList('Permissions',entry.permissions||[])+
-    marketplaceDetailList('Capabilities',entry.capabilities||[])+
-    marketplaceDetailList('Tags',entry.tags||[])+
-    (installed?marketplaceDetailList('Approved permissions',installed.approvedPermissions||[]):'')+
-    marketplaceRawDetails(entry,installed)+
+  const body='<div class="full-span marketplace-detail-stack">'+table+
+    '<div class="marketplace-detail-grid">'+
+      marketplaceDetailList('Permissions',entry.permissions||[])+
+      marketplaceDetailList('Capabilities',entry.capabilities||[])+
+      marketplaceDetailList('Tags',entry.tags||[])+
+      (installed?marketplaceDetailList('Approved permissions',installed.approvedPermissions||[]):'')+
+      marketplaceRawDetails(entry,installed)+
+    '</div>'+
     '</div>';
   adminDialog('Marketplace plugin: '+(entry.name||entry.id),body,async()=>{}, {submitText:'Close',reloadAccess:false});
 }

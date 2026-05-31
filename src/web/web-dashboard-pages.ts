@@ -572,7 +572,7 @@ ${faviconLinks}
             <div class="plugin-tab-heading">
               <div class="row plugin-heading-actions"><button id="reloadPluginMarketplaceBtn" class="secondary">Refresh marketplace</button></div>
             </div>
-            <div class="callout muted">Install official or approved plugins on the selected node. Marketplace installs use the same permission checks and audit log as manual plugin installs.</div>
+            <div class="callout muted plugin-marketplace-intro">Install official or approved plugins on the selected node. Marketplace installs use the same permission checks and audit log as manual plugin installs.</div>
             <div id="pluginMarketplace" class="sessions-table-host"></div>
             <div id="pluginMarketplaceResult" class="list"></div>
           </div>
