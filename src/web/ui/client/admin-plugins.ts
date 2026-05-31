@@ -120,22 +120,23 @@ function renderPluginList(){
     renderItem:plugin=>pluginRow(plugin),
     initialCount:30,
     batchSize:60,
-    onDone:root=>{bindPluginButtons(root);applyPermissions()},
+    onDone:root=>{bindTableActionMenus(root);bindPluginButtons(root);applyPermissions()},
   });
 }
 function pluginRow(plugin){
   const status=plugin.enabled?uiBadge('enabled','enabled'):uiBadge(plugin.status||'disabled','disabled');
   const source=plugin.source?.type==='github'?(plugin.source.value+(plugin.source.ref?'#'+plugin.source.ref:'')):(plugin.source?.value||plugin.installPath||'-');
   const pendingPermissions=(plugin.permissions||[]).filter(permission=>!(plugin.approvedPermissions||[]).includes(permission));
-  const permissions=((plugin.permissions||[]).join(', ')||'none')+(pendingPermissions.length?' · pending approval: '+pendingPermissions.join(', '):'');
-  const capabilities=pluginCapabilitiesSummary(plugin);
   const runtime=pluginMetricsSummary(plugin);
   const updateCheck=state.pluginUpdateChecks?.[plugin.id];
   const updateBadge=updateCheck?uiBadge(updateCheck.error?'check failed':updateCheck.updateAvailable?'update available':'current',updateCheck.error?'failed':updateCheck.updateAvailable?'warning':'enabled'):'';
   const trust=uiBadge(plugin.trustLevel||'untrusted',plugin.trustLevel==='official'||plugin.trustLevel==='verified'?'enabled':plugin.trustLevel==='local'?'disabled':'warning');
   const signature=plugin.signature?.status?uiBadge(plugin.signature.status,plugin.signature.status==='verified'?'enabled':plugin.signature.status==='invalid'?'failed':'warning'):'';
-  const actions=[
+  const visibleActions=[
+    uiButton('Info',{mini:true,variant:'secondary',data:{pluginInfo:plugin.id}}),
     plugin.enabled?uiButton('Disable',{mini:true,variant:'secondary',data:{pluginDisable:plugin.id},permission:'plugins.enable'}):uiButton('Enable',{mini:true,data:{pluginEnable:plugin.id},permission:'plugins.enable'}),
+  ].filter(Boolean).join('');
+  const moreActions=[
     uiButton('Settings',{mini:true,variant:'secondary',data:{pluginSettings:plugin.id},permission:'plugins.settings.write'}),
     uiButton('Log',{mini:true,variant:'secondary',data:{pluginLog:plugin.id}}),
     uiButton('Reload',{mini:true,variant:'secondary',data:{pluginReload:plugin.id},permission:'plugins.install'}),
@@ -143,19 +144,44 @@ function pluginRow(plugin){
     uiButton('Update',{mini:true,variant:'secondary',data:{pluginUpdate:plugin.id},permission:'plugins.install'}),
     uiButton('Rollback',{mini:true,variant:'secondary',data:{pluginRollback:plugin.id},permission:'plugins.install'}),
     uiButton('Remove',{mini:true,variant:'danger',data:{pluginRemove:plugin.id},permission:'plugins.install'}),
-  ].join('');
+  ];
+  const actions=visibleActions+tableActionMenuHtml(moreActions,{id:plugin.id,className:'plugin-action-menu',panelClassName:'plugin-action-menu-panel'});
   return '<tr>'+
     pluginCell('Status',status,'status-cell')+
     pluginCell('Plugin','<span class="truncate-cell" title="'+attr(plugin.name||plugin.id)+'">'+esc(plugin.name||plugin.id)+'</span><small>'+esc(plugin.id||'-')+'</small><div class="row">'+trust+signature+'</div>','primary-cell')+
     pluginCell('Version',esc(plugin.version||'-')+(updateBadge?'<br>'+updateBadge:''))+
     pluginCell('Runtime','<span class="truncate-cell" title="'+attr(runtime)+'">'+esc(runtime)+'</span>')+
     pluginCell('Source','<span class="truncate-cell" title="'+attr(source)+'">'+esc(short(source,160))+'</span>')+
-    pluginCell('Permissions','<span class="truncate-cell" title="'+attr(permissions)+'">'+esc(short(permissions,120))+'</span>')+
-    pluginCell('Capabilities','<span class="truncate-cell" title="'+attr(capabilities)+'">'+esc(short(capabilities,140))+'</span>')+
+    pluginCell('Permissions',pluginPermissionsCountCell(plugin.permissions||[],pendingPermissions))+
+    pluginCell('Capabilities',pluginCapabilitiesCountCell(plugin))+
     pluginCell('Actions','<div class="data-table-actions">'+actions+'</div>','actions-cell')+
   '</tr>';
 }
 function pluginCell(label,html,cls=''){return '<td data-label="'+attr(label)+'"'+(cls?' class="'+attr(cls)+'"':'')+'>'+html+'</td>'}
+function pluginPermissionsCountCell(permissions,pendingPermissions=[]){
+  const permissionList=Array.isArray(permissions)?permissions:[];
+  const pending=Array.isArray(pendingPermissions)?pendingPermissions:[];
+  const count=permissionList.length;
+  const text=count+' permission'+(count===1?'':'s');
+  const title=(permissionList.join(', ')||'none')+(pending.length?' · pending approval: '+pending.join(', '):'');
+  return '<span class="truncate-cell" title="'+attr(title)+'">'+esc(text)+'</span>'+(pending.length?'<br>'+uiBadge(String(pending.length)+' pending','warning'):'');
+}
+function pluginCapabilitiesList(plugin){
+  const c=plugin.capabilities||{};
+  const list=[];
+  for(const command of Array.isArray(c.commands)?c.commands:[])list.push('command: '+(command.name||command.command||command.id||'command'));
+  for(const action of Array.isArray(c.workflowActions)?c.workflowActions:[])list.push('workflow action: '+(action.actionId||action.id||action.title||'action'));
+  for(const panel of Array.isArray(c.webPanels)?c.webPanels:[])list.push('web panel: '+(panel.panelId||panel.id||panel.title||'panel')+(panel.allowClientScript?' (trusted UI script)':''));
+  for(const adapter of Array.isArray(c.agentAdapters)?c.agentAdapters:[])list.push('agent adapter: '+(adapter.id||adapter.title||'adapter'));
+  for(const adapter of Array.isArray(c.chatAdapters)?c.chatAdapters:[])list.push('chat adapter: '+(adapter.id||adapter.title||'adapter'));
+  for(const handler of Array.isArray(c.artifactHandlers)?c.artifactHandlers:[])list.push('artifact handler: '+(handler.id||handler.title||'handler'));
+  for(const collector of Array.isArray(c.collectors)?c.collectors:[])list.push('collector: '+(collector.collectorId||collector.id||collector.title||'collector'));
+  if(c.diagnostics)list.push('diagnostics');
+  return list;
+}
+function pluginCapabilitiesCountCell(plugin){
+  return marketplaceCountCell(pluginCapabilitiesList(plugin),'capability');
+}
 function pluginCapabilitiesSummary(plugin){
   const c=plugin.capabilities||{};
   const clientScripts=(Array.isArray(c.webPanels)?c.webPanels:[]).filter(panel=>panel.allowClientScript).length;
@@ -276,6 +302,43 @@ function marketplaceRawDetails(entry,installed){
   };
   return '<details class="marketplace-detail-section marketplace-detail-section-wide"><summary><span>Raw details</span><span class="adapter-status disabled">JSON</span></summary><pre class="log-view">'+esc(JSON.stringify(raw,null,2))+'</pre></details>';
 }
+function pluginRawDetails(plugin){
+  return '<details class="marketplace-detail-section marketplace-detail-section-wide"><summary><span>Raw details</span><span class="adapter-status disabled">JSON</span></summary><pre class="log-view">'+esc(JSON.stringify(plugin,null,2))+'</pre></details>';
+}
+function openPluginInfoDialog(pluginId){
+  const plugin=pluginById(pluginId) as WebuiRecord|null;
+  if(!plugin)return;
+  const sourceMeta=plugin.source&&typeof plugin.source==='object'&&!Array.isArray(plugin.source)?plugin.source as WebuiRecord:null;
+  const source=sourceMeta?.type==='github'?(sourceMeta.value+(sourceMeta.ref?'#'+sourceMeta.ref:'')):(sourceMeta?.value||plugin.installPath||'-');
+  const permissions=Array.isArray(plugin.permissions)?plugin.permissions.map(String):[];
+  const approvedPermissions=Array.isArray(plugin.approvedPermissions)?plugin.approvedPermissions.map(String):[];
+  const pendingPermissions=permissions.filter(permission=>!approvedPermissions.includes(permission));
+  const signature=plugin.signature&&typeof plugin.signature==='object'&&!Array.isArray(plugin.signature)?plugin.signature as WebuiRecord:null;
+  const rows=[
+    ['ID',plugin.id],
+    ['Name',plugin.name||plugin.id],
+    ['Description',plugin.description||'-'],
+    ['Status',plugin.enabled?'enabled':(plugin.status||'disabled')],
+    ['Version',plugin.version||'-'],
+    ['Runtime',pluginMetricsSummary(plugin)],
+    ['Source',source],
+    ['Install path',plugin.installPath||'-'],
+    ['Trust level',plugin.trustLevel||'-'],
+    ['Signature',signature?.status||'-'],
+    ['Updated',plugin.updatedAt?fmtDate(plugin.updatedAt):'-'],
+  ];
+  const table='<div class="data-table-wrap"><table class="data-table"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>'+rows.map(row=>marketplaceDetailRow(row[0],row[1])).join('')+'</tbody></table></div>';
+  const body='<div class="full-span marketplace-detail-stack">'+table+
+    '<div class="marketplace-detail-grid">'+
+      marketplaceDetailList('Permissions',permissions)+
+      marketplaceDetailList('Approved permissions',approvedPermissions)+
+      marketplaceDetailList('Pending permissions',pendingPermissions)+
+      marketplaceDetailList('Capabilities',pluginCapabilitiesList(plugin))+
+      pluginRawDetails(plugin)+
+    '</div>'+
+    '</div>';
+  adminDialog('Plugin: '+(plugin.name||plugin.id),body,async()=>{}, {submitText:'Close',reloadAccess:false});
+}
 function openPluginMarketplaceInfoDialog(entryId){
   const entry=marketplaceEntryById(entryId);
   if(!entry)return;
@@ -351,6 +414,7 @@ function renderPluginLogSelect(){
   if(current)select.value=current;
 }
 function bindPluginButtons(root:Element|Document=document){
+  bindTableActionMenus(root);
   bindUiCopyButtons(root);
   root.querySelectorAll?.('[data-plugin-enable]').forEach(b=>b.onclick=()=>safe(async()=>{await api('/api/plugins/'+encodeURIComponent(b.dataset.pluginEnable)+'/enable',{method:'POST',body:JSON.stringify({})});toast('Plugin enabled');await loadPlugins()}));
   root.querySelectorAll?.('[data-plugin-disable]').forEach(b=>b.onclick=()=>safe(async()=>{await api('/api/plugins/'+encodeURIComponent(b.dataset.pluginDisable)+'/disable',{method:'POST',body:JSON.stringify({})});toast('Plugin disabled');await loadPlugins()}));
@@ -379,6 +443,7 @@ function bindPluginButtons(root:Element|Document=document){
   }));
   root.querySelectorAll?.('[data-plugin-rollback]').forEach(b=>b.onclick=()=>safe(async()=>{const id=b.dataset.pluginRollback;const version=prompt('Rollback to version (leave empty for previous installed version):','')||'';await api('/api/plugins/'+encodeURIComponent(id)+'/rollback',{method:'POST',body:JSON.stringify({version:version.trim()||undefined})});toast('Plugin rolled back');await loadPlugins()}));
   root.querySelectorAll?.('[data-plugin-settings]').forEach(b=>b.onclick=()=>openPluginSettingsDialog(b.dataset.pluginSettings));
+  root.querySelectorAll?.('[data-plugin-info]').forEach(b=>b.onclick=()=>openPluginInfoDialog(b.dataset.pluginInfo));
   root.querySelectorAll?.('[data-plugin-log]').forEach(b=>b.onclick=()=>{state.pluginTab='logs';switchPluginTab('logs');const select=document.getElementById('pluginLogSelect');if(select)select.value=b.dataset.pluginLog;safe(loadPluginLog)});
   root.querySelectorAll?.('[data-plugin-panel-open]').forEach(b=>b.onclick=()=>safe(()=>openPluginPanelDirect(b.dataset.pluginPanelOpen,b.dataset.pluginPanelId)));
   root.querySelectorAll?.('[data-plugin-capability]').forEach(b=>b.onclick=()=>openPluginCapabilityDialog(b.dataset.pluginCapability,b.dataset.pluginCapabilityType,b.dataset.pluginCapabilityId));
