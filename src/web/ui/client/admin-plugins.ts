@@ -764,6 +764,39 @@ function openPluginSettingsDialog(pluginId){
     await loadPlugins();
   },{submitText:'Save settings',reloadAccess:false});
 }
+function pluginInstallFormHtml(){
+  return '<div class="full-span plugin-install-dialog">'+
+    '<div class="settings-grid compact-settings-grid">'+
+      '<label><span>Source</span><input id="pluginInstallSource" placeholder="github:owner/repo, https://github.com/owner/repo, npm:@scope/pkg, or local path"></label>'+
+      '<label><span>Git ref</span><input id="pluginInstallRef" placeholder="Optional branch, tag, or commit"></label>'+
+      '<label><span>Trust level</span><select id="pluginInstallTrust"><option value="">Auto</option><option value="official">Official</option><option value="verified">Verified</option><option value="community">Community</option><option value="local">Local</option><option value="untrusted">Untrusted</option></select></label>'+
+      '<label><span>Expected manifest hash</span><input id="pluginInstallManifestHash" placeholder="Optional sha256"></label>'+
+      '<label><span>Expected package hash</span><input id="pluginInstallPackageHash" placeholder="Optional sha256"></label>'+
+      '<label class="full-span"><span>Signature public key</span><textarea id="pluginInstallSignatureKey" rows="4" placeholder="Optional Ed25519 public key PEM"></textarea></label>'+
+      '<label class="checkbox"><input id="pluginInstallEnable" type="checkbox"> Enable after install</label>'+
+      '<label class="checkbox"><input id="pluginInstallApprove" type="checkbox"> Approve declared permissions</label>'+
+      '<label class="checkbox"><input id="pluginInstallRequireSignature" type="checkbox"> Require valid manifest signature</label>'+
+      '<label class="checkbox"><input id="pluginInstallForce" type="checkbox"> Force reinstall same version</label>'+
+      '<label class="checkbox"><input id="pluginInstallAllPeers" type="checkbox"> Install on all enabled peers</label>'+
+    '</div>'+
+    '<div class="row plugin-install-dialog-actions"><button type="button" id="validatePluginSourceBtn" class="secondary">Validate local path</button></div>'+
+    '<div id="pluginInstallResult" class="list"></div>'+
+  '</div>';
+}
+function setPluginInstallResult(html){
+  const modalTarget=document.getElementById('pluginInstallResult');
+  if(modalTarget)modalTarget.innerHTML=html;
+  const pageTarget=document.getElementById('pluginMarketplaceResult');
+  if(pageTarget)pageTarget.innerHTML=html;
+}
+function openPluginInstallDialog(){
+  adminDialog('Install plugin',pluginInstallFormHtml(),async()=>{
+    await installPluginFromForm();
+  },{submitText:'Install plugin',reloadAccess:false});
+  const validate=document.getElementById('validatePluginSourceBtn');
+  if(validate)validate.onclick=()=>safe(validatePluginSource);
+  applyPermissions();
+}
 async function installPluginFromForm(){
   const source=val('pluginInstallSource');
   if(!source)throw new Error('Plugin source is required.');
@@ -783,13 +816,13 @@ async function installPluginFromForm(){
   const allPeers=document.getElementById('pluginInstallAllPeers')?.checked===true;
   if(allPeers){
     const results=await installPluginOnAllTargets(payload);
-    document.getElementById('pluginInstallResult').innerHTML=renderPluginInstallResults(results);
+    setPluginInstallResult(renderPluginInstallResults(results));
     toast('Plugin install completed on '+results.length+' node(s)');
     await loadPlugins();
     return;
   }
   const result=await api('/api/plugins',{method:'POST',body:JSON.stringify(payload)});
-  document.getElementById('pluginInstallResult').innerHTML=uiItem('Installed '+(result.name||result.id),{badge:{text:result.enabled?'enabled':'disabled',status:result.enabled?'enabled':'disabled'},rows:[['Node',headerTargetName(state.selectedPeer||'local')],['ID',result.id],['Version',result.version],['Permissions',(result.permissions||[]).join(', ')||'none']]});
+  setPluginInstallResult(uiItem('Installed '+(result.name||result.id),{badge:{text:result.enabled?'enabled':'disabled',status:result.enabled?'enabled':'disabled'},rows:[['Node',headerTargetName(state.selectedPeer||'local')],['ID',result.id],['Version',result.version],['Permissions',(result.permissions||[]).join(', ')||'none']]}));
   toast('Plugin installed');
   await loadPlugins();
 }
@@ -825,14 +858,14 @@ async function validatePluginSource(){
   const source=val('pluginInstallSource');
   if(!source)throw new Error('Local plugin path is required.');
   const result=await api('/api/plugins/validate',{method:'POST',body:JSON.stringify({source})});
-  document.getElementById('pluginInstallResult').innerHTML=uiItem(result.ok?'Manifest is valid':'Manifest has issues',{badge:{text:result.ok?'valid':'invalid',status:result.ok?'enabled':'disabled'},body:(result.issues||[]).map(issue=>'<small>'+esc(issue.level.toUpperCase()+': '+issue.message)+'</small>').join('')});
+  setPluginInstallResult(uiItem(result.ok?'Manifest is valid':'Manifest has issues',{badge:{text:result.ok?'valid':'invalid',status:result.ok?'enabled':'disabled'},body:(result.issues||[]).map(issue=>'<small>'+esc(issue.level.toUpperCase()+': '+issue.message)+'</small>').join('')}));
 }
 async function createPluginScaffold(){
   const pathValue=val('pluginScaffoldDir');
   const id=val('pluginScaffoldId');
   if(!pathValue||!id)throw new Error('Target directory and plugin id are required.');
   const result=await api('/api/plugins/scaffold',{method:'POST',local:true,body:JSON.stringify({targetDir:pathValue,id,name:val('pluginScaffoldName')||undefined,description:val('pluginScaffoldDescription')||undefined})});
-  document.getElementById('pluginDeveloperResult').innerHTML=uiItem('Plugin scaffold created',{rows:[['Path',result.path]],body:'<small>Validate or install this path from the Install tab.</small>'});
+  document.getElementById('pluginDeveloperResult').innerHTML=uiItem('Plugin scaffold created',{rows:[['Path',result.path]],body:'<small>Validate or install this path from the Marketplace install dialog.</small>'});
   toast('Plugin scaffold created');
 }
 async function loadPluginLog(){
@@ -876,7 +909,6 @@ document.getElementById('reloadPluginMarketplaceBtn').onclick=()=>safe(async()=>
 document.getElementById('reloadPluginCatalogBtn').onclick=()=>safe(loadPlugins);
 const reloadPluginPanelPageBtn=document.getElementById('reloadPluginPanelPageBtn');
 if(reloadPluginPanelPageBtn)reloadPluginPanelPageBtn.onclick=()=>safe(loadPluginPanelPage);
-document.getElementById('installPluginBtn').onclick=()=>safe(installPluginFromForm);
-document.getElementById('validatePluginSourceBtn').onclick=()=>safe(validatePluginSource);
+document.getElementById('openInstallPluginDialogBtn').onclick=()=>safe(openPluginInstallDialog);
 document.getElementById('createPluginScaffoldBtn').onclick=()=>safe(createPluginScaffold);
 document.getElementById('loadPluginLogBtn').onclick=()=>safe(loadPluginLog);

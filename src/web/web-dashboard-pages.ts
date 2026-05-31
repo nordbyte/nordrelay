@@ -555,7 +555,6 @@ ${faviconLinks}
             <div id="pluginTabs" class="section-tabs plugin-tabs" role="tablist" aria-label="Plugin sections">
               <button type="button" role="tab" aria-selected="true" tabindex="0" data-plugin-tab="installed" class="active">Installed</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="marketplace">Marketplace</button>
-              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="install">Install</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="catalog">Extension Catalog</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="developer">Developer</button>
               <button type="button" role="tab" aria-selected="false" tabindex="-1" data-plugin-tab="logs">Logs</button>
@@ -570,30 +569,11 @@ ${faviconLinks}
           </div>
           <div class="plugin-tab" data-plugin-tab-panel="marketplace">
             <div class="plugin-tab-heading">
-              <div class="row plugin-heading-actions"><button id="reloadPluginMarketplaceBtn" class="secondary">Refresh marketplace</button></div>
+              <div class="row plugin-heading-actions"><button id="reloadPluginMarketplaceBtn" class="secondary">Refresh marketplace</button><button id="openInstallPluginDialogBtn">Install plugin</button></div>
             </div>
             <div class="callout muted plugin-marketplace-intro">Install official or approved plugins on the selected node. Marketplace installs use the same permission checks and audit log as manual plugin installs.</div>
             <div id="pluginMarketplace" class="sessions-table-host"></div>
             <div id="pluginMarketplaceResult" class="list"></div>
-          </div>
-          <div class="plugin-tab" data-plugin-tab-panel="install">
-            <div class="plugin-tab-heading">
-              <div class="row plugin-heading-actions"><button id="installPluginBtn">Install plugin</button><button id="validatePluginSourceBtn" class="secondary">Validate local path</button></div>
-            </div>
-            <div class="settings-grid compact-settings-grid">
-              <label><span>Source</span><input id="pluginInstallSource" placeholder="github:owner/repo, https://github.com/owner/repo, npm:@scope/pkg, or local path"></label>
-              <label><span>Git ref</span><input id="pluginInstallRef" placeholder="Optional branch, tag, or commit"></label>
-              <label><span>Trust level</span><select id="pluginInstallTrust"><option value="">Auto</option><option value="official">Official</option><option value="verified">Verified</option><option value="community">Community</option><option value="local">Local</option><option value="untrusted">Untrusted</option></select></label>
-              <label><span>Expected manifest hash</span><input id="pluginInstallManifestHash" placeholder="Optional sha256"></label>
-              <label><span>Expected package hash</span><input id="pluginInstallPackageHash" placeholder="Optional sha256"></label>
-              <label class="full-span"><span>Signature public key</span><textarea id="pluginInstallSignatureKey" rows="4" placeholder="Optional Ed25519 public key PEM"></textarea></label>
-              <label class="checkbox"><input id="pluginInstallEnable" type="checkbox"> Enable after install</label>
-              <label class="checkbox"><input id="pluginInstallApprove" type="checkbox"> Approve declared permissions</label>
-              <label class="checkbox"><input id="pluginInstallRequireSignature" type="checkbox"> Require valid manifest signature</label>
-              <label class="checkbox"><input id="pluginInstallForce" type="checkbox"> Force reinstall same version</label>
-              <label class="checkbox"><input id="pluginInstallAllPeers" type="checkbox"> Install on all enabled peers</label>
-            </div>
-            <div id="pluginInstallResult" class="list"></div>
           </div>
           <div class="plugin-tab" data-plugin-tab-panel="catalog">
             <div class="plugin-tab-heading">

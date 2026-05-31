@@ -10,6 +10,8 @@
 .section-tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
 .access-tab-heading,.peer-tab-heading,.plugin-tab-heading,.workflow-tab-heading,.queue-tab-heading,.session-tab-heading,.monitor-tab-heading,.metrics-tab-heading,.diagnostics-tab-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0}
 .plugin-marketplace-intro{margin-top:8px}
+.plugin-install-dialog{display:grid;gap:12px}
+.plugin-install-dialog-actions{margin:0}
 .monitor-tab-heading{align-items:flex-start;justify-content:flex-start;flex-wrap:wrap}
 .monitor-filter-toggle{display:inline-flex;align-items:center;gap:6px;min-width:0}
 .monitor-filter-toggle .monitor-filter-arrow{display:inline-flex;align-items:center;justify-content:center;width:12px;transition:transform .15s ease}
