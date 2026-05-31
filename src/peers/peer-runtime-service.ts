@@ -18,7 +18,7 @@ import { PeerStore } from "./peer-store.js";
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
 import type { ActiveSessionsDto, QueuePlanDto, QueuePlannerSnapshotDto, RelayEvent, RelaySnapshot, SessionPageDto, TraceDetailDto, UnifiedJobDto, UnifiedJobsDto, WebDiagnosticsDto, WebTasksDto } from "../runtime/relay-runtime-types.js";
 import type { QueuePlanInput } from "../runtime/relay-runtime-queue-planner.js";
-import type { PluginTrustLevel } from "../plugins/plugin-types.js";
+import type { PluginJobRecord, PluginTrustLevel } from "../plugins/plugin-types.js";
 import { QUEUE_PLAN_STATUSES, type QueuePlanStatus } from "../state/queue-plan-store.js";
 import type { PromptTemplate, Workflow, WorkflowRun, WorkflowStep } from "../state/workflow-store.js";
 import type { WorktreeConflictResolution } from "../worktrees/worktree-types.js";
@@ -75,6 +75,20 @@ export class PeerRuntimeService {
           // If a scope check fails for an event, drop that event for this peer.
         });
     });
+  }
+
+  async subscribePluginEvents(
+    peer: PeerRecord,
+    pluginId: string,
+    send: (event: { type: string; pluginId: string; jobs?: PluginJobRecord[]; at: string }) => void,
+  ): Promise<() => void> {
+    this.assertScope(peer, "plugins.read");
+    const runtime = this.runtimeFor(peer, undefined);
+    const plugin = await runtime.pluginService.get(pluginId);
+    if (!plugin) {
+      throw new Error("Plugin not found.");
+    }
+    return runtime.pluginService.subscribeEvents(pluginId, send);
   }
 
   private async handleWebProxy(peer: PeerRecord, payload: PeerWebProxyPayload, actor?: WebActivityActor): Promise<unknown> {

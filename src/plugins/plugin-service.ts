@@ -1,6 +1,7 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { EventEmitter } from "node:events";
 
 import { PluginInstaller } from "./plugin-installer.js";
 import { hashManifest } from "./plugin-integrity.js";
@@ -109,6 +110,7 @@ interface PluginRunOptions {
 export class PluginService {
   readonly store: PluginStore;
   private readonly installer: PluginInstaller;
+  private readonly events = new EventEmitter();
   private jobsRecovered = false;
 
   constructor(private readonly home: string, private readonly options: PluginServiceOptions = {}) {
@@ -424,6 +426,7 @@ export class PluginService {
     };
     await this.recoverInterruptedJobs();
     await this.store.upsertJob(job);
+    this.emitJobs(job.pluginId);
     void this.runCommandJob(job);
     return { ...job, logs: [...job.logs] };
   }
@@ -440,7 +443,18 @@ export class PluginService {
       job.logs.push({ timestamp: job.finishedAt, level: "warn", message: "Cancellation requested." });
     }
     const persisted = await this.store.upsertJob(job);
+    this.emitJobs(pluginId);
     return { ...persisted, logs: [...persisted.logs] };
+  }
+
+  subscribeEvents(pluginId: string, listener: (event: { type: string; pluginId: string; jobs?: PluginJobRecord[]; at: string }) => void): () => void {
+    const eventName = pluginEventName(pluginId);
+    const handler = (event: { type: string; pluginId: string; jobs?: PluginJobRecord[]; at: string }) => listener(event);
+    this.events.on(eventName, handler);
+    void this.emitJobs(pluginId);
+    return () => {
+      this.events.off(eventName, handler);
+    };
   }
 
   private async runCommandJob(job: PluginJobRecord): Promise<void> {
@@ -450,6 +464,7 @@ export class PluginService {
       job.status = "cancelled";
       job.finishedAt = job.finishedAt ?? new Date().toISOString();
       await this.store.upsertJob(job);
+      this.emitJobs(job.pluginId);
       return;
     }
     const controller = new AbortController();
@@ -458,11 +473,13 @@ export class PluginService {
     job.startedAt = new Date().toISOString();
     job.logs.push({ timestamp: job.startedAt, level: "info", message: "Job started." });
     await this.store.upsertJob(job);
+    this.emitJobs(job.pluginId);
     try {
       if (job.cancelRequested) {
         job.status = "cancelled";
         job.finishedAt = new Date().toISOString();
         await this.store.upsertJob(job);
+        this.emitJobs(job.pluginId);
         return;
       }
       const result = await this.invokeCapability(job.pluginId, "command", job.command ?? "", job.input, { signal: controller.signal });
@@ -486,7 +503,24 @@ export class PluginService {
     } finally {
       RUNNING_PLUGIN_JOBS.delete(pluginJobKey(this.home, job.id));
       await this.store.upsertJob(job);
+      this.emitJobs(job.pluginId);
     }
+  }
+
+  private emitJobs(pluginId: string): void {
+    const eventName = pluginEventName(pluginId);
+    void this.store.listJobs(pluginId)
+      .then((jobs) => {
+        this.events.emit(eventName, {
+          type: "jobs",
+          pluginId,
+          jobs: jobs.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+          at: new Date().toISOString(),
+        });
+      })
+      .catch(() => {
+        // Event listeners are best-effort; API reads still expose the durable state.
+      });
   }
 
   private async recoverInterruptedJobs(): Promise<void> {
@@ -866,6 +900,10 @@ function pluginJobKey(home: string, jobId: string): string {
   return `${home}\0${jobId}`;
 }
 
+function pluginEventName(pluginId: string): string {
+  return `plugin:${pluginId}`;
+}
+
 function parsePluginOutput(stdout: string, stderr: string, exitCode: number | null): PluginInvokeResult {
   const trimmed = stdout.trim();
   if (!trimmed) {
@@ -956,7 +994,8 @@ function normalizePluginPanel(value: unknown): PluginInvokeResult["panel"] | und
   const html = extractPluginHtml(record.html);
   const script = stringField(record.script);
   const styles = stringField(record.styles);
-  return html || script || styles ? { html, script, styles } : undefined;
+  const ui = record.ui as NonNullable<PluginInvokeResult["panel"]>["ui"];
+  return html || script || styles || ui !== undefined ? { html, script, styles, ui } : undefined;
 }
 
 function mergeOutputVariables(result: PluginInvokeResult, mapping?: Record<string, string>): Record<string, string> | undefined {

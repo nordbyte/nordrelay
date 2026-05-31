@@ -185,6 +185,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function currentPluginPanelNonce");
     expect(js).toContain("function pluginPanelNonceAttr");
     expect(js).toContain("function pluginPanelHtmlFromResult");
+    expect(js).toContain("function pluginPanelUiHtml");
     expect(js).toContain("function pluginPanelLooseHtml");
     expect(js).toContain("function pluginPanelExtractEmbeddedHtml");
     expect(js).toContain("function pluginPanelJsonObject");
@@ -199,7 +200,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).not.toContain("srcdoc");
     expect(js).toContain("function syncPluginPanelThemes");
     expect(js).toContain("syncPluginPanelThemes?.()");
-    expect(pluginPanelSource).toContain("apiPeer(peerId,requestPath,{method:'GET'})");
+    expect(pluginPanelSource).toContain("new EventSource('/api/peers/'+encodeURIComponent(peerId)+'/events?path='");
+    expect(pluginPanelSource).not.toContain("apiPeer(peerId,requestPath,{method:'GET'}).then");
     expect(pluginPanelSource).toContain("surface.dataset.pluginPeerId");
     expect(css).toContain(".plugin-panel-surface{width:100%");
     expect(css).toContain("#page-plugin-panel.active{display:flex");

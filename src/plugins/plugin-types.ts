@@ -318,6 +318,7 @@ export interface PluginInvokeResult {
     html?: string;
     script?: string;
     styles?: string;
+    ui?: PluginPanelUiNode | PluginPanelUiNode[];
   };
   html?: string;
   text?: string;
@@ -365,6 +366,12 @@ export interface PluginJobRecord {
 export interface PluginJobsPayload {
   version: 1;
   jobs: PluginJobRecord[];
+}
+
+export interface PluginPanelUiNode {
+  type: string;
+  props?: Record<string, unknown>;
+  children?: string | PluginPanelUiNode | PluginPanelUiNode[];
 }
 
 export interface PluginEventRecord {

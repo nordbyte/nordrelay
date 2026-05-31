@@ -98,4 +98,30 @@ describe("channel prompt queue", () => {
       rmSync(workspace, { recursive: true, force: true });
     }
   });
+
+  it("returns a leased prompt to the queue when processing fails", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "channel-prompt-queue-"));
+    try {
+      const promptStore = new PromptStore(workspace);
+      const contextKey = "discord:test";
+      const queued = promptStore.enqueue(contextKey, toPromptEnvelope("queued"));
+
+      await expect(drainOneQueuedChannelPrompt({
+        request: { contextKey, context: { channelId: "discord", chatId: "channel" } },
+        promptStore,
+        draining: new Set<string>(),
+        isBusy: () => false,
+        onProcessing: async () => undefined,
+        runPrompt: async () => {
+          throw new Error("turn failed");
+        },
+      })).rejects.toThrow("turn failed");
+
+      expect(promptStore.list(contextKey)).toEqual([
+        expect.objectContaining({ id: queued.id, status: "queued", attempts: 1, lastError: "turn failed" }),
+      ]);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
 });

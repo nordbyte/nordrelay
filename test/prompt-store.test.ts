@@ -152,6 +152,64 @@ describe("PromptStore", () => {
     }
   });
 
+  it("leases queued prompts until completion", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "prompt-store-"));
+    try {
+      const first = new PromptStore(workspace);
+      const second = new PromptStore(workspace);
+      const queued = first.enqueue("ctx", ensurePromptCorrelationId(toPromptEnvelope("queued")));
+
+      const leased = first.leaseNext("ctx", "owner-a", 60_000);
+
+      expect(leased).toMatchObject({
+        id: queued.id,
+        status: "running",
+        leaseOwner: "owner-a",
+        attempts: 1,
+        idempotencyKey: queued.correlationId,
+      });
+      expect(second.leaseNext("ctx", "owner-b", 60_000)).toBeUndefined();
+      expect(second.list("ctx")[0]).toMatchObject({ id: queued.id, status: "running", leaseOwner: "owner-a" });
+      expect(first.completeLease("ctx", leased!, "owner-a")?.id).toBe(queued.id);
+      expect(second.list("ctx")).toEqual([]);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("requeues failed leases", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "prompt-store-"));
+    try {
+      const store = new PromptStore(workspace);
+      const queued = store.enqueue("ctx", toPromptEnvelope("queued"));
+      const leased = store.leaseNext("ctx", "owner-a", 1_000)!;
+
+      expect(store.failLease("ctx", leased, "owner-a", "failed once")).toMatchObject({ id: queued.id, status: "queued", lastError: "failed once" });
+      expect(store.list("ctx")[0]).toMatchObject({ id: queued.id, status: "queued", attempts: 1 });
+
+      const leasedAgain = store.leaseNext("ctx", "owner-b", 60_000)!;
+      expect(leasedAgain.attempts).toBe(2);
+      expect(store.leaseNext("ctx", "owner-c", 60_000)).toBeUndefined();
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("deduplicates queued prompts by idempotency key", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "prompt-store-"));
+    try {
+      const store = new PromptStore(workspace);
+      const first = store.enqueue("ctx", toPromptEnvelope("first"), { idempotencyKey: "same" });
+      const duplicate = store.enqueue("ctx", toPromptEnvelope("second"), { idempotencyKey: "same" });
+
+      expect(duplicate.id).toBe(first.id);
+      expect(store.list("ctx")).toHaveLength(1);
+      expect(store.list("ctx")[0]?.description).toBe("first");
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("coordinates queue drain locks across store instances", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "prompt-store-"));
     try {

@@ -566,6 +566,44 @@ export async function handleDashboardPeerRoute(
       peerId,
       user: options.authUser.user.email,
     });
+    const pluginEventsId = parsePluginEventsPath(url.searchParams.get("path"));
+    if (pluginEventsId) {
+      if (!peer?.url) {
+        const frame = `event: error\ndata: ${JSON.stringify({ error: "Peer plugin events require a direct peer URL.", pluginId: pluginEventsId })}\n\n`;
+        sse.event(Buffer.byteLength(frame));
+        res.write(frame);
+        sse.close();
+        res.end();
+        return true;
+      }
+      const subscription = new RemoteRelayClient(store, options.home).subscribePluginEvents(peerId, pluginEventsId, (event) => {
+        if (res.destroyed || res.writableEnded) return;
+        const eventName = typeof event === "object" && event && "type" in event ? String((event as { type?: unknown }).type || "message") : "message";
+        const frame = `event: ${eventName}\ndata: ${JSON.stringify(event)}\n\n`;
+        sse.event(Buffer.byteLength(frame));
+        res.write(frame);
+      }, (error) => {
+        if (!res.destroyed && !res.writableEnded) {
+          const frame = `event: error\ndata: ${JSON.stringify({ error: error.message, pluginId: pluginEventsId })}\n\n`;
+          sse.event(Buffer.byteLength(frame));
+          res.write(frame);
+        }
+      });
+      const heartbeat = setInterval(() => {
+        if (!res.destroyed && !res.writableEnded) {
+          const frame = ": heartbeat\n\n";
+          sse.heartbeat(Buffer.byteLength(frame));
+          res.write(frame);
+        }
+      }, 25_000);
+      heartbeat.unref?.();
+      req.on("close", () => {
+        clearInterval(heartbeat);
+        sse.close();
+        subscription.close();
+      });
+      return true;
+    }
     if (!peer?.url) {
       const statusFrame = `event: status\ndata: ${JSON.stringify({ type: "status", level: "info", message: "Peer uses outbound relay mode. Waiting for relayed live events.", at: new Date().toISOString() })}\n\n`;
       sse.event(Buffer.byteLength(statusFrame));
@@ -821,6 +859,12 @@ function parseProxyPayload(body: Record<string, unknown>): PeerWebProxyPayload {
     body: objectRecord(body.body),
     contextKey: optionalStringField(body, "contextKey"),
   };
+}
+
+function parsePluginEventsPath(pathValue: string | null): string | null {
+  if (!pathValue) return null;
+  const match = /^\/api\/plugins\/([^/]+)\/events$/.exec(pathValue);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
 function peerProxyTimeoutOptions(payload: PeerWebProxyPayload): { timeoutMs?: number } {

@@ -560,14 +560,41 @@ function renderPluginPanelSurfaceResult(surface,item,result,input={}){
 }
 function pluginPanelHtmlFromResult(result){
   if(result?.panel&&typeof result.panel==='object'&&!Array.isArray(result.panel)){
+    const uiHtml=pluginPanelUiHtml(result.panel.ui);
+    if(uiHtml)return uiHtml;
     const html=pluginPanelRawHtml(result.panel.html)||pluginPanelLooseHtml(result.panel.html);
     if(html)return html;
   }
+  const directUi=pluginPanelUiHtml(result?.ui);
+  if(directUi)return directUi;
   const looseHtml=pluginPanelLooseHtml(result);
   if(looseHtml)return looseHtml;
   const normalized=pluginPanelJsonObject(result);
   if(!normalized)return '';
   return pluginPanelHtmlFromObject(normalized);
+}
+function pluginPanelUiHtml(value){
+  if(value===undefined||value===null)return '';
+  if(Array.isArray(value))return value.map(pluginPanelUiHtml).join('');
+  if(typeof value==='string'||typeof value==='number'||typeof value==='boolean')return esc(String(value));
+  if(typeof value!=='object')return '';
+  const node=value as WebuiRecord;
+  const type=String(node.type||'').toLowerCase();
+  const props=(node.props&&typeof node.props==='object'&&!Array.isArray(node.props)?node.props:{}) as WebuiRecord;
+  const children=pluginPanelUiHtml(node.children);
+  if(type==='stack')return '<div class="stack">'+children+'</div>';
+  if(type==='row')return '<div class="row">'+children+'</div>';
+  if(type==='panel')return '<section class="panel"><div class="section-header"><h2>'+esc(String(props.title||''))+'</h2></div>'+children+'</section>';
+  if(type==='metric')return '<div class="metric"'+(props.status?' data-status="'+attr(props.status)+'"':'')+'><div class="label">'+esc(String(props.label||''))+'</div><div class="value">'+esc(String(props.value??''))+'</div>'+(props.detail?'<small>'+esc(String(props.detail))+'</small>':'')+'</div>';
+  if(type==='badge')return uiBadge(String(props.text??props.label??children),String(props.status||'disabled'));
+  if(type==='button')return uiButton(String((props.label??children)||'Button'),{mini:Boolean(props.mini),variant:(props.variant==='danger'||props.variant==='secondary'?props.variant:'secondary') as 'secondary'|'danger',className:String(props.className||''),data:props.data as WebuiRecord|undefined,title:props.title?String(props.title):undefined});
+  if(type==='progress')return '<div class="progress" title="'+attr(props.title||'')+'"><span class="progress-fill '+attr(String(props.status||''))+'" style="width:'+attr(Math.max(0,Math.min(100,Number(props.value)||0)))+'%"></span></div>';
+  if(type==='callout')return '<div class="callout '+attr(String(props.tone||''))+'">'+(children||esc(String(props.message||'')))+'</div>';
+  if(type==='empty')return uiEmpty(String(props.message||'No data available.'));
+  if(type==='code')return '<pre class="code-block"><code>'+esc(String(props.code??children))+'</code></pre>';
+  if(type==='log')return '<pre class="log-view">'+esc(String(props.text??children))+'</pre>';
+  if(type==='html')return String(props.html||'');
+  return children;
 }
 function pluginPanelHtmlFromObject(result){
   const looseHtml=pluginPanelLooseHtml(result.html)||pluginPanelLooseHtml(result.output)||pluginPanelLooseHtml(result.stdout)||pluginPanelLooseHtml(result.text);

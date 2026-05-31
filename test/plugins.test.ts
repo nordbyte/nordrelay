@@ -348,6 +348,18 @@ describe("plugin system", () => {
     expect(afterInvoke?.metrics?.failures).toBe(0);
   });
 
+  it("does not allow arbitrary sources to self-declare official Marketplace trust", async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-home-"));
+    const fixture = await createPluginFixture();
+    const service = new PluginService(home);
+
+    await expect(service.install({
+      source: fixture,
+      trustLevel: "official",
+      approvePermissions: true,
+    })).rejects.toThrow("Official plugin trust");
+  });
+
   it("promotes stringified plugin result output for web panels", async () => {
     const home = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-home-"));
     const fixture = await createStringifiedPanelPluginFixture();

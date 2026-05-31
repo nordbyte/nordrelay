@@ -49,6 +49,22 @@ export class RelayQueueService {
     return this.promptStore.dequeue(this.contextKey);
   }
 
+  leaseNext(owner: string, ttlMs: number): QueuedPrompt | undefined {
+    return this.promptStore.leaseNext(this.contextKey, owner, ttlMs);
+  }
+
+  renewLease(item: QueuedPrompt, owner: string, ttlMs: number): boolean {
+    return this.promptStore.renewLease(this.contextKey, item, owner, ttlMs);
+  }
+
+  completeLease(item: QueuedPrompt, owner: string): QueuedPrompt | undefined {
+    return this.promptStore.completeLease(this.contextKey, item, owner);
+  }
+
+  failLease(item: QueuedPrompt, owner: string, error: string): QueuedPrompt | undefined {
+    return this.promptStore.failLease(this.contextKey, item, owner, error);
+  }
+
   setLastPrompt(envelope: PromptEnvelope): void {
     this.promptStore.setLastPrompt(this.contextKey, envelope);
   }
@@ -76,10 +92,16 @@ export function queueItemDto(item: QueuedPrompt): QueueItemDto {
   return {
     id: item.id,
     description: item.description,
+    status: item.status ?? "queued",
     createdAt: new Date(item.createdAt).toISOString(),
+    updatedAt: item.updatedAt ? new Date(item.updatedAt).toISOString() : undefined,
     attempts: item.attempts ?? 0,
     correlationId: item.correlationId,
+    idempotencyKey: item.idempotencyKey,
     notBefore: item.notBefore ? new Date(item.notBefore).toISOString() : undefined,
     lastError: item.lastError,
+    leaseOwner: item.leaseOwner,
+    leaseStartedAt: item.leaseStartedAt ? new Date(item.leaseStartedAt).toISOString() : undefined,
+    leaseExpiresAt: item.leaseExpiresAt ? new Date(item.leaseExpiresAt).toISOString() : undefined,
   };
 }

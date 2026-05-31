@@ -176,6 +176,32 @@ export async function startPeerServer(options: {
         });
         return;
       }
+      if (req.method === "GET" && url.pathname === "/peer/plugin-events") {
+        const peer = authenticate(req, "GET", `${url.pathname}${url.search}`, "");
+        const pluginId = url.searchParams.get("pluginId") || "";
+        if (!pluginId) {
+          throw new Error("pluginId is required.");
+        }
+        res.writeHead(200, {
+          "content-type": "text/event-stream; charset=utf-8",
+          "cache-control": "no-cache, no-transform",
+          connection: "keep-alive",
+        });
+        const unsubscribe = await service.subscribePluginEvents(peer, pluginId, (event) => {
+          if (res.destroyed || res.writableEnded) return;
+          res.write(`event: ${event.type || "message"}\n`);
+          res.write(`data: ${JSON.stringify(event)}\n\n`);
+        });
+        const heartbeat = setInterval(() => {
+          if (!res.destroyed && !res.writableEnded) res.write(": heartbeat\n\n");
+        }, 25_000);
+        heartbeat.unref?.();
+        req.on("close", () => {
+          clearInterval(heartbeat);
+          unsubscribe();
+        });
+        return;
+      }
       sendJson(res, 404, { error: "not found" });
     } catch (error) {
       const status = isAuthError(error) ? 403 : 500;

@@ -4,6 +4,28 @@ import type { ChannelBusyReason } from "./channel-bridge-state.js";
 import type { ChannelActivityInput, ChannelAuditInput, ChannelBridgeRequestBase } from "./channel-bridge-controller.js";
 
 export const QUEUE_DRAIN_FOLLOW_UP_DELAY_MS = 500;
+export const QUEUE_PROMPT_LEASE_TTL_MS = 30 * 60 * 1000;
+const QUEUE_PROMPT_LEASE_RENEW_MS = 60 * 1000;
+
+export async function runLeasedQueuedPrompt(options: {
+  renew: () => unknown;
+  complete: () => unknown;
+  fail: (message: string) => unknown;
+  run: () => Promise<unknown>;
+  renewMs?: number;
+}): Promise<void> {
+  const renewTimer = setInterval(() => { options.renew(); }, options.renewMs ?? QUEUE_PROMPT_LEASE_RENEW_MS);
+  renewTimer.unref?.();
+  try {
+    await options.run();
+    options.complete();
+  } catch (error) {
+    options.fail(error instanceof Error ? error.message : String(error));
+    throw error;
+  } finally {
+    clearInterval(renewTimer);
+  }
+}
 
 export async function queueChannelPromptIfBusy<Request extends ChannelBridgeRequestBase>(options: {
   request: Request;
@@ -80,7 +102,8 @@ export async function drainOneQueuedChannelPrompt<Request extends ChannelBridgeR
       return;
     }
 
-    const next = options.promptStore.dequeue(contextKey);
+    const leaseOwner = `channel:${contextKey}`;
+    const next = options.promptStore.leaseNext(contextKey, leaseOwner, QUEUE_PROMPT_LEASE_TTL_MS);
     if (!next) {
       const nextRunnableAt = options.promptStore.nextRunnableAt(contextKey);
       const queued = options.promptStore.list(contextKey).length;
@@ -91,9 +114,14 @@ export async function drainOneQueuedChannelPrompt<Request extends ChannelBridgeR
     }
 
     startedPrompt = true;
-    const totalBeforeRun = options.promptStore.list(contextKey).length + 1;
+    const totalBeforeRun = options.promptStore.list(contextKey).length;
     await options.onProcessing(options.request, next, totalBeforeRun);
-    await options.runPrompt(options.request, next);
+    await runLeasedQueuedPrompt({
+      renew: () => options.promptStore.renewLease(contextKey, next, leaseOwner, QUEUE_PROMPT_LEASE_TTL_MS),
+      complete: () => options.promptStore.completeLease(contextKey, next, leaseOwner),
+      fail: (message) => options.promptStore.failLease(contextKey, next, leaseOwner, message),
+      run: () => options.runPrompt(options.request, next),
+    });
   } finally {
     options.draining.delete(contextKey);
   }

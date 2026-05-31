@@ -212,17 +212,19 @@ export async function handleDashboardPluginRoute(
       "cache-control": "no-cache, no-transform",
       connection: "keep-alive",
     });
-    const write = async () => {
-      const jobs = await plugins.listJobs(id);
-      res.write(`event: jobs\ndata: ${JSON.stringify({ pluginId: id, jobs, at: new Date().toISOString() })}\n\n`);
+    const write = (event: unknown, eventName = "jobs") => {
+      if (res.destroyed || res.writableEnded) return;
+      res.write(`event: ${eventName}\ndata: ${JSON.stringify(event)}\n\n`);
     };
-    await write();
-    const timer = setInterval(() => {
-      void write().catch((error) => {
-        res.write(`event: error\ndata: ${JSON.stringify({ error: errorMessage(error) })}\n\n`);
-      });
-    }, 2000);
-    req.on("close", () => clearInterval(timer));
+    const unsubscribe = plugins.subscribeEvents(id, (event) => write(event, event.type || "message"));
+    const heartbeat = setInterval(() => {
+      if (!res.destroyed && !res.writableEnded) res.write(": heartbeat\n\n");
+    }, 25_000);
+    heartbeat.unref?.();
+    req.on("close", () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
     return true;
   }
 

@@ -142,24 +142,14 @@ function pluginPanelRegistry():PluginPanelRegistry{
             const requestPath=('/api/plugins/'+encodeURIComponent(pluginId)+'/events') as `/api/plugins/${string}/events`;
             const peerId=String(options.peerId||surface.dataset.pluginPeerId||'local');
             if(peerId&&peerId!=='local'){
-              let closed=false;
-              const intervalMs=Math.max(1000,Number(options.intervalMs)||2000);
-              const emit=(value:unknown)=>{
-                if(closed)return;
-                listener(value);
+              const source=new EventSource('/api/peers/'+encodeURIComponent(peerId)+'/events?path='+encodeURIComponent(requestPath));
+              const handler=(event:MessageEvent)=>{
+                try{listener(JSON.parse(event.data))}catch{listener(event.data)}
               };
-              const poll=()=>{void (async()=>{
-                if(closed)return;
-                try{
-                  const payload=await apiPeer(peerId,requestPath,{method:'GET'});
-                  emit(payload);
-                }catch(error){
-                  emit({error:error instanceof Error?error.message:String(error)});
-                }
-              })()};
-              poll();
-              const id=window.setInterval(poll,intervalMs);
-              const close=()=>{if(closed)return;closed=true;window.clearInterval(id)};
+              const errorHandler=()=>listener({error:'Plugin event stream disconnected.'});
+              source.addEventListener(eventName||'message',handler as EventListener);
+              source.addEventListener('error',errorHandler as EventListener);
+              const close=()=>source.close();
               cleanup.push(close);
               return{close};
             }

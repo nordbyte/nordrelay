@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 
 import { assertExpectedHash, hashDirectory, hashManifest } from "./plugin-integrity.js";
 import { loadPluginManifest, validatePluginManifest } from "./plugin-manifest.js";
+import { pluginMarketplaceEntries, type PluginMarketplaceEntry } from "./plugin-marketplace.js";
 import { diffPluginManifestPermissions } from "./plugin-permission-diff.js";
 import { verifyPluginManifestSignature } from "./plugin-signatures.js";
 import { PluginStore } from "./plugin-store.js";
@@ -250,10 +251,13 @@ export class PluginInstaller {
       const manifest = validation.manifest;
       const manifestHash = hashManifest(manifest);
       const packageHash = resolved.packageHash;
-      assertExpectedHash(manifestHash, request.expectedManifestHash, "Plugin manifest");
-      assertExpectedHash(packageHash, request.expectedPackageHash, "Plugin package");
-      const signature = verifyPluginManifestSignature(manifest, request.signaturePublicKey, request.requireSignature);
-      if (request.requireSignature && signature.status !== "verified") {
+      const marketplaceEntry = marketplaceEntryForResolvedSource(resolved, request.source);
+      assertOfficialTrustRequest(request, resolved, manifest, marketplaceEntry);
+      assertExpectedHash(manifestHash, request.expectedManifestHash ?? marketplaceEntry?.expectedManifestHash, "Plugin manifest");
+      assertExpectedHash(packageHash, request.expectedPackageHash ?? marketplaceEntry?.expectedPackageHash, "Plugin package");
+      const requireSignature = request.requireSignature ?? marketplaceEntry?.signatureRequired;
+      const signature = verifyPluginManifestSignature(manifest, request.signaturePublicKey, requireSignature);
+      if (requireSignature && signature.status !== "verified") {
         throw new Error(signature.message || "Plugin manifest signature verification failed.");
       }
       const existing = await this.store.get(manifest.id);
@@ -451,4 +455,58 @@ function defaultTrustLevel(source: ResolvedPluginSource): PluginTrustLevel {
     return "verified";
   }
   return "community";
+}
+
+function marketplaceEntryForResolvedSource(resolved: ResolvedPluginSource, requestedSource: string): PluginMarketplaceEntry | undefined {
+  const requested = normalizePluginSourceSpecifier(requestedSource);
+  const resolvedValue = normalizePluginSourceSpecifier(resolvedSourceSpecifier(resolved));
+  return pluginMarketplaceEntries().find((entry) => {
+    const sources = [entry.source, entry.verifiedSource, entry.repository, entry.packageName ? `npm:${entry.packageName}` : ""]
+      .map(normalizePluginSourceSpecifier)
+      .filter(Boolean);
+    return sources.includes(requested) || sources.includes(resolvedValue);
+  });
+}
+
+function assertOfficialTrustRequest(
+  request: PluginInstallRequest,
+  resolved: ResolvedPluginSource,
+  manifest: PluginManifest,
+  marketplaceEntry: PluginMarketplaceEntry | undefined,
+): void {
+  if (request.trustLevel !== "official") {
+    return;
+  }
+  if (!marketplaceEntry?.official) {
+    throw new Error("Official plugin trust is only allowed for official Marketplace sources.");
+  }
+  if (marketplaceEntry.id !== manifest.id) {
+    throw new Error(`Official Marketplace plugin id mismatch: expected ${marketplaceEntry.id}, got ${manifest.id}.`);
+  }
+  if (marketplaceEntry.packageName && resolved.type === "npm" && resolved.packageName !== marketplaceEntry.packageName) {
+    throw new Error(`Official Marketplace package mismatch: expected ${marketplaceEntry.packageName}, got ${resolved.packageName ?? "unknown"}.`);
+  }
+}
+
+function resolvedSourceSpecifier(resolved: ResolvedPluginSource): string {
+  if (resolved.type === "npm") return `npm:${resolved.packageName ?? resolved.value}`;
+  if (resolved.type === "github") return resolved.value;
+  return resolved.value;
+}
+
+function normalizePluginSourceSpecifier(value: string | undefined): string {
+  const input = String(value ?? "").trim();
+  if (!input) return "";
+  if (input.startsWith("npm:")) {
+    return `npm:${input.slice("npm:".length).trim().replace(/@latest$/i, "")}`;
+  }
+  if (input.startsWith("github:")) {
+    const source = input.slice("github:".length).split("#", 1)[0].replace(/\.git$/i, "");
+    return `github:${source.toLowerCase()}`;
+  }
+  const github = /^https:\/\/github\.com\/([^/]+)\/([^/#]+?)(?:\.git)?(?:#.*)?$/i.exec(input);
+  if (github) {
+    return `github:${github[1].toLowerCase()}/${github[2].toLowerCase()}`;
+  }
+  return input.toLowerCase();
 }

@@ -49,7 +49,7 @@ import { monitorChannelExternalContexts } from "../shared/channel-external-monit
 import { createChannelExternalMonitorLoop } from "../shared/channel-external-monitor-loop.js";
 import { configureChannelRuntime } from "../shared/channel-runtime-bootstrap.js";
 import { createChannelTurnLifecycle, createChannelTypingLoop } from "../shared/channel-turn-lifecycle.js";
-import { QUEUE_DRAIN_FOLLOW_UP_DELAY_MS, scheduleQueuedDrain } from "../shared/channel-prompt-queue.js";
+import { QUEUE_DRAIN_FOLLOW_UP_DELAY_MS, QUEUE_PROMPT_LEASE_TTL_MS, runLeasedQueuedPrompt, scheduleQueuedDrain } from "../shared/channel-prompt-queue.js";
 import {
   agentLabel,
   agentReasoningLabel,
@@ -1806,8 +1806,8 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
         if (busy.kind === "external") scheduleExternalQueueDrain(ctx, contextKey, chatId, session);
         return;
       }
-
-      const next = promptStore.dequeue(contextKey);
+      const leaseOwner = `telegram:${contextKey}`;
+      const next = promptStore.leaseNext(contextKey, leaseOwner, QUEUE_PROMPT_LEASE_TTL_MS);
       if (!next) {
         const nextRunnableAt = promptStore.nextRunnableAt(contextKey);
         const queued = promptStore.list(contextKey).length;
@@ -1818,12 +1818,12 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
       }
 
       startedPrompt = true;
-      const remainingBeforeRun = promptStore.list(contextKey).length + 1;
+      const remainingBeforeRun = promptStore.list(contextKey).length;
       await updateQueueStatusMessage(contextKey, `Running queued prompt 1/${remainingBeforeRun}: ${next.description}`);
       await safeReply(ctx, escapeHTML(`Processing queued prompt ${next.id}: ${next.description}`), {
         fallbackText: `Processing queued prompt ${next.id}: ${next.description}`,
       });
-      await handleUserPrompt(ctx, contextKey, chatId, session, next, { fromQueue: true });
+      await runLeasedQueuedPrompt({ renew: () => promptStore.renewLease(contextKey, next, leaseOwner, QUEUE_PROMPT_LEASE_TTL_MS), complete: () => promptStore.completeLease(contextKey, next, leaseOwner), fail: (message) => promptStore.failLease(contextKey, next, leaseOwner, message), run: () => handleUserPrompt(ctx, contextKey, chatId, session, next, { fromQueue: true }) });
     } finally {
       drainingQueues.delete(contextKey);
     }

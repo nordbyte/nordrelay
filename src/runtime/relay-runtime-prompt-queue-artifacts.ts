@@ -30,6 +30,7 @@ import { BotPreferencesStore } from "../state/bot-preferences.js";
 import { ChannelCommandService } from "../channels/shared/channel-command-service.js";
 import { ChannelTurnService } from "../channels/shared/channel-turn-service.js";
 import { activeSessionSourceForContextKey, ChannelMirrorRegistry } from "../channels/shared/channel-mirror-registry.js";
+import { QUEUE_PROMPT_LEASE_TTL_MS, runLeasedQueuedPrompt } from "../channels/shared/channel-prompt-queue.js";
 import type { LoginResult } from "../agents/codex/codex-auth.js";
 import { listThreads as listCodexThreads } from "../agents/codex/codex-state.js";
 import type { ConnectorConfig } from "../core/config.js";
@@ -523,12 +524,13 @@ export async function relayRuntimeDrainQueue(runtime: RelayRuntimeDelegate): Pro
           runtime.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${runtime.queueService.length()} queued.`, "info");
           return;
         }
-        const next = runtime.queueService.dequeue();
+        const next = runtime.queueService.leaseNext(runtime.queueDrainOwnerId, QUEUE_PROMPT_LEASE_TTL_MS);
         runtime.broadcastQueue();
         if (!next) return;
         resolveQueuedPromptChatAction(runtime, next.id, `Queued prompt ${next.id} started`);
-        await runtime.runPrompt(session, next);
-        completedPrompt = true;
+        await runLeasedQueuedPrompt({ renew: () => runtime.queueService.renewLease(next, runtime.queueDrainOwnerId, QUEUE_PROMPT_LEASE_TTL_MS), complete: () => runtime.queueService.completeLease(next, runtime.queueDrainOwnerId), fail: (message) => runtime.queueService.failLease(next, runtime.queueDrainOwnerId, message), run: async () => { await runtime.runPrompt(session, next); completedPrompt = true; } }).finally(() => {
+          runtime.broadcastQueue();
+        });
       } finally {
         runtime.draining = false;
       }

@@ -291,6 +291,75 @@ export class RemoteRelayClient {
     };
   }
 
+  subscribePluginEvents(
+    peerId: string,
+    pluginId: string,
+    onEvent: (event: unknown) => void,
+    onError?: (error: Error) => void,
+  ): { close: () => void } {
+    const peer = this.requiredPeer(peerId);
+    const url = new URL(joinPeerUrl(requiredPeerUrl(peer), "/peer/plugin-events"));
+    url.searchParams.set("pluginId", pluginId);
+    const signed = signPeerRequest(peer, "GET", `${url.pathname}${url.search}`, "");
+    const transport = url.protocol === "https:" ? https : http;
+    let closed = false;
+    const req = transport.request({
+      method: "GET",
+      protocol: url.protocol,
+      hostname: url.hostname,
+      port: url.port,
+      path: `${url.pathname}${url.search}`,
+      headers: signed.headers,
+      agent: false,
+      rejectUnauthorized: false,
+    } as https.RequestOptions, (res) => {
+      try {
+        assertTlsFingerprint(res.socket as TLSSocket, peer.tlsFingerprint);
+      } catch (error) {
+        req.destroy(error as Error);
+        return;
+      }
+      if ((res.statusCode ?? 500) >= 400) {
+        req.destroy(new Error(`Peer plugin events failed with HTTP ${res.statusCode}`));
+        return;
+      }
+      this.store.markSeen(peer.id, { remoteStatus: "online" });
+      let buffer = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => {
+        buffer += chunk;
+        let separator = buffer.indexOf("\n\n");
+        while (separator !== -1) {
+          const frame = buffer.slice(0, separator);
+          buffer = buffer.slice(separator + 2);
+          const data = frame.split(/\n/).find((line) => line.startsWith("data:"))?.slice(5).trim();
+          if (data) {
+            try {
+              onEvent(JSON.parse(data));
+            } catch {
+              // Ignore malformed event frames from a broken peer.
+            }
+          }
+          separator = buffer.indexOf("\n\n");
+        }
+      });
+    });
+    req.on("error", (error) => {
+      if (closed) {
+        return;
+      }
+      this.store.markError(peer.id, error.message);
+      onError?.(error);
+    });
+    req.end();
+    return {
+      close: () => {
+        closed = true;
+        req.destroy();
+      },
+    };
+  }
+
   private requiredPeer(peerId: string): PeerRecord {
     const peer = this.store.get(peerId);
     if (!peer) {

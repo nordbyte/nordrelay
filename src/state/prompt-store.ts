@@ -20,10 +20,16 @@ export interface QueuedPrompt extends PromptEnvelope {
   id: string;
   contextKey: ChannelContextKey;
   createdAt: number;
+  status?: "queued" | "running";
   notBefore?: number;
   updatedAt?: number;
   attempts?: number;
   lastError?: string;
+  idempotencyKey?: string;
+  leaseId?: string;
+  leaseOwner?: string;
+  leaseStartedAt?: number;
+  leaseExpiresAt?: number;
 }
 
 export interface QueueDrainLock {
@@ -75,16 +81,25 @@ export class PromptStore {
     return this.lastPrompts.get(contextKey);
   }
 
-  enqueue(contextKey: ChannelContextKey, prompt: PromptEnvelope, options: { notBefore?: number } = {}): QueuedPrompt {
+  enqueue(contextKey: ChannelContextKey, prompt: PromptEnvelope, options: { notBefore?: number; idempotencyKey?: string } = {}): QueuedPrompt {
     return this.updateState((state) => {
+      const idempotencyKey = normalizeQueueIdempotencyKey(options.idempotencyKey ?? prompt.correlationId);
+      const queue = state.queues.get(contextKey) ?? [];
+      if (idempotencyKey) {
+        const existing = queue.find((item) => normalizeQueueIdempotencyKey(item.idempotencyKey) === idempotencyKey);
+        if (existing) {
+          return existing;
+        }
+      }
       const item: QueuedPrompt = {
         ...prompt,
         id: createQueueId(),
         contextKey,
         createdAt: Date.now(),
+        status: "queued",
+        idempotencyKey,
         notBefore: options.notBefore,
       };
-      const queue = state.queues.get(contextKey) ?? [];
       queue.push(item);
       state.queues.set(contextKey, queue);
       return item;
@@ -94,7 +109,7 @@ export class PromptStore {
   enqueueFront(contextKey: ChannelContextKey, prompt: QueuedPrompt): void {
     this.updateState((state) => {
       const queue = (state.queues.get(contextKey) ?? []).filter((item) => item.id !== prompt.id);
-      queue.unshift({ ...prompt, updatedAt: Date.now() });
+      queue.unshift(clearPromptLease({ ...prompt, status: "queued", updatedAt: Date.now() }));
       state.queues.set(contextKey, queue);
     });
   }
@@ -119,6 +134,100 @@ export class PromptStore {
         item.updatedAt = Date.now();
       }
       return item;
+    });
+  }
+
+  leaseNext(contextKey: ChannelContextKey, owner: string, ttlMs: number): QueuedPrompt | undefined {
+    return this.updateState((state) => {
+      const queue = state.queues.get(contextKey);
+      if (!queue?.length) {
+        return undefined;
+      }
+      const now = Date.now();
+      clearExpiredQueueLeases(queue, now);
+      const index = queue.findIndex((queued) => {
+        if (queued.status === "running" && (queued.leaseExpiresAt ?? 0) > now) {
+          return false;
+        }
+        return !queued.notBefore || queued.notBefore <= now;
+      });
+      if (index === -1) {
+        return undefined;
+      }
+      const item = queue[index];
+      const leaseId = createQueueId();
+      item.status = "running";
+      item.leaseOwner = owner;
+      item.leaseId = leaseId;
+      item.leaseStartedAt = now;
+      item.leaseExpiresAt = now + Math.max(1_000, ttlMs);
+      item.attempts = (item.attempts ?? 0) + 1;
+      item.updatedAt = now;
+      queue.splice(index, 1);
+      queue.unshift(item);
+      state.queues.set(contextKey, queue);
+      return { ...item };
+    });
+  }
+
+  renewLease(contextKey: ChannelContextKey, item: QueuedPrompt, owner: string, ttlMs: number): boolean {
+    return this.updateState((state) => {
+      const queue = state.queues.get(contextKey);
+      const current = queue?.find((queued) => queued.id === item.id);
+      if (!current || !leaseMatches(current, item, owner)) {
+        return false;
+      }
+      const now = Date.now();
+      current.leaseExpiresAt = now + Math.max(1_000, ttlMs);
+      current.updatedAt = now;
+      return true;
+    });
+  }
+
+  completeLease(contextKey: ChannelContextKey, item: QueuedPrompt, owner: string): QueuedPrompt | undefined {
+    return this.updateState((state) => {
+      const queue = state.queues.get(contextKey);
+      if (!queue) {
+        return undefined;
+      }
+      const index = queue.findIndex((queued) => queued.id === item.id);
+      if (index === -1) {
+        return undefined;
+      }
+      const current = queue[index];
+      if (!leaseMatches(current, item, owner)) {
+        return undefined;
+      }
+      const [removed] = queue.splice(index, 1);
+      if (queue.length === 0) {
+        state.queues.delete(contextKey);
+      }
+      return removed;
+    });
+  }
+
+  failLease(contextKey: ChannelContextKey, item: QueuedPrompt, owner: string, error: string, options: { notBefore?: number } = {}): QueuedPrompt | undefined {
+    return this.updateState((state) => {
+      const queue = state.queues.get(contextKey);
+      const current = queue?.find((queued) => queued.id === item.id);
+      if (!queue || !current || !leaseMatches(current, item, owner)) {
+        return undefined;
+      }
+      const now = Date.now();
+      Object.assign(current, clearPromptLease({
+        ...current,
+        status: "queued",
+        lastError: error,
+        updatedAt: now,
+        notBefore: options.notBefore ?? current.notBefore,
+      }));
+      const index = queue.findIndex((queued) => queued.id === current.id);
+      if (index > 0) {
+        queue.splice(index, 1);
+        queue.unshift(current);
+      }
+      state.queues.set(contextKey, queue);
+      return { ...current };
     });
   }
 
@@ -225,7 +334,7 @@ export class PromptStore {
   markFailed(contextKey: ChannelContextKey, item: QueuedPrompt, error: string): void {
     this.updateState((state) => {
       const queue = (state.queues.get(contextKey) ?? []).filter((queued) => queued.id !== item.id);
-      queue.unshift({ ...item, lastError: error, updatedAt: Date.now() });
+      queue.unshift(clearPromptLease({ ...item, status: "queued", lastError: error, updatedAt: Date.now() }));
       state.queues.set(contextKey, queue);
     });
   }
@@ -422,6 +531,40 @@ function createQueueId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 8);
 }
 
+function normalizeQueueIdempotencyKey(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized || undefined;
+}
+
+function clearPromptLease<T extends QueuedPrompt>(item: T): T {
+  delete item.leaseId;
+  delete item.leaseOwner;
+  delete item.leaseStartedAt;
+  delete item.leaseExpiresAt;
+  return item;
+}
+
+function clearExpiredQueueLeases(queue: QueuedPrompt[], now: number): void {
+  for (const item of queue) {
+    if (item.status === "running" && (item.leaseExpiresAt ?? 0) <= now) {
+      clearPromptLease(item);
+      item.status = "queued";
+      item.updatedAt = now;
+      item.lastError = item.lastError ?? "Queue lease expired before completion.";
+    }
+  }
+}
+
+function leaseMatches(current: QueuedPrompt, expected: QueuedPrompt, owner: string): boolean {
+  return Boolean(
+    current.leaseId &&
+    expected.leaseId &&
+    current.leaseId === expected.leaseId &&
+    current.leaseOwner === owner &&
+    expected.leaseOwner === owner,
+  );
+}
+
 function stateFromPayload(payload: PersistedPromptStore | undefined): PromptStoreState {
   const state: PromptStoreState = {
     lastPrompts: new Map(),
@@ -511,10 +654,16 @@ function isQueuedPrompt(value: unknown): value is QueuedPrompt {
     typeof (value as QueuedPrompt).id === "string" &&
     typeof (value as QueuedPrompt).contextKey === "string" &&
     typeof (value as QueuedPrompt).createdAt === "number" &&
+    ((value as QueuedPrompt).status === undefined || (value as QueuedPrompt).status === "queued" || (value as QueuedPrompt).status === "running") &&
     ((value as QueuedPrompt).notBefore === undefined || typeof (value as QueuedPrompt).notBefore === "number") &&
     ((value as QueuedPrompt).updatedAt === undefined || typeof (value as QueuedPrompt).updatedAt === "number") &&
     ((value as QueuedPrompt).attempts === undefined || typeof (value as QueuedPrompt).attempts === "number") &&
-    ((value as QueuedPrompt).lastError === undefined || typeof (value as QueuedPrompt).lastError === "string");
+    ((value as QueuedPrompt).lastError === undefined || typeof (value as QueuedPrompt).lastError === "string") &&
+    ((value as QueuedPrompt).idempotencyKey === undefined || typeof (value as QueuedPrompt).idempotencyKey === "string") &&
+    ((value as QueuedPrompt).leaseId === undefined || typeof (value as QueuedPrompt).leaseId === "string") &&
+    ((value as QueuedPrompt).leaseOwner === undefined || typeof (value as QueuedPrompt).leaseOwner === "string") &&
+    ((value as QueuedPrompt).leaseStartedAt === undefined || typeof (value as QueuedPrompt).leaseStartedAt === "number") &&
+    ((value as QueuedPrompt).leaseExpiresAt === undefined || typeof (value as QueuedPrompt).leaseExpiresAt === "number");
 }
 
 function isCodexPromptInput(value: unknown): value is AgentPromptInput {

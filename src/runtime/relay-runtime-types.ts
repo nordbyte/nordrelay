@@ -98,11 +98,17 @@ export interface ActiveSessionsDto {
 export interface QueueItemDto {
   id: string;
   description: string;
+  status?: "queued" | "running";
   createdAt: string;
+  updatedAt?: string;
   attempts: number;
   correlationId?: string;
+  idempotencyKey?: string;
   notBefore?: string;
   lastError?: string;
+  leaseOwner?: string;
+  leaseStartedAt?: string;
+  leaseExpiresAt?: string;
 }
 
 export interface QueuePlanDto extends QueuePlan {
