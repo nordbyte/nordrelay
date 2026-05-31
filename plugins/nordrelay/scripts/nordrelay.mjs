@@ -23,6 +23,7 @@ import {
 import { cliAutostartChecks } from "./service-doctor.mjs";
 import {
   commonNpmGlobalBinDirs,
+  npmSelfUpdatePermissionCheck,
   waitForDetachedChildStartup,
   waitForManagedAppPidToExit,
   waitForRestartSettle,
@@ -825,6 +826,11 @@ async function runNpmSelfUpdate(sourceRoot, log) {
   const npm = resolveNpmSpawnCommand();
   if (!npm) {
     throw new Error("npm was not found. Install Node.js/npm or add npm to PATH.");
+  }
+  const permissionCheck = npmSelfUpdatePermissionCheck(npm);
+  logUpdateLine(log, `npm self-update permission preflight: ${permissionCheck.detail}`);
+  if (!permissionCheck.ok) {
+    throw new Error(`${permissionCheck.detail}${permissionCheck.fix ? ` ${permissionCheck.fix}` : ""}`);
   }
   await runLoggedStep(log, "Install latest NordRelay package", npm.command, [
     ...npm.argsPrefix,
@@ -1820,6 +1826,10 @@ async function commandDoctor(options) {
   checks.push(check("NordRelay CLI on PATH", cliPath.ok, cliPath.ok ? cliPath.detail : `${cliPath.detail}; ${cliPath.hint}`, "warn", cliPathFix));
   if (cliPath.globalBin) {
     checks.push(check("npm global bin on PATH", cliPath.pathContainsGlobalBin, cliPath.globalBin, "warn", pathFix(cliPath.globalBin)));
+  }
+  if (detectSelfUpdateMethod(RUNTIME_ROOT) === "npm") {
+    const npmPermissionCheck = npmSelfUpdatePermissionCheck();
+    checks.push(check("npm self-update permissions", npmPermissionCheck.ok, npmPermissionCheck.detail, "warn", hintFix(npmPermissionCheck.fix)));
   }
   const webUiEnabled = isWebUiEnabled();
   const telegramRequested = process.env.TELEGRAM_ENABLED !== "false";
