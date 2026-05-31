@@ -50,6 +50,7 @@ interface SubscriptionState {
   currentAgentLabel?: string;
   activeSessionKey?: string;
   activeSessionLabel?: string;
+  workingNoticeKey?: string;
   typingLoop?: ChannelTypingLoop;
   typingSessionKey?: string;
   pending: Promise<void>;
@@ -148,6 +149,10 @@ async function handlePeerEvent(
     await handlePeerActiveSessionsUpdate(options, state, event.active.sessions, mode);
     return;
   }
+  if (event.type === "turn_start") {
+    await handlePeerTurnStart(options, state, event, mode);
+    return;
+  }
   if (event.type !== "chat_history") {
     return;
   }
@@ -176,7 +181,7 @@ async function mirrorChatHistory(
     if (state.currentThreadId && message.threadId && message.threadId !== state.currentThreadId) {
       continue;
     }
-    if (!shouldMirrorMessage(message, mode)) {
+    if (!shouldMirrorMessage(options, message, mode)) {
       continue;
     }
     const buttons = message.actions
@@ -192,6 +197,25 @@ async function mirrorChatHistory(
   if (state.seenMessageIds.size > 500) {
     state.seenMessageIds = new Set([...state.seenMessageIds].slice(-250));
   }
+}
+
+async function handlePeerTurnStart(
+  options: ChannelPeerMirrorControllerOptions,
+  state: SubscriptionState,
+  event: Extract<PeerEventEnvelope, { type: "turn_start" }>,
+  mode: ChannelMirrorMode,
+): Promise<void> {
+  if (mode !== "final" && mode !== "full") {
+    return;
+  }
+  if (event.source === options.runtime.id) {
+    return;
+  }
+  await sendPeerWorkingNotice(options, state, {
+    key: `turn:${event.id}:${event.correlationId ?? ""}`,
+    prompt: event.text || event.prompt,
+    agentLabel: state.currentAgentLabel || "Remote",
+  });
 }
 
 async function sendPeerMirrorStatus(
@@ -242,6 +266,13 @@ async function handlePeerActiveSessionsUpdate(
     state.activeSessionKey = key;
     state.activeSessionLabel = active.agentLabel || active.agentId || "Agent";
     startPeerTyping(options, state, key);
+    if (mode === "final" && active.source === "cli") {
+      await sendPeerWorkingNotice(options, state, {
+        key: activeTurnKey(active),
+        prompt: active.prompt,
+        agentLabel: active.agentLabel || active.agentId || "Remote",
+      });
+    }
     if (mode === "status" || mode === "full") {
       await sendPeerMirrorStatus(options, state, renderPeerActiveSessionStatus(active), "info");
     }
@@ -252,11 +283,33 @@ async function handlePeerActiveSessionsUpdate(
     const label = state.activeSessionLabel || state.currentAgentLabel || "Remote";
     state.activeSessionKey = undefined;
     state.activeSessionLabel = undefined;
+    state.workingNoticeKey = undefined;
     stopPeerTyping(state);
     if (mode === "status" || mode === "full") {
       await sendPeerMirrorStatus(options, state, `${label} CLI task finished.`, "info", { force: true });
     }
   }
+}
+
+async function sendPeerWorkingNotice(
+  options: ChannelPeerMirrorControllerOptions,
+  state: SubscriptionState,
+  input: { key: string; prompt?: string; agentLabel: string },
+): Promise<void> {
+  if (state.workingNoticeKey === input.key) {
+    return;
+  }
+  const prompt = trimLine((input.prompt ?? "").replace(/\s+/g, " "), 500);
+  const fallbackText = prompt ? `Working on ${prompt}` : `Working on remote ${input.agentLabel} task...`;
+  const html = prompt
+    ? `<b>Working on</b> ${escapeHTML(prompt)}`
+    : `<b>Working on</b> remote ${escapeHTML(input.agentLabel)} task...`;
+  await options.runtime.sendMessage(state.context, {
+    text: html,
+    fallbackText,
+    parseMode: "html",
+  }).catch(() => {});
+  state.workingNoticeKey = input.key;
 }
 
 function startPeerTyping(options: ChannelPeerMirrorControllerOptions, state: SubscriptionState, sessionKey: string): void {
@@ -324,12 +377,19 @@ function activeSessionKey(session: ActiveSessionDto): string {
   return session.threadId || session.id || session.contextKey;
 }
 
+function activeTurnKey(session: ActiveSessionDto): string {
+  return session.id || [session.threadId, session.startedAt, session.prompt ?? ""].filter(Boolean).join(":") || session.contextKey;
+}
+
 function effectiveMode(options: ChannelPeerMirrorControllerOptions, contextKey: string): ChannelMirrorMode {
   return options.preferencesStore.get(contextKey).mirrorMode ?? options.defaultMirrorMode();
 }
 
-function shouldMirrorMessage(message: WebChatMessage, mode: ChannelMirrorMode): boolean {
-  if (mode === "off" || mode === "status" || message.role === "user" || message.source !== "cli") {
+function shouldMirrorMessage(options: ChannelPeerMirrorControllerOptions, message: WebChatMessage, mode: ChannelMirrorMode): boolean {
+  if (mode === "off" || mode === "status" || message.role === "user") {
+    return false;
+  }
+  if (message.source === options.runtime.id) {
     return false;
   }
   if (mode === "final") {

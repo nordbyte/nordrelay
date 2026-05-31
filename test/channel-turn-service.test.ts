@@ -138,6 +138,56 @@ describe("ChannelTurnService", () => {
       rmSync(workspace, { recursive: true, force: true });
     }
   });
+
+  it("uses the actor channel as the stored chat source for proxied turns", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-turn-source-"));
+    try {
+      const chatStore = new WebChatStore(workspace, "json", 10);
+      const events: RelayEvent[] = [];
+      let progress: WebTaskDto | null = null;
+      let currentTurnStartedAt = Date.now();
+      let accumulatedText = "";
+      const prompt = vi.fn(async (_input, callbacks) => {
+        callbacks.onTextDelta("done");
+        callbacks.onAgentEnd();
+      });
+      const service = new ChannelTurnService({
+        source: "web",
+        contextKey: "peer:telegram-topic",
+        chatStore,
+        artifactService: {
+          persistWorkspaceArtifactsForTurn: async () => undefined,
+        } as unknown as RelayArtifactService,
+        checkAuth: async () => ({ authenticated: true, detail: "ok" }),
+        ensureActiveThread: async () => undefined,
+        updateSession: () => undefined,
+        appendActivity: (input) => ({ id: "activity", timestamp: new Date().toISOString(), ...input }) as WebActivityEvent,
+        appendAudit: (input) => ({ id: "audit", timestamp: new Date().toISOString(), channelId: "web", ...input }) as AuditEvent,
+        broadcast: (event) => events.push(event),
+        chatHistory: async () => chatStore.list("thread-1"),
+        setLastPrompt: () => undefined,
+        getCurrentProgress: () => progress,
+        setCurrentProgress: (next) => { progress = next; },
+        setCurrentTurn: (_id, startedAt, text) => {
+          currentTurnStartedAt = startedAt ?? Date.now();
+          accumulatedText = text ?? "";
+        },
+        getCurrentTurnStartedAt: () => currentTurnStartedAt,
+        getAccumulatedText: () => accumulatedText,
+        setAccumulatedText: (text) => { accumulatedText = text; },
+      });
+      const envelope = toPromptEnvelope("continue");
+      envelope.activityActor = { channel: "telegram", label: "Telegram user" };
+
+      await service.run(fakeSession({ prompt }), envelope);
+
+      expect(chatStore.list("thread-1").map((message) => message.source)).toEqual(["telegram", "telegram"]);
+      expect(events.find((event) => event.type === "turn_start")).toMatchObject({ source: "telegram" });
+      expect(progress?.source).toBe("telegram");
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
 });
 
 function fakeSession(overrides: Partial<AgentSessionService> = {}): AgentSessionService {

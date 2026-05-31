@@ -141,6 +141,142 @@ describe("ChannelPeerMirrorController", () => {
     expect(typingContexts).toHaveLength(stoppedAt);
     controller.close("123:456");
   });
+
+  it("sends a working notice for already-running remote CLI sessions in final mode", async () => {
+    const preferences = new BotPreferencesStore(workspace);
+    preferences.update("123", { targetPeerId: "peer-1", mirrorMode: "final" });
+    const client = new FakeRemoteClient();
+    const sent: string[] = [];
+    const runtime = fakeRuntime({
+      sendMessage: async (_context, message) => {
+        sent.push(message.text);
+        return { messageId: `message-${sent.length}` };
+      },
+    });
+    const controller = createChannelPeerMirrorController({
+      label: "Telegram",
+      runtime,
+      preferencesStore: preferences,
+      remoteClient: client,
+      contextForKey: () => context(),
+      defaultMirrorMode: () => "final",
+      mirrorMinUpdateMs: 0,
+      typingIntervalMs: 1000,
+    });
+
+    controller.sync("123", context());
+    client.emit(snapshot("thread-a"));
+    client.emit({
+      type: "active_sessions_update",
+      active: {
+        updatedAt: new Date().toISOString(),
+        sessions: [activeSession("thread-a", "target prompt")],
+      },
+    });
+    await flushAsync();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("<b>Working on</b>");
+    expect(sent[0]).toContain("target prompt");
+
+    client.emit({
+      type: "active_sessions_update",
+      active: {
+        updatedAt: new Date().toISOString(),
+        sessions: [activeSession("thread-a", "target prompt")],
+      },
+    });
+    await flushAsync();
+
+    expect(sent).toHaveLength(1);
+    controller.close("123");
+  });
+
+  it("mirrors web-origin remote final answers but suppresses same-channel echoes", async () => {
+    const preferences = new BotPreferencesStore(workspace);
+    preferences.update("123", { targetPeerId: "peer-1", mirrorMode: "final" });
+    const client = new FakeRemoteClient();
+    const sent: string[] = [];
+    const runtime = fakeRuntime({
+      sendMessage: async (_context, message) => {
+        sent.push(message.text);
+        return { messageId: `message-${sent.length}` };
+      },
+    });
+    const controller = createChannelPeerMirrorController({
+      label: "Telegram",
+      runtime,
+      preferencesStore: preferences,
+      remoteClient: client,
+      contextForKey: () => context(),
+      defaultMirrorMode: () => "final",
+      mirrorMinUpdateMs: 0,
+      typingIntervalMs: 1000,
+    });
+
+    controller.sync("123", context());
+    client.emit(snapshot("thread-a"));
+    client.emit({ type: "chat_history", messages: [] });
+    client.emit({
+      type: "chat_history",
+      messages: [
+        webMessage("thread-a", "agent", "web", "web final"),
+        webMessage("thread-a", "agent", "telegram", "telegram echo"),
+      ],
+    });
+    await flushAsync();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("web final");
+    expect(sent[0]).not.toContain("telegram echo");
+  });
+
+  it("mirrors remote turn starts from other channels only", async () => {
+    const preferences = new BotPreferencesStore(workspace);
+    preferences.update("123", { targetPeerId: "peer-1", mirrorMode: "final" });
+    const client = new FakeRemoteClient();
+    const sent: string[] = [];
+    const runtime = fakeRuntime({
+      sendMessage: async (_context, message) => {
+        sent.push(message.text);
+        return { messageId: `message-${sent.length}` };
+      },
+    });
+    const controller = createChannelPeerMirrorController({
+      label: "Telegram",
+      runtime,
+      preferencesStore: preferences,
+      remoteClient: client,
+      contextForKey: () => context(),
+      defaultMirrorMode: () => "final",
+      mirrorMinUpdateMs: 0,
+      typingIntervalMs: 1000,
+    });
+
+    controller.sync("123", context());
+    client.emit(snapshot("thread-a"));
+    client.emit({
+      type: "turn_start",
+      id: "turn-web",
+      prompt: "from web",
+      text: "from web",
+      at: new Date().toISOString(),
+      source: "web",
+    });
+    client.emit({
+      type: "turn_start",
+      id: "turn-telegram",
+      prompt: "from telegram",
+      text: "from telegram",
+      at: new Date().toISOString(),
+      source: "telegram",
+    });
+    await flushAsync();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("from web");
+    expect(sent[0]).not.toContain("from telegram");
+  });
 });
 
 function context(overrides: Partial<ChannelContext> = {}): ChannelContext {
@@ -201,6 +337,22 @@ function activeSession(threadId: string, prompt: string): ActiveSessionDto {
     durationMs: 62_000,
     queueLength: 0,
     queuePaused: false,
+  };
+}
+
+function webMessage(
+  threadId: string,
+  role: "agent" | "user" | "system" | "tool",
+  source: "web" | "telegram" | "discord" | "slack" | "matrix" | "cli",
+  text: string,
+) {
+  return {
+    id: `${source}-${role}-${text}`,
+    timestamp: new Date().toISOString(),
+    threadId,
+    role,
+    source,
+    text,
   };
 }
 

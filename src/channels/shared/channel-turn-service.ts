@@ -17,7 +17,7 @@ import {
 } from "../../state/prompt-store.js";
 import type { RelayArtifactService } from "../../runtime/relay-artifact-service.js";
 import type { RelayEvent, WebTaskDto } from "../../runtime/relay-runtime-types.js";
-import type { WebActivityActor, WebActivityEvent, WebChatStore } from "../../web/web-state.js";
+import type { WebActivityActor, WebActivityEvent, WebActivitySource, WebChatStore } from "../../web/web-state.js";
 
 export interface ChannelTurnServiceOptions {
   source: WebActivityEvent["source"];
@@ -45,6 +45,7 @@ export class ChannelTurnService {
 
   async run(session: AgentSessionService, envelope: PromptEnvelope): Promise<void> {
     const actor = envelope.activityActor;
+    const source = sourceForActor(actor, this.options.source);
     await this.options.ensureActiveThread(session);
     const sync = session.syncFromAgentState({ reattach: true });
     if (sync.changed || sync.reattached) {
@@ -63,7 +64,7 @@ export class ChannelTurnService {
     this.options.setCurrentTurn(turnId, startedMs, "");
     this.options.setCurrentProgress({
       id: turnId,
-      source: this.options.source,
+      source,
       status: "running",
       correlationId,
       prompt: envelope.description,
@@ -89,13 +90,13 @@ export class ChannelTurnService {
       text: displayText,
       meta: displayMeta,
       attachments: envelope.attachments,
-      source: this.options.source,
+      source,
       correlationId,
       turnId,
       timestamp: startedAt,
     });
     this.options.appendActivity({
-      source: this.options.source,
+      source,
       status: "running",
       type: "prompt_started",
       threadId: info.threadId,
@@ -125,17 +126,17 @@ export class ChannelTurnService {
       meta: displayMeta,
       attachments: envelope.attachments,
       at: startedAt,
-      source: this.options.source,
+      source,
       correlationId,
     });
     void this.options.chatHistory().then((messages) => this.options.broadcast({ type: "chat_history", messages })).catch(() => {});
 
     try {
-      await session.prompt(envelope.input as AgentPromptInput, this.callbacks(turnId, info, envelope, actor));
+      await session.prompt(envelope.input as AgentPromptInput, this.callbacks(turnId, info, envelope, actor, source));
       this.options.updateSession(session);
       const artifactInfo = session.getInfo();
       await this.options.artifactService.persistWorkspaceArtifactsForTurn(artifactInfo.workspace, turnId, startedDate, {
-        source: this.options.source,
+        source,
         agentId: artifactInfo.agentId,
         threadId: artifactInfo.threadId,
         workspace: artifactInfo.workspace,
@@ -151,13 +152,13 @@ export class ChannelTurnService {
           threadId: info.threadId ?? "pending",
           role: "agent",
           text,
-          source: this.options.source,
+          source,
           correlationId,
           turnId,
         });
       }
       this.options.appendActivity({
-        source: this.options.source,
+        source,
         status: "completed",
         type: "prompt_completed",
         threadId: info.threadId,
@@ -188,12 +189,12 @@ export class ChannelTurnService {
         threadId: info.threadId ?? "pending",
         role: "system",
         text: `Error: ${errorText}`,
-        source: this.options.source,
+        source,
         correlationId,
         turnId,
       });
       this.options.appendActivity({
-        source: this.options.source,
+        source,
         status: "failed",
         type: "prompt_failed",
         threadId: info.threadId,
@@ -236,6 +237,7 @@ export class ChannelTurnService {
     info: AgentSessionInfo,
     envelope: PromptEnvelope,
     actor: WebActivityActor | undefined,
+    source: WebActivitySource,
   ): AgentSessionCallbacks {
     const correlationId = envelope.correlationId ?? turnId;
     return {
@@ -248,7 +250,7 @@ export class ChannelTurnService {
       onToolStart: (toolName, toolCallId) => {
         this.addCurrentTool(toolName);
         this.options.appendActivity({
-          source: this.options.source,
+          source,
           status: "running",
           type: "tool_started",
           threadId: info.threadId,
@@ -270,7 +272,7 @@ export class ChannelTurnService {
         const toolName = progress?.currentTool ?? progress?.lastTool ?? toolCallId;
         this.updateCurrentProgress({ currentTool: undefined });
         this.options.appendActivity({
-          source: this.options.source,
+          source,
           status: isError ? "failed" : "completed",
           type: isError ? "tool_failed" : "tool_completed",
           threadId: info.threadId,
@@ -322,4 +324,16 @@ export class ChannelTurnService {
     }
     this.updateCurrentProgress({ currentTool: toolName, lastTool: toolName });
   }
+}
+
+function sourceForActor(actor: WebActivityActor | undefined, fallback: WebActivitySource): WebActivitySource {
+  const channel = actor?.channel;
+  return channel === "web" ||
+    channel === "telegram" ||
+    channel === "discord" ||
+    channel === "slack" ||
+    channel === "matrix" ||
+    channel === "cli"
+    ? channel
+    : fallback;
 }

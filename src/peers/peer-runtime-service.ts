@@ -1257,7 +1257,7 @@ export function peerError(error: unknown): string {
 
 function peerActor(peer: PeerRecord, actor?: WebActivityActor): WebActivityActor {
   return {
-    channel: "system",
+    channel: actor?.channel ?? "system",
     id: `peer:${peer.id}${actor?.id ? `:${actor.id}` : ""}`,
     label: actor?.label ? `${actor.label} via ${peer.name}` : `Peer ${peer.name}`,
     username: actor?.username,
