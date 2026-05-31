@@ -30,6 +30,26 @@ export function readCodexFastMode(): boolean | null {
   }
 }
 
+export function normalizeCodexServiceTier(): boolean {
+  const configPath = getCodexConfigPath();
+  if (!configPath || !existsSync(configPath)) {
+    return false;
+  }
+
+  try {
+    const currentContents = readFileSync(configPath, "utf8");
+    const [topLevel, rest] = splitTopLevel(currentContents);
+    const match = topLevel.match(SERVICE_TIER_RE);
+    if (!match || unquoteTomlValue(match[2]).toLowerCase() !== "default") {
+      return false;
+    }
+    writeFileSync(configPath, `${topLevel.replace(SERVICE_TIER_RE, `$1"flex"$3`)}${rest}`, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function writeCodexFastMode(enabled: boolean): void {
   const configPath = getCodexConfigPath();
   if (!configPath) {
@@ -41,7 +61,7 @@ export function writeCodexFastMode(enabled: boolean): void {
 
   const optOutValue = enabled ? "false" : "true";
   const currentContents = existsSync(configPath) ? readFileSync(configPath, "utf8") : "";
-  const withServiceTier = writeTopLevelServiceTier(currentContents, enabled ? "fast" : "default");
+  const withServiceTier = writeTopLevelServiceTier(currentContents, enabled ? "fast" : "flex");
   const nextContents = writeLegacyFastOptOut(withServiceTier, optOutValue);
 
   writeFileSync(configPath, nextContents, "utf8");
@@ -56,7 +76,7 @@ function readTopLevelServiceTier(contents: string): string | null {
   return unquoteTomlValue(match[2]).toLowerCase();
 }
 
-function writeTopLevelServiceTier(contents: string, value: "fast" | "default"): string {
+function writeTopLevelServiceTier(contents: string, value: "fast" | "flex"): string {
   const [topLevel, rest] = splitTopLevel(contents);
   if (SERVICE_TIER_RE.test(topLevel)) {
     return `${topLevel.replace(SERVICE_TIER_RE, `$1"${value}"$3`)}${rest}`;

@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { readCodexFastMode, writeCodexFastMode } from "../src/agents/codex/codex-config.js";
+import { normalizeCodexServiceTier, readCodexFastMode, writeCodexFastMode } from "../src/agents/codex/codex-config.js";
 
 describe("codex-config", () => {
   const originalCodexHome = process.env.CODEX_HOME;
@@ -55,8 +55,16 @@ describe("codex-config", () => {
 
     expect(readCodexFastMode()).toBe(true);
 
-    writeFileSync(configPath, "service_tier = \"default\"\n\n[notice]\nfast_default_opt_out = false\n", "utf8");
+    writeFileSync(configPath, "service_tier = \"flex\"\n\n[notice]\nfast_default_opt_out = false\n", "utf8");
 
+    expect(readCodexFastMode()).toBe(false);
+  });
+
+  it("normalizes legacy default service tier to flex", () => {
+    writeFileSync(configPath, "service_tier = \"default\"\n\n[notice]\nfast_default_opt_out = true\n", "utf8");
+
+    expect(normalizeCodexServiceTier()).toBe(true);
+    expect(readFileSync(configPath, "utf8")).toBe("service_tier = \"flex\"\n\n[notice]\nfast_default_opt_out = true\n");
     expect(readCodexFastMode()).toBe(false);
   });
 
@@ -80,7 +88,7 @@ describe("codex-config", () => {
     writeCodexFastMode(false);
 
     expect(readFileSync(configPath, "utf8")).toBe(
-      "service_tier = \"default\"\n[notice]\nfast_default_opt_out = true\nhide_full_access_warning = true\n",
+      "service_tier = \"flex\"\n[notice]\nfast_default_opt_out = true\nhide_full_access_warning = true\n",
     );
   });
 
@@ -99,6 +107,6 @@ describe("codex-config", () => {
 
     writeCodexFastMode(false);
 
-    expect(readFileSync(configPath, "utf8")).toBe("service_tier = \"default\"\n\n[notice]\nfast_default_opt_out = true\n");
+    expect(readFileSync(configPath, "utf8")).toBe("service_tier = \"flex\"\n\n[notice]\nfast_default_opt_out = true\n");
   });
 });

@@ -12,7 +12,7 @@ import {
 
 import type { ConnectorConfig } from "../../core/config.js";
 import { resolveCodexCli } from "./codex-cli.js";
-import { readCodexFastMode, writeCodexFastMode } from "./codex-config.js";
+import { normalizeCodexServiceTier, readCodexFastMode, writeCodexFastMode } from "./codex-config.js";
 import {
   getThread,
   getThreadRolloutSnapshot,
@@ -677,6 +677,7 @@ export class CodexSessionService {
   }
 
   private resetCodexClient(): void {
+    normalizeCodexServiceTier();
     const cli = resolveCodexCli();
     const options: CodexOptions = {
       apiKey: this.config.codexApiKey,

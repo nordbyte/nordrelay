@@ -36,13 +36,17 @@ const mockCodexState = vi.hoisted(() => {
 });
 
 const mockCodexConfig = vi.hoisted(() => {
+  const normalizeCodexServiceTier = vi.fn().mockReturnValue(false);
   const readCodexFastMode = vi.fn().mockReturnValue(null);
   const writeCodexFastMode = vi.fn();
 
   return {
+    normalizeCodexServiceTier,
     readCodexFastMode,
     writeCodexFastMode,
     reset: () => {
+      normalizeCodexServiceTier.mockReset();
+      normalizeCodexServiceTier.mockReturnValue(false);
       readCodexFastMode.mockReset();
       readCodexFastMode.mockReturnValue(null);
       writeCodexFastMode.mockReset();
@@ -112,6 +116,7 @@ vi.mock("../src/agents/codex/codex-state.js", () => ({
 }));
 
 vi.mock("../src/agents/codex/codex-config.js", () => ({
+  normalizeCodexServiceTier: mockCodexConfig.normalizeCodexServiceTier,
   readCodexFastMode: mockCodexConfig.readCodexFastMode,
   writeCodexFastMode: mockCodexConfig.writeCodexFastMode,
 }));
