@@ -264,6 +264,7 @@ declare function uiTraceControls(correlationId: string): string;
 declare function recordApiSuccess(target?: unknown): void;
 declare function upsertAgentUpdateJob(job: WebuiRecord): void;
 declare function updateSnapshotQueue(queue?: WebuiRecord[], paused?: boolean): void;
+declare function updateCurrentChatQueue(queue?: WebuiRecord[], paused?: boolean): void;
 declare function updateQueueNavBadge(queue?: WebuiRecord[] | number): void;
 declare function val(id: string): string;
 declare function versionStatusClass(status: string): string;

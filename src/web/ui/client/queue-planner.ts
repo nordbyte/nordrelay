@@ -47,6 +47,10 @@ async function loadQueue(options:WebuiRecord={}){
     includePlanner&&can('queue.plan.read')?api('/api/queue/plans'):Promise.resolve(null),
   ]);
   renderQueue(queue.queue,queue.paused,{nodes:queue.nodes,errors:queue.errors,global:true});
+  if(state.currentPage==='chat'){
+    const peerId=state.selectedPeer||'local';
+    updateCurrentChatQueue((queue.queue||[]).filter(item=>String(item.peerId||'local')===peerId),queue.paused);
+  }
   if(planner)renderQueuePlanner(planner);
 }
 

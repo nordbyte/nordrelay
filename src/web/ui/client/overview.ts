@@ -100,6 +100,12 @@ function updateSnapshotQueue(queue,paused){
   state.snapshot.queuePaused=Boolean(paused);
   if(state.currentPage==='chat')renderChatWorkspaceLine();
 }
+function updateCurrentChatQueue(queue,paused){
+  if(!state.snapshot)return;
+  state.snapshot.queue=Array.isArray(queue)?queue:[];
+  state.snapshot.queuePaused=Boolean(paused);
+  if(state.currentPage==='chat')renderChatWorkspaceLine();
+}
 function updateQueueNavBadge(queue){
   const count=Array.isArray(queue)?queue.length:Math.max(0,Number(queue)||0);
   const badge=document.getElementById('queueNavBadge');
