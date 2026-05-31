@@ -259,7 +259,6 @@ export class ClaudeCodeSessionService implements AgentSessionService {
   }
 
   async switchSession(threadId: string): Promise<AgentSessionInfo> {
-    this.ensureIdle("switch Claude Code session");
     const record = this.getRecord(threadId);
     if (!record) {
       throw new Error(`Unknown Claude Code session: ${threadId}`);

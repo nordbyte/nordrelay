@@ -311,7 +311,6 @@ export class HermesSessionService implements AgentSessionService {
   }
 
   async switchSession(threadId: string): Promise<AgentSessionInfo> {
-    this.ensureIdle("switch Hermes session");
     const record = this.getRecord(threadId);
     if (!record) {
       throw new Error(`Unknown Hermes session: ${threadId}`);

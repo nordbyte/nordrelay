@@ -231,16 +231,19 @@ export class CodexSessionService {
 
     const controller = new AbortController();
     this.abortController = controller;
+    const activeThread = this.thread;
     let lastAgentText = "";
 
     // Track cumulative aggregated_output per command item to compute deltas.
     const lastCommandOutput = new Map<string, string>();
 
     try {
-      const { events } = await this.thread.runStreamed(this.buildSdkInput(input), { signal: controller.signal });
+      const { events } = await activeThread.runStreamed(this.buildSdkInput(input), { signal: controller.signal });
 
       for await (const event of events) {
-        this.handleThreadEvent(event);
+        if (this.thread === activeThread) {
+          this.handleThreadEvent(event);
+        }
 
         switch (event.type) {
           case "item.started":
@@ -400,8 +403,6 @@ export class CodexSessionService {
   }
 
   async switchSession(threadId: string): Promise<CodexSessionInfo> {
-    this.ensureIdle("switch session");
-
     const record = getThread(threadId);
     const workspace = record?.cwd ?? this.currentWorkspace;
     const model = record?.model || undefined;

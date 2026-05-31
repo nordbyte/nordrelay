@@ -1253,9 +1253,22 @@ describe("CodexSessionService", () => {
     });
   });
 
-  it("switchSession throws when a turn is in progress", async () => {
+  it("switchSession can change the selected thread while a turn is in progress", async () => {
+    mockCodexState.getThread.mockReturnValue({
+      id: "thread-busy",
+      title: "Busy target",
+      cwd: "/workspace/other",
+      model: "gpt-5.4-mini",
+      reasoningEffort: "high",
+      sandboxMode: "workspace-write",
+      approvalPolicy: "never",
+      createdAt: new Date("2025-01-03T00:00:00.000Z"),
+      updatedAt: new Date("2025-01-04T00:00:00.000Z"),
+      firstUserMessage: "target",
+    });
     const service = await CodexSessionService.create(createConfig());
     const thread = mockState.createdThreads[0];
+    const codexInstance = mockState.codexInstances[0];
     const callbacks = createCallbacks();
 
     let release!: () => void;
@@ -1266,19 +1279,31 @@ describe("CodexSessionService", () => {
     thread.runStreamed.mockImplementationOnce(async () => ({
       events: (async function* () {
         await blocker;
+        yield { type: "thread.started", thread_id: "thread-original" };
+        yield { type: "turn.completed", usage: { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0 } };
       })(),
     }));
 
     const promptPromise = service.prompt("busy", callbacks);
     await Promise.resolve();
 
-    await expect(service.switchSession("thread-busy")).rejects.toThrow(
-      "Cannot switch session while a turn is in progress",
-    );
+    const info = await service.switchSession("thread-busy");
 
-    await service.abort();
+    expect(mockCodexState.getThread).toHaveBeenCalledWith("thread-busy");
+    expect(codexInstance.resumeThread).toHaveBeenLastCalledWith("thread-busy", {
+      model: "gpt-5.4-mini",
+      sandboxMode: "workspace-write",
+      workingDirectory: "/workspace/other",
+      approvalPolicy: "never",
+      skipGitRepoCheck: true,
+      modelReasoningEffort: "high",
+    });
+    expect(info.threadId).toBe("thread-busy");
+    expect(info.workspace).toBe("/workspace/other");
+
     release();
-    await promptPromise.catch(() => {});
+    await promptPromise;
+    expect(service.getInfo().threadId).toBe("thread-busy");
   });
 
   it("newThread accepts an explicit model override and updates getInfo", async () => {

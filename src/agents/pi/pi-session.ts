@@ -253,7 +253,6 @@ export class PiSessionService implements AgentSessionService {
   }
 
   async switchSession(threadId: string): Promise<AgentSessionInfo> {
-    this.ensureIdle("switch Pi session");
     const record = getPiSession(threadId, { sessionDir: this.sessionDir });
     if (!record) {
       throw new Error(`Unknown Pi session: ${threadId}`);

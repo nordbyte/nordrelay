@@ -318,7 +318,6 @@ export class OpenClawSessionService implements AgentSessionService {
   }
 
   async switchSession(threadId: string): Promise<AgentSessionInfo> {
-    this.ensureIdle("switch OpenClaw session");
     const record = this.getRecord(threadId);
     if (!record) {
       throw new Error(`Unknown OpenClaw session: ${threadId}`);

@@ -721,7 +721,6 @@ export async function relayRuntimeNewSession(runtime: RelayRuntimeDelegate, opti
 
 export async function relayRuntimeSwitchSession(runtime: RelayRuntimeDelegate, threadId: string, actor?: WebActivityActor): Promise<AgentSessionInfo> {
     const session = await runtime.getSession(true);
-    runtime.ensureIdle(session);
     const record = session.getSessionRecord(threadId);
     if (record?.cwd) {
       assertRuntimeWorkspaceAllowed(runtime, record.cwd);

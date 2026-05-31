@@ -134,12 +134,11 @@ export class ChannelTurnService {
     try {
       await session.prompt(envelope.input as AgentPromptInput, this.callbacks(turnId, info, envelope, actor, source));
       this.options.updateSession(session);
-      const artifactInfo = session.getInfo();
-      await this.options.artifactService.persistWorkspaceArtifactsForTurn(artifactInfo.workspace, turnId, startedDate, {
+      await this.options.artifactService.persistWorkspaceArtifactsForTurn(info.workspace, turnId, startedDate, {
         source,
-        agentId: artifactInfo.agentId,
-        threadId: artifactInfo.threadId,
-        workspace: artifactInfo.workspace,
+        agentId: info.agentId,
+        threadId: info.threadId,
+        workspace: info.workspace,
         contextKey: this.options.contextKey,
         correlationId,
         prompt: envelope.description,

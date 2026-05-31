@@ -65,6 +65,8 @@ export async function runChannelLocalPrompt<TRequest extends ChannelLocalPromptR
     config,
   } = options;
   busyState.processing = true;
+  let turnInfo: AgentSessionInfo | null = null;
+  const currentTurnInfo = () => turnInfo ?? session.getInfo();
   const engine = createChannelPromptEngine({
     runtime: options.runtime,
     context: request.context,
@@ -78,24 +80,30 @@ export async function runChannelLocalPrompt<TRequest extends ChannelLocalPromptR
     toolVerbosity: config.toolVerbosity,
     logPrefix: options.label,
     onResponseMessage: options.onResponseMessage,
-    onToolStart: (toolName) => options.appendActivity(request, {
-      status: "running",
-      type: "tool_started",
-      prompt: envelope.description,
-      detail: toolName,
-      threadId: session.getInfo().threadId,
-      workspace: session.getInfo().workspace,
-      agentId: session.getInfo().agentId,
-    }),
-    onToolEnd: (isError) => options.appendActivity(request, {
-      status: isError ? "failed" : "completed",
-      type: isError ? "tool_failed" : "tool_completed",
-      prompt: envelope.description,
-      detail: "tool",
-      threadId: session.getInfo().threadId,
-      workspace: session.getInfo().workspace,
-      agentId: session.getInfo().agentId,
-    }),
+    onToolStart: (toolName) => {
+      const info = currentTurnInfo();
+      return options.appendActivity(request, {
+        status: "running",
+        type: "tool_started",
+        prompt: envelope.description,
+        detail: toolName,
+        threadId: info.threadId,
+        workspace: info.workspace,
+        agentId: info.agentId,
+      });
+    },
+    onToolEnd: (isError) => {
+      const info = currentTurnInfo();
+      return options.appendActivity(request, {
+        status: isError ? "failed" : "completed",
+        type: isError ? "tool_failed" : "tool_completed",
+        prompt: envelope.description,
+        detail: "tool",
+        threadId: info.threadId,
+        workspace: info.workspace,
+        agentId: info.agentId,
+      });
+    },
   });
   const progress = engine.progress;
   turnProgress.set(request.contextKey, progress);
@@ -111,6 +119,7 @@ export async function runChannelLocalPrompt<TRequest extends ChannelLocalPromptR
     }
     await options.ensureActiveThread(request, session);
     const currentInfo = session.getInfo();
+    turnInfo = currentInfo;
     const workspacePolicy = evaluateWorkspacePolicy(currentInfo.workspace, config);
     if (!workspacePolicy.allowed) {
       throw new Error(workspacePolicy.warning ?? "Current workspace is blocked by policy.");
@@ -126,12 +135,11 @@ export async function runChannelLocalPrompt<TRequest extends ChannelLocalPromptR
     progress.completedAt = Date.now();
     progress.updatedAt = progress.completedAt;
     await engine.finalize();
-    const artifactInfo = session.getInfo();
-    await options.artifactService.persistWorkspaceArtifactsForTurn(artifactInfo.workspace, engine.turnId, new Date(engine.startedAt), {
+    await options.artifactService.persistWorkspaceArtifactsForTurn(currentInfo.workspace, engine.turnId, new Date(engine.startedAt), {
       source: options.source,
-      agentId: artifactInfo.agentId,
-      threadId: artifactInfo.threadId,
-      workspace: artifactInfo.workspace,
+      agentId: currentInfo.agentId,
+      threadId: currentInfo.threadId,
+      workspace: currentInfo.workspace,
       contextKey: request.contextKey,
       correlationId: envelope.correlationId,
       prompt: envelope.description,
@@ -142,23 +150,24 @@ export async function runChannelLocalPrompt<TRequest extends ChannelLocalPromptR
       await options.sendRecentArtifacts(new Date(engine.startedAt), engine.turnId);
     }
     options.appendActivity(request, {
-      ...promptActivity("completed", "prompt_completed", envelope, session.getInfo()),
+      ...promptActivity("completed", "prompt_completed", envelope, currentInfo),
       durationMs: Date.now() - engine.startedAt,
     });
-    options.audit(request, promptAudit("prompt_completed", "ok", envelope, session.getInfo()));
+    options.audit(request, promptAudit("prompt_completed", "ok", envelope, currentInfo));
   } catch (error) {
+    const failedInfo = turnInfo ?? session.getInfo();
     progress.status = "failed";
     progress.completedAt = Date.now();
     progress.updatedAt = progress.completedAt;
     progress.error = friendlyErrorText(error);
     await engine.fail(renderPromptFailure(engine.accumulatedText(), error));
     options.appendActivity(request, {
-      ...promptActivity("failed", "prompt_failed", envelope, session.getInfo()),
+      ...promptActivity("failed", "prompt_failed", envelope, failedInfo),
       detail: friendlyErrorText(error),
       durationMs: Date.now() - engine.startedAt,
     });
     options.audit(request, {
-      ...promptAudit("prompt_failed", "failed", envelope, session.getInfo()),
+      ...promptAudit("prompt_failed", "failed", envelope, failedInfo),
       detail: friendlyErrorText(error),
     });
   } finally {
