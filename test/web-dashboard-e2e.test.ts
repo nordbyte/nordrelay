@@ -24,7 +24,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(runtimeSource).toContain("pendingPageReload:null");
     expect(runtimeSource).toContain("if(!state.bootstrapReady){state.pendingPageReload=name;return}");
     expect(runtimeSource).toContain("async function finishBootstrapNavigation()");
-    expect(adminCoreSource).toContain("await finishBootstrapNavigation();connectEvents()");
+    expect(adminCoreSource).toContain("loadBootstrap().then(async()=>{await finishBootstrapNavigation();");
+    expect(adminCoreSource).toContain("connectEvents()}).catch(handleUiError);");
     expect(stateTypes).toContain("bootstrapReady: boolean;");
     expect(stateTypes).toContain("pendingPageReload: string | null;");
   });

@@ -18,6 +18,7 @@ import { PeerStore } from "./peer-store.js";
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
 import type { ActiveSessionsDto, QueuePlanDto, QueuePlannerSnapshotDto, RelayEvent, RelaySnapshot, SessionPageDto, TraceDetailDto, UnifiedJobDto, UnifiedJobsDto, WebDiagnosticsDto, WebTasksDto } from "../runtime/relay-runtime-types.js";
 import type { QueuePlanInput } from "../runtime/relay-runtime-queue-planner.js";
+import type { PluginTrustLevel } from "../plugins/plugin-types.js";
 import { QUEUE_PLAN_STATUSES, type QueuePlanStatus } from "../state/queue-plan-store.js";
 import type { PromptTemplate, Workflow, WorkflowRun, WorkflowStep } from "../state/workflow-store.js";
 import type { WorktreeConflictResolution } from "../worktrees/worktree-types.js";
@@ -199,6 +200,18 @@ export class PeerRuntimeService {
       this.assertScope(peer, "plugins.read");
       return await plugins.catalog();
     }
+    if (method === "POST" && path === "/api/plugins/analyze") {
+      this.assertScope(peer, "plugins.install");
+      return await plugins.analyzeInstall({
+        source: requiredString(body.source, "source"),
+        ref: stringValue(body.ref) || undefined,
+        trustLevel: parsePluginTrustLevel(body.trustLevel),
+        expectedManifestHash: stringValue(body.expectedManifestHash) || undefined,
+        expectedPackageHash: stringValue(body.expectedPackageHash) || undefined,
+        signaturePublicKey: stringValue(body.signaturePublicKey) || undefined,
+        requireSignature: typeof body.requireSignature === "boolean" ? body.requireSignature : undefined,
+      });
+    }
     if (method === "POST" && path === "/api/plugins/validate") {
       this.assertScope(peer, "plugins.install");
       return await plugins.validate(requiredString(body.source, "source"));
@@ -246,6 +259,10 @@ export class PeerRuntimeService {
       this.assertScope(peer, "plugins.read");
       return { id, log: await plugins.readLog(id, numberValue(query.maxBytes, 20000)) };
     }
+    if (method === "GET" && action === "events") {
+      this.assertScope(peer, "plugins.read");
+      return { pluginId: id, jobs: await plugins.listJobs(id), at: new Date().toISOString() };
+    }
     if (method === "POST" && action === "manifest") {
       this.assertScope(peer, "plugins.install");
       return await plugins.updateManifest(id);
@@ -285,6 +302,28 @@ export class PeerRuntimeService {
     if (method === "POST" && action === "collector") {
       this.assertScope(peer, "plugins.install");
       return await plugins.invokeCollector(id, requiredString(body.collectorId, "collectorId"), objectRecord(body.input));
+    }
+    if (action === "jobs") {
+      const jobId = params[2] || "";
+      const jobAction = params[3] || "";
+      if (method === "GET" && !jobId) {
+        this.assertScope(peer, "plugins.read");
+        return { jobs: await plugins.listJobs(id) };
+      }
+      if (method === "POST" && !jobId) {
+        this.assertScope(peer, "plugins.install");
+        return await plugins.startCommandJob(id, requiredString(body.command, "command"), objectRecord(body.input));
+      }
+      if (method === "GET" && jobId && !jobAction) {
+        this.assertScope(peer, "plugins.read");
+        const job = await plugins.getJob(id, jobId);
+        if (!job) throw new Error("Plugin job not found.");
+        return job;
+      }
+      if (method === "POST" && jobId && jobAction === "cancel") {
+        this.assertScope(peer, "plugins.install");
+        return await plugins.cancelJob(id, jobId);
+      }
     }
     throw unsupportedPeerRoute(method, path);
   }
@@ -1322,6 +1361,11 @@ function parseApprovalChoice(value: string): AgentApprovalChoice {
 function parseWorkspaceMode(value: unknown): WorkflowStep["workspaceMode"] {
   const text = stringValue(value);
   return text === "shared" || text === "worktree" || text === "attached" ? text : undefined;
+}
+
+function parsePluginTrustLevel(value: unknown): PluginTrustLevel | undefined {
+  const text = stringValue(value);
+  return text === "official" || text === "verified" || text === "community" || text === "local" || text === "untrusted" ? text : undefined;
 }
 
 function stringValue(value: unknown): string {
