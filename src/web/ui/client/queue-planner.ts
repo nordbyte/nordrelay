@@ -37,16 +37,65 @@ async function loadQueue(options:WebuiRecord={}){
     return;
   }
   if(!options.silent)setLoading('queueList','Loading queue...');
-  if(can('queue.plan.read')){
+  const includePlanner=state.currentPage==='queue'||options.includePlanner===true;
+  if(includePlanner&&can('queue.plan.read')){
     if(!options.silent)setLoading('queuePlannerBoard','Loading planned prompts...');
     if(!options.silent)setLoading('queueProgressBoard','Loading in-progress prompts...');
   }
   const [queue,planner]=await Promise.all([
-    api('/api/queue'),
-    can('queue.plan.read')?api('/api/queue/plans'):Promise.resolve(null),
+    loadGlobalQueueSnapshot(),
+    includePlanner&&can('queue.plan.read')?api('/api/queue/plans'):Promise.resolve(null),
   ]);
-  renderQueue(queue.queue,queue.paused);
+  renderQueue(queue.queue,queue.paused,{nodes:queue.nodes,errors:queue.errors,global:true});
   if(planner)renderQueuePlanner(planner);
+}
+
+async function loadGlobalQueueSnapshot(){
+  const targets=await queueFetchTargets();
+  const results=await Promise.all(targets.map(target=>fetchQueueFromTarget(target).then(result=>({target,result,error:null})).catch(error=>({target,result:null,error}))));
+  const nodes=results.map(({target,result,error})=>({
+    id:target.id,
+    name:target.label,
+    paused:Boolean(result?.paused),
+    count:Array.isArray(result?.queue)?result.queue.length:0,
+    error:error?String(error?.message||error):'',
+  }));
+  const queue=results.flatMap(({target,result})=>(result?.queue||[]).map((item,index)=>({
+    ...item,
+    peerId:target.id,
+    nodeName:target.label,
+    nodePaused:Boolean(result?.paused),
+    nodePosition:index+1,
+  })));
+  return{queue,paused:nodes.some(node=>node.paused),nodes,errors:nodes.filter(node=>node.error)};
+}
+
+async function queueFetchTargets(){
+  if(can('peers.read')&&!state.peers){
+    state.peers=await api('/api/peers',{local:true}).catch(()=>state.peers);
+  }
+  const peers=(state.peers?.peers||[]).filter(peer=>peer.enabled!==false&&(peer.url||peer.direction==='inbound'));
+  return [{id:'local',label:'Local node',kind:'local'}].concat(peers.map(peer=>({id:peer.id,label:peer.name||peer.url||peer.id,kind:'peer'})));
+}
+
+async function fetchQueueFromTarget(target){
+  return target.kind==='peer'
+    ? apiPeer(target.id,'/api/queue',{timeoutMs:8000})
+    : api('/api/queue',{local:true});
+}
+
+async function queueActionRequest(peerId,action,id){
+  const body={action,id};
+  return peerId&&peerId!=='local'
+    ? apiPeer(peerId,'/api/queue',{method:'POST',body:JSON.stringify(body),timeoutMs:8000})
+    : api('/api/queue',{method:'POST',body:JSON.stringify(body),local:true});
+}
+
+async function queueBulkAction(action){
+  if(action==='clear'&&!confirm('Clear queued prompts on all nodes?'))return;
+  const targets=await queueFetchTargets();
+  await Promise.all(targets.map(target=>queueActionRequest(target.id,action,undefined).catch(error=>({error:String(error?.message||error)}))));
+  await loadQueue({silent:true});
 }
 
 async function loadQueuePlanner(options:WebuiRecord={}){

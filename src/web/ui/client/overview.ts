@@ -101,7 +101,7 @@ function updateSnapshotQueue(queue,paused){
   if(state.currentPage==='chat')renderChatWorkspaceLine();
 }
 function updateQueueNavBadge(queue){
-  const count=Array.isArray(queue)?queue.length:0;
+  const count=Array.isArray(queue)?queue.length:Math.max(0,Number(queue)||0);
   const badge=document.getElementById('queueNavBadge');
   if(!badge)return;
   badge.textContent=String(count);
