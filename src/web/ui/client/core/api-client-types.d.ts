@@ -475,6 +475,7 @@ export interface WebApiClientOptions<P extends WebApiPath = WebApiPath> {
   headers?: Record<string, string>;
   body?: WebApiRequestBody<P> | string | FormData | Blob | ArrayBuffer | null;
   timeoutMs?: number;
+  contextKey?: string;
 }
 
 export type WebApiRequestBody<P extends WebApiPath> =

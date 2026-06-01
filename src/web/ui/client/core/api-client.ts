@@ -6,6 +6,7 @@
 /** @type {ApiRouteRule[]} */
 const API_ROUTE_RULES = /** @type {{ NORDRELAY_WEB_API_CLIENT_ROUTE_RULES?: ApiRouteRule[] }} */ (globalThis).NORDRELAY_WEB_API_CLIENT_ROUTE_RULES ?? [];
 const AUTH_REFRESH_STORAGE_KEY = 'nordrelayAuthRefreshAttemptedAt';
+const WEB_PROXY_DEFAULT_CONTEXT_KEY = 'web:dashboard';
 let dashboardAuthRefreshPromise: Promise<boolean> | null = null;
 
 /**
@@ -23,12 +24,15 @@ async function api<P extends import("./api-client-types.js").WebApiPath>(
   assertApiRoute(url.pathname, method);
   if (!options.local && shouldProxyApi(url.pathname)) {
     const peerId = selectedPeerTarget();
+    const query = queryObject(url);
+    const body = bodyObject(options.body);
+    const contextKey = webProxyContextKey(url.pathname, method, body, query, options.contextKey, peerId);
     const proxyBody = JSON.stringify({
       method,
       path: url.pathname,
-      query: queryObject(url),
-      body: bodyObject(options.body),
-      contextKey: 'web:dashboard',
+      query,
+      body,
+      contextKey,
     });
     const context = { target: peerId, path: url.pathname, method, proxied: true };
     const send = () => fetchApi('/api/peers/'+encodeURIComponent(peerId)+'/proxy', {
@@ -70,15 +74,18 @@ async function apiPeer<P extends import("./api-client-types.js").WebApiPath>(
   const url = apiUrl(path, options.query);
   assertApiRoute(url.pathname, method);
   const context = { target: peerId, path: url.pathname, method, proxied: true };
+  const query = queryObject(url);
+  const body = bodyObject(options.body);
+  const contextKey = webProxyContextKey(url.pathname, method, body, query, options.contextKey, peerId);
   const send = () => fetchApi('/api/peers/'+encodeURIComponent(peerId)+'/proxy', {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...csrfHeader() },
     body: JSON.stringify({
       method,
       path: url.pathname,
-      query: queryObject(url),
-      body: bodyObject(options.body),
-      contextKey: 'web:dashboard',
+      query,
+      body,
+      contextKey,
     }),
   }, context, options.timeoutMs);
   const res = await send();
@@ -349,6 +356,137 @@ function isLocalWorkflowApi(path) {
 function selectedPeerTarget() {
   const runtimeState = /** @type {{ NORDRELAY_WEBUI_RUNTIME_STATE?: { selectedPeer?: string } }} */ (globalThis).NORDRELAY_WEBUI_RUNTIME_STATE;
   return runtimeState?.selectedPeer || 'local';
+}
+
+/**
+ * @param {string} path
+ * @param {WebApiMethod} [method]
+ * @param {Record<string, unknown>} [body]
+ * @param {Record<string, string | string[]>} [query]
+ * @param {string} [explicitContextKey]
+ * @param {string} [peerId]
+ * @returns {string}
+ */
+function webProxyContextKey(path, method = 'GET', body = {}, query = {}, explicitContextKey = '', peerId = selectedPeerTarget()) {
+  const explicit = typeof explicitContextKey === 'string' ? explicitContextKey.trim() : '';
+  if (explicit) return explicit;
+  const target = threadTargetForWebProxyPath(path, method, body, query, peerId);
+  return target?.threadId ? webProxyThreadContextKey(target.agentId, target.threadId) : WEB_PROXY_DEFAULT_CONTEXT_KEY;
+}
+
+function webProxyEventContextKey() {
+  return webProxyContextKey('/api/events', 'GET');
+}
+
+/**
+ * @param {string} agentId
+ * @param {string} threadId
+ */
+function webProxyThreadContextKey(_agentId, threadId) {
+  const thread = contextPart(threadId);
+  if (!thread) return WEB_PROXY_DEFAULT_CONTEXT_KEY;
+  return WEB_PROXY_DEFAULT_CONTEXT_KEY + ':thread:' + thread;
+}
+
+/**
+ * @param {string} path
+ * @param {WebApiMethod} method
+ * @param {Record<string, unknown>} body
+ * @param {Record<string, string | string[]>} query
+ * @param {string} peerId
+ * @returns {{ agentId: string; threadId: string } | null}
+ */
+function threadTargetForWebProxyPath(path, method, body, query, peerId) {
+  if (path === '/api/sessions/switch') {
+    const threadId = firstString(body.threadId);
+    return threadId ? { agentId: activeWebProxyAgentId(peerId, body), threadId } : null;
+  }
+  if (path === '/api/sessions/detail') {
+    const threadId = firstString(query.threadId);
+    return threadId ? { agentId: firstString(query.agent) || activeWebProxyAgentId(peerId, body), threadId } : null;
+  }
+  if (path === '/api/sessions/name') {
+    const threadId = firstString(body.threadId);
+    return threadId ? { agentId: firstString(body.agentId) || activeWebProxyAgentId(peerId, body), threadId } : null;
+  }
+  if (!isChatThreadScopedProxyPath(path, method)) return null;
+  return activeWebProxyThreadTarget(peerId);
+}
+
+/**
+ * @param {string} path
+ * @param {WebApiMethod} method
+ */
+function isChatThreadScopedProxyPath(path, method) {
+  const runtimeState = (globalThis as typeof globalThis & { NORDRELAY_WEBUI_RUNTIME_STATE?: DashboardState }).NORDRELAY_WEBUI_RUNTIME_STATE;
+  if (runtimeState?.currentPage !== 'chat') return false;
+  if (path === '/api/bootstrap' ||
+    path === '/api/chat/history' ||
+    path === '/api/chat/attachment' ||
+    path === '/api/chat/mirror' ||
+    path === '/api/prompt' ||
+    path === '/api/prompt/upload' ||
+    path === '/api/queue' ||
+    path === '/api/tasks' ||
+    path === '/api/models' ||
+    path === '/api/control-options' ||
+    path === '/api/abort' ||
+    path === '/api/stop' ||
+    path === '/api/retry' ||
+    path === '/api/sync' ||
+    path === '/api/handback' ||
+    path === '/api/session/model' ||
+    path === '/api/session/reasoning' ||
+    path === '/api/session/fast' ||
+    path === '/api/session/launch') return true;
+  return method === 'POST' && /^\/api\/approvals\/[^/]+\/respond$/.test(path);
+}
+
+/**
+ * @param {string} peerId
+ * @returns {{ agentId: string; threadId: string } | null}
+ */
+function activeWebProxyThreadTarget(peerId) {
+  const state = (globalThis as typeof globalThis & { NORDRELAY_WEBUI_RUNTIME_STATE?: DashboardState }).NORDRELAY_WEBUI_RUNTIME_STATE;
+  const selectedPeer = state?.selectedPeer || 'local';
+  if (peerId && peerId !== selectedPeer) return null;
+  const activeTab = Array.isArray(state?.chatTabs)
+    ? state.chatTabs.find((tab) => tab.id === state.activeChatTabId && (tab.peerId || 'local') === selectedPeer)
+    : null;
+  const session = state?.snapshot?.session || {};
+  const threadId = firstString(activeTab?.threadId) || firstString(session.threadId);
+  if (!threadId) return null;
+  return {
+    agentId: firstString(activeTab?.agentId) || firstString(session.agentId),
+    threadId,
+  };
+}
+
+/**
+ * @param {string} peerId
+ * @param {Record<string, unknown>} body
+ */
+function activeWebProxyAgentId(peerId, body) {
+  const fromBody = firstString(body.agentId) || firstString(body.agent);
+  if (fromBody) return fromBody;
+  return activeWebProxyThreadTarget(peerId)?.agentId || '';
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function firstString(value) {
+  if (Array.isArray(value)) return firstString(value[0]);
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function contextPart(value) {
+  return firstString(value).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 180);
 }
 
 /**

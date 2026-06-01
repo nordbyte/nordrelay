@@ -41,6 +41,7 @@ import type { ChannelContext } from "../shared/channel-adapter.js";
 import { createChannelActivityRecorder } from "../shared/channel-bridge-controller.js";
 import { createChannelBridgeEnvironment } from "../shared/channel-bridge-environment.js";
 import { createChannelPeerMirrorController } from "../shared/channel-peer-mirror.js";
+import { remotePeerThreadSourceContextKey } from "../shared/channel-peer-context.js";
 import { runChannelPeerPrompt } from "../shared/channel-peer-prompt.js";
 import { deliverChannelAction } from "../shared/channel-runtime.js";
 import { deliverChannelCliArtifacts } from "../shared/channel-cli-artifacts.js";
@@ -999,16 +1000,12 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     await safeReply(ctx, html, { fallbackText: plain, replyMarkup: keyboard });
   };
 
-  const handleRemoteUserPrompt = async (
-    ctx: Context,
-    contextKey: TelegramContextKey,
-    chatId: TelegramChatId,
-    prompt: PromptEnvelope,
-  ): Promise<boolean> => {
-    const targetPeerId = preferencesStore.get(contextKey).targetPeerId ?? undefined;
+  const handleRemoteUserPrompt = async (ctx: Context, contextKey: TelegramContextKey, chatId: TelegramChatId, prompt: PromptEnvelope): Promise<boolean> => {
+    const preferences = preferencesStore.get(contextKey), targetPeerId = preferences.targetPeerId ?? undefined;
     const { messageThreadId } = parseContextKey(contextKey);
     return runChannelPeerPrompt<number>({
       targetPeerId,
+      targetThreadId: preferences.targetThreadId,
       contextKey,
       prompt,
       remoteClient,
@@ -1057,12 +1054,13 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     }
     try {
       if (!userStore.canUsePeer(getAuthenticatedUser(ctx), targetPeerId)) throw new Error(`Access denied for peer target: ${targetPeerId}.`);
+      const sourceContextKey = remotePeerThreadSourceContextKey(contextKey, preferencesStore.get(contextKey).targetThreadId);
       await remoteClient.webProxy(targetPeerId, {
         method: "POST",
         path: "/api/queue",
         body: { action: "cancel", id: queueId },
-        contextKey,
-      }, telegramActivityActor(ctx), contextKey);
+        contextKey: sourceContextKey,
+      }, telegramActivityActor(ctx), sourceContextKey);
       await ctx.answerCallbackQuery({ text: `Cancelled remote queued prompt ${queueId}.` });
       const chatId = ctx.chat?.id;
       const messageId = ctx.callbackQuery.message?.message_id;

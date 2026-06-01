@@ -5,6 +5,7 @@ import { peerPromptProxyPayload } from "../../runtime/remote-prompt.js";
 import type { PeerEventEnvelope } from "../../peers/peer-types.js";
 import type { ChannelMirrorMode } from "../../state/bot-preferences.js";
 import type { WebActivityActor } from "../../web/web-state.js";
+import { remotePeerThreadSourceContextKey } from "./channel-peer-context.js";
 
 export interface RemotePromptClient {
   subscribe(
@@ -18,6 +19,7 @@ export interface RemotePromptClient {
 
 export interface ChannelPeerPromptOptions<MessageId> {
   targetPeerId?: string;
+  targetThreadId?: string | null;
   contextKey: string;
   prompt: PromptEnvelope;
   remoteClient?: RemotePromptClient;
@@ -45,6 +47,7 @@ export async function runChannelPeerPrompt<MessageId>(options: ChannelPeerPrompt
   }
 
   const client = options.remoteClient ?? new RemoteRelayClient();
+  const sourceContextKey = remotePeerThreadSourceContextKey(options.contextKey, options.targetThreadId);
   let responseMessageId: MessageId | undefined;
   let accumulated = "";
   let lastEditAt = 0;
@@ -102,7 +105,7 @@ export async function runChannelPeerPrompt<MessageId>(options: ChannelPeerPrompt
     }, (error) => {
       accumulated += `\n\nRemote event stream failed: ${error.message}`;
       finish();
-    }, options.contextKey);
+    }, sourceContextKey);
     closeSubscription = () => subscription?.close();
   });
 
@@ -111,7 +114,7 @@ export async function runChannelPeerPrompt<MessageId>(options: ChannelPeerPrompt
       options.targetPeerId,
       await peerPromptProxyPayload(options.prompt),
       options.prompt.activityActor,
-      options.contextKey,
+      sourceContextKey,
     );
     if (isQueuedRemoteResult(result)) {
       closeSubscription();

@@ -202,6 +202,7 @@ export interface WebApiClientOptions<P extends WebApiPath = WebApiPath> {
   query?: WebApiQuery;
   headers?: Record<string, string>;
   body?: WebApiRequestBody<P> | string | null;
+  contextKey?: string;
 }
 
 export type WebApiRequestBody<P extends WebApiPath> =

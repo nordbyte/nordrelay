@@ -16,6 +16,7 @@ import {
 } from "../src/channels/shared/channel-peer-sessions.js";
 import { BotPreferencesStore } from "../src/state/bot-preferences.js";
 import type { PeerWebProxyPayload } from "../src/peers/peer-types.js";
+import type { WebActivityActor } from "../src/web/web-state.js";
 
 describe("channel peer session helpers", () => {
   it("returns null when no peer target is selected", async () => {
@@ -26,7 +27,7 @@ describe("channel peer session helpers", () => {
   it("lists and switches sessions through the selected peer", async () => {
     const preferencesStore = new BotPreferencesStore(tempWorkspace());
     preferencesStore.update("telegram:1", { targetPeerId: "peer-a" });
-    const requests: PeerWebProxyPayload[] = [];
+    const requests: Array<{ payload: PeerWebProxyPayload; sourceContextKey?: string }> = [];
     const client = fakeClient({
       "/api/snapshot": { session: sessionInfo("thread-1") },
       "/api/sessions": { sessions: [threadRecord("thread-1"), threadRecord("thread-2")] },
@@ -38,7 +39,7 @@ describe("channel peer session helpers", () => {
     expect(listed?.sessions[0]?.updatedAt).toBeInstanceOf(Date);
     expect(listed?.sessions[0]?.createdAt).toBeInstanceOf(Date);
     expect(listed?.activeThreadId).toBe("thread-1");
-    expect(requests.find((payload) => payload.path === "/api/sessions")?.query).toMatchObject({ agent: "codex" });
+    expect(requests.find((request) => request.payload.path === "/api/sessions")?.payload.query).toMatchObject({ agent: "codex" });
 
     const switched = await switchTargetPeerSession({ contextKey: "telegram:1", preferencesStore, remoteClient: client, threadId: "thread-2" });
     expect(switched?.info.threadId).toBe("thread-2");
@@ -47,6 +48,7 @@ describe("channel peer session helpers", () => {
       targetThreadId: "thread-2",
       targetAgentId: "codex",
     });
+    expect(requests.find((request) => request.payload.path === "/api/sessions/switch")?.sourceContextKey).toBe("telegram:1:thread:thread-2");
     expect(parseRemoteSessionChoice(remoteSessionChoiceValue("peer-a", "thread-2"))).toEqual({ peerId: "peer-a", threadId: "thread-2" });
   });
 
@@ -79,10 +81,10 @@ describe("channel peer session helpers", () => {
   });
 });
 
-function fakeClient(responses: Record<string, unknown>, requests: PeerWebProxyPayload[] = []): RemotePeerWebClient {
+function fakeClient(responses: Record<string, unknown>, requests: Array<{ payload: PeerWebProxyPayload; sourceContextKey?: string }> = []): RemotePeerWebClient {
   return {
-    async webProxy(_peerId: string, payload: PeerWebProxyPayload): Promise<unknown> {
-      requests.push(payload);
+    async webProxy(_peerId: string, payload: PeerWebProxyPayload, _actor?: WebActivityActor, sourceContextKey?: string): Promise<unknown> {
+      requests.push({ payload, sourceContextKey });
       if (!(payload.path in responses)) {
         throw new Error(`Unexpected path ${payload.path}`);
       }

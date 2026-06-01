@@ -89,6 +89,8 @@ declare function closeCompactControlMenus(except?: Element | null): void;
 declare function clearStickyToast(): void;
 declare function clearCurrentChatWorkingState(): void;
 declare function connectEvents(): void;
+declare function webProxyContextKey(path: string, method?: WebApiMethod, body?: WebuiRecord, query?: Record<string, string | string[]>, explicitContextKey?: string, peerId?: string): string;
+declare function webProxyEventContextKey(): string;
 declare function copyText(value: string, label?: string): void;
 declare function currentChatWorkingSession(): WebuiRecord | null;
 declare function cssEscape(value: string): string;

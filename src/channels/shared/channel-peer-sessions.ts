@@ -6,6 +6,7 @@ import type { PeerWebProxyPayload } from "../../peers/peer-types.js";
 import type { BotPreferencesStore, ChannelMirrorMode } from "../../state/bot-preferences.js";
 import type { WebActivityActor } from "../../web/web-state.js";
 import type { ChannelActionResponse } from "./channel-actions.js";
+import { remotePeerThreadSourceContextKey } from "./channel-peer-context.js";
 import { renderSessionInfoHTML, renderSessionInfoPlain } from "./session-format.js";
 
 export interface RemotePeerWebClient {
@@ -108,7 +109,7 @@ export async function switchTargetPeerSession(
     method: "POST",
     path: "/api/sessions/switch",
     body: { threadId: options.threadId },
-  });
+  }, remotePeerThreadSourceContextKey(options.contextKey, options.threadId));
   const info = parseSessionInfoResult(result);
   options.preferencesStore.update(options.contextKey, {
     targetPeerId,
@@ -177,10 +178,15 @@ async function targetPeerSnapshot(options: TargetPeerCommandOptions, peerId: str
   return { session: session as AgentSessionInfo };
 }
 
-async function peerProxy(options: TargetPeerCommandOptions, peerId: string, payload: PeerWebProxyPayload): Promise<unknown> {
+async function peerProxy(options: TargetPeerCommandOptions, peerId: string, payload: PeerWebProxyPayload, sourceContextKey = selectedTargetPeerSourceContextKey(options)): Promise<unknown> {
   assertTargetPeerAllowed(options, peerId);
   const client = options.remoteClient ?? new RemoteRelayClient();
-  return client.webProxy(peerId, payload, options.actor, options.contextKey);
+  return client.webProxy(peerId, payload, options.actor, sourceContextKey);
+}
+
+export function selectedTargetPeerSourceContextKey(options: Pick<TargetPeerCommandOptions, "contextKey" | "preferencesStore">): string {
+  const preferences = options.preferencesStore.get(options.contextKey);
+  return remotePeerThreadSourceContextKey(options.contextKey, preferences.targetThreadId);
 }
 
 function assertTargetPeerAllowed(options: Pick<TargetPeerCommandOptions, "canUsePeer">, peerId: string): void {

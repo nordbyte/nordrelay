@@ -200,10 +200,12 @@ async function headerTargetRequest(peerId: string, requestPath: WebApiPath, opti
 
 async function selectHeaderTarget(peerId: string, agentId: string) {
   const previousPeer = state.selectedPeer || 'local';
+  const previousEventsContextKey = state.eventsContextKey || '';
   const changedPeer = previousPeer !== peerId;
   state.selectedPeer = peerId || 'local';
   localStorage.setItem('nordrelayPeerTarget', state.selectedPeer);
-  if (changedPeer) connectEvents();
+  state.activeChatTabId = '';
+  localStorage.removeItem('nordrelayActiveChatTabId');
   const selected = agentId;
   let r;
   try {
@@ -214,6 +216,7 @@ async function selectHeaderTarget(peerId: string, agentId: string) {
     throw error;
   }
   if (state.snapshot && r.session) { state.snapshot.session = r.session; renderSnapshot(state.snapshot); }
+  if (changedPeer || (state.selectedPeer !== 'local' && previousEventsContextKey !== webProxyEventContextKey())) connectEvents();
   toast('Target switched to ' + headerTargetName(state.selectedPeer) + ' / ' + selected);
   await loadBootstrap(); await reloadCurrentPage({ agentId: selected });
 }

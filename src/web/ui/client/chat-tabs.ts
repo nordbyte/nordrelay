@@ -208,11 +208,11 @@ async function activateChatTabSession(tab: WebuiChatTab, options: { navigate?: b
   if (!tab?.threadId) return;
   saveActiveChatTabDraft();
   const previousPeer = state.selectedPeer || 'local';
+  const previousEventsContextKey = state.eventsContextKey || '';
   state.selectedPeer = tab.peerId || 'local';
   localStorage.setItem('nordrelayPeerTarget', state.selectedPeer);
   state.activeChatTabId = tab.id;
   localStorage.setItem(ACTIVE_CHAT_TAB_STORAGE_KEY, tab.id);
-  if (previousPeer !== state.selectedPeer) connectEvents();
   if (tab.agentId && state.snapshot?.session?.agentId !== tab.agentId) {
     await headerTargetRequest(state.selectedPeer, '/api/agent', { method: 'POST', body: JSON.stringify({ agentId: tab.agentId }) });
   }
@@ -222,6 +222,9 @@ async function activateChatTabSession(tab: WebuiChatTab, options: { navigate?: b
     renderSnapshot(state.snapshot);
   }
   await loadBootstrap();
+  if (previousPeer !== state.selectedPeer || (state.selectedPeer !== 'local' && previousEventsContextKey !== webProxyEventContextKey())) {
+    connectEvents();
+  }
   syncCurrentSessionChatTab({ activate: true });
   restoreActiveChatTabDraft();
   if (options.toast !== false) toast('Session switched');

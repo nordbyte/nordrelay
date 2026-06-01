@@ -33,6 +33,7 @@ import { discordHelpCommandList } from "../shared/channel-command-catalog.js";
 import { runChannelLocalPrompt } from "../shared/channel-local-prompt-runner.js";
 import { QUEUE_DRAIN_FOLLOW_UP_DELAY_MS, drainOneQueuedChannelPrompt, queueChannelPromptIfBusy, scheduleQueuedDrain } from "../shared/channel-prompt-queue.js";
 import { createChannelPeerMirrorController } from "../shared/channel-peer-mirror.js";
+import { remotePeerThreadSourceContextKey } from "../shared/channel-peer-context.js";
 import { runChannelPeerPrompt } from "../shared/channel-peer-prompt.js";
 import {
   listTargetPeerSessions,
@@ -364,9 +365,11 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
   };
 
   const handleRemotePrompt = async (request: DiscordRequest, envelope: PromptEnvelope): Promise<boolean> => {
-    const targetPeerId = preferencesStore.get(request.contextKey).targetPeerId ?? undefined;
+    const preferences = preferencesStore.get(request.contextKey);
+    const targetPeerId = preferences.targetPeerId ?? undefined;
     return runChannelPeerPrompt<string>({
       targetPeerId,
+      targetThreadId: preferences.targetThreadId,
       contextKey: request.contextKey,
       prompt: envelope,
       remoteClient,
@@ -1581,12 +1584,14 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
         await reply(request, "Access denied for peer target.", { ephemeral: true });
         return;
       }
+      const preferences = preferencesStore.get(request.contextKey);
+      const sourceContextKey = remotePeerThreadSourceContextKey(request.contextKey, preferences.targetThreadId);
       await remoteClient.webProxy(peerQueueMatch[1], {
         method: "POST",
         path: "/api/queue",
         body: { action: "cancel", id: peerQueueMatch[2] },
-        contextKey: request.contextKey,
-      }, actorFor(request), request.contextKey);
+        contextKey: sourceContextKey,
+      }, actorFor(request), sourceContextKey);
       await reply(request, `Cancelled remote queued prompt ${peerQueueMatch[2]}.`, { ephemeral: true });
       return;
     }

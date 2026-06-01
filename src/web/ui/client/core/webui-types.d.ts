@@ -496,6 +496,7 @@ interface DashboardState {
   mediaRecorder: MediaRecorder | null;
   recordedChunks: Blob[];
   events: EventSource | null;
+  eventsContextKey: string;
   reconnectTimer: WebuiTimer | null;
   notifications: boolean;
   completionSound: boolean;

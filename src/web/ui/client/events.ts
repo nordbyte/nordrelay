@@ -82,11 +82,13 @@ function scheduleAgentUpdateVersionRefresh(job){if(!job||!AGENT_UPDATE_TERMINAL_
 function connectEvents(){
   if(state.events) state.events.close();
   const eventTarget = state.selectedPeer && state.selectedPeer !== 'local' ? state.selectedPeer : 'local';
+  const remoteContextKey = eventTarget === 'local' ? '' : webProxyEventContextKey();
   const eventsUrl = state.selectedPeer && state.selectedPeer !== 'local'
-    ? '/api/peers/'+encodeURIComponent(state.selectedPeer)+'/events?contextKey='+encodeURIComponent('web:dashboard')
+    ? '/api/peers/'+encodeURIComponent(state.selectedPeer)+'/events?contextKey='+encodeURIComponent(remoteContextKey)
     : '/api/events';
   const events = new EventSource(eventsUrl);
   state.events=events;
+  state.eventsContextKey=remoteContextKey;
   setApiState('restarting',{target:eventTarget,message:'Connecting to NordRelay events...',incrementFailure:false});
   events.onopen=()=>{if(state.reconnectTimer){clearTimeout(state.reconnectTimer);state.reconnectTimer=null}recordApiSuccess(eventTarget)};
   events.addEventListener('snapshot', e=>{const d=JSON.parse(e.data).data;state.snapshot=d;syncCurrentSessionChatTab({activate:false});syncCompletionSoundActivity();renderSnapshot(d);renderSessionControls();renderChatWorkingIndicator();renderChatTabs()});

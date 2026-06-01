@@ -2,18 +2,22 @@ import { describe, expect, it } from "vitest";
 
 import { runChannelPeerPrompt, type RemotePromptClient } from "../src/channels/shared/channel-peer-prompt.js";
 import type { PeerEventEnvelope } from "../src/peers/peer-types.js";
+import type { WebActivityActor } from "../src/web/web-state.js";
 
 class FakeRemotePromptClient implements RemotePromptClient {
   closed = false;
   events: PeerEventEnvelope[] = [];
   result: unknown = {};
+  subscribedContextKey: string | undefined;
+  proxiedContextKey: string | undefined;
 
   subscribe(
     _peerId: string,
     onEvent: (event: PeerEventEnvelope) => void,
     _onError?: (error: Error) => void,
-    _sourceContextKey?: string,
+    sourceContextKey?: string,
   ): { close: () => void } {
+    this.subscribedContextKey = sourceContextKey;
     void Promise.resolve().then(() => {
       for (const event of this.events) {
         onEvent(event);
@@ -26,7 +30,8 @@ class FakeRemotePromptClient implements RemotePromptClient {
     };
   }
 
-  async webProxy(): Promise<unknown> {
+  async webProxy(_peerId: string, _payload: unknown, _actor?: WebActivityActor, sourceContextKey?: string): Promise<unknown> {
+    this.proxiedContextKey = sourceContextKey;
     await Promise.resolve();
     return this.result;
   }
@@ -168,5 +173,31 @@ describe("runChannelPeerPrompt", () => {
     expect(handled).toBe(true);
     expect(statuses).toEqual(["queued:queue-1"]);
     expect(client.closed).toBe(true);
+  });
+
+  it("uses a thread-specific remote context when a channel has selected a remote thread", async () => {
+    const client = new FakeRemotePromptClient();
+    client.events = [{ type: "turn_complete" }];
+
+    await runChannelPeerPrompt<string>({
+      targetPeerId: "peer-1",
+      targetThreadId: "thread-2",
+      contextKey: "telegram:room",
+      prompt: { input: "work", description: "work" },
+      remoteClient: client,
+      editMinIntervalMs: 0,
+      typingIntervalMs: 10_000,
+      sendTyping: async () => {},
+      sendResponse: async () => "message-1",
+      editResponse: async () => {},
+      sendTurnStart: async () => {},
+      sendToolStart: async () => {},
+      sendQueued: async () => {},
+      sendCompleted: async () => {},
+      sendFailure: async () => {},
+    });
+
+    expect(client.subscribedContextKey).toBe("telegram:room:thread:thread-2");
+    expect(client.proxiedContextKey).toBe("telegram:room:thread:thread-2");
   });
 });
