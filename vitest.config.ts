@@ -8,11 +8,7 @@ export default defineConfig({
     include: ["test/**/*.test.ts"],
     fileParallelism: false,
     pool: "forks",
-    poolOptions: {
-      forks: {
-        singleFork: isWindows,
-      },
-    },
+    maxWorkers: isWindows ? 1 : undefined,
     setupFiles: ["./test/setup.ts"],
   },
 });

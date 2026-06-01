@@ -382,7 +382,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(headerTargetSource).toContain("await loadBootstrap(); await reloadCurrentPage({ agentId: selected });");
     expect(headerTargetSource).toContain("headerSessionLabel(snapshot)");
     expect(readFileSync("src/agents/shared/agent.ts", "utf8")).toContain("sessionName?: string;");
-    expect(readFileSync("src/runtime/relay-runtime-sessions.ts", "utf8")).toContain("sessionNameStore.get(record.agentId, record.id)?.name");
+    expect(readFileSync("src/runtime/relay-runtime-session-list.ts", "utf8")).toContain("sessionNameStore.get(record.agentId, record.id)?.name");
     expect(readFileSync("src/runtime/relay-runtime-active-sessions.ts", "utf8")).toContain("sessionNameRecord?.name");
     const workflowsSource = readFileSync("src/web/ui/client/workflows.ts", "utf8");
     expect(workflowsSource).toContain("await loadBootstrap();await loadActiveSessions();");
@@ -447,7 +447,7 @@ describe("web dashboard browser-flow assets", () => {
     const js = dashboardJs();
     const css = dashboardCss();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
-    const runtimeSessions = readFileSync("src/runtime/relay-runtime-sessions.ts", "utf8");
+    const runtimeSessions = readFileSync("src/runtime/relay-runtime-session-list.ts", "utf8");
 
     expect(js).toContain("function fmtSessionAge");
     expect(js).toContain("function updateSessionAgeCounters");
@@ -729,7 +729,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".message{position:relative;width:fit-content;max-width:92%");
     expect(css).toContain("padding:10px 106px 10px 12px");
     expect(css).toContain(".message.user,.message.user-prompt{max-width:min(88%,calc(100% - 36px));margin-left:auto;margin-right:0");
-    expect(css).toContain(".message.user,.message.user-prompt{max-width:calc(100% - 24px);margin-left:auto;margin-right:0");
+    expect(css).toContain(".message.user,.message.user-prompt{max-width:100%;margin-left:auto;margin-right:0");
     expect(css).toContain(".message-body{white-space:pre-wrap;font-size:14px;line-height:1.45}");
     expect(css).toContain(".message-copy-button");
     expect(css).toContain(".message-retry-button{right:70px}");
