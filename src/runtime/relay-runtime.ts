@@ -232,9 +232,6 @@ import {
   relayRuntimeActivityPage,
   relayRuntimeRetry,
   relayRuntimeSync,
-  relayRuntimeListSessions,
-  relayRuntimeListSessionsPage,
-  relayRuntimeFilteredSessions,
   relayRuntimeListModels,
   relayRuntimeSetAgent,
   relayRuntimeNewSession,
@@ -249,6 +246,7 @@ import {
   relayRuntimeGetControlSession,
   relayRuntimeCliPathOptions
 } from "./relay-runtime-sessions.js";
+import { relayRuntimeFilteredSessions, relayRuntimeListSessions, relayRuntimeListSessionsPage } from "./relay-runtime-session-list.js";
 import { relayRuntimeCleanupSessionWorktrees, relayRuntimeCommitSessionWorktree, relayRuntimeCompareSessionWorktrees, relayRuntimeExportSessionWorktreeIntegrationPatch, relayRuntimeFinalizeSessionWorktreeIntegration, relayRuntimeForkCurrentSessionToWorktree, relayRuntimeIntegrateSessionWorktrees, relayRuntimePreviewSessionWorktreeIntegration, relayRuntimeRemoveSessionWorktree, relayRuntimeSessionWorktreeDiff, relayRuntimeSessionWorktrees, relayRuntimeUpdateSessionWorktreeFromBase } from "./relay-runtime-worktrees.js";
 import {
   relayRuntimeSendPrompt,

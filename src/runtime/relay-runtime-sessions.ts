@@ -12,13 +12,11 @@ import {
   agentLabel,
   agentReasoningLabel,
   agentReasoningOptions,
-  isAgentId,
   type AgentCapabilities,
   type AgentId,
   type AgentPromptObject,
   type AgentSessionInfo,
   type AgentSessionService,
-  type AgentThreadRecord,
 } from "../agents/shared/agent.js";
 import { getExternalSnapshotForSession } from "../agents/shared/agent-activity.js";
 import { listAgentAdapterDescriptors } from "../agents/shared/agent-adapter.js";
@@ -86,7 +84,6 @@ import type {
   QueueItemDto,
   RelayEvent,
   RelaySnapshot,
-  SessionPageDto,
   UnifiedJobDto,
   UnifiedJobsDto,
   UploadPromptFile,
@@ -130,7 +127,6 @@ export type {
 export const WEB_CONTEXT_KEY = "web:dashboard";
 const ACTIVE_CODEX_DISCOVERY_LIMIT = 200;
 const ACTIVE_ACTIVITY_TTL_MS = 6 * 60 * 60 * 1000;
-const MAX_WEB_SESSION_PAGE_SIZE = 50;
 const MAX_CHAT_HISTORY = 250;
 
 export function relayRuntimeLocks(runtime: RelayRuntimeDelegate): SessionLock[] {
@@ -542,93 +538,6 @@ export async function relayRuntimeSync(runtime: RelayRuntimeDelegate, actor?: We
       detail: result.changedFields.join(", ") || "none",
     });
     return result;
-  }
-
-export async function relayRuntimeListSessions(runtime: RelayRuntimeDelegate, limit = 80, query = "", agentId?: AgentId): Promise<AgentThreadRecord[]> {
-    const { session, dispose } = await runtime.getControlSession(agentId);
-    try {
-      return runtime.filteredSessions(session, query, Math.max(1, limit * 3)).slice(0, limit).map((record) => enrichThreadRecord(runtime, record));
-    } finally {
-      if (dispose) {
-        session.dispose();
-      }
-    }
-  }
-
-export async function relayRuntimeListSessionsPage(runtime: RelayRuntimeDelegate, page = 1, pageSize = MAX_WEB_SESSION_PAGE_SIZE, query = "", agentId?: AgentId): Promise<SessionPageDto> {
-    const { session, dispose } = await runtime.getControlSession(agentId);
-    try {
-      const effectivePage = Math.max(1, Math.floor(page));
-      const effectivePageSize = Math.min(MAX_WEB_SESSION_PAGE_SIZE, Math.max(1, Math.floor(pageSize)));
-      const offset = (effectivePage - 1) * effectivePageSize;
-      const requested = Math.min(5_000, Math.max(100, (offset + effectivePageSize + 1) * 3));
-      const records = runtime.filteredSessions(session, query, requested).map((record) => enrichThreadRecord(runtime, record));
-      return {
-        sessions: records.slice(offset, offset + effectivePageSize),
-        pagination: {
-          page: effectivePage,
-          pageSize: effectivePageSize,
-          hasPrevious: effectivePage > 1,
-          hasNext: records.length > offset + effectivePageSize,
-        },
-      };
-    } finally {
-      if (dispose) {
-        session.dispose();
-      }
-    }
-  }
-
-export function relayRuntimeFilteredSessions(runtime: RelayRuntimeDelegate, session: AgentSessionService, query: string, limit: number): AgentThreadRecord[] {
-    const normalized = query.trim().toLowerCase();
-    return session.listAllSessions(limit)
-      .filter((record) => evaluateWorkspacePolicy(record.cwd, runtime.config).allowed)
-      .filter((record) => {
-        if (!normalized) {
-          return true;
-        }
-        return [
-          record.id,
-          record.title,
-          record.cwd,
-          record.model,
-          record.reasoningEffort,
-          record.firstUserMessage,
-        ].some((value) => value?.toLowerCase().includes(normalized));
-      })
-      .sort((left, right) => sessionUpdatedAtMs(right) - sessionUpdatedAtMs(left));
-  }
-function sessionUpdatedAtMs(record: AgentThreadRecord): number {
-    const value = record.updatedAt instanceof Date ? record.updatedAt.getTime() : Date.parse(String(record.updatedAt));
-    return Number.isFinite(value) ? value : 0;
-  }
-function enrichThreadRecord(runtime: RelayRuntimeDelegate, record: AgentThreadRecord): AgentThreadRecord {
-    const worktree = runtime.worktreeService.getByThreadId(record.id) ?? runtime.worktreeService.getByWorkspace(record.cwd);
-    const metadata = runtime.listKnownContextMetadata().find((meta) => meta.threadId === record.id);
-    const sessionName = runtime.sessionNameStore.get(record.agentId, record.id)?.name;
-    if (!worktree) {
-      return {
-        ...record,
-        sessionName,
-        workspaceMode: metadata?.workspaceMode ?? "attached",
-      };
-    }
-    const snapshot = runtime.worktreeService.snapshot(worktree);
-    return {
-      ...record,
-      sessionName,
-      workspaceMode: "worktree",
-      worktree: {
-        id: snapshot.id,
-        sourceWorkspace: snapshot.sourceWorkspace,
-        repoRoot: snapshot.repoRoot,
-        baseSha: snapshot.baseSha,
-        branchName: snapshot.branchName,
-        status: snapshot.statusText,
-        dirty: snapshot.dirty,
-        commitSha: snapshot.commitSha,
-      },
-    };
   }
 
 export async function relayRuntimeListModels(runtime: RelayRuntimeDelegate): Promise<ReturnType<AgentSessionService["listModels"]>> {
