@@ -98,6 +98,82 @@ describe("RelayExternalActivityMonitor", () => {
       text: expect.stringContaining("Last tool: exec_command"),
     }));
   });
+
+  it("broadcasts new external CLI agent messages live in status mode", async () => {
+    getExternalSnapshotForSession
+      .mockReturnValueOnce(activeSnapshot({ lineCount: 1 }))
+      .mockReturnValueOnce(activeSnapshot({
+        lineCount: 2,
+        events: [
+          activeSnapshot().events[0]!,
+          {
+            lineNumber: 2,
+            kind: "agent",
+            timestamp: new Date("2026-05-25T07:00:04.000Z"),
+            type: "agent_message",
+            turnId: "turn-1",
+            status: null,
+            text: "I am checking the schema now.",
+            toolName: null,
+            phase: null,
+          },
+        ],
+        latestAgentMessage: "I am checking the schema now.",
+      }));
+    const messages: WebChatMessage[] = [];
+    const broadcasts: RelayEvent[] = [];
+    const appendWithResult = vi.fn((input: any) => {
+      const existing = input.key ? messages.find((message) => message.key === input.key) : undefined;
+      if (existing) {
+        return { message: existing, inserted: false };
+      }
+      const message: WebChatMessage = {
+        id: `message-${messages.length + 1}`,
+        timestamp: input.timestamp ?? "2026-05-25T07:00:04.000Z",
+        ...input,
+        threadId: input.threadId ?? "pending",
+      };
+      messages.push(message);
+      return { message, inserted: true };
+    });
+    const monitor = new RelayExternalActivityMonitor({
+      config: { workspace: "/workspace", codexExternalBusyStaleMs: 60_000 } as never,
+      getSession: async () => session(),
+      publicInfo: () => sessionInfo(),
+      queueLength: () => 0,
+      mirrorMode: () => "status",
+      mirrorMinUpdateMs: () => 60_000,
+      chatStore: {
+        appendWithResult,
+        upsertByKey: vi.fn(),
+      } as never,
+      chatHistory: async () => messages,
+      activity: () => [],
+      persistWorkspaceArtifactsForTurn: async () => {},
+      drainQueue: async () => {},
+      appendActivity: vi.fn((input) => ({ ...input, id: "activity-1", timestamp: "2026-05-25T07:00:00.000Z" })),
+      broadcast: (event) => broadcasts.push(event),
+      broadcastStatus: vi.fn(),
+      scheduleActiveSessionsBroadcast: vi.fn(),
+    });
+
+    await monitor.monitorSafe();
+    broadcasts.length = 0;
+    await monitor.monitorSafe();
+
+    expect(appendWithResult).toHaveBeenCalledWith(expect.objectContaining({
+      role: "agent",
+      source: "cli",
+      key: "external:/tmp/rollout-thread-1.jsonl:2",
+      text: "I am checking the schema now.",
+    }));
+    expect(broadcasts).toContainEqual({
+      type: "chat_history",
+      messages: expect.arrayContaining([
+        expect.objectContaining({ role: "agent", source: "cli", text: "I am checking the schema now." }),
+      ]),
+    });
+  });
 });
 
 function session(): AgentSessionService {

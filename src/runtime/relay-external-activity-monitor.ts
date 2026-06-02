@@ -167,6 +167,9 @@ export class RelayExternalActivityMonitor {
       const mirrorMode = this.options.mirrorMode();
       const newEvents = snapshot.events.filter((event) => event.lineNumber > mirror.lastLine);
       this.broadcastExternalEvents(snapshot, newEvents, info, mirrorMode === "full");
+      if (mirrorMode === "status" || mirrorMode === "full") {
+        await this.appendExternalConversationMessages(snapshot, newEvents, mirror);
+      }
       await this.handlePendingApprovals(snapshot, info, mirror);
       if (mirrorMode === "full") {
         await this.appendExternalEventMessages(snapshot, newEvents, mirror);
@@ -392,6 +395,29 @@ export class RelayExternalActivityMonitor {
     }
   }
 
+  private async appendExternalConversationMessages(snapshot: AgentExternalSnapshot, events: AgentExternalSnapshot["events"], mirror: ExternalMirrorState): Promise<void> {
+    let changed = false;
+    for (const event of events) {
+      if (event.lineNumber <= mirror.lastLine || (event.kind !== "user" && event.kind !== "agent") || !event.text?.trim()) {
+        continue;
+      }
+      const stored = this.options.chatStore.appendWithResult({
+        threadId: snapshot.threadId,
+        role: event.kind === "user" ? "user" : "agent",
+        text: event.text,
+        source: "cli",
+        correlationId: externalCorrelationId(snapshot),
+        turnId: event.turnId ?? snapshot.activity.turnId ?? undefined,
+        timestamp: event.timestamp?.toISOString(),
+        key: externalConversationMessageKey(snapshot, event.lineNumber),
+      });
+      changed = changed || stored.inserted;
+    }
+    if (changed) {
+      await this.broadcastChatHistory();
+    }
+  }
+
   private async appendExternalEventMessages(snapshot: AgentExternalSnapshot, events: AgentExternalSnapshot["events"], mirror: ExternalMirrorState): Promise<void> {
     let changed = false;
     for (const event of events) {
@@ -505,6 +531,10 @@ function externalMessageKey(kind: string, snapshot: AgentExternalSnapshot, lineN
     snapshot.activity.turnId ?? "turn",
     lineNumber ?? "",
   ].join(":");
+}
+
+function externalConversationMessageKey(snapshot: AgentExternalSnapshot, lineNumber: number): string {
+  return `external:${snapshot.sourcePath}:${lineNumber}`;
 }
 
 function externalTurnKey(snapshot: AgentExternalSnapshot): string {
