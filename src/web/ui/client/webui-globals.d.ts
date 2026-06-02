@@ -57,6 +57,7 @@ declare const sessionsPager: WebuiPager;
 
 declare function accessCopyButton(value: unknown, label?: string): string;
 declare function activeSourceLabel(value: unknown): string;
+declare function activeChatTab(): WebuiChatTab | null;
 declare function adminDialog(title: string, body: string, onSubmit: () => unknown | Promise<unknown>, options?: AdminDialogOptions): void;
 declare function api<P extends import("./core/api-client-types.js").WebApiPath>(path: P, options?: import("./core/api-client-types.js").WebApiClientOptions<P> & { local?: boolean }): Promise<import("./core/api-client-types.js").WebApiClientResponse<P>>;
 declare function apiPeer<P extends import("./core/api-client-types.js").WebApiPath>(peerId: string, path: P, options?: import("./core/api-client-types.js").WebApiClientOptions<P>): Promise<import("./core/api-client-types.js").WebApiClientResponse<P>>;
