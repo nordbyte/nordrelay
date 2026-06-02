@@ -193,10 +193,11 @@ interface WebuiActiveSession extends WebuiRecord {
 
 interface WebuiChatMessage extends WebuiRecord {
   id?: string;
+  correlationId?: string;
   source?: string;
   timestamp?: string;
   text?: string;
-  meta?: WebuiRecord[];
+  meta?: unknown[];
   attachments?: WebuiChatAttachment[];
   actions?: WebuiRecord[];
   actionResolution?: WebuiRecord | null;
@@ -425,9 +426,10 @@ interface WebuiChatScrollOptions {
 }
 
 interface WebuiAppendMessageOptions extends WebuiRecord {
-  meta?: WebuiRecord[];
+  meta?: unknown[];
   attachments?: WebuiChatAttachment[];
   messageId?: string;
+  correlationId?: string;
   forceScroll?: boolean;
 }
 
@@ -496,6 +498,7 @@ interface DashboardState {
   mediaRecorder: MediaRecorder | null;
   recordedChunks: Blob[];
   events: EventSource | null;
+  eventsTarget: string;
   eventsContextKey: string;
   reconnectTimer: WebuiTimer | null;
   notifications: boolean;
@@ -512,6 +515,7 @@ interface DashboardState {
   sessionAgeTimer: WebuiInterval | null;
   activityAgeTimer: WebuiInterval | null;
   chatWorkingTimer: WebuiInterval | null;
+  chatHistoryFollowupTimer: WebuiInterval | null;
   chatVisibleCompletion: WebuiRecord | null;
   sessionDetailRefreshTimer: WebuiInterval | null;
   sessionDetailAgeTimer: WebuiInterval | null;
@@ -523,6 +527,7 @@ interface DashboardState {
   chatRenderVersion: number;
   chatHistoryPagination: WebuiCursorPagination | null;
   chatHistoryLoadingOlder: boolean;
+  chatOptimisticMessages: WebuiChatMessage[];
   chatTabs: WebuiChatTab[];
   activeChatTabId: string;
   activeSessions: WebuiActiveSessionsState | null;

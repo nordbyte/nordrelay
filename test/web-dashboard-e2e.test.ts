@@ -659,7 +659,11 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("String(active.id||'')!==completion.turnId");
     expect(js).toContain("updated>completedAt+1000");
     expect(js).toContain("clearChatVisibleCompletionForCurrentSession();tool('tool','Started '+d.toolName)");
-    expect(js).toContain("state.localTurnPeerId=state.selectedPeer||'local'");
+    expect(js).toContain("function syncChatEventStreamForActiveContext");
+    expect(js).toContain("state.eventsTarget===expectedEventTarget()");
+    expect(js).toContain("function setLocalTurnFromCurrentChat");
+    expect(js).toContain("state.localTurnPeerId=identity.peerId||'local'");
+    expect(js).toContain("function startChatHistoryFollowup");
     expect(js).toContain("state.currentPage==='chat'?await loadActiveSessionsForChatTabs()");
     expect(js).toContain("Working...");
     expect(js).toContain("id=\"chatWorkingElapsed\"");

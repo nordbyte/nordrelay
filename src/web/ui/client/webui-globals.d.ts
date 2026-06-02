@@ -1,6 +1,6 @@
 interface Element {
   __rawText?: string;
-  __meta?: WebuiRecord[];
+  __meta?: unknown[];
   __attachments?: WebuiChatAttachment[];
   __actions?: WebuiRecord[];
   __actionResolution?: WebuiRecord | null;
@@ -36,7 +36,7 @@ interface EventTarget {
 
 interface HTMLElement {
   __rawText?: string;
-  __meta?: WebuiRecord[];
+  __meta?: unknown[];
   __attachments?: WebuiChatAttachment[];
   __actions?: WebuiRecord[];
   __actionResolution?: WebuiRecord | null;
@@ -90,6 +90,11 @@ declare function closeCompactControlMenus(except?: Element | null): void;
 declare function clearStickyToast(): void;
 declare function clearCurrentChatWorkingState(): void;
 declare function connectEvents(): void;
+declare function syncChatEventStreamForActiveContext(): boolean;
+declare function setLocalTurnFromCurrentChat(at?: string): void;
+declare function startChatHistoryFollowup(): void;
+declare function upsertOptimisticChatMessage(message: WebuiChatMessage): void;
+declare function removeChatMessageForCorrelation(correlationId: string): void;
 declare function webProxyContextKey(path: string, method?: WebApiMethod, body?: WebuiRecord, query?: Record<string, string | string[]>, explicitContextKey?: string, peerId?: string): string;
 declare function webProxyEventContextKey(): string;
 declare function copyText(value: string, label?: string): void;
