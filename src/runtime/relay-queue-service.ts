@@ -10,7 +10,7 @@ export class RelayQueueService {
   ) {}
 
   list(): QueueItemDto[] {
-    return this.rawList().map(queueItemDto);
+    return this.rawList().filter(isQueuedPromptWaiting).map(queueItemDto);
   }
 
   rawList(): QueuedPrompt[] {
@@ -18,7 +18,7 @@ export class RelayQueueService {
   }
 
   length(): number {
-    return this.rawList().length;
+    return this.rawList().filter(isQueuedPromptWaiting).length;
   }
 
   isPaused(): boolean {
@@ -86,6 +86,10 @@ export class RelayQueueService {
       if (item) this.promptStore.enqueueFront(this.contextKey, item);
     }
   }
+}
+
+export function isQueuedPromptWaiting(item: QueuedPrompt): boolean {
+  return (item.status ?? "queued") === "queued";
 }
 
 export function queueItemDto(item: QueuedPrompt): QueueItemDto {

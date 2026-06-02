@@ -83,7 +83,7 @@ function renderSnapshot(s){
   const metrics=document.getElementById('metrics');
   metrics.innerHTML=[
     metricHtml('Current Session',esc(s.processing?'working':'idle')+metricThreadCopyHtml(s.session.threadId)),
-    metricHtml('Queue',esc(s.queue.length)),
+    metricHtml('Queue',esc(queuedQueueCount(s.queue))),
     metricHtml('Workspace',esc(s.session.workspace)),
     metricHtml('Agent / Model',esc(sessionAgentModelText(s.session))),
     metricHtml('Reasoning / Fast',esc((s.session.reasoningEffort||'default')+' / '+fastValue)),
@@ -112,7 +112,7 @@ function updateCurrentChatQueue(queue,paused){
   if(state.currentPage==='chat')renderChatWorkspaceLine();
 }
 function updateQueueNavBadge(queue){
-  const count=Array.isArray(queue)?queue.length:Math.max(0,Number(queue)||0);
+  const count=Array.isArray(queue)?queuedQueueCount(queue):Math.max(0,Number(queue)||0);
   const badge=document.getElementById('queueNavBadge');
   if(!badge)return;
   badge.textContent=String(count);
@@ -120,9 +120,15 @@ function updateQueueNavBadge(queue){
   badge.title='Queued prompts';
   badge.setAttribute('aria-label',count+' queued prompt'+(count===1?'':'s'));
 }
+function queuedQueueItems(queue){
+  return (Array.isArray(queue)?queue:[]).filter(item=>(item?.status||'queued')==='queued');
+}
+function queuedQueueCount(queue){
+  return queuedQueueItems(queue).length;
+}
 function currentChatQueueState(){
   const queue=state.snapshot?.queue;
-  if(Array.isArray(queue))return{length:queue.length,paused:Boolean(state.snapshot?.queuePaused)};
+  if(Array.isArray(queue))return{length:queuedQueueCount(queue),paused:Boolean(state.snapshot?.queuePaused)};
   const session=state.snapshot?.session||{};
   const active=(state.activeSessions?.sessions||[]).find(item=>String(item.threadId||'')===String(session.threadId||'')&&(!session.agentId||!item.agentId||String(item.agentId)===String(session.agentId)));
   const length=Number(active?.queueLength||0);

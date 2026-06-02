@@ -275,6 +275,8 @@ declare function upsertAgentUpdateJob(job: WebuiRecord): void;
 declare function updateSnapshotQueue(queue?: WebuiRecord[], paused?: boolean): void;
 declare function updateCurrentChatQueue(queue?: WebuiRecord[], paused?: boolean): void;
 declare function updateQueueNavBadge(queue?: WebuiRecord[] | number): void;
+declare function queuedQueueItems(queue?: WebuiRecord[]): WebuiRecord[];
+declare function queuedQueueCount(queue?: WebuiRecord[]): number;
 declare function val(id: string): string;
 declare function versionStatusClass(status: string): string;
 declare function versionStatusLabel(status: string): string;

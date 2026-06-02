@@ -5,6 +5,7 @@ import { QUEUE_PLAN_STATUSES, type QueuePlan, type QueuePlanStatus } from "../st
 import type { WebActivityActor, WebActivityEvent } from "../web/web-state.js";
 import type { QueuePlanDto, QueuePlannerSnapshotDto, WebTaskDto } from "./relay-runtime-types.js";
 import type { RelayRuntimeDelegate } from "./relay-runtime-delegate.js";
+import { isQueuedPromptWaiting } from "./relay-queue-service.js";
 
 export interface QueuePlanInput {
   title?: string;
@@ -18,7 +19,7 @@ export interface QueuePlanInput {
 }
 
 export function relayRuntimeQueuePlannerSnapshot(runtime: RelayRuntimeDelegate): QueuePlannerSnapshotDto {
-  const queue = runtime.queueService.rawList();
+  const queue = runtime.queueService.rawList().filter(isQueuedPromptWaiting);
   const queuePositions = new Map(queue.map((item, index) => [item.id, index + 1]));
   const inProgress = [runtime.currentProgress, runtime.externalActivityMonitor.task()]
     .filter((task): task is WebTaskDto => Boolean(task));

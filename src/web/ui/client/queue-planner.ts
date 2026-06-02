@@ -61,10 +61,10 @@ async function loadGlobalQueueSnapshot(){
     id:target.id,
     name:target.label,
     paused:Boolean(result?.paused),
-    count:Array.isArray(result?.queue)?result.queue.length:0,
+    count:Array.isArray(result?.queue)?queuedQueueCount(result.queue):0,
     error:error?String(error?.message||error):'',
   }));
-  const queue=results.flatMap(({target,result})=>(result?.queue||[]).map((item,index)=>({
+  const queue=results.flatMap(({target,result})=>queuedQueueItems(result?.queue||[]).map((item,index)=>({
     ...item,
     peerId:target.id,
     nodeName:target.label,
