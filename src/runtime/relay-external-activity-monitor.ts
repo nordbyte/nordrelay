@@ -32,6 +32,7 @@ const CLI_ACTIVITY_ACTOR: WebActivityActor = {
   channel: "cli",
   label: "CLI",
 };
+const MANAGED_TURN_ACTIVITY_MATCH_MS = 10 * 60 * 1000;
 
 export interface RelayExternalActivityMonitorOptions {
   config: ConnectorConfig;
@@ -201,7 +202,8 @@ export class RelayExternalActivityMonitor {
       const finalAgent = snapshot.events.filter((event) => event.kind === "agent" && event.text).at(-1);
       const finalText = finalAgent?.text ?? snapshot.latestAgentMessage;
       const finalLine = finalAgent?.lineNumber ?? snapshot.lineCount;
-      if ((mirrorMode === "final" || mirrorMode === "full") && finalText && finalLine !== mirror.latestAgentLine) {
+      const shouldSkipFinalMirror = await this.shouldIgnoreExternalTurn(snapshot);
+      if ((mirrorMode === "final" || mirrorMode === "full") && finalText && finalLine !== mirror.latestAgentLine && !shouldSkipFinalMirror) {
         this.options.chatStore.appendWithResult({
           threadId: snapshot.threadId,
           role: "agent",
@@ -214,7 +216,7 @@ export class RelayExternalActivityMonitor {
         mirror.latestAgentLine = finalLine;
       }
       const externalStartedAt = mirror.startedAt ? new Date(mirror.startedAt) : snapshot.activity.startedAt;
-      if (mirrorMode !== "off") {
+      if (mirrorMode !== "off" && !shouldSkipFinalMirror) {
         this.options.broadcast({
           type: "turn_complete",
           id: terminalEvent.turnId ?? "cli",
@@ -249,10 +251,10 @@ export class RelayExternalActivityMonitor {
         });
       }
       mirror.latestStatus = `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`;
-      if (mirrorMode === "status" || mirrorMode === "full") {
+      if ((mirrorMode === "status" || mirrorMode === "full") && !shouldSkipFinalMirror) {
         await this.updateExternalStatusMessage(snapshot, mirror, mirror.latestStatus);
       }
-      if (mirrorMode !== "off") {
+      if (mirrorMode !== "off" && !shouldSkipFinalMirror) {
         this.options.broadcastStatus(
           `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`,
           terminalEvent.status === "failed" ? "error" : terminalEvent.status === "aborted" ? "warn" : "info",
@@ -322,7 +324,19 @@ export class RelayExternalActivityMonitor {
       const messageAtMs = Date.parse(message.timestamp);
       return Number.isFinite(messageAtMs) && Math.abs(messageAtMs - startedAtMs!) <= 45_000;
     });
-    return recentChannelUserMessage;
+    if (recentChannelUserMessage) {
+      return true;
+    }
+    const prompt = snapshot.latestUserMessage;
+    return this.options.activity(snapshot.threadId).some((event) => {
+      if (event.source === "cli" || event.threadId !== snapshot.threadId || (event.type !== "prompt_started" && event.type !== "prompt_completed")) {
+        return false;
+      }
+      const eventAtMs = Date.parse(event.timestamp);
+      return Number.isFinite(eventAtMs) &&
+        Math.abs(eventAtMs - startedAtMs!) <= MANAGED_TURN_ACTIVITY_MATCH_MS &&
+        promptsOverlap(prompt, event.prompt);
+    });
   }
 
   private broadcastExternalEvents(snapshot: AgentExternalSnapshot, events: AgentExternalSnapshot["events"], info: AgentSessionInfo, broadcastTools: boolean): void {
@@ -531,6 +545,19 @@ function externalMessageKey(kind: string, snapshot: AgentExternalSnapshot, lineN
     snapshot.activity.turnId ?? "turn",
     lineNumber ?? "",
   ].join(":");
+}
+
+function promptsOverlap(left: string | null | undefined, right: string | null | undefined): boolean {
+  const normalizedLeft = normalizePromptForManagedTurnMatch(left);
+  const normalizedRight = normalizePromptForManagedTurnMatch(right);
+  if (!normalizedLeft || !normalizedRight) {
+    return true;
+  }
+  return normalizedLeft === normalizedRight || normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft);
+}
+
+function normalizePromptForManagedTurnMatch(value: string | null | undefined): string {
+  return String(value ?? "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 function externalConversationMessageKey(snapshot: AgentExternalSnapshot, lineNumber: number): string {

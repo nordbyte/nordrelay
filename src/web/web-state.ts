@@ -493,7 +493,7 @@ function dedupeWebChatMessages(messages: WebChatMessage[]): WebChatMessage[] {
     if (key && seen.has(key)) {
       continue;
     }
-    const duplicate = findCrossSourceAgentDuplicate(deduped, message);
+    const duplicate = findOverlappingAgentDuplicate(deduped, message);
     if (duplicate) {
       if (shouldPreferWebChatMessage(message, duplicate)) {
         const index = deduped.indexOf(duplicate);
@@ -517,10 +517,10 @@ function findDuplicateWebChatMessage(
 ): WebChatMessage | undefined {
   const key = webChatDedupKey(input);
   const exact = key ? messages.find((message) => webChatDedupKey(message) === key) : undefined;
-  return exact ?? findCrossSourceAgentDuplicate(messages, input);
+  return exact ?? findOverlappingAgentDuplicate(messages, input);
 }
 
-function findCrossSourceAgentDuplicate(
+function findOverlappingAgentDuplicate(
   messages: WebChatMessage[],
   input: Omit<WebChatMessage, "id" | "timestamp"> & { timestamp?: string },
 ): WebChatMessage | undefined {
@@ -530,9 +530,22 @@ function findCrossSourceAgentDuplicate(
   return [...messages].reverse().find((message) =>
     message.role === "agent" &&
     message.threadId === (input.threadId || "pending") &&
-    message.source !== input.source &&
+    isComparableAgentDuplicateSource(message, input) &&
     isRecentWebChatDuplicate(message.timestamp, input.timestamp) &&
     hasOverlappingAgentText(message.text, input.text),
+  );
+}
+
+function isComparableAgentDuplicateSource(
+  left: WebChatMessage,
+  right: Omit<WebChatMessage, "id" | "timestamp"> & { timestamp?: string },
+): boolean {
+  if (left.source !== right.source) {
+    return true;
+  }
+  return Boolean(
+    (left.correlationId && right.correlationId && left.correlationId === right.correlationId) ||
+    (left.turnId && right.turnId && left.turnId === right.turnId),
   );
 }
 

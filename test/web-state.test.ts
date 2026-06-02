@@ -120,6 +120,42 @@ describe("web dashboard state stores", () => {
     }
   });
 
+  it("deduplicates CLI mirror finals already captured as live CLI agent messages", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-web-chat-cli-final-dedupe-"));
+    try {
+      const store = new WebChatStore(workspace, "json", 10);
+      const liveText = "Ich pruefe die Dateien und entferne die doppelte finale Mirror-Nachricht aus dem Web-Chat, damit derselbe CLI-Turn nicht als zweite zusammengefasste Antwort sichtbar wird.";
+      const finalText = [
+        liveText,
+        "Danach validiere ich die Aenderung mit einem fokussierten Testlauf.",
+        "Damit bleibt nur eine Agent-Nachricht fuer denselben CLI-Turn sichtbar.",
+      ].join("\n");
+      store.append({
+        threadId: "thread-a",
+        role: "agent",
+        text: liveText,
+        source: "cli",
+        correlationId: "external-correlation",
+        turnId: "turn-1",
+        timestamp: "2026-05-17T10:17:32.000Z",
+      });
+      const mirrored = store.appendWithResult({
+        threadId: "thread-a",
+        role: "agent",
+        text: finalText,
+        source: "cli",
+        correlationId: "external-correlation",
+        turnId: "turn-1",
+        timestamp: "2026-05-17T10:17:35.000Z",
+      });
+
+      expect(mirrored.inserted).toBe(false);
+      expect(store.list("thread-a")).toHaveLength(1);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("upserts keyed chat messages for live status rows", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-web-chat-upsert-"));
     try {

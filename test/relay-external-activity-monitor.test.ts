@@ -50,6 +50,49 @@ describe("RelayExternalActivityMonitor", () => {
     expect(broadcasts).toContainEqual({ type: "chat_history", messages: chatMessages });
   });
 
+  it("does not mirror delayed WebUI-managed turns as external CLI final messages", async () => {
+    getExternalSnapshotForSession.mockReturnValue(activeSnapshot({
+      activity: {
+        startedAt: new Date("2026-05-25T07:00:00.000Z"),
+      },
+    }));
+    const appendWithResult = vi.fn();
+    const appendActivity = vi.fn((input) => ({ ...input, id: "activity-1", timestamp: "2026-05-25T07:02:00.000Z" }));
+    const monitor = new RelayExternalActivityMonitor({
+      config: { workspace: "/workspace", codexExternalBusyStaleMs: 60_000 } as never,
+      getSession: async () => session(),
+      publicInfo: () => sessionInfo(),
+      queueLength: () => 0,
+      mirrorMode: () => "final",
+      mirrorMinUpdateMs: () => 0,
+      chatStore: {
+        appendWithResult,
+        upsertByKey: vi.fn(),
+      } as never,
+      chatHistory: async () => [],
+      activity: () => [{
+        id: "activity-web-prompt",
+        timestamp: "2026-05-25T07:02:00.000Z",
+        source: "web",
+        status: "running",
+        type: "prompt_started",
+        threadId: "thread-1",
+        prompt: "Build the feature",
+      }],
+      persistWorkspaceArtifactsForTurn: async () => {},
+      drainQueue: async () => {},
+      appendActivity,
+      broadcast: vi.fn(),
+      broadcastStatus: vi.fn(),
+      scheduleActiveSessionsBroadcast: vi.fn(),
+    });
+
+    await monitor.monitorSafe();
+
+    expect(appendWithResult).not.toHaveBeenCalled();
+    expect(appendActivity).not.toHaveBeenCalled();
+  });
+
   it("stores external status mirror updates as separate WebUI chat messages", async () => {
     getExternalSnapshotForSession
       .mockReturnValueOnce(activeSnapshot({ lineCount: 1, latestToolName: "read_file" }))
