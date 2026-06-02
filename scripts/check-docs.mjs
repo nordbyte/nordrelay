@@ -31,6 +31,10 @@ const officialPluginDocs = [
     id: "auto-updater",
     repoDir: path.resolve(rootDir, "..", "nordrelay-plugin-auto-updater"),
   },
+  {
+    id: "usage-insights",
+    repoDir: path.resolve(rootDir, "..", "nordrelay-plugin-usage-insights"),
+  },
 ];
 
 const pageExtensions = new Set(["", ".md", ".html"]);

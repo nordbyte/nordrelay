@@ -233,6 +233,10 @@ Return one JSON result on stdout:
 
 `NORDRELAY_PLUGINS_ENABLED=false` is a hard gate for the extension catalog and all plugin execution paths. Plugins are disabled until an admin enables them. Enabling a plugin approves the permissions declared in the manifest. Host context is filtered by approved plugin permissions, and plugin processes do not inherit the full NordRelay environment. Plugin execution is also bounded by a working directory, output limits, and timeouts; use operating-system isolation for untrusted third-party code. Keep `NORDRELAY_PLUGIN_ALLOW_BUILD_SCRIPTS=false` unless you explicitly trust the plugin source.
 
+Plugins can request `usage.read` to receive normalized session usage counters.
+This context contains token totals and session metadata only; prompt contents
+are not included.
+
 ## Official plugins
 
 Install System Monitor for peer metrics:
@@ -287,3 +291,22 @@ settings to restrict allowed repository roots and to decide whether write
 actions such as triage, baseline changes, fixes, CI workflow creation, or GitHub
 publishing are available from the panel. Marketplace capabilities are
 `commands`, `web panel`, and `diagnostics`.
+
+Install Usage Insights for token usage and estimated cost analytics:
+
+```sh
+nordrelay plugin install github:nordbyte/nordrelay-plugin-usage-insights --enable --approve
+```
+
+Marketplace id: `usage-insights`. npm package:
+`@nordbyte/nordrelay-usage-insights`.
+
+Usage Insights stores cumulative session usage and deduplicated usage deltas in
+`~/.nordrelay/plugins/data/usage-insights/usage-insights.sqlite`. It groups
+usage by node, provider, model, session, and time range, and distinguishes
+normal input, cached input, cache write, output, and reasoning output tokens.
+Costs are estimates. The default price source is LiteLLM's public
+`model_prices_and_context_window.json`; unknown models remain visible with token
+counts until a matching price rule exists. Required permissions are
+`runtime.read`, `usage.read`, `peers.read`, and `network`. Marketplace
+capabilities are `collector`, `commands`, `web panel`, and `diagnostics`.

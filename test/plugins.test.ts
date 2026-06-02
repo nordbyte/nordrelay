@@ -262,6 +262,15 @@ describe("plugin system", () => {
       approved: true,
     });
     expect(repoVista?.permissions).toEqual(expect.arrayContaining(["files.read", "files.write", "network"]));
+
+    const usageInsights = entries.find((entry) => entry.id === "usage-insights");
+    expect(usageInsights).toMatchObject({
+      name: "Usage Insights",
+      source: "github:nordbyte/nordrelay-plugin-usage-insights",
+      official: true,
+      approved: true,
+    });
+    expect(usageInsights?.permissions).toEqual(expect.arrayContaining(["usage.read", "network"]));
   });
 
   it("validates required manifest fields", () => {

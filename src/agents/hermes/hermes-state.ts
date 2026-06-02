@@ -512,6 +512,7 @@ function mapHermesUsage(row: HermesSessionRow): AgentSessionUsage | undefined {
     output,
     cacheRead,
     cacheWrite,
+    reasoningOutput: reasoning,
     total: input + output + cacheRead + cacheWrite + reasoning,
     cost,
   };

@@ -176,6 +176,7 @@ export interface AgentSessionUsage {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  reasoningOutput?: number;
   total: number;
   cost?: number;
 }

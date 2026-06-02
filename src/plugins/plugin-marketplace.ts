@@ -98,6 +98,26 @@ const MARKETPLACE_ENTRIES: PluginMarketplaceEntry[] = [
     permissions: ["runtime.read", "peers.read", "files.read", "files.write", "network"],
     capabilities: ["commands", "web panel", "diagnostics"],
   },
+  {
+    id: "usage-insights",
+    name: "Usage Insights",
+    description: "Tracks token usage and estimated model costs across sessions, providers, models, and peers.",
+    source: "github:nordbyte/nordrelay-plugin-usage-insights",
+    category: "Analytics",
+    official: true,
+    approved: true,
+    trustLevel: "official",
+    signatureRequired: false,
+    verifiedSource: "github:nordbyte/nordrelay-plugin-usage-insights",
+    author: "Ricardo <github@nordbyte.de>",
+    homepage: "https://github.com/nordbyte/nordrelay-plugin-usage-insights",
+    repository: "https://github.com/nordbyte/nordrelay-plugin-usage-insights",
+    packageName: "@nordbyte/nordrelay-usage-insights",
+    license: "MIT",
+    tags: ["usage", "tokens", "costs", "analytics", "peers"],
+    permissions: ["runtime.read", "usage.read", "peers.read", "network"],
+    capabilities: ["collector", "commands", "web panel", "diagnostics"],
+  },
 ];
 
 export function pluginMarketplaceEntries(): PluginMarketplaceEntry[] {

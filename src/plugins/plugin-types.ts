@@ -22,6 +22,7 @@ export type PluginInstallStatus =
 export const PLUGIN_RUNTIME_PERMISSIONS = [
   "runtime.read",
   "sessions.read",
+  "usage.read",
   "activity.read",
   "artifacts.read",
   "artifacts.write",
@@ -283,12 +284,53 @@ export interface PluginHostContext {
   runtime?: Record<string, unknown>;
   session?: unknown;
   sessions?: unknown[];
+  usage?: PluginUsageSnapshot;
   activity?: unknown[];
   artifacts?: unknown[];
   workflows?: Record<string, unknown>;
   peers?: unknown[];
   diagnostics?: unknown;
   settings?: Record<string, unknown>;
+}
+
+export interface PluginUsageSnapshot {
+  generatedAt: string;
+  node: {
+    id?: string;
+    name?: string;
+    platform?: string;
+    workspace?: string;
+  };
+  sessions: PluginUsageSession[];
+}
+
+export interface PluginUsageSession {
+  nodeId?: string;
+  nodeName?: string;
+  platform?: string;
+  agentId: string;
+  agentLabel: string;
+  provider: string;
+  model: string | null;
+  threadId: string;
+  sessionName?: string;
+  workspace: string;
+  sessionPath?: string;
+  source: "web" | "telegram" | "discord" | "slack" | "matrix" | "cli" | "unknown";
+  createdAt: string;
+  updatedAt: string;
+  usage: PluginUsageTokenUsage;
+  costUsd?: number;
+  confidence: "exact" | "reported" | "delta" | "estimated";
+}
+
+export interface PluginUsageTokenUsage {
+  inputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+  totalTokens: number;
 }
 
 export interface PluginInvokeRequest {

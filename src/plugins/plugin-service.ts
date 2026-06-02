@@ -85,7 +85,7 @@ export interface PluginServiceOptions {
   nodeId?: string;
   platform?: string;
   workspace?: string;
-  hostContext?: () => Promise<PluginHostContext> | PluginHostContext;
+  hostContext?: (permissions?: PluginRuntimePermission[]) => Promise<PluginHostContext> | PluginHostContext;
   defaultTimeoutMs?: number;
   outputLimitBytes?: number;
 }
@@ -611,7 +611,7 @@ export class PluginService {
     const dataDir = this.store.dataPath(pluginId);
     await mkdir(dataDir, { recursive: true });
     const permissions = approvedRuntimePermissions(plugin);
-    const context = filterHostContext(await this.hostContext(), permissions);
+    const context = filterHostContext(await this.hostContext(permissions), permissions);
     const request: PluginInvokeRequest = {
       protocolVersion: 1,
       type,
@@ -689,7 +689,7 @@ export class PluginService {
     return { id: "diagnostics" };
   }
 
-  private async hostContext(): Promise<PluginHostContext> {
+  private async hostContext(permissions?: PluginRuntimePermission[]): Promise<PluginHostContext> {
     const base: PluginHostContext = {
       runtime: {
         version: this.options.version,
@@ -699,7 +699,7 @@ export class PluginService {
         workspace: this.options.workspace,
       },
     };
-    const extra = await this.options.hostContext?.();
+    const extra = await this.options.hostContext?.(permissions);
     return { ...base, ...(extra ?? {}) };
   }
 
@@ -960,6 +960,7 @@ function filterHostContext(context: PluginHostContext, permissions: PluginRuntim
     filtered.session = context.session;
     filtered.sessions = context.sessions;
   }
+  if (allowed.has("usage.read")) filtered.usage = context.usage;
   if (allowed.has("activity.read")) filtered.activity = context.activity;
   if (allowed.has("artifacts.read") || allowed.has("files.read")) filtered.artifacts = context.artifacts;
   if (allowed.has("workflows.read")) filtered.workflows = context.workflows;

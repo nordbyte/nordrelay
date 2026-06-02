@@ -4,12 +4,13 @@ import type { URL } from "node:url";
 import type { ConnectorConfig } from "../core/config.js";
 import { RemoteRelayClient } from "../peers/peer-client.js";
 import { PeerStore } from "../peers/peer-store.js";
-import { PluginService, type PluginServiceOptions } from "../plugins/plugin-service.js";
 import { pluginMarketplaceEntriesWithVersions } from "../plugins/plugin-marketplace.js";
+import type { PluginService } from "../plugins/plugin-service.js";
 import type { AuthenticatedUser, UserStore } from "../access/user-management.js";
 import type { AuditEvent } from "../access/audit-log.js";
 import type { PublicPeerRecord } from "../peers/peer-types.js";
 import type { PluginInvokeResult } from "../plugins/plugin-types.js";
+import type { RelayRuntime } from "../runtime/relay-runtime.js";
 import type { WebActivityActor } from "./web-state.js";
 import {
   objectRecord,
@@ -22,6 +23,7 @@ import {
 interface DashboardPluginRouteOptions {
   config: ConnectorConfig;
   home: string;
+  runtime: RelayRuntime;
   authUser: AuthenticatedUser;
   users: UserStore;
   activityActor: WebActivityActor;
@@ -51,7 +53,7 @@ export async function handleDashboardPluginRoute(
     return false;
   }
 
-  const plugins = createPluginService(options.home, options.config);
+  const plugins = options.runtime.pluginService;
 
   if (req.method === "GET" && url.pathname === "/api/plugins") {
     const catalog = options.config.pluginsEnabled ? await plugins.catalog() : {
@@ -342,34 +344,6 @@ export async function handleDashboardPluginRoute(
   }
 
   return false;
-}
-
-function createPluginService(home: string, config: ConnectorConfig): PluginService {
-  const serviceOptions: PluginServiceOptions = {
-    enabled: config.pluginsEnabled,
-    nodeName: config.peerName,
-    platform: process.platform,
-    workspace: config.workspace,
-    hostContext: () => ({
-      runtime: {
-        nodeName: config.peerName,
-        platform: process.platform,
-        workspace: config.workspace,
-      },
-      settings: {
-        workspace: config.workspace,
-        stateBackend: config.stateBackend,
-        agents: {
-          codex: config.codexEnabled,
-          pi: config.piEnabled,
-          hermes: config.hermesEnabled,
-          openclaw: config.openClawEnabled,
-          claudeCode: config.claudeCodeEnabled,
-        },
-      },
-    }),
-  };
-  return new PluginService(home, serviceOptions);
 }
 
 async function invokePluginAggregateCommand(

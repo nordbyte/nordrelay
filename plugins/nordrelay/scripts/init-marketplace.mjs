@@ -18,6 +18,11 @@ export const INIT_MARKETPLACE_PLUGINS = [
     name: "RepoVista",
     description: "Run RepoVista scans and browse audit reports from the WebUI.",
   },
+  {
+    id: "usage-insights",
+    name: "Usage Insights",
+    description: "Track token usage and estimated model costs across peers.",
+  },
 ];
 
 let activeMarketplacePlugins = INIT_MARKETPLACE_PLUGINS;

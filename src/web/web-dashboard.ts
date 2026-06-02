@@ -458,6 +458,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   if (await handleDashboardPluginRoute(req, res, url, {
     config,
     home: options.home,
+    runtime,
     authUser,
     users,
     activityActor: webActivityActor(authUser),
