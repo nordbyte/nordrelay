@@ -625,6 +625,8 @@ describe("web dashboard browser-flow assets", () => {
     const css = dashboardCss();
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
     const navSource = readFileSync("src/web/web-dashboard-ui.ts", "utf8");
+    const chatTabsSource = readFileSync("src/web/ui/client/chat-tabs.ts", "utf8");
+    const overviewSource = readFileSync("src/web/ui/client/overview.ts", "utf8");
 
     expect(pageSource).toContain("Active Sessions");
     expect(pageSource).toContain('id="activeSessionsCount"');
@@ -664,6 +666,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function setLocalTurnFromCurrentChat");
     expect(js).toContain("state.localTurnPeerId=identity.peerId||'local'");
     expect(js).toContain("function startChatHistoryFollowup");
+    expect(chatTabsSource).toContain("function snapshotMatchesSelectedPeer");
+    expect(chatTabsSource).toContain("function pruneMirroredLocalSnapshotChatTabs");
+    expect(overviewSource).toContain("state.snapshotPeerId = dataPeerId");
     expect(js).toContain("state.currentPage==='chat'?await loadActiveSessionsForChatTabs()");
     expect(js).toContain("Working...");
     expect(js).toContain("id=\"chatWorkingElapsed\"");

@@ -93,7 +93,19 @@ function writableActiveChatTab() {
   return tab;
 }
 
-function chatTabFromSession(session: WebuiSessionSnapshot | null | undefined, peerId = state.selectedPeer || 'local'): WebuiChatTab | null {
+function currentSnapshotPeerId() {
+  return String(state.snapshotPeerId || 'local');
+}
+
+function selectedPeerId() {
+  return String(state.selectedPeer || 'local');
+}
+
+function snapshotMatchesSelectedPeer() {
+  return currentSnapshotPeerId() === selectedPeerId();
+}
+
+function chatTabFromSession(session: WebuiSessionSnapshot | null | undefined, peerId = currentSnapshotPeerId()): WebuiChatTab | null {
   const threadId = String(session?.threadId || '').trim();
   if (!threadId) return null;
   return normalizeChatTab({
@@ -154,7 +166,11 @@ function upsertChatTab(rawTab: Partial<WebuiChatTab>, options: { activate?: bool
 }
 
 function syncCurrentSessionChatTab(options: { activate?: boolean } = {}) {
-  const tab = chatTabFromSession(state.snapshot?.session || null, state.selectedPeer || 'local');
+  if (!snapshotMatchesSelectedPeer()) {
+    renderChatTabs();
+    return null;
+  }
+  const tab = chatTabFromSession(state.snapshot?.session || null, currentSnapshotPeerId());
   if (!tab) {
     renderChatTabs();
     return null;
@@ -201,7 +217,20 @@ function currentSnapshotMatchesChatTab(tab: WebuiChatTab) {
   const session = state.snapshot?.session || {};
   return String(session.threadId || '') === tab.threadId
     && String(session.agentId || '') === String(tab.agentId || '')
-    && String(state.selectedPeer || 'local') === String(tab.peerId || 'local');
+    && currentSnapshotPeerId() === String(tab.peerId || 'local');
+}
+
+function pruneMirroredLocalSnapshotChatTabs(local: WebuiBootstrap | null | undefined) {
+  const session = local?.status?.snapshot?.session;
+  const threadId = String(session?.threadId || '').trim();
+  if (!threadId) return;
+  const tabs = ensureChatTabs();
+  const before = tabs.length;
+  state.chatTabs = tabs.filter(tab => tab.peerId === 'local' || tab.threadId !== threadId);
+  if (state.chatTabs.length === before) return;
+  if (!state.chatTabs.some(tab => tab.id === state.activeChatTabId)) state.activeChatTabId = '';
+  writeChatTabs();
+  renderChatTabs();
 }
 
 async function activateChatTabSession(tab: WebuiChatTab, options: { navigate?: boolean; loadHistory?: boolean; reload?: boolean; toast?: boolean } = {}) {
@@ -219,6 +248,7 @@ async function activateChatTabSession(tab: WebuiChatTab, options: { navigate?: b
   const switched = await headerTargetRequest(state.selectedPeer, '/api/sessions/switch', { method: 'POST', body: JSON.stringify({ threadId: tab.threadId }) });
   if (state.snapshot && switched.session) {
     state.snapshot.session = switched.session as WebuiSessionSnapshot;
+    state.snapshotPeerId = state.selectedPeer || 'local';
     renderSnapshot(state.snapshot);
   }
   await loadBootstrap();

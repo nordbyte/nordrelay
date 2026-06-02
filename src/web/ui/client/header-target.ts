@@ -215,7 +215,7 @@ async function selectHeaderTarget(peerId: string, agentId: string) {
     renderHeaderTargetMenu(state.snapshot);
     throw error;
   }
-  if (state.snapshot && r.session) { state.snapshot.session = r.session; renderSnapshot(state.snapshot); }
+  if (state.snapshot && r.session) { state.snapshot.session = r.session; state.snapshotPeerId = state.selectedPeer || 'local'; renderSnapshot(state.snapshot); }
   if (changedPeer || (state.selectedPeer !== 'local' && previousEventsContextKey !== webProxyEventContextKey())) connectEvents();
   toast('Target switched to ' + headerTargetName(state.selectedPeer) + ' / ' + selected);
   await loadBootstrap(); await reloadCurrentPage({ agentId: selected });

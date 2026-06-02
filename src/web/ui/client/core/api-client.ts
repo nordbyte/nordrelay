@@ -453,7 +453,7 @@ function activeWebProxyThreadTarget(peerId) {
   const activeTab = Array.isArray(state?.chatTabs)
     ? state.chatTabs.find((tab) => tab.id === state.activeChatTabId && (tab.peerId || 'local') === selectedPeer)
     : null;
-  const session = state?.snapshot?.session || {};
+  const session = state?.snapshotPeerId === selectedPeer ? (state?.snapshot?.session || {}) : {};
   const threadId = firstString(activeTab?.threadId) || firstString(session.threadId);
   if (!threadId) return null;
   return {

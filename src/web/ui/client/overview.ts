@@ -7,18 +7,22 @@ async function loadBootstrap(){
   applyAccountChrome(local.auth);
   await loadHeaderTargetCandidates(local);
   state.snapshot = local.status.snapshot;
+  state.snapshotPeerId = 'local';
   state.controls = local.controls;
   state.enabledAgents = local.enabledAgents || [];
   mergeHeaderTargetBootstrap('local',local);
+  pruneMirroredLocalSnapshotChatTabs(local);
   renderPageTitle();
   applyPermissions();
   renderHeaderTargetMenu(state.snapshot);
   let data = local;
+  let dataPeerId = 'local';
   let remoteBootstrapError = null;
   const selectedPeer = state.selectedPeer || 'local';
   if(selectedPeer !== 'local'){
     try{
       data = await apiPeer(selectedPeer,'/api/bootstrap',{timeoutMs:HEADER_TARGET_PEER_TIMEOUT_MS});
+      dataPeerId = selectedPeer;
       mergeHeaderTargetBootstrap(selectedPeer,data);
     }catch(error){
       remoteBootstrapError = error;
@@ -28,6 +32,7 @@ async function loadBootstrap(){
     }
   }
   state.snapshot = data.status.snapshot;
+  state.snapshotPeerId = dataPeerId;
   state.controls = data.controls;
   state.enabledAgents = data.enabledAgents || [];
   if(!remoteBootstrapError) mergeHeaderTargetBootstrap(state.selectedPeer||'local',data);

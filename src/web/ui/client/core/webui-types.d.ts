@@ -451,6 +451,7 @@ interface WebuiAccessFilters {
 
 interface DashboardState {
   snapshot: WebuiSnapshot | null;
+  snapshotPeerId: string;
   controls: WebuiControls | null;
   newSessionControls: WebuiControls | null;
   enabledAgents: string[];

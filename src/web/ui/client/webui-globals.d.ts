@@ -135,6 +135,7 @@ declare function ensureChatTabs(): WebuiChatTab[];
 declare function ensureActiveChatTabSelected(): Promise<boolean>;
 declare function syncCurrentSessionChatTab(options?: { activate?: boolean }): WebuiChatTab | null;
 declare function upsertChatTab(tab: Partial<WebuiChatTab>, options?: { activate?: boolean }): WebuiChatTab | null;
+declare function pruneMirroredLocalSnapshotChatTabs(local?: WebuiBootstrap | null): void;
 declare function syncActiveSessionsRefresh(): void;
 declare function fmtBytes(value: number): string;
 declare function fmtDate(value: unknown): string;
