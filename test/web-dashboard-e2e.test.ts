@@ -798,6 +798,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(workflowsSource).toContain("api('/api/abort',activeChatTabApiOptions");
     expect(eventsSource).toContain("api('/api/chat/history',activeChatTabApiOptions");
     expect(eventsSource).toContain("api('/api/chat/attachment',activeChatTabApiOptions");
+    expect(eventsSource).toContain("function chatEventMatchesCurrentChat");
+    expect(eventsSource).toContain("function chatElementMatchesCurrentChat");
+    expect(eventsSource).toContain("if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}");
+    expect(eventsSource).toContain("!chatElementMatchesCurrentChat(currentAgentMessage)");
     expect(eventsSource).toContain("queueActionRequest(currentChatPeerId(),'cancel'");
     expect(queueSource).toContain("const peerId=currentChatPeerId()");
     expect(globalsSource).toContain("declare function activeChatTabApiOptions");

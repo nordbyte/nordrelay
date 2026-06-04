@@ -430,6 +430,10 @@ interface WebuiAppendMessageOptions extends WebuiRecord {
   attachments?: WebuiChatAttachment[];
   messageId?: string;
   correlationId?: string;
+  peerId?: string;
+  agentId?: string;
+  threadId?: string;
+  contextKey?: string;
   forceScroll?: boolean;
 }
 

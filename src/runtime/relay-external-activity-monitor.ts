@@ -222,6 +222,7 @@ export class RelayExternalActivityMonitor {
           id: terminalEvent.turnId ?? "cli",
           at: terminalEvent.timestamp?.toISOString() ?? new Date().toISOString(),
           correlationId: externalCorrelationId(snapshot),
+          ...externalRelayEventContext(snapshot, info),
         });
       }
       this.options.appendActivity({
@@ -349,6 +350,7 @@ export class RelayExternalActivityMonitor {
             toolCallId: `cli-${event.lineNumber}`,
             toolName: event.toolName ?? "tool",
             correlationId: externalCorrelationId(snapshot),
+            ...externalRelayEventContext(snapshot, info),
           });
         }
         this.options.appendActivity({
@@ -371,6 +373,7 @@ export class RelayExternalActivityMonitor {
             toolCallId: `cli-${event.lineNumber}`,
             isError: false,
             correlationId: externalCorrelationId(snapshot),
+            ...externalRelayEventContext(snapshot, info),
           });
         }
         this.options.appendActivity({
@@ -393,6 +396,7 @@ export class RelayExternalActivityMonitor {
             toolCallId: `cli-${event.lineNumber}`,
             isError: true,
             correlationId: externalCorrelationId(snapshot),
+            ...externalRelayEventContext(snapshot, info),
           });
         }
         this.options.appendActivity({
@@ -545,6 +549,15 @@ function externalMessageKey(kind: string, snapshot: AgentExternalSnapshot, lineN
     snapshot.activity.turnId ?? "turn",
     lineNumber ?? "",
   ].join(":");
+}
+
+function externalRelayEventContext(snapshot: AgentExternalSnapshot, info: AgentSessionInfo) {
+  return {
+    contextKey: `cli:${snapshot.threadId}`,
+    agentId: info.agentId,
+    threadId: snapshot.threadId,
+    workspace: info.workspace,
+  };
 }
 
 function promptsOverlap(left: string | null | undefined, right: string | null | undefined): boolean {

@@ -773,6 +773,7 @@ async function scopeRelayEvent(
   event: RelayEvent,
   canUseCurrentSession: () => Promise<boolean> = () => canUseCurrentSessionScope(authUser),
 ): Promise<RelayEvent | null> {
+  const eventSession = relayEventSessionScope(event);
   switch (event.type) {
     case "snapshot":
       return canUseSession(authUser, event.data.session) ? event : null;
@@ -797,8 +798,23 @@ async function scopeRelayEvent(
     case "todo_update":
     case "turn_complete":
     case "turn_error":
+      if (eventSession) {
+        return canUseSession(authUser, eventSession) ? event : null;
+      }
       return await canUseCurrentSession() ? event : null;
   }
+}
+
+function relayEventSessionScope(event: RelayEvent): { agentId?: string; threadId?: string | null; workspace?: string } | null {
+  const candidate = event as { agentId?: string; threadId?: string | null; workspace?: string };
+  if (candidate.agentId || candidate.threadId || candidate.workspace) {
+    return {
+      agentId: candidate.agentId,
+      threadId: candidate.threadId ?? null,
+      workspace: candidate.workspace,
+    };
+  }
+  return null;
 }
 
 function filterActivityByScope<T extends { agentId?: string; workspace?: string }>(authUser: AuthenticatedUser, events: T[]): T[] {

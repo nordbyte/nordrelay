@@ -83,6 +83,7 @@ export class ChannelTurnService {
     const startedAt = startedDate.toISOString();
     const displayText = displayTextForPromptEnvelope(envelope);
     const displayMeta = displayMetaForPromptEnvelope(envelope);
+    const eventContext = this.eventContext(info);
 
     const userMessage = this.options.chatStore.append({
       threadId: info.threadId ?? "pending",
@@ -128,6 +129,7 @@ export class ChannelTurnService {
       at: startedAt,
       source,
       correlationId,
+      ...eventContext,
     });
     void this.options.chatHistory().then((messages) => this.options.broadcast({ type: "chat_history", messages })).catch(() => {});
 
@@ -180,7 +182,7 @@ export class ChannelTurnService {
         description: envelope.description,
       });
       this.updateCurrentProgress({ status: "completed" });
-      this.options.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString(), correlationId });
+      this.options.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString(), correlationId, ...eventContext });
       this.options.broadcast({ type: "chat_history", messages: await this.options.chatHistory() });
     } catch (error) {
       const errorText = friendlyErrorText(error);
@@ -218,7 +220,7 @@ export class ChannelTurnService {
         detail: errorText,
       });
       this.updateCurrentProgress({ status: "failed", detail: errorText });
-      this.options.broadcast({ type: "turn_error", id: turnId, error: errorText, at: new Date().toISOString(), correlationId });
+      this.options.broadcast({ type: "turn_error", id: turnId, error: errorText, at: new Date().toISOString(), correlationId, ...eventContext });
       this.options.broadcast({ type: "chat_history", messages: await this.options.chatHistory() });
       throw error;
     } finally {
@@ -239,15 +241,16 @@ export class ChannelTurnService {
     source: WebActivitySource,
   ): AgentSessionCallbacks {
     const correlationId = envelope.correlationId ?? turnId;
+    const eventContext = this.eventContext(info);
     return {
       onTextDelta: (delta) => {
         const nextText = this.options.getAccumulatedText() + delta;
         this.options.setAccumulatedText(nextText);
         this.updateCurrentProgress({ outputChars: nextText.length });
-        this.options.broadcast({ type: "text_delta", id: turnId, delta, correlationId });
+        this.options.broadcast({ type: "text_delta", id: turnId, delta, correlationId, ...eventContext });
       },
       onAssistantMessageComplete: () => {
-        this.options.broadcast({ type: "assistant_message_complete", id: turnId, at: new Date().toISOString(), correlationId });
+        this.options.broadcast({ type: "assistant_message_complete", id: turnId, at: new Date().toISOString(), correlationId, ...eventContext });
       },
       onToolStart: (toolName, toolCallId) => {
         this.addCurrentTool(toolName);
@@ -263,11 +266,11 @@ export class ChannelTurnService {
           prompt: envelope.description,
           detail: toolName,
         });
-        this.options.broadcast({ type: "tool_start", id: turnId, toolCallId, toolName, correlationId });
+        this.options.broadcast({ type: "tool_start", id: turnId, toolCallId, toolName, correlationId, ...eventContext });
       },
       onToolUpdate: (toolCallId, partialResult) => {
         this.updateCurrentProgress();
-        this.options.broadcast({ type: "tool_update", id: turnId, toolCallId, partialResult, correlationId });
+        this.options.broadcast({ type: "tool_update", id: turnId, toolCallId, partialResult, correlationId, ...eventContext });
       },
       onToolEnd: (toolCallId, isError) => {
         const progress = this.options.getCurrentProgress();
@@ -285,14 +288,23 @@ export class ChannelTurnService {
           prompt: envelope.description,
           detail: toolName,
         });
-        this.options.broadcast({ type: "tool_end", id: turnId, toolCallId, isError, correlationId });
+        this.options.broadcast({ type: "tool_end", id: turnId, toolCallId, isError, correlationId, ...eventContext });
       },
       onTodoUpdate: (items) => {
         this.updateCurrentProgress({ detail: `Plan: ${items.filter((item) => item.completed).length}/${items.length} done` });
-        this.options.broadcast({ type: "todo_update", id: turnId, items, correlationId });
+        this.options.broadcast({ type: "todo_update", id: turnId, items, correlationId, ...eventContext });
       },
       onTurnComplete: () => {},
-      onAgentEnd: () => this.options.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString(), correlationId }),
+      onAgentEnd: () => this.options.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString(), correlationId, ...eventContext }),
+    };
+  }
+
+  private eventContext(info: AgentSessionInfo) {
+    return {
+      contextKey: this.options.contextKey,
+      agentId: info.agentId,
+      threadId: info.threadId,
+      workspace: info.workspace,
     };
   }
 

@@ -77,6 +77,22 @@ describe("ChannelTurnService", () => {
         text: longPrompt,
         meta: ["1 image", "staged file input"],
         attachments: envelope.attachments,
+        contextKey: "web:dashboard",
+        agentId: "codex",
+        threadId: "thread-1",
+        workspace: "/repo",
+      });
+      expect(events.find((event) => event.type === "text_delta")).toMatchObject({
+        contextKey: "web:dashboard",
+        agentId: "codex",
+        threadId: "thread-1",
+        workspace: "/repo",
+      });
+      expect(events.find((event) => event.type === "turn_complete")).toMatchObject({
+        contextKey: "web:dashboard",
+        agentId: "codex",
+        threadId: "thread-1",
+        workspace: "/repo",
       });
     } finally {
       rmSync(workspace, { recursive: true, force: true });

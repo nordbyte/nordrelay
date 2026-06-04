@@ -1264,8 +1264,23 @@ export class PeerRuntimeService {
       case "todo_update":
       case "turn_complete":
       case "turn_error":
+        if (this.relayEventSessionScope(event)) {
+          return this.canUseSession(peer, this.relayEventSessionScope(event)!) ? event : null;
+        }
         return await this.currentSessionAllowed(peer, runtime) ? event : null;
     }
+  }
+
+  private relayEventSessionScope(event: RelayEvent): { agentId?: string; threadId?: string | null; workspace?: string } | null {
+    const candidate = event as { agentId?: string; threadId?: string | null; workspace?: string };
+    if (candidate.agentId || candidate.threadId || candidate.workspace) {
+      return {
+        agentId: candidate.agentId,
+        threadId: candidate.threadId ?? null,
+        workspace: candidate.workspace,
+      };
+    }
+    return null;
   }
 
   private async currentSessionAllowed(peer: PeerRecord, runtime: RelayRuntime): Promise<boolean> {

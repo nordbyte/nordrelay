@@ -27,20 +27,27 @@ import type {
 import type { PromptTemplate, Workflow, WorkflowRun } from "../state/workflow-store.js";
 import type { QueuePlan, QueuePlanStatus } from "../state/queue-plan-store.js";
 
+export interface RelaySessionEventContext {
+  contextKey?: string;
+  agentId?: AgentId;
+  threadId?: string | null;
+  workspace?: string;
+}
+
 export type RelayEvent =
   | { type: "snapshot"; data: RelaySnapshot }
   | { type: "chat_history"; messages: WebChatMessage[] }
   | { type: "activity_update"; events: WebActivityEvent[] }
   | { type: "active_sessions_update"; active: ActiveSessionsDto }
-  | { type: "turn_start"; id: string; messageId?: string; prompt: string; text?: string; meta?: string[]; attachments?: WebChatAttachment[]; at: string; source?: WebActivitySource; correlationId?: string }
-  | { type: "text_delta"; id: string; delta: string; correlationId?: string }
-  | { type: "assistant_message_complete"; id: string; at: string; correlationId?: string }
-  | { type: "tool_start"; id: string; toolCallId: string; toolName: string; correlationId?: string }
-  | { type: "tool_update"; id: string; toolCallId: string; partialResult: string; correlationId?: string }
-  | { type: "tool_end"; id: string; toolCallId: string; isError: boolean; correlationId?: string }
-  | { type: "todo_update"; id: string; items: Array<{ text: string; completed: boolean }>; correlationId?: string }
-  | { type: "turn_complete"; id: string; at: string; correlationId?: string }
-  | { type: "turn_error"; id: string; error: string; at: string; correlationId?: string }
+  | ({ type: "turn_start"; id: string; messageId?: string; prompt: string; text?: string; meta?: string[]; attachments?: WebChatAttachment[]; at: string; source?: WebActivitySource; correlationId?: string } & RelaySessionEventContext)
+  | ({ type: "text_delta"; id: string; delta: string; correlationId?: string } & RelaySessionEventContext)
+  | ({ type: "assistant_message_complete"; id: string; at: string; correlationId?: string } & RelaySessionEventContext)
+  | ({ type: "tool_start"; id: string; toolCallId: string; toolName: string; correlationId?: string } & RelaySessionEventContext)
+  | ({ type: "tool_update"; id: string; toolCallId: string; partialResult: string; correlationId?: string } & RelaySessionEventContext)
+  | ({ type: "tool_end"; id: string; toolCallId: string; isError: boolean; correlationId?: string } & RelaySessionEventContext)
+  | ({ type: "todo_update"; id: string; items: Array<{ text: string; completed: boolean }>; correlationId?: string } & RelaySessionEventContext)
+  | ({ type: "turn_complete"; id: string; at: string; correlationId?: string } & RelaySessionEventContext)
+  | ({ type: "turn_error"; id: string; error: string; at: string; correlationId?: string } & RelaySessionEventContext)
   | { type: "queue_update"; queue: QueueItemDto[]; paused: boolean }
   | { type: "session_update"; session: AgentSessionInfo }
   | { type: "agent_update"; job: AgentUpdateJobSnapshot }
