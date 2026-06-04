@@ -221,6 +221,7 @@ declare function renderAgentUpdateJobs(): void;
 declare function renderArtifacts(value?: WebuiRecord[]): void;
 declare function renderAudit(value?: WebuiAuditEvent[]): void;
 declare function renderChatMessages(value?: WebuiChatMessage[], options?: { forceScroll?: boolean; preserveScrollOffset?: boolean }): void;
+declare function renderPromptHistorySidebar(): void;
 declare function renderChatTabs(): void;
 declare function renderChatWorkspaceLine(): void;
 declare let renderDiscordChannels: (channels?: WebuiChannelRecord[]) => void;

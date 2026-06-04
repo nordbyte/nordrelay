@@ -513,6 +513,7 @@ interface DashboardState {
   toolTooltipTimer: WebuiTimer | null;
   toolTooltipTarget: Element | null;
   toolsVisible: boolean;
+  chatSidebarMode: string | null;
   themePreference: string | null;
   agentUpdateJobs: WebuiRecord[];
   versionRequestId: number;

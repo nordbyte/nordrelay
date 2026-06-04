@@ -588,11 +588,16 @@ describe("web dashboard browser-flow assets", () => {
     expect(toolbar).toContain('id="clearChatBtn"');
     expect(toolbar).toContain('id="syncBtn"');
     expect(toolbar).toContain('id="toggleToolsBtn"');
+    expect(toolbar).toContain('id="toggleHistoryBtn"');
+    expect(pageSource).toContain('id="toolPanelTitle"');
+    expect(pageSource).toContain('id="promptHistoryStream"');
     expect(toolbar).toContain('Clears only the WebUI chat history shown for this session');
     expect(toolbar).toContain('Sync the current WebUI session controls');
     expect(toolbar).toContain('Show or hide the Tools / Plan sidebar');
+    expect(toolbar).toContain('Show or hide the prompt history sidebar');
     expect(toolbar.indexOf('id="clearChatBtn"')).toBeGreaterThan(toolbar.indexOf('id="chatMoreMenu"'));
     expect(toolbar.indexOf('id="clearChatBtn"')).toBeLessThan(toolbar.indexOf('id="syncBtn"'));
+    expect(toolbar.indexOf('id="toggleToolsBtn"')).toBeLessThan(toolbar.indexOf('id="toggleHistoryBtn"'));
   });
 
   it("shows the active workspace right-aligned in the WebUI chat attachment row", () => {
@@ -798,6 +803,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(workflowsSource).toContain("api('/api/abort',activeChatTabApiOptions");
     expect(eventsSource).toContain("api('/api/chat/history',activeChatTabApiOptions");
     expect(eventsSource).toContain("api('/api/chat/attachment',activeChatTabApiOptions");
+    expect(eventsSource).toContain("function renderPromptHistorySidebar");
+    expect(eventsSource).toContain("function scrollChatToHistoryPrompt");
+    expect(eventsSource).toContain("document.querySelectorAll('#messages .message.user-prompt')");
     expect(eventsSource).toContain("function chatEventMatchesCurrentChat");
     expect(eventsSource).toContain("function chatElementMatchesCurrentChat");
     expect(eventsSource).toContain("if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}");
@@ -1080,6 +1088,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(diagnostics).toContain("metricKvCard('Overview'");
     expect(readFileSync("src/web/ui/styles/theme.css", "utf8")).toContain(":root");
     expect(readFileSync("src/web/ui/styles/layout.css", "utf8")).toContain(".chat-layout");
+    expect(readFileSync("src/web/ui/styles/layout.css", "utf8")).toContain(".prompt-history-item");
+    expect(readFileSync("src/web/ui/styles/layout.css", "utf8")).toContain(".message-highlight");
   });
 
   it("includes peer discovery and peer health history in the WebUI", () => {

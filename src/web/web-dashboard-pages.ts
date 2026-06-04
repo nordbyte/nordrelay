@@ -280,6 +280,7 @@ ${faviconLinks}
                   <button id="clearChatBtn" class="secondary" type="button" role="menuitem" title="Clears only the WebUI chat history shown for this session. Agent context and session history stay intact.">Clear</button>
                   <button id="syncBtn" class="secondary" type="button" role="menuitem" title="Sync the current WebUI session controls from the active agent session.">Sync</button>
                   <button id="toggleToolsBtn" class="secondary" type="button" role="menuitem" aria-controls="toolPanel" aria-expanded="false" title="Show or hide the Tools / Plan sidebar for the current chat.">Show Tools</button>
+                  <button id="toggleHistoryBtn" class="secondary" type="button" role="menuitem" aria-controls="toolPanel" aria-expanded="false" title="Show or hide the prompt history sidebar for the current chat.">Show History</button>
                 </div>
               </div>
             </div>
@@ -306,7 +307,11 @@ ${faviconLinks}
               </div>
             </form>
           </div>
-          <div class="panel side-panel" id="toolPanel" hidden><h2>Tools / Plan</h2><div id="toolStream" class="tool-stream"></div></div>
+          <div class="panel side-panel" id="toolPanel" hidden>
+            <h2 id="toolPanelTitle">Tools / Plan</h2>
+            <div id="toolStream" class="tool-stream"></div>
+            <div id="promptHistoryStream" class="prompt-history-stream" hidden></div>
+          </div>
         </div>
       </section>
 

@@ -21,7 +21,7 @@ header{z-index:30}
 .composer-actions button{height:40px}
 .composer-abort{height:32px;min-height:32px}
 .side-panel{order:-1;max-height:360px}
-.tool-stream{max-height:300px}
+.tool-stream,.prompt-history-stream{max-height:300px}
 header{align-items:center}
 .metrics{grid-template-columns:1fr 1fr}
 .diagnostics-overview-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
