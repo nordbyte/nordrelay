@@ -48,7 +48,7 @@ async function loadQueue(options:WebuiRecord={}){
   ]);
   renderQueue(queue.queue,queue.paused,{nodes:queue.nodes,errors:queue.errors,global:true});
   if(state.currentPage==='chat'){
-    const peerId=state.selectedPeer||'local';
+    const peerId=currentChatPeerId();
     updateCurrentChatQueue((queue.queue||[]).filter(item=>String(item.peerId||'local')===peerId),queue.paused);
   }
   if(planner)renderQueuePlanner(planner);

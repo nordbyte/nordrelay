@@ -7,6 +7,36 @@ function chatTabId(peerId: string, agentId: string, threadId: string) {
   return [peerId || 'local', agentId || '', threadId || ''].join('::');
 }
 
+function chatTabPeerId(tab: Partial<WebuiChatTab> | null | undefined) {
+  return String(tab?.peerId || 'local');
+}
+
+function chatTabContextKey(tab: Partial<WebuiChatTab> | null | undefined) {
+  const threadId = String(tab?.threadId || '').trim();
+  if (!threadId) return '';
+  return webProxyContextKey('/api/sessions/switch', 'POST', { threadId }, {}, '', chatTabPeerId(tab));
+}
+
+function activeChatTabContextKey() {
+  return chatTabContextKey(activeChatTab());
+}
+
+function activeChatTabApiOptions<P extends WebApiPath>(options: WebApiClientOptions<P> = {} as WebApiClientOptions<P>): WebApiClientOptions<P> {
+  const contextKey = activeChatTabContextKey();
+  return contextKey ? { ...options, contextKey } : options;
+}
+
+function nextChatActivationRequestId() {
+  state.chatActivationRequestId = (state.chatActivationRequestId || 0) + 1;
+  return state.chatActivationRequestId;
+}
+
+function chatActivationStillCurrent(requestId: number, tab: WebuiChatTab) {
+  return state.chatActivationRequestId === requestId
+    && state.activeChatTabId === tab.id
+    && String(state.selectedPeer || 'local') === chatTabPeerId(tab);
+}
+
 function normalizeChatTab(raw: Partial<WebuiChatTab> | null | undefined): WebuiChatTab | null {
   const threadId = String(raw?.threadId || '').trim();
   if (!threadId) return null;
@@ -236,22 +266,28 @@ function pruneMirroredLocalSnapshotChatTabs(local: WebuiBootstrap | null | undef
 async function activateChatTabSession(tab: WebuiChatTab, options: { navigate?: boolean; loadHistory?: boolean; reload?: boolean; toast?: boolean } = {}) {
   if (!tab?.threadId) return;
   saveActiveChatTabDraft();
+  const requestId = nextChatActivationRequestId();
   const previousPeer = state.selectedPeer || 'local';
   const previousEventsContextKey = state.eventsContextKey || '';
-  state.selectedPeer = tab.peerId || 'local';
+  state.selectedPeer = chatTabPeerId(tab);
   localStorage.setItem('nordrelayPeerTarget', state.selectedPeer);
   state.activeChatTabId = tab.id;
   localStorage.setItem(ACTIVE_CHAT_TAB_STORAGE_KEY, tab.id);
+  renderChatTabs();
+  const contextKey = chatTabContextKey(tab);
   if (tab.agentId && state.snapshot?.session?.agentId !== tab.agentId) {
-    await headerTargetRequest(state.selectedPeer, '/api/agent', { method: 'POST', body: JSON.stringify({ agentId: tab.agentId }) });
+    await headerTargetRequest(state.selectedPeer, '/api/agent', { method: 'POST', body: JSON.stringify({ agentId: tab.agentId }), contextKey });
+    if (!chatActivationStillCurrent(requestId, tab)) return;
   }
-  const switched = await headerTargetRequest(state.selectedPeer, '/api/sessions/switch', { method: 'POST', body: JSON.stringify({ threadId: tab.threadId }) });
+  const switched = await headerTargetRequest(state.selectedPeer, '/api/sessions/switch', { method: 'POST', body: JSON.stringify({ threadId: tab.threadId }), contextKey });
+  if (!chatActivationStillCurrent(requestId, tab)) return;
   if (state.snapshot && switched.session) {
     state.snapshot.session = switched.session as WebuiSessionSnapshot;
     state.snapshotPeerId = state.selectedPeer || 'local';
     renderSnapshot(state.snapshot);
   }
   await loadBootstrap();
+  if (!chatActivationStillCurrent(requestId, tab)) return;
   if (previousPeer !== state.selectedPeer || (state.selectedPeer !== 'local' && previousEventsContextKey !== webProxyEventContextKey())) {
     connectEvents();
   }

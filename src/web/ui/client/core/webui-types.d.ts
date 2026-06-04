@@ -524,6 +524,7 @@ interface DashboardState {
   sessionDetailAgentId: string | null;
   sessionDetailPeerId: string | null;
   sessionDetailRequestId: number;
+  chatActivationRequestId: number;
   chatHistoryRequestId: number;
   chatRenderVersion: number;
   chatHistoryPagination: WebuiCursorPagination | null;

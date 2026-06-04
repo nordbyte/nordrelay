@@ -718,7 +718,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function retryChatMessage");
     expect(js).toContain("Message copied");
     expect(js).toContain("Retry message");
-    expect(js).toContain("await api('/api/prompt',{method:'POST',body:{text,correlationId:createWebCorrelationId()}})");
+    expect(js).toContain("await api('/api/prompt',activeChatTabApiOptions({method:'POST',body:{text,correlationId:createWebCorrelationId()}}))");
     expect(js).toContain("if(r.queued&&r.queueId)appendQueuedMessage(r.queueId,r.correlationId)");
     expect(js).toContain("'.message-retry-button','prompt.send'");
     expect(pageSource).not.toContain('id="retryBtn"');
@@ -777,6 +777,31 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("nordrelayChatDraft:");
     expect(js).toContain("function saveActiveChatTabDraft");
     expect(js).toContain("function restoreActiveChatTabDraft");
+  });
+
+  it("keeps WebUI chat tab requests scoped to the selected thread", () => {
+    const chatTabsSource = readFileSync("src/web/ui/client/chat-tabs.ts", "utf8");
+    const workflowsSource = readFileSync("src/web/ui/client/workflows.ts", "utf8");
+    const eventsSource = readFileSync("src/web/ui/client/events.ts", "utf8");
+    const queueSource = readFileSync("src/web/ui/client/queue-planner.ts", "utf8");
+    const globalsSource = readFileSync("src/web/ui/client/webui-globals.d.ts", "utf8");
+
+    expect(chatTabsSource).toContain("function chatTabContextKey");
+    expect(chatTabsSource).toContain("function activeChatTabApiOptions");
+    expect(chatTabsSource).toContain("function chatActivationStillCurrent");
+    expect(chatTabsSource).toContain("const requestId = nextChatActivationRequestId()");
+    expect(chatTabsSource).toContain("if (!chatActivationStillCurrent(requestId, tab)) return");
+    expect(chatTabsSource).toContain("body: JSON.stringify({ threadId: tab.threadId }), contextKey");
+    expect(workflowsSource).toContain("api('/api/prompt',activeChatTabApiOptions");
+    expect(workflowsSource).toContain("api('/api/prompt/upload',activeChatTabApiOptions");
+    expect(workflowsSource).toContain("api('/api/chat/mirror',activeChatTabApiOptions");
+    expect(workflowsSource).toContain("api('/api/abort',activeChatTabApiOptions");
+    expect(eventsSource).toContain("api('/api/chat/history',activeChatTabApiOptions");
+    expect(eventsSource).toContain("api('/api/chat/attachment',activeChatTabApiOptions");
+    expect(eventsSource).toContain("queueActionRequest(currentChatPeerId(),'cancel'");
+    expect(queueSource).toContain("const peerId=currentChatPeerId()");
+    expect(globalsSource).toContain("declare function activeChatTabApiOptions");
+    expect(globalsSource).toContain("declare function currentChatPeerId()");
   });
 
   it("uses a friendly dashboard API network failure message", () => {
