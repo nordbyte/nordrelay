@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import {
   type InstalledPluginRecord,
@@ -14,6 +16,7 @@ import {
 
 const PLUGIN_JOB_LIMIT = 200;
 const PLUGIN_JOB_WRITE_LOCKS = new Map<string, Promise<unknown>>();
+const WINDOWS_RENAME_RETRY_CODES = new Set(["EPERM", "EACCES", "EBUSY"]);
 
 export class PluginStore {
   readonly root: string;
@@ -95,9 +98,7 @@ export class PluginStore {
 
   async write(payload: PluginRegistryPayload): Promise<void> {
     await this.ensure();
-    const tmp = path.join(this.root, `.plugins-${process.pid}-${Date.now()}.json.tmp`);
-    await writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-    await rename(tmp, this.registryPath);
+    await writeJsonFileAtomic(this.registryPath, payload);
   }
 
   async readLocks(): Promise<PluginLockPayload> {
@@ -138,9 +139,7 @@ export class PluginStore {
 
   private async writeLocks(payload: PluginLockPayload): Promise<void> {
     await this.ensure();
-    const tmp = path.join(this.root, `.plugins-lock-${process.pid}-${Date.now()}.json.tmp`);
-    await writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-    await rename(tmp, this.lockPath);
+    await writeJsonFileAtomic(this.lockPath, payload);
   }
 
   async readJobs(): Promise<PluginJobsPayload> {
@@ -163,10 +162,8 @@ export class PluginStore {
   async writeJobs(payload: PluginJobsPayload): Promise<void> {
     await this.withJobWriteLock(async () => {
       await this.ensure();
-      const tmp = path.join(this.root, `.plugins-jobs-${process.pid}-${Date.now()}.json.tmp`);
       const jobs = payload.jobs.slice(0, PLUGIN_JOB_LIMIT).map(cloneJob);
-      await writeFile(tmp, `${JSON.stringify({ version: 1, jobs }, null, 2)}\n`, "utf8");
-      await rename(tmp, this.jobsPath);
+      await writeJsonFileAtomic(this.jobsPath, { version: 1, jobs });
     });
   }
 
@@ -193,9 +190,7 @@ export class PluginStore {
         payload.jobs.unshift(next);
       }
       payload.jobs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      const tmp = path.join(this.root, `.plugins-jobs-${process.pid}-${Date.now()}.json.tmp`);
-      await writeFile(tmp, `${JSON.stringify({ version: 1, jobs: payload.jobs.slice(0, PLUGIN_JOB_LIMIT) }, null, 2)}\n`, "utf8");
-      await rename(tmp, this.jobsPath);
+      await writeJsonFileAtomic(this.jobsPath, { version: 1, jobs: payload.jobs.slice(0, PLUGIN_JOB_LIMIT) });
       return cloneJob(next);
     });
   }
@@ -237,6 +232,35 @@ export class PluginStore {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw error;
+    }
+  }
+}
+
+async function writeJsonFileAtomic(filePath: string, payload: unknown): Promise<void> {
+  const dir = path.dirname(filePath);
+  await mkdir(dir, { recursive: true });
+  const tmp = path.join(dir, `.${path.basename(filePath)}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`);
+  await writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  try {
+    await renameWithRetry(tmp, filePath);
+  } catch (error) {
+    await rm(tmp, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function renameWithRetry(source: string, target: string): Promise<void> {
+  const attempts = os.platform() === "win32" ? 12 : 3;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await rename(source, target);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (!WINDOWS_RENAME_RETRY_CODES.has(code) || attempt >= attempts - 1) {
+        throw error;
+      }
+      await sleep(Math.min(500, 25 * 2 ** attempt));
     }
   }
 }

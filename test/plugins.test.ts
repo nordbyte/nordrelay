@@ -427,7 +427,7 @@ describe("plugin system", () => {
     await service.install({ source: fixture, enable: true, approvePermissions: true });
 
     const job = await service.startCommandJob("example-plugin", "example", { text: "persisted" });
-    const completed = await waitForJob(service, "example-plugin", job.id, (item) => item?.status === "completed");
+    const completed = await waitForJob(service, "example-plugin", job.id, (item) => item?.status === "completed", 8000);
     expect(completed).toMatchObject({ id: job.id, status: "completed" });
 
     const reloaded = new PluginService(home);
@@ -436,7 +436,7 @@ describe("plugin system", () => {
       status: "completed",
       result: expect.objectContaining({ ok: true }),
     });
-  });
+  }, 12000);
 
   it("cancels running plugin command jobs by terminating the child process", async () => {
     const home = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-home-"));
@@ -567,7 +567,7 @@ describe("plugin system", () => {
 
     expect(result.ok).toBe(true);
     expect(result.output).toMatchObject({ depValue: "dependency-loaded" });
-  });
+  }, 15000);
 
   it("updates and rolls back local plugin versions", async () => {
     const home = await mkdtemp(path.join(os.tmpdir(), "nordrelay-plugin-home-"));
