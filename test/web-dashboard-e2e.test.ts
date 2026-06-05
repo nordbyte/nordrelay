@@ -1090,6 +1090,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(readFileSync("src/web/ui/styles/layout.css", "utf8")).toContain(".chat-layout");
     expect(readFileSync("src/web/ui/styles/layout.css", "utf8")).toContain(".prompt-history-item");
     expect(readFileSync("src/web/ui/styles/layout.css", "utf8")).toContain(".message-highlight");
+    expect(readFileSync("src/web/ui/styles/layout.css", "utf8")).toContain(".sessions-table-host>.empty-state{margin-top:12px}");
   });
 
   it("includes peer discovery and peer health history in the WebUI", () => {

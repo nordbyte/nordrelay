@@ -253,6 +253,7 @@ input[type=file]{display:none}
 .sessions-toolbar .search-row{flex:1 1 320px}
 .sessions-toolbar .attach-row{flex:1 1 360px;justify-content:flex-end;margin-left:auto}
 .sessions-toolbar input{min-width:220px}
+.sessions-table-host>.empty-state{margin-top:12px}
 #worktreeWarnings:not(:empty)+#worktreesList{margin-top:12px}
 #worktreeWarnings:not(:empty)+#worktreesList .data-table-wrap{margin-top:0}
 .copy-id{height:auto;min-height:0;padding:0;border:0;background:transparent;color:var(--link);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.25;white-space:normal;justify-content:flex-start;text-align:left}
