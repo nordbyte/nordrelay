@@ -65,7 +65,7 @@ function applyPermissions(){
     ['#clearLogsBtn','logs.clear'],
     ['#createTemplateBtn,#createWorkflowBtn','workflows.write'],
     ['#createUserBtn,#createGroupBtn,#createChatBtn,#createDiscordChannelBtn,#createSlackChannelBtn,#createMatrixRoomBtn','users.write'],
-    ['#createPeerInviteBtn,#addPeerBtn,[data-peer-edit],[data-peer-toggle],[data-peer-revoke],[data-peer-invite-delete]','peers.write'],
+    ['#createPeerInviteBtn,#addPeerBtn,[data-peer-edit],[data-peer-toggle],[data-peer-delete],[data-peer-invite-delete]','peers.write'],
     ['#openInstallPluginDialogBtn,#installPluginBtn,#validatePluginSourceBtn,#createPluginScaffoldBtn,[data-plugin-remove],[data-plugin-reload]','plugins.install'],
     ['[data-plugin-enable],[data-plugin-disable]','plugins.enable'],
     ['[data-plugin-settings]','plugins.settings.write'],

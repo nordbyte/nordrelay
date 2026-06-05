@@ -447,7 +447,7 @@ export async function handleDashboardPeerRoute(
     const removed = store.revokePeer(peerId);
     sendJson(res, 200, { removed });
     if (removed) {
-      options.auditPeerAction?.("peer_revoked", peerId);
+      options.auditPeerAction?.("peer_deleted", peerId);
     }
     return true;
   }

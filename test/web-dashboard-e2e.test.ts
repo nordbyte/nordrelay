@@ -1131,6 +1131,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function tableActionMenuHtml");
     expect(js).toContain("function restoreTableActionMenu");
     expect(js).toContain("data-peer-action-menu");
+    expect(js).toContain("data-peer-delete");
+    expect(js).toContain("Delete this peer completely?");
+    expect(js).toContain("Peer deleted");
     expect(js).toContain("peer-action-menu");
     expect(js).toContain("bindTableActionMenus(document.getElementById('peersList')");
     expect(js).toContain("function peerScopesChecklist");
@@ -1150,6 +1153,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".table-action-menu.is-floating .table-action-menu-list");
     expect(css).toContain("position:fixed");
     expect(peerRoutes).toContain("scopeOptions: ALL_PERMISSIONS");
+    expect(peerRoutes).toContain('"peer_deleted"');
     expect(contract).toContain('exact("/api/peers/discover"');
     expect(contract).toContain('exact("/api/peers/sync"');
     expect(contract).toContain('/api/peers/:id/sync-candidates');

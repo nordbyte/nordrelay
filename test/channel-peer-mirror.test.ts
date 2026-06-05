@@ -367,6 +367,38 @@ describe("ChannelPeerMirrorController", () => {
     expect(sent[0]).toContain("from web");
     expect(sent[0]).not.toContain("from telegram");
   });
+
+  it("keeps startup alive when a stored remote mirror target cannot be subscribed", async () => {
+    const preferences = new BotPreferencesStore(workspace);
+    preferences.update("123", { targetPeerId: "disabled-peer", mirrorMode: "status" });
+    const sent: string[] = [];
+    const runtime = fakeRuntime({
+      sendMessage: async (_context, message) => {
+        sent.push(message.text);
+        return { messageId: `message-${sent.length}` };
+      },
+    });
+    const remoteClient: ChannelPeerMirrorRemoteClient = {
+      subscribe: () => {
+        throw new Error("Peer is disabled.");
+      },
+    };
+    const controller = createChannelPeerMirrorController({
+      label: "Telegram",
+      runtime,
+      preferencesStore: preferences,
+      remoteClient,
+      contextForKey: () => context(),
+      defaultMirrorMode: () => "status",
+      mirrorMinUpdateMs: 0,
+      typingIntervalMs: 1000,
+    });
+
+    expect(() => controller.startStoredContexts()).not.toThrow();
+    await flushAsync();
+
+    expect(sent.at(-1)).toContain("Telegram remote mirror stream failed: Peer is disabled.");
+  });
 });
 
 function context(overrides: Partial<ChannelContext> = {}): ChannelContext {

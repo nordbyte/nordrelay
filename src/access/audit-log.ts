@@ -55,7 +55,7 @@ export type AuditAction =
   | "peer_paired"
   | "peer_synced"
   | "peer_updated"
-  | "peer_revoked"
+  | "peer_deleted"
   | "peer_probe"
   | "peer_debug_checked"
   | "peer_repair_applied"

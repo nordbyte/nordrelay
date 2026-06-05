@@ -97,16 +97,21 @@ export function createChannelPeerMirrorController(options: ChannelPeerMirrorCont
       pending: Promise.resolve(),
     };
     applyTargetPreferences(state, preferences);
-    const subscription = options.remoteClient.subscribe(peerId, (event) => {
-      state.pending = state.pending
-        .then(() => handlePeerEvent(options, state, event))
-        .catch(() => {});
-    }, (error) => {
-      stopPeerTyping(state);
-      state.pending = state.pending.then(() => sendPeerMirrorStatus(options, state, `${options.label} remote mirror stream failed: ${error.message}`, "error")).catch(() => {});
-    }, contextKey);
-    state.close = subscription.close;
-    subscriptions.set(contextKey, state);
+    try {
+      const subscription = options.remoteClient.subscribe(peerId, (event) => {
+        state.pending = state.pending
+          .then(() => handlePeerEvent(options, state, event))
+          .catch(() => {});
+      }, (error) => {
+        stopPeerTyping(state);
+        state.pending = state.pending.then(() => sendPeerMirrorStatus(options, state, `${options.label} remote mirror stream failed: ${error.message}`, "error")).catch(() => {});
+      }, contextKey);
+      state.close = subscription.close;
+      subscriptions.set(contextKey, state);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      state.pending = state.pending.then(() => sendPeerMirrorStatus(options, state, `${options.label} remote mirror stream failed: ${message}`, "error")).catch(() => {});
+    }
   };
 
   return {
