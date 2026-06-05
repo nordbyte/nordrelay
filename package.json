@@ -98,6 +98,9 @@
     "better-sqlite3": "^11.0.0",
     "parakeet-coreml": "^2.2.0"
   },
+  "overrides": {
+    "hono": "^4.12.23"
+  },
   "engines": {
     "node": ">=22"
   },
