@@ -419,9 +419,11 @@ function threadTargetForWebProxyPath(path, method, body, query, peerId) {
  */
 function isChatThreadScopedProxyPath(path, method) {
   const runtimeState = (globalThis as typeof globalThis & { NORDRELAY_WEBUI_RUNTIME_STATE?: DashboardState }).NORDRELAY_WEBUI_RUNTIME_STATE;
+  if (path === '/api/bootstrap') {
+    return Boolean(activeWebProxyThreadTarget(runtimeState?.selectedPeer || 'local'));
+  }
   if (runtimeState?.currentPage !== 'chat') return false;
-  if (path === '/api/bootstrap' ||
-    path === '/api/chat/history' ||
+  if (path === '/api/chat/history' ||
     path === '/api/chat/attachment' ||
     path === '/api/chat/mirror' ||
     path === '/api/prompt' ||

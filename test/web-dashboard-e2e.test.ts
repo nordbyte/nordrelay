@@ -389,6 +389,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(workflowsSource).toContain("const sessionName=String(s.sessionName||'').trim();");
     expect(workflowsSource).toContain("const threadLabel=sessionName||shortMiddle(s.id);");
     expect(workflowsSource).toContain("data-copy-id=\"'+attr(s.id)+'\"");
+    expect(workflowsSource).toContain("const agentId=String(session?.agentId||activeAgentId()||'');");
+    const apiClientSource = readFileSync("src/web/ui/client/core/api-client.ts", "utf8");
+    expect(apiClientSource).toContain("if (path === '/api/bootstrap') {");
+    expect(apiClientSource).toContain("return Boolean(activeWebProxyThreadTarget(runtimeState?.selectedPeer || 'local'));");
     expect(js).toContain("data-target-peer");
     expect(js).toContain("data-target-agent");
     expect(js).toContain("data-target-sessions-toggle");
