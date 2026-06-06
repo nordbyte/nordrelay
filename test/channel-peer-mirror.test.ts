@@ -13,11 +13,15 @@ import { BotPreferencesStore } from "../src/state/bot-preferences.js";
 class FakeRemoteClient implements ChannelPeerMirrorRemoteClient {
   callback: ((event: PeerEventEnvelope) => void) | null = null;
   closed = false;
+  subscriptions: Array<{ peerId: string; sourceContextKey?: string }> = [];
 
   subscribe(
-    _peerId: string,
+    peerId: string,
     onEvent: (event: PeerEventEnvelope) => void,
+    _onError?: (error: Error) => void,
+    sourceContextKey?: string,
   ): { close: () => void } {
+    this.subscriptions.push({ peerId, sourceContextKey });
     this.callback = onEvent;
     return {
       close: () => {
@@ -145,6 +149,42 @@ describe("ChannelPeerMirrorController", () => {
     expect(typing).toBeGreaterThan(0);
     expect(sent.at(-1)).toContain("target prompt");
     expect(sent.at(-1)).not.toContain("wrong prompt");
+  });
+
+  it("subscribes to the selected remote thread source context", async () => {
+    const preferences = new BotPreferencesStore(workspace);
+    preferences.update("123:456", {
+      targetPeerId: "peer-1",
+      targetThreadId: "thread-purestats",
+      targetAgentId: "codex",
+      mirrorMode: "final",
+    });
+    const client = new FakeRemoteClient();
+    const controller = createChannelPeerMirrorController({
+      label: "Telegram",
+      runtime: fakeRuntime({}),
+      preferencesStore: preferences,
+      remoteClient: client,
+      contextForKey: () => context({ topicId: "456" }),
+      defaultMirrorMode: () => "final",
+      mirrorMinUpdateMs: 0,
+      typingIntervalMs: 1000,
+    });
+
+    controller.sync("123:456", context({ topicId: "456" }));
+
+    expect(client.subscriptions.at(-1)).toEqual({
+      peerId: "peer-1",
+      sourceContextKey: "123:456:thread:thread-purestats",
+    });
+
+    preferences.update("123:456", { targetThreadId: "thread-other" });
+    controller.sync("123:456", context({ topicId: "456" }));
+
+    expect(client.subscriptions.at(-1)).toEqual({
+      peerId: "peer-1",
+      sourceContextKey: "123:456:thread:thread-other",
+    });
   });
 
   it("does not type for unrelated remote active sessions when a target thread is selected", async () => {

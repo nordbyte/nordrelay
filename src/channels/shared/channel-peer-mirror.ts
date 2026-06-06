@@ -5,6 +5,7 @@ import type { ActiveSessionDto, RelaySnapshot } from "../../runtime/relay-runtim
 import type { ChannelActionButton } from "./channel-actions.js";
 import type { ChannelContext, ChannelRuntime } from "./channel-adapter.js";
 import { formatDurationSeconds, trimLine } from "./bot-rendering.js";
+import { remotePeerThreadSourceContextKey } from "./channel-peer-context.js";
 import { escapeHTML } from "../../core/format.js";
 import { createChannelTypingLoop, type ChannelTypingLoop } from "./channel-turn-lifecycle.js";
 
@@ -40,6 +41,7 @@ interface SubscriptionState {
   contextKey: string;
   context: ChannelContext;
   peerId: string;
+  sourceContextKey: string;
   close: () => void;
   seenMessageIds: Set<string>;
   initializedHistory: boolean;
@@ -75,13 +77,14 @@ export function createChannelPeerMirrorController(options: ChannelPeerMirrorCont
       close(contextKey);
       return;
     }
+    const sourceContextKey = peerMirrorSourceContextKey(contextKey, preferences);
     const currentMode = effectiveMode(options, contextKey);
     if (currentMode === "off") {
       close(contextKey);
       return;
     }
     const existing = subscriptions.get(contextKey);
-    if (existing && existing.peerId === peerId) {
+    if (existing && existing.peerId === peerId && existing.sourceContextKey === sourceContextKey) {
       existing.context = context;
       applyTargetPreferences(existing, preferences);
       return;
@@ -91,6 +94,7 @@ export function createChannelPeerMirrorController(options: ChannelPeerMirrorCont
       contextKey,
       context,
       peerId,
+      sourceContextKey,
       close: () => {},
       seenMessageIds: new Set(),
       initializedHistory: false,
@@ -105,7 +109,7 @@ export function createChannelPeerMirrorController(options: ChannelPeerMirrorCont
       }, (error) => {
         stopPeerTyping(state);
         state.pending = state.pending.then(() => sendPeerMirrorStatus(options, state, `${options.label} remote mirror stream failed: ${error.message}`, "error")).catch(() => {});
-      }, contextKey);
+      }, sourceContextKey);
       state.close = subscription.close;
       subscriptions.set(contextKey, state);
     } catch (error) {
@@ -136,6 +140,10 @@ export function createChannelPeerMirrorController(options: ChannelPeerMirrorCont
       }
     },
   };
+}
+
+function peerMirrorSourceContextKey(contextKey: string, preferences: ContextPreferences): string {
+  return remotePeerThreadSourceContextKey(contextKey, preferences.targetThreadId);
 }
 
 async function handlePeerEvent(

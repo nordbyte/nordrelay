@@ -94,12 +94,12 @@ function collectRecentAgentMessages(
   return messages.slice(-count);
 }
 
-function cleanAgentMessage(text: string | null | undefined): string | null {
+export function cleanAgentMessage(text: string | null | undefined): string | null {
   const cleaned = String(text ?? "").trim();
   return cleaned.length > 0 ? cleaned : null;
 }
 
-function formatLastAgentMessages(messages: string[]): string {
+export function formatLastAgentMessages(messages: string[]): string {
   if (messages.length === 1) {
     return messages[0] ?? "";
   }

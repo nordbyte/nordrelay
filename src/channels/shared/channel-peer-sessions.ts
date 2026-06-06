@@ -4,7 +4,10 @@ import { RemoteRelayClient } from "../../peers/peer-client.js";
 import { PeerStore } from "../../peers/peer-store.js";
 import type { PeerWebProxyPayload } from "../../peers/peer-types.js";
 import type { BotPreferencesStore, ChannelMirrorMode } from "../../state/bot-preferences.js";
+import type { LastAgentMessageOptions, LastAgentMessageResult } from "./last-agent-message.js";
+import { cleanAgentMessage, formatLastAgentMessages } from "./last-agent-message.js";
 import type { WebActivityActor } from "../../web/web-state.js";
+import type { WebChatMessage } from "../../web/web-state.js";
 import type { ChannelActionResponse } from "./channel-actions.js";
 import { remotePeerThreadSourceContextKey } from "./channel-peer-context.js";
 import { renderSessionInfoHTML, renderSessionInfoPlain } from "./session-format.js";
@@ -151,6 +154,58 @@ export async function renderTargetPeerMirrorPreference(
   };
 }
 
+export async function getTargetPeerLastAgentMessageText(
+  options: TargetPeerCommandOptions & { lastOptions: LastAgentMessageOptions },
+): Promise<LastAgentMessageResult | null> {
+  const targetPeerId = selectedTargetPeerId(options.preferencesStore, options.contextKey);
+  if (!targetPeerId) {
+    return null;
+  }
+  assertTargetPeerAllowed(options, targetPeerId);
+  const preferences = options.preferencesStore.get(options.contextKey);
+  const snapshot = preferences.targetThreadId ? null : await targetPeerSnapshot(options, targetPeerId);
+  const threadId = preferences.targetThreadId || snapshot?.session.threadId || null;
+  const agentId = preferences.targetAgentId || snapshot?.session.agentId;
+  const agentLabel = snapshot?.session.agentLabel || snapshot?.session.agentId || agentId || "agent";
+  if (!threadId) {
+    return {
+      ok: false,
+      text: `No active remote ${agentLabel} thread yet.`,
+      count: 0,
+    };
+  }
+
+  const detail = await peerProxy(options, targetPeerId, {
+    method: "GET",
+    path: "/api/sessions/detail",
+    query: {
+      threadId,
+      agent: agentId ?? undefined,
+    },
+  }, remotePeerThreadSourceContextKey(options.contextKey, threadId));
+  const messages = agentMessagesFromDetail(detail, options.lastOptions.count);
+  if (messages.length === 0) {
+    const history = await peerProxy(options, targetPeerId, {
+      method: "GET",
+      path: "/api/chat/history",
+      query: { limit: Math.max(50, options.lastOptions.count * 20) },
+    }, remotePeerThreadSourceContextKey(options.contextKey, threadId));
+    messages.push(...agentMessagesFromHistory(history, threadId, options.lastOptions.count));
+  }
+  if (messages.length === 0) {
+    return {
+      ok: false,
+      text: `No previous remote ${agentLabel} reply found for this thread.`,
+      count: 0,
+    };
+  }
+  return {
+    ok: true,
+    text: formatLastAgentMessages(messages),
+    count: messages.length,
+  };
+}
+
 export function remoteSessionChoiceValue(peerId: string, threadId: string): string {
   return `peer:${peerId}:${threadId}`;
 }
@@ -230,6 +285,46 @@ function parseMirrorResult(value: unknown): { mode: ChannelMirrorMode; minInterv
       html: typeof record.response?.html === "string" ? record.response.html : `<b>CLI mirroring:</b> <code>${escapeHTML(record.mode)}</code>`,
     },
   };
+}
+
+function agentMessagesFromDetail(value: unknown, count: number): string[] {
+  const record = value && typeof value === "object" ? value as { messages?: unknown } : {};
+  const messages = Array.isArray(record.messages) ? record.messages : [];
+  return collectAgentMessages(messages, undefined, count);
+}
+
+function agentMessagesFromHistory(value: unknown, threadId: string, count: number): string[] {
+  const record = value && typeof value === "object" ? value as { messages?: unknown } : {};
+  const messages = Array.isArray(record.messages) ? record.messages : [];
+  return collectAgentMessages(messages, threadId, count);
+}
+
+function collectAgentMessages(messages: unknown[], threadId: string | undefined, count: number): string[] {
+  const collected: string[] = [];
+  for (const message of messages) {
+    if (!isWebChatMessageLike(message)) {
+      continue;
+    }
+    if (threadId && message.threadId && message.threadId !== threadId) {
+      continue;
+    }
+    if (message.role !== "agent") {
+      continue;
+    }
+    const text = cleanAgentMessage(message.text);
+    if (!text) {
+      continue;
+    }
+    if (collected[collected.length - 1] === text) {
+      continue;
+    }
+    collected.push(text);
+  }
+  return collected.slice(-Math.max(1, count));
+}
+
+function isWebChatMessageLike(value: unknown): value is Pick<WebChatMessage, "role" | "text" | "threadId"> {
+  return Boolean(value && typeof value === "object" && typeof (value as { role?: unknown }).role === "string" && typeof (value as { text?: unknown }).text === "string");
 }
 
 function isAgentThreadRecord(value: unknown): value is AgentThreadRecord {

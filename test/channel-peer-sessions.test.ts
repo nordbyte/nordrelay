@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentSessionInfo, AgentThreadRecord } from "../src/agents/shared/agent.js";
 import {
   listTargetPeerSessions,
+  getTargetPeerLastAgentMessageText,
   parseRemoteSessionChoice,
   remoteSessionChoiceValue,
   renderTargetPeerMirrorPreference,
@@ -70,6 +71,37 @@ describe("channel peer session helpers", () => {
     });
     expect(response?.mode).toBe("full");
     expect(preferencesStore.get("discord:g:c").mirrorMode).toBe("full");
+  });
+
+  it("returns the last agent message for the selected remote thread", async () => {
+    const preferencesStore = new BotPreferencesStore(tempWorkspace());
+    preferencesStore.update("telegram:1:2", {
+      targetPeerId: "peer-a",
+      targetThreadId: "thread-2",
+      targetAgentId: "codex",
+    });
+    const requests: Array<{ payload: PeerWebProxyPayload; sourceContextKey?: string }> = [];
+    const result = await getTargetPeerLastAgentMessageText({
+      contextKey: "telegram:1:2",
+      preferencesStore,
+      remoteClient: fakeClient({
+        "/api/sessions/detail": {
+          messages: [
+            { role: "agent", text: "older", threadId: "thread-2", timestamp: "2026-05-21T10:00:00.000Z" },
+            { role: "user", text: "prompt", threadId: "thread-2", timestamp: "2026-05-21T10:01:00.000Z" },
+            { role: "agent", text: "latest", threadId: "thread-2", timestamp: "2026-05-21T10:02:00.000Z" },
+          ],
+        },
+      }, requests),
+      lastOptions: { count: 1 },
+    });
+
+    expect(result).toMatchObject({ ok: true, text: "latest", count: 1 });
+    expect(requests[0]?.payload).toMatchObject({
+      path: "/api/sessions/detail",
+      query: { threadId: "thread-2", agent: "codex" },
+    });
+    expect(requests[0]?.sourceContextKey).toBe("telegram:1:2:thread:thread-2");
   });
 
   it("renders the selected node label for channel commands", () => {

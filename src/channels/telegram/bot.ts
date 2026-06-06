@@ -2360,7 +2360,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
     await startUserPrompt(ctx, contextKey, chatId, session, cached);
   });
 
-  registerTelegramLastCommand({ bot, config, getContextSession });
+  registerTelegramLastCommand({ bot, config, getContextSession, preferencesStore, remoteClient, actor: (ctx) => telegramActivityActor(ctx), canUsePeer: (ctx, peerId) => userStore.canUsePeer(getAuthenticatedUser(ctx), peerId) });
   registerTelegramWorkflowCommands({ bot, config, promptStore, getContextSession, handleUserPrompt: startUserPrompt });
 
   registerTelegramQueueCommands({
