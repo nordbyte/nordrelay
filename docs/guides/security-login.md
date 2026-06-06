@@ -15,6 +15,8 @@ Each user can manage additional security controls from the WebUI profile menu:
 - passkeys using WebAuthn when the browser and dashboard origin support it
 - active web sessions with device, IP, last-seen time, and revoke controls
 
+Password login is rate-limited per client socket IP. After five failed password attempts within 30 minutes, further login attempts from that IP are temporarily rejected. The limit is keyed by the direct connection IP so untrusted `X-Forwarded-For` headers cannot bypass it.
+
 Passkeys are enabled by default with dynamic relying-party values derived from the WebUI request. For reverse proxies or public domains, set `NORDRELAY_WEBAUTHN_RP_ID` and `NORDRELAY_WEBAUTHN_ORIGIN` so browsers verify the expected domain consistently.
 
 Recovery codes are shown only when created or regenerated. Store them outside the repository and outside `~/.nordrelay`.

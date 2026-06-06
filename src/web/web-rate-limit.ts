@@ -28,6 +28,18 @@ export function consumeRateLimit(
   return { limited: false };
 }
 
+export function rateLimitStatus(
+  buckets: Map<string, RateLimitBucket>,
+  key: string,
+  now = Date.now(),
+): { limited: boolean; retryAfterMs?: number } {
+  const existing = buckets.get(key);
+  if (existing?.blockedUntil && existing.blockedUntil > now) {
+    return { limited: true, retryAfterMs: existing.blockedUntil - now };
+  }
+  return { limited: false };
+}
+
 export function resetRateLimit(buckets: Map<string, RateLimitBucket>, key: string): void {
   buckets.delete(key);
 }

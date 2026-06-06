@@ -20,7 +20,7 @@ import {
   sendText,
   webSecurityHeaders,
 } from "../src/web/web-dashboard-http.js";
-import { consumeRateLimit } from "../src/web/web-rate-limit.js";
+import { consumeRateLimit, rateLimitStatus } from "../src/web/web-rate-limit.js";
 
 describe("web dashboard HTTP helpers", () => {
   it("limits JSON request bodies and reports 413-compatible errors", async () => {
@@ -84,6 +84,7 @@ describe("web dashboard HTTP helpers", () => {
     const limited = consumeRateLimit(buckets, "user-1", 2, 1000, 5000, 300);
     expect(limited.limited).toBe(true);
     expect(limited.retryAfterMs).toBe(5000);
+    expect(rateLimitStatus(buckets, "user-1", 400).limited).toBe(true);
   });
 
   it("minifies HTML before sending text responses", () => {

@@ -11,7 +11,7 @@ import {
 import { friendlyErrorText } from "../core/error-messages.js";
 import type { WebActivityActor } from "./web-state.js";
 import { objectRecord, optionalStringField, readJsonBody, sendJson } from "./web-dashboard-http.js";
-import { consumeRateLimit, resetRateLimit, type RateLimitBucket } from "./web-rate-limit.js";
+import { consumeRateLimit, rateLimitStatus, resetRateLimit, type RateLimitBucket } from "./web-rate-limit.js";
 import { firstRunSetupTokenError } from "./web-first-run-setup-policy.js";
 
 interface PendingLoginChallenge {
@@ -34,6 +34,8 @@ export interface DashboardAuthRouteOptions {
 }
 
 const pendingLoginChallenges = new Map<string, PendingLoginChallenge>();
+const LOGIN_FAILED_ATTEMPT_LIMIT = 5;
+const LOGIN_FAILED_ATTEMPT_WINDOW_MS = 30 * 60 * 1000;
 
 export async function handleFirstRunSetup(req: IncomingMessage, res: ServerResponse, options: DashboardAuthRouteOptions): Promise<void> {
   const { users } = options;
@@ -90,15 +92,15 @@ export async function handleLogin(req: IncomingMessage, res: ServerResponse, opt
   const body = await readJsonBody(req);
   const email = optionalStringField(body, "email");
   const password = optionalStringField(body, "password");
-  const rateLimitKey = `${req.socket.remoteAddress ?? "unknown"}:${email ?? "-"}`;
-  const limited = consumeRateLimit(options.loginAttempts, rateLimitKey, 5, 15 * 60 * 1000, 15 * 60 * 1000);
+  const rateLimitKey = loginRateLimitKey(req);
+  const limited = rateLimitStatus(options.loginAttempts, rateLimitKey);
   if (limited.limited) {
     options.audit({
       action: "auth_login_failed",
       status: "denied",
       channelId: "web",
       contextKey: "web",
-      description: `Rate limited login attempt for ${email ?? "unknown"}`,
+      description: `Rate limited login attempt from ${loginRateLimitIp(req)}`,
       detail: `${Math.ceil((limited.retryAfterMs ?? 0) / 1000)}s retry-after`,
     });
     sendJson(res, 429, { error: "Too many login attempts. Try again later.", retryAfterMs: limited.retryAfterMs });
@@ -110,13 +112,19 @@ export async function handleLogin(req: IncomingMessage, res: ServerResponse, opt
   }
   const authUser = email && password ? options.users.verifyPassword(email, password) : null;
   if (!authUser) {
+    const failed = consumeFailedLoginAttempt(options.loginAttempts, rateLimitKey);
     options.audit({
       action: "auth_login_failed",
-      status: "failed",
+      status: failed.limited ? "denied" : "failed",
       channelId: "web",
       contextKey: "web",
       description: `Failed login for ${email ?? "unknown"}`,
+      detail: failed.limited ? `${Math.ceil((failed.retryAfterMs ?? 0) / 1000)}s retry-after` : undefined,
     });
+    if (failed.limited) {
+      sendJson(res, 429, { error: "Too many login attempts. Try again later.", retryAfterMs: failed.retryAfterMs });
+      return;
+    }
     sendJson(res, 401, { error: "Invalid credentials" });
     return;
   }
@@ -326,6 +334,26 @@ function sessionMetadata(req: IncomingMessage, mfaVerified: boolean): Partial<Pi
 function requestIp(req: IncomingMessage): string | undefined {
   const forwarded = headerValue(req, "x-forwarded-for").split(",")[0]?.trim();
   return forwarded || req.socket.remoteAddress || undefined;
+}
+
+function loginRateLimitKey(req: IncomingMessage): string {
+  return `ip:${loginRateLimitIp(req)}`;
+}
+
+function loginRateLimitIp(req: IncomingMessage): string {
+  return req.socket.remoteAddress || "unknown";
+}
+
+function consumeFailedLoginAttempt(buckets: Map<string, RateLimitBucket>, key: string): { limited: boolean; retryAfterMs?: number } {
+  const result = consumeRateLimit(buckets, key, LOGIN_FAILED_ATTEMPT_LIMIT, LOGIN_FAILED_ATTEMPT_WINDOW_MS, LOGIN_FAILED_ATTEMPT_WINDOW_MS);
+  if (result.limited) {
+    return result;
+  }
+  const bucket = buckets.get(key);
+  if (bucket && bucket.count >= LOGIN_FAILED_ATTEMPT_LIMIT && !bucket.blockedUntil) {
+    bucket.blockedUntil = bucket.resetAt;
+  }
+  return result;
 }
 
 function deviceNameFromUserAgent(userAgent: string | undefined): string | undefined {
