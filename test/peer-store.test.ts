@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ALL_PERMISSIONS } from "../src/access/access-control.js";
-import { PeerStore } from "../src/peers/peer-store.js";
+import { createPeerPairingCode, PeerStore } from "../src/peers/peer-store.js";
 
 const tmpDirs: string[] = [];
 
@@ -16,6 +16,25 @@ afterEach(() => {
 });
 
 describe("PeerStore", () => {
+  it("does not create pairing codes that look like CLI flags", () => {
+    const dashPrefixed = Buffer.from([0xfb, ...Array(17).fill(0)]);
+    const safe = Buffer.alloc(18, 0);
+    const buffers = [dashPrefixed, safe];
+    let calls = 0;
+
+    expect(dashPrefixed.toString("base64url")).toMatch(/^-/);
+    const code = createPeerPairingCode(() => {
+      calls += 1;
+      const next = buffers.shift();
+      if (!next) throw new Error("Unexpected random retry");
+      return next;
+    });
+
+    expect(code).toBe(safe.toString("base64url"));
+    expect(code).not.toMatch(/^-/);
+    expect(calls).toBe(2);
+  });
+
   it("creates one-time invitations without exposing the pairing secret hash", () => {
     const store = newStore();
     const created = store.createInvitation({

@@ -1234,7 +1234,7 @@ function parsePeerFlags(argv) {
   for (let i = 0; i < copy.length; i += 1) {
     const arg = copy[i];
     if (arg === "--name") flags.name = requireValue(copy, ++i, arg);
-    else if (arg === "--code") flags.code = requireValue(copy, ++i, arg);
+    else if (arg === "--code" || arg.startsWith("--code=")) { flags.code = arg === "--code" ? copy[++i] : arg.slice("--code=".length); if (!flags.code) throw new Error("--code requires a value"); }
     else if (arg === "--expect-fingerprint") flags.expectFingerprint = requireValue(copy, ++i, arg);
     else if (arg === "--public-url") flags.publicUrl = requireValue(copy, ++i, arg);
     else if (arg === "--no-public-url") flags.noPublicUrl = true;

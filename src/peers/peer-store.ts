@@ -99,7 +99,7 @@ export class PeerStore {
   }
 
   createInvitation(options: PeerInviteOptions = {}): { invitation: PublicPeerInvitationRecord; code: string } {
-    const code = randomBytes(INVITE_CODE_BYTES).toString("base64url");
+    const code = createPeerPairingCode();
     const now = new Date();
     const requestedTtl = options.expiresInMs ?? 10 * 60 * 1000;
     const ttl = Math.max(1_000, Math.min(requestedTtl, MAX_INVITATION_TTL_MS));
@@ -464,6 +464,15 @@ function normalizeHealthHistory(value: unknown): PeerHealthSample[] {
 
 function appendHealthSample(history: PeerHealthSample[] | undefined, sample: PeerHealthSample): PeerHealthSample[] {
   return [...normalizeHealthHistory(history), sample].slice(-MAX_HEALTH_HISTORY);
+}
+
+export function createPeerPairingCode(randomBytesFn: (size: number) => Buffer = randomBytes): string {
+  for (;;) {
+    const code = randomBytesFn(INVITE_CODE_BYTES).toString("base64url");
+    if (!code.startsWith("-")) {
+      return code;
+    }
+  }
 }
 
 function listGroups(payload: PeerStorePayload): string[] {

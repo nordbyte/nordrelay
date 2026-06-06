@@ -260,6 +260,14 @@ describe("nordrelay CLI script", () => {
     expect(source).not.toContain('path.join(RUNTIME_ROOT, "dist", file)');
   });
 
+  it("accepts legacy dash-prefixed peer pairing codes", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain('arg === "--code" || arg.startsWith("--code=")');
+    expect(source).toContain('flags.code = arg === "--code" ? copy[++i] : arg.slice("--code=".length)');
+    expect(source).toContain('arg.startsWith("--code=")');
+  });
+
   it("guards connector and web lifecycle pid files with locks and process identity checks", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
 
