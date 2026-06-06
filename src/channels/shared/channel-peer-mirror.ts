@@ -168,6 +168,10 @@ async function handlePeerEvent(
     await handlePeerTurnStart(options, state, event, mode);
     return;
   }
+  if (event.type === "turn_complete" || event.type === "turn_error") {
+    handlePeerTurnEnd(state, event);
+    return;
+  }
   if (event.type !== "chat_history") {
     return;
   }
@@ -221,9 +225,11 @@ async function handlePeerTurnStart(
   event: Extract<PeerEventEnvelope, { type: "turn_start" }>,
   mode: ChannelMirrorMode,
 ): Promise<void> {
-  if (mode !== "final" && mode !== "full") {
+  if (!eventMatchesSelectedSession(state, event)) {
     return;
   }
+  startPeerTyping(options, state, `turn:${event.id}:${event.correlationId ?? ""}`);
+  if (mode !== "final" && mode !== "full") return;
   if (event.source === options.runtime.id) {
     return;
   }
@@ -232,6 +238,13 @@ async function handlePeerTurnStart(
     prompt: event.text || event.prompt,
     agentLabel: state.currentAgentLabel || "Remote",
   });
+}
+
+function handlePeerTurnEnd(
+  state: SubscriptionState,
+  event: Extract<PeerEventEnvelope, { type: "turn_complete" | "turn_error" }>,
+): void {
+  if (eventMatchesSelectedSession(state, event)) stopPeerTyping(state);
 }
 
 async function sendPeerMirrorStatus(
@@ -393,6 +406,17 @@ function applyTargetPreferences(state: SubscriptionState, preferences: ContextPr
   state.lastStatusEditAt = undefined;
   state.seenMessageIds.clear();
   state.initializedHistory = false;
+}
+
+function eventMatchesSelectedSession(state: SubscriptionState, event: { agentId?: string; threadId?: string | null }): boolean {
+  if (state.targetThreadId) {
+    if (event.threadId && event.threadId !== state.targetThreadId) return false;
+    if (state.targetAgentId && event.agentId && event.agentId !== state.targetAgentId) return false;
+    return true;
+  }
+  if (state.currentThreadId && event.threadId && event.threadId !== state.currentThreadId) return false;
+  if (state.currentAgentId && event.agentId && event.agentId !== state.currentAgentId) return false;
+  return true;
 }
 
 function renderPeerActiveSessionStatus(session: ActiveSessionDto): string {

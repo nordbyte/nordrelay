@@ -366,6 +366,82 @@ describe("ChannelPeerMirrorController", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]).toContain("from web");
     expect(sent[0]).not.toContain("from telegram");
+    client.emit({ type: "turn_complete", id: "turn-web", at: new Date().toISOString(), threadId: "thread-a" });
+    await flushAsync();
+    controller.close("123");
+  });
+
+  it("keeps typing active for selected remote peer turns without active session updates", async () => {
+    const preferences = new BotPreferencesStore(workspace);
+    preferences.update("123:456", {
+      targetPeerId: "peer-1",
+      targetThreadId: "thread-purestats",
+      targetAgentId: "codex",
+      mirrorMode: "final",
+    });
+    const client = new FakeRemoteClient();
+    const typingContexts: ChannelContext[] = [];
+    const runtime = fakeRuntime({
+      sendTyping: async (target) => {
+        typingContexts.push({ ...target });
+      },
+    });
+    const topicContext = context({ topicId: "456" });
+    const controller = createChannelPeerMirrorController({
+      label: "Telegram",
+      runtime,
+      preferencesStore: preferences,
+      remoteClient: client,
+      contextForKey: () => topicContext,
+      defaultMirrorMode: () => "final",
+      mirrorMinUpdateMs: 0,
+      typingIntervalMs: 20,
+    });
+
+    controller.sync("123:456", topicContext);
+    client.emit(snapshot("thread-other"));
+    client.emit({
+      type: "turn_start",
+      id: "turn-unrelated",
+      prompt: "wrong",
+      text: "wrong",
+      at: new Date().toISOString(),
+      source: "web",
+      agentId: "codex",
+      threadId: "thread-other",
+    });
+    await sleep(40);
+
+    expect(typingContexts).toHaveLength(0);
+
+    client.emit({
+      type: "turn_start",
+      id: "turn-purestats",
+      prompt: "target",
+      text: "target",
+      at: new Date().toISOString(),
+      source: "web",
+      agentId: "codex",
+      threadId: "thread-purestats",
+    });
+    await sleep(75);
+
+    expect(typingContexts.length).toBeGreaterThanOrEqual(3);
+    expect(typingContexts.every((target) => target.topicId === "456")).toBe(true);
+
+    client.emit({
+      type: "turn_complete",
+      id: "turn-purestats",
+      at: new Date().toISOString(),
+      agentId: "codex",
+      threadId: "thread-purestats",
+    });
+    await flushAsync();
+    const stoppedAt = typingContexts.length;
+    await sleep(60);
+
+    expect(typingContexts).toHaveLength(stoppedAt);
+    controller.close("123:456");
   });
 
   it("keeps startup alive when a stored remote mirror target cannot be subscribed", async () => {
