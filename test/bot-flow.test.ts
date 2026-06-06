@@ -826,6 +826,25 @@ describe("bot flow integration", () => {
     expect(api.sentMessages.at(-1)?.text).toContain("22-07");
   });
 
+  it("lets Telegram users change mirror mode with inline buttons", async () => {
+    const { registry } = createFakeRegistry();
+    const bot = createBot(createConfig(), registry as any);
+    const api = installFakeApi(bot);
+
+    await bot.handleUpdate(messageUpdate("/mirror") as any);
+
+    expect(api.sentMessages.at(-1)?.text).toContain("CLI mirroring:");
+    expect(findInlineButton(api.sentMessages.at(-1)?.options, (button) => button.text === "Status ✓").callback_data).toBe("mirror_status");
+    const finalButton = findInlineButton(api.sentMessages.at(-1)?.options, (button) => button.callback_data === "mirror_final");
+
+    await bot.handleUpdate(callbackUpdate(finalButton.callback_data) as any);
+
+    expect(api.answeredCallbacks.at(-1)).toBe("Mirror final");
+    expect(api.editedMessages.at(-1)?.text).toContain("CLI mirroring:");
+    expect(api.editedMessages.at(-1)?.text).toContain("final");
+    expect(findInlineButton(api.editedMessages.at(-1)?.options, (button) => button.text === "Final ✓").callback_data).toBe("mirror_final");
+  });
+
   it("renders log messages as normal text while highlighting warning levels", async () => {
     const { registry } = createFakeRegistry();
     const bot = createBot(createConfig(), registry as any);

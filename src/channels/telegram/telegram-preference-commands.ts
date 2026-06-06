@@ -1,6 +1,6 @@
-import type { Bot, Context } from "grammy";
+import { InlineKeyboard, type Bot, type Context } from "grammy";
 
-import type { BotPreferencesStore } from "../../state/bot-preferences.js";
+import type { BotPreferencesStore, ChannelMirrorMode } from "../../state/bot-preferences.js";
 import {
   capabilitiesOf,
   labelOf,
@@ -16,7 +16,9 @@ import {
   renderWorkspacePolicyLine,
 } from "../../core/workspace-policy.js";
 import type { GetTelegramContextSession } from "./telegram-command-types.js";
-import { safeReply } from "./telegram-output.js";
+import { safeEditMessage, safeReply } from "./telegram-output.js";
+
+const MIRROR_MODES: ChannelMirrorMode[] = ["off", "status", "final", "full"];
 
 export interface TelegramPreferenceCommandOptions {
   bot: Bot<Context>;
@@ -50,7 +52,10 @@ export function registerTelegramPreferenceCommands(options: TelegramPreferenceCo
       return null;
     });
     if (remoteResponse) {
-      await safeReply(ctx, remoteResponse.response.html, { fallbackText: remoteResponse.response.plain });
+      await safeReply(ctx, remoteResponse.response.html, {
+        fallbackText: remoteResponse.response.plain,
+        replyMarkup: argument ? undefined : mirrorModeKeyboard(remoteResponse.mode),
+      });
       options.onMirrorChanged?.(contextKey);
       return;
     }
@@ -67,8 +72,62 @@ export function registerTelegramPreferenceCommands(options: TelegramPreferenceCo
       cliMirrorSupported: capabilitiesOf(session.getInfo()).cliMirror,
       agentLabel: labelOf(session.getInfo()),
     });
-    await safeReply(ctx, response.html, { fallbackText: response.plain });
+    await safeReply(ctx, response.html, {
+      fallbackText: response.plain,
+      replyMarkup: argument ? undefined : mirrorModeKeyboard(effectiveMirrorMode(options, contextKey)),
+    });
     options.onMirrorChanged?.(contextKey);
+  });
+
+  options.bot.callbackQuery(/^mirror_(off|status|final|full)$/, async (ctx) => {
+    const mode = ctx.match?.[1] as ChannelMirrorMode | undefined;
+    const chatId = ctx.chat?.id;
+    const messageId = ctx.callbackQuery.message?.message_id;
+    if (!mode || !chatId) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    const contextSession = await options.getContextSession(ctx, { deferThreadStart: true });
+    if (!contextSession) {
+      await ctx.answerCallbackQuery({ text: "Session unavailable", show_alert: true });
+      return;
+    }
+    const { contextKey, session } = contextSession;
+    try {
+      const remoteResponse = await renderTargetPeerMirrorPreference({
+        source: "telegram",
+        contextKey,
+        argument: mode,
+        preferencesStore: options.preferencesStore,
+        remoteClient: options.remoteClient,
+        canUsePeer: (peerId) => options.canUsePeer?.(ctx, peerId) ?? true,
+      });
+      if (remoteResponse) {
+        await answerAndRenderMirrorSelection(options, ctx, chatId, messageId, contextKey, mode, remoteResponse.response);
+        return;
+      }
+      if (!capabilitiesOf(session.getInfo()).cliMirror) {
+        await ctx.answerCallbackQuery({
+          text: `CLI mirroring is not supported for ${labelOf(session.getInfo())} yet.`,
+          show_alert: true,
+        });
+        return;
+      }
+      const response = options.commandService.renderMirrorPreference({
+        source: "telegram",
+        contextKey,
+        argument: mode,
+        preferencesStore: options.preferencesStore,
+        cliMirrorSupported: true,
+        agentLabel: labelOf(session.getInfo()),
+      });
+      await answerAndRenderMirrorSelection(options, ctx, chatId, messageId, contextKey, mode, response);
+    } catch (error) {
+      await ctx.answerCallbackQuery({
+        text: error instanceof Error ? error.message : String(error),
+        show_alert: true,
+      });
+    }
   });
 
   options.bot.command("notify", async (ctx) => {
@@ -140,4 +199,44 @@ export function registerTelegramPreferenceCommands(options: TelegramPreferenceCo
     });
     await safeReply(ctx, response.html, { fallbackText: response.plain });
   });
+}
+
+async function answerAndRenderMirrorSelection(
+  options: TelegramPreferenceCommandOptions,
+  ctx: Context,
+  chatId: number | string,
+  messageId: number | undefined,
+  contextKey: TelegramContextKey,
+  mode: ChannelMirrorMode,
+  response: { html: string; plain: string },
+): Promise<void> {
+  await ctx.answerCallbackQuery({ text: `Mirror ${mode}` });
+  options.onMirrorChanged?.(contextKey);
+  if (messageId) {
+    await safeEditMessage(options.bot, chatId, messageId, response.html, {
+      fallbackText: response.plain,
+      replyMarkup: mirrorModeKeyboard(mode),
+    });
+    return;
+  }
+  await safeReply(ctx, response.html, {
+    fallbackText: response.plain,
+    replyMarkup: mirrorModeKeyboard(mode),
+  });
+}
+
+function effectiveMirrorMode(options: TelegramPreferenceCommandOptions, contextKey: TelegramContextKey): ChannelMirrorMode {
+  return options.preferencesStore.get(contextKey).mirrorMode ?? options.config.telegramMirrorMode;
+}
+
+function mirrorModeKeyboard(activeMode: ChannelMirrorMode): InlineKeyboard {
+  const keyboard = new InlineKeyboard();
+  for (const mode of MIRROR_MODES) {
+    keyboard.text(`${mirrorModeLabel(mode)}${mode === activeMode ? " ✓" : ""}`, `mirror_${mode}`);
+  }
+  return keyboard;
+}
+
+function mirrorModeLabel(mode: ChannelMirrorMode): string {
+  return mode.charAt(0).toUpperCase() + mode.slice(1);
 }

@@ -38,6 +38,7 @@ describe("access-control", () => {
     expect(permissionForCallbackData("ws_1")).toBe("sessions.write");
     expect(permissionForCallbackData("model_gpt-5.5")).toBe("settings.write");
     expect(permissionForCallbackData("effort_xhigh")).toBe("settings.write");
+    expect(permissionForCallbackData("mirror_final")).toBe("settings.write");
     expect(permissionForCallbackData("codex_abort:123")).toBe("prompt.abort");
     expect(permissionForCallbackData("approval_yes:abc123")).toBe("prompt.abort");
     expect(permissionForCallbackData("external_approval_yes:abc123")).toBe("prompt.abort");

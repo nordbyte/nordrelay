@@ -222,7 +222,7 @@ export function permissionForCallbackData(callbackData: string | undefined): Per
   if (/^(sess_|ws_)/.test(callbackData)) {
     return "sessions.write";
   }
-  if (/^(launch_|launchconfirm_|model_|effort_|agent_)/.test(callbackData)) {
+  if (/^(launch_|launchconfirm_|model_|effort_|agent_|mirror_)/.test(callbackData)) {
     return "settings.write";
   }
   if (callbackData.startsWith("upd_")) {

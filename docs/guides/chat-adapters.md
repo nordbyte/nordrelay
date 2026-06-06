@@ -71,4 +71,6 @@ Mirror mode controls how activity from an external CLI session is sent into chat
 - `final`: user prompt and final answer
 - `full`: streaming output, tool/status events, and final answer
 
+On Telegram, sending only `/mirror` opens inline buttons for `off`, `status`, `final`, and `full`.
+
 Mirroring can run in multiple channels at once, for example a CLI prompt mirrored to Telegram and Discord.
