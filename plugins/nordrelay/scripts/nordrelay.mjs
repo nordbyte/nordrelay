@@ -822,6 +822,7 @@ function resolveUpdateMethod(options) {
   }
   throw new Error(`Unsupported update method "${requested}". Use auto, npm, or git.`);
 }
+function detectSelfUpdateMethod(sourceRoot = RUNTIME_ROOT) { const override = process.env.NORDRELAY_UPDATE_METHOD?.trim().toLowerCase(); return override === "npm" || override === "git" ? override : fs.existsSync(path.join(sourceRoot, ".git")) ? "git" : "npm"; }
 
 async function runNpmSelfUpdate(sourceRoot, log) {
   const npm = resolveNpmSpawnCommand();
@@ -1829,7 +1830,7 @@ async function commandDoctor(options) {
     checks.push(check("npm global bin on PATH", cliPath.pathContainsGlobalBin, cliPath.globalBin, "warn", pathFix(cliPath.globalBin)));
   }
   if (detectSelfUpdateMethod(RUNTIME_ROOT) === "npm") {
-    const npmPermissionCheck = npmSelfUpdatePermissionCheck();
+    const npmPermissionCheck = npmSelfUpdatePermissionCheck(resolveNpmSpawnCommand());
     checks.push(check("npm self-update permissions", npmPermissionCheck.ok, npmPermissionCheck.detail, "warn", hintFix(npmPermissionCheck.fix)));
   }
   const webUiEnabled = isWebUiEnabled();

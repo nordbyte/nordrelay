@@ -104,6 +104,8 @@ describe("nordrelay CLI script", () => {
     expect(source).toContain("npmSelfUpdatePermissionCheck(npm)");
     expect(source).toContain("npm self-update permission preflight");
     expect(source).toContain("npm self-update permissions");
+    expect(source).toContain("function detectSelfUpdateMethod(sourceRoot = RUNTIME_ROOT)");
+    expect(source).toContain("const npmPermissionCheck = npmSelfUpdatePermissionCheck(resolveNpmSpawnCommand());");
   });
 
   it("treats WebUI as a first-class init access surface", () => {
