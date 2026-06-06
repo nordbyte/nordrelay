@@ -175,10 +175,7 @@ function readSecretCliValue(options, argv, index, flag) {
   return requireValue(argv, index, flag);
 }
 
-function readSecretCliFile(argv, index, flag) {
-  const filePath = path.resolve(requireValue(argv, index, flag));
-  return fs.readFileSync(filePath, "utf8").trim();
-}
+function readSecretCliFile(argv, index, flag) { return fs.readFileSync(path.resolve(requireValue(argv, index, flag)), "utf8").trim(); }
 
 function warnSecretArgUsage(options) {
   const flags = [...new Set(options.secretArgWarnings ?? [])];
@@ -188,14 +185,11 @@ function warnSecretArgUsage(options) {
   );
 }
 
-function envFlag(name) {
-  const value = process.env[name];
-  return value === "1" || value === "true" || value === "yes" || value === "on";
-}
+function envFlag(name) { const value = process.env[name]; return value === "1" || value === "true" || value === "yes" || value === "on"; }
 
-async function mkdirp(dir) {
-  await fsp.mkdir(dir, { recursive: true });
-}
+async function mkdirp(dir) { await fsp.mkdir(dir, { recursive: true }); }
+
+function runtimeWorkingDirectory(options) { return path.join(options.home, "runtime"); }
 
 function loadEnvFiles(home) {
   const envPath = resolveEnvPath(home);
@@ -210,10 +204,7 @@ function resolveEnvPath(home) {
     : path.join(home, "nordrelay.env");
 }
 
-function resolveLaunchWorkspace() {
-  const configured = process.env.NORDRELAY_WORKSPACE?.trim();
-  return path.resolve(configured || process.cwd());
-}
+function resolveLaunchWorkspace() { return path.resolve(process.env.NORDRELAY_WORKSPACE?.trim() || process.cwd()); }
 
 function childProcessEnv(extra = {}) {
   const env = {
@@ -493,9 +484,11 @@ async function commandStart(options, settings = {}) {
       logFile: options.logFile,
     });
 
+    const cwd = runtimeWorkingDirectory(options);
+    await mkdirp(cwd);
     const logFd = fs.openSync(options.logFile, "a");
     const child = spawn(process.execPath, [SCRIPT_PATH, "foreground", ...runtimeForwardFlags(options.rawFlags)], {
-      cwd: RUNTIME_ROOT,
+      cwd,
       detached: true,
       env: childProcessEnv({
         NORDRELAY_WORKSPACE: resolveLaunchWorkspace(),
@@ -2083,6 +2076,8 @@ async function commandServiceRun(options) {
 
 async function startWebDashboard(options, settings = {}) {
   await mkdirp(options.home);
+  const cwd = runtimeWorkingDirectory(options);
+  await mkdirp(cwd);
   loadEnvFiles(options.home);
   const { host, port } = resolveDashboardEndpoint(options, { strict: true });
   const entry = await resolveWebRuntimeEntry();
@@ -2123,7 +2118,7 @@ async function startWebDashboard(options, settings = {}) {
       ? ["ignore", fs.openSync(options.webLogFile, "a"), fs.openSync(options.webLogFile, "a")]
       : "inherit";
     child = spawn(entry.command, [...entry.args, "--host", host, "--port", String(port), "--home", options.home], {
-      cwd: RUNTIME_ROOT,
+      cwd,
       env,
       detached: Boolean(settings.detached),
       stdio,
@@ -2223,7 +2218,9 @@ async function commandForeground(options) {
   loadEnvFiles(options.home);
   await prepareRuntimeForLaunch(options);
   const launchWorkspace = resolveLaunchWorkspace();
-  process.chdir(RUNTIME_ROOT);
+  const cwd = runtimeWorkingDirectory(options);
+  await mkdirp(cwd);
+  process.chdir(cwd);
 
   if (!process.env.NORDRELAY_WRAPPER_PID) {
     await withLifecycleLock(pidFileLock(options.pidFile), async () => {
@@ -2266,7 +2263,7 @@ async function commandForeground(options) {
   });
 
   const child = spawn(entry.command, entry.args, {
-    cwd: RUNTIME_ROOT,
+    cwd,
     env,
     stdio: "inherit",
   });

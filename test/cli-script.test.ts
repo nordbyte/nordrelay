@@ -214,6 +214,16 @@ describe("nordrelay CLI script", () => {
     expect(source).toContain("NORDRELAY_WORKSPACE: launchWorkspace");
   });
 
+  it("runs long-lived connector processes from a stable home cwd", () => {
+    const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
+
+    expect(source).toContain("function runtimeWorkingDirectory(options)");
+    expect(source).toContain('path.join(options.home, "runtime")');
+    expect(source).toContain("const cwd = runtimeWorkingDirectory(options)");
+    expect(source).toContain("process.chdir(cwd)");
+    expect(source).not.toContain("process.chdir(RUNTIME_ROOT)");
+  });
+
   it("starts the WebUI command as a detached background process", () => {
     const source = readFileSync("plugins/nordrelay/scripts/nordrelay.mjs", "utf8");
     const commandWeb = source.match(/async function commandWeb[\s\S]*?\r?\n}\r?\n\r?\nasync function commandServiceRun/)?.[0] ?? "";
