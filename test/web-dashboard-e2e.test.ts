@@ -586,6 +586,7 @@ describe("web dashboard browser-flow assets", () => {
 
   it("keeps secondary chat actions in the More menu", () => {
     const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    const css = dashboardCss();
     const toolbar = pageSource.slice(pageSource.indexOf('<div class="chat-toolbar">'), pageSource.indexOf('<div class="control-grid" id="sessionControls">'));
 
     expect(toolbar).toContain('id="chatMoreMenu"');
@@ -602,6 +603,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(toolbar.indexOf('id="clearChatBtn"')).toBeGreaterThan(toolbar.indexOf('id="chatMoreMenu"'));
     expect(toolbar.indexOf('id="clearChatBtn"')).toBeLessThan(toolbar.indexOf('id="syncBtn"'));
     expect(toolbar.indexOf('id="toggleToolsBtn"')).toBeLessThan(toolbar.indexOf('id="toggleHistoryBtn"'));
+    expect(css).toContain(".prompt-history-item{display:flex;flex:0 0 auto;");
+    expect(css).toContain("min-height:64px");
+    expect(css).toContain("-webkit-line-clamp:2");
   });
 
   it("shows the active workspace right-aligned in the WebUI chat attachment row", () => {
