@@ -132,6 +132,7 @@ export type {
   WebTasksDto,
 } from "./relay-runtime-types.js";
 export {
+  codexExecThreadId,
   relayRuntimeDiscoverActiveClaudeCodeSessions,
   relayRuntimeDiscoverActiveCodexSessions,
   relayRuntimeDiscoverActiveHermesSessions,

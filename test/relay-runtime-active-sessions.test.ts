@@ -10,6 +10,7 @@ vi.mock("../src/agents/codex/codex-config.js", () => ({
 }));
 
 import {
+  codexExecThreadId,
   relayRuntimeDiscoverActiveRecordedAgentSessions,
   relayRuntimeSessionStubForMetadata,
 } from "../src/runtime/relay-runtime-active-sessions.js";
@@ -102,6 +103,28 @@ describe("relay runtime active sessions", () => {
     );
 
     expect(session.getInfo().fastMode).toBe(false);
+  });
+
+  it("extracts the resumed thread id from Codex exec process arguments", () => {
+    expect(codexExecThreadId([
+      "/usr/local/bin/codex",
+      "exec",
+      "--model",
+      "gpt-5.5",
+      "--cd",
+      "/home/gitstars",
+      "resume",
+      "019e9b9b-1661-7341-92d0-94a2e3ed3d0e",
+    ])).toBe("019e9b9b-1661-7341-92d0-94a2e3ed3d0e");
+
+    expect(codexExecThreadId([
+      "codex",
+      "exec",
+      "--resume",
+      "019e9b9b-1661-7341-92d0-94a2e3ed3d0e",
+    ])).toBe("019e9b9b-1661-7341-92d0-94a2e3ed3d0e");
+
+    expect(codexExecThreadId(["codex", "exec", "resume", "--invalid"])).toBeUndefined();
   });
 });
 

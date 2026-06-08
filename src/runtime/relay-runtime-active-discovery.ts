@@ -171,18 +171,19 @@ function discoverActiveCodexExecProcesses(): ActiveSessionDto[] {
     const workspace = codexArgValue(args, "--cd") ?? safeReadlink(path.join("/proc", pid, "cwd")) ?? process.cwd();
     const model = codexArgValue(args, "--model");
     const reasoning = codexReasoningEffort(args);
+    const threadId = codexExecThreadId(args) ?? null;
     const startedAt = new Date(startMs ?? Date.now()).toISOString();
-    const contextKey = `process:codex:${pid}`;
+    const contextKey = threadId ? `cli:codex:${threadId}` : `process:codex:${pid}`;
     const outputPath = codexArgValue(args, "--output-last-message");
     active.push({
-      id: contextKey,
+      id: threadId ? `${contextKey}:process:${pid}` : contextKey,
       contextKey,
       sourceContextKey: contextKey,
       source: "cli",
       status: "external",
       agentId: "codex",
       agentLabel: "Codex",
-      threadId: null,
+      threadId,
       workspace,
       prompt: "Codex exec",
       currentTool: "codex exec",
@@ -203,6 +204,21 @@ function discoverActiveCodexExecProcesses(): ActiveSessionDto[] {
   return active;
 }
 
+export function codexExecThreadId(args: string[]): string | undefined {
+  const resumeIndex = args.indexOf("resume");
+  const resumedThread = resumeIndex === -1 ? undefined : args[resumeIndex + 1];
+  if (isCodexThreadIdCandidate(resumedThread)) {
+    return resumedThread;
+  }
+
+  const flagValue = codexArgValue(args, "--resume");
+  if (isCodexThreadIdCandidate(flagValue)) {
+    return flagValue;
+  }
+
+  return undefined;
+}
+
 function isCodexExecProcess(args: string[]): boolean {
   if (args.length < 2) {
     return false;
@@ -215,6 +231,10 @@ function codexArgValue(args: string[], flag: string): string | undefined {
   const index = args.indexOf(flag);
   const value = index === -1 ? undefined : args[index + 1];
   return value?.trim() || undefined;
+}
+
+function isCodexThreadIdCandidate(value: string | undefined): value is string {
+  return Boolean(value && !value.startsWith("-") && /^[a-zA-Z0-9][a-zA-Z0-9._-]{5,180}$/.test(value));
 }
 
 function codexReasoningEffort(args: string[]): string | undefined {
