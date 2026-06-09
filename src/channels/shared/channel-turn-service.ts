@@ -294,7 +294,10 @@ export class ChannelTurnService {
         this.options.broadcast({ type: "todo_update", id: turnId, items, correlationId, ...eventContext });
       },
       onTurnComplete: () => {},
-      onAgentEnd: () => this.options.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString(), correlationId, ...eventContext }),
+      onAgentEnd: () => {
+        this.updateCurrentProgress({ status: "completed", currentTool: undefined });
+        this.options.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString(), correlationId, ...eventContext });
+      },
     };
   }
 
