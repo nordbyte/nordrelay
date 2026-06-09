@@ -162,7 +162,7 @@ export async function startPeerServer(options: {
           connection: "keep-alive",
         });
         const sourceContextKey = url.searchParams.get("contextKey") || undefined;
-        for (const event of await service.replay(peer, sourceContextKey, parseLastEventId(req.headers["last-event-id"]))) {
+        for (const event of await service.replay(peer, sourceContextKey, parseLastEventId(req.headers["last-event-id"], url.searchParams.get("lastEventId") ?? url.searchParams.get("last-event-id")))) {
           if (res.destroyed || res.writableEnded) return;
           res.write(relayEventSseFrame(event));
         }

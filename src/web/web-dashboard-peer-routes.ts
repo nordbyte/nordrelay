@@ -634,7 +634,7 @@ export async function handleDashboardPeerRoute(
       sse.event(Buffer.byteLength(statusFrame));
       res.write(statusFrame);
       const eventStore = new PeerRelayEventStore(options.home);
-      let lastId: string | undefined = parseLastEventId(req.headers["last-event-id"]) ?? eventStore.list(peerId).at(-1)?.id;
+      let lastId: string | undefined = parseLastEventId(req.headers["last-event-id"], url.searchParams.get("lastEventId") ?? url.searchParams.get("last-event-id")) ?? eventStore.list(peerId).at(-1)?.id;
       const flush = () => {
         for (const envelope of eventStore.list(peerId, lastId)) {
           lastId = envelope.id;
@@ -697,7 +697,7 @@ export async function handleDashboardPeerRoute(
         sse.event(Buffer.byteLength(frame));
         res.write(frame);
       }
-    }, sourceContextKey, { lastEventId: parseLastEventId(req.headers["last-event-id"]) });
+    }, sourceContextKey, { lastEventId: parseLastEventId(req.headers["last-event-id"], url.searchParams.get("lastEventId") ?? url.searchParams.get("last-event-id")) });
     const heartbeat = setInterval(() => {
       if (!res.destroyed && !res.writableEnded) {
         const frame = ": heartbeat\n\n";

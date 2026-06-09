@@ -269,7 +269,7 @@ export class RemoteRelayClient {
         while (separator !== -1) {
           const frame = buffer.slice(0, separator);
           buffer = buffer.slice(separator + 2);
-          const data = frame.split(/\n/).find((line) => line.startsWith("data:"))?.slice(5).trim();
+          const data = sseFrameData(frame);
           if (data) {
             try {
               onEvent(JSON.parse(data) as PeerEventEnvelope);
@@ -338,7 +338,7 @@ export class RemoteRelayClient {
         while (separator !== -1) {
           const frame = buffer.slice(0, separator);
           buffer = buffer.slice(separator + 2);
-          const data = frame.split(/\n/).find((line) => line.startsWith("data:"))?.slice(5).trim();
+          const data = sseFrameData(frame);
           if (data) {
             try {
               onEvent(JSON.parse(data));
@@ -376,6 +376,20 @@ export class RemoteRelayClient {
     }
     return peer;
   }
+}
+
+function sseFrameData(frame: string): string {
+  const dataLines: string[] = [];
+  for (const rawLine of frame.split(/\r?\n/)) {
+    if (!rawLine || rawLine.startsWith(":")) continue;
+    const separator = rawLine.indexOf(":");
+    const field = separator === -1 ? rawLine : rawLine.slice(0, separator);
+    if (field !== "data") continue;
+    let value = separator === -1 ? "" : rawLine.slice(separator + 1);
+    if (value.startsWith(" ")) value = value.slice(1);
+    dataLines.push(value);
+  }
+  return dataLines.join("\n").trim();
 }
 
 function healthPatchFromRpc(type: string, data: unknown, latencyMs: number): Parameters<PeerStore["markSeen"]>[1] {

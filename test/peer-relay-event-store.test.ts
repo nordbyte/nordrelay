@@ -32,6 +32,21 @@ describe("PeerRelayEventStore", () => {
       rmSync(home, { recursive: true, force: true });
     }
   });
+
+  it("lists only events after the last delivered relay envelope id", () => {
+    const home = mkdtempSync(path.join(tmpdir(), "nordrelay-peer-relay-events-"));
+    try {
+      const store = new PeerRelayEventStore(home);
+      const [first] = store.append("peer-1", [eventEnvelope("status", "first")]);
+      const [second] = store.append("peer-1", [eventEnvelope("status", "second")]);
+      store.append("peer-2", [eventEnvelope("status", "other peer")]);
+
+      expect(store.list("peer-1", first.id).map((item) => item.id)).toEqual([second.id]);
+      expect(store.list("peer-1", second.id)).toEqual([]);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
 });
 
 function eventEnvelope(type: string, message: string): PeerEventEnvelope {

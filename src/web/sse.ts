@@ -19,10 +19,12 @@ export function relayEventSseFrame(event: RelayEvent): string {
   return sseFrame(event.type, event, event.eventId ?? event.seq);
 }
 
-export function parseLastEventId(value: string | string[] | undefined): string | null {
+export function parseLastEventId(value: string | string[] | null | undefined, fallback?: string | null): string | null {
   const raw = Array.isArray(value) ? value[0] : value;
   const trimmed = raw?.trim();
-  return trimmed ? trimmed : null;
+  if (trimmed) return trimmed;
+  const fallbackTrimmed = fallback?.trim();
+  return fallbackTrimmed ? fallbackTrimmed : null;
 }
 
 export function sanitizeSseId(value: string | number | null | undefined): string {

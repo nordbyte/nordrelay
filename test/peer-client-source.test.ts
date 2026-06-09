@@ -10,4 +10,14 @@ describe("peer client transport", () => {
     expect(peerClient.match(/agent: false/g)?.length).toBeGreaterThanOrEqual(2);
     expect(outboundRelay).toContain("agent: false");
   });
+
+  it("parses complete SSE data frames for peer event streams", () => {
+    const peerClient = readFileSync("src/peers/peer-client.ts", "utf8");
+
+    expect(peerClient).toContain("function sseFrameData(frame: string): string");
+    expect(peerClient).toContain("for (const rawLine of frame.split(/\\r?\\n/))");
+    expect(peerClient).toContain("if (field !== \"data\") continue;");
+    expect(peerClient).toContain("return dataLines.join(\"\\n\").trim();");
+    expect(peerClient).not.toContain("frame.split(/\\n/).find((line) => line.startsWith(\"data:\"))");
+  });
 });

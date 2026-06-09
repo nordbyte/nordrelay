@@ -505,6 +505,8 @@ interface DashboardState {
   events: EventSource | null;
   eventsTarget: string;
   eventsContextKey: string;
+  eventsLastEventIds: Record<string, string>;
+  eventsSeenIds: Record<string, number>;
   reconnectTimer: WebuiTimer | null;
   notifications: boolean;
   completionSound: boolean;

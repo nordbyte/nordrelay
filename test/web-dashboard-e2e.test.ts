@@ -766,6 +766,39 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".message .chat-list-continuation");
   });
 
+  it("tracks SSE event ids and routes realtime chat and queue updates through deduplicated listeners", () => {
+    const eventsSource = normalizedSource("src/web/ui/client/events.ts");
+    const runtimeSource = normalizedSource("src/web/ui/client/core/runtime.ts");
+    const stateTypes = normalizedSource("src/web/ui/client/core/webui-types.d.ts");
+    const dashboardSource = normalizedSource("src/web/web-dashboard.ts");
+    const peerRoutesSource = normalizedSource("src/web/web-dashboard-peer-routes.ts");
+    const peerServerSource = normalizedSource("src/peers/peer-server.ts");
+    const js = dashboardJs();
+
+    expect(runtimeSource).toContain("eventsLastEventIds:{}");
+    expect(runtimeSource).toContain("eventsSeenIds:{}");
+    expect(stateTypes).toContain("eventsLastEventIds: Record<string, string>;");
+    expect(stateTypes).toContain("eventsSeenIds: Record<string, number>;");
+    expect(eventsSource).toContain("function eventStreamUrl");
+    expect(eventsSource).toContain("'lastEventId='+encodeURIComponent(lastEventId)");
+    expect(eventsSource).toContain("function rememberRelayEventId");
+    expect(eventsSource).toContain("state.eventsLastEventIds[key]=id");
+    expect(eventsSource).toContain("const duplicate=Boolean(state.eventsSeenIds[seenKey])");
+    expect(eventsSource).toContain("function addRelayEventListener");
+    expect(eventsSource).toContain("if(!rememberRelayEventId(event as MessageEvent))return");
+    expect(eventsSource).toContain("addRelayEventListener(events,'queue_status_changed'");
+    expect(eventsSource).toContain("applyQueueRealtimeEvent(parseRelayEventData(e),eventTarget)");
+    expect(eventsSource).toContain("addRelayEventListener(events,'turn_start'");
+    expect(eventsSource).toContain("addRelayEventListener(events,'text_delta'");
+    expect(eventsSource).toContain("if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}");
+    expect(eventsSource).toContain("renderChatTabs()");
+    expect(dashboardSource).toContain('parseLastEventId(req.headers["last-event-id"], url.searchParams.get("lastEventId")');
+    expect(peerRoutesSource).toContain('parseLastEventId(req.headers["last-event-id"], url.searchParams.get("lastEventId")');
+    expect(peerServerSource).toContain('parseLastEventId(req.headers["last-event-id"], url.searchParams.get("lastEventId")');
+    expect(js).toContain("function eventStreamUrl");
+    expect(js).toContain("function addRelayEventListener");
+  });
+
   it("persists unsent WebUI chat drafts per chat tab", () => {
     const js = dashboardJs();
     const chatTabsSource = readFileSync("src/web/ui/client/chat-tabs.ts", "utf8");

@@ -522,6 +522,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
 }
 
 async function handleEvents(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   const authUser = authenticateRequest(req);
   if (!authUser) {
     sendJson(res, 401, { error: "Authentication required" });
@@ -563,7 +564,7 @@ async function handleEvents(req: IncomingMessage, res: ServerResponse): Promise<
       res.write(frame);
     }).catch(() => {});
   };
-  for (const event of runtime.replayEvents(parseLastEventId(req.headers["last-event-id"]))) {
+  for (const event of runtime.replayEvents(parseLastEventId(req.headers["last-event-id"], url.searchParams.get("lastEventId") ?? url.searchParams.get("last-event-id")))) {
     send(event);
   }
   const unsubscribe = runtime.subscribe(send);

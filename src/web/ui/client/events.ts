@@ -118,6 +118,38 @@ function clearAgentUpdateVersionRefreshTimers(){agentUpdateVersionRefreshTimers.
 function scheduleAgentUpdateVersionRefresh(job){if(!job||!AGENT_UPDATE_TERMINAL_STATUSES.has(job.status))return;clearAgentUpdateVersionRefreshTimers();const delays=[500,2000,5000,10000];agentUpdateVersionRefreshTimers=delays.map(delay=>setTimeout(()=>{if(state.currentPage==='version')loadVersion({quiet:true,refreshJobs:false})},delay))}
 function expectedEventTarget(){return state.selectedPeer&&state.selectedPeer!=='local'?state.selectedPeer:'local'}
 function expectedEventContextKey(){return expectedEventTarget()==='local'?'':webProxyEventContextKey()}
+function eventStreamKey(target=expectedEventTarget(),context=expectedEventContextKey()){return String(target||'local')+'::'+String(context||'')}
+function eventStreamUrl(target,context){
+  let url=target!=='local'
+    ? '/api/peers/'+encodeURIComponent(target)+'/events?contextKey='+encodeURIComponent(context||'')
+    : '/api/events';
+  const lastEventId=state.eventsLastEventIds[eventStreamKey(target,context)];
+  if(lastEventId)url+=(url.includes('?')?'&':'?')+'lastEventId='+encodeURIComponent(lastEventId);
+  return url;
+}
+function pruneSeenRelayEventIds(now=Date.now()){
+  const entries=Object.entries(state.eventsSeenIds||{});
+  if(entries.length<1000)return;
+  const cutoff=now-10*60*1000;
+  state.eventsSeenIds=Object.fromEntries(entries.filter(([,seenAt])=>Number(seenAt)>cutoff).slice(-1000));
+}
+function rememberRelayEventId(event:MessageEvent,target=state.eventsTarget,context=state.eventsContextKey){
+  const id=String(event.lastEventId||'').trim();
+  if(!id)return true;
+  const key=eventStreamKey(target,context);
+  state.eventsLastEventIds[key]=id;
+  const seenKey=key+'::'+id;
+  const duplicate=Boolean(state.eventsSeenIds[seenKey]);
+  state.eventsSeenIds[seenKey]=Date.now();
+  pruneSeenRelayEventIds();
+  return !duplicate;
+}
+function addRelayEventListener(events:EventSource,type:string,handler:(event:MessageEvent)=>void){
+  events.addEventListener(type,event=>{
+    if(!rememberRelayEventId(event as MessageEvent))return;
+    handler(event as MessageEvent);
+  });
+}
 function eventStreamIsCurrent(){return Boolean(state.events&&state.eventsTarget===expectedEventTarget()&&state.eventsContextKey===expectedEventContextKey()&&state.events.readyState!==EventSource.CLOSED)}
 function syncChatEventStreamForActiveContext(){if(state.currentPage!=='chat'||eventStreamIsCurrent())return false;connectEvents();return true}
 function setLocalTurnFromCurrentChat(at){const identity=currentChatIdentity();state.localTurnThreadId=identity.threadId||null;state.localTurnAgentId=identity.agentId||null;state.localTurnPeerId=identity.peerId||'local';state.localTurnStartedAt=at||new Date().toISOString()}
@@ -132,38 +164,36 @@ function connectEvents(){
   if(state.events) state.events.close();
   const eventTarget = expectedEventTarget();
   const remoteContextKey = expectedEventContextKey();
-  const eventsUrl = eventTarget !== 'local'
-    ? '/api/peers/'+encodeURIComponent(eventTarget)+'/events?contextKey='+encodeURIComponent(remoteContextKey)
-    : '/api/events';
+  const eventsUrl = eventStreamUrl(eventTarget,remoteContextKey);
   const events = new EventSource(eventsUrl);
   state.events=events;
   state.eventsTarget=eventTarget;
   state.eventsContextKey=remoteContextKey;
   setApiState('restarting',{target:eventTarget,message:'Connecting to NordRelay events...',incrementFailure:false});
   events.onopen=()=>{if(state.reconnectTimer){clearTimeout(state.reconnectTimer);state.reconnectTimer=null}recordApiSuccess(eventTarget)};
-  events.addEventListener('snapshot', e=>{const d=JSON.parse(e.data).data;state.snapshot=d;state.snapshotPeerId=eventTarget;syncCurrentSessionChatTab({activate:false});syncCompletionSoundActivity();renderSnapshot(d);renderSessionControls();renderChatWorkingIndicator();renderChatTabs()});
-  events.addEventListener('chat_history', applyChatHistoryEvent);
-  events.addEventListener('chat_message_added', e=>applyChatMessageEvent(e,'added'));
-  events.addEventListener('chat_message_updated', e=>applyChatMessageEvent(e,'updated'));
-  events.addEventListener('chat_messages_cleared', applyChatMessagesClearedEvent);
-  events.addEventListener('activity_update', e=>renderActivity(JSON.parse(e.data).events||[]));
-  events.addEventListener('active_sessions_update', e=>{const d=JSON.parse(e.data);const eventPeer=eventTarget||'local';const target=state.activeSessionsTarget||'local';if(applyActiveSessionsEvent(d,eventPeer))return;if(target==='all'){if(Date.now()-(state.activeSessionsLastLoadAt||0)>4500)safe(loadActiveSessions);renderChatTabs()}});
-  events.addEventListener('session_update', e=>{let d:WebuiRecord={};try{d=JSON.parse(e.data||'{}')}catch{}if(state.currentPage==='chat'&&!chatEventMatchesCurrentChat(d.session||d)){renderChatTabs();return}loadBootstrap();loadChatHistory();renderChatTabs()});
-  events.addEventListener('agent_update', e=>{const d=JSON.parse(e.data);upsertAgentUpdateJob(d.job);if(state.currentPage==='version'){renderAgentUpdateJobs();scheduleAgentUpdateVersionRefresh(d.job)}});
-  events.addEventListener('queue_update', e=>applyQueueRealtimeEvent(parseRelayEventData(e),eventTarget));
-  events.addEventListener('queue_status_changed', e=>applyQueueRealtimeEvent(parseRelayEventData(e),eventTarget));
-  events.addEventListener('message_status_changed', e=>{const d=parseRelayEventData(e);if(chatEventMatchesCurrentChat(d)){renderChatTabs();syncCompletionSoundActivity()}else handleForeignChatEvent()});
-  events.addEventListener('session_status_changed', e=>applySessionStatusEvent(parseRelayEventData(e),eventTarget));
-  events.addEventListener('turn_start', e=>{const d=JSON.parse(e.data);if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}clearChatVisibleCompletionForCurrentSession();setLocalTurnFromCurrentChat(d.at);syncCompletionSoundActivity();const appendOptions={...chatEventAppendOptions(d),meta:d.meta,attachments:d.attachments,messageId:d.messageId,correlationId:d.correlationId};if(!chatMessageExistsForCorrelation(d.correlationId))appendMessage('user',d.text||d.prompt,appendOptions);currentAgentMessage=appendMessage('agent','',{...chatEventAppendOptions(d),correlationId:d.correlationId});startChatHistoryFollowup();renderChatWorkingIndicator();renderSessionControls();renderChatTabs();if(isMonitorTabActive('tasks'))loadTasks()});
-  events.addEventListener('text_delta', e=>{const d=JSON.parse(e.data);if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}clearChatVisibleCompletionForCurrentSession();const stick=isChatNearBottom();if(!currentAgentMessage||!currentAgentMessage.isConnected||!chatElementMatchesCurrentChat(currentAgentMessage))currentAgentMessage=appendMessage('agent','',{...chatEventAppendOptions(d),correlationId:d.correlationId});queueTextDeltaRender(currentAgentMessage,d.delta,stick)});
-  events.addEventListener('assistant_message_complete', e=>{const d=JSON.parse(e.data);if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}flushPendingTextDelta();renderChatWorkingIndicator();renderChatTabs()});
-  events.addEventListener('tool_start', e=>{const d=JSON.parse(e.data);if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}clearChatVisibleCompletionForCurrentSession();tool('tool','Started '+d.toolName);renderChatWorkingIndicator();renderSessionControls();renderChatTabs();if(isMonitorTabActive('tasks'))loadTasks()});
-  events.addEventListener('tool_update', e=>{const d=JSON.parse(e.data);if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}clearChatVisibleCompletionForCurrentSession();if(d.partialResult)tool('tool',d.partialResult.slice(-600));renderChatWorkingIndicator()});
-  events.addEventListener('tool_end', e=>{const d=JSON.parse(e.data);if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}clearChatVisibleCompletionForCurrentSession();tool(d.isError?'danger':'tool','Finished '+d.toolCallId+(d.isError?' with error':''));renderChatWorkingIndicator()});
-  events.addEventListener('todo_update', e=>{const d=JSON.parse(e.data);if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}clearChatVisibleCompletionForCurrentSession();tool('tool','Plan:\n'+d.items.map(i=>(i.completed?'[x] ':'[ ] ')+i.text).join('\n'));renderChatWorkingIndicator()});
-  events.addEventListener('turn_error', e=>{const d=JSON.parse(e.data);if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}flushPendingTextDelta();appendMessage('system','Error: '+d.error,chatEventAppendOptions(d));currentAgentMessage=null;clearCurrentChatWorkingState();state.completionSoundArmedKey=null;stopChatHistoryFollowup();renderChatWorkingIndicator();renderSessionControls();renderChatTabs()});
-  events.addEventListener('turn_complete', e=>{let d:WebuiRecord={};try{d=JSON.parse(e.data||'{}')}catch{}if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}flushPendingTextDelta();markChatVisibleCompletion(d);currentAgentMessage=null;clearCurrentChatWorkingState();syncCompletionSoundActivity();stopChatHistoryFollowup();renderChatWorkingIndicator();renderSessionControls();renderChatTabs();notify('NordRelay turn finished','The active task completed.');loadBootstrap();if(isMonitorTabActive('tasks'))loadTasks()});
-  events.addEventListener('status', e=>{const d=JSON.parse(e.data);const msg=d.message||'';if(isCliRunningStatus(msg)){state.cliStatusActive=true;toast(msg,{sticky:true});return}if(isCliDoneStatus(msg)){state.cliStatusActive=false;clearStickyToast()}toast(msg)});
+  addRelayEventListener(events,'snapshot', e=>{const d=JSON.parse(e.data).data;state.snapshot=d;state.snapshotPeerId=eventTarget;syncCurrentSessionChatTab({activate:false});syncCompletionSoundActivity();renderSnapshot(d);renderSessionControls();renderChatWorkingIndicator();renderChatTabs()});
+  addRelayEventListener(events,'chat_history', applyChatHistoryEvent);
+  addRelayEventListener(events,'chat_message_added', e=>applyChatMessageEvent(e,'added'));
+  addRelayEventListener(events,'chat_message_updated', e=>applyChatMessageEvent(e,'updated'));
+  addRelayEventListener(events,'chat_messages_cleared', applyChatMessagesClearedEvent);
+  addRelayEventListener(events,'activity_update', e=>renderActivity(JSON.parse(e.data).events||[]));
+  addRelayEventListener(events,'active_sessions_update', e=>{const d=JSON.parse(e.data);const eventPeer=eventTarget||'local';const target=state.activeSessionsTarget||'local';if(applyActiveSessionsEvent(d,eventPeer))return;if(target==='all'){if(Date.now()-(state.activeSessionsLastLoadAt||0)>4500)safe(loadActiveSessions);renderChatTabs()}});
+  addRelayEventListener(events,'session_update', e=>{let d:WebuiRecord={};try{d=JSON.parse(e.data||'{}')}catch{}if(state.currentPage==='chat'&&!chatEventMatchesCurrentChat(d.session||d)){renderChatTabs();return}loadBootstrap();loadChatHistory();renderChatTabs()});
+  addRelayEventListener(events,'agent_update', e=>{const d=JSON.parse(e.data);upsertAgentUpdateJob(d.job);if(state.currentPage==='version'){renderAgentUpdateJobs();scheduleAgentUpdateVersionRefresh(d.job)}});
+  addRelayEventListener(events,'queue_update', e=>applyQueueRealtimeEvent(parseRelayEventData(e),eventTarget));
+  addRelayEventListener(events,'queue_status_changed', e=>applyQueueRealtimeEvent(parseRelayEventData(e),eventTarget));
+  addRelayEventListener(events,'message_status_changed', e=>{const d=parseRelayEventData(e);if(chatEventMatchesCurrentChat(d)){renderChatTabs();syncCompletionSoundActivity()}else handleForeignChatEvent()});
+  addRelayEventListener(events,'session_status_changed', e=>applySessionStatusEvent(parseRelayEventData(e),eventTarget));
+  addRelayEventListener(events,'turn_start', e=>{const d=JSON.parse(e.data);if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}clearChatVisibleCompletionForCurrentSession();setLocalTurnFromCurrentChat(d.at);syncCompletionSoundActivity();const appendOptions={...chatEventAppendOptions(d),meta:d.meta,attachments:d.attachments,messageId:d.messageId,correlationId:d.correlationId};if(!chatMessageExistsForCorrelation(d.correlationId))appendMessage('user',d.text||d.prompt,appendOptions);currentAgentMessage=appendMessage('agent','',{...chatEventAppendOptions(d),correlationId:d.correlationId});startChatHistoryFollowup();renderChatWorkingIndicator();renderSessionControls();renderChatTabs();if(isMonitorTabActive('tasks'))loadTasks()});
+  addRelayEventListener(events,'text_delta', e=>{const d=JSON.parse(e.data);if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}clearChatVisibleCompletionForCurrentSession();const stick=isChatNearBottom();if(!currentAgentMessage||!currentAgentMessage.isConnected||!chatElementMatchesCurrentChat(currentAgentMessage))currentAgentMessage=appendMessage('agent','',{...chatEventAppendOptions(d),correlationId:d.correlationId});queueTextDeltaRender(currentAgentMessage,d.delta,stick)});
+  addRelayEventListener(events,'assistant_message_complete', e=>{const d=JSON.parse(e.data);if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}flushPendingTextDelta();renderChatWorkingIndicator();renderChatTabs()});
+  addRelayEventListener(events,'tool_start', e=>{const d=JSON.parse(e.data);if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}clearChatVisibleCompletionForCurrentSession();tool('tool','Started '+d.toolName);renderChatWorkingIndicator();renderSessionControls();renderChatTabs();if(isMonitorTabActive('tasks'))loadTasks()});
+  addRelayEventListener(events,'tool_update', e=>{const d=JSON.parse(e.data);if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}clearChatVisibleCompletionForCurrentSession();if(d.partialResult)tool('tool',d.partialResult.slice(-600));renderChatWorkingIndicator()});
+  addRelayEventListener(events,'tool_end', e=>{const d=JSON.parse(e.data);if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}clearChatVisibleCompletionForCurrentSession();tool(d.isError?'danger':'tool','Finished '+d.toolCallId+(d.isError?' with error':''));renderChatWorkingIndicator()});
+  addRelayEventListener(events,'todo_update', e=>{const d=JSON.parse(e.data);if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}clearChatVisibleCompletionForCurrentSession();tool('tool','Plan:\n'+d.items.map(i=>(i.completed?'[x] ':'[ ] ')+i.text).join('\n'));renderChatWorkingIndicator()});
+  addRelayEventListener(events,'turn_error', e=>{const d=JSON.parse(e.data);if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}flushPendingTextDelta();appendMessage('system','Error: '+d.error,chatEventAppendOptions(d));currentAgentMessage=null;clearCurrentChatWorkingState();state.completionSoundArmedKey=null;stopChatHistoryFollowup();renderChatWorkingIndicator();renderSessionControls();renderChatTabs()});
+  addRelayEventListener(events,'turn_complete', e=>{let d:WebuiRecord={};try{d=JSON.parse(e.data||'{}')}catch{}if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}flushPendingTextDelta();markChatVisibleCompletion(d);currentAgentMessage=null;clearCurrentChatWorkingState();syncCompletionSoundActivity();stopChatHistoryFollowup();renderChatWorkingIndicator();renderSessionControls();renderChatTabs();notify('NordRelay turn finished','The active task completed.');loadBootstrap();if(isMonitorTabActive('tasks'))loadTasks()});
+  addRelayEventListener(events,'status', e=>{const d=JSON.parse(e.data);const msg=d.message||'';if(isCliRunningStatus(msg)){state.cliStatusActive=true;toast(msg,{sticky:true});return}if(isCliDoneStatus(msg)){state.cliStatusActive=false;clearStickyToast()}toast(msg)});
   events.onerror=()=>{setApiState(apiFetchFailureStatus(eventTarget),{target:eventTarget,message:eventTarget==='local'?'NordRelay events disconnected. Reconnecting...':'Peer events disconnected. Reconnecting...',retryAfterMs:5000});if(!state.reconnectTimer)state.reconnectTimer=setTimeout(()=>{state.reconnectTimer=null;connectEvents()},5000)};
 }
 function setConnection(text,kind){const el=document.getElementById('connectionStatus');el.className='footer-connection';el.innerHTML='<span class="footer-label">Connection:</span> <span class="footer-connection-value connection-'+attr(kind)+'">'+esc(text)+'</span>'}

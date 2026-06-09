@@ -4,6 +4,7 @@ import type { ConnectorConfig } from "../src/core/config.js";
 import { PeerRuntimeService } from "../src/peers/peer-runtime-service.js";
 import type { PeerRecord } from "../src/peers/peer-types.js";
 import type { RelayRuntime } from "../src/runtime/relay-runtime.js";
+import type { RelayEvent } from "../src/runtime/relay-runtime-types.js";
 
 describe("PeerRuntimeService", () => {
   it("denies proxied WebUI routes when the peer lacks the required scope", async () => {
@@ -83,6 +84,22 @@ describe("PeerRuntimeService", () => {
 
     expect(contexts).toEqual(["telegram:123"]);
     expect(calls).toEqual(["remote hello"]);
+  });
+
+  it("replays scoped peer events after the last seen event id", async () => {
+    const service = new PeerRuntimeService(config(), runtime({
+      replayEvents: (afterEventId?: string | number | null) => {
+        const after = Number.parseInt(String(afterEventId ?? ""), 10);
+        return [
+          statusEvent("first", "1"),
+          statusEvent("second", "2"),
+        ].filter((event) => Number(event.seq ?? 0) > after);
+      },
+    }));
+
+    await expect(service.replay(peer({ scopes: ["sessions.read"] }), undefined, "1")).resolves.toMatchObject([
+      { type: "status", eventId: "2", message: "second" },
+    ]);
   });
 
   it("resolves peer workspace aliases before starting a session", async () => {
@@ -334,4 +351,17 @@ function runtime(patch: Partial<RelayRuntime> = {}): RelayRuntime {
     sendPrompt: async () => ({ ok: true }),
     ...patch,
   } as unknown as RelayRuntime;
+}
+
+function statusEvent(message: string, id: string): RelayEvent {
+  const seq = Number.parseInt(id, 10);
+  return {
+    type: "status",
+    level: "info",
+    message,
+    at: "2026-06-09T00:00:00.000Z",
+    seq,
+    eventId: id,
+    emittedAt: "2026-06-09T00:00:00.000Z",
+  };
 }
