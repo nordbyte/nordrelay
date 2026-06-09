@@ -34,14 +34,22 @@ export interface RelaySessionEventContext {
   workspace?: string;
 }
 
-export type RelayEvent =
+export interface RelayEventMeta {
+  seq?: number;
+  eventId?: string;
+  emittedAt?: string;
+}
+
+export type RelayEvent = (
   | { type: "snapshot"; data: RelaySnapshot }
   | { type: "chat_history"; messages: WebChatMessage[] }
   | ({ type: "chat_message_added"; message: WebChatMessage } & RelaySessionEventContext)
   | ({ type: "chat_message_updated"; message: WebChatMessage } & RelaySessionEventContext)
   | ({ type: "chat_messages_cleared"; threadId: string | null; removed: number } & RelaySessionEventContext)
+  | ({ type: "message_status_changed"; status: "added" | "updated" | "cleared"; messageId?: string; role?: WebChatMessage["role"]; source?: WebChatMessage["source"]; correlationId?: string; at: string } & RelaySessionEventContext)
   | { type: "activity_update"; events: WebActivityEvent[] }
   | { type: "active_sessions_update"; active: ActiveSessionsDto }
+  | ({ type: "session_status_changed"; status: "running" | "completed" | "failed" | "aborted" | "external" | "idle"; source?: WebActivitySource; at: string; correlationId?: string; currentTool?: string; queueLength?: number } & RelaySessionEventContext)
   | ({ type: "turn_start"; id: string; messageId?: string; prompt: string; text?: string; meta?: string[]; attachments?: WebChatAttachment[]; at: string; source?: WebActivitySource; correlationId?: string } & RelaySessionEventContext)
   | ({ type: "text_delta"; id: string; delta: string; correlationId?: string } & RelaySessionEventContext)
   | ({ type: "assistant_message_complete"; id: string; at: string; correlationId?: string } & RelaySessionEventContext)
@@ -52,9 +60,11 @@ export type RelayEvent =
   | ({ type: "turn_complete"; id: string; at: string; correlationId?: string } & RelaySessionEventContext)
   | ({ type: "turn_error"; id: string; error: string; at: string; correlationId?: string } & RelaySessionEventContext)
   | { type: "queue_update"; queue: QueueItemDto[]; paused: boolean }
+  | ({ type: "queue_status_changed"; status: "updated" | "started" | "completed" | "paused" | "resumed"; queue: QueueItemDto[]; paused: boolean; queueId?: string; at: string } & RelaySessionEventContext)
   | { type: "session_update"; session: AgentSessionInfo }
   | { type: "agent_update"; job: AgentUpdateJobSnapshot }
-  | { type: "status"; message: string; level: "info" | "warn" | "error"; at: string };
+  | { type: "status"; message: string; level: "info" | "warn" | "error"; at: string }
+) & RelayEventMeta;
 
 export interface RelaySnapshot {
   session: AgentSessionInfo;

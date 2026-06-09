@@ -59,6 +59,7 @@ import {
   taskToUnifiedJob,
   uploadFileDtos,
 } from "./relay-runtime-helpers.js";
+import { relayRuntimeBroadcastQueueStatus } from "./relay-runtime-events.js";
 import { RelayDashboardService } from "./relay-dashboard-service.js";
 import { capabilitiesOf } from "../channels/shared/bot-rendering.js";
 import { renderSessionInfoPlain, renderSessionUsageRows } from "../channels/shared/session-format.js";
@@ -557,7 +558,10 @@ export function relayRuntimeAddCurrentTool(runtime: RelayRuntimeDelegate, toolNa
   }
 
 export function relayRuntimeBroadcastQueue(runtime: RelayRuntimeDelegate): void {
-    runtime.broadcast({ type: "queue_update", queue: runtime.queue(), paused: runtime.queuePaused() });
+    const queue = runtime.queue();
+    const paused = runtime.queuePaused();
+    runtime.broadcast({ type: "queue_update", queue, paused });
+    relayRuntimeBroadcastQueueStatus(runtime, paused ? "paused" : "updated");
   }
 
 export function relayRuntimeBroadcastStatus(runtime: RelayRuntimeDelegate, message: string, level: "info" | "warn" | "error" = "info"): void {
@@ -565,14 +569,15 @@ export function relayRuntimeBroadcastStatus(runtime: RelayRuntimeDelegate, messa
   }
 
 export function relayRuntimeBroadcast(runtime: RelayRuntimeDelegate, event: RelayEvent): void {
+    const prepared = runtime.prepareEvent(event);
     for (const subscriber of runtime.subscribers) {
       try {
-        subscriber(event);
+        subscriber(prepared);
       } catch {
         runtime.subscribers.delete(subscriber);
       }
     }
-    if (shouldRefreshActiveSessions(event)) {
+    if (shouldRefreshActiveSessions(prepared)) {
       runtime.scheduleActiveSessionsBroadcast();
     }
   }

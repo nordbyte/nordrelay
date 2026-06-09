@@ -225,7 +225,13 @@ export class RemoteRelayClient {
     return this.rpc(peerId, "web.proxy", sourceContextKey ? { ...payload, contextKey: sourceContextKey } : payload, actor, options);
   }
 
-  subscribe(peerId: string, onEvent: (event: PeerEventEnvelope) => void, onError?: (error: Error) => void, sourceContextKey?: string): { close: () => void } {
+  subscribe(
+    peerId: string,
+    onEvent: (event: PeerEventEnvelope) => void,
+    onError?: (error: Error) => void,
+    sourceContextKey?: string,
+    options: { lastEventId?: string | null } = {},
+  ): { close: () => void } {
     const peer = this.requiredPeer(peerId);
     const url = new URL(joinPeerUrl(requiredPeerUrl(peer), "/peer/events"));
     if (sourceContextKey) {
@@ -240,7 +246,7 @@ export class RemoteRelayClient {
       hostname: url.hostname,
       port: url.port,
       path: `${url.pathname}${url.search}`,
-      headers: signed.headers,
+      headers: options.lastEventId ? { ...signed.headers, "last-event-id": options.lastEventId } : signed.headers,
       agent: false,
       rejectUnauthorized: false,
     } as https.RequestOptions, (res) => {

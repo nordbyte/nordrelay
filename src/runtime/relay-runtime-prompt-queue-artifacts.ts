@@ -63,6 +63,7 @@ import {
   uploadFileDtos,
 } from "./relay-runtime-helpers.js";
 import { RelayDashboardService } from "./relay-dashboard-service.js";
+import { relayRuntimeBroadcastQueueStatus } from "./relay-runtime-events.js";
 import { capabilitiesOf } from "../channels/shared/bot-rendering.js";
 import { renderSessionInfoPlain, renderSessionUsageRows } from "../channels/shared/session-format.js";
 import { SessionLockStore, type SessionLock } from "../access/session-locks.js";
@@ -520,16 +521,15 @@ export async function relayRuntimeDrainQueue(runtime: RelayRuntimeDelegate): Pro
       try {
         if (session.isProcessing()) return;
         const external = getExternalSnapshotForSession(session, runtime.config, { maxEvents: 0 });
-        if (external?.activity.active && !isExternalSnapshotSuppressedByManagedAbort(external, runtime.activityStore.list({ threadId: external.threadId, limit: 50 }))) {
-          runtime.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${runtime.queueService.length()} queued.`, "info");
-          return;
-        }
-        const next = runtime.queueService.leaseNext(runtime.queueDrainOwnerId, QUEUE_PROMPT_LEASE_TTL_MS);
-        runtime.broadcastQueue();
+        if (external?.activity.active && !isExternalSnapshotSuppressedByManagedAbort(external, runtime.activityStore.list({ threadId: external.threadId, limit: 50 }))) { runtime.broadcastStatus(`Waiting for ${external.agentLabel} CLI task... ${runtime.queueService.length()} queued.`, "info"); return; }
+        const next = runtime.queueService.leaseNext(runtime.queueDrainOwnerId, QUEUE_PROMPT_LEASE_TTL_MS); runtime.broadcastQueue();
         if (!next) return;
+        const info = runtime.publicInfo(session);
+        relayRuntimeBroadcastQueueStatus(runtime, "started", { queueId: next.id, info });
         resolveQueuedPromptChatAction(runtime, next.id, `Queued prompt ${next.id} started`);
         await runLeasedQueuedPrompt({ renew: () => runtime.queueService.renewLease(next, runtime.queueDrainOwnerId, QUEUE_PROMPT_LEASE_TTL_MS), complete: () => runtime.queueService.completeLease(next, runtime.queueDrainOwnerId), fail: (message) => runtime.queueService.failLease(next, runtime.queueDrainOwnerId, message), run: async () => { await runtime.runPrompt(session, next); completedPrompt = true; } }).finally(() => {
           runtime.broadcastQueue();
+          if (completedPrompt) relayRuntimeBroadcastQueueStatus(runtime, "completed", { queueId: next.id, info });
         });
       } finally {
         runtime.draining = false;

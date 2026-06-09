@@ -19,6 +19,7 @@ import {
   readJsonBody,
   sendJson,
 } from "./web-dashboard-http.js";
+import { sseFrame } from "./sse.js";
 
 interface DashboardPluginRouteOptions {
   config: ConnectorConfig;
@@ -216,7 +217,7 @@ export async function handleDashboardPluginRoute(
     });
     const write = (event: unknown, eventName = "jobs") => {
       if (res.destroyed || res.writableEnded) return;
-      res.write(`event: ${eventName}\ndata: ${JSON.stringify(event)}\n\n`);
+      res.write(sseFrame(eventName, event));
     };
     const unsubscribe = plugins.subscribeEvents(id, (event) => write(event, event.type || "message"));
     const heartbeat = setInterval(() => {

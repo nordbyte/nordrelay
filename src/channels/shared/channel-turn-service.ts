@@ -131,6 +131,15 @@ export class ChannelTurnService {
       correlationId,
       ...eventContext,
     });
+    this.options.broadcast({
+      type: "session_status_changed",
+      status: "running",
+      source,
+      at: startedAt,
+      correlationId,
+      queueLength: 0,
+      ...eventContext,
+    });
 
     try {
       await session.prompt(envelope.input as AgentPromptInput, this.callbacks(turnId, info, envelope, actor, source));
@@ -157,6 +166,16 @@ export class ChannelTurnService {
           turnId,
         });
         this.options.broadcast({ type: "chat_message_added", message: agentMessage, ...eventContext });
+        this.options.broadcast({
+          type: "message_status_changed",
+          status: "added",
+          messageId: agentMessage.id,
+          role: agentMessage.role,
+          source: agentMessage.source,
+          correlationId,
+          at: agentMessage.timestamp,
+          ...eventContext,
+        });
       }
       this.options.appendActivity({
         source,
@@ -181,8 +200,6 @@ export class ChannelTurnService {
         correlationId,
         description: envelope.description,
       });
-      this.updateCurrentProgress({ status: "completed" });
-      this.options.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString(), correlationId, ...eventContext });
     } catch (error) {
       const errorText = friendlyErrorText(error);
       const errorMessage = this.options.chatStore.append({
@@ -194,6 +211,16 @@ export class ChannelTurnService {
         turnId,
       });
       this.options.broadcast({ type: "chat_message_added", message: errorMessage, ...eventContext });
+      this.options.broadcast({
+        type: "message_status_changed",
+        status: "added",
+        messageId: errorMessage.id,
+        role: errorMessage.role,
+        source: errorMessage.source,
+        correlationId,
+        at: errorMessage.timestamp,
+        ...eventContext,
+      });
       this.options.appendActivity({
         source,
         status: "failed",
@@ -221,6 +248,7 @@ export class ChannelTurnService {
       });
       this.updateCurrentProgress({ status: "failed", detail: errorText });
       this.options.broadcast({ type: "turn_error", id: turnId, error: errorText, at: new Date().toISOString(), correlationId, ...eventContext });
+      this.options.broadcast({ type: "session_status_changed", status: "failed", source, at: new Date().toISOString(), correlationId, ...eventContext });
       throw error;
     } finally {
       const progress = this.options.getCurrentProgress();
@@ -296,7 +324,9 @@ export class ChannelTurnService {
       onTurnComplete: () => {},
       onAgentEnd: () => {
         this.updateCurrentProgress({ status: "completed", currentTool: undefined });
-        this.options.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString(), correlationId, ...eventContext });
+        const at = new Date().toISOString();
+        this.options.broadcast({ type: "turn_complete", id: turnId, at, correlationId, ...eventContext });
+        this.options.broadcast({ type: "session_status_changed", status: "completed", source, at, correlationId, ...eventContext });
       },
     };
   }

@@ -121,6 +121,7 @@ export interface RelayRuntimeDelegate {
   readonly turnService: ChannelTurnService;
   readonly authService: RelayAuthService;
   readonly subscribers: Set<(event: RelayEvent) => void>;
+  eventSeq: number; eventHistory: RelayEvent[];
   readonly agentUpdateActors: Map<string, WebActivityActor>;
   readonly agentUpdateStates: Map<string, { status: AgentUpdateJobSnapshot["status"]; needsInput: boolean }>;
   externalMonitor?: AdaptiveExternalMonitorHandle; activeSessionsBroadcastTimer: NodeJS.Timeout | null; metricsHistoryTimer: NodeJS.Timeout | null; metricsHistoryPoller: ObservedPollerHandle | null; activeSessionsLastBroadcastAt: number;
@@ -131,6 +132,8 @@ export interface RelayRuntimeDelegate {
   currentProgress: WebTaskDto | null;
 
   subscribe(callback: (event: RelayEvent) => void): () => void;
+  prepareEvent(event: RelayEvent): RelayEvent;
+  replayEvents(afterEventId?: string | number | null): RelayEvent[];
   snapshot(): Promise<RelaySnapshot>;
   status(): Promise<Record<string, unknown>>;
   bootstrapStatus(): Promise<Record<string, unknown>>;

@@ -134,11 +134,11 @@ const MAX_CHAT_HISTORY = 250;
 export function relayRuntimeSubscribe(runtime: RelayRuntimeDelegate, callback: (event: RelayEvent) => void): () => void {
     runtime.subscribers.add(callback);
     ensureSubscriberExternalMonitor(runtime);
-    void runtime.snapshot().then((data) => callback({ type: "snapshot", data })).catch(() => {});
-    void runtime.chatHistory().then((messages) => callback({ type: "chat_history", messages })).catch(() => {});
-    callback({ type: "queue_update", queue: runtime.queue(), paused: runtime.queuePaused() });
-    void runtime.activeSessions().then((active) => callback({ type: "active_sessions_update", active })).catch(() => {});
-    callback({ type: "activity_update", events: runtime.activity({ limit: 50 }) });
+    void runtime.snapshot().then((data) => callback(runtime.prepareEvent({ type: "snapshot", data }))).catch(() => {});
+    void runtime.chatHistory().then((messages) => callback(runtime.prepareEvent({ type: "chat_history", messages }))).catch(() => {});
+    callback(runtime.prepareEvent({ type: "queue_update", queue: runtime.queue(), paused: runtime.queuePaused() }));
+    void runtime.activeSessions().then((active) => callback(runtime.prepareEvent({ type: "active_sessions_update", active }))).catch(() => {});
+    callback(runtime.prepareEvent({ type: "activity_update", events: runtime.activity({ limit: 50 }) }));
     return () => {
       runtime.subscribers.delete(callback);
       stopSubscriberExternalMonitorIfIdle(runtime);

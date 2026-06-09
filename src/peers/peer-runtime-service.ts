@@ -77,6 +77,13 @@ export class PeerRuntimeService {
     });
   }
 
+  async replay(peer: PeerRecord, sourceContextKey: ChannelContextKey | undefined, afterEventId?: string | number | null): Promise<RelayEvent[]> {
+    this.assertScope(peer, "sessions.read");
+    const runtime = this.runtimeFor(peer, sourceContextKey);
+    const scoped = await Promise.all(runtime.replayEvents(afterEventId).map((event) => this.scopeRelayEvent(peer, runtime, event).catch(() => null)));
+    return scoped.filter((event): event is RelayEvent => Boolean(event));
+  }
+
   async subscribePluginEvents(
     peer: PeerRecord,
     pluginId: string,
@@ -1257,7 +1264,10 @@ export class PeerRuntimeService {
       case "chat_message_added":
       case "chat_message_updated":
       case "chat_messages_cleared":
+      case "message_status_changed":
       case "queue_update":
+      case "queue_status_changed":
+      case "session_status_changed":
       case "turn_start":
       case "text_delta":
       case "assistant_message_complete":

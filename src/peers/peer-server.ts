@@ -31,6 +31,7 @@ import {
 } from "./peer-types.js";
 import { RelayRuntime, type RelayRuntimeOptions } from "../runtime/relay-runtime.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
+import { parseLastEventId, relayEventSseFrame, sseFrame } from "../web/sse.js";
 
 export interface PeerServerHandle {
   close(): Promise<void>;
@@ -161,10 +162,13 @@ export async function startPeerServer(options: {
           connection: "keep-alive",
         });
         const sourceContextKey = url.searchParams.get("contextKey") || undefined;
+        for (const event of await service.replay(peer, sourceContextKey, parseLastEventId(req.headers["last-event-id"]))) {
+          if (res.destroyed || res.writableEnded) return;
+          res.write(relayEventSseFrame(event));
+        }
         const unsubscribe = service.subscribe(peer, sourceContextKey, (event) => {
           if (res.destroyed || res.writableEnded) return;
-          res.write(`event: ${event.type}\n`);
-          res.write(`data: ${JSON.stringify(event)}\n\n`);
+          res.write(relayEventSseFrame(event));
         });
         const heartbeat = setInterval(() => {
           if (!res.destroyed && !res.writableEnded) res.write(": heartbeat\n\n");
@@ -189,8 +193,7 @@ export async function startPeerServer(options: {
         });
         const unsubscribe = await service.subscribePluginEvents(peer, pluginId, (event) => {
           if (res.destroyed || res.writableEnded) return;
-          res.write(`event: ${event.type || "message"}\n`);
-          res.write(`data: ${JSON.stringify(event)}\n\n`);
+          res.write(sseFrame(event.type || "message", event));
         });
         const heartbeat = setInterval(() => {
           if (!res.destroyed && !res.writableEnded) res.write(": heartbeat\n\n");

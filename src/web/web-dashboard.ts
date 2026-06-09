@@ -57,6 +57,7 @@ import { recordWebApiMetric } from "./web-performance.js";
 import { getObservabilityRegistry } from "../observability/observability-registry.js";
 import { createCspNonce, isMutatingWebApiRequest, requiresWebCsrf } from "./web-dashboard-security.js";
 import { consumeRateLimit, type RateLimitBucket } from "./web-rate-limit.js";
+import { parseLastEventId, relayEventSseFrame } from "./sse.js";
 
 interface DashboardOptions {
   host: string;
@@ -542,16 +543,6 @@ async function handleEvents(req: IncomingMessage, res: ServerResponse): Promise<
     target: "local",
     user: authUser.user.email,
   });
-  const send = (event: RelayEvent) => {
-    void scopeRelayEvent(authUser, event, canUseCurrentSession).then((scopedEvent) => {
-      if (!scopedEvent || res.destroyed || res.writableEnded) {
-        return;
-      }
-      const frame = `event: ${scopedEvent.type}\ndata: ${JSON.stringify(scopedEvent)}\n\n`;
-      sse.event(Buffer.byteLength(frame));
-      res.write(frame);
-    }).catch(() => {});
-  };
   let currentScopeCache: { allowed: boolean; expiresAt: number } | null = null;
   const canUseCurrentSession = async (): Promise<boolean> => {
     const now = Date.now();
@@ -562,6 +553,19 @@ async function handleEvents(req: IncomingMessage, res: ServerResponse): Promise<
     currentScopeCache = { allowed, expiresAt: now + 1_000 };
     return allowed;
   };
+  const send = (event: RelayEvent) => {
+    void scopeRelayEvent(authUser, event, canUseCurrentSession).then((scopedEvent) => {
+      if (!scopedEvent || res.destroyed || res.writableEnded) {
+        return;
+      }
+      const frame = relayEventSseFrame(scopedEvent);
+      sse.event(Buffer.byteLength(frame));
+      res.write(frame);
+    }).catch(() => {});
+  };
+  for (const event of runtime.replayEvents(parseLastEventId(req.headers["last-event-id"]))) {
+    send(event);
+  }
   const unsubscribe = runtime.subscribe(send);
   const heartbeat = setInterval(() => {
     const frame = ": heartbeat\n\n";
@@ -791,7 +795,10 @@ async function scopeRelayEvent(
     case "chat_message_added":
     case "chat_message_updated":
     case "chat_messages_cleared":
+    case "message_status_changed":
     case "queue_update":
+    case "queue_status_changed":
+    case "session_status_changed":
     case "turn_start":
     case "text_delta":
     case "assistant_message_complete":

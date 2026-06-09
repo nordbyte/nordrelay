@@ -662,7 +662,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("state.activeSessionDurationTimer=setInterval");
     expect(js).toContain("data-active-duration-started");
     expect(js).toContain("badge.hidden=count<1");
-    expect(js).toContain("updateActiveSessionsCount(state.activeSessions?.sessions||[])");
+    expect(js).toContain("updateActiveSessionsCount(state.activeSessions.sessions)");
     expect(js).toContain("metricHtml('Workspace'");
     expect(js).toContain("metricHtml('Agent / Model'");
     expect(js).toContain("function sessionAgentModelText");

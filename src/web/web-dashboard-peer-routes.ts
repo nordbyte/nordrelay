@@ -45,6 +45,7 @@ import {
   sendJson,
   WebAccessDeniedError,
 } from "./web-dashboard-http.js";
+import { parseLastEventId, relayEventSseFrame, sseFrame } from "./sse.js";
 
 export interface DashboardPeerRouteOptions {
   config: ConnectorConfig;
@@ -593,7 +594,7 @@ export async function handleDashboardPeerRoute(
     const pluginEventsId = parsePluginEventsPath(url.searchParams.get("path"));
     if (pluginEventsId) {
       if (!peer?.url) {
-        const frame = `event: error\ndata: ${JSON.stringify({ error: "Peer plugin events require a direct peer URL.", pluginId: pluginEventsId })}\n\n`;
+        const frame = sseFrame("error", { error: "Peer plugin events require a direct peer URL.", pluginId: pluginEventsId });
         sse.event(Buffer.byteLength(frame));
         res.write(frame);
         sse.close();
@@ -603,12 +604,12 @@ export async function handleDashboardPeerRoute(
       const subscription = new RemoteRelayClient(store, options.home).subscribePluginEvents(peerId, pluginEventsId, (event) => {
         if (res.destroyed || res.writableEnded) return;
         const eventName = typeof event === "object" && event && "type" in event ? String((event as { type?: unknown }).type || "message") : "message";
-        const frame = `event: ${eventName}\ndata: ${JSON.stringify(event)}\n\n`;
+        const frame = sseFrame(eventName, event);
         sse.event(Buffer.byteLength(frame));
         res.write(frame);
       }, (error) => {
         if (!res.destroyed && !res.writableEnded) {
-          const frame = `event: error\ndata: ${JSON.stringify({ error: error.message, pluginId: pluginEventsId })}\n\n`;
+          const frame = sseFrame("error", { error: error.message, pluginId: pluginEventsId });
           sse.event(Buffer.byteLength(frame));
           res.write(frame);
         }
@@ -629,16 +630,16 @@ export async function handleDashboardPeerRoute(
       return true;
     }
     if (!peer?.url) {
-      const statusFrame = `event: status\ndata: ${JSON.stringify({ type: "status", level: "info", message: "Peer uses outbound relay mode. Waiting for relayed live events.", at: new Date().toISOString() })}\n\n`;
+      const statusFrame = sseFrame("status", { type: "status", level: "info", message: "Peer uses outbound relay mode. Waiting for relayed live events.", at: new Date().toISOString() });
       sse.event(Buffer.byteLength(statusFrame));
       res.write(statusFrame);
       const eventStore = new PeerRelayEventStore(options.home);
-      let lastId: string | undefined = eventStore.list(peerId).at(-1)?.id;
+      let lastId: string | undefined = parseLastEventId(req.headers["last-event-id"]) ?? eventStore.list(peerId).at(-1)?.id;
       const flush = () => {
         for (const envelope of eventStore.list(peerId, lastId)) {
           lastId = envelope.id;
           if (res.destroyed || res.writableEnded) return;
-          const frame = `event: ${envelope.event.type}\ndata: ${JSON.stringify(envelope.event)}\n\n`;
+          const frame = sseFrame(envelope.event.type, envelope.event, envelope.id);
           sse.event(Buffer.byteLength(frame));
           res.write(frame);
         }
@@ -687,16 +688,16 @@ export async function handleDashboardPeerRoute(
     const sourceContextKey = url.searchParams.get("contextKey") || undefined;
     const subscription = new RemoteRelayClient(store, options.home).subscribe(peerId, (event) => {
       if (res.destroyed || res.writableEnded) return;
-      const frame = `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+      const frame = relayEventSseFrame(event);
       sse.event(Buffer.byteLength(frame));
       res.write(frame);
     }, (error) => {
       if (!res.destroyed && !res.writableEnded) {
-        const frame = `event: status\ndata: ${JSON.stringify({ type: "status", level: "error", message: error.message, at: new Date().toISOString() })}\n\n`;
+        const frame = sseFrame("status", { type: "status", level: "error", message: error.message, at: new Date().toISOString() });
         sse.event(Buffer.byteLength(frame));
         res.write(frame);
       }
-    }, sourceContextKey);
+    }, sourceContextKey, { lastEventId: parseLastEventId(req.headers["last-event-id"]) });
     const heartbeat = setInterval(() => {
       if (!res.destroyed && !res.writableEnded) {
         const frame = ": heartbeat\n\n";

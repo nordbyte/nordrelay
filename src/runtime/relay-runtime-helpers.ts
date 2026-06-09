@@ -84,7 +84,10 @@ export function shouldRefreshActiveSessions(event: RelayEvent): boolean {
     event.type === "chat_message_added" ||
     event.type === "chat_message_updated" ||
     event.type === "chat_messages_cleared" ||
+    event.type === "message_status_changed" ||
     event.type === "queue_update" ||
+    event.type === "queue_status_changed" ||
+    event.type === "session_status_changed" ||
     event.type === "session_update" ||
     event.type === "status" ||
     event.type === "turn_start" ||

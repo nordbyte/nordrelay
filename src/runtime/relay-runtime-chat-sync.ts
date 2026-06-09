@@ -19,14 +19,37 @@ export function chatEventContextFromInfo(runtime: RelayRuntimeDelegate, info: Ag
 
 export function broadcastChatMessageAdded(runtime: RelayRuntimeDelegate, message: WebChatMessage, context: RelaySessionEventContext): void {
   runtime.broadcast({ type: "chat_message_added", message, ...context });
+  runtime.broadcast({
+    type: "message_status_changed",
+    status: "added",
+    messageId: message.id,
+    role: message.role,
+    source: message.source,
+    correlationId: message.correlationId,
+    at: message.timestamp,
+    ...context,
+    threadId: message.threadId || context.threadId,
+  });
 }
 
 export function broadcastChatMessageUpdated(runtime: RelayRuntimeDelegate, message: WebChatMessage, context: RelaySessionEventContext): void {
   runtime.broadcast({ type: "chat_message_updated", message, ...context });
+  runtime.broadcast({
+    type: "message_status_changed",
+    status: "updated",
+    messageId: message.id,
+    role: message.role,
+    source: message.source,
+    correlationId: message.correlationId,
+    at: new Date().toISOString(),
+    ...context,
+    threadId: message.threadId || context.threadId,
+  });
 }
 
 export function broadcastChatMessagesCleared(runtime: RelayRuntimeDelegate, threadId: string | null, removed: number, context: RelaySessionEventContext): void {
   runtime.broadcast({ type: "chat_messages_cleared", threadId, removed, ...context });
+  runtime.broadcast({ type: "message_status_changed", status: "cleared", at: new Date().toISOString(), ...context, threadId });
 }
 
 export function appendQueuedPromptChatMessage(runtime: RelayRuntimeDelegate, info: AgentSessionInfo, queued: QueuedPrompt, position: number): void {

@@ -233,15 +233,24 @@ export class RelayExternalActivityMonitor {
         mirror.latestAgentLine = finalLine;
       }
       const externalStartedAt = mirror.startedAt ? new Date(mirror.startedAt) : snapshot.activity.startedAt;
+      const at = terminalEvent.timestamp?.toISOString() ?? new Date().toISOString();
       if (mirrorMode !== "off" && !shouldSkipFinalMirror) {
         this.options.broadcast({
           type: "turn_complete",
           id: terminalEvent.turnId ?? "cli",
-          at: terminalEvent.timestamp?.toISOString() ?? new Date().toISOString(),
+          at,
           correlationId: externalCorrelationId(snapshot),
           ...externalRelayEventContext(snapshot, info),
         });
       }
+      this.options.broadcast({
+        type: "session_status_changed",
+        status: terminalEvent.status === "aborted" ? "aborted" : terminalEvent.status === "failed" ? "failed" : "completed",
+        source: "cli",
+        at,
+        correlationId: externalCorrelationId(snapshot),
+        ...externalRelayEventContext(snapshot, info),
+      });
       this.options.appendActivity({
         source: "cli",
         status: terminalEvent.status === "aborted" ? "aborted" : terminalEvent.status === "failed" ? "failed" : "completed",
@@ -309,6 +318,16 @@ export class RelayExternalActivityMonitor {
     if ((mode === "status" || mode === "full") && this.mirror) {
       this.updateExternalStatusMessage(snapshot, this.mirror, info);
     }
+    this.options.broadcast({
+      type: "session_status_changed",
+      status: "external",
+      source: "cli",
+      at: snapshot.activity.startedAt?.toISOString() ?? new Date().toISOString(),
+      correlationId: externalCorrelationId(snapshot),
+      currentTool: snapshot.latestToolName ?? undefined,
+      queueLength: this.options.queueLength(),
+      ...externalRelayEventContext(snapshot, info),
+    });
     this.options.appendActivity({
       source: "cli",
       status: "running",
@@ -576,7 +595,18 @@ export class RelayExternalActivityMonitor {
     if (!result.inserted) {
       return;
     }
-    this.options.broadcast({ type: "chat_message_added", message: result.message, ...externalRelayEventContext(snapshot, info) });
+    const context = externalRelayEventContext(snapshot, info);
+    this.options.broadcast({ type: "chat_message_added", message: result.message, ...context });
+    this.options.broadcast({
+      type: "message_status_changed",
+      status: "added",
+      messageId: result.message.id,
+      role: result.message.role,
+      source: result.message.source,
+      correlationId: result.message.correlationId,
+      at: result.message.timestamp,
+      ...context,
+    });
   }
 
   private broadcastUpsertResult(
@@ -585,11 +615,33 @@ export class RelayExternalActivityMonitor {
     info: AgentSessionInfo,
   ): void {
     if (result.inserted) {
-      this.options.broadcast({ type: "chat_message_added", message: result.message, ...externalRelayEventContext(snapshot, info) });
+      const context = externalRelayEventContext(snapshot, info);
+      this.options.broadcast({ type: "chat_message_added", message: result.message, ...context });
+      this.options.broadcast({
+        type: "message_status_changed",
+        status: "added",
+        messageId: result.message.id,
+        role: result.message.role,
+        source: result.message.source,
+        correlationId: result.message.correlationId,
+        at: result.message.timestamp,
+        ...context,
+      });
       return;
     }
     if (result.updated) {
-      this.options.broadcast({ type: "chat_message_updated", message: result.message, ...externalRelayEventContext(snapshot, info) });
+      const context = externalRelayEventContext(snapshot, info);
+      this.options.broadcast({ type: "chat_message_updated", message: result.message, ...context });
+      this.options.broadcast({
+        type: "message_status_changed",
+        status: "updated",
+        messageId: result.message.id,
+        role: result.message.role,
+        source: result.message.source,
+        correlationId: result.message.correlationId,
+        at: new Date().toISOString(),
+        ...context,
+      });
     }
   }
 }
