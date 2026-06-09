@@ -37,6 +37,9 @@ export interface RelaySessionEventContext {
 export type RelayEvent =
   | { type: "snapshot"; data: RelaySnapshot }
   | { type: "chat_history"; messages: WebChatMessage[] }
+  | ({ type: "chat_message_added"; message: WebChatMessage } & RelaySessionEventContext)
+  | ({ type: "chat_message_updated"; message: WebChatMessage } & RelaySessionEventContext)
+  | ({ type: "chat_messages_cleared"; threadId: string | null; removed: number } & RelaySessionEventContext)
   | { type: "activity_update"; events: WebActivityEvent[] }
   | { type: "active_sessions_update"; active: ActiveSessionsDto }
   | ({ type: "turn_start"; id: string; messageId?: string; prompt: string; text?: string; meta?: string[]; attachments?: WebChatAttachment[]; at: string; source?: WebActivitySource; correlationId?: string } & RelaySessionEventContext)

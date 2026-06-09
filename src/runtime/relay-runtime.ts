@@ -656,15 +656,8 @@ export class RelayRuntime {
     const result = await respondToExternalApproval(session, this.config, approvalId, choice);
     const info = this.publicInfo(session);
     if (result.ok) {
-      const updated = this.chatStore.resolveAction({
-        threadId: info.threadId ?? undefined,
-        actionPrefix: "approval:",
-        actionId: approvalId,
-        label: externalApprovalChoiceDisplay(choice),
-      });
-      if (updated > 0) {
-        this.broadcast({ type: "chat_history", messages: await this.chatHistory() });
-      }
+      const updated = this.chatStore.resolveActionWithMessages({ threadId: info.threadId ?? undefined, actionPrefix: "approval:", actionId: approvalId, label: externalApprovalChoiceDisplay(choice) });
+      for (const message of updated) this.broadcast({ type: "chat_message_updated", message, contextKey: this.contextKey, agentId: info.agentId, threadId: message.threadId || info.threadId, workspace: info.workspace });
     }
     this.appendActivity({
       source: "web",

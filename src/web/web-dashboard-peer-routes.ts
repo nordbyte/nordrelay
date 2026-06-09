@@ -648,12 +648,11 @@ export async function handleDashboardPeerRoute(
         id: `peer-events:${peerId}:${sse.id}`,
         owner: "peers",
         kind: "relay-events",
-        intervalMs: 2_000,
-        currentDelayMs: 2_000,
-        nextRunAt: Date.now() + 2_000,
+        intervalMs: 15_000,
+        currentDelayMs: 15_000,
+        nextRunAt: Date.now() + 15_000,
       });
-      const poll = setInterval(() => {
-        relayEventsPoller.update({ nextRunAt: Date.now() + 2_000 });
+      const notify = () => {
         const finish = relayEventsPoller.start();
         try {
           flush();
@@ -661,7 +660,12 @@ export async function handleDashboardPeerRoute(
         } catch (error) {
           finish(error);
         }
-      }, 2_000);
+      };
+      const unsubscribeEvents = eventStore.subscribe(peerId, notify);
+      const poll = setInterval(() => {
+        relayEventsPoller.update({ nextRunAt: Date.now() + 15_000 });
+        notify();
+      }, 15_000);
       poll.unref?.();
       const heartbeat = setInterval(() => {
         if (!res.destroyed && !res.writableEnded) {
@@ -672,6 +676,7 @@ export async function handleDashboardPeerRoute(
       }, 25_000);
       heartbeat.unref?.();
       req.on("close", () => {
+        unsubscribeEvents();
         clearInterval(poll);
         clearInterval(heartbeat);
         relayEventsPoller.close();

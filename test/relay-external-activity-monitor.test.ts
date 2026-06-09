@@ -210,12 +210,14 @@ describe("RelayExternalActivityMonitor", () => {
       key: "external:/tmp/rollout-thread-1.jsonl:2",
       text: "I am checking the schema now.",
     }));
-    expect(broadcasts).toContainEqual({
-      type: "chat_history",
-      messages: expect.arrayContaining([
-        expect.objectContaining({ role: "agent", source: "cli", text: "I am checking the schema now." }),
-      ]),
-    });
+    expect(broadcasts).toContainEqual(expect.objectContaining({
+      type: "chat_message_added",
+      message: expect.objectContaining({ role: "agent", source: "cli", text: "I am checking the schema now." }),
+      contextKey: "cli:thread-1",
+      agentId: "codex",
+      threadId: "thread-1",
+      workspace: "/workspace",
+    }));
   });
 });
 

@@ -180,6 +180,10 @@ async function handlePeerEvent(
     handlePeerTurnEnd(state, event);
     return;
   }
+  if (event.type === "chat_message_added" || event.type === "chat_message_updated") {
+    await mirrorChatMessage(options, state, event.message, mode);
+    return;
+  }
   if (event.type !== "chat_history") {
     return;
   }
@@ -201,30 +205,41 @@ async function mirrorChatHistory(
   }
   const selectedThreadId = state.targetThreadId || state.currentThreadId;
   for (const message of messages) {
-    const id = messageMirrorId(message);
-    if (state.seenMessageIds.has(id)) {
-      continue;
-    }
-    state.seenMessageIds.add(id);
-    if (selectedThreadId && message.threadId && message.threadId !== selectedThreadId) {
-      continue;
-    }
-    if (!shouldMirrorMessage(options, message, mode)) {
-      continue;
-    }
-    const buttons = message.actions
-      ?.map((action) => options.actionForWebAction?.(state.peerId, action))
-      .filter((action): action is ChannelActionButton => Boolean(action));
-    await options.runtime.sendMessage(state.context, {
-      text: renderMirroredChatMessage(message, state.peerId),
-      fallbackText: `[remote ${state.peerId}] ${message.text}`,
-      parseMode: "html",
-      buttons: buttons?.length ? [buttons] : undefined,
-    }).catch(() => {});
+    if (selectedThreadId && message.threadId && message.threadId !== selectedThreadId) continue;
+    await mirrorChatMessage(options, state, message, mode);
   }
   if (state.seenMessageIds.size > 500) {
     state.seenMessageIds = new Set([...state.seenMessageIds].slice(-250));
   }
+}
+
+async function mirrorChatMessage(
+  options: ChannelPeerMirrorControllerOptions,
+  state: SubscriptionState,
+  message: WebChatMessage,
+  mode: ChannelMirrorMode,
+): Promise<void> {
+  const id = messageMirrorId(message);
+  if (state.seenMessageIds.has(id)) {
+    return;
+  }
+  state.seenMessageIds.add(id);
+  const selectedThreadId = state.targetThreadId || state.currentThreadId;
+  if (selectedThreadId && message.threadId && message.threadId !== selectedThreadId) {
+    return;
+  }
+  if (!shouldMirrorMessage(options, message, mode)) {
+    return;
+  }
+  const buttons = message.actions
+    ?.map((action) => options.actionForWebAction?.(state.peerId, action))
+    .filter((action): action is ChannelActionButton => Boolean(action));
+  await options.runtime.sendMessage(state.context, {
+    text: renderMirroredChatMessage(message, state.peerId),
+    fallbackText: `[remote ${state.peerId}] ${message.text}`,
+    parseMode: "html",
+    buttons: buttons?.length ? [buttons] : undefined,
+  }).catch(() => {});
 }
 
 async function handlePeerTurnStart(

@@ -1254,6 +1254,9 @@ export class PeerRuntimeService {
       case "status":
         return event;
       case "chat_history":
+      case "chat_message_added":
+      case "chat_message_updated":
+      case "chat_messages_cleared":
       case "queue_update":
       case "turn_start":
       case "text_delta":

@@ -81,6 +81,9 @@ export function activeSessionPriority(session: ActiveSessionDto): number {
 
 export function shouldRefreshActiveSessions(event: RelayEvent): boolean {
   return event.type === "activity_update" ||
+    event.type === "chat_message_added" ||
+    event.type === "chat_message_updated" ||
+    event.type === "chat_messages_cleared" ||
     event.type === "queue_update" ||
     event.type === "session_update" ||
     event.type === "status" ||

@@ -1,3 +1,5 @@
+import { watch, type FSWatcher } from "node:fs";
+
 import {
   type AgentExternalSnapshot,
   type AgentApprovalRequest,
@@ -55,6 +57,9 @@ export interface RelayExternalActivityMonitorOptions {
 export class RelayExternalActivityMonitor {
   private mirror: ExternalMirrorState | null = null;
   private running = false;
+  private watchedSourcePath: string | null = null;
+  private sourceWatcher: FSWatcher | null = null;
+  private sourceWakeTimer: NodeJS.Timeout | null = null;
   private readonly ignoredTurns = new Set<string>();
 
   constructor(private readonly options: RelayExternalActivityMonitorOptions) {}
@@ -65,6 +70,17 @@ export class RelayExternalActivityMonitor {
 
   reset(): void {
     this.mirror = null;
+    this.stopWatching();
+  }
+
+  stopWatching(): void {
+    if (this.sourceWakeTimer) {
+      clearTimeout(this.sourceWakeTimer);
+      this.sourceWakeTimer = null;
+    }
+    this.sourceWatcher?.close();
+    this.sourceWatcher = null;
+    this.watchedSourcePath = null;
   }
 
   task(): WebTaskDto | null {
@@ -125,6 +141,7 @@ export class RelayExternalActivityMonitor {
     if (!snapshot) {
       return false;
     }
+    this.watchSnapshotSource(snapshot);
 
     if (!this.mirror || this.mirror.threadId !== snapshot.threadId || this.mirror.rolloutPath !== snapshot.sourcePath) {
       this.mirror = {
@@ -169,16 +186,16 @@ export class RelayExternalActivityMonitor {
       const newEvents = snapshot.events.filter((event) => event.lineNumber > mirror.lastLine);
       this.broadcastExternalEvents(snapshot, newEvents, info, mirrorMode === "full");
       if (mirrorMode === "status" || mirrorMode === "full") {
-        await this.appendExternalConversationMessages(snapshot, newEvents, mirror);
+        this.appendExternalConversationMessages(snapshot, newEvents, mirror, info);
       }
       await this.handlePendingApprovals(snapshot, info, mirror);
       if (mirrorMode === "full") {
-        await this.appendExternalEventMessages(snapshot, newEvents, mirror);
+        this.appendExternalEventMessages(snapshot, newEvents, mirror, info);
       }
       mirror.lastLine = Math.max(mirror.lastLine, snapshot.lineCount);
       mirror.latestStatus = externalStatusLine(snapshot, this.options.queueLength());
       if (mirrorMode === "status" || mirrorMode === "full") {
-        await this.updateExternalStatusMessage(snapshot, mirror);
+        this.updateExternalStatusMessage(snapshot, mirror, info);
       }
       if (mirrorMode !== "off") {
         this.options.broadcastStatus(mirror.latestStatus, "info");
@@ -204,7 +221,7 @@ export class RelayExternalActivityMonitor {
       const finalLine = finalAgent?.lineNumber ?? snapshot.lineCount;
       const shouldSkipFinalMirror = await this.shouldIgnoreExternalTurn(snapshot);
       if ((mirrorMode === "final" || mirrorMode === "full") && finalText && finalLine !== mirror.latestAgentLine && !shouldSkipFinalMirror) {
-        this.options.chatStore.appendWithResult({
+        this.broadcastAppendResult(this.options.chatStore.appendWithResult({
           threadId: snapshot.threadId,
           role: "agent",
           text: finalText,
@@ -212,7 +229,7 @@ export class RelayExternalActivityMonitor {
           correlationId: externalCorrelationId(snapshot),
           turnId: terminalEvent.turnId ?? undefined,
           key: externalMessageKey("final", snapshot, terminalEvent.lineNumber),
-        });
+        }), snapshot, info);
         mirror.latestAgentLine = finalLine;
       }
       const externalStartedAt = mirror.startedAt ? new Date(mirror.startedAt) : snapshot.activity.startedAt;
@@ -253,7 +270,7 @@ export class RelayExternalActivityMonitor {
       }
       mirror.latestStatus = `${snapshot.agentLabel} CLI task ${terminalEvent.status ?? "finished"}.`;
       if ((mirrorMode === "status" || mirrorMode === "full") && !shouldSkipFinalMirror) {
-        await this.updateExternalStatusMessage(snapshot, mirror, mirror.latestStatus);
+        this.updateExternalStatusMessage(snapshot, mirror, info, mirror.latestStatus);
       }
       if (mirrorMode !== "off" && !shouldSkipFinalMirror) {
         this.options.broadcastStatus(
@@ -261,7 +278,6 @@ export class RelayExternalActivityMonitor {
           terminalEvent.status === "failed" ? "error" : terminalEvent.status === "aborted" ? "warn" : "info",
         );
       }
-      await this.broadcastChatHistory();
       this.options.scheduleActiveSessionsBroadcast();
       await this.options.drainQueue();
     }
@@ -272,9 +288,9 @@ export class RelayExternalActivityMonitor {
   private async startExternalTurn(snapshot: AgentExternalSnapshot, info: AgentSessionInfo): Promise<void> {
     const prompt = snapshot.latestUserMessage ?? `${snapshot.agentLabel} CLI task`;
     const mode = this.options.mirrorMode();
-    let broadcastedChatHistory = false;
+    let broadcastedChatMessage = false;
     if (mode === "final" || mode === "full") {
-      this.options.chatStore.appendWithResult({
+      const stored = this.options.chatStore.appendWithResult({
         threadId: snapshot.threadId,
         role: "system",
         text: `Working on ${trimLine(prompt, 500)}`,
@@ -284,14 +300,14 @@ export class RelayExternalActivityMonitor {
         timestamp: snapshot.activity.startedAt?.toISOString(),
         key: externalMessageKey("working", snapshot),
       });
-      await this.broadcastChatHistory();
-      broadcastedChatHistory = true;
+      this.broadcastAppendResult(stored, snapshot, info);
+      broadcastedChatMessage = stored.inserted;
     }
-    if (!broadcastedChatHistory) {
+    if (!broadcastedChatMessage) {
       await this.broadcastChatHistory();
     }
     if ((mode === "status" || mode === "full") && this.mirror) {
-      await this.updateExternalStatusMessage(snapshot, this.mirror);
+      this.updateExternalStatusMessage(snapshot, this.mirror, info);
     }
     this.options.appendActivity({
       source: "cli",
@@ -305,6 +321,33 @@ export class RelayExternalActivityMonitor {
       prompt,
       detail: `${snapshot.sourceLabel}: ${snapshot.sourcePath}`,
     });
+  }
+
+  private watchSnapshotSource(snapshot: AgentExternalSnapshot): void {
+    const sourcePath = snapshot.sourcePath;
+    if (!sourcePath || this.watchedSourcePath === sourcePath) {
+      return;
+    }
+    this.stopWatching();
+    try {
+      this.sourceWatcher = watch(sourcePath, { persistent: false }, () => this.wakeFromSourceChange());
+      this.sourceWatcher.unref?.();
+      this.watchedSourcePath = sourcePath;
+    } catch {
+      this.sourceWatcher = null;
+      this.watchedSourcePath = null;
+    }
+  }
+
+  private wakeFromSourceChange(): void {
+    if (this.sourceWakeTimer) {
+      return;
+    }
+    this.sourceWakeTimer = setTimeout(() => {
+      this.sourceWakeTimer = null;
+      void this.monitorSafe();
+    }, 75);
+    this.sourceWakeTimer.unref?.();
   }
 
   private async shouldIgnoreExternalTurn(snapshot: AgentExternalSnapshot): Promise<boolean> {
@@ -413,8 +456,7 @@ export class RelayExternalActivityMonitor {
     }
   }
 
-  private async appendExternalConversationMessages(snapshot: AgentExternalSnapshot, events: AgentExternalSnapshot["events"], mirror: ExternalMirrorState): Promise<void> {
-    let changed = false;
+  private appendExternalConversationMessages(snapshot: AgentExternalSnapshot, events: AgentExternalSnapshot["events"], mirror: ExternalMirrorState, info: AgentSessionInfo): void {
     for (const event of events) {
       if (event.lineNumber <= mirror.lastLine || (event.kind !== "user" && event.kind !== "agent") || !event.text?.trim()) {
         continue;
@@ -429,15 +471,11 @@ export class RelayExternalActivityMonitor {
         timestamp: event.timestamp?.toISOString(),
         key: externalConversationMessageKey(snapshot, event.lineNumber),
       });
-      changed = changed || stored.inserted;
-    }
-    if (changed) {
-      await this.broadcastChatHistory();
+      this.broadcastAppendResult(stored, snapshot, info);
     }
   }
 
-  private async appendExternalEventMessages(snapshot: AgentExternalSnapshot, events: AgentExternalSnapshot["events"], mirror: ExternalMirrorState): Promise<void> {
-    let changed = false;
+  private appendExternalEventMessages(snapshot: AgentExternalSnapshot, events: AgentExternalSnapshot["events"], mirror: ExternalMirrorState, info: AgentSessionInfo): void {
     for (const event of events) {
       if (event.lineNumber <= (mirror.latestMirroredEventLine ?? mirror.lastLine)) {
         continue;
@@ -456,15 +494,12 @@ export class RelayExternalActivityMonitor {
         timestamp: event.timestamp?.toISOString(),
         key: externalMessageKey("event", snapshot, event.lineNumber),
       });
-      changed = changed || stored.inserted;
       mirror.latestMirroredEventLine = event.lineNumber;
-    }
-    if (changed) {
-      await this.broadcastChatHistory();
+      this.broadcastAppendResult(stored, snapshot, info);
     }
   }
 
-  private async updateExternalStatusMessage(snapshot: AgentExternalSnapshot, mirror: ExternalMirrorState, text?: string): Promise<void> {
+  private updateExternalStatusMessage(snapshot: AgentExternalSnapshot, mirror: ExternalMirrorState, info: AgentSessionInfo, text?: string): void {
     const now = Date.now();
     const minInterval = this.options.mirrorMinUpdateMs();
     if (!text && mirror.latestStatusAt && now - mirror.latestStatusAt < minInterval) {
@@ -480,9 +515,7 @@ export class RelayExternalActivityMonitor {
       key: externalMessageKey(text ? "status-terminal" : "status", snapshot, snapshot.lineCount),
     });
     mirror.latestStatusAt = now;
-    if (stored.inserted) {
-      await this.broadcastChatHistory();
-    }
+    this.broadcastAppendResult(stored, snapshot, info);
   }
 
   private async handlePendingApprovals(
@@ -498,7 +531,6 @@ export class RelayExternalActivityMonitor {
       return;
     }
     const seen = new Set(mirror.approvalRequestIds ?? []);
-    let changed = false;
     for (const approval of approvals) {
       const rendered = renderExternalApprovalRequest(snapshot.agentLabel, approval);
       const result = this.options.chatStore.upsertByKey({
@@ -512,7 +544,7 @@ export class RelayExternalActivityMonitor {
         key: externalMessageKey("approval", snapshot, approval.lineNumber),
         actions: approvalActions(approval),
       });
-      changed = changed || result.inserted || result.updated;
+      this.broadcastUpsertResult(result, snapshot, info);
       if (!seen.has(approval.id)) {
         this.options.appendActivity({
           source: "cli",
@@ -530,13 +562,35 @@ export class RelayExternalActivityMonitor {
       }
     }
     mirror.approvalRequestIds = [...seen].slice(-50);
-    if (changed) {
-      await this.broadcastChatHistory();
-    }
   }
 
   private async broadcastChatHistory(): Promise<void> {
     this.options.broadcast({ type: "chat_history", messages: await this.options.chatHistory() });
+  }
+
+  private broadcastAppendResult(
+    result: { message: WebChatMessage; inserted: boolean },
+    snapshot: AgentExternalSnapshot,
+    info: AgentSessionInfo,
+  ): void {
+    if (!result.inserted) {
+      return;
+    }
+    this.options.broadcast({ type: "chat_message_added", message: result.message, ...externalRelayEventContext(snapshot, info) });
+  }
+
+  private broadcastUpsertResult(
+    result: { message: WebChatMessage; inserted: boolean; updated: boolean },
+    snapshot: AgentExternalSnapshot,
+    info: AgentSessionInfo,
+  ): void {
+    if (result.inserted) {
+      this.options.broadcast({ type: "chat_message_added", message: result.message, ...externalRelayEventContext(snapshot, info) });
+      return;
+    }
+    if (result.updated) {
+      this.options.broadcast({ type: "chat_message_updated", message: result.message, ...externalRelayEventContext(snapshot, info) });
+    }
   }
 }
 

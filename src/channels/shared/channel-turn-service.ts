@@ -131,7 +131,6 @@ export class ChannelTurnService {
       correlationId,
       ...eventContext,
     });
-    void this.options.chatHistory().then((messages) => this.options.broadcast({ type: "chat_history", messages })).catch(() => {});
 
     try {
       await session.prompt(envelope.input as AgentPromptInput, this.callbacks(turnId, info, envelope, actor, source));
@@ -149,7 +148,7 @@ export class ChannelTurnService {
       });
       const text = this.options.getAccumulatedText();
       if (text.trim()) {
-        this.options.chatStore.append({
+        const agentMessage = this.options.chatStore.append({
           threadId: info.threadId ?? "pending",
           role: "agent",
           text,
@@ -157,6 +156,7 @@ export class ChannelTurnService {
           correlationId,
           turnId,
         });
+        this.options.broadcast({ type: "chat_message_added", message: agentMessage, ...eventContext });
       }
       this.options.appendActivity({
         source,
@@ -183,10 +183,9 @@ export class ChannelTurnService {
       });
       this.updateCurrentProgress({ status: "completed" });
       this.options.broadcast({ type: "turn_complete", id: turnId, at: new Date().toISOString(), correlationId, ...eventContext });
-      this.options.broadcast({ type: "chat_history", messages: await this.options.chatHistory() });
     } catch (error) {
       const errorText = friendlyErrorText(error);
-      this.options.chatStore.append({
+      const errorMessage = this.options.chatStore.append({
         threadId: info.threadId ?? "pending",
         role: "system",
         text: `Error: ${errorText}`,
@@ -194,6 +193,7 @@ export class ChannelTurnService {
         correlationId,
         turnId,
       });
+      this.options.broadcast({ type: "chat_message_added", message: errorMessage, ...eventContext });
       this.options.appendActivity({
         source,
         status: "failed",
@@ -221,7 +221,6 @@ export class ChannelTurnService {
       });
       this.updateCurrentProgress({ status: "failed", detail: errorText });
       this.options.broadcast({ type: "turn_error", id: turnId, error: errorText, at: new Date().toISOString(), correlationId, ...eventContext });
-      this.options.broadcast({ type: "chat_history", messages: await this.options.chatHistory() });
       throw error;
     } finally {
       const progress = this.options.getCurrentProgress();

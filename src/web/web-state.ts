@@ -173,14 +173,18 @@ export class WebChatStore {
   }
 
   resolveAction(input: { actionId: string; label: string; actionPrefix?: string; threadId?: string; resolvedAt?: string }): number {
+    return this.resolveActionWithMessages(input).length;
+  }
+
+  resolveActionWithMessages(input: { actionId: string; label: string; actionPrefix?: string; threadId?: string; resolvedAt?: string }): WebChatMessage[] {
     const actionId = input.actionId.trim();
     if (!actionId) {
-      return 0;
+      return [];
     }
     const actionPrefix = input.actionPrefix?.trim();
     const actionSuffix = `:${actionId}`;
     const resolvedAt = input.resolvedAt ?? new Date().toISOString();
-    let updated = 0;
+    const updated: WebChatMessage[] = [];
     this.store.update((current) => {
       const payload = this.normalizePayload(current);
       for (const [threadId, messages] of Object.entries(payload.messagesByThread)) {
@@ -195,7 +199,7 @@ export class WebChatStore {
           const remaining = actions.filter((action) => !isMatchingWebChatAction(action, actionSuffix, actionPrefix));
           message.actions = remaining.length ? remaining : undefined;
           message.actionResolution = { actionId, label: input.label, resolvedAt };
-          updated += 1;
+          updated.push({ ...message });
         }
       }
       return payload;

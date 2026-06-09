@@ -23,5 +23,6 @@ export function stopSubscriberExternalMonitorIfIdle(runtime: RelayRuntimeDelegat
   }
   runtime.externalMonitor?.close();
   runtime.externalMonitor = undefined;
+  runtime.externalActivityMonitor.stopWatching();
   subscriberStartedMonitors.delete(runtime);
 }

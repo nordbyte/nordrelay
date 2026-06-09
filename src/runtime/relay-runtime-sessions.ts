@@ -439,7 +439,14 @@ export async function relayRuntimeClearChatHistory(runtime: RelayRuntimeDelegate
     const info = runtime.publicInfo(session);
     const removed = runtime.chatStore.clear(info.threadId);
     const messages = await runtime.chatHistory();
-    runtime.broadcast({ type: "chat_history", messages });
+    runtime.broadcast({
+      type: "chat_messages_cleared",
+      threadId: info.threadId,
+      removed,
+      contextKey: runtime.contextKey,
+      agentId: info.agentId,
+      workspace: info.workspace,
+    });
     runtime.appendActivity({
       source: "web",
       status: "info",

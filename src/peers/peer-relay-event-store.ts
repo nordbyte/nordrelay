@@ -8,6 +8,7 @@ import type { PeerEventEnvelope, PeerRelayEventEnvelope } from "./peer-types.js"
 
 const DEFAULT_HOME = path.join(os.homedir(), ".nordrelay");
 const MAX_EVENTS_PER_PEER = 500;
+const listeners = new Map<string, Set<() => void>>();
 
 interface PeerRelayEventStoreDocument {
   version: 1;
@@ -35,6 +36,7 @@ export class PeerRelayEventStore {
       const retainedForPeer = payload.events.filter((item) => item.peerId === peerId).concat(envelopes).slice(-MAX_EVENTS_PER_PEER);
       payload.events = [...retainedForOtherPeers, ...retainedForPeer].sort((left, right) => Date.parse(left.receivedAt) - Date.parse(right.receivedAt));
     });
+    this.notify(peerId);
     return envelopes;
   }
 
@@ -43,6 +45,19 @@ export class PeerRelayEventStore {
     if (!afterId) return events.slice(-MAX_EVENTS_PER_PEER);
     const index = events.findIndex((event) => event.id === afterId);
     return index >= 0 ? events.slice(index + 1) : events.slice(-100);
+  }
+
+  subscribe(peerId: string, listener: () => void): () => void {
+    const key = this.listenerKey(peerId);
+    const bucket = listeners.get(key) ?? new Set<() => void>();
+    bucket.add(listener);
+    listeners.set(key, bucket);
+    return () => {
+      const current = listeners.get(key);
+      if (!current) return;
+      current.delete(listener);
+      if (!current.size) listeners.delete(key);
+    };
   }
 
   private mutate(mutator: (payload: PeerRelayEventStoreDocument) => void): void {
@@ -58,6 +73,22 @@ export class PeerRelayEventStore {
       return { version: 1, events: [] };
     }
     return { version: 1, events: payload.events.filter(isEventEnvelope).slice(-MAX_EVENTS_PER_PEER * 20) };
+  }
+
+  private notify(peerId: string): void {
+    const bucket = listeners.get(this.listenerKey(peerId));
+    if (!bucket?.size) return;
+    for (const listener of [...bucket]) {
+      try {
+        listener();
+      } catch {
+        // Listener failures are isolated from event persistence.
+      }
+    }
+  }
+
+  private listenerKey(peerId: string): string {
+    return `${path.resolve(this.filePath)}:${peerId}`;
   }
 }
 

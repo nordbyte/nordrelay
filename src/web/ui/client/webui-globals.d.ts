@@ -1,5 +1,7 @@
 interface Element {
   __rawText?: string;
+  __pendingRawText?: string;
+  __pendingStick?: boolean;
   __meta?: unknown[];
   __attachments?: WebuiChatAttachment[];
   __actions?: WebuiRecord[];
@@ -36,6 +38,8 @@ interface EventTarget {
 
 interface HTMLElement {
   __rawText?: string;
+  __pendingRawText?: string;
+  __pendingStick?: boolean;
   __meta?: unknown[];
   __attachments?: WebuiChatAttachment[];
   __actions?: WebuiRecord[];
