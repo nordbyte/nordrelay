@@ -119,8 +119,8 @@ const AGENT_UPDATE_TERMINAL_STATUSES=new Set(['completed','failed','cancelled'])
 let agentUpdateVersionRefreshTimers=[];
 function clearAgentUpdateVersionRefreshTimers(){agentUpdateVersionRefreshTimers.forEach(timer=>clearTimeout(timer));agentUpdateVersionRefreshTimers=[]}
 function scheduleAgentUpdateVersionRefresh(job){if(!job||!AGENT_UPDATE_TERMINAL_STATUSES.has(job.status))return;clearAgentUpdateVersionRefreshTimers();const delays=[500,2000,5000,10000];agentUpdateVersionRefreshTimers=delays.map(delay=>setTimeout(()=>{if(state.currentPage==='version')loadVersion({quiet:true,refreshJobs:false})},delay))}
-function expectedEventTarget(){return state.selectedPeer&&state.selectedPeer!=='local'?state.selectedPeer:'local'}
-function expectedEventContextKey(){return expectedEventTarget()==='local'?'':webProxyEventContextKey()}
+function expectedEventTarget(){const chatPeer=state.currentPage==='chat'?activeChatTabIdentity()?.peerId:'';const target=chatPeer||state.selectedPeer||'local';return target&&target!=='local'?target:'local'}
+function expectedEventContextKey(){const target=expectedEventTarget();if(target==='local')return'';const chatContext=state.currentPage==='chat'?activeChatTabContextKey():'';return chatContext||webProxyEventContextKey()}
 function eventStreamKey(target=expectedEventTarget(),context=expectedEventContextKey()){return String(target||'local')+'::'+String(context||'')}
 function eventStreamUrl(target,context){
   let url=target!=='local'

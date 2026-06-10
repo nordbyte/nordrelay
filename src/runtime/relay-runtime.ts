@@ -217,7 +217,7 @@ import {
   relayRuntimeScheduleActiveSessionsBroadcast,
   relayRuntimePublicInfo
 } from "./relay-runtime-active-sessions.js";
-import { relayRuntimePrepareEvent, relayRuntimeReplayEvents } from "./relay-runtime-events.js";
+import { initialRelayEventSeq, relayRuntimePrepareEvent, relayRuntimeReplayEvents } from "./relay-runtime-events.js";
 import {
   relayRuntimeLocks,
   relayRuntimeLockWebSession,
@@ -321,7 +321,7 @@ export class RelayRuntime {
   readonly turnService: ChannelTurnService;
   readonly authService: RelayAuthService;
   readonly subscribers = new Set<(event: RelayEvent) => void>();
-  eventSeq = 0; eventHistory: RelayEvent[] = [];
+  eventSeq = initialRelayEventSeq(); eventHistory: RelayEvent[] = [];
   readonly agentUpdateActors = new Map<string, WebActivityActor>();
   readonly agentUpdateStates = new Map<string, { status: AgentUpdateJobSnapshot["status"]; needsInput: boolean }>();
   externalMonitor?: AdaptiveExternalMonitorHandle; activeSessionsBroadcastTimer: NodeJS.Timeout | null = null;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { relayRuntimePrepareEvent, relayRuntimeReplayEvents } from "../src/runtime/relay-runtime-events.js";
+import { initialRelayEventSeq, relayRuntimePrepareEvent, relayRuntimeReplayEvents } from "../src/runtime/relay-runtime-events.js";
 import type { RelayEvent } from "../src/runtime/relay-runtime-types.js";
 
 describe("relay runtime events", () => {
@@ -22,6 +22,18 @@ describe("relay runtime events", () => {
     expect(relayRuntimePrepareEvent(runtime, prepared)).toBe(prepared);
     expect(runtime.eventHistory).toEqual([]);
     expect(runtime.eventSeq).toBe(10);
+  });
+
+  it("seeds runtime event ids above prior process-local ids after a restart", () => {
+    const older = initialRelayEventSeq(Date.parse("2026-06-10T08:00:00.000Z"), 0);
+    const newer = initialRelayEventSeq(Date.parse("2026-06-10T08:01:00.000Z"), 0);
+    const runtime = { eventSeq: newer, eventHistory: [] as RelayEvent[] };
+
+    const event = relayRuntimePrepareEvent(runtime, statusEvent("after restart"));
+
+    expect(newer).toBeGreaterThan(older);
+    expect(event.seq).toBe(newer + 1);
+    expect(Number(event.eventId)).toBeGreaterThan(older);
   });
 });
 
