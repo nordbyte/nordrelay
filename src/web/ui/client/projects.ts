@@ -146,6 +146,106 @@ function renderProjectPlanItemsTable(items){
   ).join('')+'</tbody></table></div>';
 }
 
+function projectDocumentLabel(kind){
+  return kind==='plan'?'plan':'summary';
+}
+
+function projectRevisionPath(projectId,kind,revisionId='',action=''){
+  let path='/api/projects/'+encodeURIComponent(projectString(projectId))+'/'+projectDocumentLabel(kind)+'/history';
+  if(revisionId)path+='/'+encodeURIComponent(projectString(revisionId));
+  if(action)path+='/'+encodeURIComponent(projectString(action));
+  return path;
+}
+
+function projectRevisionSourceBadge(source){
+  const cls=source==='generated'?'enabled':source==='restored'?'planned':'';
+  return '<span class="adapter-status '+cls+'">'+esc(source||'manual')+'</span>';
+}
+
+function projectRevisionMeta(revision){
+  return [
+    revision.language?'Language: '+revision.language:'',
+    revision.agentId?'Agent: '+revision.agentId:'',
+    revision.planMode?'Focus: '+projectPlanModeLabel(revision.planMode):'',
+    revision.planningHorizon?'Horizon: '+revision.planningHorizon:'',
+    revision.riskLevel?'Risk: '+revision.riskLevel:'',
+    revision.jobId?'Job: '+revision.jobId:'',
+    projectArray(revision.planItems).length?'Items: '+projectArray(revision.planItems).length:''
+  ].filter(Boolean).join(' | ');
+}
+
+function renderProjectRevisionHistory(kind,revisions){
+  if(!revisions.length)return uiEmpty('No '+projectDocumentLabel(kind)+' history yet.');
+  return '<div class="data-table-wrap"><table class="data-table project-revision-table"><thead><tr><th>Updated</th><th>Title</th><th>Source</th><th>Detail</th><th class="actions-heading">Actions</th></tr></thead><tbody>'+revisions.map(revision=>
+    '<tr>'+
+      projectCell('Updated','<span title="'+attr(fmtDate(revision.updatedAt||revision.createdAt))+'">'+esc(fmtSessionAge(revision.updatedAt||revision.createdAt))+'</span>','updated-cell')+
+      projectCell('Title','<span class="truncate-cell" title="'+attr(revision.title||'')+'">'+esc(short(revision.title||projectDocumentLabel(kind)+' revision',140))+'</span>','primary-cell')+
+      projectCell('Source',projectRevisionSourceBadge(revision.source),'status-cell')+
+      projectCell('Detail','<span class="truncate-cell" title="'+attr(projectRevisionMeta(revision))+'">'+esc(short(projectRevisionMeta(revision)||'-',220))+'</span>')+
+      projectCell('Actions','<div class="data-table-actions"><button type="button" class="secondary mini-button" data-project-revision-open="'+attr(revision.id)+'" data-project-revision-kind="'+attr(kind)+'">Open</button><button type="button" class="secondary mini-button" data-project-revision-edit="'+attr(revision.id)+'" data-project-revision-kind="'+attr(kind)+'"'+disabledAttr('projects.write')+'>Edit</button><button type="button" class="secondary mini-button" data-project-revision-restore="'+attr(revision.id)+'" data-project-revision-kind="'+attr(kind)+'"'+disabledAttr('projects.write')+'>Restore</button><button type="button" class="danger mini-button" data-project-revision-delete="'+attr(revision.id)+'" data-project-revision-kind="'+attr(kind)+'"'+disabledAttr('projects.write')+'>Delete</button></div>','actions-cell')+
+    '</tr>'
+  ).join('')+'</tbody></table></div>';
+}
+
+async function openProjectHistoryDialog(kind){
+  const project=selectedProject();
+  if(!project){toast('Select a project first');return}
+  const result=await api(projectRevisionPath(project.id,kind),{local:true});
+  adminDialog(projectDocumentLabel(kind)[0].toUpperCase()+projectDocumentLabel(kind).slice(1)+' history','<div class="project-history-dialog">'+renderProjectRevisionHistory(kind,result.revisions||[])+'</div>',async()=>{},{
+    submitText:'Close',
+    reloadAccess:false
+  });
+  bindProjectRevisionButtons(document.getElementById('adminDialogBody')||document);
+  applyPermissions();
+}
+
+async function openProjectRevisionDialog(kind,revisionId,editable=false){
+  const project=selectedProject();
+  if(!project)return;
+  const result=await api(projectRevisionPath(project.id,kind,revisionId),{local:true});
+  const revision=result.revision||{};
+  const readonly=editable?'':' readonly';
+  adminDialog((editable?'Edit ':'Open ')+projectDocumentLabel(kind)+' revision','<div class="form-grid">'+
+    '<label class="full-span">Title<input id="dlgProjectRevisionTitle" value="'+attr(revision.title||'')+'" '+(editable?'':'readonly')+'></label>'+
+    '<label class="full-span">Markdown<textarea id="dlgProjectRevisionMarkdown" class="project-markdown-editor project-revision-editor" rows="16"'+readonly+'>'+esc(revision.markdown||'')+'</textarea></label>'+
+    '<p class="full-span">'+esc(projectRevisionMeta(revision)||'Revision metadata unavailable.')+'</p>'+
+  '</div>',async()=>{
+    if(!editable)return;
+    await api(projectRevisionPath(project.id,kind,revision.id),{local:true,method:'PATCH',body:JSON.stringify({title:val('dlgProjectRevisionTitle')||undefined,markdown:val('dlgProjectRevisionMarkdown')})});
+    toast('Revision updated');
+  },{submitText:editable?'Save':'Close',afterSubmit:editable?()=>openProjectHistoryDialog(kind):undefined,reloadAccess:false});
+}
+
+function bindProjectRevisionButtons(root:Document|Element=document){
+  root.querySelectorAll('[data-project-revision-open]').forEach(b=>b.onclick=()=>safe(async()=>{
+    document.getElementById('adminDialog')?.close();
+    await openProjectRevisionDialog(b.dataset.projectRevisionKind,b.dataset.projectRevisionOpen,false);
+  }));
+  root.querySelectorAll('[data-project-revision-edit]').forEach(b=>b.onclick=()=>safe(async()=>{
+    document.getElementById('adminDialog')?.close();
+    await openProjectRevisionDialog(b.dataset.projectRevisionKind,b.dataset.projectRevisionEdit,true);
+  }));
+  root.querySelectorAll('[data-project-revision-restore]').forEach(b=>b.onclick=()=>safe(async()=>{
+    const project=selectedProject();if(!project)return;
+    const kind=b.dataset.projectRevisionKind;
+    if(!confirm('Restore this '+projectDocumentLabel(kind)+' revision as the current version?'))return;
+    const result=await api(projectRevisionPath(project.id,kind,b.dataset.projectRevisionRestore,'restore'),{local:true,method:'POST'});
+    state.projects=(state.projects||[]).map(item=>item.id===result.project.id?result.project:item);
+    document.getElementById('adminDialog')?.close();
+    toast(projectDocumentLabel(kind)+' restored');
+    renderProjectsPage();
+  }));
+  root.querySelectorAll('[data-project-revision-delete]').forEach(b=>b.onclick=()=>safe(async()=>{
+    const project=selectedProject();if(!project)return;
+    const kind=b.dataset.projectRevisionKind;
+    if(!confirm('Delete this '+projectDocumentLabel(kind)+' revision?'))return;
+    await api(projectRevisionPath(project.id,kind,b.dataset.projectRevisionDelete),{local:true,method:'DELETE'});
+    toast('Revision deleted');
+    document.getElementById('adminDialog')?.close();
+    await openProjectHistoryDialog(kind);
+  }));
+}
+
 function renderProjectSessions(){
   const project=selectedProject();
   const target=document.getElementById('projectSessionsPanel');
@@ -362,6 +462,8 @@ function bindProjectPage(){
   document.getElementById('projectSearch').oninput=()=>renderProjectList();
   document.getElementById('runProjectSummaryBtn').onclick=()=>openProjectRunDialog('summary');
   document.getElementById('runProjectPlanBtn').onclick=()=>openProjectRunDialog('plan');
+  document.getElementById('projectSummaryHistoryBtn').onclick=()=>safe(()=>openProjectHistoryDialog('summary'));
+  document.getElementById('projectPlanHistoryBtn').onclick=()=>safe(()=>openProjectHistoryDialog('plan'));
   document.getElementById('saveProjectSummaryBtn').onclick=()=>safe(async()=>{
     const project=selectedProject();if(!project)return;
     const text=document.getElementById('projectSummaryText')?.value||'';

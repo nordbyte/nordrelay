@@ -7,6 +7,9 @@ import {
   normalizeProjectPlanMode,
   normalizeProjectPlanRiskLevel,
   type ProjectAnalysisJob,
+  type ProjectDocumentKind,
+  type ProjectDocumentRevision,
+  type ProjectDocumentRevisionSource,
   type ProjectJobKind,
   type ProjectJobStatus,
   type ProjectPlanExistenceCheck,
@@ -55,6 +58,11 @@ export interface ProjectRunOptions {
   planMode?: ProjectPlanMode;
   planningHorizon?: ProjectPlanHorizon;
   riskLevel?: ProjectPlanRiskLevel;
+}
+
+export interface ProjectRevisionUpdateInput {
+  markdown: string;
+  title?: string;
 }
 
 const DEFAULT_PROJECT_AGENT: AgentId = "codex";
@@ -125,26 +133,13 @@ export class RelayProjectService {
   }
 
   updateSummary(id: string, markdown: string, actor?: WebActivityActor): ProjectRecord {
-    const project = this.options.store.patch(id, {
-      summaryMarkdown: markdown,
-      summaryUpdatedAt: new Date().toISOString(),
-    });
-    if (!project) {
-      throw new Error(`Project not found: ${id}`);
-    }
+    const project = this.applySummary(id, markdown, "manual", actor);
     this.recordProjectActivity("project_summary_updated", "info", project, actor, project.name);
     return project;
   }
 
   updatePlan(id: string, markdown: string, actor?: WebActivityActor): ProjectRecord {
-    const project = this.options.store.patch(id, {
-      planMarkdown: markdown,
-      planUpdatedAt: new Date().toISOString(),
-      planItems: parsePlanItemsFromMarkdown(markdown),
-    });
-    if (!project) {
-      throw new Error(`Project not found: ${id}`);
-    }
+    const project = this.applyPlan(id, markdown, "manual", actor);
     this.recordProjectActivity("project_plan_updated", "info", project, actor, project.name);
     return project;
   }
@@ -159,6 +154,53 @@ export class RelayProjectService {
 
   listJobs(projectId?: string, limit = 100): ProjectAnalysisJob[] {
     return this.options.store.listJobs(projectId, limit);
+  }
+
+  listDocumentRevisions(projectId: string, kind: ProjectDocumentKind, limit = 100): ProjectDocumentRevision[] {
+    this.requireProject(projectId);
+    return this.options.store.listRevisions(projectId, kind, limit);
+  }
+
+  getDocumentRevision(projectId: string, kind: ProjectDocumentKind, revisionId: string): ProjectDocumentRevision {
+    this.requireProject(projectId);
+    const revision = this.options.store.getRevision(projectId, revisionId);
+    if (!revision || revision.kind !== kind) {
+      throw new Error(`Project ${kind} revision not found: ${revisionId}`);
+    }
+    return revision;
+  }
+
+  updateDocumentRevision(projectId: string, kind: ProjectDocumentKind, revisionId: string, input: ProjectRevisionUpdateInput, actor?: WebActivityActor): ProjectDocumentRevision {
+    const revision = this.getDocumentRevision(projectId, kind, revisionId);
+    const updated = this.options.store.patchRevision(projectId, revision.id, {
+      title: input.title,
+      markdown: input.markdown,
+      planItems: kind === "plan" ? parsePlanItemsFromMarkdown(input.markdown) : [],
+    });
+    if (!updated) {
+      throw new Error(`Project ${kind} revision not found: ${revisionId}`);
+    }
+    const project = this.requireProject(projectId);
+    this.recordProjectActivity(`project_${kind}_revision_updated`, "info", project, actor, updated.title ?? revisionId);
+    return updated;
+  }
+
+  restoreDocumentRevision(projectId: string, kind: ProjectDocumentKind, revisionId: string, actor?: WebActivityActor): { project: ProjectRecord; revision: ProjectDocumentRevision } {
+    const revision = this.getDocumentRevision(projectId, kind, revisionId);
+    const project = kind === "plan"
+      ? this.applyPlan(projectId, revision.markdown, "restored", actor, revision)
+      : this.applySummary(projectId, revision.markdown, "restored", actor, revision);
+    const restored = this.options.store.listRevisions(projectId, kind, 1)[0] ?? revision;
+    this.recordProjectActivity(`project_${kind}_revision_restored`, "info", project, actor, revision.title ?? revisionId);
+    return { project, revision: restored };
+  }
+
+  deleteDocumentRevision(projectId: string, kind: ProjectDocumentKind, revisionId: string, actor?: WebActivityActor): { removed: boolean } {
+    const revision = this.getDocumentRevision(projectId, kind, revisionId);
+    const removed = this.options.store.deleteRevision(projectId, revision.id);
+    const project = this.requireProject(projectId);
+    this.recordProjectActivity(`project_${kind}_revision_deleted`, removed ? "info" : "failed", project, actor, revision.title ?? revisionId);
+    return { removed };
   }
 
   async cancelJob(id: string, actor?: WebActivityActor): Promise<ProjectAnalysisJob> {
@@ -248,14 +290,22 @@ export class RelayProjectService {
       const outputMarkdown = bestAssistantOutput(this.options.chatMessagesByCorrelation(correlationId, 200));
       const finishedAt = new Date().toISOString();
       const updatedProject = job.kind === "plan"
-        ? this.options.store.patch(project.id, {
-          planMarkdown: outputMarkdown,
-          planUpdatedAt: finishedAt,
-          planItems: parsePlanItemsFromMarkdown(outputMarkdown),
+        ? this.applyPlan(project.id, outputMarkdown, "generated", actor, {
+          jobId: job.id,
+          agentId: job.agentId,
+          language: job.language,
+          planMode: job.planMode,
+          planningHorizon: job.planningHorizon,
+          riskLevel: job.riskLevel,
+          createdAt: finishedAt,
+          updatedAt: finishedAt,
         })
-        : this.options.store.patch(project.id, {
-          summaryMarkdown: outputMarkdown,
-          summaryUpdatedAt: finishedAt,
+        : this.applySummary(project.id, outputMarkdown, "generated", actor, {
+          jobId: job.id,
+          agentId: job.agentId,
+          language: job.language,
+          createdAt: finishedAt,
+          updatedAt: finishedAt,
         });
       const completed = this.options.store.patchJob(id, {
         status: "completed",
@@ -298,6 +348,71 @@ export class RelayProjectService {
     if (!project.workspacePath.trim()) {
       throw new Error(`Project ${project.name} has no workspace path.`);
     }
+    return project;
+  }
+
+  private applySummary(
+    id: string,
+    markdown: string,
+    source: ProjectDocumentRevisionSource,
+    actor?: WebActivityActor,
+    metadata: Partial<ProjectDocumentRevision> = {},
+  ): ProjectRecord {
+    const now = metadata.updatedAt ?? new Date().toISOString();
+    const project = this.options.store.patch(id, {
+      summaryMarkdown: markdown,
+      summaryUpdatedAt: now,
+    });
+    if (!project) {
+      throw new Error(`Project not found: ${id}`);
+    }
+    const createdAt = source === "restored" ? now : metadata.createdAt ?? now;
+    this.options.store.saveRevision({
+      ...metadata,
+      id: undefined,
+      projectId: project.id,
+      kind: "summary",
+      markdown,
+      title: source === "restored" ? revisionTitle("summary", source, now) : metadata.title ?? revisionTitle("summary", source, now),
+      source,
+      createdByUserId: actor?.id ?? metadata.createdByUserId,
+      createdAt,
+      updatedAt: now,
+    });
+    return project;
+  }
+
+  private applyPlan(
+    id: string,
+    markdown: string,
+    source: ProjectDocumentRevisionSource,
+    actor?: WebActivityActor,
+    metadata: Partial<ProjectDocumentRevision> = {},
+  ): ProjectRecord {
+    const now = metadata.updatedAt ?? new Date().toISOString();
+    const planItems = metadata.planItems?.length ? metadata.planItems : parsePlanItemsFromMarkdown(markdown);
+    const project = this.options.store.patch(id, {
+      planMarkdown: markdown,
+      planUpdatedAt: now,
+      planItems,
+    });
+    if (!project) {
+      throw new Error(`Project not found: ${id}`);
+    }
+    const createdAt = source === "restored" ? now : metadata.createdAt ?? now;
+    this.options.store.saveRevision({
+      ...metadata,
+      id: undefined,
+      projectId: project.id,
+      kind: "plan",
+      markdown,
+      title: source === "restored" ? revisionTitle("plan", source, now) : metadata.title ?? revisionTitle("plan", source, now),
+      source,
+      planItems,
+      createdByUserId: actor?.id ?? metadata.createdByUserId,
+      createdAt,
+      updatedAt: now,
+    });
     return project;
   }
 
@@ -373,6 +488,12 @@ function buildSummaryPrompt(project: ProjectRecord, input: ProjectRunOptions = {
     "Return concise Markdown with these sections: Overview, Architecture, Key Entry Points, Runtime and Deployment, Current Capabilities, Risks, Open Questions.",
     "Do not recommend future work in this summary unless it is needed to explain an existing risk.",
   ].filter(Boolean).join("\n");
+}
+
+function revisionTitle(kind: ProjectDocumentKind, source: ProjectDocumentRevisionSource, timestamp: string): string {
+  const sourceLabel = source === "generated" ? "Generated" : source === "restored" ? "Restored" : "Manual";
+  const kindLabel = kind === "plan" ? "plan" : "summary";
+  return `${sourceLabel} ${kindLabel} ${timestamp.slice(0, 19).replace("T", " ")}`;
 }
 
 function buildPlanPrompt(project: ProjectRecord, input: ProjectRunOptions = {}): string {

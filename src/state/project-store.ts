@@ -12,6 +12,8 @@ export type ProjectPlanExistenceCheck = "not_found" | "partial" | "existing" | "
 export type ProjectPlanMode = "balanced" | "features" | "bugfixes" | "refactor" | "performance" | "security" | "ux" | "tests" | "release";
 export type ProjectPlanHorizon = "next-sprint" | "next-release" | "long-term";
 export type ProjectPlanRiskLevel = "conservative" | "balanced" | "ambitious";
+export type ProjectDocumentKind = "summary" | "plan";
+export type ProjectDocumentRevisionSource = "generated" | "manual" | "restored";
 
 export interface ProjectSessionLink {
   id: string;
@@ -84,10 +86,30 @@ export interface ProjectAnalysisJob {
   error?: string;
 }
 
+export interface ProjectDocumentRevision {
+  id: string;
+  projectId: string;
+  kind: ProjectDocumentKind;
+  markdown: string;
+  title?: string;
+  source: ProjectDocumentRevisionSource;
+  jobId?: string;
+  agentId?: AgentId;
+  language?: string;
+  planMode?: ProjectPlanMode;
+  planningHorizon?: ProjectPlanHorizon;
+  riskLevel?: ProjectPlanRiskLevel;
+  planItems: ProjectPlanItem[];
+  createdByUserId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface PersistedProjectStore {
   version: 1;
   projects: ProjectRecord[];
   jobs: ProjectAnalysisJob[];
+  revisions: ProjectDocumentRevision[];
 }
 
 export class ProjectStore {
@@ -156,6 +178,7 @@ export class ProjectStore {
       removed = projects.length !== payload.projects.length;
       payload.projects = projects;
       if (removed) payload.jobs = payload.jobs.filter((job) => job.projectId !== id);
+      if (removed) payload.revisions = payload.revisions.filter((revision) => revision.projectId !== id);
       return payload;
     });
     return removed;
@@ -227,18 +250,88 @@ export class ProjectStore {
     return updated;
   }
 
+  listRevisions(projectId: string, kind?: ProjectDocumentKind, limit = 100): ProjectDocumentRevision[] {
+    return [...this.payload().revisions]
+      .filter((revision) => revision.projectId === projectId && (!kind || revision.kind === kind))
+      .sort(sortRevisions)
+      .slice(0, Math.max(1, Math.min(500, limit)));
+  }
+
+  getRevision(projectId: string, revisionId: string): ProjectDocumentRevision | null {
+    return this.payload().revisions.find((revision) => revision.projectId === projectId && revision.id === revisionId) ?? null;
+  }
+
+  saveRevision(input: Partial<ProjectDocumentRevision> & Pick<ProjectDocumentRevision, "projectId" | "kind" | "markdown">): ProjectDocumentRevision {
+    const now = new Date().toISOString();
+    const id = normalizeId(input.id) || createProjectRevisionId();
+    let revision: ProjectDocumentRevision;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const existing = payload.revisions.find((candidate) => candidate.id === id && candidate.projectId === input.projectId);
+      revision = normalizeRevision({
+        ...existing,
+        ...input,
+        id,
+        createdAt: existing?.createdAt ?? input.createdAt ?? now,
+        updatedAt: now,
+      });
+      payload.revisions = upsertById(payload.revisions, revision).slice(-1000);
+      return payload;
+    });
+    return revision!;
+  }
+
+  patchRevision(projectId: string, revisionId: string, patch: Partial<ProjectDocumentRevision>): ProjectDocumentRevision | null {
+    let updated: ProjectDocumentRevision | null = null;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const existing = payload.revisions.find((revision) => revision.projectId === projectId && revision.id === revisionId);
+      if (!existing) return payload;
+      updated = normalizeRevision({
+        ...existing,
+        ...patch,
+        id: existing.id,
+        projectId: existing.projectId,
+        kind: existing.kind,
+        updatedAt: patch.updatedAt ?? new Date().toISOString(),
+      });
+      payload.revisions = upsertById(payload.revisions, updated);
+      return payload;
+    });
+    return updated;
+  }
+
+  deleteRevision(projectId: string, revisionId: string): boolean {
+    let removed = false;
+    this.store.update((current) => {
+      const payload = this.normalizePayload(current);
+      const revisions = payload.revisions.filter((revision) => !(revision.projectId === projectId && revision.id === revisionId));
+      removed = revisions.length !== payload.revisions.length;
+      payload.revisions = revisions;
+      return payload;
+    });
+    return removed;
+  }
+
   private payload(): PersistedProjectStore {
     return this.normalizePayload(this.store.read());
   }
 
   private normalizePayload(payload: PersistedProjectStore | undefined): PersistedProjectStore {
     if (!payload || payload.version !== 1) {
-      return { version: 1, projects: [], jobs: [] };
+      return { version: 1, projects: [], jobs: [], revisions: [] };
     }
+    const projects = Array.isArray(payload.projects) ? payload.projects.map(normalizeProject).filter((project) => project.name && project.workspacePath) : [];
+    const hasRevisionField = Object.prototype.hasOwnProperty.call(payload, "revisions");
+    const rawRevisions = (payload as Partial<PersistedProjectStore>).revisions;
+    const revisions = Array.isArray(rawRevisions)
+      ? rawRevisions.map(normalizeRevision).filter((revision) => revision.projectId)
+      : [];
     return {
       version: 1,
-      projects: Array.isArray(payload.projects) ? payload.projects.map(normalizeProject).filter((project) => project.name && project.workspacePath) : [],
+      projects,
       jobs: Array.isArray(payload.jobs) ? payload.jobs.map(normalizeJob).filter((job) => job.projectId) : [],
+      revisions: hasRevisionField ? revisions : synthesizeInitialRevisions(projects),
     };
   }
 }
@@ -329,6 +422,29 @@ function normalizeJob(input: Partial<ProjectAnalysisJob> & Pick<ProjectAnalysisJ
   };
 }
 
+function normalizeRevision(input: Partial<ProjectDocumentRevision>): ProjectDocumentRevision {
+  const now = new Date().toISOString();
+  const kind = normalizeDocumentKind(input.kind);
+  return {
+    id: normalizeId(input.id) || createProjectRevisionId(),
+    projectId: normalizeId(input.projectId),
+    kind,
+    markdown: String(input.markdown ?? ""),
+    title: cleanOptional(input.title)?.slice(0, 160),
+    source: normalizeRevisionSource(input.source),
+    jobId: cleanOptional(input.jobId),
+    agentId: cleanOptional(input.agentId) as AgentId | undefined,
+    language: cleanOptional(input.language)?.slice(0, 80),
+    planMode: kind === "plan" ? normalizePlanMode(input.planMode) : undefined,
+    planningHorizon: kind === "plan" ? normalizePlanHorizon(input.planningHorizon) : undefined,
+    riskLevel: kind === "plan" ? normalizePlanRiskLevel(input.riskLevel) : undefined,
+    planItems: kind === "plan" && Array.isArray(input.planItems) ? input.planItems.map(normalizePlanItem).filter((item) => item.title) : [],
+    createdByUserId: cleanOptional(input.createdByUserId),
+    createdAt: validDate(input.createdAt) ?? now,
+    updatedAt: validDate(input.updatedAt) ?? now,
+  };
+}
+
 function normalizeTarget(target: unknown): ProjectTarget {
   const value = String(target ?? "local").trim();
   if (value === "local") return "local";
@@ -342,6 +458,14 @@ function normalizeJobKind(kind: unknown): ProjectJobKind {
 
 function normalizeJobStatus(status: unknown): ProjectJobStatus {
   return status === "running" || status === "completed" || status === "failed" || status === "aborted" ? status : "queued";
+}
+
+function normalizeDocumentKind(kind: unknown): ProjectDocumentKind {
+  return kind === "plan" ? "plan" : "summary";
+}
+
+function normalizeRevisionSource(source: unknown): ProjectDocumentRevisionSource {
+  return source === "generated" || source === "restored" ? source : "manual";
 }
 
 function normalizePlanItemStatus(status: unknown): ProjectPlanItemStatus {
@@ -438,6 +562,10 @@ function createProjectPlanItemId(): string {
   return `project-plan-${randomUUID().replace(/-/g, "").slice(0, 10)}`;
 }
 
+function createProjectRevisionId(): string {
+  return `project-rev-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+}
+
 function sessionLinkId(peerId: string | undefined, agentId: string | undefined, threadId: string): string {
   return [peerId || "local", agentId || "agent", threadId].join(":").replace(/[^a-zA-Z0-9:_-]/g, "").slice(0, 96);
 }
@@ -453,4 +581,41 @@ function upsertById<T extends { id: string }>(items: T[], item: T): T[] {
 function sortProjects(left: ProjectRecord, right: ProjectRecord): number {
   return Number(left.status === "archived") - Number(right.status === "archived")
     || Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
+}
+
+function sortRevisions(left: ProjectDocumentRevision, right: ProjectDocumentRevision): number {
+  return Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
+    || Date.parse(right.createdAt) - Date.parse(left.createdAt);
+}
+
+function synthesizeInitialRevisions(projects: ProjectRecord[]): ProjectDocumentRevision[] {
+  return projects.flatMap((project) => {
+    const revisions: ProjectDocumentRevision[] = [];
+    if (project.summaryMarkdown) {
+      revisions.push(normalizeRevision({
+        id: `${project.id}:summary:initial`,
+        projectId: project.id,
+        kind: "summary",
+        markdown: project.summaryMarkdown,
+        title: "Current summary",
+        source: "manual",
+        createdAt: project.summaryUpdatedAt ?? project.updatedAt,
+        updatedAt: project.summaryUpdatedAt ?? project.updatedAt,
+      }));
+    }
+    if (project.planMarkdown) {
+      revisions.push(normalizeRevision({
+        id: `${project.id}:plan:initial`,
+        projectId: project.id,
+        kind: "plan",
+        markdown: project.planMarkdown,
+        title: "Current plan",
+        source: "manual",
+        planItems: project.planItems,
+        createdAt: project.planUpdatedAt ?? project.updatedAt,
+        updatedAt: project.planUpdatedAt ?? project.updatedAt,
+      }));
+    }
+    return revisions;
+  });
 }

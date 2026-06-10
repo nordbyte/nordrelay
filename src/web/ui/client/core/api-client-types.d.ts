@@ -184,10 +184,16 @@ export type WebApiDynamicPath =
   | `/api/projects/${string}`
   | `/api/projects/${string}/jobs`
   | `/api/projects/${string}/plan`
+  | `/api/projects/${string}/plan/history`
+  | `/api/projects/${string}/plan/history/${string}`
+  | `/api/projects/${string}/plan/history/${string}/restore`
   | `/api/projects/${string}/plan/run`
   | `/api/projects/${string}/sessions`
   | `/api/projects/${string}/sessions/${string}`
   | `/api/projects/${string}/summary`
+  | `/api/projects/${string}/summary/history`
+  | `/api/projects/${string}/summary/history/${string}`
+  | `/api/projects/${string}/summary/history/${string}/restore`
   | `/api/projects/${string}/summary/run`
   | `/api/projects/jobs/${string}/cancel`
   | `/api/queue/plans/${string}`

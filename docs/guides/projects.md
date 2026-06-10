@@ -15,6 +15,7 @@ A project stores:
 - linked session references
 - editable summary Markdown
 - editable plan Markdown
+- summary and plan revision history
 - parsed plan items when the plan includes structured JSON
 - background analysis jobs
 
@@ -52,6 +53,8 @@ The generate dialog includes a **Language** field. It defaults to `English`, but
 
 The summary remains editable. Use **Save summary** after manual edits.
 
+Each generated or manually saved summary is stored as a revision. Use **History** to open older summaries, edit revision titles/content, restore an older revision as the current summary, or delete revisions you no longer need.
+
 ## Generate a Plan
 
 Open the **Plan** tab and choose **Generate plan**.
@@ -75,6 +78,8 @@ The generate dialog lets you choose the planning style:
 You can also select a planning horizon and risk posture. NordRelay intentionally does not ask for a fixed number of items; the agent should propose the amount of work justified by the current code evidence.
 
 If the final answer includes a `nordrelay-project-plan` JSON block, NordRelay parses it into plan items with priority, category, target area, user value, evidence, effort, risk, blockers, confidence, and existing-feature checks.
+
+Each generated or manually saved plan is stored as a revision. Use **History** to open older plans, edit revision titles/content, restore an older revision as the current plan, or delete revisions you no longer need. Restoring a plan also restores the parsed plan items from that revision.
 
 ## Jobs
 

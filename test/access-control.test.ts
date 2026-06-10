@@ -78,6 +78,10 @@ describe("access-control", () => {
     expect(permissionForWebRequest("GET", "/api/projects/project-1")).toBe("projects.read");
     expect(permissionForWebRequest("PATCH", "/api/projects/project-1")).toBe("projects.write");
     expect(permissionForWebRequest("POST", "/api/projects/project-1/summary/run")).toBe("projects.run");
+    expect(permissionForWebRequest("GET", "/api/projects/project-1/summary/history")).toBe("projects.read");
+    expect(permissionForWebRequest("PATCH", "/api/projects/project-1/summary/history/rev-1")).toBe("projects.write");
+    expect(permissionForWebRequest("DELETE", "/api/projects/project-1/plan/history/rev-1")).toBe("projects.write");
+    expect(permissionForWebRequest("POST", "/api/projects/project-1/plan/history/rev-1/restore")).toBe("projects.write");
     expect(permissionForWebRequest("PATCH", "/api/projects/project-1/plan")).toBe("projects.write");
     expect(permissionForWebRequest("POST", "/api/projects/project-1/sessions")).toBe("projects.write");
     expect(permissionForWebRequest("POST", "/api/projects/jobs/job-1/cancel")).toBe("projects.run");

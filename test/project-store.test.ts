@@ -42,6 +42,37 @@ describe("ProjectStore", () => {
           updatedAt: "2026-06-10T00:00:00.000Z",
         }],
       });
+      store.saveRevision({
+        projectId: project.id,
+        kind: "summary",
+        markdown: "# Summary",
+        title: "Current summary",
+        source: "manual",
+      });
+      store.saveRevision({
+        projectId: project.id,
+        kind: "plan",
+        markdown: "# Plan",
+        title: "Current plan",
+        source: "manual",
+        planItems: [{
+          id: "plan-1",
+          title: "Add Projects",
+          description: "Track project planning state.",
+          priority: 90,
+          category: "WebUI",
+          mode: "features",
+          targetArea: "Projects",
+          status: "proposed",
+          userValue: "Admins can plan project work from NordRelay.",
+          blockedBy: ["project summary"],
+          confidence: 82,
+          evidence: ["src/state/project-store.ts"],
+          alreadyExistsCheck: "partial",
+          createdAt: "2026-06-10T00:00:00.000Z",
+          updatedAt: "2026-06-10T00:00:00.000Z",
+        }],
+      });
       const job = store.saveJob({
         projectId: project.id,
         kind: "summary",
@@ -68,6 +99,38 @@ describe("ProjectStore", () => {
           confidence: 82,
         })],
       });
+      expect(restored.listRevisions(project.id, "summary")).toEqual([
+        expect.objectContaining({
+          projectId: project.id,
+          kind: "summary",
+          markdown: "# Summary",
+          title: "Current summary",
+        }),
+      ]);
+      expect(restored.listRevisions(project.id, "plan")).toEqual([
+        expect.objectContaining({
+          projectId: project.id,
+          kind: "plan",
+          markdown: "# Plan",
+          planItems: [expect.objectContaining({ title: "Add Projects" })],
+        }),
+      ]);
+      const revision = restored.saveRevision({
+        projectId: project.id,
+        kind: "summary",
+        markdown: "# Updated Summary",
+        title: "Manual update",
+        source: "manual",
+      });
+      expect(restored.getRevision(project.id, revision.id)).toMatchObject({
+        title: "Manual update",
+        markdown: "# Updated Summary",
+      });
+      expect(restored.patchRevision(project.id, revision.id, { title: "Edited revision" })).toMatchObject({
+        title: "Edited revision",
+      });
+      expect(restored.deleteRevision(project.id, revision.id)).toBe(true);
+      expect(restored.getRevision(project.id, revision.id)).toBeNull();
       expect(restored.listJobs(project.id)).toEqual([
         expect.objectContaining({
           projectId: project.id,

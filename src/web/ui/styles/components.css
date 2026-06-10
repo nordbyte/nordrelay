@@ -169,6 +169,8 @@
 .project-mini-summary small{margin:0;color:var(--muted)}
 .project-editor-meta+.project-markdown-editor{margin-top:10px}
 .project-plan-items-table{--table-min-width:900px}
+.project-revision-table{--table-min-width:880px}
+.project-revision-editor{min-height:320px}
 .actions-cell,.actions-heading{white-space:nowrap}
 .actions-heading{text-align:right!important}
 .table-action-menu{position:relative;display:inline-block;text-align:left}

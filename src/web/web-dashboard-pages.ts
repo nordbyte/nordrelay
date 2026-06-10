@@ -367,13 +367,13 @@ ${faviconLinks}
           </div>
           <div class="project-tab" data-project-tab-panel="summary">
             <div class="project-tab-heading">
-              <div class="row project-heading-actions"><button id="runProjectSummaryBtn">Generate summary</button><button id="saveProjectSummaryBtn" class="secondary">Save summary</button></div>
+              <div class="row project-heading-actions"><button id="runProjectSummaryBtn">Generate summary</button><button id="saveProjectSummaryBtn" class="secondary">Save summary</button><button id="projectSummaryHistoryBtn" class="secondary">History</button></div>
             </div>
             <div id="projectSummaryPanel" class="list"></div>
           </div>
           <div class="project-tab" data-project-tab-panel="plan">
             <div class="project-tab-heading">
-              <div class="row project-heading-actions"><button id="runProjectPlanBtn">Generate plan</button><button id="saveProjectPlanBtn" class="secondary">Save plan</button></div>
+              <div class="row project-heading-actions"><button id="runProjectPlanBtn">Generate plan</button><button id="saveProjectPlanBtn" class="secondary">Save plan</button><button id="projectPlanHistoryBtn" class="secondary">History</button></div>
             </div>
             <div id="projectPlanPanel" class="list"></div>
           </div>

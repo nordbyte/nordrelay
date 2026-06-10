@@ -286,6 +286,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).toContain('id="createProjectBtn"');
     expect(pageSource).toContain('id="runProjectSummaryBtn"');
     expect(pageSource).toContain('id="runProjectPlanBtn"');
+    expect(pageSource).toContain('id="projectSummaryHistoryBtn"');
+    expect(pageSource).toContain('id="projectPlanHistoryBtn"');
     expect(pageSource).toContain('id="projectSummaryPanel"');
     expect(pageSource).toContain('id="projectPlanPanel"');
     expect(js).toContain("function loadProjects");
@@ -295,6 +297,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("openProjectRunDialog('plan')");
     expect(js).toContain("dlgProjectRunLanguage");
     expect(js).toContain("language:val('dlgProjectRunLanguage')||'English'");
+    expect(js).toContain("openProjectHistoryDialog('summary')");
+    expect(js).toContain("openProjectHistoryDialog('plan')");
+    expect(js).toContain("data-project-revision-restore");
     expect(js).toContain("dlgProjectPlanMode");
     expect(js).toContain("dlgProjectPlanningHorizon");
     expect(js).toContain("dlgProjectRiskLevel");
@@ -305,6 +310,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(css).toContain(".project-markdown-editor");
     expect(contract).toContain('exact("/api/projects"');
     expect(contract).toContain('dynamic("/api/projects/:id/summary/run"');
+    expect(contract).toContain('dynamic("/api/projects/:id/summary/history"');
+    expect(contract).toContain('dynamic("/api/projects/:id/plan/history/:revisionId/restore"');
     expect(contract).toContain('dynamic("/api/projects/:id/plan/run"');
   });
 

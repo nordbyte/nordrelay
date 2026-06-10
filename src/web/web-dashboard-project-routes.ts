@@ -8,6 +8,7 @@ import {
   normalizeProjectPlanHorizon,
   normalizeProjectPlanMode,
   normalizeProjectPlanRiskLevel,
+  type ProjectDocumentKind,
   type ProjectRecord,
   type ProjectSessionLink,
   type ProjectTarget,
@@ -79,6 +80,35 @@ export async function handleDashboardProjectRoute(
     }
     if (req.method === "DELETE" && linkId) {
       sendJson(res, 200, { project: service.unlinkSession(projectId, linkId, options.activityActor) });
+      return true;
+    }
+  }
+
+  const historyMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/(summary|plan)\/history(?:\/([^/]+)(?:\/(restore))?)?$/);
+  if (historyMatch?.[1]) {
+    const projectId = decodeURIComponent(historyMatch[1]);
+    const kind = parseDocumentKind(historyMatch[2]);
+    const revisionId = historyMatch[3] ? decodeURIComponent(historyMatch[3]) : "";
+    const action = historyMatch[4];
+    if (req.method === "GET" && !revisionId) {
+      sendJson(res, 200, { revisions: service.listDocumentRevisions(projectId, kind, numberParam(url, "limit", 100)) });
+      return true;
+    }
+    if (req.method === "GET" && revisionId && !action) {
+      sendJson(res, 200, { revision: service.getDocumentRevision(projectId, kind, revisionId) });
+      return true;
+    }
+    if (req.method === "PATCH" && revisionId && !action) {
+      const body = await readJsonBody(req);
+      sendJson(res, 200, { revision: service.updateDocumentRevision(projectId, kind, revisionId, parseRevisionPatchBody(body), options.activityActor) });
+      return true;
+    }
+    if (req.method === "POST" && revisionId && action === "restore") {
+      sendJson(res, 200, service.restoreDocumentRevision(projectId, kind, revisionId, options.activityActor));
+      return true;
+    }
+    if (req.method === "DELETE" && revisionId && !action) {
+      sendJson(res, 200, service.deleteDocumentRevision(projectId, kind, revisionId, options.activityActor));
       return true;
     }
   }
@@ -180,6 +210,18 @@ function parseProjectRunBody(body: Record<string, unknown>, section: string): Pr
     options.riskLevel = normalizeProjectPlanRiskLevel(optionalStringField(record, "riskLevel"));
   }
   return options;
+}
+
+function parseRevisionPatchBody(body: Record<string, unknown>): { markdown: string; title?: string } {
+  const record = objectRecord(body);
+  return {
+    markdown: stringField(record, "markdown"),
+    title: optionalStringField(record, "title"),
+  };
+}
+
+function parseDocumentKind(value: string | undefined): ProjectDocumentKind {
+  return value === "plan" ? "plan" : "summary";
 }
 
 function parseSessionLinkBody(body: Record<string, unknown>): Partial<ProjectSessionLink> & Pick<ProjectSessionLink, "threadId"> {
