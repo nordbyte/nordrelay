@@ -132,10 +132,13 @@ function renderProjectPlan(){
 
 function renderProjectPlanItemsTable(items){
   if(!items.length)return uiEmpty('No structured plan items parsed yet.');
-  return '<div class="data-table-wrap"><table class="data-table project-plan-items-table"><thead><tr><th>Priority</th><th>Title</th><th>Status</th><th>Exists</th><th>Evidence</th></tr></thead><tbody>'+items.map(item=>
+  return '<div class="data-table-wrap"><table class="data-table project-plan-items-table"><thead><tr><th>Priority</th><th>Title</th><th>Focus</th><th>Target</th><th>Confidence</th><th>Status</th><th>Exists</th><th>Evidence</th></tr></thead><tbody>'+items.map(item=>
     '<tr>'+
       projectCell('Priority',esc(String(item.priority??'-')),'updated-cell')+
-      projectCell('Title','<span class="truncate-cell" title="'+attr(item.description||item.title||'')+'">'+esc(short(item.title||'-',160))+'</span>','primary-cell')+
+      projectCell('Title','<span class="truncate-cell" title="'+attr([item.description,item.userValue?'User value: '+item.userValue:'',projectArray(item.blockedBy).length?'Blocked by: '+projectArray(item.blockedBy).join(', '):''].filter(Boolean).join(' | ')||item.title||'')+'">'+esc(short(item.title||'-',160))+'</span>','primary-cell')+
+      projectCell('Focus','<span class="truncate-cell" title="'+attr(item.category||projectPlanModeLabel(item.mode||'balanced'))+'">'+esc(short(projectPlanModeLabel(item.mode||'balanced'),80))+'</span><small>'+esc(short(item.category||'-',80))+'</small>')+
+      projectCell('Target','<span class="truncate-cell" title="'+attr(item.targetArea||'')+'">'+esc(short(item.targetArea||'-',100))+'</span>')+
+      projectCell('Confidence',item.confidence!==undefined?esc(String(item.confidence))+'%':'-')+
       projectCell('Status','<span class="adapter-status planned">'+esc(item.status||'proposed')+'</span>','status-cell')+
       projectCell('Exists','<span class="adapter-status '+(item.alreadyExistsCheck==='existing'?'disabled':item.alreadyExistsCheck==='partial'?'planned':'enabled')+'">'+esc(item.alreadyExistsCheck||'not_found')+'</span>')+
       projectCell('Evidence','<span class="truncate-cell" title="'+attr(projectArray(item.evidence).join(' | '))+'">'+esc(short(projectArray(item.evidence).join(' | ')||'-',220))+'</span>')+
@@ -171,10 +174,11 @@ function renderProjectJobs(){
   if(!project){target.innerHTML=uiEmpty('Select a project first.');return}
   const jobs=(state.projectJobs||[]).filter(job=>job.projectId===project.id);
   if(!jobs.length){target.innerHTML=uiEmpty('No project jobs yet.');return}
-  target.innerHTML='<div class="data-table-wrap"><table class="data-table project-jobs-table"><thead><tr><th>Updated</th><th>Kind</th><th>Status</th><th>Agent</th><th>Thread</th><th>Log</th><th class="actions-heading">Actions</th></tr></thead><tbody>'+jobs.map(job=>
+  target.innerHTML='<div class="data-table-wrap"><table class="data-table project-jobs-table"><thead><tr><th>Updated</th><th>Kind</th><th>Focus</th><th>Status</th><th>Agent</th><th>Thread</th><th>Log</th><th class="actions-heading">Actions</th></tr></thead><tbody>'+jobs.map(job=>
     '<tr>'+
       projectCell('Updated','<span title="'+attr(fmtDate(job.updatedAt))+'">'+esc(fmtSessionAge(job.updatedAt))+'</span>','updated-cell')+
       projectCell('Kind','<span class="truncate-cell">'+esc(job.kind||'-')+'</span>','primary-cell')+
+      projectCell('Focus',job.kind==='plan'?'<span class="truncate-cell" title="'+attr([projectPlanModeLabel(job.planMode||'balanced'),job.planningHorizon||'next-release',job.riskLevel||'balanced'].join(' · '))+'">'+esc(short(projectPlanModeLabel(job.planMode||'balanced'),100))+'</span>':'-')+
       projectCell('Status','<span class="adapter-status '+projectJobStatusClass(job.status)+'">'+esc(job.status||'-')+'</span>','status-cell')+
       projectCell('Agent',esc(job.agentId||'-'))+
       projectCell('Thread',job.threadId?'<button type="button" class="copy-id" data-copy-value="'+attr(job.threadId)+'" data-copy-label="Thread ID copied">'+esc(shortMiddle(job.threadId,8))+'</button>':'-')+
@@ -219,6 +223,36 @@ function projectTargetOptions(selected){
   }).join('');
 }
 
+const PROJECT_PLAN_MODES=[
+  ['balanced','Balanced roadmap'],
+  ['features','New features'],
+  ['bugfixes','Bug fixes'],
+  ['refactor','Code quality / refactoring'],
+  ['performance','Performance / scalability'],
+  ['security','Security / permissions'],
+  ['ux','UX / WebUI'],
+  ['tests','Tests / CI / docs'],
+  ['release','Release readiness']
+];
+const PROJECT_PLAN_HORIZONS=[
+  ['next-sprint','Next sprint'],
+  ['next-release','Next release'],
+  ['long-term','Long-term roadmap']
+];
+const PROJECT_PLAN_RISK_LEVELS=[
+  ['conservative','Conservative'],
+  ['balanced','Balanced'],
+  ['ambitious','Ambitious']
+];
+
+function projectSelectOptions(options,selected){
+  return options.map(option=>'<option value="'+attr(option[0])+'" '+(option[0]===selected?'selected':'')+'>'+esc(option[1])+'</option>').join('');
+}
+
+function projectPlanModeLabel(mode){
+  return (PROJECT_PLAN_MODES.find(option=>option[0]===mode)||PROJECT_PLAN_MODES[0])[1];
+}
+
 function openProjectDialog(project=null){
   const title=project?'Edit project':'Create project';
   adminDialog(title,'<div class="form-grid">'+
@@ -240,12 +274,22 @@ function openProjectDialog(project=null){
 function openProjectRunDialog(kind){
   const project=selectedProject();
   if(!project){toast('Select a project first');return}
+  const planFields=kind==='plan'
+    ? '<label>Plan focus<select id="dlgProjectPlanMode">'+projectSelectOptions(PROJECT_PLAN_MODES,'balanced')+'</select></label>'+
+      '<label>Planning horizon<select id="dlgProjectPlanningHorizon">'+projectSelectOptions(PROJECT_PLAN_HORIZONS,'next-release')+'</select></label>'+
+      '<label>Risk level<select id="dlgProjectRiskLevel">'+projectSelectOptions(PROJECT_PLAN_RISK_LEVELS,'balanced')+'</select></label>'
+    : '';
   adminDialog(kind==='plan'?'Generate project plan':'Generate project summary','<div class="form-grid">'+
     '<label>Agent<select id="dlgProjectRunAgent">'+projectAgentOptions(project.defaultAgentId||'')+'</select></label>'+
+    planFields+
     '<label class="full-span">Extra instructions<textarea id="dlgProjectRunInstructions" rows="5" placeholder="Optional focus, constraints, or priorities"></textarea></label>'+
     '<p class="full-span">NordRelay starts a background agent run in the project workspace. The result is saved back into this project and can be edited afterwards.</p>'+
   '</div>',async()=>{
-    const result=await api('/api/projects/'+encodeURIComponent(projectString(project.id))+'/'+kind+'/run',{local:true,method:'POST',body:JSON.stringify({agentId:val('dlgProjectRunAgent')||undefined,instructions:val('dlgProjectRunInstructions')||undefined})});
+    const base={agentId:val('dlgProjectRunAgent')||undefined,instructions:val('dlgProjectRunInstructions')||undefined};
+    const body=kind==='plan'
+      ? {...base,planMode:val('dlgProjectPlanMode')||'balanced',planningHorizon:val('dlgProjectPlanningHorizon')||'next-release',riskLevel:val('dlgProjectRiskLevel')||'balanced'}
+      : base;
+    const result=await api('/api/projects/'+encodeURIComponent(projectString(project.id))+'/'+kind+'/run',{local:true,method:'POST',body:JSON.stringify(body)});
     toast('Project '+kind+' queued: '+(result.job?.id||project.name));
   },{submitText:'Run',afterSubmit:loadProjects});
 }

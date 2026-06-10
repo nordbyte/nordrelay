@@ -1,15 +1,21 @@
 import type { AuditEvent } from "../access/audit-log.js";
 import type { AgentId, AgentSessionInfo, AgentSessionService } from "../agents/shared/agent.js";
 import { createCorrelationId, toPromptEnvelope, type PromptEnvelope } from "../state/prompt-store.js";
-import type {
-  ProjectAnalysisJob,
-  ProjectJobKind,
-  ProjectJobStatus,
-  ProjectPlanExistenceCheck,
-  ProjectPlanItem,
-  ProjectRecord,
-  ProjectSessionLink,
-  ProjectStore,
+import {
+  normalizeProjectPlanHorizon,
+  normalizeProjectPlanMode,
+  normalizeProjectPlanRiskLevel,
+  type ProjectAnalysisJob,
+  type ProjectJobKind,
+  type ProjectJobStatus,
+  type ProjectPlanExistenceCheck,
+  type ProjectPlanHorizon,
+  type ProjectPlanItem,
+  type ProjectPlanMode,
+  type ProjectPlanRiskLevel,
+  type ProjectRecord,
+  type ProjectSessionLink,
+  type ProjectStore,
 } from "../state/project-store.js";
 import type { WebActivityActor, WebActivityEvent, WebChatMessage } from "../web/web-state.js";
 import type { UnifiedJobDto } from "./relay-runtime-types.js";
@@ -44,6 +50,9 @@ export interface ProjectListDto {
 export interface ProjectRunOptions {
   agentId?: AgentId;
   instructions?: string;
+  planMode?: ProjectPlanMode;
+  planningHorizon?: ProjectPlanHorizon;
+  riskLevel?: ProjectPlanRiskLevel;
 }
 
 const DEFAULT_PROJECT_AGENT: AgentId = "codex";
@@ -178,7 +187,12 @@ export class RelayProjectService {
       kind,
       status: "queued",
       agentId: input.agentId ?? project.defaultAgentId ?? DEFAULT_PROJECT_AGENT,
-      log: [`Queued ${kind} analysis for ${project.name}.`],
+      planMode: kind === "plan" ? normalizeProjectPlanMode(input.planMode) : undefined,
+      planningHorizon: kind === "plan" ? normalizeProjectPlanHorizon(input.planningHorizon) : undefined,
+      riskLevel: kind === "plan" ? normalizeProjectPlanRiskLevel(input.riskLevel) : undefined,
+      log: [kind === "plan"
+        ? `Queued plan analysis for ${project.name} (${planModeLabel(normalizeProjectPlanMode(input.planMode))}, ${planHorizonLabel(normalizeProjectPlanHorizon(input.planningHorizon))}, ${planRiskLabel(normalizeProjectPlanRiskLevel(input.riskLevel))}).`
+        : `Queued ${kind} analysis for ${project.name}.`],
     });
     this.upsertUnifiedJob(job, actor);
     this.recordProjectActivity(`project_${kind}_queued`, "queued", project, actor, project.name);
@@ -219,7 +233,12 @@ export class RelayProjectService {
       }) ?? job;
       this.upsertUnifiedJob(job, actor);
       const prompt = job.kind === "plan"
-        ? buildPlanPrompt(project, input.instructions)
+        ? buildPlanPrompt(project, {
+          ...input,
+          planMode: job.planMode ?? input.planMode,
+          planningHorizon: job.planningHorizon ?? input.planningHorizon,
+          riskLevel: job.riskLevel ?? input.riskLevel,
+        })
         : buildSummaryPrompt(project, input.instructions);
       await this.options.runPrompt(session, { ...toPromptEnvelope(prompt), correlationId, activityActor: actor });
       const outputMarkdown = bestAssistantOutput(this.options.chatMessagesByCorrelation(correlationId, 200));
@@ -349,7 +368,16 @@ function buildSummaryPrompt(project: ProjectRecord, instructions?: string): stri
   ].filter(Boolean).join("\n");
 }
 
-function buildPlanPrompt(project: ProjectRecord, instructions?: string): string {
+function buildPlanPrompt(project: ProjectRecord, input: ProjectRunOptions = {}): string {
+  const planMode = normalizeProjectPlanMode(input.planMode);
+  const planningHorizon = normalizeProjectPlanHorizon(input.planningHorizon);
+  const riskLevel = normalizeProjectPlanRiskLevel(input.riskLevel);
+  const existingItems = project.planItems
+    .slice()
+    .sort((left, right) => Number(right.priority ?? 0) - Number(left.priority ?? 0))
+    .slice(0, 30)
+    .map((item) => `- ${item.title} (${item.status}; ${item.alreadyExistsCheck}; priority ${item.priority})`)
+    .join("\n");
   return [
     "Create a prioritized development plan for this project.",
     "",
@@ -357,15 +385,73 @@ function buildPlanPrompt(project: ProjectRecord, instructions?: string): string 
     `Workspace: ${project.workspacePath}`,
     project.description ? `Description: ${project.description}` : "",
     project.summaryMarkdown ? `Current editable project summary:\n${project.summaryMarkdown}` : "",
-    instructions ? `Additional user instructions: ${instructions}` : "",
+    existingItems ? `Existing parsed plan items. Avoid duplicates unless current code evidence proves the old item is obsolete or materially incomplete:\n${existingItems}` : "",
+    "",
+    `Plan focus: ${planModeLabel(planMode)}.`,
+    `Planning horizon: ${planHorizonLabel(planningHorizon)}.`,
+    `Risk posture: ${planRiskLabel(riskLevel)}.`,
+    planModeInstruction(planMode),
+    planHorizonInstruction(planningHorizon),
+    planRiskInstruction(riskLevel),
+    input.instructions ? `Additional user instructions: ${input.instructions}` : "",
     "",
     "Before proposing work, inspect the current codebase and verify that each recommendation is not already fully implemented.",
-    "Avoid duplicate suggestions. Prefer high-signal, concrete improvements with evidence from files, behavior, docs, or tests.",
-    "Return Markdown with a prioritized list. For each item include impact, effort, risk, and evidence.",
+    "Avoid duplicate suggestions. Prefer high-signal, concrete improvements with evidence from files, behavior, docs, tests, or runtime behavior.",
+    "Return Markdown with a prioritized list. For each item include category, target area, user value, impact, effort, risk, blockers, confidence, and evidence.",
     "",
     "At the end include a fenced code block named nordrelay-project-plan containing a JSON array.",
-    "Each JSON item must have: title, description, priority (0-100), impact, effort, risk, alreadyExistsCheck (not_found, partial, existing, uncertain), evidence (string array).",
+    "Each JSON item must have: title, description, priority (0-100), category, mode, targetArea, impact, effort, risk, userValue, blockedBy (string array), confidence (0-100), alreadyExistsCheck (not_found, partial, existing, uncertain), evidence (string array).",
   ].filter(Boolean).join("\n");
+}
+
+function planModeLabel(mode: ProjectPlanMode): string {
+  const labels: Record<ProjectPlanMode, string> = {
+    balanced: "Balanced roadmap",
+    features: "New features",
+    bugfixes: "Bug fixes",
+    refactor: "Code quality / refactoring",
+    performance: "Performance / scalability",
+    security: "Security / permissions",
+    ux: "UX / WebUI",
+    tests: "Tests / CI / docs",
+    release: "Release readiness",
+  };
+  return labels[mode];
+}
+
+function planHorizonLabel(horizon: ProjectPlanHorizon): string {
+  return horizon === "next-sprint" ? "Next sprint" : horizon === "long-term" ? "Long-term roadmap" : "Next release";
+}
+
+function planRiskLabel(risk: ProjectPlanRiskLevel): string {
+  return risk === "conservative" ? "Conservative" : risk === "ambitious" ? "Ambitious" : "Balanced";
+}
+
+function planModeInstruction(mode: ProjectPlanMode): string {
+  const instructions: Record<ProjectPlanMode, string> = {
+    balanced: "Balance new product value, reliability, maintainability, and release risk. Do not over-index on refactoring unless it directly unlocks higher-value work.",
+    features: "Prioritize concrete new user-facing or workflow features. At least most recommendations should be new capabilities, not generic cleanup, unless cleanup is a direct prerequisite.",
+    bugfixes: "Prioritize likely bugs, regressions, edge cases, race conditions, confusing failure states, and missing defensive checks. Include how each bug can be reproduced or detected.",
+    refactor: "Prioritize maintainability, module boundaries, coupling reduction, and simpler future changes. Avoid broad rewrites; propose scoped refactors with clear risk controls.",
+    performance: "Prioritize CPU, polling, I/O, network, cache, startup, and large-data performance. Include measurable symptoms and a verification approach for each item.",
+    security: "Prioritize access control, secrets handling, auditability, plugin and peer trust, auth/session hardening, and safe defaults. Include abuse cases and expected mitigations.",
+    ux: "Prioritize WebUI, chat, workflow, onboarding, diagnostics, and error-state UX. Recommendations should describe the exact user workflow that improves.",
+    tests: "Prioritize tests, CI, documentation drift checks, smoke coverage, and regression harnesses. Each item should name the missing confidence and the target test/doc surface.",
+    release: "Prioritize release blockers, packaging, install/update reliability, docs completeness, migration risk, and operational verification needed before shipping.",
+  };
+  return instructions[mode];
+}
+
+function planHorizonInstruction(horizon: ProjectPlanHorizon): string {
+  if (horizon === "next-sprint") return "Prefer items that can be completed in a short implementation pass and verified quickly.";
+  if (horizon === "long-term") return "Include strategic multi-step investments when they are justified, but split them into independently useful milestones.";
+  return "Prefer items that fit the next release and improve shipped value without requiring a broad product reset.";
+}
+
+function planRiskInstruction(risk: ProjectPlanRiskLevel): string {
+  if (risk === "conservative") return "Prefer low-risk, incremental changes with narrow blast radius and clear rollback paths.";
+  if (risk === "ambitious") return "Allow larger product bets or architecture changes when the evidence supports them, but call out migration and validation risks clearly.";
+  return "Mix quick wins with medium-sized improvements. Avoid risky changes unless their expected value is clearly higher than safer alternatives.";
 }
 
 function bestAssistantOutput(messages: WebChatMessage[]): string {
@@ -417,9 +503,15 @@ function normalizeParsedPlanItem(value: unknown, index: number): ProjectPlanItem
     title: title.slice(0, 180),
     description: String(record.description ?? "").trim(),
     priority: normalizePriority(record.priority),
+    category: cleanOptional(record.category),
+    mode: normalizeProjectPlanMode(record.mode),
+    targetArea: cleanOptional(record.targetArea),
     impact: cleanOptional(record.impact),
     effort: cleanOptional(record.effort),
     risk: cleanOptional(record.risk),
+    userValue: cleanOptional(record.userValue),
+    blockedBy: normalizeStringList(record.blockedBy),
+    confidence: normalizeConfidence(record.confidence),
     status: "proposed",
     evidence: Array.isArray(record.evidence) ? record.evidence.map((entry) => String(entry ?? "").trim()).filter(Boolean).slice(0, 10) : [],
     alreadyExistsCheck: normalizeExistenceCheck(record.alreadyExistsCheck),
@@ -431,6 +523,17 @@ function normalizeParsedPlanItem(value: unknown, index: number): ProjectPlanItem
 function normalizePriority(value: unknown): number {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.min(100, Math.round(number))) : 50;
+}
+
+function normalizeConfidence(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(100, Math.round(number))) : undefined;
+}
+
+function normalizeStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((entry) => String(entry ?? "").trim()).filter(Boolean))].slice(0, 20);
 }
 
 function normalizeExistenceCheck(value: unknown): ProjectPlanExistenceCheck {

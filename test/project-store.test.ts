@@ -29,7 +29,13 @@ describe("ProjectStore", () => {
           title: "Add Projects",
           description: "Track project planning state.",
           priority: 90,
+          category: "WebUI",
+          mode: "features",
+          targetArea: "Projects",
           status: "proposed",
+          userValue: "Admins can plan project work from NordRelay.",
+          blockedBy: ["project summary"],
+          confidence: 82,
           evidence: ["src/state/project-store.ts"],
           alreadyExistsCheck: "partial",
           createdAt: "2026-06-10T00:00:00.000Z",
@@ -51,7 +57,15 @@ describe("ProjectStore", () => {
         workspacePath: workspace,
         defaultAgentId: "codex",
         linkedSessions: [expect.objectContaining({ threadId: "thread-1", agentId: "codex" })],
-        planItems: [expect.objectContaining({ title: "Add Projects", priority: 90 })],
+        planItems: [expect.objectContaining({
+          title: "Add Projects",
+          priority: 90,
+          category: "WebUI",
+          mode: "features",
+          targetArea: "Projects",
+          blockedBy: ["project summary"],
+          confidence: 82,
+        })],
       });
       expect(restored.listJobs(project.id)).toEqual([
         expect.objectContaining({

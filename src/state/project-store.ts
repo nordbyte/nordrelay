@@ -9,6 +9,9 @@ export type ProjectJobKind = "summary" | "plan" | "refresh";
 export type ProjectJobStatus = "queued" | "running" | "completed" | "failed" | "aborted";
 export type ProjectPlanItemStatus = "proposed" | "accepted" | "queued" | "in_progress" | "done" | "rejected";
 export type ProjectPlanExistenceCheck = "not_found" | "partial" | "existing" | "uncertain";
+export type ProjectPlanMode = "balanced" | "features" | "bugfixes" | "refactor" | "performance" | "security" | "ux" | "tests" | "release";
+export type ProjectPlanHorizon = "next-sprint" | "next-release" | "long-term";
+export type ProjectPlanRiskLevel = "conservative" | "balanced" | "ambitious";
 
 export interface ProjectSessionLink {
   id: string;
@@ -25,9 +28,15 @@ export interface ProjectPlanItem {
   title: string;
   description: string;
   priority: number;
+  category?: string;
+  mode?: ProjectPlanMode;
+  targetArea?: string;
   impact?: string;
   effort?: string;
   risk?: string;
+  userValue?: string;
+  blockedBy: string[];
+  confidence?: number;
   status: ProjectPlanItemStatus;
   evidence: string[];
   alreadyExistsCheck: ProjectPlanExistenceCheck;
@@ -60,6 +69,9 @@ export interface ProjectAnalysisJob {
   kind: ProjectJobKind;
   status: ProjectJobStatus;
   agentId?: AgentId;
+  planMode?: ProjectPlanMode;
+  planningHorizon?: ProjectPlanHorizon;
+  riskLevel?: ProjectPlanRiskLevel;
   threadId?: string;
   correlationId?: string;
   startedAt?: string;
@@ -275,9 +287,15 @@ function normalizePlanItem(input: Partial<ProjectPlanItem>): ProjectPlanItem {
     title: cleanRequired(input.title, "Untitled plan item").slice(0, 180),
     description: cleanOptional(input.description) ?? "",
     priority: normalizePriority(input.priority),
+    category: cleanOptional(input.category),
+    mode: normalizePlanMode(input.mode),
+    targetArea: cleanOptional(input.targetArea),
     impact: cleanOptional(input.impact),
     effort: cleanOptional(input.effort),
     risk: cleanOptional(input.risk),
+    userValue: cleanOptional(input.userValue),
+    blockedBy: normalizeStringList(input.blockedBy),
+    confidence: normalizeConfidence(input.confidence),
     status: normalizePlanItemStatus(input.status),
     evidence: normalizeStringList(input.evidence),
     alreadyExistsCheck: normalizeExistenceCheck(input.alreadyExistsCheck),
@@ -294,6 +312,9 @@ function normalizeJob(input: Partial<ProjectAnalysisJob> & Pick<ProjectAnalysisJ
     kind: normalizeJobKind(input.kind),
     status: normalizeJobStatus(input.status),
     agentId: cleanOptional(input.agentId) as AgentId | undefined,
+    planMode: normalizePlanMode(input.planMode),
+    planningHorizon: normalizePlanHorizon(input.planningHorizon),
+    riskLevel: normalizePlanRiskLevel(input.riskLevel),
     threadId: cleanOptional(input.threadId),
     correlationId: cleanOptional(input.correlationId),
     startedAt: validDate(input.startedAt),
@@ -325,6 +346,40 @@ function normalizePlanItemStatus(status: unknown): ProjectPlanItemStatus {
   return status === "accepted" || status === "queued" || status === "in_progress" || status === "done" || status === "rejected" ? status : "proposed";
 }
 
+export function normalizeProjectPlanMode(value: unknown): ProjectPlanMode {
+  return normalizePlanMode(value) ?? "balanced";
+}
+
+export function normalizeProjectPlanHorizon(value: unknown): ProjectPlanHorizon {
+  return normalizePlanHorizon(value) ?? "next-release";
+}
+
+export function normalizeProjectPlanRiskLevel(value: unknown): ProjectPlanRiskLevel {
+  return normalizePlanRiskLevel(value) ?? "balanced";
+}
+
+function normalizePlanMode(value: unknown): ProjectPlanMode | undefined {
+  return value === "features"
+    || value === "bugfixes"
+    || value === "refactor"
+    || value === "performance"
+    || value === "security"
+    || value === "ux"
+    || value === "tests"
+    || value === "release"
+    || value === "balanced"
+    ? value
+    : undefined;
+}
+
+function normalizePlanHorizon(value: unknown): ProjectPlanHorizon | undefined {
+  return value === "next-sprint" || value === "long-term" || value === "next-release" ? value : undefined;
+}
+
+function normalizePlanRiskLevel(value: unknown): ProjectPlanRiskLevel | undefined {
+  return value === "conservative" || value === "ambitious" || value === "balanced" ? value : undefined;
+}
+
 function normalizeExistenceCheck(value: unknown): ProjectPlanExistenceCheck {
   return value === "partial" || value === "existing" || value === "uncertain" ? value : "not_found";
 }
@@ -332,6 +387,12 @@ function normalizeExistenceCheck(value: unknown): ProjectPlanExistenceCheck {
 function normalizePriority(priority: unknown): number {
   const value = Number(priority);
   return Number.isFinite(value) ? Math.max(0, Math.min(100, Math.round(value))) : 50;
+}
+
+function normalizeConfidence(confidence: unknown): number | undefined {
+  if (confidence === undefined || confidence === null || confidence === "") return undefined;
+  const value = Number(confidence);
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, Math.round(value))) : undefined;
 }
 
 function normalizeStringList(values: unknown): string[] {

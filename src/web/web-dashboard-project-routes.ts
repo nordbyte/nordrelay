@@ -2,7 +2,15 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { isAgentId, type AgentId } from "../agents/shared/agent.js";
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
-import type { ProjectRecord, ProjectSessionLink, ProjectTarget } from "../state/project-store.js";
+import type { ProjectRunOptions } from "../runtime/relay-project-service.js";
+import {
+  normalizeProjectPlanHorizon,
+  normalizeProjectPlanMode,
+  normalizeProjectPlanRiskLevel,
+  type ProjectRecord,
+  type ProjectSessionLink,
+  type ProjectTarget,
+} from "../state/project-store.js";
 import type { AuthenticatedUser } from "../access/user-management.js";
 import type { WebActivityActor } from "./web-state.js";
 import {
@@ -90,10 +98,7 @@ export async function handleDashboardProjectRoute(
     }
     if (req.method === "POST" && action === "run") {
       const body = await readJsonBody(req);
-      const runOptions = {
-        agentId: parseOptionalAgentId(optionalStringField(body, "agentId")),
-        instructions: optionalStringField(body, "instructions"),
-      };
+      const runOptions = parseProjectRunBody(body, section);
       const job = section === "plan"
         ? service.runPlan(id, runOptions, options.activityActor)
         : service.runSummary(id, runOptions, options.activityActor);
@@ -159,6 +164,20 @@ function parseProjectPatchBody(body: Record<string, unknown>): Partial<ProjectRe
     defaultAgentId: parseOptionalAgentId(optionalStringField(record, "defaultAgentId")),
     status: optionalStringField(record, "status") === "archived" ? "archived" : optionalStringField(record, "status") === "active" ? "active" : undefined,
   };
+}
+
+function parseProjectRunBody(body: Record<string, unknown>, section: string): ProjectRunOptions {
+  const record = objectRecord(body);
+  const options: ProjectRunOptions = {
+    agentId: parseOptionalAgentId(optionalStringField(record, "agentId")),
+    instructions: optionalStringField(record, "instructions"),
+  };
+  if (section === "plan") {
+    options.planMode = normalizeProjectPlanMode(optionalStringField(record, "planMode"));
+    options.planningHorizon = normalizeProjectPlanHorizon(optionalStringField(record, "planningHorizon"));
+    options.riskLevel = normalizeProjectPlanRiskLevel(optionalStringField(record, "riskLevel"));
+  }
+  return options;
 }
 
 function parseSessionLinkBody(body: Record<string, unknown>): Partial<ProjectSessionLink> & Pick<ProjectSessionLink, "threadId"> {

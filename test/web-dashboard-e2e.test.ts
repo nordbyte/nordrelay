@@ -293,6 +293,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("/api/projects");
     expect(js).toContain("openProjectRunDialog('summary')");
     expect(js).toContain("openProjectRunDialog('plan')");
+    expect(js).toContain("dlgProjectPlanMode");
+    expect(js).toContain("dlgProjectPlanningHorizon");
+    expect(js).toContain("dlgProjectRiskLevel");
+    expect(js).toContain("planMode:val('dlgProjectPlanMode')");
     expect(js).toContain("project-markdown-editor");
     expect(webAssetManifestSources()).toContain("src/web/ui/client/projects.ts");
     expect(css).toContain(".project-tab.active");

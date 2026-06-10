@@ -56,7 +56,21 @@ Open the **Plan** tab and choose **Generate plan**.
 
 The planning prompt uses the current editable project summary and asks the agent to re-check the latest code before recommending work. The generated plan should avoid duplicate suggestions for features that already exist.
 
-If the final answer includes a `nordrelay-project-plan` JSON block, NordRelay parses it into plan items with priority, evidence, effort, risk, and existing-feature checks.
+The generate dialog lets you choose the planning style:
+
+- **Balanced roadmap** mixes features, quality, reliability, and release risk.
+- **New features** biases the plan toward new user-facing or workflow capabilities.
+- **Bug fixes** searches for likely defects, edge cases, regressions, and missing defensive checks.
+- **Code quality / refactoring** focuses on maintainability and module boundaries.
+- **Performance / scalability** targets CPU, polling, I/O, network, cache, startup, and large-data behavior.
+- **Security / permissions** reviews access control, secrets, auditability, peers, plugins, and safe defaults.
+- **UX / WebUI** focuses on interface and workflow improvements.
+- **Tests / CI / docs** looks for missing confidence in automation and documentation.
+- **Release readiness** focuses on packaging, install/update reliability, migrations, docs, and operational checks.
+
+You can also select a planning horizon and risk posture. NordRelay intentionally does not ask for a fixed number of items; the agent should propose the amount of work justified by the current code evidence.
+
+If the final answer includes a `nordrelay-project-plan` JSON block, NordRelay parses it into plan items with priority, category, target area, user value, evidence, effort, risk, blockers, confidence, and existing-feature checks.
 
 ## Jobs
 

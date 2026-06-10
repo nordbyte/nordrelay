@@ -41,7 +41,7 @@ import type {
 } from "../runtime/relay-runtime.js";
 import type { PromptTemplate, Workflow, WorkflowExportBundle, WorkflowRun, WorkflowRunReport, WorkflowStep, WorkflowTrigger, WorkflowTriggerCreateResult, WorkflowVersionDiff, WorkflowVersionRecord } from "../state/workflow-store.js";
 import type { QueuePlanStatus } from "../state/queue-plan-store.js";
-import type { ProjectAnalysisJob, ProjectRecord, ProjectTarget } from "../state/project-store.js";
+import type { ProjectAnalysisJob, ProjectPlanHorizon, ProjectPlanMode, ProjectPlanRiskLevel, ProjectRecord, ProjectTarget } from "../state/project-store.js";
 import type { SessionLock } from "../access/session-locks.js";
 import type { SettingsSnapshot, SettingsUpdateResult } from "../core/settings-service.js";
 import type {
@@ -279,7 +279,7 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends `/api/projects/${string}/sessions` ? { threadId: string; agentId?: AgentId; peerId?: string; label?: string; workspace?: string } :
   P extends `/api/projects/${string}/sessions/${string}` ? Record<string, never> :
   P extends `/api/projects/${string}/summary` | `/api/projects/${string}/plan` ? { markdown: string } :
-  P extends `/api/projects/${string}/summary/run` | `/api/projects/${string}/plan/run` ? { agentId?: AgentId; instructions?: string } :
+  P extends `/api/projects/${string}/summary/run` | `/api/projects/${string}/plan/run` ? { agentId?: AgentId; instructions?: string; planMode?: ProjectPlanMode; planningHorizon?: ProjectPlanHorizon; riskLevel?: ProjectPlanRiskLevel } :
   P extends `/api/projects/${string}/jobs` ? Record<string, never> :
   P extends `/api/projects/${string}` ? { name?: string; workspacePath?: string; description?: string; target?: ProjectTarget; defaultAgentId?: AgentId; status?: "active" | "archived" } :
   P extends "/api/templates" ? { name: string; prompt: string; description?: string; tags?: string[]; variables?: PromptTemplate["variables"]; scope?: "private" | "shared"; defaultAgentId?: AgentId; defaultWorkspace?: string; defaultModel?: string; defaultReasoning?: string; defaultLaunchProfile?: string } :
