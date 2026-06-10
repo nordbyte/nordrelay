@@ -324,7 +324,9 @@ function dedupeSessionDetailRows<T>(items: T[], keyFor: (item: T) => string): T[
 function dedupeSessionDetailMessages(items: WebChatMessage[]): WebChatMessage[] {
   const output: WebChatMessage[] = [];
   for (const item of items) {
-    if (output.some((existing) => isDuplicateSessionDetailMessage(existing, item))) {
+    const existingIndex = output.findIndex((existing) => isDuplicateSessionDetailMessage(existing, item));
+    if (existingIndex >= 0) {
+      output[existingIndex] = preferredSessionDetailMessage(output[existingIndex]!, item);
       continue;
     }
     output.push(item);
@@ -332,8 +334,18 @@ function dedupeSessionDetailMessages(items: WebChatMessage[]): WebChatMessage[] 
   return output;
 }
 
+function preferredSessionDetailMessage(left: WebChatMessage, right: WebChatMessage): WebChatMessage {
+  if (isCliWorkingPromptDuplicate(left, right)) {
+    return isCliWorkingPromptMessage(left) ? right : left;
+  }
+  return left;
+}
+
 function isDuplicateSessionDetailMessage(left: WebChatMessage, right: WebChatMessage): boolean {
   if (left === right) {
+    return true;
+  }
+  if (isCliWorkingPromptDuplicate(left, right)) {
     return true;
   }
   const leftText = normalizeSessionDetailText(left.text);
@@ -355,6 +367,41 @@ function isDuplicateSessionDetailMessage(left: WebChatMessage, right: WebChatMes
     return true;
   }
   return false;
+}
+
+function isCliWorkingPromptDuplicate(left: WebChatMessage, right: WebChatMessage): boolean {
+  const leftPrompt = cliWorkingPromptText(left);
+  const rightPrompt = cliWorkingPromptText(right);
+  if (!leftPrompt && !rightPrompt) {
+    return false;
+  }
+  const working = leftPrompt ? left : right;
+  const user = leftPrompt ? right : left;
+  const prompt = leftPrompt || rightPrompt;
+  if (!prompt || working.threadId !== user.threadId || user.role !== "user" || user.source !== "cli") {
+    return false;
+  }
+  if (normalizeSessionDetailText(user.text) !== prompt) {
+    return false;
+  }
+  if (working.turnId && user.turnId && working.turnId === user.turnId) {
+    return true;
+  }
+  const workingAt = Date.parse(working.timestamp);
+  const userAt = Date.parse(user.timestamp);
+  return Number.isFinite(workingAt) && Number.isFinite(userAt) && Math.abs(workingAt - userAt) <= 10 * 60 * 1000;
+}
+
+function isCliWorkingPromptMessage(message: WebChatMessage): boolean {
+  return Boolean(cliWorkingPromptText(message));
+}
+
+function cliWorkingPromptText(message: WebChatMessage): string {
+  if (message.source !== "cli" || message.role !== "system") {
+    return "";
+  }
+  const match = normalizeSessionDetailText(message.text).match(/^Working on\s+(.+)$/i);
+  return match?.[1]?.trim() ?? "";
 }
 
 function normalizeSessionDetailText(value: string): string {

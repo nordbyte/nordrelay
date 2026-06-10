@@ -80,6 +80,61 @@ describe("relayRuntimeChatHistory", () => {
     expect(messages.filter((message) => message.text === "Done.")).toHaveLength(1);
   });
 
+  it("prefers external CLI user prompts over legacy Working status messages", async () => {
+    getExternalSnapshotForSession.mockReturnValue({
+      agentId: "codex",
+      agentLabel: "Codex",
+      threadId: "thread-1",
+      sourcePath: "/tmp/rollout-thread-1.jsonl",
+      sourceLabel: "Codex rollout",
+      lineCount: 1,
+      activity: {
+        agentId: "codex",
+        agentLabel: "Codex",
+        threadId: "thread-1",
+        sourcePath: "/tmp/rollout-thread-1.jsonl",
+        sourceLabel: "Codex rollout",
+        active: true,
+        stale: false,
+        turnId: "turn-1",
+        startedAt: new Date("2026-05-21T08:00:00.000Z"),
+        updatedAt: new Date("2026-05-21T08:00:00.000Z"),
+      },
+      events: [
+        {
+          lineNumber: 1,
+          kind: "user",
+          timestamp: new Date("2026-05-21T08:00:00.000Z"),
+          type: "user_prompt",
+          turnId: "turn-1",
+          status: null,
+          text: "Build the feature",
+          toolName: null,
+          phase: null,
+        },
+      ],
+      latestAgentMessage: null,
+      latestUserMessage: "Build the feature",
+      latestToolName: null,
+    });
+
+    const runtime = fakeRuntime([{
+      id: "legacy-working",
+      threadId: "thread-1",
+      role: "system",
+      text: "Working on Build the feature",
+      timestamp: "2026-05-21T08:00:00.000Z",
+      source: "cli",
+      turnId: "turn-1",
+    }]);
+
+    const messages = await relayRuntimeChatHistory(runtime, 20);
+
+    expect(messages.map((message) => [message.role, message.text, message.source])).toEqual([
+      ["user", "Build the feature", "cli"],
+    ]);
+  });
+
   it("paginates chat history with an older-message cursor", async () => {
     getExternalSnapshotForSession.mockReturnValue(null);
     const runtime = fakeRuntime([

@@ -93,6 +93,59 @@ describe("RelayExternalActivityMonitor", () => {
     expect(appendActivity).not.toHaveBeenCalled();
   });
 
+  it("stores external CLI starts as user prompts instead of Working status chat messages", async () => {
+    getExternalSnapshotForSession.mockReturnValue(activeSnapshot());
+    const messages: WebChatMessage[] = [];
+    const broadcasts: RelayEvent[] = [];
+    const appendWithResult = vi.fn((input: any) => {
+      const message: WebChatMessage = {
+        id: `message-${messages.length + 1}`,
+        timestamp: input.timestamp ?? "2026-05-25T07:00:00.000Z",
+        ...input,
+        threadId: input.threadId ?? "pending",
+      };
+      messages.push(message);
+      return { message, inserted: true };
+    });
+    const monitor = new RelayExternalActivityMonitor({
+      config: { workspace: "/workspace", codexExternalBusyStaleMs: 60_000 } as never,
+      getSession: async () => session(),
+      publicInfo: () => sessionInfo(),
+      queueLength: () => 0,
+      mirrorMode: () => "final",
+      mirrorMinUpdateMs: () => 0,
+      chatStore: {
+        appendWithResult,
+        upsertByKey: vi.fn(),
+      } as never,
+      chatHistory: async () => messages,
+      activity: () => [],
+      persistWorkspaceArtifactsForTurn: async () => {},
+      drainQueue: async () => {},
+      appendActivity: vi.fn((input) => ({ ...input, id: "activity-1", timestamp: "2026-05-25T07:00:00.000Z" })),
+      broadcast: (event) => broadcasts.push(event),
+      broadcastStatus: vi.fn(),
+      scheduleActiveSessionsBroadcast: vi.fn(),
+    });
+
+    await monitor.monitorSafe();
+
+    expect(appendWithResult).toHaveBeenCalledWith(expect.objectContaining({
+      role: "user",
+      source: "cli",
+      text: "Build the feature",
+      key: "external:/tmp/rollout-thread-1.jsonl:1",
+    }));
+    expect(appendWithResult).not.toHaveBeenCalledWith(expect.objectContaining({
+      role: "system",
+      text: expect.stringMatching(/^Working on\b/),
+    }));
+    expect(broadcasts).toContainEqual(expect.objectContaining({
+      type: "chat_message_added",
+      message: expect.objectContaining({ role: "user", source: "cli", text: "Build the feature" }),
+    }));
+  });
+
   it("stores external status mirror updates as separate WebUI chat messages", async () => {
     getExternalSnapshotForSession
       .mockReturnValueOnce(activeSnapshot({ lineCount: 1, latestToolName: "read_file" }))

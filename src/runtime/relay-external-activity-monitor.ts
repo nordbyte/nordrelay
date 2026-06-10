@@ -295,19 +295,21 @@ export class RelayExternalActivityMonitor {
   }
 
   private async startExternalTurn(snapshot: AgentExternalSnapshot, info: AgentSessionInfo): Promise<void> {
-    const prompt = snapshot.latestUserMessage ?? `${snapshot.agentLabel} CLI task`;
+    const prompt = snapshot.latestUserMessage?.trim() ?? "";
+    const activityPrompt = prompt || `${snapshot.agentLabel} CLI task`;
     const mode = this.options.mirrorMode();
     let broadcastedChatMessage = false;
-    if (mode === "final" || mode === "full") {
+    if ((mode === "final" || mode === "full") && prompt) {
+      const promptEvent = latestPromptEvent(snapshot, prompt);
       const stored = this.options.chatStore.appendWithResult({
         threadId: snapshot.threadId,
-        role: "system",
-        text: `Working on ${trimLine(prompt, 500)}`,
+        role: "user",
+        text: promptEvent?.text?.trim() || prompt,
         source: "cli",
         correlationId: externalCorrelationId(snapshot),
-        turnId: snapshot.activity.turnId ?? undefined,
-        timestamp: snapshot.activity.startedAt?.toISOString(),
-        key: externalMessageKey("working", snapshot),
+        turnId: promptEvent?.turnId ?? snapshot.activity.turnId ?? undefined,
+        timestamp: promptEvent?.timestamp?.toISOString() ?? snapshot.activity.startedAt?.toISOString(),
+        key: externalPromptMessageKey(snapshot, promptEvent?.lineNumber),
       });
       this.broadcastAppendResult(stored, snapshot, info);
       broadcastedChatMessage = stored.inserted;
@@ -337,7 +339,7 @@ export class RelayExternalActivityMonitor {
       agentId: info.agentId,
       actor: CLI_ACTIVITY_ACTOR,
       correlationId: externalCorrelationId(snapshot),
-      prompt,
+      prompt: activityPrompt,
       detail: `${snapshot.sourceLabel}: ${snapshot.sourcePath}`,
     });
   }
@@ -681,6 +683,21 @@ function normalizePromptForManagedTurnMatch(value: string | null | undefined): s
 
 function externalConversationMessageKey(snapshot: AgentExternalSnapshot, lineNumber: number): string {
   return `external:${snapshot.sourcePath}:${lineNumber}`;
+}
+
+function externalPromptMessageKey(snapshot: AgentExternalSnapshot, lineNumber?: number): string {
+  return lineNumber ? externalConversationMessageKey(snapshot, lineNumber) : `external:${snapshot.sourcePath}:latest:user`;
+}
+
+function latestPromptEvent(snapshot: AgentExternalSnapshot, prompt: string): AgentExternalSnapshot["events"][number] | undefined {
+  const normalizedPrompt = normalizePromptForManagedTurnMatch(prompt);
+  return [...snapshot.events]
+    .reverse()
+    .find((event) =>
+      event.kind === "user" &&
+      Boolean(event.text?.trim()) &&
+      normalizePromptForManagedTurnMatch(event.text) === normalizedPrompt,
+    );
 }
 
 function externalTurnKey(snapshot: AgentExternalSnapshot): string {
