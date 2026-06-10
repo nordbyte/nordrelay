@@ -48,6 +48,7 @@ import { handleDashboardSessionRoute } from "./web-dashboard-session-routes.js";
 import { handleDashboardPeerRoute } from "./web-dashboard-peer-routes.js";
 import { handleDashboardProfileRoute } from "./web-dashboard-profile-routes.js";
 import { handleDashboardProfileSecurityRoute } from "./web-dashboard-profile-security-routes.js";
+import { handleDashboardProjectRoute } from "./web-dashboard-project-routes.js";
 import { handleDashboardWorkflowRoute } from "./web-dashboard-workflow-routes.js";
 import { handleDashboardPluginRoute } from "./web-dashboard-plugin-routes.js";
 import { activeSettingsValues } from "./web-dashboard-settings-values.js";
@@ -444,6 +445,19 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, au
   }
 
   if (await handleDashboardWorkflowRoute(req, res, url, {
+    runtime,
+    authUser,
+    activityActor: webActivityActor(authUser),
+    assertPeerAccess: (peerId) => {
+      if (!users.canUsePeerStrict(authUser, peerId)) {
+        throw new AccessDeniedError(`Access denied: peer ${peerId} is outside your group scope.`);
+      }
+    },
+  })) {
+    return;
+  }
+
+  if (await handleDashboardProjectRoute(req, res, url, {
     runtime,
     authUser,
     activityActor: webActivityActor(authUser),

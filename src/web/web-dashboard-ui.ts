@@ -17,6 +17,7 @@ export const DASHBOARD_PRIMARY_NAV_PAGES: DashboardPage[] = [
   { id: "overview", label: "Overview", permission: "inspect" },
   { id: "chat", label: "Chat", permission: "sessions.read" },
   { id: "workflows", label: "Workflows", permission: "workflows.read" },
+  { id: "projects", label: "Projects", permission: "projects.read" },
   { id: "sessions", label: "Sessions", permission: "sessions.read" },
   { id: "queue", label: "Queue", permission: "queue.read" },
   { id: "monitor", label: "Monitor", permission: "inspect" },

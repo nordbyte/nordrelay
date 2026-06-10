@@ -276,6 +276,33 @@ describe("web dashboard browser-flow assets", () => {
     expect(contract).toContain('dynamic("/api/workflow-runs/:id/cancel"');
   });
 
+  it("includes Projects as a local WebUI planning surface", () => {
+    const js = dashboardJs();
+    const css = dashboardCss();
+    const pageSource = readFileSync("src/web/web-dashboard-pages.ts", "utf8");
+    const contract = readFileSync("src/web/web-api-contract.ts", "utf8");
+
+    expect(pageSource).toContain('id="page-projects"');
+    expect(pageSource).toContain('id="createProjectBtn"');
+    expect(pageSource).toContain('id="runProjectSummaryBtn"');
+    expect(pageSource).toContain('id="runProjectPlanBtn"');
+    expect(pageSource).toContain('id="projectSummaryPanel"');
+    expect(pageSource).toContain('id="projectPlanPanel"');
+    expect(js).toContain("function loadProjects");
+    expect(js).toContain("data-project-tab");
+    expect(js).toContain("/api/projects");
+    expect(js).toContain("openProjectRunDialog('summary')");
+    expect(js).toContain("openProjectRunDialog('plan')");
+    expect(js).toContain("project-markdown-editor");
+    expect(webAssetManifestSources()).toContain("src/web/ui/client/projects.ts");
+    expect(css).toContain(".project-tab.active");
+    expect(css).toContain(".project-markdown-editor");
+    expect(contract).toContain('exact("/api/projects"');
+    expect(contract).toContain('dynamic("/api/projects/:id/summary/run"');
+    expect(contract).toContain('dynamic("/api/projects/:id/plan/run"');
+  });
+
+
   it("forces fresh version checks from the manual Version page action", () => {
     const js = dashboardJs();
     const routeSource = readFileSync("src/web/web-dashboard-runtime-routes.ts", "utf8");
@@ -426,7 +453,7 @@ describe("web dashboard browser-flow assets", () => {
     const runtimeSource = readFileSync("src/web/ui/client/core/runtime.ts", "utf8");
 
     expect(pageSource).toContain('id="pageTitle" class="page-title-heading"');
-    expect(runtimeSource).toContain("const LOCAL_ONLY_PAGES=new Set(['access','settings','peers','workflows'])");
+    expect(runtimeSource).toContain("const LOCAL_ONLY_PAGES=new Set(['access','settings','peers','workflows','projects'])");
     expect(runtimeSource).toContain("function availableNodeCount()");
     expect(runtimeSource).toContain("function pageUsesSelectedPeer");
     expect(runtimeSource).toContain("function selectedNodeBadgeHtml");

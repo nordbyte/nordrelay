@@ -1,5 +1,5 @@
 let peerTableRefreshInFlight=false;
-const PEER_SCOPE_FALLBACK=['inspect','sessions.read','sessions.write','prompt.send','prompt.abort','files.read','files.write','settings.read','settings.write','auth.manage','diagnostics.read','logs.read','logs.clear','queue.read','queue.write','queue.plan.read','queue.plan.write','queue.plan.approve','workflows.read','workflows.write','workflows.run','plugins.read','plugins.install','plugins.enable','plugins.settings.write','updates.run','system.restart','users.read','users.write','audit.read','peers.read','peers.write','peers.connect'];
+const PEER_SCOPE_FALLBACK=['inspect','sessions.read','sessions.write','prompt.send','prompt.abort','files.read','files.write','settings.read','settings.write','auth.manage','diagnostics.read','logs.read','logs.clear','queue.read','queue.write','queue.plan.read','queue.plan.write','queue.plan.approve','projects.read','projects.write','projects.run','workflows.read','workflows.write','workflows.run','plugins.read','plugins.install','plugins.enable','plugins.settings.write','updates.run','system.restart','users.read','users.write','audit.read','peers.read','peers.write','peers.connect'];
 const PEER_DEFAULT_SCOPES=['inspect','sessions.read','sessions.write','prompt.send','prompt.abort','queue.read','queue.write','queue.plan.read','queue.plan.write','queue.plan.approve','files.read','files.write','diagnostics.read','logs.read'];
 const PEER_SCOPE_GROUPS=[
   ['Overview',['inspect']],
@@ -7,6 +7,7 @@ const PEER_SCOPE_GROUPS=[
   ['Queue',['queue.read','queue.write','queue.plan.read','queue.plan.write','queue.plan.approve']],
   ['Files',['files.read','files.write']],
   ['Settings and operations',['settings.read','settings.write','auth.manage','diagnostics.read','logs.read','logs.clear','updates.run','system.restart']],
+  ['Projects',['projects.read','projects.write','projects.run']],
   ['Workflows',['workflows.read','workflows.write','workflows.run']],
   ['Plugins',['plugins.read','plugins.install','plugins.enable','plugins.settings.write']],
   ['Users and audit',['users.read','users.write','audit.read']],

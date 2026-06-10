@@ -75,6 +75,7 @@ Browser sessions use the `nr_session` cookie plus CSRF tokens for mutations. Aut
 | `/api/adapters/conformance` | Adapter conformance |
 | `/api/logs` | Logs |
 | `/api/artifacts` | Artifact listing and actions |
+| `/api/projects` | Project records, linked sessions, summaries, plans, and analysis jobs |
 | `/api/workflows` | Workflow and template management |
 | `/api/workflow-triggers/:token/run` | Token-authenticated workflow trigger webhook |
 | `/api/peers` | Peer management and proxying |
@@ -118,6 +119,7 @@ route contract:
 | `/api/plugins/*` | Plugins, marketplace, panels, jobs, and commands |
 | `/api/profile/*` | Profile, MFA, passkeys, tokens, and sessions |
 | `/api/progress/*` | Runtime progress |
+| `/api/projects/*` | Projects, linked sessions, summaries, plans, and analysis jobs |
 | `/api/prompt/*` | Prompt submission and uploads |
 | `/api/queue/*` | Runtime and planned queues |
 | `/api/retry/*` | Prompt retry |

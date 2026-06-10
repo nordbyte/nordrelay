@@ -1,12 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { ensureOutDir, type ArtifactTurnReport } from "../artifacts/artifacts.js";
-import {
-  buildFileInstructions,
-  outboxPath,
-  stageFile,
-  type StagedFile,
-} from "../artifacts/attachments.js";
+import { buildFileInstructions, outboxPath, stageFile, type StagedFile } from "../artifacts/attachments.js";
 import {
   CODEX_AGENT_CAPABILITIES,
   agentLabel,
@@ -41,8 +36,10 @@ import { PromptStore, toPromptEnvelope, type PromptEnvelope } from "../state/pro
 import { UnifiedJobStore } from "../state/job-store.js";
 import { WorkflowStore } from "../state/workflow-store.js";
 import { QueuePlanStore, type QueuePlanStatus } from "../state/queue-plan-store.js";
+import { ProjectStore } from "../state/project-store.js";
 import { MetricsHistoryStore } from "../state/metrics-history-store.js";
 import { RelayWorkflowService } from "./relay-workflow-service.js";
+import { RelayProjectService } from "./relay-project-service.js";
 import { PluginService } from "../plugins/plugin-service.js";
 import { PluginCollectorScheduler } from "../plugins/plugin-collector-scheduler.js";
 import { runPeerWorkflowPromptStep } from "./relay-peer-workflow.js";
@@ -80,16 +77,7 @@ import { createSessionWorktreeStore, SessionWorktreeService } from "../worktrees
 import type { SessionWorktreeDiffSnapshot, SessionWorktreeRecord, SessionWorktreeUpdateResult, WorktreeCleanupResult, WorktreeComparisonSnapshot, WorktreeDashboardSnapshot, WorktreeFinalizeIntegrationOptions, WorktreeFinalizeIntegrationResult, WorktreeIntegrationOptions, WorktreeIntegrationPatchExport, WorktreeIntegrationRun, WorktreeIntegrationPreview } from "../worktrees/worktree-types.js";
 import { createSupportBundle, type SupportBundleResult } from "../support/support-bundle.js";
 import { transcribeAudio, type TranscriptionBackend, type VoiceDiagnostics } from "../artifacts/voice.js";
-import {
-  WebActivityStore,
-  WebChatStore,
-  type WebActivityActor,
-  type WebActivityCategory,
-  type WebActivityEvent,
-  type WebActivitySource,
-  type WebActivityStatus,
-  type WebChatMessage,
-} from "../web/web-state.js";
+import { WebActivityStore, WebChatStore, type WebActivityActor, type WebActivityCategory, type WebActivityEvent, type WebActivitySource, type WebActivityStatus, type WebChatMessage } from "../web/web-state.js";
 import type {
   ActiveSessionDto,
   ActiveSessionsDto,
@@ -310,8 +298,9 @@ export class RelayRuntime {
   readonly jobStore: UnifiedJobStore;
   readonly workflowStore: WorkflowStore;
   readonly queuePlanStore: QueuePlanStore;
+  readonly projectStore: ProjectStore;
   readonly metricsHistoryStore: MetricsHistoryStore;
-  readonly workflowService: RelayWorkflowService; readonly pluginService: PluginService; readonly pluginCollectorScheduler: PluginCollectorScheduler;
+  readonly workflowService: RelayWorkflowService; readonly projectService: RelayProjectService; readonly pluginService: PluginService; readonly pluginCollectorScheduler: PluginCollectorScheduler;
   readonly artifactService: RelayArtifactService;
   readonly worktreeService: SessionWorktreeService;
   readonly mirrorRegistry: ChannelMirrorRegistry;
@@ -350,6 +339,7 @@ export class RelayRuntime {
     this.jobStore = new UnifiedJobStore(config.workspace, config.stateBackend, config.unifiedJobMaxItems);
     this.workflowStore = new WorkflowStore(config.workspace, config.stateBackend);
     this.queuePlanStore = new QueuePlanStore(config.workspace, config.stateBackend);
+    this.projectStore = new ProjectStore(config.workspace, config.stateBackend);
     this.metricsHistoryStore = new MetricsHistoryStore(config.workspace, config.stateBackend);
     this.pluginService = createRuntimePluginService(this, options.home ?? process.env.NORDRELAY_HOME ?? (process.env.HOME ? `${process.env.HOME}/.nordrelay` : ".nordrelay"));
     this.pluginCollectorScheduler = new PluginCollectorScheduler(this.pluginService);
@@ -451,6 +441,18 @@ export class RelayRuntime {
       appendAudit: (input) => this.appendAudit(input),
       upsertJob: (job) => { this.jobStore.upsert(job); },
       broadcastStatus: (message, level) => this.broadcastStatus(message, level),
+    });
+    this.projectService = new RelayProjectService({
+      store: this.projectStore,
+      getSession: (deferThreadStart) => this.getSession(deferThreadStart),
+      newSession: (input, actor) => this.newSession(input, actor),
+      runPrompt: (session, envelope) => this.runPrompt(session, envelope),
+      chatMessagesByCorrelation: (correlationId, limit) => this.chatStore.findByCorrelationId(correlationId, limit),
+      appendActivity: (input) => this.appendActivity(input),
+      appendAudit: (input) => this.appendAudit(input),
+      upsertJob: (job) => { this.jobStore.upsert(job); },
+      broadcastStatus: (message, level) => this.broadcastStatus(message, level),
+      abort: (actor) => this.abort(actor),
     });
   }
 

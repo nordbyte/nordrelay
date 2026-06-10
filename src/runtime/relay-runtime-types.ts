@@ -352,6 +352,7 @@ export type UnifiedJobKind =
   | "external-turn"
   | "queued-prompt"
   | "workflow-run"
+  | "project-analysis"
   | "agent-update"
   | "connector-update"
   | "support-bundle";

@@ -347,6 +347,51 @@ ${faviconLinks}
         </div>
       </section>
 
+      <section class="page" id="page-projects">
+        <div class="panel">
+          <div class="section-header project-section-header">
+            <div id="projectTabs" class="section-tabs project-tabs" role="tablist" aria-label="Project sections">
+              <button type="button" role="tab" aria-selected="true" tabindex="0" data-project-tab="projects" class="active">Projects</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-project-tab="summary">Summary</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-project-tab="plan">Plan</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-project-tab="sessions">Sessions</button>
+              <button type="button" role="tab" aria-selected="false" tabindex="-1" data-project-tab="jobs">Jobs</button>
+            </div>
+          </div>
+          <div class="project-tab active" data-project-tab-panel="projects">
+            <div class="project-tab-heading">
+              <div class="row project-heading-actions"><button id="reloadProjectsBtn" class="secondary">Reload</button><button id="createProjectBtn">Create project</button></div>
+              <div class="workflow-filter-row"><input id="projectSearch" placeholder="Search projects"></div>
+            </div>
+            <div id="projectList" class="list"></div>
+          </div>
+          <div class="project-tab" data-project-tab-panel="summary">
+            <div class="project-tab-heading">
+              <div class="row project-heading-actions"><button id="runProjectSummaryBtn">Generate summary</button><button id="saveProjectSummaryBtn" class="secondary">Save summary</button></div>
+            </div>
+            <div id="projectSummaryPanel" class="list"></div>
+          </div>
+          <div class="project-tab" data-project-tab-panel="plan">
+            <div class="project-tab-heading">
+              <div class="row project-heading-actions"><button id="runProjectPlanBtn">Generate plan</button><button id="saveProjectPlanBtn" class="secondary">Save plan</button></div>
+            </div>
+            <div id="projectPlanPanel" class="list"></div>
+          </div>
+          <div class="project-tab" data-project-tab-panel="sessions">
+            <div class="project-tab-heading">
+              <div class="row project-heading-actions"><button id="linkProjectCurrentSessionBtn" class="secondary">Link selected session</button><button id="linkProjectSessionBtn" class="secondary">Link manually</button></div>
+            </div>
+            <div id="projectSessionsPanel" class="list"></div>
+          </div>
+          <div class="project-tab" data-project-tab-panel="jobs">
+            <div class="project-tab-heading">
+              <div class="row project-heading-actions"><button id="reloadProjectJobsBtn" class="secondary">Reload jobs</button></div>
+            </div>
+            <div id="projectJobsPanel" class="list"></div>
+          </div>
+        </div>
+      </section>
+
       <section class="page" id="page-metrics">
         <div class="panel">
           <div class="section-header metrics-section-header">

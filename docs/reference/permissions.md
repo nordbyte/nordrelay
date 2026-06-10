@@ -25,6 +25,9 @@ automation flow.
 | `queue.plan.read` | Read planned queue items and Kanban-style prompt drafts |
 | `queue.plan.write` | Create, edit, move, or delete planned queue items |
 | `queue.plan.approve` | Approve planned prompts into the real runtime queue |
+| `projects.read` | Read projects, linked sessions, summaries, plans, and project jobs |
+| `projects.write` | Create, edit, delete, link sessions, and save project summary or plan text |
+| `projects.run` | Start or cancel Project summary and planning analysis jobs |
 | `workflows.read` | Read templates, workflows, versions, dry-runs, triggers, and run reports |
 | `workflows.write` | Create, edit, import, export, rollback, delete, and manage workflow/template versions |
 | `workflows.run` | Run workflows, templates, plugin commands, and workflow-trigger actions |

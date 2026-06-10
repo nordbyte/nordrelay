@@ -41,6 +41,7 @@ import type {
 } from "../runtime/relay-runtime.js";
 import type { PromptTemplate, Workflow, WorkflowExportBundle, WorkflowRun, WorkflowRunReport, WorkflowStep, WorkflowTrigger, WorkflowTriggerCreateResult, WorkflowVersionDiff, WorkflowVersionRecord } from "../state/workflow-store.js";
 import type { QueuePlanStatus } from "../state/queue-plan-store.js";
+import type { ProjectAnalysisJob, ProjectRecord, ProjectTarget } from "../state/project-store.js";
 import type { SessionLock } from "../access/session-locks.js";
 import type { SettingsSnapshot, SettingsUpdateResult } from "../core/settings-service.js";
 import type {
@@ -273,6 +274,14 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends `/api/plugins/${string}/artifact-handler` ? { handlerId: string; input?: Record<string, unknown> } :
   P extends `/api/plugins/${string}/collector` ? { collectorId: string; input?: Record<string, unknown> } :
   P extends `/api/plugins/${string}` ? Record<string, never> :
+  P extends "/api/projects" ? { name: string; workspacePath: string; description?: string; target?: ProjectTarget; defaultAgentId?: AgentId; status?: "active" | "archived" } :
+  P extends `/api/projects/jobs/${string}/cancel` ? Record<string, never> :
+  P extends `/api/projects/${string}/sessions` ? { threadId: string; agentId?: AgentId; peerId?: string; label?: string; workspace?: string } :
+  P extends `/api/projects/${string}/sessions/${string}` ? Record<string, never> :
+  P extends `/api/projects/${string}/summary` | `/api/projects/${string}/plan` ? { markdown: string } :
+  P extends `/api/projects/${string}/summary/run` | `/api/projects/${string}/plan/run` ? { agentId?: AgentId; instructions?: string } :
+  P extends `/api/projects/${string}/jobs` ? Record<string, never> :
+  P extends `/api/projects/${string}` ? { name?: string; workspacePath?: string; description?: string; target?: ProjectTarget; defaultAgentId?: AgentId; status?: "active" | "archived" } :
   P extends "/api/templates" ? { name: string; prompt: string; description?: string; tags?: string[]; variables?: PromptTemplate["variables"]; scope?: "private" | "shared"; defaultAgentId?: AgentId; defaultWorkspace?: string; defaultModel?: string; defaultReasoning?: string; defaultLaunchProfile?: string } :
   P extends "/api/templates/import" ? { bundle: unknown } :
   P extends `/api/templates/${string}/versions/${string}/rollback` | `/api/workflows/${string}/versions/${string}/rollback` ? Record<string, never> :
@@ -388,6 +397,12 @@ export type WebApiClientResponse<P extends WebApiPath> =
   P extends `/api/plugins/${string}/aggregate-command` ? PluginAggregateCommandResponse :
   P extends `/api/plugins/${string}/command` | `/api/plugins/${string}/panel` | `/api/plugins/${string}/artifact-handler` | `/api/plugins/${string}/diagnostics` | `/api/plugins/${string}/collector` ? PluginInvokeResult :
   P extends `/api/plugins/${string}` ? PublicPluginRecord | { ok: true } :
+  P extends "/api/projects" ? { projects: ProjectRecord[]; jobs: ProjectAnalysisJob[]; updatedAt: string } | { project: ProjectRecord } :
+  P extends `/api/projects/jobs/${string}/cancel` ? { job: ProjectAnalysisJob } :
+  P extends `/api/projects/${string}/sessions` | `/api/projects/${string}/sessions/${string}` | `/api/projects/${string}/summary` | `/api/projects/${string}/plan` ? { project: ProjectRecord } :
+  P extends `/api/projects/${string}/summary/run` | `/api/projects/${string}/plan/run` ? { job: ProjectAnalysisJob } :
+  P extends `/api/projects/${string}/jobs` ? { jobs: ProjectAnalysisJob[] } :
+  P extends `/api/projects/${string}` ? { project: ProjectRecord } | { removed: boolean } :
   P extends "/api/templates" ? { templates: PromptTemplate[] } | { template: PromptTemplate } :
   P extends "/api/templates/import" ? { template: PromptTemplate } :
   P extends `/api/templates/${string}/versions` ? { versions: WorkflowVersionRecord[] } :

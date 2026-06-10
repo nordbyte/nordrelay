@@ -71,6 +71,7 @@ export default defineConfig({
           { text: "Chat adapters", link: "/guides/chat-adapters" },
           { text: "Remote sessions", link: "/guides/remote-sessions" },
           { text: "Workflows", link: "/guides/workflows" },
+          { text: "Projects", link: "/guides/projects" },
           { text: "Artifacts and voice", link: "/guides/artifacts-voice" },
           { text: "Security and login", link: "/guides/security-login" },
           { text: "Peers", link: "/guides/peers" },

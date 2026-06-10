@@ -90,6 +90,7 @@ export type WebApiStaticPath =
   | "/api/profile/webauthn/register/options"
   | "/api/profile/webauthn/register/verify"
   | "/api/progress"
+  | "/api/projects"
   | "/api/prompt"
   | "/api/prompt/upload"
   | "/api/queue"
@@ -180,6 +181,15 @@ export type WebApiDynamicPath =
   | `/api/profile/api-tokens/${string}`
   | `/api/profile/sessions/${string}`
   | `/api/profile/webauthn/${string}`
+  | `/api/projects/${string}`
+  | `/api/projects/${string}/jobs`
+  | `/api/projects/${string}/plan`
+  | `/api/projects/${string}/plan/run`
+  | `/api/projects/${string}/sessions`
+  | `/api/projects/${string}/sessions/${string}`
+  | `/api/projects/${string}/summary`
+  | `/api/projects/${string}/summary/run`
+  | `/api/projects/jobs/${string}/cancel`
   | `/api/queue/plans/${string}`
   | `/api/queue/plans/${string}/approve`
   | `/api/queue/plans/${string}/enqueue`
@@ -311,6 +321,7 @@ export type WebApiResponseByPath = {
   "/api/profile/webauthn/register/options": ServerWebApiClientResponse<"/api/profile/webauthn/register/options">;
   "/api/profile/webauthn/register/verify": ServerWebApiClientResponse<"/api/profile/webauthn/register/verify">;
   "/api/progress": ServerWebApiClientResponse<"/api/progress">;
+  "/api/projects": ServerWebApiClientResponse<"/api/projects">;
   "/api/prompt": ServerWebApiClientResponse<"/api/prompt">;
   "/api/prompt/upload": ServerWebApiClientResponse<"/api/prompt/upload">;
   "/api/queue": ServerWebApiClientResponse<"/api/queue">;
@@ -428,6 +439,7 @@ export type WebApiRequestBodyByPath = {
   "/api/profile/webauthn/register/options": ServerWebApiRequestBody<"/api/profile/webauthn/register/options">;
   "/api/profile/webauthn/register/verify": ServerWebApiRequestBody<"/api/profile/webauthn/register/verify">;
   "/api/progress": ServerWebApiRequestBody<"/api/progress">;
+  "/api/projects": ServerWebApiRequestBody<"/api/projects">;
   "/api/prompt": ServerWebApiRequestBody<"/api/prompt">;
   "/api/prompt/upload": ServerWebApiRequestBody<"/api/prompt/upload">;
   "/api/queue": ServerWebApiRequestBody<"/api/queue">;

@@ -533,6 +533,10 @@ interface DashboardState {
   pluginPanelNavPeer?: string;
   peerTab: string;
   workflowTab: string;
+  projectTab: string;
+  projects: WebuiRecord[];
+  projectJobs: WebuiRecord[];
+  selectedProjectId: string;
   queueTab: string;
   sessionTab: string;
   monitorTab: string;
