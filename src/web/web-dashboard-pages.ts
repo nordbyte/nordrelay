@@ -359,9 +359,9 @@ ${faviconLinks}
             </div>
           </div>
           <div class="project-tab active" data-project-tab-panel="projects">
-            <div class="project-tab-heading">
-              <div class="row project-heading-actions"><button id="reloadProjectsBtn" class="secondary">Reload</button><button id="createProjectBtn">Create project</button></div>
-              <div class="workflow-filter-row"><input id="projectSearch" placeholder="Search projects"></div>
+            <div class="sessions-toolbar project-toolbar">
+              <div class="row search-row"><input id="projectSearch" placeholder="Search projects"></div>
+              <div class="row attach-row project-heading-actions"><button id="reloadProjectsBtn" class="secondary">Reload</button><button id="createProjectBtn">Create project</button></div>
             </div>
             <div id="projectList" class="list"></div>
           </div>
