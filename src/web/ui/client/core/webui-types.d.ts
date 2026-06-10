@@ -203,6 +203,11 @@ interface WebuiActiveSession extends WebuiRecord {
 interface WebuiChatMessage extends WebuiRecord {
   id?: string;
   correlationId?: string;
+  peerId?: string;
+  nodeId?: string;
+  agentId?: string;
+  threadId?: string;
+  contextKey?: string;
   source?: string;
   timestamp?: string;
   text?: string;
