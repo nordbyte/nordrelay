@@ -443,6 +443,9 @@ interface WebuiAppendMessageOptions extends WebuiRecord {
   agentId?: string;
   threadId?: string;
   contextKey?: string;
+  source?: string;
+  timestamp?: string;
+  at?: string;
   forceScroll?: boolean;
 }
 

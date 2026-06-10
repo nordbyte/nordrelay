@@ -521,7 +521,7 @@ function findDuplicateWebChatMessage(
 ): WebChatMessage | undefined {
   const key = webChatDedupKey(input);
   const exact = key ? messages.find((message) => webChatDedupKey(message) === key) : undefined;
-  return exact ?? findOverlappingAgentDuplicate(messages, input);
+  return exact ?? (key ? undefined : findOverlappingAgentDuplicate(messages, input));
 }
 
 function findOverlappingAgentDuplicate(

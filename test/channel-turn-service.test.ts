@@ -256,6 +256,58 @@ describe("ChannelTurnService", () => {
       rmSync(workspace, { recursive: true, force: true });
     }
   });
+
+  it("stores completed assistant message segments as separate chat messages", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "nordrelay-turn-segments-"));
+    try {
+      const chatStore = new WebChatStore(workspace, "json", 10);
+      const events: RelayEvent[] = [];
+      let progress: WebTaskDto | null = null;
+      let currentTurnStartedAt = Date.now();
+      let accumulatedText = "";
+      const prompt = vi.fn(async (_input, callbacks) => {
+        callbacks.onTextDelta("first segment");
+        callbacks.onAssistantMessageComplete?.();
+        callbacks.onTextDelta("second segment");
+        callbacks.onAssistantMessageComplete?.();
+        callbacks.onAgentEnd();
+      });
+      const service = new ChannelTurnService({
+        source: "web",
+        contextKey: "web:dashboard",
+        chatStore,
+        artifactService: {
+          persistWorkspaceArtifactsForTurn: async () => undefined,
+        } as unknown as RelayArtifactService,
+        checkAuth: async () => ({ authenticated: true, detail: "ok" }),
+        ensureActiveThread: async () => undefined,
+        updateSession: () => undefined,
+        appendActivity: (input) => ({ id: "activity", timestamp: new Date().toISOString(), ...input }) as WebActivityEvent,
+        appendAudit: (input) => ({ id: "audit", timestamp: new Date().toISOString(), channelId: "web", ...input }) as AuditEvent,
+        broadcast: (event) => events.push(event),
+        chatHistory: async () => chatStore.list("thread-1"),
+        setLastPrompt: () => undefined,
+        getCurrentProgress: () => progress,
+        setCurrentProgress: (next) => { progress = next; },
+        setCurrentTurn: (_id, startedAt, text) => {
+          currentTurnStartedAt = startedAt ?? Date.now();
+          accumulatedText = text ?? "";
+        },
+        getCurrentTurnStartedAt: () => currentTurnStartedAt,
+        getAccumulatedText: () => accumulatedText,
+        setAccumulatedText: (text) => { accumulatedText = text; },
+      });
+
+      await service.run(fakeSession({ prompt }), toPromptEnvelope("continue"));
+
+      const agentMessages = chatStore.list("thread-1").filter((message) => message.role === "agent");
+      expect(agentMessages.map((message) => message.text)).toEqual(["first segment", "second segment"]);
+      expect(agentMessages.find((message) => message.text === "first segmentsecond segment")).toBeUndefined();
+      expect(events.filter((event) => event.type === "chat_message_added" && event.message.role === "agent")).toHaveLength(2);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
 });
 
 function fakeSession(overrides: Partial<AgentSessionService> = {}): AgentSessionService {

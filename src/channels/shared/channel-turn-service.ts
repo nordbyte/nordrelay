@@ -84,6 +84,39 @@ export class ChannelTurnService {
     const displayText = displayTextForPromptEnvelope(envelope);
     const displayMeta = displayMetaForPromptEnvelope(envelope);
     const eventContext = this.eventContext(info);
+    let assistantSegmentText = "";
+    let assistantSegmentsStored = 0;
+    const appendAssistantSegmentText = (delta: string): void => {
+      assistantSegmentText += delta;
+    };
+    const completeAssistantSegment = (): void => {
+      const text = assistantSegmentText;
+      assistantSegmentText = "";
+      if (!text.trim()) {
+        return;
+      }
+      assistantSegmentsStored += 1;
+      const agentMessage = this.options.chatStore.append({
+        threadId: info.threadId ?? "pending",
+        role: "agent",
+        text,
+        source,
+        correlationId,
+        turnId,
+        key: `${turnId}:assistant:${assistantSegmentsStored}`,
+      });
+      this.options.broadcast({ type: "chat_message_added", message: agentMessage, ...eventContext });
+      this.options.broadcast({
+        type: "message_status_changed",
+        status: "added",
+        messageId: agentMessage.id,
+        role: agentMessage.role,
+        source: agentMessage.source,
+        correlationId,
+        at: agentMessage.timestamp,
+        ...eventContext,
+      });
+    };
 
     const userMessage = this.options.chatStore.append({
       threadId: info.threadId ?? "pending",
@@ -142,7 +175,11 @@ export class ChannelTurnService {
     });
 
     try {
-      await session.prompt(envelope.input as AgentPromptInput, this.callbacks(turnId, info, envelope, actor, source));
+      await session.prompt(envelope.input as AgentPromptInput, this.callbacks(turnId, info, envelope, actor, source, {
+        append: appendAssistantSegmentText,
+        complete: completeAssistantSegment,
+      }));
+      completeAssistantSegment();
       this.options.updateSession(session);
       await this.options.artifactService.persistWorkspaceArtifactsForTurn(info.workspace, turnId, startedDate, {
         source,
@@ -156,7 +193,7 @@ export class ChannelTurnService {
         turnStartedAt: startedAt,
       });
       const text = this.options.getAccumulatedText();
-      if (text.trim()) {
+      if (text.trim() && assistantSegmentsStored === 0) {
         const agentMessage = this.options.chatStore.append({
           threadId: info.threadId ?? "pending",
           role: "agent",
@@ -266,6 +303,7 @@ export class ChannelTurnService {
     envelope: PromptEnvelope,
     actor: WebActivityActor | undefined,
     source: WebActivitySource,
+    assistantSegment: { append: (delta: string) => void; complete: () => void },
   ): AgentSessionCallbacks {
     const correlationId = envelope.correlationId ?? turnId;
     const eventContext = this.eventContext(info);
@@ -273,10 +311,12 @@ export class ChannelTurnService {
       onTextDelta: (delta) => {
         const nextText = this.options.getAccumulatedText() + delta;
         this.options.setAccumulatedText(nextText);
+        assistantSegment.append(delta);
         this.updateCurrentProgress({ outputChars: nextText.length });
         this.options.broadcast({ type: "text_delta", id: turnId, delta, correlationId, ...eventContext });
       },
       onAssistantMessageComplete: () => {
+        assistantSegment.complete();
         this.options.broadcast({ type: "assistant_message_complete", id: turnId, at: new Date().toISOString(), correlationId, ...eventContext });
       },
       onToolStart: (toolName, toolCallId) => {
