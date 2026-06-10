@@ -370,6 +370,34 @@ describe("CodexSessionService", () => {
     }));
   });
 
+  it("keeps an active launch override when switching the same attached thread again", async () => {
+    const service = await CodexSessionService.create(createConfig(), {
+      launchProfileId: "review",
+      activeLaunchProfileId: "full-access",
+      resumeThreadId: "thread-active-override",
+    });
+    mockCodexState.getThread.mockReturnValue(null);
+
+    await service.switchSession("thread-active-override");
+    const codexInstance = mockState.codexInstances.at(-1);
+
+    expect(codexInstance.resumeThread).toHaveBeenLastCalledWith("thread-active-override", {
+      model: "o3",
+      sandboxMode: "danger-full-access",
+      workingDirectory: "/workspace/base",
+      approvalPolicy: "never",
+      skipGitRepoCheck: true,
+    });
+    expect(service.getInfo()).toEqual(expect.objectContaining({
+      launchProfileId: "full-access",
+      launchProfileBehavior: "danger-full-access / never",
+      sandboxMode: "danger-full-access",
+      approvalPolicy: "never",
+      unsafeLaunch: true,
+      nextLaunchProfileId: "review",
+    }));
+  });
+
   it("includes persisted Codex usage only when requested", async () => {
     mockCodexState.getThreadUsage.mockReturnValue({
       contextWindow: 1000,

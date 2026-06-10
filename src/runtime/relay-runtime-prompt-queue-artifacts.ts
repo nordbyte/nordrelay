@@ -501,10 +501,9 @@ export function relayRuntimeEnsureIdle(runtime: RelayRuntimeDelegate, session: A
   }
 
 export async function relayRuntimeRunPrompt(runtime: RelayRuntimeDelegate, session: AgentSessionService, envelope: PromptEnvelope): Promise<void> {
+    const sync = session.syncFromAgentState({ reattach: true }); if (sync.changed || sync.reattached) runtime.updateSession(session);
     const workspacePolicy = evaluateWorkspacePolicy(session.getInfo().workspace, runtime.config);
-    if (!workspacePolicy.allowed) {
-      throw new Error(workspacePolicy.warning ?? "Current workspace is blocked by policy.");
-    }
+    if (!workspacePolicy.allowed) throw new Error(workspacePolicy.warning ?? "Current workspace is blocked by policy.");
     try {
       await runtime.turnService.run(session, envelope);
     } finally {

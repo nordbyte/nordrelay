@@ -17,6 +17,7 @@ import {
 import type { RelayRuntimeDelegate } from "../src/runtime/relay-runtime-delegate.js";
 import type { ActiveSessionDto } from "../src/runtime/relay-runtime-types.js";
 import { CODEX_AGENT_CAPABILITIES, type AgentId, type AgentThreadRecord } from "../src/agents/shared/agent.js";
+import { createDefaultLaunchProfile } from "../src/agents/codex/codex-launch.js";
 import type { BotPreferencesStore } from "../src/state/bot-preferences.js";
 import type { ContextMetadata } from "../src/state/session-registry.js";
 
@@ -90,6 +91,35 @@ describe("relay runtime active sessions", () => {
     );
 
     expect(session.getInfo().fastMode).toBe(true);
+  });
+
+  it("prefers explicit Codex thread permissions over stale default launch metadata", () => {
+    const session = relayRuntimeSessionStubForMetadata(
+      fakeRuntime("codex", {
+        codexEnabled: true,
+        launchProfiles: [createDefaultLaunchProfile("workspace-write", "never")],
+      }),
+      contextMetadata({
+        activeLaunchProfileId: "default",
+        launchProfileId: "default",
+        launchProfileLabel: "Default",
+        launchProfileBehavior: "workspace-write / never",
+        sandboxMode: "danger-full-access",
+        approvalPolicy: "never",
+        unsafeLaunch: true,
+      }),
+      "codex",
+      CODEX_AGENT_CAPABILITIES,
+    );
+
+    expect(session.getInfo()).toEqual(expect.objectContaining({
+      launchProfileId: "attached-thread",
+      launchProfileLabel: "Attached Thread",
+      launchProfileBehavior: "danger-full-access / never",
+      sandboxMode: "danger-full-access",
+      approvalPolicy: "never",
+      unsafeLaunch: true,
+    }));
   });
 
   it("keeps metadata-backed non-Codex sessions in normal mode", () => {

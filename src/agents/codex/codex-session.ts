@@ -407,12 +407,14 @@ export class CodexSessionService {
     const workspace = record?.cwd ?? this.currentWorkspace;
     const model = record?.model || undefined;
     const reasoningEffort = record?.reasoningEffort || undefined;
-    const launchProfile = this.resolveThreadLaunchProfile(record);
+    const launchProfile = this.launchProfileOverrideFor(threadId) ?? this.resolveThreadLaunchProfile(record);
     this.currentReasoningEffort = reasoningEffort as ModelReasoningEffort | undefined;
 
     this.thread = this.getCodex().resumeThread(threadId, this.buildThreadOptions(workspace, model, launchProfile));
     this.activeThreadLaunchProfile = launchProfile;
-    this.activeThreadLaunchProfileOverride = null;
+    this.activeThreadLaunchProfileOverride = this.activeThreadLaunchProfileOverride?.threadId === threadId
+      ? this.activeThreadLaunchProfileOverride
+      : null;
     this.currentWorkspace = workspace;
     this.currentThreadId = threadId;
     if (model) {

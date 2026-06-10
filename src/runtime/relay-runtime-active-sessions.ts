@@ -25,7 +25,6 @@ import { listAgentAdapterDescriptors } from "../agents/shared/agent-adapter.js";
 import { AgentUpdateManager, type AgentUpdateJobSnapshot, type AgentUpdateOperation } from "../agents/shared/agent-updates.js";
 import { createAgentSessionService, enabledAgents } from "../agents/shared/agent-factory.js";
 import { readCodexFastMode } from "../agents/codex/codex-config.js";
-import { findLaunchProfile, formatLaunchProfileBehavior } from "../agents/codex/codex-launch.js";
 import { AuditLogStore, type AuditEvent, type AuditListOptions } from "../access/audit-log.js";
 import { BotPreferencesStore } from "../state/bot-preferences.js";
 import { ChannelCommandService } from "../channels/shared/channel-command-service.js";
@@ -102,6 +101,7 @@ import type {
 export type { RuntimeMetricsDto } from "./metrics.js";
 import { evaluateWorkspacePolicy, filterAllowedWorkspaces } from "../core/workspace-policy.js";
 import type { RelayRuntimeDelegate } from "./relay-runtime-delegate.js";
+import { launchInfoFromMetadata } from "./launch-metadata.js";
 import { getObservabilityRegistry } from "../observability/observability-registry.js";
 import {
   relayRuntimeDiscoverActiveClaudeCodeSessions,
@@ -402,7 +402,7 @@ export function relayRuntimeExternalActiveSession(runtime: RelayRuntimeDelegate,
   }
 
 export function relayRuntimeSessionStubForMetadata(runtime: RelayRuntimeDelegate, meta: ContextMetadata, agentId: AgentId, capabilities: AgentCapabilities): AgentSessionService {
-    const launch = launchInfoFromMetadata(runtime, meta, agentId);
+    const launch = launchInfoFromMetadata(runtime.config, meta, agentId);
     const nextLaunchProfileId = meta.launchProfileId && meta.launchProfileId !== launch.id ? meta.launchProfileId : undefined;
     const info: AgentSessionInfo = {
       agentId,
@@ -450,29 +450,6 @@ function metadataFastMode(meta: ContextMetadata, agentId: AgentId): boolean {
   }
   return readCodexFastMode() ?? meta.fastMode ?? false;
 }
-
-function launchInfoFromMetadata(runtime: RelayRuntimeDelegate, meta: ContextMetadata, agentId: AgentId): {
-  id: string;
-  label: string;
-  behavior: string;
-  sandboxMode: string;
-  approvalPolicy: string;
-  unsafe: boolean;
-} {
-    const id = meta.activeLaunchProfileId ?? meta.launchProfileId ?? runtime.config.defaultLaunchProfileId;
-    const configured = agentId === "codex" ? findLaunchProfile(runtime.config.launchProfiles, id) : undefined;
-    const sandboxMode = meta.sandboxMode ?? configured?.sandboxMode ?? "-";
-    const approvalPolicy = meta.approvalPolicy ?? configured?.approvalPolicy ?? "-";
-    const behavior = meta.launchProfileBehavior ?? (configured ? formatLaunchProfileBehavior(configured) : (sandboxMode !== "-" && approvalPolicy !== "-" ? `${sandboxMode} / ${approvalPolicy}` : "-"));
-    return {
-      id,
-      label: meta.launchProfileLabel ?? configured?.label ?? id,
-      behavior,
-      sandboxMode,
-      approvalPolicy,
-      unsafe: meta.unsafeLaunch ?? (configured?.unsafe ?? sandboxMode === "danger-full-access"),
-    };
-  }
 
 export function relayRuntimeCapabilitiesForAgent(runtime: RelayRuntimeDelegate, agentId: AgentId): AgentCapabilities {
     return listAgentAdapterDescriptors().find((descriptor) => descriptor.id === agentId)?.capabilities ?? CODEX_AGENT_CAPABILITIES;

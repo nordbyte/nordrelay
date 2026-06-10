@@ -280,6 +280,8 @@ export interface AgentThreadRecord {
   cwd: string;
   model: string | null;
   reasoningEffort: string | null;
+  sandboxMode?: string | null;
+  approvalPolicy?: string | null;
   createdAt: Date;
   updatedAt: Date;
   firstUserMessage: string | null;

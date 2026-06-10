@@ -416,7 +416,7 @@ describe("SessionRegistry", () => {
     }));
   });
 
-  it("ignores dynamic attached-thread active launch metadata when restoring a Codex dashboard context", async () => {
+  it("preserves full-access attached-thread metadata when restoring a Codex dashboard context", async () => {
     const config = createConfig();
     mockFsState.files.set(
       stateBackendPath(config.workspace, config.stateBackend, "contexts.json"),
@@ -447,6 +447,7 @@ describe("SessionRegistry", () => {
       model: undefined,
       reasoningEffort: undefined,
       launchProfileId: undefined,
+      activeLaunchProfileId: "full-access",
       deferThreadStart: undefined,
       resumeThreadId: "thread-a",
       sessionPath: undefined,

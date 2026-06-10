@@ -41,6 +41,9 @@ export function relayRuntimeDiscoverActiveCodexSessions(runtime: RelayRuntimeDel
       workspace: thread.cwd,
       model: thread.model ?? undefined,
       reasoningEffort: thread.reasoningEffort ?? undefined,
+      sandboxMode: thread.sandboxMode ?? undefined,
+      approvalPolicy: thread.approvalPolicy ?? undefined,
+      unsafeLaunch: thread.sandboxMode === "danger-full-access" ? true : undefined,
       updatedAt: thread.updatedAt.getTime(),
     };
     const session = runtime.externalActiveSession(meta, knownContexts, preferences);
@@ -136,6 +139,9 @@ export function relayRuntimeDiscoverActiveRecordedAgentSessions(
       workspace: record.cwd,
       model: record.model ?? undefined,
       reasoningEffort: record.reasoningEffort ?? undefined,
+      sandboxMode: record.sandboxMode ?? undefined,
+      approvalPolicy: record.approvalPolicy ?? undefined,
+      unsafeLaunch: record.sandboxMode === "danger-full-access" ? true : undefined,
       sessionPath: sessionPathFromRecord(record),
       updatedAt: record.updatedAt.getTime(),
     };

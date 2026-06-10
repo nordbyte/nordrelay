@@ -424,6 +424,10 @@ function resolveActiveLaunchProfileId(
   config: ConnectorConfig,
   meta: ContextMetadata | undefined,
 ): string | undefined {
+  if ((meta?.agentId ?? "codex") === "codex" && meta?.sandboxMode === "danger-full-access" && meta.approvalPolicy === "never") {
+    return "full-access";
+  }
+
   if (!meta?.activeLaunchProfileId) {
     return undefined;
   }
