@@ -409,24 +409,22 @@ test.describe("NordRelay WebUI", () => {
     expect(runRequest?.body).toMatchObject({ variables: { target: "src/runtime" } });
   });
 
-  test("controls WebUI CLI mirroring from the chat toolbar and slash command", async ({ page }) => {
+  test("does not expose WebUI CLI mirror controls", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
     await navigateDashboard(page, "Chat");
 
-    await expect(page.locator("#controlMirror")).toHaveText("status");
-    await page.locator("#controlMirror").click();
-    await page.locator('[data-control-option="controlMirror"][data-control-value="full"]').click();
-    await expect.poll(() => mock.requests.filter((request) => request.path === "/api/chat/mirror" && request.method === "POST").length).toBe(1);
-    expect(mock.requests.find((request) => request.path === "/api/chat/mirror" && request.method === "POST")?.body).toMatchObject({ mode: "full" });
-    await expect(page.locator("#controlMirror")).toHaveText("full");
+    await expect(page.locator("#controlMirror")).toHaveCount(0);
     await page.reload();
-    await expect(page.locator("#controlMirror")).toHaveText("full");
+    await expect(page.locator("#controlMirror")).toHaveCount(0);
 
-    await page.locator("#promptInput").fill("/mirror");
+    await page.locator("#promptInput").fill("Run a mirror-free prompt");
     await page.locator("#sendPromptBtn").click();
-    await expect(page.locator("#messages")).toContainText("CLI mirroring: full");
-    await expect(page.locator("#messages")).toContainText("Minimum update interval: 4000 ms");
+    await expect.poll(() => mock.requests.filter((request) => request.path === "/api/chat/mirror" && request.method === "POST").length).toBe(0);
+    await expect(page.locator("#messages")).toContainText("Queued prompt queue-web-1");
+    expect(mock.requests.find((request) => request.path === "/api/prompt" && request.method === "POST")?.body).toMatchObject({
+      text: "Run a mirror-free prompt",
+    });
   });
 
   test("keeps sticky CLI status visible after transient toasts expire", async ({ page }) => {
