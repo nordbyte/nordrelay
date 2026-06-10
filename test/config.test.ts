@@ -22,7 +22,6 @@ describe("loadConfig", () => {
     delete process.env.TELEGRAM_EDIT_MIN_INTERVAL_MS;
     delete process.env.NORDRELAY_CLI_MIRROR_MODE;
     delete process.env.NORDRELAY_CLI_MIRROR_MIN_UPDATE_MS;
-    delete process.env.NORDRELAY_WEB_CLI_MIRROR_MODE;
     delete process.env.NORDRELAY_WEB_CLI_MIRROR_MIN_UPDATE_MS;
     delete process.env.NORDRELAY_NOTIFY_MODE;
     delete process.env.NORDRELAY_QUIET_HOURS;
@@ -227,7 +226,7 @@ describe("loadConfig", () => {
       telegramEditMinIntervalMs: 1_200,
       mirrorMode: "status",
       mirrorMinUpdateMs: 4_000,
-      webMirrorMode: "status",
+      webMirrorMode: "final",
       webMirrorMinUpdateMs: 4_000,
       notifyMode: "minimal",
       quietHours: null,
@@ -475,7 +474,7 @@ describe("loadConfig", () => {
     expect(config.telegramEditMinIntervalMs).toBe(1_200);
     expect(config.mirrorMode).toBe("status");
     expect(config.mirrorMinUpdateMs).toBe(4_000);
-    expect(config.webMirrorMode).toBe("status");
+    expect(config.webMirrorMode).toBe("final");
     expect(config.webMirrorMinUpdateMs).toBe(4_000);
     expect(config.notifyMode).toBe("minimal");
     expect(config.quietHours).toBeNull();
@@ -984,7 +983,7 @@ describe("loadConfig", () => {
     expect(config.autoSendArtifacts).toBe(true);
     expect(config.telegramMirrorMode).toBe("full");
     expect(config.telegramMirrorMinUpdateMs).toBe(9000);
-    expect(config.webMirrorMode).toBe("full");
+    expect(config.webMirrorMode).toBe("final");
     expect(config.webMirrorMinUpdateMs).toBe(9000);
     expect(config.telegramNotifyMode).toBe("all");
     expect(config.telegramQuietHours).toEqual({ startHour: 22, endHour: 7 });

@@ -176,8 +176,6 @@ declare function loadChatHistory(options?: { forceScroll?: boolean; preserveScro
 declare function loadDiagnostics(): Promise<void>;
 declare function loadLogs(reset?: boolean): Promise<void>;
 declare function loadMetrics(options?: { silent?: boolean }): Promise<void>;
-declare function loadMirrorPreference(): Promise<void>;
-declare function setMirrorPreference(argument: string): Promise<unknown>;
 declare function createWebCorrelationId(): string;
 declare function loadMonitor(): Promise<void>;
 declare function loadPeers(): Promise<void>;

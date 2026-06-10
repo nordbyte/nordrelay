@@ -77,6 +77,9 @@ export class ChannelMirrorRegistry {
     source: "telegram" | "discord" | "slack" | "matrix" | "web",
     preferences: BotPreferencesStore,
   ): Exclude<ChannelMirrorMode, "off"> | "off" {
+    if (source === "web") {
+      return "final";
+    }
     const configured = configuredMirrorMode(this.config, source);
     return preferences.get(contextKey).mirrorMode ?? configured;
   }
@@ -131,5 +134,5 @@ function configuredMirrorMode(config: ConnectorConfig, source: "telegram" | "dis
   if (source === "matrix") {
     return config.matrixMirrorMode;
   }
-  return config.webMirrorMode;
+  return "final";
 }

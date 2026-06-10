@@ -52,16 +52,18 @@ describe("ChannelCommandService preference commands", () => {
     expect(response.plain).toContain("Minimum update interval: 7000 ms");
   });
 
-  it("updates WebUI mirror mode with WebUI defaults", () => {
+  it("keeps WebUI mirror mode fixed to final", () => {
+    preferencesStore.update("web:dashboard", { mirrorMode: "off" });
     const response = service.renderMirrorPreference({
       source: "web",
       contextKey: "web:dashboard",
-      argument: "",
+      argument: "full",
       preferencesStore,
       cliMirrorSupported: true,
       agentLabel: "Codex",
     });
 
+    expect(preferencesStore.get("web:dashboard").mirrorMode).toBe("off");
     expect(response.plain).toContain("CLI mirroring: final");
     expect(response.plain).toContain("Minimum update interval: 3000 ms");
   });

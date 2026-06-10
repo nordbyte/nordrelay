@@ -38,7 +38,6 @@ async function loadBootstrap(){
   if(!remoteBootstrapError) mergeHeaderTargetBootstrap(state.selectedPeer||'local',data);
   renderPageTitle();
   applyPermissions();
-  await refreshChatMirrorPreferenceForBootstrap();
   renderSnapshot(state.snapshot);
   void refreshRemoteHeaderTargets(local,remoteBootstrapError?null:data).catch(()=>renderHeaderTargetMenuIfClosed(state.snapshot));
   safe(loadActiveSessions);
@@ -53,13 +52,6 @@ async function loadBootstrap(){
   syncActiveSessionsRefresh();
   safe(loadPluginPanelNav);
   applyPermissions();
-}
-async function refreshChatMirrorPreferenceForBootstrap(){
-  if(state.currentPage!=='chat'||!can('sessions.read'))return;
-  try{
-    const data=await api('/api/chat/mirror',{timeoutMs:HEADER_TARGET_PEER_TIMEOUT_MS});
-    if(data)state.webMirror=data;
-  }catch{}
 }
 function footerHealthLabel(status){
   if(status==='ready')return'healthy';
@@ -361,15 +353,12 @@ function renderSessionControls(){
   const selectedLaunch=activeLaunchProfileId(s,c);
   const launchItems=launchMenuItems(c,s,selectedLaunch);
   const selectedLaunchItem=launchItems.find(item=>item.value===selectedLaunch)||launchItems[0];
-  const mirrorItems=[{value:'off',label:'off'},{value:'status',label:'status'},{value:'final',label:'final'},{value:'full',label:'full'}];
-  const selectedMirror=state.webMirror?.mode||'off';
   const applyLaunchAttrs=stateDisabledAttr(lockedTitle)||(' title="Apply selected launch profile to the current idle session"'+disabledAttr('settings.write'));
   document.getElementById('sessionControls').innerHTML=[
     caps.modelSelection?compactControlMenu('controlModel','Model',selectedModel?.value||'',selectedModel?.label||'Default',modelItems,'settings.write',lockedTitle):'',
     caps.reasoningSelection?compactControlMenu('controlReasoning',c.reasoningLabel||'Reasoning',selectedReasoning?.value||'',selectedReasoning?.label||'Default',reasoningItems,'settings.write',lockedTitle):'',
     caps.fastMode?compactControlMenu('controlFast','Fast mode',selectedFast,selectedFast,fastItems,'settings.write',lockedTitle):'',
     caps.launchProfiles?compactControlMenu('controlLaunch','Launch',selectedLaunchItem?.value||'',selectedLaunchItem?.label||'Default',launchItems,'settings.write',lockedTitle):'',
-    compactControlMenu('controlMirror','Mirror',selectedMirror,selectedMirror,mirrorItems),
     caps.launchProfiles?'<button id="applyLaunchBtn" class="secondary compact-apply-button"'+applyLaunchAttrs+'>Apply</button>':''
   ].join('');
   bindCompactControlMenus();
@@ -470,22 +459,6 @@ function bindCompactControlMenus(){
       closeCompactControlMenus();
       syncActiveSessionsRefresh();
       await loadActiveSessions();
-      return;
-    }
-    if(id==='controlMirror'){
-      closeCompactControlMenus();
-      button.textContent='Saving...';
-      button.setAttribute('aria-busy','true');
-      try{
-        await setMirrorPreference(nextValue||'off');
-      }catch(error){
-        button.dataset.controlValue=previousValue;
-        button.textContent=previousText;
-        option.closest('.control-menu-list')?.querySelectorAll('[data-control-option]').forEach(item=>item.setAttribute('aria-selected',item.dataset.controlValue===previousValue?'true':'false'));
-        throw error;
-      }finally{
-        button.removeAttribute('aria-busy');
-      }
       return;
     }
     button.dataset.controlValue=nextValue;

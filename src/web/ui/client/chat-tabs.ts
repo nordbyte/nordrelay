@@ -301,7 +301,6 @@ async function activateChatTabSession(tab: WebuiChatTab, options: { navigate?: b
   if (state.currentPage === 'chat' && options.loadHistory !== false) {
     const [historyRendered] = await Promise.all([
       loadChatHistory({ forceScroll: true, skipIfRendered: false }),
-      loadMirrorPreference(),
       loadActiveSessions(),
     ]);
     renderChatTabs();

@@ -367,7 +367,7 @@ export class RelayRuntime {
       getSession: () => this.getSession(true),
       publicInfo: (session) => this.publicInfo(session),
       queueLength: () => this.queueService.length(),
-      mirrorMode: () => this.preferencesStore.get(this.contextKey).mirrorMode ?? this.config.webMirrorMode,
+      mirrorMode: () => "final",
       mirrorMinUpdateMs: () => this.config.webMirrorMinUpdateMs,
       chatStore: this.chatStore,
       chatHistory: () => this.chatHistory(),

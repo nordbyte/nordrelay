@@ -534,11 +534,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function configuredLaunchProfile");
     expect(js).toContain("Select a configured launch profile first");
     expect(js).toContain("compactControlMenu('controlLaunch','Launch'");
-    expect(js).toContain("compactControlMenu('controlMirror','Mirror'");
-    expect(js).toContain("if(id==='controlMirror')");
-    expect(js).toContain("button.textContent='Saving...'");
-    expect(js).toContain("await setMirrorPreference(nextValue||'off')");
-    expect(js).toContain("body:{mode:argument}");
+    expect(js).not.toContain("compactControlMenu('controlMirror','Mirror'");
+    expect(js).not.toContain("if(id==='controlMirror')");
+    expect(js).not.toContain("await setMirrorPreference(nextValue||'off')");
     expect(js).toContain("function bindCompactControlMenus");
     expect(js).toContain("function chatSessionControlLockTitle");
     expect(js).toContain("stateDisabledAttr(lockedTitle)");
@@ -840,7 +838,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(chatTabsSource).toContain("body: JSON.stringify({ threadId: tab.threadId }), contextKey");
     expect(workflowsSource).toContain("api('/api/prompt',activeChatTabApiOptions");
     expect(workflowsSource).toContain("api('/api/prompt/upload',activeChatTabApiOptions");
-    expect(workflowsSource).toContain("api('/api/chat/mirror',activeChatTabApiOptions");
+    expect(workflowsSource).not.toContain("api('/api/chat/mirror',activeChatTabApiOptions");
     expect(workflowsSource).toContain("api('/api/abort',activeChatTabApiOptions");
     expect(eventsSource).toContain("api('/api/chat/history',activeChatTabApiOptions");
     expect(eventsSource).toContain("api('/api/chat/attachment',activeChatTabApiOptions");

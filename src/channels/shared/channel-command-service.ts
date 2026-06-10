@@ -223,7 +223,7 @@ export class ChannelCommandService {
       return { plain: text, html: escapeHTML(text) };
     }
 
-    const argument = options.argument.trim();
+    const argument = options.source === "web" ? "" : options.argument.trim();
     if (argument) {
       const normalized = argument.toLowerCase();
       if (!["off", "status", "final", "full"].includes(normalized)) {
@@ -408,7 +408,7 @@ export class ChannelCommandService {
     if (source === "matrix") {
       return this.config.matrixMirrorMode;
     }
-    return this.config.webMirrorMode;
+    return "final";
   }
 
   private mirrorMinUpdateMs(source: CommandChannelSource): number {
@@ -460,6 +460,9 @@ export class ChannelCommandService {
   }
 
   private effectiveMirrorMode(source: CommandChannelSource, contextKey: string, preferencesStore: BotPreferencesStore): ChannelMirrorMode {
+    if (source === "web") {
+      return "final";
+    }
     return preferencesStore.get(contextKey).mirrorMode ?? this.defaultMirrorMode(source);
   }
 

@@ -55,7 +55,7 @@ describe("ChannelMirrorRegistry", () => {
       { source: "discord", contextKey: "discord:guild:channel", mode: "full", queueLength: 1, queuePaused: true },
       { source: "slack", contextKey: "slack:T123:C123", mode: "final", queueLength: 1, queuePaused: false },
       { source: "matrix", contextKey: "matrix:aG9tZQ:IXJvb206aG9tZQ", mode: "status", queueLength: 1, queuePaused: false },
-      { source: "web", contextKey: "web:dashboard", mode: "status", queueLength: 0, queuePaused: false },
+      { source: "web", contextKey: "web:dashboard", mode: "final", queueLength: 0, queuePaused: false },
     ]);
     expect(registry.queueLengthForExternalSource("cli:codex:thread-a", mirrors)).toBe(4);
     expect(registry.queuePausedForExternalSource("cli:codex:thread-a", mirrors)).toBe(true);

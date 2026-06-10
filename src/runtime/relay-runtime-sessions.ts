@@ -396,37 +396,12 @@ export async function relayRuntimeWebMirrorPreference(runtime: RelayRuntimeDeleg
     const response = new ChannelCommandService(runtime.config).renderMirrorPreference({
       source: "web",
       contextKey: runtime.contextKey,
-      argument,
+      argument: "",
       preferencesStore: runtime.preferencesStore,
       cliMirrorSupported: capabilitiesOf(info).cliMirror,
       agentLabel: info.agentLabel,
     });
-    const mode = runtime.preferencesStore.get(runtime.contextKey).mirrorMode ?? runtime.config.webMirrorMode;
-    const changed = argument.trim() && response.plain.startsWith("CLI mirroring:");
-    if (changed) {
-      runtime.appendActivity({
-        source: "web",
-        status: "info",
-        type: "mirror_mode_changed",
-        threadId: info.threadId,
-        workspace: info.workspace,
-        agentId: info.agentId,
-        actor,
-        detail: mode,
-      });
-      runtime.appendAudit({
-        action: "command",
-        status: "ok",
-        contextKey: runtime.contextKey,
-        agentId: info.agentId,
-        threadId: info.threadId,
-        workspace: info.workspace,
-        actor,
-        description: `mirror ${mode}`,
-      });
-      runtime.externalActivityMonitor.reset();
-      void runtime.externalActivityMonitor.monitorSafe();
-    }
+    const mode = "final";
     return {
       mode,
       minInterval: runtime.config.webMirrorMinUpdateMs,

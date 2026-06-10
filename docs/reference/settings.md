@@ -155,7 +155,6 @@ This page summarizes the runtime keys generated in `.env.example`.
 | `TELEGRAM_EDIT_MIN_INTERVAL_MS` | Minimum Telegram edit interval |
 | `NORDRELAY_CLI_MIRROR_MODE` | Default CLI mirror mode |
 | `NORDRELAY_CLI_MIRROR_MIN_UPDATE_MS` | Mirrored edit interval |
-| `NORDRELAY_WEB_CLI_MIRROR_MODE` | WebUI mirror override |
 | `NORDRELAY_WEB_CLI_MIRROR_MIN_UPDATE_MS` | WebUI mirror edit/update throttle |
 | `NORDRELAY_NOTIFY_MODE` | Completion notification mode |
 | `NORDRELAY_QUIET_HOURS` | Default quiet hours |
