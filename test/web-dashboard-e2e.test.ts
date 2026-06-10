@@ -530,6 +530,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("Full Access");
     expect(js).toContain("Bypass Permissions");
     expect(js).toContain("confirmUnsafe:Boolean(profile.unsafe)");
+    expect(js).toContain("apply:true");
     expect(js).toContain("items.unshift({value:selectedLaunch,label:activeLaunchLabel(session,selectedLaunch)})");
     expect(js).toContain("function configuredLaunchProfile");
     expect(js).toContain("Select a configured launch profile first");
@@ -539,12 +540,13 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).not.toContain("await setMirrorPreference(nextValue||'off')");
     expect(js).toContain("function bindCompactControlMenus");
     expect(js).toContain("function chatSessionControlLockTitle");
-    expect(js).toContain("stateDisabledAttr(lockedTitle)");
+    expect(js).toContain("stateDisabledAttr(stateDisabledTitle)");
     expect(js).toContain("currentChatWorkingSession()?'Wait until the current session finishes");
     expect(js).toContain("['controlModel','controlReasoning','controlFast','controlLaunch'].includes(id)&&currentChatWorkingSession()");
     expect(js).toContain("renderChatWorkingIndicator();renderSessionControls();renderChatTabs()");
-    expect(js).toContain("selectedCompactControlValue('controlLaunch')");
-    expect(js).toContain(">Apply</button>");
+    expect(js).not.toContain("selectedCompactControlValue('controlLaunch')");
+    expect(js).not.toContain(">Apply</button>");
+    expect(js).not.toContain("applyLaunchBtn");
     expect(js).not.toContain("Apply to Current");
     expect(js).not.toContain("<label>Launch<select id=\"controlLaunch\"");
     expect(js).not.toContain("mirrorModeSelect");

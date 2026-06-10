@@ -353,17 +353,14 @@ function renderSessionControls(){
   const selectedLaunch=activeLaunchProfileId(s,c);
   const launchItems=launchMenuItems(c,s,selectedLaunch);
   const selectedLaunchItem=launchItems.find(item=>item.value===selectedLaunch)||launchItems[0];
-  const applyLaunchAttrs=stateDisabledAttr(lockedTitle)||(' title="Apply selected launch profile to the current idle session"'+disabledAttr('settings.write'));
   document.getElementById('sessionControls').innerHTML=[
     caps.modelSelection?compactControlMenu('controlModel','Model',selectedModel?.value||'',selectedModel?.label||'Default',modelItems,'settings.write',lockedTitle):'',
     caps.reasoningSelection?compactControlMenu('controlReasoning',c.reasoningLabel||'Reasoning',selectedReasoning?.value||'',selectedReasoning?.label||'Default',reasoningItems,'settings.write',lockedTitle):'',
     caps.fastMode?compactControlMenu('controlFast','Fast mode',selectedFast,selectedFast,fastItems,'settings.write',lockedTitle):'',
-    caps.launchProfiles?compactControlMenu('controlLaunch','Launch',selectedLaunchItem?.value||'',selectedLaunchItem?.label||'Default',launchItems,'settings.write',lockedTitle):'',
-    caps.launchProfiles?'<button id="applyLaunchBtn" class="secondary compact-apply-button"'+applyLaunchAttrs+'>Apply</button>':''
+    caps.launchProfiles?compactControlMenu('controlLaunch','Launch',selectedLaunchItem?.value||'',selectedLaunchItem?.label||'Default',launchItems,'settings.write',lockedTitle):''
   ].join('');
   bindCompactControlMenus();
   renderChatWorkspaceLine();
-  const applyLaunch=document.getElementById('applyLaunchBtn'); if(applyLaunch) applyLaunch.onclick=()=>safe(async()=>{const profileId=selectedCompactControlValue('controlLaunch');const profile=launchProfileForSelection(c,state.snapshot?.session||{},profileId);if(!profile){toast('Select a configured launch profile first');return}if(!confirmUnsafeLaunchProfile(profile,true))return;await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId,apply:true,confirmUnsafe:Boolean(profile.unsafe)})});toast('Launch profile applied to current session');loadBootstrap()});
 }
 function chatSessionControlLockTitle(){return currentChatWorkingSession()?'Wait until the current session finishes before changing model, reasoning, fast mode, or launch.':''}
 function activeLaunchProfileId(session,controls=state.controls||{}){
@@ -426,7 +423,6 @@ function compactControlMenu(id,label,value,display,items,permission='settings.wr
   const options=(items||[]).map(item=>'<button type="button" role="option" data-control-option="'+attr(id)+'" data-control-value="'+attr(item.value)+'" aria-selected="'+(item.value===value?'true':'false')+'">'+esc(item.label)+'</button>').join('');
   return '<div class="compact-control" data-control-menu="'+attr(id)+'">'+(label?'<span class="compact-control-label">'+esc(label)+'</span>':'')+'<button type="button" id="'+attr(id)+'" class="control-menu-button" data-control-value="'+attr(value)+'" aria-haspopup="listbox" aria-expanded="false"'+(stateDisabledAttr(stateDisabledTitle)||(permission?disabledAttr(permission):''))+'>'+esc(display||'Default')+'</button><div class="control-menu-list" role="listbox" hidden>'+options+'</div></div>';
 }
-function selectedCompactControlValue(id){return document.getElementById(id)?.dataset.controlValue||''}
 function closeCompactControlMenus(except=null){
   document.querySelectorAll('.compact-control').forEach(menu=>{
     if(except&&menu===except)return;
@@ -473,13 +469,20 @@ function bindCompactControlMenus(){
       await api('/api/session/fast',{method:'POST',body:JSON.stringify({enabled:button.dataset.controlValue==='on'})});toast('Fast mode updated');loadBootstrap();
     }else if(id==='controlLaunch'){
       const profile=launchProfileForSelection(state.controls||{},state.snapshot?.session||{},button.dataset.controlValue);
-      if(!confirmUnsafeLaunchProfile(profile,false)){
+      if(!profile){
+        button.dataset.controlValue=previousValue;
+        button.textContent=previousText;
+        option.closest('.control-menu-list')?.querySelectorAll('[data-control-option]').forEach(item=>item.setAttribute('aria-selected',item.dataset.controlValue===previousValue?'true':'false'));
+        toast('Select a configured launch profile first');
+        return;
+      }
+      if(!confirmUnsafeLaunchProfile(profile,true)){
         button.dataset.controlValue=previousValue;
         button.textContent=previousText;
         option.closest('.control-menu-list')?.querySelectorAll('[data-control-option]').forEach(item=>item.setAttribute('aria-selected',item.dataset.controlValue===previousValue?'true':'false'));
         return;
       }
-      await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId:button.dataset.controlValue,confirmUnsafe:Boolean(profile?.unsafe)})});toast('Launch profile updated');loadBootstrap();
+      await api('/api/session/launch',{method:'POST',body:JSON.stringify({profileId:button.dataset.controlValue,apply:true,confirmUnsafe:Boolean(profile.unsafe)})});toast('Launch profile applied');loadBootstrap();
     }
   },event));
   if(!state.compactControlOutsideBound){

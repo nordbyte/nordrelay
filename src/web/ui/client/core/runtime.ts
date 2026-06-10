@@ -55,7 +55,7 @@ function applyPermissions(){
     ['#newSessionBtn,#attachBtn,#createSessionBtn','sessions.write'],
     ['.message-retry-button','prompt.send'],
     ['#syncBtn','sessions.write'],
-    ['#controlModel,#controlReasoning,#controlFast,#controlLaunch,#applyLaunchBtn','settings.write'],
+    ['#controlModel,#controlReasoning,#controlFast,#controlLaunch','settings.write'],
     ['#abortBtn','prompt.abort'],
     ['#clearChatBtn','sessions.write'],
     ['#saveSettingsBtn','settings.write'],
