@@ -29,6 +29,7 @@ interface WebuiLaunchProfile {
   label?: string;
   behavior?: string;
   unsafe?: boolean;
+  approvalsReviewer?: string;
 }
 
 interface WebuiCapabilities {
@@ -56,6 +57,14 @@ interface WebuiSessionSnapshot extends WebuiRecord {
   workspace?: string;
   model?: string;
   reasoning?: string;
+  launchProfileId?: string;
+  launchProfileLabel?: string;
+  launchProfileBehavior?: string;
+  sandboxMode?: string;
+  approvalPolicy?: string;
+  approvalsReviewer?: string;
+  nextApprovalsReviewer?: string;
+  unsafeLaunch?: boolean;
   fastMode?: boolean;
 }
 

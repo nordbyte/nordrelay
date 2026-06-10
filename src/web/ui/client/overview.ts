@@ -354,17 +354,24 @@ function renderSessionControls(){
   const selectedLaunch=activeLaunchProfileId(s,c);
   const launchItems=launchMenuItems(c,s,selectedLaunch);
   const selectedLaunchItem=launchItems.find(item=>item.value===selectedLaunch)||launchItems[0];
+  const launchControlLabel=isCodexControlSession(s)?'Permissions':'Launch';
   document.getElementById('sessionControls').innerHTML=[
     caps.modelSelection?compactControlMenu('controlModel','Model',selectedModel?.value||'',selectedModel?.label||'Default',modelItems,'settings.write',lockedTitle):'',
     caps.reasoningSelection?compactControlMenu('controlReasoning',c.reasoningLabel||'Reasoning',selectedReasoning?.value||'',selectedReasoning?.label||'Default',reasoningItems,'settings.write',lockedTitle):'',
     caps.fastMode?compactControlMenu('controlFast','Fast mode',selectedFast,selectedFast,fastItems,'settings.write',lockedTitle):'',
-    caps.launchProfiles?compactControlMenu('controlLaunch','Launch',selectedLaunchItem?.value||'',selectedLaunchItem?.label||'Default',launchItems,'settings.write',lockedTitle):''
+    caps.launchProfiles?compactControlMenu('controlLaunch',launchControlLabel,selectedLaunchItem?.value||'',selectedLaunchItem?.label||'Ask for approval',launchItems,'settings.write',lockedTitle):''
   ].join('');
   bindCompactControlMenus();
   renderChatWorkspaceLine();
 }
 function chatSessionControlLockTitle(){return currentChatWorkingSession()?'Wait until the current session finishes before changing model, reasoning, fast mode, or launch.':''}
+function currentControlAgentId(session: WebuiSessionSnapshot = state.snapshot?.session||{}){
+  const tab=state.currentPage==='chat'?activeChatTab():null;
+  return String(session?.agentId||tab?.agentId||state.enabledAgents?.[0]||'');
+}
+function isCodexControlSession(session: WebuiSessionSnapshot = state.snapshot?.session||{}){return currentControlAgentId(session)==='codex'}
 function activeLaunchProfileId(session,controls=state.controls||{}){
+  if(isCodexControlSession(session))return codexPermissionId(session);
   const profiles=(controls.launchProfiles||[]).concat(knownUnsafeLaunchProfilesForSession(session));
   const currentId=session.launchProfileId||'';
   const currentProfile=profiles.find(profile=>profile.id===currentId);
@@ -385,10 +392,13 @@ function launchProfileBehaviorMatches(profile,session){
   const behavior=String(profile?.behavior||'').trim();
   if(!behavior)return false;
   const activeBehavior=activeLaunchBehavior(session);
-  if(activeBehavior&&behavior===activeBehavior)return true;
+  const profileReviewer=String(profile?.approvalsReviewer||'').trim();
+  const sessionReviewer=String(session?.approvalsReviewer||session?.nextApprovalsReviewer||'').trim();
+  if(activeBehavior&&behavior===activeBehavior&&(!profileReviewer&&!sessionReviewer||profileReviewer===sessionReviewer))return true;
   return false;
 }
 function launchMenuItems(controls,session,selectedLaunch){
+  if(isCodexControlSession(session))return codexPermissionMenuItems(controls,session,selectedLaunch);
   const items=(controls.launchProfiles||[]).map(p=>({value:p.id,label:p.label+' - '+p.behavior+(p.unsafe?' - unsafe':'')}));
   for(const profile of knownUnsafeLaunchProfilesForSession(session)){
     if(!items.some(item=>item.value===profile.id))items.push({value:profile.id,label:profile.label+' - '+profile.behavior+' - unsafe'});
@@ -398,6 +408,41 @@ function launchMenuItems(controls,session,selectedLaunch){
   }
   return items;
 }
+const CODEX_PERMISSION_MENU_DEFAULTS=[
+  {value:'ask-for-approval',label:'Ask for approval'},
+  {value:'approve-for-me',label:'Approve for me'},
+  {value:'full-access',label:'Full Access'}
+];
+function codexPermissionMenuItems(controls: WebuiControls = {},session: WebuiSessionSnapshot = {},selectedLaunch: string = ''){
+  const configured=new Map<string, WebuiLaunchProfile>((controls.launchProfiles||[]).map(profile=>[String(profile.id||''),profile]));
+  const items=CODEX_PERMISSION_MENU_DEFAULTS.map(item=>{
+    const profile=configured.get(item.value)||null;
+    return{value:item.value,label:profile?.label||item.label};
+  });
+  if(selectedLaunch&&!items.some(item=>item.value===selectedLaunch)){
+    items.unshift({value:selectedLaunch,label:codexPermissionLabel(selectedLaunch,session)});
+  }
+  return items;
+}
+function codexPermissionId(session: WebuiSessionSnapshot = {}){
+  const explicit=String(session.launchProfileId||session.nextLaunchProfileId||'').trim();
+  if(CODEX_PERMISSION_MENU_DEFAULTS.some(item=>item.value===explicit))return explicit;
+  const behavior=activeLaunchBehavior(session)||String(session.nextLaunchProfileBehavior||'').trim();
+  const sandbox=String(session.sandboxMode||'').trim();
+  const approval=String(session.approvalPolicy||'').trim();
+  const reviewer=String(session.approvalsReviewer||session.nextApprovalsReviewer||'').trim();
+  if(explicit==='full-access'||behavior==='danger-full-access / never'||sandbox==='danger-full-access')return'full-access';
+  if(explicit==='approve-for-me'||reviewer==='auto_review')return'approve-for-me';
+  if(explicit==='ask-for-approval'||explicit==='review'||behavior==='workspace-write / on-request'||approval==='on-request')return'ask-for-approval';
+  if(explicit==='default'||behavior==='workspace-write / never'||(sandbox==='workspace-write'&&approval==='never'))return'approve-for-me';
+  return explicit||'ask-for-approval';
+}
+function codexPermissionLabel(profileId:string,session:WebuiSessionSnapshot={}): string {
+  const found=CODEX_PERMISSION_MENU_DEFAULTS.find(item=>item.value===profileId);
+  if(found)return found.label;
+  const label=session.launchProfileLabel||session.nextLaunchProfileLabel||profileId||'Current permission';
+  return String(label);
+}
 function activeLaunchLabel(session,selectedLaunch){
   const label=session.launchProfileLabel||session.nextLaunchProfileLabel||selectedLaunch||'Current launch';
   const behavior=session.launchProfileBehavior||session.nextLaunchProfileBehavior||'';
@@ -405,7 +450,15 @@ function activeLaunchLabel(session,selectedLaunch){
   return label+(behavior?' - '+behavior:'')+(unsafe?' - unsafe':'');
 }
 function configuredLaunchProfile(controls,profileId){return Boolean(launchProfileForSelection(controls,state.snapshot?.session||{},profileId))}
-function launchProfileForSelection(controls,session,profileId){return (controls.launchProfiles||[]).find(p=>p.id===profileId)||knownUnsafeLaunchProfileForSession(session,profileId)}
+function launchProfileForSelection(controls,session,profileId){
+  const profile=(controls.launchProfiles||[]).find(p=>p.id===profileId)||knownUnsafeLaunchProfileForSession(session,profileId);
+  if(profile)return profile;
+  if(isCodexControlSession(session)){
+    const item=CODEX_PERMISSION_MENU_DEFAULTS.find(entry=>entry.value===profileId);
+    if(item)return{id:item.value,label:item.label,behavior:item.value==='full-access'?'danger-full-access / never':'workspace-write / on-request',unsafe:item.value==='full-access',approvalsReviewer:item.value==='approve-for-me'?'auto_review':item.value==='ask-for-approval'?'user':''};
+  }
+  return null;
+}
 function knownUnsafeLaunchProfileForSession(session,profileId){
   return knownUnsafeLaunchProfilesForSession(session).find(profile=>profile.id===profileId)||null;
 }

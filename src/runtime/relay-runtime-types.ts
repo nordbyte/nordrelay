@@ -273,6 +273,7 @@ export interface DashboardControlOptions {
     label: string;
     behavior: string;
     unsafe: boolean;
+    approvalsReviewer?: string;
   }>;
   workspaces: string[];
   capabilities: AgentCapabilities;

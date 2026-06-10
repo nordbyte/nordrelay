@@ -93,6 +93,8 @@ declare function closeChatMoreMenu(): void;
 declare function closeCompactControlMenus(except?: Element | null): void;
 declare function clearStickyToast(): void;
 declare function clearCurrentChatWorkingState(): void;
+declare function codexPermissionId(session?: WebuiSessionSnapshot): string;
+declare function codexPermissionMenuItems(controls?: WebuiControls, session?: WebuiSessionSnapshot, selectedLaunch?: string): Array<{ value: string; label: string }>;
 declare function connectEvents(): void;
 declare function syncChatEventStreamForActiveContext(): boolean;
 declare function setLocalTurnFromCurrentChat(at?: string): void;

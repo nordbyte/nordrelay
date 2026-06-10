@@ -522,11 +522,16 @@ describe("web dashboard browser-flow assets", () => {
 
     expect(js).toContain("selectedLaunch=activeLaunchProfileId(s,c)");
     expect(js).toContain("function activeLaunchProfileId");
-    expect(js).toContain("concat(knownUnsafeLaunchProfilesForSession(session))");
+    expect(js).toContain("function isCodexControlSession");
+    expect(js).toContain("const CODEX_PERMISSION_MENU_DEFAULTS");
+    expect(js).toContain("Ask for approval");
+    expect(js).toContain("Approve for me");
     expect(js).toContain("function activeLaunchBehavior");
     expect(js).toContain("function launchProfileBehaviorMatches");
     expect(js).toContain("return sandbox&&approval?sandbox+' / '+approval:''");
     expect(js).toContain("function launchMenuItems");
+    expect(js).toContain("function codexPermissionMenuItems");
+    expect(js).toContain("function codexPermissionId");
     expect(js).toContain("function activeLaunchLabel");
     expect(js).toContain("function knownUnsafeLaunchProfilesForSession");
     expect(js).toContain("function confirmUnsafeLaunchProfile");
@@ -537,7 +542,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("items.unshift({value:selectedLaunch,label:activeLaunchLabel(session,selectedLaunch)})");
     expect(js).toContain("function configuredLaunchProfile");
     expect(js).toContain("Select a configured launch profile first");
-    expect(js).toContain("compactControlMenu('controlLaunch','Launch'");
+    expect(js).toContain("compactControlMenu('controlLaunch',launchControlLabel");
+    expect(js).toContain("isCodexControlSession(s)?'Permissions':'Launch'");
     expect(js).not.toContain("compactControlMenu('controlMirror','Mirror'");
     expect(js).not.toContain("if(id==='controlMirror')");
     expect(js).not.toContain("await setMirrorPreference(nextValue||'off')");

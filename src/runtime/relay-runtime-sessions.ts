@@ -29,6 +29,7 @@ import { ChannelCommandService } from "../channels/shared/channel-command-servic
 import { ChannelTurnService } from "../channels/shared/channel-turn-service.js";
 import { activeSessionSourceForContextKey, ChannelMirrorRegistry } from "../channels/shared/channel-mirror-registry.js";
 import type { LoginResult } from "../agents/codex/codex-auth.js";
+import { codexPermissionProfiles, formatLaunchProfileBehavior } from "../agents/codex/codex-launch.js";
 import { listThreads as listCodexThreads } from "../agents/codex/codex-state.js";
 import type { ConnectorConfig } from "../core/config.js";
 import { cursorPage, normalizeCursorLimit } from "../core/pagination.js";
@@ -198,7 +199,7 @@ export async function relayRuntimeControlOptions(runtime: RelayRuntimeDelegate, 
         models: capabilities.modelSelection ? session.listModels() : [],
         reasoningLabel: agentReasoningLabel(info.agentId),
         reasoningOptions: agentReasoningOptions(info.agentId),
-        launchProfiles: capabilities.launchProfiles ? session.listLaunchProfiles() : [],
+        launchProfiles: controlLaunchProfiles(info, session, capabilities),
         workspaces: filterAllowedWorkspaces(session.listWorkspaces(), runtime.config),
         capabilities,
       };
@@ -208,6 +209,26 @@ export async function relayRuntimeControlOptions(runtime: RelayRuntimeDelegate, 
       }
     }
   }
+
+function controlLaunchProfiles(
+  info: AgentSessionInfo,
+  session: AgentSessionService,
+  capabilities: AgentCapabilities,
+): DashboardControlOptions["launchProfiles"] {
+  if (!capabilities.launchProfiles) {
+    return [];
+  }
+  if (info.agentId !== "codex") {
+    return session.listLaunchProfiles();
+  }
+  return codexPermissionProfiles().map((profile) => ({
+    id: profile.id,
+    label: profile.label,
+    behavior: formatLaunchProfileBehavior(profile),
+    unsafe: profile.unsafe,
+    ...(profile.approvalsReviewer ? { approvalsReviewer: profile.approvalsReviewer } : {}),
+  }));
+}
 
 export async function relayRuntimeAuthStatus(runtime: RelayRuntimeDelegate, agentId?: AgentId): Promise<WebAuthDto> {
     const { session, dispose } = await runtime.getControlSession(agentId);

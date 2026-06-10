@@ -1,6 +1,6 @@
 import { createAgentSessionService } from "../agents/shared/agent-factory.js";
 import { CODEX_AGENT_CAPABILITIES, type AgentId, type AgentSessionInfo, type AgentSessionService, type AgentSyncResult } from "../agents/shared/agent.js";
-import { findLaunchProfile } from "../agents/codex/codex-launch.js";
+import { createCodexPermissionProfile, findLaunchProfile } from "../agents/codex/codex-launch.js";
 import type { ConnectorConfig } from "../core/config.js";
 import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import { createDocumentStore, type DocumentStore } from "./state-backend.js";
@@ -21,11 +21,13 @@ export interface ContextMetadata {
   launchProfileBehavior?: string;
   sandboxMode?: string;
   approvalPolicy?: string;
+  approvalsReviewer?: string;
   fastMode?: boolean;
   unsafeLaunch?: boolean;
   launchProfileId?: string;
   nextLaunchProfileLabel?: string;
   nextLaunchProfileBehavior?: string;
+  nextApprovalsReviewer?: string;
   nextUnsafeLaunch?: boolean;
   sessionPath?: string;
   pinnedThreadIds?: string[];
@@ -197,6 +199,7 @@ export class SessionRegistry {
       launchProfileBehavior: info.launchProfileBehavior,
       sandboxMode: info.sandboxMode,
       approvalPolicy: info.approvalPolicy,
+      approvalsReviewer: info.approvalsReviewer,
       launchProfileId: info.nextLaunchProfileId ?? info.launchProfileId,
       updatedAt: Date.now(),
     };
@@ -209,6 +212,7 @@ export class SessionRegistry {
     if (info.nextLaunchProfileId) {
       next.nextLaunchProfileLabel = info.nextLaunchProfileLabel;
       next.nextLaunchProfileBehavior = info.nextLaunchProfileBehavior;
+      next.nextApprovalsReviewer = info.nextApprovalsReviewer;
       next.nextUnsafeLaunch = info.nextUnsafeLaunch;
     }
     if (worktreeId) {
@@ -406,7 +410,7 @@ function resolveLaunchProfileId(
     return meta.launchProfileId;
   }
 
-  if (findLaunchProfile(config.launchProfiles, meta.launchProfileId)) {
+  if (findLaunchProfile(config.launchProfiles, meta.launchProfileId) || createCodexPermissionProfile(meta.launchProfileId)) {
     return meta.launchProfileId;
   }
 
@@ -436,7 +440,7 @@ function resolveActiveLaunchProfileId(
     return meta.activeLaunchProfileId;
   }
 
-  if (findLaunchProfile(config.launchProfiles, meta.activeLaunchProfileId) || meta.activeLaunchProfileId === "full-access") {
+  if (findLaunchProfile(config.launchProfiles, meta.activeLaunchProfileId) || createCodexPermissionProfile(meta.activeLaunchProfileId)) {
     return meta.activeLaunchProfileId;
   }
 

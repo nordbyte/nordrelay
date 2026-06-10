@@ -1,11 +1,13 @@
 export type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 export type CodexApprovalPolicy = "never" | "on-request" | "on-failure" | "untrusted";
+export type CodexApprovalsReviewer = "user" | "auto_review";
 
 export interface CodexLaunchProfile {
   id: string;
   label: string;
   sandboxMode: CodexSandboxMode;
   approvalPolicy: CodexApprovalPolicy;
+  approvalsReviewer?: CodexApprovalsReviewer;
   unsafe: boolean;
 }
 
@@ -24,6 +26,7 @@ export function createLaunchProfile(input: {
   label: string;
   sandboxMode: CodexSandboxMode;
   approvalPolicy: CodexApprovalPolicy;
+  approvalsReviewer?: CodexApprovalsReviewer;
 }): CodexLaunchProfile {
   return {
     ...input,
@@ -75,6 +78,44 @@ export function createBuiltinLaunchProfiles(
   }
 
   return profiles;
+}
+
+export function createCodexPermissionProfile(profileId: string): CodexLaunchProfile | null {
+  if (profileId === "ask-for-approval" || profileId === "review") {
+    return createLaunchProfile({
+      id: "ask-for-approval",
+      label: "Ask for approval",
+      sandboxMode: "workspace-write",
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+    });
+  }
+  if (profileId === "approve-for-me") {
+    return createLaunchProfile({
+      id: "approve-for-me",
+      label: "Approve for me",
+      sandboxMode: "workspace-write",
+      approvalPolicy: "on-request",
+      approvalsReviewer: "auto_review",
+    });
+  }
+  if (profileId === "full-access") {
+    return createLaunchProfile({
+      id: "full-access",
+      label: "Full Access",
+      sandboxMode: "danger-full-access",
+      approvalPolicy: "never",
+    });
+  }
+  return null;
+}
+
+export function codexPermissionProfiles(): CodexLaunchProfile[] {
+  return [
+    createCodexPermissionProfile("ask-for-approval")!,
+    createCodexPermissionProfile("approve-for-me")!,
+    createCodexPermissionProfile("full-access")!,
+  ];
 }
 
 export function parseLaunchProfilesJson(raw: string): CodexLaunchProfile[] {
@@ -151,12 +192,27 @@ function parseLaunchProfileEntry(entry: unknown, index: number): CodexLaunchProf
     );
   }
 
+  const approvalsReviewer = readOptionalApprovalsReviewer(entry);
   return createLaunchProfile({
     id: rawId,
     label: rawLabel,
     sandboxMode: rawSandboxMode,
     approvalPolicy: rawApprovalPolicy,
+    ...(approvalsReviewer ? { approvalsReviewer } : {}),
   });
+}
+
+function readOptionalApprovalsReviewer(entry: object): CodexApprovalsReviewer | undefined {
+  const value = Reflect.get(entry, "approvalsReviewer") ?? Reflect.get(entry, "approvals_reviewer");
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  if (value === "user" || value === "auto_review") {
+    return value;
+  }
+  throw new Error(
+    'Invalid CODEX_LAUNCH_PROFILES_JSON entry: approvalsReviewer must be "user" or "auto_review"',
+  );
 }
 
 function readStringField(entry: object, field: string, index: number): string {

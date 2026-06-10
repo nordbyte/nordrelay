@@ -261,6 +261,40 @@ describe("CodexSessionService", () => {
     });
   });
 
+  it("maps Codex approve-for-me permissions to the auto approval reviewer", async () => {
+    const service = await CodexSessionService.create(createConfig(), {
+      launchProfileId: "approve-for-me",
+    });
+
+    expect(mockState.Codex).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: {
+          approval_policy: "on-request",
+          approvals_reviewer: "auto_review",
+        },
+      }),
+    );
+
+    const codexInstance = mockState.codexInstances[0];
+    expect(codexInstance.startThread).toHaveBeenCalledWith({
+      model: "o3",
+      sandboxMode: "workspace-write",
+      workingDirectory: "/workspace/base",
+      approvalPolicy: "on-request",
+      skipGitRepoCheck: true,
+    });
+
+    expect(service.getInfo()).toMatchObject({
+      launchProfileId: "approve-for-me",
+      launchProfileLabel: "Approve for me",
+      launchProfileBehavior: "workspace-write / on-request",
+      sandboxMode: "workspace-write",
+      approvalPolicy: "on-request",
+      approvalsReviewer: "auto_review",
+      unsafeLaunch: false,
+    });
+  });
+
   it("create accepts overrides for workspace, model, reasoning effort, launch profile, and resumeThreadId", async () => {
     const service = await CodexSessionService.create(createConfig(), {
       workspace: "/workspace/resumed",

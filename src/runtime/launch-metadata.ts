@@ -1,5 +1,5 @@
 import type { AgentId } from "../agents/shared/agent.js";
-import { findLaunchProfile, formatLaunchProfileBehavior } from "../agents/codex/codex-launch.js";
+import { createCodexPermissionProfile, findLaunchProfile, formatLaunchProfileBehavior } from "../agents/codex/codex-launch.js";
 import type { ConnectorConfig } from "../core/config.js";
 import type { ContextMetadata } from "../state/session-registry.js";
 
@@ -9,10 +9,13 @@ export function launchInfoFromMetadata(config: ConnectorConfig, meta: ContextMet
   behavior: string;
   sandboxMode: string;
   approvalPolicy: string;
+  approvalsReviewer?: string;
   unsafe: boolean;
 } {
   const requestedId = meta.activeLaunchProfileId ?? meta.launchProfileId ?? config.defaultLaunchProfileId;
-  const configuredById = agentId === "codex" ? findLaunchProfile(config.launchProfiles, requestedId) : undefined;
+  const configuredById = agentId === "codex"
+    ? findLaunchProfile(config.launchProfiles, requestedId) ?? createCodexPermissionProfile(requestedId) ?? undefined
+    : undefined;
   const explicitSandboxMode = meta.sandboxMode?.trim();
   const explicitApprovalPolicy = meta.approvalPolicy?.trim();
   const explicitBehavior = explicitSandboxMode && explicitApprovalPolicy
@@ -35,6 +38,7 @@ export function launchInfoFromMetadata(config: ConnectorConfig, meta: ContextMet
     behavior: explicitBehavior || (metadataBehaviorMatches ? metadataBehavior : "") || (configured ? formatLaunchProfileBehavior(configured) : "unknown permissions"),
     sandboxMode,
     approvalPolicy: explicitApprovalPolicy ?? configured?.approvalPolicy ?? "-",
+    approvalsReviewer: meta.approvalsReviewer ?? configured?.approvalsReviewer,
     unsafe: sandboxMode === "danger-full-access" || (meta.unsafeLaunch ?? configured?.unsafe ?? false),
   };
 }

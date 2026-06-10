@@ -24,6 +24,7 @@ import {
   type CodexThreadRecord,
 } from "./codex-state.js";
 import {
+  createCodexPermissionProfile,
   createLaunchProfile,
   findLaunchProfile,
   formatLaunchProfileBehavior,
@@ -74,6 +75,7 @@ export interface CodexSessionInfo extends AgentSessionInfo {
   nextLaunchProfileId?: string;
   nextLaunchProfileLabel?: string;
   nextLaunchProfileBehavior?: string;
+  nextApprovalsReviewer?: string;
   nextUnsafeLaunch?: boolean;
   sessionTokens?: {
     input: number;
@@ -106,6 +108,7 @@ export class CodexSessionService {
   private currentLaunchProfile: CodexLaunchProfile;
   private activeThreadLaunchProfile: CodexLaunchProfile | null = null;
   private activeThreadLaunchProfileOverride: { threadId: string; profile: CodexLaunchProfile } | null = null;
+  private codexClientLaunchProfileKey = "";
   private sessionTokens = { input: 0, cached: 0, output: 0 };
   private lastObservedFastMode: boolean | null = null;
 
@@ -165,6 +168,9 @@ export class CodexSessionService {
       launchProfileBehavior: formatLaunchProfileBehavior(effectiveLaunchProfile),
       sandboxMode: effectiveLaunchProfile.sandboxMode,
       approvalPolicy: effectiveLaunchProfile.approvalPolicy,
+      ...(effectiveLaunchProfile.approvalsReviewer
+        ? { approvalsReviewer: effectiveLaunchProfile.approvalsReviewer }
+        : {}),
       fastMode: effectiveFastMode,
       unsafeLaunch: effectiveLaunchProfile.unsafe,
       capabilities: CODEX_AGENT_CAPABILITIES,
@@ -187,6 +193,9 @@ export class CodexSessionService {
       info.nextLaunchProfileLabel = this.currentLaunchProfile.label;
       info.nextLaunchProfileBehavior = formatLaunchProfileBehavior(this.currentLaunchProfile);
       info.nextUnsafeLaunch = this.currentLaunchProfile.unsafe;
+      if (this.currentLaunchProfile.approvalsReviewer) {
+        info.nextApprovalsReviewer = this.currentLaunchProfile.approvalsReviewer;
+      }
     }
 
     if (this.sessionTokens.input > 0 || this.sessionTokens.cached > 0 || this.sessionTokens.output > 0) {
@@ -365,6 +374,7 @@ export class CodexSessionService {
 
     const effectiveWorkspace = workspace ?? this.currentWorkspace;
     const effectiveModel = model ?? this.currentModel;
+    this.ensureCodexClientForLaunchProfile(this.currentLaunchProfile);
     this.thread = this.getCodex().startThread(this.buildThreadOptions(effectiveWorkspace, effectiveModel));
     this.activeThreadLaunchProfile = this.currentLaunchProfile;
     this.activeThreadLaunchProfileOverride = null;
@@ -389,6 +399,7 @@ export class CodexSessionService {
         : undefined;
     }
 
+    this.ensureCodexClientForLaunchProfile(launchProfile);
     this.thread = this.getCodex().resumeThread(
       threadId,
       this.buildThreadOptions(workspace, model, launchProfile),
@@ -410,6 +421,7 @@ export class CodexSessionService {
     const launchProfile = this.resolveThreadLaunchProfile(record, this.launchProfileOverrideFor(threadId));
     this.currentReasoningEffort = reasoningEffort as ModelReasoningEffort | undefined;
 
+    this.ensureCodexClientForLaunchProfile(launchProfile);
     this.thread = this.getCodex().resumeThread(threadId, this.buildThreadOptions(workspace, model, launchProfile));
     this.activeThreadLaunchProfile = launchProfile;
     this.activeThreadLaunchProfileOverride = this.activeThreadLaunchProfileOverride?.threadId === threadId
@@ -445,6 +457,7 @@ export class CodexSessionService {
       label: profile.label,
       behavior: formatLaunchProfileBehavior(profile),
       unsafe: profile.unsafe,
+      ...(profile.approvalsReviewer ? { approvalsReviewer: profile.approvalsReviewer } : {}),
     }));
   }
 
@@ -504,6 +517,7 @@ export class CodexSessionService {
     const profile = this.activeThreadLaunchProfile ?? this.currentLaunchProfile;
     let appliedToActiveThread = false;
     if (this.thread) {
+      this.ensureCodexClientForLaunchProfile(profile);
       if (this.currentThreadId) {
         this.thread = this.getCodex().resumeThread(
           this.currentThreadId,
@@ -679,14 +693,24 @@ export class CodexSessionService {
     return this.codex!;
   }
 
-  private resetCodexClient(): void {
+  private ensureCodexClientForLaunchProfile(launchProfile = this.currentLaunchProfile): void {
+    if (!this.codex || this.codexClientLaunchProfileKey !== codexClientLaunchProfileKey(launchProfile)) {
+      this.resetCodexClient(launchProfile);
+    }
+  }
+
+  private resetCodexClient(launchProfile = this.currentLaunchProfile): void {
     normalizeCodexServiceTier();
     const cli = resolveCodexCli();
+    const codexConfig: NonNullable<CodexOptions["config"]> = {
+      approval_policy: launchProfile.approvalPolicy,
+    };
+    if (launchProfile.approvalsReviewer) {
+      codexConfig.approvals_reviewer = launchProfile.approvalsReviewer;
+    }
     const options: CodexOptions = {
       apiKey: this.config.codexApiKey,
-      config: {
-        approval_policy: this.currentLaunchProfile.approvalPolicy,
-      },
+      config: codexConfig,
       env: buildCodexEnv(this.config.codexApiKey),
     };
 
@@ -695,6 +719,7 @@ export class CodexSessionService {
     }
 
     this.codex = new Codex(options);
+    this.codexClientLaunchProfileKey = codexClientLaunchProfileKey(launchProfile);
   }
 
   private resolveThreadLaunchProfile(
@@ -763,6 +788,7 @@ export class CodexSessionService {
     }
 
     const launchProfile = launchProfileOverride ?? this.activeThreadLaunchProfile ?? this.currentLaunchProfile;
+    this.ensureCodexClientForLaunchProfile(launchProfile);
     if (this.currentThreadId) {
       this.thread = this.getCodex().resumeThread(
         this.currentThreadId,
@@ -789,18 +815,18 @@ export class CodexSessionService {
 
 function getLaunchProfile(config: ConnectorConfig, profileId: string): CodexLaunchProfile {
   const profile = findLaunchProfile(config.launchProfiles, profileId);
-  if (!profile) {
-    if (profileId === "full-access") {
-      return createLaunchProfile({
-        id: "full-access",
-        label: "Full Access",
-        sandboxMode: "danger-full-access",
-        approvalPolicy: "never",
-      });
-    }
-    throw new Error(`Unknown launch profile: ${profileId}`);
+  if (profile) {
+    return profile;
   }
-  return profile;
+  const permissionProfile = createCodexPermissionProfile(profileId);
+  if (permissionProfile) {
+    return permissionProfile;
+  }
+  throw new Error(`Unknown launch profile: ${profileId}`);
+}
+
+function codexClientLaunchProfileKey(launchProfile: CodexLaunchProfile): string {
+  return launchProfile.approvalsReviewer ?? "";
 }
 
 function toAgentThreadRecord(record: CodexThreadRecord): AgentThreadRecord {

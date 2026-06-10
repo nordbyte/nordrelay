@@ -200,11 +200,13 @@ export interface AgentSessionInfo {
   launchProfileBehavior: string;
   sandboxMode: string;
   approvalPolicy: string;
+  approvalsReviewer?: string;
   fastMode: boolean;
   unsafeLaunch: boolean;
   nextLaunchProfileId?: string;
   nextLaunchProfileLabel?: string;
   nextLaunchProfileBehavior?: string;
+  nextApprovalsReviewer?: string;
   nextUnsafeLaunch?: boolean;
   sessionTokens?: {
     input: number;
@@ -271,6 +273,7 @@ export interface AgentLaunchProfileRecord {
   label: string;
   behavior: string;
   unsafe: boolean;
+  approvalsReviewer?: string;
 }
 
 export interface AgentThreadRecord {
