@@ -41,7 +41,11 @@ header{display:flex}
 .pager{align-items:stretch}
 .pager-actions,.pager button{width:100%}
 .attachment-row>*,.sessions-toolbar,.sessions-toolbar .row,.sessions-toolbar input,.sessions-toolbar button{width:100%}
-.attachment-row .chat-workspace-line{width:auto;max-width:100%;margin-left:auto}
+#page-chat .attachment-row{gap:6px;align-items:center}
+#page-chat .attachment-row .file-button,#page-chat .attachment-row #recordBtn,#page-chat .attachment-row #clearFilesBtn{width:auto;flex:0 0 auto;min-height:32px;height:32px;padding:0 9px;font-size:13px}
+#page-chat .attachment-row #fileSummary{width:auto;flex:1 1 100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#page-chat .attachment-row #fileSummary[hidden],#page-chat .attachment-row #clearFilesBtn[hidden]{display:none}
+#page-chat .attachment-row .chat-workspace-line{flex:1 1 100%;width:auto;max-width:100%;margin-left:0}
 .sessions-toolbar .attach-row{margin-left:0;justify-content:stretch}
 .wizard-header,.wizard-actions{align-items:stretch;flex-direction:column}
 .wizard-header button,.wizard-actions button{width:100%}

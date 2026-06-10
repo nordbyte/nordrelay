@@ -247,6 +247,7 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .composer-abort{height:28px;min-height:28px;padding:0 10px;font-size:13px}
 .composer-abort[hidden]{display:none}
 .attachment-row{margin-top:8px;color:var(--muted);font-size:13px}
+#fileSummary[hidden],#clearFilesBtn[hidden]{display:none}
 .file-button{display:inline-flex;align-items:center;justify-content:center;min-height:34px;height:34px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;line-height:1}
 input[type=file]{display:none}
 .sessions-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}

@@ -630,7 +630,14 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource.indexOf('id="clearFilesBtn"')).toBeLessThan(pageSource.indexOf('id="chatWorkspaceLine"'));
     expect(pageSource.indexOf('id="chatWorkspaceLine"')).toBeLessThan(pageSource.indexOf('<div class="composer-actions">'));
     expect(attachmentRow).toContain('id="clearFilesBtn"');
+    expect(attachmentRow).toContain('id="fileSummary" hidden');
+    expect(attachmentRow).toContain('id="clearFilesBtn" class="secondary" hidden');
+    expect(pageSource).not.toContain('No files selected');
     expect(attachmentRow).toContain('id="chatWorkspaceLine"');
+    expect(js).toContain("summary.hidden=true");
+    expect(js).toContain("clearButton.hidden=true");
+    expect(js).toContain("summary.hidden=false");
+    expect(js).toContain("clearButton.hidden=false");
     expect(js).toContain("function renderChatWorkspaceLine");
     expect(js).toContain("Workspace path copied");
     expect(js).toContain("Copy workspace path");
@@ -638,6 +645,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).not.toContain("chat-workspace-copy");
     expect(css).toContain(".chat-workspace-line{");
     expect(css).toContain(".attachment-row .chat-workspace-line{");
+    expect(css).toContain("#page-chat .attachment-row .file-button,#page-chat .attachment-row #recordBtn,#page-chat .attachment-row #clearFilesBtn");
+    expect(css).toContain("#page-chat .attachment-row #fileSummary[hidden],#page-chat .attachment-row #clearFilesBtn[hidden]{display:none}");
     expect(css).toContain("margin:0 0 0 auto");
     expect(css).not.toContain(".copy-id.chat-workspace-copy");
   });
