@@ -370,6 +370,49 @@ describe("CodexSessionService", () => {
     }));
   });
 
+  it("prefers rollout permissions over a stale persisted active launch profile", async () => {
+    mockCodexState.getThread.mockReturnValue({
+      id: "thread-stale-active-default",
+      title: "Stale active default thread",
+      cwd: "/workspace/from-cli",
+      model: "gpt-5.5",
+      reasoningEffort: "xhigh",
+      sandboxMode: "workspace-write",
+      approvalPolicy: "never",
+      createdAt: new Date("2026-05-11T00:00:00.000Z"),
+      updatedAt: new Date("2026-05-11T01:00:00.000Z"),
+      firstUserMessage: "hello",
+    });
+    mockCodexState.getThreadRolloutSnapshot.mockReturnValue({
+      sandboxMode: "danger-full-access",
+      approvalPolicy: "never",
+    });
+
+    const service = await CodexSessionService.create(createConfig(), {
+      launchProfileId: "default",
+      activeLaunchProfileId: "default",
+      resumeThreadId: "thread-stale-active-default",
+    });
+    const codexInstance = mockState.codexInstances[0];
+
+    expect(codexInstance.resumeThread).toHaveBeenCalledWith("thread-stale-active-default", {
+      model: "gpt-5.5",
+      sandboxMode: "danger-full-access",
+      workingDirectory: "/workspace/from-cli",
+      approvalPolicy: "never",
+      skipGitRepoCheck: true,
+      modelReasoningEffort: "xhigh",
+    });
+    expect(service.getInfo()).toEqual(expect.objectContaining({
+      launchProfileId: "attached-thread",
+      launchProfileBehavior: "danger-full-access / never",
+      sandboxMode: "danger-full-access",
+      approvalPolicy: "never",
+      unsafeLaunch: true,
+      nextLaunchProfileId: "default",
+    }));
+  });
+
   it("keeps an active launch override when switching the same attached thread again", async () => {
     const service = await CodexSessionService.create(createConfig(), {
       launchProfileId: "review",
@@ -697,6 +740,61 @@ describe("CodexSessionService", () => {
       unsafeLaunch: true,
       fastMode: false,
     }));
+  });
+
+  it("refreshes launch permissions from rollout while a turn is still running", async () => {
+    const service = await CodexSessionService.create(createConfig(), {
+      resumeThreadId: "thread-running-full-access",
+    });
+    const thread = mockState.createdThreads[0];
+    const callbacks = createCallbacks();
+    let release!: () => void;
+    const blocker = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    thread.runStreamed.mockImplementationOnce(async () => ({
+      events: (async function* () {
+        await blocker;
+        yield { type: "turn.completed", usage };
+      })(),
+    }));
+
+    const promptPromise = service.prompt("work", callbacks);
+    await Promise.resolve();
+    expect(service.isProcessing()).toBe(true);
+
+    mockCodexState.getThread.mockReturnValue({
+      id: "thread-running-full-access",
+      title: "Running full access thread",
+      cwd: "/workspace/from-cli",
+      model: "gpt-5.5",
+      reasoningEffort: "xhigh",
+      sandboxMode: "workspace-write",
+      approvalPolicy: "never",
+      createdAt: new Date("2026-05-11T00:00:00.000Z"),
+      updatedAt: new Date("2026-05-11T01:00:00.000Z"),
+      firstUserMessage: "hello",
+    });
+    mockCodexState.getThreadRolloutSnapshot.mockReturnValue({
+      sandboxMode: "danger-full-access",
+      approvalPolicy: "never",
+    });
+
+    expect(service.getInfo()).toEqual(expect.objectContaining({
+      threadId: "thread-running-full-access",
+      workspace: "/workspace/from-cli",
+      model: "gpt-5.5",
+      reasoningEffort: "xhigh",
+      launchProfileId: "attached-thread",
+      launchProfileBehavior: "danger-full-access / never",
+      sandboxMode: "danger-full-access",
+      approvalPolicy: "never",
+      unsafeLaunch: true,
+    }));
+
+    release();
+    await promptPromise;
   });
 
   it("syncFromAgentState imports changed thread metadata and reattaches idle threads", async () => {
