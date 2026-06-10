@@ -741,7 +741,6 @@ describe("codex-state", () => {
             timestamp: "2026-05-12T04:00:00.000Z",
             type: "turn_context",
             payload: {
-              type: "turn_context",
               sandbox_policy: { type: "workspace-write" },
               approval_policy: "on-request",
             },
@@ -750,7 +749,6 @@ describe("codex-state", () => {
             timestamp: "2026-05-12T04:00:01.000Z",
             type: "turn_context",
             payload: {
-              type: "turn_context",
               sandbox_policy: { type: "danger-full-access" },
               approval_policy: "never",
             },

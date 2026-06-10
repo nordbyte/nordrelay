@@ -546,7 +546,7 @@ function parseRolloutSnapshot(
       updatedAt = eventTimestamp;
     }
 
-    const type = readString(payload?.type);
+    const type = readString(payload?.type) ?? readString(eventObject?.type);
     if (!type) {
       continue;
     }
