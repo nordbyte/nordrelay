@@ -86,6 +86,7 @@ test.describe("NordRelay WebUI", () => {
       "Overview",
       "Chat",
       "Workflows",
+      "Projects",
       "Sessions",
       "Queue",
       "Monitor",
@@ -280,7 +281,7 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#chatTabs .chat-tab-spinner")).toHaveCount(1);
     await expect(page.locator("#messages")).toContainText("Existing web message 2");
 
-    await page.locator("#chatTabs .chat-tab").filter({ hasText: "codex-thread-1" }).locator(".chat-tab-main").click();
+    await page.locator('#chatTabs .chat-tab[title^="codex-thread-1"]').locator(".chat-tab-main").click();
     await expect(page.locator("#messages")).toContainText("Existing web message");
 
     await page.locator("#chatTabs .chat-tab").filter({ hasText: "Existing session 2" }).locator(".chat-tab-close").click();
@@ -299,7 +300,7 @@ test.describe("NordRelay WebUI", () => {
     await expect.poll(() => mock.requests.some((request) => request.path === "/api/sessions/new" && request.method === "POST")).toBe(true);
     await expect(page.locator("#chatTabs")).toBeVisible();
     await expect(page.locator("#chatTabs .chat-tab")).toHaveCount(2);
-    await expect(page.locator("#chatTabs")).toContainText("codex-thread-1");
+    await expect(page.locator("#chatTabs")).toContainText("Run active smoke test");
     await expect(page.locator("#chatTabs")).toContainText("codex-thread-new");
     await expect(page.locator('#chatTabs .chat-tab[aria-selected="true"]')).toContainText("codex-thread-new");
   });
