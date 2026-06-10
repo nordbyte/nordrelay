@@ -40,6 +40,22 @@ function renderHeaderTargetMenuIfClosed(s = state.snapshot) {
   return true;
 }
 
+function effectiveHeaderSession(baseSession: WebuiSessionSnapshot): WebuiSessionSnapshot {
+  const selectedPeer = state.selectedPeer || 'local';
+  const tab = state.currentPage === 'chat' ? activeChatTab() : null;
+  if (!tab?.threadId || (tab.peerId || 'local') !== selectedPeer) return baseSession;
+  return {
+    ...baseSession,
+    agentId: tab.agentId || baseSession.agentId,
+    agentLabel: tab.agentLabel || baseSession.agentLabel || tab.agentId || baseSession.agentId,
+    threadId: tab.threadId,
+    sessionName: tab.sessionName || baseSession.sessionName,
+    title: tab.title || baseSession.title,
+    workspace: tab.workspace || baseSession.workspace,
+    model: tab.model || baseSession.model,
+  };
+}
+
 async function loadHeaderTargetCandidates(local: WebuiBootstrap) {
   const localTarget = localHeaderTarget(local);
   if (!can('peers.read')) {
@@ -101,7 +117,7 @@ async function refreshRemoteHeaderTargets(local: WebuiBootstrap, selectedData: W
 function renderHeaderTargetMenu(s = state.snapshot) {
   const line = document.getElementById('sessionLine');
   if (!line || !s?.session) return;
-  const session = s.session;
+  const session = effectiveHeaderSession(s.session);
   const targets = state.peerTargets && state.peerTargets.length ? state.peerTargets : [{ id: state.selectedPeer || 'local', name: headerTargetName(state.selectedPeer || 'local'), agents: state.enabledAgents || [], snapshot: s, loading: false, error: '' }];
   const selectedTarget = targets.find((target: WebuiHeaderTarget) => target.id === (state.selectedPeer || 'local'));
   const offline = Boolean(selectedTarget?.error);
@@ -142,7 +158,7 @@ function headerTargetOfflineHtml(target: WebuiHeaderTarget) {
 }
 
 function headerTargetAgentHtml(target: WebuiHeaderTarget, agent: string, selected: boolean) {
-  const snapshot = target.snapshot?.session;
+  const snapshot = selected && target.snapshot?.session ? effectiveHeaderSession(target.snapshot.session) : target.snapshot?.session;
   const model = snapshot && snapshot.agentId === agent ? (snapshot.model || 'default') : '';
   const thread = snapshot && snapshot.agentId === agent && snapshot.threadId ? headerSessionLabel(snapshot) : '';
   const meta = [model, thread].filter(Boolean).join(' / ');

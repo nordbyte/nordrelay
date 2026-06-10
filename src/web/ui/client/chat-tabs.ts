@@ -166,6 +166,22 @@ function chatTabFromActiveSession(session: WebuiActiveSession): WebuiChatTab | n
   });
 }
 
+function refreshChatTabFromSession(tab: WebuiChatTab, session: WebuiSessionSnapshot | null | undefined) {
+  if (!session?.threadId) return tab;
+  return upsertChatTab({
+    id: tab.id,
+    peerId: tab.peerId || 'local',
+    peerName: tab.peerName || headerTargetName(tab.peerId || 'local'),
+    agentId: String(session.agentId || tab.agentId || ''),
+    agentLabel: String(session.agentLabel || session.agentId || tab.agentLabel || tab.agentId || ''),
+    threadId: String(session.threadId || tab.threadId || ''),
+    sessionName: String(session.sessionName || tab.sessionName || ''),
+    title: String(session.sessionName || session.title || session.firstUserMessage || tab.title || tab.threadId || ''),
+    workspace: String(session.workspace || session.cwd || tab.workspace || ''),
+    model: String(session.model || tab.model || ''),
+  }, { activate: true }) || tab;
+}
+
 function upsertChatTab(rawTab: Partial<WebuiChatTab>, options: { activate?: boolean } = {}) {
   const normalized = normalizeChatTab(rawTab);
   if (!normalized) return null;
@@ -284,9 +300,10 @@ async function activateChatTabSession(tab: WebuiChatTab, options: { navigate?: b
   if (state.snapshot && switched.session) {
     state.snapshot.session = switched.session as WebuiSessionSnapshot;
     state.snapshotPeerId = state.selectedPeer || 'local';
+    refreshChatTabFromSession(tab, switched.session as WebuiSessionSnapshot);
     renderSnapshot(state.snapshot);
   }
-  await loadBootstrap();
+  await loadBootstrap({ contextKey });
   if (!chatActivationStillCurrent(requestId, tab)) return;
   if (previousPeer !== state.selectedPeer || (state.selectedPeer !== 'local' && previousEventsContextKey !== webProxyEventContextKey())) {
     connectEvents();

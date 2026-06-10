@@ -1,4 +1,4 @@
-async function loadBootstrap(){
+async function loadBootstrap(options:WebuiRecord={}){
   const local = await api('/api/bootstrap',{local:true});
   state.localBootstrap = local;
   state.auth = local.auth || null;
@@ -19,9 +19,10 @@ async function loadBootstrap(){
   let dataPeerId = 'local';
   let remoteBootstrapError = null;
   const selectedPeer = state.selectedPeer || 'local';
+  const bootstrapContextKey=String(options.contextKey||'');
   if(selectedPeer !== 'local'){
     try{
-      data = await apiPeer(selectedPeer,'/api/bootstrap',{timeoutMs:HEADER_TARGET_PEER_TIMEOUT_MS});
+      data = await apiPeer(selectedPeer,'/api/bootstrap',{timeoutMs:HEADER_TARGET_PEER_TIMEOUT_MS,...(bootstrapContextKey?{contextKey:bootstrapContextKey}:{})});
       dataPeerId = selectedPeer;
       mergeHeaderTargetBootstrap(selectedPeer,data);
     }catch(error){

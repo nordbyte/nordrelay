@@ -170,7 +170,7 @@ declare function loadActivity(reset?: boolean): Promise<void>;
 declare function loadAdapterHealth(): Promise<void>;
 declare function loadArtifacts(reset?: boolean): Promise<void>;
 declare function loadAudit(reset?: boolean): Promise<void>;
-declare function loadBootstrap(): Promise<WebuiBootstrap>;
+declare function loadBootstrap(options?: WebuiRecord): Promise<WebuiBootstrap>;
 declare function loadHeaderTargetCandidates(local: WebuiBootstrap): Promise<void>;
 declare function loadChatHistory(options?: { forceScroll?: boolean; preserveScrollOffset?: boolean; skipIfRendered?: boolean }): Promise<boolean>;
 declare function loadDiagnostics(): Promise<void>;

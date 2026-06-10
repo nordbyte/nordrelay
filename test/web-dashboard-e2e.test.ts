@@ -381,6 +381,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(headerTargetSource).toContain("sessionName ? '' : shortMiddle(session.id)");
     expect(headerTargetSource).toContain("await loadBootstrap(); await reloadCurrentPage({ agentId: selected });");
     expect(headerTargetSource).toContain("headerSessionLabel(snapshot)");
+    expect(headerTargetSource).toContain("function effectiveHeaderSession");
+    expect(headerTargetSource).toContain("const tab = state.currentPage === 'chat' ? activeChatTab() : null;");
+    expect(headerTargetSource).toContain("threadId: tab.threadId");
     expect(readFileSync("src/agents/shared/agent.ts", "utf8")).toContain("sessionName?: string;");
     expect(readFileSync("src/runtime/relay-runtime-session-list.ts", "utf8")).toContain("sessionNameStore.get(record.agentId, record.id)?.name");
     expect(readFileSync("src/runtime/relay-runtime-active-sessions.ts", "utf8")).toContain("sessionNameRecord?.name");
@@ -835,9 +838,12 @@ describe("web dashboard browser-flow assets", () => {
     expect(chatTabsSource).toContain("function chatTabContextKey");
     expect(chatTabsSource).toContain("function activeChatTabApiOptions");
     expect(chatTabsSource).toContain("function chatActivationStillCurrent");
+    expect(chatTabsSource).toContain("function refreshChatTabFromSession");
     expect(chatTabsSource).toContain("const requestId = nextChatActivationRequestId()");
     expect(chatTabsSource).toContain("if (!chatActivationStillCurrent(requestId, tab)) return");
     expect(chatTabsSource).toContain("body: JSON.stringify({ threadId: tab.threadId }), contextKey");
+    expect(chatTabsSource).toContain("refreshChatTabFromSession(tab, switched.session as WebuiSessionSnapshot)");
+    expect(chatTabsSource).toContain("await loadBootstrap({ contextKey })");
     expect(workflowsSource).toContain("api('/api/prompt',activeChatTabApiOptions");
     expect(workflowsSource).toContain("api('/api/prompt/upload',activeChatTabApiOptions");
     expect(workflowsSource).not.toContain("api('/api/chat/mirror',activeChatTabApiOptions");
