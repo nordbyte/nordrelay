@@ -281,11 +281,12 @@ function openProjectRunDialog(kind){
     : '';
   adminDialog(kind==='plan'?'Generate project plan':'Generate project summary','<div class="form-grid">'+
     '<label>Agent<select id="dlgProjectRunAgent">'+projectAgentOptions(project.defaultAgentId||'')+'</select></label>'+
+    '<label>Language<input id="dlgProjectRunLanguage" value="English" placeholder="English"></label>'+
     planFields+
     '<label class="full-span">Extra instructions<textarea id="dlgProjectRunInstructions" rows="5" placeholder="Optional focus, constraints, or priorities"></textarea></label>'+
     '<p class="full-span">NordRelay starts a background agent run in the project workspace. The result is saved back into this project and can be edited afterwards.</p>'+
   '</div>',async()=>{
-    const base={agentId:val('dlgProjectRunAgent')||undefined,instructions:val('dlgProjectRunInstructions')||undefined};
+    const base={agentId:val('dlgProjectRunAgent')||undefined,language:val('dlgProjectRunLanguage')||'English',instructions:val('dlgProjectRunInstructions')||undefined};
     const body=kind==='plan'
       ? {...base,planMode:val('dlgProjectPlanMode')||'balanced',planningHorizon:val('dlgProjectPlanningHorizon')||'next-release',riskLevel:val('dlgProjectRiskLevel')||'balanced'}
       : base;

@@ -46,6 +46,7 @@ describe("ProjectStore", () => {
         projectId: project.id,
         kind: "summary",
         status: "running",
+        language: "German",
         correlationId: "corr-1",
         log: ["started"],
       });
@@ -72,6 +73,7 @@ describe("ProjectStore", () => {
           projectId: project.id,
           kind: "summary",
           status: "completed",
+          language: "German",
           correlationId: "corr-1",
         }),
       ]);

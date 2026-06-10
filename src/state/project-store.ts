@@ -69,6 +69,7 @@ export interface ProjectAnalysisJob {
   kind: ProjectJobKind;
   status: ProjectJobStatus;
   agentId?: AgentId;
+  language?: string;
   planMode?: ProjectPlanMode;
   planningHorizon?: ProjectPlanHorizon;
   riskLevel?: ProjectPlanRiskLevel;
@@ -312,6 +313,7 @@ function normalizeJob(input: Partial<ProjectAnalysisJob> & Pick<ProjectAnalysisJ
     kind: normalizeJobKind(input.kind),
     status: normalizeJobStatus(input.status),
     agentId: cleanOptional(input.agentId) as AgentId | undefined,
+    language: cleanOptional(input.language)?.slice(0, 80),
     planMode: normalizePlanMode(input.planMode),
     planningHorizon: normalizePlanHorizon(input.planningHorizon),
     riskLevel: normalizePlanRiskLevel(input.riskLevel),
@@ -356,6 +358,10 @@ export function normalizeProjectPlanHorizon(value: unknown): ProjectPlanHorizon 
 
 export function normalizeProjectPlanRiskLevel(value: unknown): ProjectPlanRiskLevel {
   return normalizePlanRiskLevel(value) ?? "balanced";
+}
+
+export function normalizeProjectLanguage(value: unknown): string {
+  return cleanOptional(value)?.slice(0, 80) ?? "English";
 }
 
 function normalizePlanMode(value: unknown): ProjectPlanMode | undefined {

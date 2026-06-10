@@ -293,6 +293,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("/api/projects");
     expect(js).toContain("openProjectRunDialog('summary')");
     expect(js).toContain("openProjectRunDialog('plan')");
+    expect(js).toContain("dlgProjectRunLanguage");
+    expect(js).toContain("language:val('dlgProjectRunLanguage')||'English'");
     expect(js).toContain("dlgProjectPlanMode");
     expect(js).toContain("dlgProjectPlanningHorizon");
     expect(js).toContain("dlgProjectRiskLevel");

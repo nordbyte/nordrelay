@@ -279,7 +279,7 @@ export type WebApiRequestBody<P extends WebApiPath> =
   P extends `/api/projects/${string}/sessions` ? { threadId: string; agentId?: AgentId; peerId?: string; label?: string; workspace?: string } :
   P extends `/api/projects/${string}/sessions/${string}` ? Record<string, never> :
   P extends `/api/projects/${string}/summary` | `/api/projects/${string}/plan` ? { markdown: string } :
-  P extends `/api/projects/${string}/summary/run` | `/api/projects/${string}/plan/run` ? { agentId?: AgentId; instructions?: string; planMode?: ProjectPlanMode; planningHorizon?: ProjectPlanHorizon; riskLevel?: ProjectPlanRiskLevel } :
+  P extends `/api/projects/${string}/summary/run` | `/api/projects/${string}/plan/run` ? { agentId?: AgentId; instructions?: string; language?: string; planMode?: ProjectPlanMode; planningHorizon?: ProjectPlanHorizon; riskLevel?: ProjectPlanRiskLevel } :
   P extends `/api/projects/${string}/jobs` ? Record<string, never> :
   P extends `/api/projects/${string}` ? { name?: string; workspacePath?: string; description?: string; target?: ProjectTarget; defaultAgentId?: AgentId; status?: "active" | "archived" } :
   P extends "/api/templates" ? { name: string; prompt: string; description?: string; tags?: string[]; variables?: PromptTemplate["variables"]; scope?: "private" | "shared"; defaultAgentId?: AgentId; defaultWorkspace?: string; defaultModel?: string; defaultReasoning?: string; defaultLaunchProfile?: string } :

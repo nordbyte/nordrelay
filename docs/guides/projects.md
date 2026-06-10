@@ -48,6 +48,8 @@ Open the **Summary** tab and choose **Generate summary**.
 
 NordRelay starts a background agent run in the project workspace. The run asks the agent to inspect the current code, docs, package metadata, and runtime entry points before writing a compact Markdown summary.
 
+The generate dialog includes a **Language** field. It defaults to `English`, but you can enter any language that should be used for the generated summary.
+
 The summary remains editable. Use **Save summary** after manual edits.
 
 ## Generate a Plan
@@ -55,6 +57,8 @@ The summary remains editable. Use **Save summary** after manual edits.
 Open the **Plan** tab and choose **Generate plan**.
 
 The planning prompt uses the current editable project summary and asks the agent to re-check the latest code before recommending work. The generated plan should avoid duplicate suggestions for features that already exist.
+
+The generate dialog includes a **Language** field. It defaults to `English`, but you can enter any language that should be used for the generated plan.
 
 The generate dialog lets you choose the planning style:
 

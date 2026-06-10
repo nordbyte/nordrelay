@@ -2,6 +2,7 @@ import type { AuditEvent } from "../access/audit-log.js";
 import type { AgentId, AgentSessionInfo, AgentSessionService } from "../agents/shared/agent.js";
 import { createCorrelationId, toPromptEnvelope, type PromptEnvelope } from "../state/prompt-store.js";
 import {
+  normalizeProjectLanguage,
   normalizeProjectPlanHorizon,
   normalizeProjectPlanMode,
   normalizeProjectPlanRiskLevel,
@@ -50,6 +51,7 @@ export interface ProjectListDto {
 export interface ProjectRunOptions {
   agentId?: AgentId;
   instructions?: string;
+  language?: string;
   planMode?: ProjectPlanMode;
   planningHorizon?: ProjectPlanHorizon;
   riskLevel?: ProjectPlanRiskLevel;
@@ -187,12 +189,13 @@ export class RelayProjectService {
       kind,
       status: "queued",
       agentId: input.agentId ?? project.defaultAgentId ?? DEFAULT_PROJECT_AGENT,
+      language: normalizeProjectLanguage(input.language),
       planMode: kind === "plan" ? normalizeProjectPlanMode(input.planMode) : undefined,
       planningHorizon: kind === "plan" ? normalizeProjectPlanHorizon(input.planningHorizon) : undefined,
       riskLevel: kind === "plan" ? normalizeProjectPlanRiskLevel(input.riskLevel) : undefined,
       log: [kind === "plan"
-        ? `Queued plan analysis for ${project.name} (${planModeLabel(normalizeProjectPlanMode(input.planMode))}, ${planHorizonLabel(normalizeProjectPlanHorizon(input.planningHorizon))}, ${planRiskLabel(normalizeProjectPlanRiskLevel(input.riskLevel))}).`
-        : `Queued ${kind} analysis for ${project.name}.`],
+        ? `Queued plan analysis for ${project.name} (${planModeLabel(normalizeProjectPlanMode(input.planMode))}, ${planHorizonLabel(normalizeProjectPlanHorizon(input.planningHorizon))}, ${planRiskLabel(normalizeProjectPlanRiskLevel(input.riskLevel))}, ${normalizeProjectLanguage(input.language)}).`
+        : `Queued ${kind} analysis for ${project.name} (${normalizeProjectLanguage(input.language)}).`],
     });
     this.upsertUnifiedJob(job, actor);
     this.recordProjectActivity(`project_${kind}_queued`, "queued", project, actor, project.name);
@@ -238,8 +241,9 @@ export class RelayProjectService {
           planMode: job.planMode ?? input.planMode,
           planningHorizon: job.planningHorizon ?? input.planningHorizon,
           riskLevel: job.riskLevel ?? input.riskLevel,
+          language: job.language ?? input.language,
         })
-        : buildSummaryPrompt(project, input.instructions);
+        : buildSummaryPrompt(project, { ...input, language: job.language ?? input.language });
       await this.options.runPrompt(session, { ...toPromptEnvelope(prompt), correlationId, activityActor: actor });
       const outputMarkdown = bestAssistantOutput(this.options.chatMessagesByCorrelation(correlationId, 200));
       const finishedAt = new Date().toISOString();
@@ -352,7 +356,8 @@ export class RelayProjectService {
   }
 }
 
-function buildSummaryPrompt(project: ProjectRecord, instructions?: string): string {
+function buildSummaryPrompt(project: ProjectRecord, input: ProjectRunOptions = {}): string {
+  const language = normalizeProjectLanguage(input.language);
   return [
     "Create an accurate project summary for NordRelay's Projects view.",
     "",
@@ -360,9 +365,11 @@ function buildSummaryPrompt(project: ProjectRecord, instructions?: string): stri
     `Workspace: ${project.workspacePath}`,
     project.description ? `Description: ${project.description}` : "",
     project.linkedSessions.length ? `Linked sessions: ${project.linkedSessions.map((link) => `${link.agentId ?? "agent"}:${link.threadId}`).join(", ")}` : "",
-    instructions ? `Additional user instructions: ${instructions}` : "",
+    `Output language: ${language}.`,
+    input.instructions ? `Additional user instructions: ${input.instructions}` : "",
     "",
     "Analyze the current repository state before writing. Verify claims against files, docs, package metadata, and existing implementation.",
+    "Write the complete summary in the requested output language. Keep file paths, identifiers, commands, API names, code symbols, and JSON keys unchanged.",
     "Return concise Markdown with these sections: Overview, Architecture, Key Entry Points, Runtime and Deployment, Current Capabilities, Risks, Open Questions.",
     "Do not recommend future work in this summary unless it is needed to explain an existing risk.",
   ].filter(Boolean).join("\n");
@@ -372,6 +379,7 @@ function buildPlanPrompt(project: ProjectRecord, input: ProjectRunOptions = {}):
   const planMode = normalizeProjectPlanMode(input.planMode);
   const planningHorizon = normalizeProjectPlanHorizon(input.planningHorizon);
   const riskLevel = normalizeProjectPlanRiskLevel(input.riskLevel);
+  const language = normalizeProjectLanguage(input.language);
   const existingItems = project.planItems
     .slice()
     .sort((left, right) => Number(right.priority ?? 0) - Number(left.priority ?? 0))
@@ -387,6 +395,7 @@ function buildPlanPrompt(project: ProjectRecord, input: ProjectRunOptions = {}):
     project.summaryMarkdown ? `Current editable project summary:\n${project.summaryMarkdown}` : "",
     existingItems ? `Existing parsed plan items. Avoid duplicates unless current code evidence proves the old item is obsolete or materially incomplete:\n${existingItems}` : "",
     "",
+    `Output language: ${language}.`,
     `Plan focus: ${planModeLabel(planMode)}.`,
     `Planning horizon: ${planHorizonLabel(planningHorizon)}.`,
     `Risk posture: ${planRiskLabel(riskLevel)}.`,
@@ -397,6 +406,7 @@ function buildPlanPrompt(project: ProjectRecord, input: ProjectRunOptions = {}):
     "",
     "Before proposing work, inspect the current codebase and verify that each recommendation is not already fully implemented.",
     "Avoid duplicate suggestions. Prefer high-signal, concrete improvements with evidence from files, behavior, docs, tests, or runtime behavior.",
+    "Write the complete plan in the requested output language. Keep file paths, identifiers, commands, API names, code symbols, and JSON keys unchanged.",
     "Return Markdown with a prioritized list. For each item include category, target area, user value, impact, effort, risk, blockers, confidence, and evidence.",
     "",
     "At the end include a fenced code block named nordrelay-project-plan containing a JSON array.",

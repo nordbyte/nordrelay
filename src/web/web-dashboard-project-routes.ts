@@ -4,6 +4,7 @@ import { isAgentId, type AgentId } from "../agents/shared/agent.js";
 import type { RelayRuntime } from "../runtime/relay-runtime.js";
 import type { ProjectRunOptions } from "../runtime/relay-project-service.js";
 import {
+  normalizeProjectLanguage,
   normalizeProjectPlanHorizon,
   normalizeProjectPlanMode,
   normalizeProjectPlanRiskLevel,
@@ -171,6 +172,7 @@ function parseProjectRunBody(body: Record<string, unknown>, section: string): Pr
   const options: ProjectRunOptions = {
     agentId: parseOptionalAgentId(optionalStringField(record, "agentId")),
     instructions: optionalStringField(record, "instructions"),
+    language: normalizeProjectLanguage(optionalStringField(record, "language")),
   };
   if (section === "plan") {
     options.planMode = normalizeProjectPlanMode(optionalStringField(record, "planMode"));
