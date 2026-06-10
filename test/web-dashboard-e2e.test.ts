@@ -563,6 +563,24 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).not.toContain("Next launch");
   });
 
+  it("does not display the first reasoning option when the active session value is missing", () => {
+    const js = dashboardJs();
+    const chatTabsSource = readFileSync("src/web/ui/client/chat-tabs.ts", "utf8");
+    const typesSource = readFileSync("src/web/ui/client/core/webui-types.d.ts", "utf8");
+
+    expect(js).toContain("function currentControlSession");
+    expect(js).toContain("const s=currentControlSession()");
+    expect(js).toContain("reasoningEffort:String(source.reasoningEffort||tab.reasoningEffort||'')");
+    expect(js).toContain("selectedReasoning=reasoningItems.find(item=>item.value===s.reasoningEffort)||(s.reasoningEffort?{value:s.reasoningEffort,label:s.reasoningEffort}:{value:'',label:'Default'})");
+    expect(js).not.toContain("s.reasoningEffort}:reasoningItems[0]");
+    expect(js).toContain("if(state.currentPage==='chat')syncChatTabsFromActiveSessions(data.sessions||[])");
+    expect(js).toContain("syncChatTabsFromActiveSessions(incoming)");
+    expect(chatTabsSource).toContain("reasoningEffort: String(session?.reasoningEffort || '')");
+    expect(chatTabsSource).toContain("function syncChatTabsFromActiveSessions");
+    expect(chatTabsSource).toContain("reasoningEffort: normalized.reasoningEffort || existing?.reasoningEffort || ''");
+    expect(typesSource).toContain("reasoningEffort?: string;");
+  });
+
   it("renders chat notifications and completion sounds as toggle icons", () => {
     const js = dashboardJs();
     const css = dashboardCss();

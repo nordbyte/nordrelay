@@ -244,6 +244,7 @@ async function loadActiveSessions(){
     const data=state.currentPage==='chat'?await loadActiveSessionsForChatTabs():await loadActiveSessionsForSelectedTarget();
     state.activeSessionsErrors=data.errors||[];
     state.activeSessionsLoadedTarget=state.currentPage==='chat'?'chat-tabs':state.activeSessionsTarget||'local';
+    if(state.currentPage==='chat')syncChatTabsFromActiveSessions(data.sessions||[]);
     renderActiveSessions(data.sessions||[]);
   }catch(error){
     if(!isApiStateError(error))throw error;
@@ -343,12 +344,12 @@ function activeSourceLabel(source){
   return source||'-';
 }
 function renderSessionControls(){
-  const c=state.controls||{};const s=state.snapshot?.session||{};const caps=c.capabilities||{};
+  const c=state.controls||{};const s=currentControlSession();const caps=c.capabilities||{};
   const lockedTitle=chatSessionControlLockTitle();
   const modelItems=[{value:'',label:'Default'}].concat((c.models||[]).map(m=>({value:m.slug,label:modelLabel(m)})));
   const selectedModel=modelItems.find(item=>item.value===s.model)||(s.model?{value:s.model,label:s.model}:modelItems[0]);
   const reasoningItems=(c.reasoningOptions||[]).map(v=>({value:v,label:v}));
-  const selectedReasoning=reasoningItems.find(item=>item.value===s.reasoningEffort)||(s.reasoningEffort?{value:s.reasoningEffort,label:s.reasoningEffort}:reasoningItems[0]);
+  const selectedReasoning=reasoningItems.find(item=>item.value===s.reasoningEffort)||(s.reasoningEffort?{value:s.reasoningEffort,label:s.reasoningEffort}:{value:'',label:'Default'});
   const fastItems=[{value:'on',label:'on'},{value:'off',label:'off'}];
   const selectedFast=s.fastMode?'on':'off';
   const selectedLaunch=activeLaunchProfileId(s,c);
@@ -365,6 +366,38 @@ function renderSessionControls(){
   renderChatWorkspaceLine();
 }
 function chatSessionControlLockTitle(){return currentChatWorkingSession()?'Wait until the current session finishes before changing model, reasoning, fast mode, or launch.':''}
+function currentControlSession(): WebuiSessionSnapshot {
+  const snapshot=state.snapshot?.session||{};
+  const tab=state.currentPage==='chat'?activeChatTab():null;
+  if(!tab?.threadId)return snapshot;
+  const tabPeer=String(tab.peerId||'local');
+  if(tabPeer!==String(state.selectedPeer||'local'))return snapshot;
+  const snapshotMatchesTab=String(state.snapshotPeerId||'local')===tabPeer&&String(snapshot.threadId||'')===String(tab.threadId||'');
+  const source: WebuiSessionSnapshot=snapshotMatchesTab?snapshot:{};
+  return {
+    ...tab,
+    ...source,
+    agentId:String(source.agentId||tab.agentId||''),
+    agentLabel:String(source.agentLabel||tab.agentLabel||source.agentId||tab.agentId||''),
+    threadId:String(source.threadId||tab.threadId||''),
+    sessionName:String(source.sessionName||tab.sessionName||''),
+    workspace:String(source.workspace||tab.workspace||''),
+    model:String(source.model||tab.model||''),
+    reasoningEffort:String(source.reasoningEffort||tab.reasoningEffort||''),
+    fastMode:typeof source.fastMode==='boolean'?source.fastMode:tab.fastMode,
+    launchProfileId:String(source.launchProfileId||tab.launchProfileId||''),
+    nextLaunchProfileId:String(source.nextLaunchProfileId||tab.nextLaunchProfileId||''),
+    launchProfileLabel:String(source.launchProfileLabel||tab.launchProfileLabel||''),
+    launchProfileBehavior:String(source.launchProfileBehavior||tab.launchProfileBehavior||''),
+    sandboxMode:String(source.sandboxMode||tab.sandboxMode||''),
+    approvalPolicy:String(source.approvalPolicy||tab.approvalPolicy||''),
+    approvalsReviewer:String(source.approvalsReviewer||tab.approvalsReviewer||''),
+    activeLaunchProfileId:String(source.activeLaunchProfileId||tab.activeLaunchProfileId||''),
+    nextLaunchProfileLabel:String(source.nextLaunchProfileLabel||tab.nextLaunchProfileLabel||''),
+    nextLaunchProfileBehavior:String(source.nextLaunchProfileBehavior||tab.nextLaunchProfileBehavior||''),
+    nextUnsafeLaunch:typeof source.nextUnsafeLaunch==='boolean'?source.nextUnsafeLaunch:tab.nextUnsafeLaunch,
+  };
+}
 function currentControlAgentId(session: WebuiSessionSnapshot = state.snapshot?.session||{}){
   const tab=state.currentPage==='chat'?activeChatTab():null;
   return String(session?.agentId||tab?.agentId||state.enabledAgents?.[0]||'');
@@ -522,7 +555,7 @@ function bindCompactControlMenus(){
     }else if(id==='controlFast'){
       await api('/api/session/fast',{method:'POST',body:JSON.stringify({enabled:button.dataset.controlValue==='on'})});toast('Fast mode updated');loadBootstrap();
     }else if(id==='controlLaunch'){
-      const profile=launchProfileForSelection(state.controls||{},state.snapshot?.session||{},button.dataset.controlValue);
+      const profile=launchProfileForSelection(state.controls||{},currentControlSession(),button.dataset.controlValue);
       if(!profile){
         button.dataset.controlValue=previousValue;
         button.textContent=previousText;

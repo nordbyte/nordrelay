@@ -55,6 +55,19 @@ function normalizeChatTab(raw: Partial<WebuiChatTab> | null | undefined): WebuiC
     title: raw?.title ? String(raw.title) : '',
     workspace: raw?.workspace ? String(raw.workspace) : '',
     model: raw?.model ? String(raw.model) : '',
+    reasoningEffort: raw?.reasoningEffort ? String(raw.reasoningEffort) : '',
+    fastMode: typeof raw?.fastMode === 'boolean' ? raw.fastMode : undefined,
+    launchProfileId: raw?.launchProfileId ? String(raw.launchProfileId) : '',
+    nextLaunchProfileId: raw?.nextLaunchProfileId ? String(raw.nextLaunchProfileId) : '',
+    launchProfileLabel: raw?.launchProfileLabel ? String(raw.launchProfileLabel) : '',
+    launchProfileBehavior: raw?.launchProfileBehavior ? String(raw.launchProfileBehavior) : '',
+    sandboxMode: raw?.sandboxMode ? String(raw.sandboxMode) : '',
+    approvalPolicy: raw?.approvalPolicy ? String(raw.approvalPolicy) : '',
+    approvalsReviewer: raw?.approvalsReviewer ? String(raw.approvalsReviewer) : '',
+    activeLaunchProfileId: raw?.activeLaunchProfileId ? String(raw.activeLaunchProfileId) : '',
+    nextLaunchProfileLabel: raw?.nextLaunchProfileLabel ? String(raw.nextLaunchProfileLabel) : '',
+    nextLaunchProfileBehavior: raw?.nextLaunchProfileBehavior ? String(raw.nextLaunchProfileBehavior) : '',
+    nextUnsafeLaunch: typeof raw?.nextUnsafeLaunch === 'boolean' ? raw.nextUnsafeLaunch : undefined,
     draft: raw?.draft ? String(raw.draft) : '',
     openedAt: raw?.openedAt ? String(raw.openedAt) : now,
     lastActiveAt: raw?.lastActiveAt ? String(raw.lastActiveAt) : now,
@@ -148,6 +161,19 @@ function chatTabFromSession(session: WebuiSessionSnapshot | null | undefined, pe
     title: String(session?.sessionName || session?.title || session?.firstUserMessage || ''),
     workspace: String(session?.workspace || ''),
     model: String(session?.model || ''),
+    reasoningEffort: String(session?.reasoningEffort || ''),
+    fastMode: typeof session?.fastMode === 'boolean' ? session.fastMode : undefined,
+    launchProfileId: String(session?.launchProfileId || ''),
+    nextLaunchProfileId: String(session?.nextLaunchProfileId || ''),
+    launchProfileLabel: String(session?.launchProfileLabel || ''),
+    launchProfileBehavior: String(session?.launchProfileBehavior || ''),
+    sandboxMode: String(session?.sandboxMode || ''),
+    approvalPolicy: String(session?.approvalPolicy || ''),
+    approvalsReviewer: String(session?.approvalsReviewer || ''),
+    activeLaunchProfileId: String(session?.activeLaunchProfileId || ''),
+    nextLaunchProfileLabel: String(session?.nextLaunchProfileLabel || ''),
+    nextLaunchProfileBehavior: String(session?.nextLaunchProfileBehavior || ''),
+    nextUnsafeLaunch: typeof session?.nextUnsafeLaunch === 'boolean' ? session.nextUnsafeLaunch : undefined,
   });
 }
 
@@ -163,7 +189,42 @@ function chatTabFromActiveSession(session: WebuiActiveSession): WebuiChatTab | n
     title: String(session?.sessionName || session?.prompt || session?.threadId || ''),
     workspace: String(session?.workspace || ''),
     model: String(session?.model || ''),
+    reasoningEffort: String(session?.reasoningEffort || ''),
+    fastMode: typeof session?.fastMode === 'boolean' ? session.fastMode : undefined,
+    launchProfileId: String(session?.launchProfileId || ''),
+    nextLaunchProfileId: String(session?.nextLaunchProfileId || ''),
+    launchProfileLabel: String(session?.launchProfileLabel || ''),
+    launchProfileBehavior: String(session?.launchProfileBehavior || ''),
+    sandboxMode: String(session?.sandboxMode || ''),
+    approvalPolicy: String(session?.approvalPolicy || ''),
+    approvalsReviewer: String(session?.approvalsReviewer || ''),
   });
+}
+
+function syncChatTabsFromActiveSessions(sessions: WebuiActiveSession[] = []) {
+  const tabs = ensureChatTabs();
+  for (const session of sessions || []) {
+    const threadId = String(session?.threadId || '').trim();
+    if (!threadId) continue;
+    const peerId = String(session?.peerId || session?.nodeId || 'local');
+    const agentId = String(session?.agentId || '');
+    const existing = tabs.find(tab =>
+      String(tab.threadId || '') === threadId &&
+      String(tab.peerId || 'local') === peerId &&
+      (!agentId || !tab.agentId || String(tab.agentId) === agentId)
+    );
+    if (!existing) continue;
+    const patch = chatTabFromActiveSession({ ...session, peerId });
+    if (!patch) continue;
+    upsertChatTab({
+      ...existing,
+      ...patch,
+      id: existing.id,
+      sessionName: patch.sessionName || existing.sessionName || '',
+      title: patch.sessionName || existing.title || patch.title || '',
+      draft: existing.draft || '',
+    }, { activate: false });
+  }
 }
 
 function refreshChatTabFromSession(tab: WebuiChatTab, session: WebuiSessionSnapshot | null | undefined) {
@@ -179,6 +240,19 @@ function refreshChatTabFromSession(tab: WebuiChatTab, session: WebuiSessionSnaps
     title: String(session.sessionName || session.title || session.firstUserMessage || tab.title || tab.threadId || ''),
     workspace: String(session.workspace || session.cwd || tab.workspace || ''),
     model: String(session.model || tab.model || ''),
+    reasoningEffort: String(session.reasoningEffort || tab.reasoningEffort || ''),
+    fastMode: typeof session.fastMode === 'boolean' ? session.fastMode : tab.fastMode,
+    launchProfileId: String(session.launchProfileId || tab.launchProfileId || ''),
+    nextLaunchProfileId: String(session.nextLaunchProfileId || tab.nextLaunchProfileId || ''),
+    launchProfileLabel: String(session.launchProfileLabel || tab.launchProfileLabel || ''),
+    launchProfileBehavior: String(session.launchProfileBehavior || tab.launchProfileBehavior || ''),
+    sandboxMode: String(session.sandboxMode || tab.sandboxMode || ''),
+    approvalPolicy: String(session.approvalPolicy || tab.approvalPolicy || ''),
+    approvalsReviewer: String(session.approvalsReviewer || tab.approvalsReviewer || ''),
+    activeLaunchProfileId: String(session.activeLaunchProfileId || tab.activeLaunchProfileId || ''),
+    nextLaunchProfileLabel: String(session.nextLaunchProfileLabel || tab.nextLaunchProfileLabel || ''),
+    nextLaunchProfileBehavior: String(session.nextLaunchProfileBehavior || tab.nextLaunchProfileBehavior || ''),
+    nextUnsafeLaunch: typeof session.nextUnsafeLaunch === 'boolean' ? session.nextUnsafeLaunch : tab.nextUnsafeLaunch,
   }, { activate: true }) || tab;
 }
 
@@ -201,6 +275,19 @@ function upsertChatTab(rawTab: Partial<WebuiChatTab>, options: { activate?: bool
     title: normalized.title || existing?.title || '',
     workspace: normalized.workspace || existing?.workspace || '',
     model: normalized.model || existing?.model || '',
+    reasoningEffort: normalized.reasoningEffort || existing?.reasoningEffort || '',
+    fastMode: typeof normalized.fastMode === 'boolean' ? normalized.fastMode : existing?.fastMode,
+    launchProfileId: normalized.launchProfileId || existing?.launchProfileId || '',
+    nextLaunchProfileId: normalized.nextLaunchProfileId || existing?.nextLaunchProfileId || '',
+    launchProfileLabel: normalized.launchProfileLabel || existing?.launchProfileLabel || '',
+    launchProfileBehavior: normalized.launchProfileBehavior || existing?.launchProfileBehavior || '',
+    sandboxMode: normalized.sandboxMode || existing?.sandboxMode || '',
+    approvalPolicy: normalized.approvalPolicy || existing?.approvalPolicy || '',
+    approvalsReviewer: normalized.approvalsReviewer || existing?.approvalsReviewer || '',
+    activeLaunchProfileId: normalized.activeLaunchProfileId || existing?.activeLaunchProfileId || '',
+    nextLaunchProfileLabel: normalized.nextLaunchProfileLabel || existing?.nextLaunchProfileLabel || '',
+    nextLaunchProfileBehavior: normalized.nextLaunchProfileBehavior || existing?.nextLaunchProfileBehavior || '',
+    nextUnsafeLaunch: typeof normalized.nextUnsafeLaunch === 'boolean' ? normalized.nextUnsafeLaunch : existing?.nextUnsafeLaunch,
     draft: normalized.draft || existing?.draft || '',
     lastActiveAt: options.activate ? new Date().toISOString() : (existing?.lastActiveAt || normalized.lastActiveAt),
   } as WebuiChatTab;

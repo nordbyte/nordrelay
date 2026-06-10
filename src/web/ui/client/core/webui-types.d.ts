@@ -57,9 +57,15 @@ interface WebuiSessionSnapshot extends WebuiRecord {
   workspace?: string;
   model?: string;
   reasoning?: string;
+  reasoningEffort?: string;
   launchProfileId?: string;
   launchProfileLabel?: string;
   launchProfileBehavior?: string;
+  activeLaunchProfileId?: string;
+  nextLaunchProfileId?: string;
+  nextLaunchProfileLabel?: string;
+  nextLaunchProfileBehavior?: string;
+  nextUnsafeLaunch?: boolean;
   sandboxMode?: string;
   approvalPolicy?: string;
   approvalsReviewer?: string;
@@ -190,9 +196,23 @@ interface WebuiAuditEvent extends WebuiRecord {
 }
 
 interface WebuiActiveSession extends WebuiRecord {
+  peerId?: string;
+  nodeId?: string;
+  nodeName?: string;
   agentId?: string;
+  agentLabel?: string;
   threadId?: string;
   workspace?: string;
+  model?: string;
+  reasoningEffort?: string;
+  fastMode?: boolean;
+  launchProfileId?: string;
+  nextLaunchProfileId?: string;
+  launchProfileLabel?: string;
+  launchProfileBehavior?: string;
+  sandboxMode?: string;
+  approvalPolicy?: string;
+  approvalsReviewer?: string;
   status?: string;
   source?: string;
   startedAt?: string;
@@ -237,6 +257,19 @@ interface WebuiChatTab extends WebuiRecord {
   title?: string;
   workspace?: string;
   model?: string;
+  reasoningEffort?: string;
+  fastMode?: boolean;
+  launchProfileId?: string;
+  nextLaunchProfileId?: string;
+  launchProfileLabel?: string;
+  launchProfileBehavior?: string;
+  sandboxMode?: string;
+  approvalPolicy?: string;
+  approvalsReviewer?: string;
+  activeLaunchProfileId?: string;
+  nextLaunchProfileLabel?: string;
+  nextLaunchProfileBehavior?: string;
+  nextUnsafeLaunch?: boolean;
   draft?: string;
   openedAt: string;
   lastActiveAt: string;
