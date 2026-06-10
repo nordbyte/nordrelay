@@ -570,7 +570,9 @@ describe("web dashboard browser-flow assets", () => {
 
     expect(js).toContain("function currentControlSession");
     expect(js).toContain("const s=currentControlSession()");
-    expect(js).toContain("reasoningEffort:String(source.reasoningEffort||tab.reasoningEffort||'')");
+    expect(js).toContain("function activeControlSessionForTab");
+    expect(js).toContain("reasoningEffort:String(source.reasoningEffort||active?.reasoningEffort||tab.reasoningEffort||'')");
+    expect(js).toContain("fastMode:typeof source.fastMode==='boolean'?source.fastMode:(typeof active?.fastMode==='boolean'?active.fastMode:tab.fastMode)");
     expect(js).toContain("selectedReasoning=reasoningItems.find(item=>item.value===s.reasoningEffort)||(s.reasoningEffort?{value:s.reasoningEffort,label:s.reasoningEffort}:{value:'',label:'Default'})");
     expect(js).not.toContain("s.reasoningEffort}:reasoningItems[0]");
     expect(js).toContain("if(state.currentPage==='chat')syncChatTabsFromActiveSessions(data.sessions||[])");

@@ -366,6 +366,19 @@ function renderSessionControls(){
   renderChatWorkspaceLine();
 }
 function chatSessionControlLockTitle(){return currentChatWorkingSession()?'Wait until the current session finishes before changing model, reasoning, fast mode, or launch.':''}
+function activeControlSessionForTab(tab: WebuiChatTab | null): WebuiActiveSession | null {
+  if(!tab?.threadId)return null;
+  const tabPeer=String(tab.peerId||'local');
+  const tabAgent=String(tab.agentId||'');
+  const tabThread=String(tab.threadId||'');
+  return (state.activeSessions?.sessions||[]).find(item=>{
+    const itemPeer=String(item.peerId||item.nodeId||'local');
+    if(itemPeer!==tabPeer)return false;
+    if(String(item.threadId||'')!==tabThread)return false;
+    const itemAgent=String(item.agentId||'');
+    return !tabAgent||!itemAgent||tabAgent===itemAgent;
+  })||null;
+}
 function currentControlSession(): WebuiSessionSnapshot {
   const snapshot=state.snapshot?.session||{};
   const tab=state.currentPage==='chat'?activeChatTab():null;
@@ -374,28 +387,30 @@ function currentControlSession(): WebuiSessionSnapshot {
   if(tabPeer!==String(state.selectedPeer||'local'))return snapshot;
   const snapshotMatchesTab=String(state.snapshotPeerId||'local')===tabPeer&&String(snapshot.threadId||'')===String(tab.threadId||'');
   const source: WebuiSessionSnapshot=snapshotMatchesTab?snapshot:{};
+  const active=activeControlSessionForTab(tab);
   return {
     ...tab,
+    ...active,
     ...source,
-    agentId:String(source.agentId||tab.agentId||''),
-    agentLabel:String(source.agentLabel||tab.agentLabel||source.agentId||tab.agentId||''),
-    threadId:String(source.threadId||tab.threadId||''),
-    sessionName:String(source.sessionName||tab.sessionName||''),
-    workspace:String(source.workspace||tab.workspace||''),
-    model:String(source.model||tab.model||''),
-    reasoningEffort:String(source.reasoningEffort||tab.reasoningEffort||''),
-    fastMode:typeof source.fastMode==='boolean'?source.fastMode:tab.fastMode,
-    launchProfileId:String(source.launchProfileId||tab.launchProfileId||''),
-    nextLaunchProfileId:String(source.nextLaunchProfileId||tab.nextLaunchProfileId||''),
-    launchProfileLabel:String(source.launchProfileLabel||tab.launchProfileLabel||''),
-    launchProfileBehavior:String(source.launchProfileBehavior||tab.launchProfileBehavior||''),
-    sandboxMode:String(source.sandboxMode||tab.sandboxMode||''),
-    approvalPolicy:String(source.approvalPolicy||tab.approvalPolicy||''),
-    approvalsReviewer:String(source.approvalsReviewer||tab.approvalsReviewer||''),
-    activeLaunchProfileId:String(source.activeLaunchProfileId||tab.activeLaunchProfileId||''),
-    nextLaunchProfileLabel:String(source.nextLaunchProfileLabel||tab.nextLaunchProfileLabel||''),
-    nextLaunchProfileBehavior:String(source.nextLaunchProfileBehavior||tab.nextLaunchProfileBehavior||''),
-    nextUnsafeLaunch:typeof source.nextUnsafeLaunch==='boolean'?source.nextUnsafeLaunch:tab.nextUnsafeLaunch,
+    agentId:String(source.agentId||active?.agentId||tab.agentId||''),
+    agentLabel:String(source.agentLabel||active?.agentLabel||tab.agentLabel||source.agentId||active?.agentId||tab.agentId||''),
+    threadId:String(source.threadId||active?.threadId||tab.threadId||''),
+    sessionName:String(source.sessionName||active?.sessionName||tab.sessionName||''),
+    workspace:String(source.workspace||active?.workspace||tab.workspace||''),
+    model:String(source.model||active?.model||tab.model||''),
+    reasoningEffort:String(source.reasoningEffort||active?.reasoningEffort||tab.reasoningEffort||''),
+    fastMode:typeof source.fastMode==='boolean'?source.fastMode:(typeof active?.fastMode==='boolean'?active.fastMode:tab.fastMode),
+    launchProfileId:String(source.launchProfileId||active?.launchProfileId||tab.launchProfileId||''),
+    nextLaunchProfileId:String(source.nextLaunchProfileId||active?.nextLaunchProfileId||tab.nextLaunchProfileId||''),
+    launchProfileLabel:String(source.launchProfileLabel||active?.launchProfileLabel||tab.launchProfileLabel||''),
+    launchProfileBehavior:String(source.launchProfileBehavior||active?.launchProfileBehavior||tab.launchProfileBehavior||''),
+    sandboxMode:String(source.sandboxMode||active?.sandboxMode||tab.sandboxMode||''),
+    approvalPolicy:String(source.approvalPolicy||active?.approvalPolicy||tab.approvalPolicy||''),
+    approvalsReviewer:String(source.approvalsReviewer||active?.approvalsReviewer||tab.approvalsReviewer||''),
+    activeLaunchProfileId:String(source.activeLaunchProfileId||active?.activeLaunchProfileId||tab.activeLaunchProfileId||''),
+    nextLaunchProfileLabel:String(source.nextLaunchProfileLabel||active?.nextLaunchProfileLabel||tab.nextLaunchProfileLabel||''),
+    nextLaunchProfileBehavior:String(source.nextLaunchProfileBehavior||active?.nextLaunchProfileBehavior||tab.nextLaunchProfileBehavior||''),
+    nextUnsafeLaunch:typeof source.nextUnsafeLaunch==='boolean'?source.nextUnsafeLaunch:(typeof active?.nextUnsafeLaunch==='boolean'?active.nextUnsafeLaunch:tab.nextUnsafeLaunch),
   };
 }
 function currentControlAgentId(session: WebuiSessionSnapshot = state.snapshot?.session||{}){
