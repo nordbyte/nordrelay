@@ -497,7 +497,7 @@ function dedupeWebChatMessages(messages: WebChatMessage[]): WebChatMessage[] {
     if (key && seen.has(key)) {
       continue;
     }
-    const duplicate = findOverlappingAgentDuplicate(deduped, message);
+    const duplicate = message.key ? undefined : findOverlappingAgentDuplicate(deduped, message);
     if (duplicate) {
       if (shouldPreferWebChatMessage(message, duplicate)) {
         const index = deduped.indexOf(duplicate);
@@ -521,7 +521,7 @@ function findDuplicateWebChatMessage(
 ): WebChatMessage | undefined {
   const key = webChatDedupKey(input);
   const exact = key ? messages.find((message) => webChatDedupKey(message) === key) : undefined;
-  return exact ?? (key ? undefined : findOverlappingAgentDuplicate(messages, input));
+  return exact ?? (input.key ? undefined : findOverlappingAgentDuplicate(messages, input));
 }
 
 function findOverlappingAgentDuplicate(
