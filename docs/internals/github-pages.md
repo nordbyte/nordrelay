@@ -22,7 +22,7 @@ The Pages workflow is:
 .github/workflows/pages.yml
 ```
 
-It installs dependencies, runs `npm run docs:build`, uploads `docs/.vitepress/dist`, and deploys with GitHub Pages.
+It runs automatically only when `docs/**` or `.github/workflows/pages.yml` changes on `main`. It installs dependencies, runs `npm run docs:build`, uploads `docs/.vitepress/dist`, and deploys with GitHub Pages. Use the manual workflow dispatch when a docs redeploy is needed without a docs content change.
 
 ## Custom domain
 
