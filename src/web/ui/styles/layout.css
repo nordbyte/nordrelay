@@ -174,6 +174,8 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .chat-tab-close:hover,.chat-tab-close:focus{background:var(--danger)!important;color:white!important;outline:none}
 .chat-messages-wrap{position:relative;display:flex;flex:1;min-height:0}
 .messages{flex:1;min-width:0;min-height:0;overflow:auto;border:1px solid var(--border-soft);border-radius:8px;padding:12px;background:var(--surface-soft)}
+.messages.chat-loading{display:flex;align-items:center;justify-content:center}
+.messages.chat-loading .loading-state{min-height:0}
 .chat-jump-latest{position:absolute;left:50%;bottom:14px;display:inline-flex;align-items:center;justify-content:center;width:38px;min-width:38px;height:38px;min-height:38px;padding:0;border:1px solid var(--border-soft);border-radius:999px;background:color-mix(in srgb,var(--surface) 88%,transparent);color:var(--accent-text);box-shadow:0 10px 24px rgba(0,0,0,.14);transform:translateX(-50%);z-index:6}
 .chat-jump-latest[hidden]{display:none}
 .chat-jump-latest span{display:block;width:10px;height:10px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg) translate(-1px,-2px)}

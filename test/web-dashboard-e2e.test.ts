@@ -909,12 +909,16 @@ describe("web dashboard browser-flow assets", () => {
     const eventsSource = readFileSync("src/web/ui/client/events.ts", "utf8");
     const queueSource = readFileSync("src/web/ui/client/queue-planner.ts", "utf8");
     const globalsSource = readFileSync("src/web/ui/client/webui-globals.d.ts", "utf8");
+    const layoutSource = readFileSync("src/web/ui/styles/layout.css", "utf8");
 
     expect(chatTabsSource).toContain("function chatTabContextKey");
     expect(chatTabsSource).toContain("function activeChatTabApiOptions");
     expect(chatTabsSource).toContain("function chatActivationStillCurrent");
     expect(chatTabsSource).toContain("function refreshChatTabFromSession");
     expect(chatTabsSource).toContain("const requestId = nextChatActivationRequestId()");
+    expect(chatTabsSource).toContain("const previousActiveChatTabId = state.activeChatTabId || ''");
+    expect(chatTabsSource).toContain("previousActiveChatTabId !== tab.id");
+    expect(chatTabsSource).toContain("showChatHistoryLoading()");
     expect(chatTabsSource).toContain("if (!chatActivationStillCurrent(requestId, tab)) return");
     expect(chatTabsSource).toContain("body: JSON.stringify({ threadId: tab.threadId }), contextKey");
     expect(chatTabsSource).toContain("refreshChatTabFromSession(tab, switched.session as WebuiSessionSnapshot)");
@@ -925,6 +929,13 @@ describe("web dashboard browser-flow assets", () => {
     expect(workflowsSource).toContain("api('/api/abort',activeChatTabApiOptions");
     expect(eventsSource).toContain("api('/api/chat/history',activeChatTabApiOptions");
     expect(eventsSource).toContain("api('/api/chat/attachment',activeChatTabApiOptions");
+    expect(eventsSource).toContain("function showChatHistoryLoading");
+    expect(eventsSource).toContain("state.chatHistoryRequestId=(state.chatHistoryRequestId||0)+1");
+    expect(eventsSource).toContain("state.chatMessages=[]");
+    expect(eventsSource).toContain("box.classList.add('chat-loading')");
+    expect(eventsSource).toContain("function showChatHistoryError");
+    expect(eventsSource).toContain("if(requestId===state.chatHistoryRequestId)showChatHistoryError(error)");
+    expect(eventsSource).toContain("box.classList.remove('chat-loading')");
     expect(eventsSource).toContain("function renderPromptHistorySidebar");
     expect(eventsSource).toContain("function scrollChatToHistoryPrompt");
     expect(eventsSource).toContain("document.querySelectorAll('#messages .message.user-prompt')");
@@ -936,6 +947,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(queueSource).toContain("const peerId=currentChatPeerId()");
     expect(globalsSource).toContain("declare function activeChatTabApiOptions");
     expect(globalsSource).toContain("declare function currentChatPeerId()");
+    expect(globalsSource).toContain("declare function showChatHistoryLoading");
+    expect(layoutSource).toContain(".messages.chat-loading");
   });
 
   it("uses a friendly dashboard API network failure message", () => {

@@ -366,10 +366,11 @@ function pruneMirroredLocalSnapshotChatTabs(local: WebuiBootstrap | null | undef
   renderChatTabs();
 }
 
-async function activateChatTabSession(tab: WebuiChatTab, options: { navigate?: boolean; loadHistory?: boolean; reload?: boolean; toast?: boolean } = {}) {
+async function activateChatTabSession(tab: WebuiChatTab, options: { navigate?: boolean; loadHistory?: boolean; reload?: boolean; toast?: boolean; previousActiveChatTabId?: string } = {}) {
   if (!tab?.threadId) return;
   saveActiveChatTabDraft();
   const requestId = nextChatActivationRequestId();
+  const previousActiveChatTabId = options.previousActiveChatTabId ?? state.activeChatTabId ?? '';
   const previousPeer = state.selectedPeer || 'local';
   const previousEventsContextKey = state.eventsContextKey || '';
   state.selectedPeer = chatTabPeerId(tab);
@@ -377,6 +378,9 @@ async function activateChatTabSession(tab: WebuiChatTab, options: { navigate?: b
   state.activeChatTabId = tab.id;
   localStorage.setItem(ACTIVE_CHAT_TAB_STORAGE_KEY, tab.id);
   renderChatTabs();
+  if (state.currentPage === 'chat' && options.loadHistory !== false && previousActiveChatTabId !== tab.id) {
+    showChatHistoryLoading();
+  }
   const contextKey = chatTabContextKey(tab);
   if (tab.agentId && state.snapshot?.session?.agentId !== tab.agentId) {
     await headerTargetRequest(state.selectedPeer, '/api/agent', { method: 'POST', body: JSON.stringify({ agentId: tab.agentId }), contextKey });
@@ -415,10 +419,11 @@ async function activateChatTabSession(tab: WebuiChatTab, options: { navigate?: b
 }
 
 async function openChatSession(rawTab: Partial<WebuiChatTab>, options: { navigate?: boolean; loadHistory?: boolean; reload?: boolean; toast?: boolean } = {}) {
+  const previousActiveChatTabId = state.activeChatTabId || '';
   const tab = upsertChatTab(rawTab, { activate: true });
   if (!tab) return;
   renderChatTabs();
-  await activateChatTabSession(tab, options);
+  await activateChatTabSession(tab, { ...options, previousActiveChatTabId });
 }
 
 async function ensureActiveChatTabSelected() {

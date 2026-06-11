@@ -177,6 +177,7 @@ declare function loadAudit(reset?: boolean): Promise<void>;
 declare function loadBootstrap(options?: WebuiRecord): Promise<WebuiBootstrap>;
 declare function loadHeaderTargetCandidates(local: WebuiBootstrap): Promise<void>;
 declare function loadChatHistory(options?: { forceScroll?: boolean; preserveScrollOffset?: boolean; skipIfRendered?: boolean }): Promise<boolean>;
+declare function showChatHistoryLoading(label?: string): void;
 declare function loadDiagnostics(): Promise<void>;
 declare function loadLogs(reset?: boolean): Promise<void>;
 declare function loadMetrics(options?: { silent?: boolean }): Promise<void>;
