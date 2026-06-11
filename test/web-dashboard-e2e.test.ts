@@ -809,8 +809,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function retryChatMessage");
     expect(js).toContain("Message copied");
     expect(js).toContain("Retry message");
-    expect(js).toContain("await api('/api/prompt',activeChatTabApiOptions({method:'POST',body:{text,correlationId:createWebCorrelationId()}}))");
-    expect(js).toContain("if(r.queued&&r.queueId)appendQueuedMessage(r.queueId,r.correlationId)");
+    expect(js).toContain("const correlationId=createWebCorrelationId();setLocalTurnFromCurrentChat");
+    expect(js).toContain("await api('/api/prompt',activeChatTabApiOptions({method:'POST',body:{text,correlationId}}))");
+    expect(js).toContain("if(r.queued&&r.queueId){clearLocalTurnForCorrelation(correlationId);appendQueuedMessage(r.queueId,r.correlationId)");
     expect(js).toContain("'.message-retry-button','prompt.send'");
     expect(pageSource).not.toContain('id="retryBtn"');
     expect(pageSource).toContain("Requires browser microphone permission");
@@ -908,6 +909,8 @@ describe("web dashboard browser-flow assets", () => {
     const workflowsSource = readFileSync("src/web/ui/client/workflows.ts", "utf8");
     const eventsSource = readFileSync("src/web/ui/client/events.ts", "utf8");
     const queueSource = readFileSync("src/web/ui/client/queue-planner.ts", "utf8");
+    const runtimeSource = readFileSync("src/web/ui/client/core/runtime.ts", "utf8");
+    const stateTypesSource = readFileSync("src/web/ui/client/core/webui-types.d.ts", "utf8");
     const globalsSource = readFileSync("src/web/ui/client/webui-globals.d.ts", "utf8");
     const layoutSource = readFileSync("src/web/ui/styles/layout.css", "utf8");
 
@@ -927,6 +930,8 @@ describe("web dashboard browser-flow assets", () => {
     expect(workflowsSource).toContain("api('/api/prompt/upload',activeChatTabApiOptions");
     expect(workflowsSource).not.toContain("api('/api/chat/mirror',activeChatTabApiOptions");
     expect(workflowsSource).toContain("api('/api/abort',activeChatTabApiOptions");
+    expect(workflowsSource).toContain("setLocalTurnFromCurrentChat(timestamp,{correlationId,pendingMs:localTurnPendingMsForPeer(currentChatPeerId())})");
+    expect(workflowsSource).toContain("clearLocalTurnForCorrelation(correlationId)");
     expect(eventsSource).toContain("api('/api/chat/history',activeChatTabApiOptions");
     expect(eventsSource).toContain("api('/api/chat/attachment',activeChatTabApiOptions");
     expect(eventsSource).toContain("function showChatHistoryLoading");
@@ -941,13 +946,24 @@ describe("web dashboard browser-flow assets", () => {
     expect(eventsSource).toContain("document.querySelectorAll('#messages .message.user-prompt')");
     expect(eventsSource).toContain("function chatEventMatchesCurrentChat");
     expect(eventsSource).toContain("function chatElementMatchesCurrentChat");
+    expect(eventsSource).toContain("const REMOTE_TURN_PENDING_MS=20000");
+    expect(eventsSource).toContain("function localTurnPendingMsForPeer");
+    expect(eventsSource).toContain("function clearLocalTurnForCorrelation");
+    expect(eventsSource).toContain("if(localTurnPendingActive())return false");
+    expect(eventsSource).toContain("state.activeSessionsLastLoadAt>started+LOCAL_TURN_STALE_MS");
+    expect(eventsSource).toContain("!localTurnPendingActive()&&Date.now()-started>5000");
     expect(eventsSource).toContain("if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}");
     expect(eventsSource).toContain("!chatElementMatchesCurrentChat(currentAgentMessage)");
     expect(eventsSource).toContain("queueActionRequest(currentChatPeerId(),'cancel'");
     expect(queueSource).toContain("const peerId=currentChatPeerId()");
+    expect(runtimeSource).toContain("localTurnCorrelationId:null");
+    expect(runtimeSource).toContain("localTurnPendingUntil:0");
+    expect(stateTypesSource).toContain("localTurnCorrelationId: string | null;");
+    expect(stateTypesSource).toContain("localTurnPendingUntil: number;");
     expect(globalsSource).toContain("declare function activeChatTabApiOptions");
     expect(globalsSource).toContain("declare function currentChatPeerId()");
     expect(globalsSource).toContain("declare function showChatHistoryLoading");
+    expect(globalsSource).toContain("declare function clearLocalTurnForCorrelation");
     expect(layoutSource).toContain(".messages.chat-loading");
   });
 

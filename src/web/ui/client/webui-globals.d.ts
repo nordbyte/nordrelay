@@ -98,7 +98,9 @@ declare function codexPermissionMenuItems(controls?: WebuiControls, session?: We
 declare function connectEvents(): void;
 declare function loadProjects(): Promise<void>;
 declare function syncChatEventStreamForActiveContext(): boolean;
-declare function setLocalTurnFromCurrentChat(at?: string): void;
+declare function localTurnPendingMsForPeer(peerId?: string): number;
+declare function setLocalTurnFromCurrentChat(at?: string, options?: { correlationId?: string; pendingMs?: number }): void;
+declare function clearLocalTurnForCorrelation(correlationId?: string): void;
 declare function startChatHistoryFollowup(): void;
 declare function upsertOptimisticChatMessage(message: WebuiChatMessage): void;
 declare function removeChatMessageForCorrelation(correlationId: string): void;

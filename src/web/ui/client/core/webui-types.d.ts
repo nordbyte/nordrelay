@@ -608,6 +608,8 @@ interface DashboardState {
   localTurnAgentId: string | null;
   localTurnPeerId: string | null;
   localTurnStartedAt: string | null;
+  localTurnCorrelationId: string | null;
+  localTurnPendingUntil: number;
   peers: WebuiPeerState | null;
   peerRelay: WebuiRecord | null;
   peerRefreshTimer: WebuiInterval | null;
