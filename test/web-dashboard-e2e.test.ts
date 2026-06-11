@@ -869,6 +869,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(eventsSource).toContain("applyQueueRealtimeEvent(parseRelayEventData(e),eventTarget)");
     expect(eventsSource).toContain("addRelayEventListener(events,'turn_start'");
     expect(eventsSource).toContain("addRelayEventListener(events,'text_delta'");
+    expect(eventsSource).toContain("function ensureCurrentAgentMessage");
+    expect(eventsSource).toContain("currentAgentMessage=null;startChatHistoryFollowup();renderChatWorkingIndicator()");
+    expect(eventsSource).toContain("currentAgentMessage=ensureCurrentAgentMessage(d,stick);queueTextDeltaRender(currentAgentMessage,d.delta,stick)");
+    expect(eventsSource).not.toContain("currentAgentMessage=appendMessage('agent','',{...chatEventAppendOptions(d),correlationId:d.correlationId});startChatHistoryFollowup()");
     expect(eventsSource).toContain("if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}");
     expect(eventsSource).toContain("renderChatTabs()");
     expect(dashboardSource).toContain('parseLastEventId(req.headers["last-event-id"], url.searchParams.get("lastEventId")');
@@ -946,6 +950,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(eventsSource).toContain("document.querySelectorAll('#messages .message.user-prompt')");
     expect(eventsSource).toContain("function chatEventMatchesCurrentChat");
     expect(eventsSource).toContain("function chatElementMatchesCurrentChat");
+    expect(eventsSource).toContain("function ensureCurrentAgentMessage");
     expect(eventsSource).toContain("const REMOTE_TURN_PENDING_MS=20000");
     expect(eventsSource).toContain("function localTurnPendingMsForPeer");
     expect(eventsSource).toContain("function clearLocalTurnForCorrelation");
