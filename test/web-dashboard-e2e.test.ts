@@ -948,10 +948,15 @@ describe("web dashboard browser-flow assets", () => {
     expect(eventsSource).toContain("function showChatHistoryLoading");
     expect(eventsSource).toContain("state.chatHistoryRequestId=(state.chatHistoryRequestId||0)+1");
     expect(eventsSource).toContain("state.chatMessages=[]");
+    expect(eventsSource).toContain("state.chatHistoryLoading=true");
     expect(eventsSource).toContain("box.classList.add('chat-loading')");
+    expect(eventsSource).toContain("document.getElementById('chatWorkingIndicator')?.remove();stopChatWorkingTimer()");
     expect(eventsSource).toContain("function showChatHistoryError");
+    expect(eventsSource).toContain("state.chatHistoryLoading=false");
     expect(eventsSource).toContain("if(requestId===state.chatHistoryRequestId)showChatHistoryError(error)");
     expect(eventsSource).toContain("box.classList.remove('chat-loading')");
+    expect(eventsSource).toContain("if(state.chatHistoryLoading||box.classList.contains('chat-loading'))");
+    expect(eventsSource).toContain("stopChatWorkingTimer();updateChatJumpLatestButton();return");
     expect(eventsSource).toContain("function renderPromptHistorySidebar");
     expect(eventsSource).toContain("function scrollChatToHistoryPrompt");
     expect(eventsSource).toContain("document.querySelectorAll('#messages .message.user-prompt')");
@@ -976,9 +981,11 @@ describe("web dashboard browser-flow assets", () => {
     expect(runtimeSource).toContain("localTurnCorrelationId:null");
     expect(runtimeSource).toContain("localTurnPendingUntil:0");
     expect(runtimeSource).toContain("chatVisibleCompletionTimer:null");
+    expect(runtimeSource).toContain("chatHistoryLoading:false");
     expect(stateTypesSource).toContain("localTurnCorrelationId: string | null;");
     expect(stateTypesSource).toContain("localTurnPendingUntil: number;");
     expect(stateTypesSource).toContain("chatVisibleCompletionTimer: WebuiTimer | null;");
+    expect(stateTypesSource).toContain("chatHistoryLoading: boolean;");
     expect(globalsSource).toContain("declare function activeChatTabApiOptions");
     expect(globalsSource).toContain("declare function currentChatPeerId()");
     expect(globalsSource).toContain("declare function showChatHistoryLoading");

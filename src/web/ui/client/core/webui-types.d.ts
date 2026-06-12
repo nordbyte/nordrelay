@@ -591,6 +591,7 @@ interface DashboardState {
   chatHistoryRequestId: number;
   chatRenderVersion: number;
   chatHistoryPagination: WebuiCursorPagination | null;
+  chatHistoryLoading: boolean;
   chatHistoryLoadingOlder: boolean;
   chatOptimisticMessages: WebuiChatMessage[];
   chatTabs: WebuiChatTab[];
