@@ -749,7 +749,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function renderChatWorkingIndicator");
     expect(js).toContain("function activeSessionMatchesCurrentChat");
     expect(js).toContain("function localTurnIsStaleWithoutActive");
-    expect(js).toContain("String(active.id||'')!==completion.turnId");
+    expect(js).toContain("function chatVisibleCompletionMatchesActive");
+    expect(js).toContain("activeCorrelationId=String(active?.correlationId||'')");
+    expect(js).toContain("turnId&&(activeId===turnId||activeCorrelationId===turnId)");
     expect(js).toContain("updated>completedAt+1000");
     expect(js).toContain("clearChatVisibleCompletionForCurrentSession();tool('tool','Started '+d.toolName)");
     expect(js).toContain("function syncChatEventStreamForActiveContext");
@@ -869,9 +871,14 @@ describe("web dashboard browser-flow assets", () => {
     expect(eventsSource).toContain("applyQueueRealtimeEvent(parseRelayEventData(e),eventTarget)");
     expect(eventsSource).toContain("addRelayEventListener(events,'turn_start'");
     expect(eventsSource).toContain("addRelayEventListener(events,'text_delta'");
+    expect(eventsSource).toContain("const CHAT_VISIBLE_COMPLETION_GRACE_MS=400");
     expect(eventsSource).toContain("function ensureCurrentAgentMessage");
+    expect(eventsSource).toContain("function scheduleChatVisibleCompletionRender");
+    expect(eventsSource).toContain("function chatVisibleCompletionMatchesActive");
+    expect(eventsSource).toContain("if(hideAfter&&Date.now()<hideAfter)return false");
     expect(eventsSource).toContain("currentAgentMessage=null;startChatHistoryFollowup();renderChatWorkingIndicator()");
     expect(eventsSource).toContain("currentAgentMessage=ensureCurrentAgentMessage(d,stick);queueTextDeltaRender(currentAgentMessage,d.delta,stick)");
+    expect(eventsSource).toContain("markChatVisibleCompletion(d,{graceMs:CHAT_VISIBLE_COMPLETION_GRACE_MS})");
     expect(eventsSource).not.toContain("currentAgentMessage=appendMessage('agent','',{...chatEventAppendOptions(d),correlationId:d.correlationId});startChatHistoryFollowup()");
     expect(eventsSource).toContain("if(!chatEventMatchesCurrentChat(d)){handleForeignChatEvent();return}");
     expect(eventsSource).toContain("renderChatTabs()");
@@ -951,6 +958,11 @@ describe("web dashboard browser-flow assets", () => {
     expect(eventsSource).toContain("function chatEventMatchesCurrentChat");
     expect(eventsSource).toContain("function chatElementMatchesCurrentChat");
     expect(eventsSource).toContain("function ensureCurrentAgentMessage");
+    expect(eventsSource).toContain("function chatMessageSignalsVisibleCompletion");
+    expect(eventsSource).toContain("key.includes(':final:')||key.includes(':assistant:')");
+    expect(eventsSource).toContain("if(chatMessageSignalsVisibleCompletion(message))markChatVisibleCompletion");
+    expect(eventsSource).toContain("activeCorrelationId=String(active?.correlationId||'')");
+    expect(eventsSource).toContain("stopChatVisibleCompletionTimer()");
     expect(eventsSource).toContain("const REMOTE_TURN_PENDING_MS=20000");
     expect(eventsSource).toContain("function localTurnPendingMsForPeer");
     expect(eventsSource).toContain("function clearLocalTurnForCorrelation");
@@ -963,8 +975,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(queueSource).toContain("const peerId=currentChatPeerId()");
     expect(runtimeSource).toContain("localTurnCorrelationId:null");
     expect(runtimeSource).toContain("localTurnPendingUntil:0");
+    expect(runtimeSource).toContain("chatVisibleCompletionTimer:null");
     expect(stateTypesSource).toContain("localTurnCorrelationId: string | null;");
     expect(stateTypesSource).toContain("localTurnPendingUntil: number;");
+    expect(stateTypesSource).toContain("chatVisibleCompletionTimer: WebuiTimer | null;");
     expect(globalsSource).toContain("declare function activeChatTabApiOptions");
     expect(globalsSource).toContain("declare function currentChatPeerId()");
     expect(globalsSource).toContain("declare function showChatHistoryLoading");

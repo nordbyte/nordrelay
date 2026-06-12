@@ -580,6 +580,7 @@ interface DashboardState {
   chatHistoryFollowupTimer: WebuiInterval | null;
   queueRealtimeRefreshTimer?: WebuiTimer | null;
   chatVisibleCompletion: WebuiRecord | null;
+  chatVisibleCompletionTimer: WebuiTimer | null;
   sessionDetailRefreshTimer: WebuiInterval | null;
   sessionDetailAgeTimer: WebuiInterval | null;
   sessionDetailThreadId: string | null;
