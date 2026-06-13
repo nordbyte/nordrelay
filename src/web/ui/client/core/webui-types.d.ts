@@ -470,6 +470,7 @@ interface WebuiLoadVersionOptions {
 
 interface WebuiChatScrollOptions {
   force?: boolean;
+  ignoreHistoryJumpLock?: boolean;
 }
 
 interface WebuiAppendMessageOptions extends WebuiRecord {
@@ -593,6 +594,9 @@ interface DashboardState {
   chatHistoryPagination: WebuiCursorPagination | null;
   chatHistoryLoading: boolean;
   chatHistoryLoadingOlder: boolean;
+  chatHistoryJumpTarget: string | null;
+  chatHistoryJumpLockUntil: number;
+  chatHistoryJumpFrame: number;
   chatOptimisticMessages: WebuiChatMessage[];
   chatTabs: WebuiChatTab[];
   activeChatTabId: string;

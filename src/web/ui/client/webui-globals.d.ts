@@ -253,7 +253,7 @@ declare let renderUserManagement: (value?: WebuiUserManagement) => void;
 declare function safe(fn: () => unknown | Promise<unknown>, event?: Event): void;
 declare function savedThemePreference(): string;
 declare function saveActiveChatTabDraft(): void;
-declare function scrollChatToBottom(options?: { force?: boolean }): void;
+declare function scrollChatToBottom(options?: { force?: boolean; ignoreHistoryJumpLock?: boolean }): void;
 declare function setLoading(id: string, text: string): void;
 declare function syncPluginPanelThemes(): void;
 declare function setApiState(status: WebuiApiStateStatus, options?: WebuiApiStateTransition): WebuiApiStateEntry;

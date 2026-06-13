@@ -959,6 +959,15 @@ describe("web dashboard browser-flow assets", () => {
     expect(eventsSource).toContain("stopChatWorkingTimer();updateChatJumpLatestButton();return");
     expect(eventsSource).toContain("function renderPromptHistorySidebar");
     expect(eventsSource).toContain("function scrollChatToHistoryPrompt");
+    expect(eventsSource).toContain("const CHAT_HISTORY_JUMP_LOCK_MS=5000");
+    expect(eventsSource).toContain("function chatHistoryPromptKey");
+    expect(eventsSource).toContain("data-prompt-history-key");
+    expect(eventsSource).toContain("function chatHistoryJumpLocked");
+    expect(eventsSource).toContain("function clearChatHistoryJumpLock");
+    expect(eventsSource).toContain("function restoreChatHistoryJump");
+    expect(eventsSource).toContain("scrollChatToBottom({force:true,ignoreHistoryJumpLock:true})");
+    expect(eventsSource).toContain("if(chatHistoryJumpLocked()&&!options.ignoreHistoryJumpLock)return");
+    expect(eventsSource).toContain("if(chatHistoryJumpLocked()&&state.chatHistoryJumpTarget)");
     expect(eventsSource).toContain("document.querySelectorAll('#messages .message.user-prompt')");
     expect(eventsSource).toContain("function chatEventMatchesCurrentChat");
     expect(eventsSource).toContain("function chatElementMatchesCurrentChat");
@@ -982,14 +991,21 @@ describe("web dashboard browser-flow assets", () => {
     expect(runtimeSource).toContain("localTurnPendingUntil:0");
     expect(runtimeSource).toContain("chatVisibleCompletionTimer:null");
     expect(runtimeSource).toContain("chatHistoryLoading:false");
+    expect(runtimeSource).toContain("chatHistoryJumpTarget:null");
+    expect(runtimeSource).toContain("chatHistoryJumpLockUntil:0");
+    expect(runtimeSource).toContain("chatHistoryJumpFrame:0");
     expect(stateTypesSource).toContain("localTurnCorrelationId: string | null;");
     expect(stateTypesSource).toContain("localTurnPendingUntil: number;");
     expect(stateTypesSource).toContain("chatVisibleCompletionTimer: WebuiTimer | null;");
     expect(stateTypesSource).toContain("chatHistoryLoading: boolean;");
+    expect(stateTypesSource).toContain("chatHistoryJumpTarget: string | null;");
+    expect(stateTypesSource).toContain("chatHistoryJumpLockUntil: number;");
+    expect(stateTypesSource).toContain("chatHistoryJumpFrame: number;");
     expect(globalsSource).toContain("declare function activeChatTabApiOptions");
     expect(globalsSource).toContain("declare function currentChatPeerId()");
     expect(globalsSource).toContain("declare function showChatHistoryLoading");
     expect(globalsSource).toContain("declare function clearLocalTurnForCorrelation");
+    expect(globalsSource).toContain("ignoreHistoryJumpLock?: boolean");
     expect(layoutSource).toContain(".messages.chat-loading");
   });
 
