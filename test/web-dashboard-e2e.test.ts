@@ -967,6 +967,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(eventsSource).toContain("function restoreChatHistoryJump");
     expect(eventsSource).toContain("function isChatAtTop");
     expect(eventsSource).toContain("function updateChatLoadOlderButton");
+    expect(eventsSource).toContain("function chatHistoryPaginationForLoadedMessages");
+    expect(eventsSource).toContain("state.chatHistoryPagination=pagination||chatHistoryPaginationForLoadedMessages(merged)");
+    expect(eventsSource).not.toContain("state.chatHistoryPagination=null;renderChatMessages(messages)");
     expect(eventsSource).toContain("id=\"chatHistoryPager\"");
     expect(eventsSource).toContain("Load more");
     expect(eventsSource).toContain("scrollChatToBottom({force:true,ignoreHistoryJumpLock:true})");
