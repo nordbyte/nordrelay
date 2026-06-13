@@ -594,6 +594,7 @@ interface DashboardState {
   chatHistoryPagination: WebuiCursorPagination | null;
   chatHistoryLoading: boolean;
   chatHistoryLoadingOlder: boolean;
+  chatHistoryAtTop: boolean;
   chatHistoryJumpTarget: string | null;
   chatHistoryJumpLockUntil: number;
   chatHistoryJumpFrame: number;

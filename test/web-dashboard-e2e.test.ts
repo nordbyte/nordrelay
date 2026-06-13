@@ -956,7 +956,7 @@ describe("web dashboard browser-flow assets", () => {
     expect(eventsSource).toContain("if(requestId===state.chatHistoryRequestId)showChatHistoryError(error)");
     expect(eventsSource).toContain("box.classList.remove('chat-loading')");
     expect(eventsSource).toContain("if(state.chatHistoryLoading||box.classList.contains('chat-loading'))");
-    expect(eventsSource).toContain("stopChatWorkingTimer();updateChatJumpLatestButton();return");
+    expect(eventsSource).toContain("stopChatWorkingTimer();updateChatScrollControls();return");
     expect(eventsSource).toContain("function renderPromptHistorySidebar");
     expect(eventsSource).toContain("function scrollChatToHistoryPrompt");
     expect(eventsSource).toContain("const CHAT_HISTORY_JUMP_LOCK_MS=5000");
@@ -965,6 +965,10 @@ describe("web dashboard browser-flow assets", () => {
     expect(eventsSource).toContain("function chatHistoryJumpLocked");
     expect(eventsSource).toContain("function clearChatHistoryJumpLock");
     expect(eventsSource).toContain("function restoreChatHistoryJump");
+    expect(eventsSource).toContain("function isChatAtTop");
+    expect(eventsSource).toContain("function updateChatLoadOlderButton");
+    expect(eventsSource).toContain("id=\"chatHistoryPager\"");
+    expect(eventsSource).toContain("Load more");
     expect(eventsSource).toContain("scrollChatToBottom({force:true,ignoreHistoryJumpLock:true})");
     expect(eventsSource).toContain("if(chatHistoryJumpLocked()&&!options.ignoreHistoryJumpLock)return");
     expect(eventsSource).toContain("if(chatHistoryJumpLocked()&&state.chatHistoryJumpTarget)");
@@ -1270,6 +1274,12 @@ describe("web dashboard browser-flow assets", () => {
     expect(webuiGlobals).toContain("declare const state: DashboardState");
     expect(webuiGlobals).toContain("declare const activityPager: WebuiPager");
     expect(webuiGlobals).not.toContain("declare const state: any");
+    const runtimeSource = readFileSync("src/web/ui/client/core/runtime.ts", "utf8");
+    const stateTypesSource = readFileSync("src/web/ui/client/core/webui-types.d.ts", "utf8");
+    const layoutSource = readFileSync("src/web/ui/styles/layout.css", "utf8");
+    expect(runtimeSource).toContain("chatHistoryAtTop:false");
+    expect(stateTypesSource).toContain("chatHistoryAtTop: boolean");
+    expect(layoutSource).toContain(".chat-history-pager.visible");
     expect(diagnostics).toContain("function diagnosticsHtml");
     expect(diagnostics).toContain("function switchDiagnosticsTab");
     expect(diagnostics).toContain("function bindDiagnosticsTabs");

@@ -180,7 +180,9 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .chat-jump-latest[hidden]{display:none}
 .chat-jump-latest span{display:block;width:10px;height:10px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg) translate(-1px,-2px)}
 .chat-jump-latest:hover,.chat-jump-latest:focus{background:var(--accent);border-color:var(--accent);color:white;outline:none}
-.chat-history-pager{display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 12px;color:var(--muted);font-size:12px}
+.chat-history-pager{display:none;position:sticky;top:0;z-index:5;align-items:center;justify-content:center;gap:8px;margin:-2px 0 12px;padding:4px 0 8px;background:linear-gradient(to bottom,var(--surface-soft) 72%,color-mix(in srgb,var(--surface-soft) 0%,transparent));color:var(--muted);font-size:12px}
+.chat-history-pager.visible{display:flex}
+.chat-history-pager[hidden]{display:none!important}
 .chat-history-pager button{min-height:28px;padding:0 10px;font-size:13px}
 .message{position:relative;width:fit-content;max-width:92%;box-sizing:border-box;margin:0 0 12px;padding:10px 106px 10px 12px;border-radius:8px;white-space:pre-wrap;word-break:break-word}
 .message.user,.message.user-prompt{max-width:min(88%,calc(100% - 36px));margin-left:auto;margin-right:0;margin-inline-start:auto;margin-inline-end:0}
