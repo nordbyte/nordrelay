@@ -16,6 +16,7 @@ export default defineConfig({
     ["link", { rel: "icon", type: "image/png", sizes: "32x32", href: "/favicon-32x32.png" }],
     ["link", { rel: "icon", type: "image/png", sizes: "16x16", href: "/favicon-16x16.png" }],
     ["link", { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" }],
+    ["script", { defer: "", "data-domain": "nordrelay.io", src: "https://purestats.io/pf.min.js" }],
     ["meta", { name: "theme-color", content: "#147a5c" }],
     ["meta", { property: "og:type", content: "website" }],
     ["meta", { property: "og:title", content: "NordRelay documentation" }],
