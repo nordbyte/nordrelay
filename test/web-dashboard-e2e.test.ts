@@ -792,6 +792,16 @@ describe("web dashboard browser-flow assets", () => {
 
     expect(js).toContain("function normalizeChatListSpacing");
     expect(js).toContain("function normalizeChatCodeBlockSpacing");
+    expect(js).toContain("function formatChatTables");
+    expect(js).toContain("function parseChatTableRow");
+    expect(js).toContain("function splitChatTableCells");
+    expect(js).toContain("function isValidChatTableHeader");
+    expect(js).toContain("function isValidChatTableSeparator");
+    expect(js).toContain("rows.length");
+    expect(js).toContain("CHAT_TABLE_PREFIX");
+    expect(js).toContain("chat-table-wrap");
+    expect(js).toContain("chatTableAlignClass");
+    expect(js).toContain("/^:?-{3,}:?$/.test");
     expect(js).toContain('replace(/<\\/(ul|ol)>\\n+(?=\\S)/g');
     expect(js).toContain('replace(/(<\\/pre>)[ \\t]*\\n(?:[ \\t]*\\n)+/g');
     expect(js).toContain("chat-list-continuation");
@@ -805,6 +815,9 @@ describe("web dashboard browser-flow assets", () => {
     expect(js).toContain("function hydrateChatAttachments");
     expect(js).toContain("api('/api/chat/attachment'");
     expect(css).toContain(".chat-attachment-image");
+    expect(css).toContain(".message .chat-table-wrap");
+    expect(css).toContain(".message .chat-table{width:max-content");
+    expect(css).toContain(".message .chat-table .align-right{text-align:right}");
     expect(js).toContain("function bindChatMessageActionButtons");
     expect(js).toContain("queue:cancel");
     expect(js).toContain("!currentAgentMessage||!currentAgentMessage.isConnected");

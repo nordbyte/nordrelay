@@ -229,6 +229,14 @@ button.brand-home:hover,button.brand-home:focus{background:color-mix(in srgb,var
 .message .chat-code-block:hover,.message .chat-code-block:focus{border-color:var(--accent);outline:none}
 .message .chat-code-block::after{content:"copy";position:absolute;top:6px;right:8px;padding:1px 5px;border-radius:4px;background:color-mix(in srgb,var(--surface) 12%,transparent);color:var(--pre-text);font-family:Inter,"Segoe UI",system-ui,sans-serif;font-size:11px;text-transform:uppercase}
 .message .chat-link{color:var(--link);text-decoration:underline;text-underline-offset:2px}
+.message .chat-table-wrap{max-width:100%;margin:8px 0;overflow-x:auto;white-space:normal}
+.message .chat-table{width:max-content;min-width:min(100%,520px);border-collapse:collapse;border:1px solid var(--border-soft);font-size:14px;line-height:1.4}
+.message .chat-table th,.message .chat-table td{padding:6px 9px;border:1px solid var(--border-soft);text-align:left;vertical-align:top;white-space:pre-wrap}
+.message .chat-table th{background:var(--surface);color:var(--text);font-size:13px;font-weight:750}
+.message .chat-table td{background:color-mix(in srgb,var(--surface-soft) 82%,transparent)}
+.message .chat-table tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--surface) 74%,transparent)}
+.message .chat-table .align-center{text-align:center}
+.message .chat-table .align-right{text-align:right}
 .message .chat-blockquote{margin:6px 0;padding:4px 0 4px 10px;border-left:3px solid var(--border);color:var(--muted)}
 .message .chat-list{margin:6px 0;padding-left:22px;white-space:normal}
 .message .chat-list li{margin:3px 0;white-space:pre-wrap}
