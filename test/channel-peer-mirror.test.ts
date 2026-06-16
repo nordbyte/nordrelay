@@ -9,6 +9,7 @@ import type { ChannelContext, ChannelRuntime } from "../src/channels/shared/chan
 import type { PeerEventEnvelope } from "../src/peers/peer-types.js";
 import type { ActiveSessionDto, RelaySnapshot } from "../src/runtime/relay-runtime-types.js";
 import { BotPreferencesStore } from "../src/state/bot-preferences.js";
+import type { WebChatMessage } from "../src/web/web-state.js";
 
 class FakeRemoteClient implements ChannelPeerMirrorRemoteClient {
   callback: ((event: PeerEventEnvelope) => void) | null = null;
@@ -361,6 +362,190 @@ describe("ChannelPeerMirrorController", () => {
     expect(sent[0]).not.toContain("telegram echo");
   });
 
+  it("mirrors remote chat updates even when the original message was only seen in initial history", async () => {
+    const preferences = new BotPreferencesStore(workspace);
+    preferences.update("123", { targetPeerId: "peer-1", mirrorMode: "final" });
+    const client = new FakeRemoteClient();
+    const sent: string[] = [];
+    const edited: string[] = [];
+    const runtime = fakeRuntime({
+      sendMessage: async (_context, message) => {
+        sent.push(message.text);
+        return { messageId: `message-${sent.length}` };
+      },
+      editMessage: async (_context, _messageId, message) => {
+        edited.push(message.text);
+      },
+    });
+    const controller = createChannelPeerMirrorController({
+      label: "Telegram",
+      runtime,
+      preferencesStore: preferences,
+      remoteClient: client,
+      contextForKey: () => context(),
+      defaultMirrorMode: () => "final",
+      mirrorMinUpdateMs: 0,
+      typingIntervalMs: 1000,
+    });
+
+    controller.sync("123", context());
+    client.emit(snapshot("thread-a"));
+    client.emit({
+      type: "chat_history",
+      messages: [webMessage("thread-a", "agent", "web", "partial", { id: "assistant-1", correlationId: "turn-1", turnId: "turn-1" })],
+    });
+    await flushAsync();
+
+    expect(sent).toHaveLength(0);
+
+    client.emit({
+      type: "chat_message_updated",
+      message: webMessage("thread-a", "agent", "web", "partial answer", { id: "assistant-1", correlationId: "turn-1", turnId: "turn-1" }),
+    });
+    await flushAsync();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("partial answer");
+
+    client.emit({
+      type: "chat_message_updated",
+      message: webMessage("thread-a", "agent", "web", "final answer", { id: "assistant-1", correlationId: "turn-1", turnId: "turn-1" }),
+    });
+    await flushAsync();
+
+    expect(sent).toHaveLength(1);
+    expect(edited.at(-1)).toContain("final answer");
+  });
+
+  it("streams selected remote text deltas by editing one mirrored agent message", async () => {
+    const preferences = new BotPreferencesStore(workspace);
+    preferences.update("123:456", {
+      targetPeerId: "peer-1",
+      targetThreadId: "thread-purestats",
+      targetAgentId: "codex",
+      mirrorMode: "final",
+    });
+    const client = new FakeRemoteClient();
+    const sent: string[] = [];
+    const edited: string[] = [];
+    const runtime = fakeRuntime({
+      sendMessage: async (_context, message) => {
+        sent.push(message.text);
+        return { messageId: `message-${sent.length}` };
+      },
+      editMessage: async (_context, _messageId, message) => {
+        edited.push(message.text);
+      },
+    });
+    const controller = createChannelPeerMirrorController({
+      label: "Telegram",
+      runtime,
+      preferencesStore: preferences,
+      remoteClient: client,
+      contextForKey: () => context({ topicId: "456" }),
+      defaultMirrorMode: () => "final",
+      mirrorMinUpdateMs: 0,
+      typingIntervalMs: 1000,
+    });
+
+    controller.sync("123:456", context({ topicId: "456" }));
+    client.emit(snapshot("thread-other"));
+    client.emit({
+      type: "text_delta",
+      id: "turn-1",
+      correlationId: "turn-1",
+      agentId: "codex",
+      threadId: "thread-other",
+      delta: "wrong",
+    });
+    client.emit({
+      type: "text_delta",
+      id: "turn-1",
+      correlationId: "turn-1",
+      agentId: "codex",
+      threadId: "thread-purestats",
+      delta: "hello",
+    });
+    client.emit({
+      type: "text_delta",
+      id: "turn-1",
+      correlationId: "turn-1",
+      agentId: "codex",
+      threadId: "thread-purestats",
+      delta: " world",
+    });
+    client.emit({
+      type: "assistant_message_complete",
+      id: "turn-1",
+      correlationId: "turn-1",
+      agentId: "codex",
+      threadId: "thread-purestats",
+      at: new Date().toISOString(),
+    });
+    await flushAsync();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("hello");
+    expect(sent[0]).not.toContain("wrong");
+    expect(edited.at(-1)).toContain("hello world");
+  });
+
+  it("does not mirror text deltas for turns started by the same channel", async () => {
+    const preferences = new BotPreferencesStore(workspace);
+    preferences.update("123", { targetPeerId: "peer-1", mirrorMode: "final" });
+    const client = new FakeRemoteClient();
+    const sent: string[] = [];
+    const runtime = fakeRuntime({
+      sendMessage: async (_context, message) => {
+        sent.push(message.text);
+        return { messageId: `message-${sent.length}` };
+      },
+    });
+    const controller = createChannelPeerMirrorController({
+      label: "Telegram",
+      runtime,
+      preferencesStore: preferences,
+      remoteClient: client,
+      contextForKey: () => context(),
+      defaultMirrorMode: () => "final",
+      mirrorMinUpdateMs: 0,
+      typingIntervalMs: 1000,
+    });
+
+    controller.sync("123", context());
+    client.emit(snapshot("thread-a"));
+    client.emit({
+      type: "turn_start",
+      id: "turn-telegram",
+      correlationId: "turn-telegram",
+      prompt: "from telegram",
+      text: "from telegram",
+      at: new Date().toISOString(),
+      source: "telegram",
+      agentId: "codex",
+      threadId: "thread-a",
+    });
+    client.emit({
+      type: "text_delta",
+      id: "turn-telegram",
+      correlationId: "turn-telegram",
+      agentId: "codex",
+      threadId: "thread-a",
+      delta: "same channel response",
+    });
+    client.emit({
+      type: "assistant_message_complete",
+      id: "turn-telegram",
+      correlationId: "turn-telegram",
+      agentId: "codex",
+      threadId: "thread-a",
+      at: new Date().toISOString(),
+    });
+    await flushAsync();
+
+    expect(sent).toHaveLength(0);
+  });
+
   it("mirrors remote turn starts from other channels only", async () => {
     const preferences = new BotPreferencesStore(workspace);
     preferences.update("123", { targetPeerId: "peer-1", mirrorMode: "final" });
@@ -583,7 +768,8 @@ function webMessage(
   role: "agent" | "user" | "system" | "tool",
   source: "web" | "telegram" | "discord" | "slack" | "matrix" | "cli",
   text: string,
-) {
+  overrides: Partial<WebChatMessage> = {},
+): WebChatMessage {
   return {
     id: `${source}-${role}-${text}`,
     timestamp: new Date().toISOString(),
@@ -591,6 +777,7 @@ function webMessage(
     role,
     source,
     text,
+    ...overrides,
   };
 }
 

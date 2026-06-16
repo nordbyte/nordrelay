@@ -44,6 +44,9 @@ interface SubscriptionState {
   sourceContextKey: string;
   close: () => void;
   seenMessageIds: Set<string>;
+  mirroredMessageIds: Map<string, string>;
+  mirroredMessageTexts: Map<string, string>;
+  suppressedTurnKeys: Set<string>;
   initializedHistory: boolean;
   statusMessageId?: string;
   lastStatusEditAt?: number;
@@ -57,7 +60,20 @@ interface SubscriptionState {
   workingNoticeKey?: string;
   typingLoop?: ChannelTypingLoop;
   typingSessionKey?: string;
+  textStream?: TextStreamMirrorState;
   pending: Promise<void>;
+}
+
+interface TextStreamMirrorState {
+  key: string;
+  aliases: string[];
+  text: string;
+  threadId: string;
+  correlationId?: string;
+  turnId?: string;
+  messageId?: string;
+  lastEditAt?: number;
+  flushTimer?: ReturnType<typeof setTimeout>;
 }
 
 export function createChannelPeerMirrorController(options: ChannelPeerMirrorControllerOptions): ChannelPeerMirrorController {
@@ -66,6 +82,7 @@ export function createChannelPeerMirrorController(options: ChannelPeerMirrorCont
   const close = (contextKey: string): void => {
     const existing = subscriptions.get(contextKey);
     if (!existing) return;
+    clearTextStream(existing);
     stopPeerTyping(existing);
     existing.close();
     subscriptions.delete(contextKey);
@@ -97,6 +114,9 @@ export function createChannelPeerMirrorController(options: ChannelPeerMirrorCont
       sourceContextKey,
       close: () => {},
       seenMessageIds: new Set(),
+      mirroredMessageIds: new Map(),
+      mirroredMessageTexts: new Map(),
+      suppressedTurnKeys: new Set(),
       initializedHistory: false,
       pending: Promise.resolve(),
     };
@@ -154,6 +174,7 @@ async function handlePeerEvent(
   const mode = effectiveMode(options, state.contextKey);
   applyTargetPreferences(state, options.preferencesStore.get(state.contextKey));
   if (mode === "off") {
+    clearTextStream(state);
     stopPeerTyping(state);
     return;
   }
@@ -176,12 +197,24 @@ async function handlePeerEvent(
     await handlePeerTurnStart(options, state, event, mode);
     return;
   }
-  if (event.type === "turn_complete" || event.type === "turn_error") {
-    handlePeerTurnEnd(state, event);
+  if (event.type === "text_delta") {
+    await mirrorTextDelta(options, state, event, mode);
     return;
   }
-  if (event.type === "chat_message_added" || event.type === "chat_message_updated") {
-    await mirrorChatMessage(options, state, event.message, mode);
+  if (event.type === "assistant_message_complete") {
+    await handleAssistantMessageComplete(options, state, event);
+    return;
+  }
+  if (event.type === "turn_complete" || event.type === "turn_error") {
+    await handlePeerTurnEnd(options, state, event);
+    return;
+  }
+  if (event.type === "chat_message_added") {
+    await mirrorChatMessage(options, state, event.message, mode, "added");
+    return;
+  }
+  if (event.type === "chat_message_updated") {
+    await mirrorChatMessage(options, state, event.message, mode, "updated");
     return;
   }
   if (event.type !== "chat_history") {
@@ -198,7 +231,7 @@ async function mirrorChatHistory(
 ): Promise<void> {
   if (!state.initializedHistory) {
     for (const message of messages) {
-      state.seenMessageIds.add(messageMirrorId(message));
+      markMessageSeen(state, message);
     }
     state.initializedHistory = true;
     return;
@@ -206,11 +239,9 @@ async function mirrorChatHistory(
   const selectedThreadId = state.targetThreadId || state.currentThreadId;
   for (const message of messages) {
     if (selectedThreadId && message.threadId && message.threadId !== selectedThreadId) continue;
-    await mirrorChatMessage(options, state, message, mode);
+    await mirrorChatMessage(options, state, message, mode, "added");
   }
-  if (state.seenMessageIds.size > 500) {
-    state.seenMessageIds = new Set([...state.seenMessageIds].slice(-250));
-  }
+  trimMirrorState(state);
 }
 
 async function mirrorChatMessage(
@@ -218,28 +249,163 @@ async function mirrorChatMessage(
   state: SubscriptionState,
   message: WebChatMessage,
   mode: ChannelMirrorMode,
+  kind: "added" | "updated",
 ): Promise<void> {
-  const id = messageMirrorId(message);
-  if (state.seenMessageIds.has(id)) {
+  const aliases = messageMirrorAliases(message);
+  const primaryId = aliases[0];
+  const existingMessageId = getMirroredMessageId(state, aliases);
+  const previousText = getMirroredMessageText(state, aliases);
+  if (kind === "added" && state.seenMessageIds.has(primaryId) && !existingMessageId) {
     return;
   }
-  state.seenMessageIds.add(id);
+  if (kind === "updated" && !existingMessageId && previousText === message.text) {
+    return;
+  }
   const selectedThreadId = state.targetThreadId || state.currentThreadId;
   if (selectedThreadId && message.threadId && message.threadId !== selectedThreadId) {
+    markMessageSeen(state, message);
     return;
   }
   if (!shouldMirrorMessage(options, message, mode)) {
+    markMessageSeen(state, message);
     return;
   }
+  const sentMessageId = await sendOrEditMirroredChatMessage(options, state, message, existingMessageId);
+  markMessageSeen(state, message);
+  if (sentMessageId) {
+    rememberMirroredMessage(state, aliases, sentMessageId, message.text);
+  }
+  trimMirrorState(state);
+}
+
+async function sendOrEditMirroredChatMessage(
+  options: ChannelPeerMirrorControllerOptions,
+  state: SubscriptionState,
+  message: WebChatMessage,
+  existingMessageId?: string,
+): Promise<string | undefined> {
   const buttons = message.actions
     ?.map((action) => options.actionForWebAction?.(state.peerId, action))
     .filter((action): action is ChannelActionButton => Boolean(action));
-  await options.runtime.sendMessage(state.context, {
+  const outbound = {
     text: renderMirroredChatMessage(message, state.peerId),
     fallbackText: `[remote ${state.peerId}] ${message.text}`,
     parseMode: "html",
     buttons: buttons?.length ? [buttons] : undefined,
-  }).catch(() => {});
+  } as const;
+  if (existingMessageId) {
+    const edited = await options.runtime.editMessage(state.context, existingMessageId, outbound)
+      .then(() => true)
+      .catch(() => false);
+    if (edited) {
+      return existingMessageId;
+    }
+  }
+  const sent = await options.runtime.sendMessage(state.context, outbound).catch(() => null);
+  return sent?.messageId;
+}
+
+async function mirrorTextDelta(
+  options: ChannelPeerMirrorControllerOptions,
+  state: SubscriptionState,
+  event: Extract<PeerEventEnvelope, { type: "text_delta" }>,
+  mode: ChannelMirrorMode,
+): Promise<void> {
+  if (mode !== "final" && mode !== "full") {
+    return;
+  }
+  if (!event.delta || !eventMatchesSelectedSession(state, event) || state.suppressedTurnKeys.has(eventTurnKey(state, event))) {
+    return;
+  }
+  const key = eventTurnKey(state, event);
+  if (state.textStream && state.textStream.key !== key) {
+    await flushTextStream(options, state, true);
+    clearTextStream(state);
+  }
+  if (!state.textStream) {
+    const aliases = eventMirrorAliases(state, event);
+    state.textStream = {
+      key,
+      aliases,
+      text: "",
+      threadId: event.threadId || state.targetThreadId || state.currentThreadId || "pending",
+      correlationId: event.correlationId,
+      turnId: event.id,
+      messageId: getMirroredMessageId(state, aliases),
+    };
+  }
+  state.textStream.text += event.delta;
+  await flushTextStream(options, state, false);
+}
+
+async function handleAssistantMessageComplete(
+  options: ChannelPeerMirrorControllerOptions,
+  state: SubscriptionState,
+  event: Extract<PeerEventEnvelope, { type: "assistant_message_complete" }>,
+): Promise<void> {
+  if (!eventMatchesSelectedSession(state, event) || state.suppressedTurnKeys.has(eventTurnKey(state, event))) {
+    return;
+  }
+  await flushTextStream(options, state, true);
+  clearTextStream(state);
+}
+
+async function flushTextStream(
+  options: ChannelPeerMirrorControllerOptions,
+  state: SubscriptionState,
+  force: boolean,
+): Promise<void> {
+  const stream = state.textStream;
+  if (!stream || !stream.text.trim()) {
+    return;
+  }
+  if (stream.flushTimer) {
+    clearTimeout(stream.flushTimer);
+    stream.flushTimer = undefined;
+  }
+  const now = Date.now();
+  const elapsed = stream.lastEditAt ? now - stream.lastEditAt : Number.POSITIVE_INFINITY;
+  if (!force && stream.messageId && elapsed < options.mirrorMinUpdateMs) {
+    scheduleTextStreamFlush(options, state, options.mirrorMinUpdateMs - elapsed);
+    return;
+  }
+  const message: WebChatMessage = {
+    id: stream.key,
+    key: stream.key,
+    threadId: stream.threadId,
+    role: "agent",
+    text: stream.text,
+    timestamp: new Date().toISOString(),
+    source: "web",
+    correlationId: stream.correlationId,
+    turnId: stream.turnId,
+  };
+  const sentMessageId = await sendOrEditMirroredChatMessage(options, state, message, stream.messageId ?? getMirroredMessageId(state, stream.aliases));
+  if (sentMessageId) {
+    stream.messageId = sentMessageId;
+    rememberMirroredMessage(state, [...stream.aliases, ...messageMirrorAliases(message)], sentMessageId, stream.text);
+  }
+  stream.lastEditAt = now;
+  trimMirrorState(state);
+}
+
+function scheduleTextStreamFlush(
+  options: ChannelPeerMirrorControllerOptions,
+  state: SubscriptionState,
+  delayMs: number,
+): void {
+  const stream = state.textStream;
+  if (!stream || stream.flushTimer) {
+    return;
+  }
+  stream.flushTimer = setTimeout(() => {
+    if (!state.textStream) {
+      return;
+    }
+    state.textStream.flushTimer = undefined;
+    void flushTextStream(options, state, true).catch(() => {});
+  }, Math.max(25, delayMs));
+  stream.flushTimer.unref?.();
 }
 
 async function handlePeerTurnStart(
@@ -254,6 +420,7 @@ async function handlePeerTurnStart(
   startPeerTyping(options, state, `turn:${event.id}:${event.correlationId ?? ""}`);
   if (mode !== "final" && mode !== "full") return;
   if (event.source === options.runtime.id) {
+    state.suppressedTurnKeys.add(eventTurnKey(state, event));
     return;
   }
   await sendPeerWorkingNotice(options, state, {
@@ -263,11 +430,21 @@ async function handlePeerTurnStart(
   });
 }
 
-function handlePeerTurnEnd(
+async function handlePeerTurnEnd(
+  options: ChannelPeerMirrorControllerOptions,
   state: SubscriptionState,
   event: Extract<PeerEventEnvelope, { type: "turn_complete" | "turn_error" }>,
-): void {
-  if (eventMatchesSelectedSession(state, event)) stopPeerTyping(state);
+): Promise<void> {
+  const key = eventTurnKey(state, event);
+  state.suppressedTurnKeys.delete(key);
+  if (!eventMatchesSelectedSession(state, event)) {
+    return;
+  }
+  await flushTextStream(options, state, true);
+  if (state.textStream?.key === key) {
+    clearTextStream(state);
+  }
+  stopPeerTyping(state);
 }
 
 async function sendPeerMirrorStatus(
@@ -383,6 +560,13 @@ function stopPeerTyping(state: SubscriptionState): void {
   state.typingSessionKey = undefined;
 }
 
+function clearTextStream(state: SubscriptionState): void {
+  if (state.textStream?.flushTimer) {
+    clearTimeout(state.textStream.flushTimer);
+  }
+  state.textStream = undefined;
+}
+
 function rememberSnapshot(state: SubscriptionState, snapshot: RelaySnapshot): void {
   const session = snapshot.session;
   state.currentThreadId = session.threadId ?? null;
@@ -419,6 +603,7 @@ function applyTargetPreferences(state: SubscriptionState, preferences: ContextPr
   if (state.targetThreadId === nextThreadId && state.targetAgentId === nextAgentId) {
     return;
   }
+  clearTextStream(state);
   stopPeerTyping(state);
   state.targetThreadId = nextThreadId;
   state.targetAgentId = nextAgentId;
@@ -428,6 +613,9 @@ function applyTargetPreferences(state: SubscriptionState, preferences: ContextPr
   state.statusMessageId = undefined;
   state.lastStatusEditAt = undefined;
   state.seenMessageIds.clear();
+  state.mirroredMessageIds.clear();
+  state.mirroredMessageTexts.clear();
+  state.suppressedTurnKeys.clear();
   state.initializedHistory = false;
 }
 
@@ -503,4 +691,100 @@ function messageMirrorId(message: WebChatMessage): string {
     message.turnId ?? "",
     message.text.slice(0, 160),
   ].join(":");
+}
+
+function messageMirrorAliases(message: WebChatMessage): string[] {
+  const aliases = [
+    messageMirrorId(message),
+    message.id ? `message:id:${message.id}` : "",
+    message.key ? `message:key:${message.key}` : "",
+  ];
+  const threadId = message.threadId || "pending";
+  if (message.correlationId || message.turnId) {
+    aliases.push(turnAlias(threadId, message.correlationId, message.turnId));
+  }
+  if (message.correlationId) {
+    aliases.push(turnAlias(threadId, message.correlationId, undefined));
+  }
+  if (message.turnId) {
+    aliases.push(turnAlias(threadId, undefined, message.turnId));
+  }
+  return uniqueStrings(aliases);
+}
+
+function eventMirrorAliases(state: SubscriptionState, event: { id?: string; correlationId?: string; threadId?: string | null }): string[] {
+  const threadId = event.threadId || state.targetThreadId || state.currentThreadId || "pending";
+  return uniqueStrings([
+    eventTurnKey(state, event),
+    turnAlias(threadId, event.correlationId, event.id),
+    event.correlationId ? turnAlias(threadId, event.correlationId, undefined) : "",
+    event.id ? turnAlias(threadId, undefined, event.id) : "",
+  ]);
+}
+
+function eventTurnKey(state: SubscriptionState, event: { id?: string; correlationId?: string; threadId?: string | null }): string {
+  const threadId = event.threadId || state.targetThreadId || state.currentThreadId || "pending";
+  return turnAlias(threadId, event.correlationId, event.id);
+}
+
+function turnAlias(threadId: string, correlationId: string | undefined, turnId: string | undefined): string {
+  return `turn:${threadId}:${correlationId ?? ""}:${turnId ?? ""}`;
+}
+
+function markMessageSeen(state: SubscriptionState, message: WebChatMessage): void {
+  const aliases = messageMirrorAliases(message);
+  for (const alias of aliases) {
+    state.seenMessageIds.add(alias);
+    state.mirroredMessageTexts.set(alias, message.text);
+  }
+  trimMirrorState(state);
+}
+
+function getMirroredMessageId(state: SubscriptionState, aliases: string[]): string | undefined {
+  for (const alias of aliases) {
+    const messageId = state.mirroredMessageIds.get(alias);
+    if (messageId) return messageId;
+  }
+  return undefined;
+}
+
+function getMirroredMessageText(state: SubscriptionState, aliases: string[]): string | undefined {
+  for (const alias of aliases) {
+    const text = state.mirroredMessageTexts.get(alias);
+    if (text !== undefined) return text;
+  }
+  return undefined;
+}
+
+function rememberMirroredMessage(state: SubscriptionState, aliases: string[], messageId: string, text: string): void {
+  for (const alias of uniqueStrings(aliases)) {
+    state.mirroredMessageIds.set(alias, messageId);
+    state.mirroredMessageTexts.set(alias, text);
+    state.seenMessageIds.add(alias);
+  }
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function trimMirrorState(state: SubscriptionState): void {
+  trimSet(state.seenMessageIds, 500, 250);
+  trimMap(state.mirroredMessageIds, 500, 250);
+  trimMap(state.mirroredMessageTexts, 500, 250);
+  trimSet(state.suppressedTurnKeys, 200, 100);
+}
+
+function trimSet<T>(set: Set<T>, maxSize: number, keepSize: number): void {
+  if (set.size <= maxSize) return;
+  const keep = [...set].slice(-keepSize);
+  set.clear();
+  for (const value of keep) set.add(value);
+}
+
+function trimMap<K, V>(map: Map<K, V>, maxSize: number, keepSize: number): void {
+  if (map.size <= maxSize) return;
+  const keep = [...map.entries()].slice(-keepSize);
+  map.clear();
+  for (const [key, value] of keep) map.set(key, value);
 }
