@@ -34,6 +34,7 @@ export interface ChannelPeerMirrorControllerOptions {
   defaultMirrorMode(): ChannelMirrorMode;
   mirrorMinUpdateMs: number;
   typingIntervalMs: number;
+  typingStaleMs?: number;
   actionForWebAction?(peerId: string, action: WebChatAction): ChannelActionButton | null;
 }
 
@@ -60,6 +61,8 @@ interface SubscriptionState {
   workingNoticeKey?: string;
   typingLoop?: ChannelTypingLoop;
   typingSessionKey?: string;
+  typingLastRefreshAt?: number;
+  typingExpiryTimer?: ReturnType<typeof setTimeout>;
   textStream?: TextStreamMirrorState;
   pending: Promise<void>;
 }
@@ -318,6 +321,7 @@ async function mirrorTextDelta(
     return;
   }
   const key = eventTurnKey(state, event);
+  refreshPeerTyping(options, state, key);
   if (state.textStream && state.textStream.key !== key) {
     await flushTextStream(options, state, true);
     clearTextStream(state);
@@ -348,6 +352,7 @@ async function handleAssistantMessageComplete(
   }
   await flushTextStream(options, state, true);
   clearTextStream(state);
+  stopPeerTyping(state);
 }
 
 async function flushTextStream(
@@ -417,12 +422,12 @@ async function handlePeerTurnStart(
   if (!eventMatchesSelectedSession(state, event)) {
     return;
   }
-  startPeerTyping(options, state, `turn:${event.id}:${event.correlationId ?? ""}`);
-  if (mode !== "final" && mode !== "full") return;
   if (event.source === options.runtime.id) {
     state.suppressedTurnKeys.add(eventTurnKey(state, event));
     return;
   }
+  refreshPeerTyping(options, state, `turn:${event.id}:${event.correlationId ?? ""}`);
+  if (mode !== "final" && mode !== "full") return;
   await sendPeerWorkingNotice(options, state, {
     key: `turn:${event.id}:${event.correlationId ?? ""}`,
     prompt: event.text || event.prompt,
@@ -494,7 +499,7 @@ async function handlePeerActiveSessionsUpdate(
     const key = activeSessionKey(active);
     state.activeSessionKey = key;
     state.activeSessionLabel = active.agentLabel || active.agentId || "Agent";
-    startPeerTyping(options, state, key);
+    refreshPeerTyping(options, state, key);
     if (mode === "final" && active.source === "cli") {
       await sendPeerWorkingNotice(options, state, {
         key: activeTurnKey(active),
@@ -541,23 +546,56 @@ async function sendPeerWorkingNotice(
   state.workingNoticeKey = input.key;
 }
 
-function startPeerTyping(options: ChannelPeerMirrorControllerOptions, state: SubscriptionState, sessionKey: string): void {
+function refreshPeerTyping(options: ChannelPeerMirrorControllerOptions, state: SubscriptionState, sessionKey: string): void {
+  const now = Date.now();
+  state.typingLastRefreshAt = now;
   if (state.typingLoop && state.typingSessionKey === sessionKey) {
+    schedulePeerTypingExpiry(options, state, sessionKey);
     return;
   }
   stopPeerTyping(state);
   state.typingSessionKey = sessionKey;
+  state.typingLastRefreshAt = now;
   state.typingLoop = createChannelTypingLoop({
     intervalMs: options.typingIntervalMs,
     sendTyping: () => options.runtime.sendTyping(state.context),
   });
   state.typingLoop.start();
+  schedulePeerTypingExpiry(options, state, sessionKey);
+}
+
+function schedulePeerTypingExpiry(options: ChannelPeerMirrorControllerOptions, state: SubscriptionState, sessionKey: string): void {
+  if (state.typingExpiryTimer) {
+    clearTimeout(state.typingExpiryTimer);
+    state.typingExpiryTimer = undefined;
+  }
+  const staleMs = options.typingStaleMs ?? Math.max(options.typingIntervalMs * 4, 15_000);
+  state.typingExpiryTimer = setTimeout(() => {
+    if (state.typingSessionKey !== sessionKey) {
+      return;
+    }
+    const refreshedAt = state.typingLastRefreshAt ?? 0;
+    if (Date.now() - refreshedAt >= staleMs) {
+      stopPeerTyping(state);
+      state.activeSessionKey = undefined;
+      state.activeSessionLabel = undefined;
+      state.workingNoticeKey = undefined;
+    } else {
+      schedulePeerTypingExpiry(options, state, sessionKey);
+    }
+  }, staleMs);
+  state.typingExpiryTimer.unref?.();
 }
 
 function stopPeerTyping(state: SubscriptionState): void {
+  if (state.typingExpiryTimer) {
+    clearTimeout(state.typingExpiryTimer);
+    state.typingExpiryTimer = undefined;
+  }
   state.typingLoop?.stop();
   state.typingLoop = undefined;
   state.typingSessionKey = undefined;
+  state.typingLastRefreshAt = undefined;
 }
 
 function clearTextStream(state: SubscriptionState): void {

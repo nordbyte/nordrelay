@@ -490,15 +490,88 @@ describe("ChannelPeerMirrorController", () => {
     expect(edited.at(-1)).toContain("hello world");
   });
 
+  it("stops remote peer typing when the selected assistant message completes", async () => {
+    const preferences = new BotPreferencesStore(workspace);
+    preferences.update("123:456", {
+      targetPeerId: "peer-1",
+      targetThreadId: "thread-purestats",
+      targetAgentId: "codex",
+      mirrorMode: "final",
+    });
+    const client = new FakeRemoteClient();
+    const typingContexts: ChannelContext[] = [];
+    const runtime = fakeRuntime({
+      sendMessage: async () => ({ messageId: "message" }),
+      editMessage: async () => {},
+      sendTyping: async (target) => {
+        typingContexts.push({ ...target });
+      },
+    });
+    const topicContext = context({ topicId: "456" });
+    const controller = createChannelPeerMirrorController({
+      label: "Telegram",
+      runtime,
+      preferencesStore: preferences,
+      remoteClient: client,
+      contextForKey: () => topicContext,
+      defaultMirrorMode: () => "final",
+      mirrorMinUpdateMs: 0,
+      typingIntervalMs: 20,
+    });
+
+    controller.sync("123:456", topicContext);
+    client.emit(snapshot("thread-other"));
+    client.emit({
+      type: "turn_start",
+      id: "turn-purestats",
+      prompt: "target",
+      text: "target",
+      at: new Date().toISOString(),
+      source: "web",
+      agentId: "codex",
+      threadId: "thread-purestats",
+    });
+    await sleep(55);
+
+    expect(typingContexts.length).toBeGreaterThanOrEqual(2);
+
+    client.emit({
+      type: "text_delta",
+      id: "turn-purestats",
+      correlationId: "turn-purestats",
+      agentId: "codex",
+      threadId: "thread-purestats",
+      delta: "done",
+    });
+    client.emit({
+      type: "assistant_message_complete",
+      id: "turn-purestats",
+      correlationId: "turn-purestats",
+      agentId: "codex",
+      threadId: "thread-purestats",
+      at: new Date().toISOString(),
+    });
+    await flushAsync();
+    const stoppedAt = typingContexts.length;
+    await sleep(60);
+
+    expect(typingContexts).toHaveLength(stoppedAt);
+    controller.close("123:456");
+  });
+
   it("does not mirror text deltas for turns started by the same channel", async () => {
     const preferences = new BotPreferencesStore(workspace);
     preferences.update("123", { targetPeerId: "peer-1", mirrorMode: "final" });
     const client = new FakeRemoteClient();
     const sent: string[] = [];
+    let typing = 0;
     const runtime = fakeRuntime({
       sendMessage: async (_context, message) => {
         sent.push(message.text);
         return { messageId: `message-${sent.length}` };
+      },
+      sendTyping: async () => {
+        typing++;
       },
     });
     const controller = createChannelPeerMirrorController({
@@ -544,6 +617,7 @@ describe("ChannelPeerMirrorController", () => {
     await flushAsync();
 
     expect(sent).toHaveLength(0);
+    expect(typing).toBe(0);
   });
 
   it("mirrors remote turn starts from other channels only", async () => {
@@ -662,6 +736,57 @@ describe("ChannelPeerMirrorController", () => {
       threadId: "thread-purestats",
     });
     await flushAsync();
+    const stoppedAt = typingContexts.length;
+    await sleep(60);
+
+    expect(typingContexts).toHaveLength(stoppedAt);
+    controller.close("123:456");
+  });
+
+  it("expires remote peer typing when terminal events are missed", async () => {
+    const preferences = new BotPreferencesStore(workspace);
+    preferences.update("123:456", {
+      targetPeerId: "peer-1",
+      targetThreadId: "thread-purestats",
+      targetAgentId: "codex",
+      mirrorMode: "final",
+    });
+    const client = new FakeRemoteClient();
+    const typingContexts: ChannelContext[] = [];
+    const runtime = fakeRuntime({
+      sendTyping: async (target) => {
+        typingContexts.push({ ...target });
+      },
+    });
+    const topicContext = context({ topicId: "456" });
+    const controller = createChannelPeerMirrorController({
+      label: "Telegram",
+      runtime,
+      preferencesStore: preferences,
+      remoteClient: client,
+      contextForKey: () => topicContext,
+      defaultMirrorMode: () => "final",
+      mirrorMinUpdateMs: 0,
+      typingIntervalMs: 20,
+      typingStaleMs: 70,
+    });
+
+    controller.sync("123:456", topicContext);
+    client.emit(snapshot("thread-other"));
+    client.emit({
+      type: "turn_start",
+      id: "turn-purestats",
+      prompt: "target",
+      text: "target",
+      at: new Date().toISOString(),
+      source: "web",
+      agentId: "codex",
+      threadId: "thread-purestats",
+    });
+    await sleep(55);
+
+    expect(typingContexts.length).toBeGreaterThanOrEqual(2);
+    await sleep(110);
     const stoppedAt = typingContexts.length;
     await sleep(60);
 
