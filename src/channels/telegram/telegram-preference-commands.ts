@@ -1,6 +1,12 @@
 import { InlineKeyboard, type Bot, type Context } from "grammy";
 
-import type { BotPreferencesStore, ChannelMirrorMode } from "../../state/bot-preferences.js";
+import {
+  mirrorToggleMode,
+  normalizeMirrorRuntimeMode,
+  type BotPreferencesStore,
+  type ChannelMirrorMode,
+  type ChannelMirrorToggleMode,
+} from "../../state/bot-preferences.js";
 import {
   capabilitiesOf,
   labelOf,
@@ -18,7 +24,7 @@ import {
 import type { GetTelegramContextSession } from "./telegram-command-types.js";
 import { safeEditMessage, safeReply } from "./telegram-output.js";
 
-const MIRROR_MODES: ChannelMirrorMode[] = ["off", "status", "final", "full"];
+const MIRROR_MODES: ChannelMirrorToggleMode[] = ["off", "on"];
 
 export interface TelegramPreferenceCommandOptions {
   bot: Bot<Context>;
@@ -79,8 +85,8 @@ export function registerTelegramPreferenceCommands(options: TelegramPreferenceCo
     options.onMirrorChanged?.(contextKey);
   });
 
-  options.bot.callbackQuery(/^mirror_(off|status|final|full)$/, async (ctx) => {
-    const mode = ctx.match?.[1] as ChannelMirrorMode | undefined;
+  options.bot.callbackQuery(/^mirror_(off|on)$/, async (ctx) => {
+    const mode = ctx.match?.[1] as ChannelMirrorToggleMode | undefined;
     const chatId = ctx.chat?.id;
     const messageId = ctx.callbackQuery.message?.message_id;
     if (!mode || !chatId) {
@@ -103,7 +109,7 @@ export function registerTelegramPreferenceCommands(options: TelegramPreferenceCo
         canUsePeer: (peerId) => options.canUsePeer?.(ctx, peerId) ?? true,
       });
       if (remoteResponse) {
-        await answerAndRenderMirrorSelection(options, ctx, chatId, messageId, contextKey, mode, remoteResponse.response);
+        await answerAndRenderMirrorSelection(options, ctx, chatId, messageId, contextKey, remoteResponse.mode, remoteResponse.response);
         return;
       }
       if (!capabilitiesOf(session.getInfo()).cliMirror) {
@@ -121,7 +127,7 @@ export function registerTelegramPreferenceCommands(options: TelegramPreferenceCo
         cliMirrorSupported: true,
         agentLabel: labelOf(session.getInfo()),
       });
-      await answerAndRenderMirrorSelection(options, ctx, chatId, messageId, contextKey, mode, response);
+      await answerAndRenderMirrorSelection(options, ctx, chatId, messageId, contextKey, effectiveMirrorMode(options, contextKey), response);
     } catch (error) {
       await ctx.answerCallbackQuery({
         text: error instanceof Error ? error.message : String(error),
@@ -210,7 +216,7 @@ async function answerAndRenderMirrorSelection(
   mode: ChannelMirrorMode,
   response: { html: string; plain: string },
 ): Promise<void> {
-  await ctx.answerCallbackQuery({ text: `Mirror ${mode}` });
+  await ctx.answerCallbackQuery({ text: `Mirror ${mirrorToggleMode(mode)}` });
   options.onMirrorChanged?.(contextKey);
   if (messageId) {
     await safeEditMessage(options.bot, chatId, messageId, response.html, {
@@ -226,17 +232,18 @@ async function answerAndRenderMirrorSelection(
 }
 
 function effectiveMirrorMode(options: TelegramPreferenceCommandOptions, contextKey: TelegramContextKey): ChannelMirrorMode {
-  return options.preferencesStore.get(contextKey).mirrorMode ?? options.config.telegramMirrorMode;
+  return normalizeMirrorRuntimeMode(options.preferencesStore.get(contextKey).mirrorMode ?? options.config.telegramMirrorMode);
 }
 
 function mirrorModeKeyboard(activeMode: ChannelMirrorMode): InlineKeyboard {
   const keyboard = new InlineKeyboard();
+  const activeToggleMode = mirrorToggleMode(activeMode);
   for (const mode of MIRROR_MODES) {
-    keyboard.text(`${mirrorModeLabel(mode)}${mode === activeMode ? " ✓" : ""}`, `mirror_${mode}`);
+    keyboard.text(`${mirrorModeLabel(mode)}${mode === activeToggleMode ? " ✓" : ""}`, `mirror_${mode}`);
   }
   return keyboard;
 }
 
-function mirrorModeLabel(mode: ChannelMirrorMode): string {
+function mirrorModeLabel(mode: ChannelMirrorToggleMode): string {
   return mode.charAt(0).toUpperCase() + mode.slice(1);
 }

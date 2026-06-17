@@ -55,7 +55,7 @@ describe("runChannelPeerPrompt", () => {
       contextKey: "web:dashboard",
       prompt: { input: "build it", description: "build it" },
       remoteClient: client,
-      mirrorMode: "full",
+      mirrorMode: "final",
       editMinIntervalMs: 0,
       typingIntervalMs: 10_000,
       sendTyping: async () => {},
@@ -85,13 +85,13 @@ describe("runChannelPeerPrompt", () => {
 
     expect(handled).toBe(true);
     expect(statuses).toContain("start:build it");
-    expect(statuses).toContain("tool:exec_command");
+    expect(statuses).not.toContain("tool:exec_command");
     expect(statuses).not.toContain("completed");
     expect(responses.at(-1)).toBe("hello world");
     expect(client.closed).toBe(true);
   });
 
-  it("suppresses remote peer tool messages unless mirror mode is full", async () => {
+  it("suppresses remote peer tool messages for legacy non-off mirror modes", async () => {
     const client = new FakeRemotePromptClient();
     client.events = [
       { type: "turn_start", prompt: "build it" },

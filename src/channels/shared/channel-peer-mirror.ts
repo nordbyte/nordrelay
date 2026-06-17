@@ -1,5 +1,5 @@
 import type { PeerEventEnvelope } from "../../peers/peer-types.js";
-import type { BotPreferencesStore, ChannelMirrorMode, ContextPreferences } from "../../state/bot-preferences.js";
+import { normalizeMirrorRuntimeMode, type BotPreferencesStore, type ChannelMirrorMode, type ContextPreferences } from "../../state/bot-preferences.js";
 import type { WebChatAction, WebChatMessage } from "../../web/web-state.js";
 import type { ActiveSessionDto, RelaySnapshot } from "../../runtime/relay-runtime-types.js";
 import type { ChannelActionButton } from "./channel-actions.js";
@@ -696,7 +696,7 @@ function activeTurnKey(session: ActiveSessionDto): string {
 }
 
 function effectiveMode(options: ChannelPeerMirrorControllerOptions, contextKey: string): ChannelMirrorMode {
-  return options.preferencesStore.get(contextKey).mirrorMode ?? options.defaultMirrorMode();
+  return normalizeMirrorRuntimeMode(options.preferencesStore.get(contextKey).mirrorMode ?? options.defaultMirrorMode());
 }
 
 function shouldMirrorMessage(options: ChannelPeerMirrorControllerOptions, message: WebChatMessage, mode: ChannelMirrorMode): boolean {

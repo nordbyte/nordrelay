@@ -3,7 +3,7 @@ import { RemoteRelayClient } from "../../peers/peer-client.js";
 import type { PromptEnvelope } from "../../state/prompt-store.js";
 import { peerPromptProxyPayload } from "../../runtime/remote-prompt.js";
 import type { PeerEventEnvelope } from "../../peers/peer-types.js";
-import type { ChannelMirrorMode } from "../../state/bot-preferences.js";
+import { normalizeMirrorRuntimeMode, type ChannelMirrorMode } from "../../state/bot-preferences.js";
 import type { WebActivityActor } from "../../web/web-state.js";
 import { remotePeerThreadSourceContextKey } from "./channel-peer-context.js";
 
@@ -142,7 +142,7 @@ function isQueuedRemoteResult(value: unknown): value is { queued: true; queueId?
 
 function currentMirrorMode<MessageId>(options: ChannelPeerPromptOptions<MessageId>): ChannelMirrorMode {
   if (typeof options.mirrorMode === "function") {
-    return options.mirrorMode();
+    return normalizeMirrorRuntimeMode(options.mirrorMode());
   }
-  return options.mirrorMode ?? "full";
+  return normalizeMirrorRuntimeMode(options.mirrorMode ?? "final");
 }

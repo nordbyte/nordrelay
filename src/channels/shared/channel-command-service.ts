@@ -6,7 +6,9 @@ import {
   type BotPreferencesStore,
   formatQuietHours,
   isQuietNow,
-  parseMirrorMode,
+  mirrorToggleMode,
+  normalizeMirrorRuntimeMode,
+  parseMirrorToggleMode,
   parseNotifyMode,
   parseQuietHours,
   parseVoiceBackendPreference,
@@ -225,27 +227,28 @@ export class ChannelCommandService {
 
     const argument = options.source === "web" ? "" : options.argument.trim();
     if (argument) {
-      const normalized = argument.toLowerCase();
-      if (!["off", "status", "final", "full"].includes(normalized)) {
-        return usageResponse("Usage: /mirror [off|status|final|full]");
+      const parsed = parseMirrorToggleMode(argument);
+      if (!parsed) {
+        return usageResponse("Usage: /mirror [off|on]");
       }
       options.preferencesStore.update(options.contextKey, {
-        mirrorMode: parseMirrorMode(argument, this.defaultMirrorMode(options.source)),
+        mirrorMode: parsed,
       });
     }
 
     const mode = this.effectiveMirrorMode(options.source, options.contextKey, options.preferencesStore);
+    const toggleMode = mirrorToggleMode(mode);
     const minInterval = this.mirrorMinUpdateMs(options.source);
     return {
       plain: [
-        `CLI mirroring: ${mode}`,
+        `CLI mirroring: ${toggleMode}`,
         `Minimum update interval: ${minInterval} ms`,
-        "Modes: off, status, final, full",
+        "Modes: off, on",
       ].join("\n"),
       html: [
-        `<b>CLI mirroring:</b> <code>${escapeHTML(mode)}</code>`,
+        `<b>CLI mirroring:</b> <code>${escapeHTML(toggleMode)}</code>`,
         `<b>Minimum update interval:</b> <code>${minInterval} ms</code>`,
-        "<b>Modes:</b> <code>off</code>, <code>status</code>, <code>final</code>, <code>full</code>",
+        "<b>Modes:</b> <code>off</code>, <code>on</code>",
       ].join("\n"),
     };
   }
@@ -463,7 +466,7 @@ export class ChannelCommandService {
     if (source === "web") {
       return "final";
     }
-    return preferencesStore.get(contextKey).mirrorMode ?? this.defaultMirrorMode(source);
+    return normalizeMirrorRuntimeMode(preferencesStore.get(contextKey).mirrorMode ?? this.defaultMirrorMode(source));
   }
 
   private effectiveNotifyMode(source: CommandChannelSource, contextKey: string, preferencesStore: BotPreferencesStore): ChannelNotifyMode {

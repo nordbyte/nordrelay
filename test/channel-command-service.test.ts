@@ -37,19 +37,20 @@ describe("ChannelCommandService preference commands", () => {
     rmSync(workspace, { recursive: true, force: true });
   });
 
-  it("updates mirror mode with channel-specific defaults and output", () => {
+  it("updates mirror mode with on/off output", () => {
     const response = service.renderMirrorPreference({
       source: "discord",
       contextKey: "discord:guild:channel",
-      argument: "status",
+      argument: "on",
       preferencesStore,
       cliMirrorSupported: true,
       agentLabel: "Codex",
     });
 
-    expect(preferencesStore.get("discord:guild:channel").mirrorMode).toBe("status");
-    expect(response.plain).toContain("CLI mirroring: status");
+    expect(preferencesStore.get("discord:guild:channel").mirrorMode).toBe("final");
+    expect(response.plain).toContain("CLI mirroring: on");
     expect(response.plain).toContain("Minimum update interval: 7000 ms");
+    expect(response.plain).toContain("Modes: off, on");
   });
 
   it("keeps WebUI mirror mode fixed to final", () => {
@@ -64,7 +65,7 @@ describe("ChannelCommandService preference commands", () => {
     });
 
     expect(preferencesStore.get("web:dashboard").mirrorMode).toBe("off");
-    expect(response.plain).toContain("CLI mirroring: final");
+    expect(response.plain).toContain("CLI mirroring: on");
     expect(response.plain).toContain("Minimum update interval: 3000 ms");
   });
 

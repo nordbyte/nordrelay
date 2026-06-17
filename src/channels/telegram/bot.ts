@@ -30,6 +30,7 @@ import type { AuditEvent } from "../../access/audit-log.js";
 import { formatSessionLabel } from "./bot-ui.js";
 import {
   isQuietNow,
+  normalizeMirrorRuntimeMode,
   type ContextPreferences,
   type TelegramMirrorMode,
   type TelegramNotifyMode,
@@ -453,7 +454,7 @@ export function createBot(config: ConnectorConfig, registry: SessionRegistry): B
   const getPreferences = (contextKey: TelegramContextKey): ContextPreferences => preferencesStore.get(contextKey);
 
   const getEffectiveMirrorMode = (contextKey: TelegramContextKey): TelegramMirrorMode =>
-    getPreferences(contextKey).mirrorMode ?? config.telegramMirrorMode;
+    normalizeMirrorRuntimeMode(getPreferences(contextKey).mirrorMode ?? config.telegramMirrorMode);
 
   const peerMirrorController = createChannelPeerMirrorController({ label: "Telegram", runtime: telegramChannelRuntime, preferencesStore, remoteClient, contextForKey: (contextKey) => isTelegramContextKey(contextKey) ? telegramChannelContextFromKey(contextKey as TelegramContextKey) : null, defaultMirrorMode: () => config.telegramMirrorMode, mirrorMinUpdateMs: config.telegramEditMinIntervalMs, typingIntervalMs: TYPING_INTERVAL_MS });
 

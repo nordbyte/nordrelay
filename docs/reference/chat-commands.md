@@ -77,7 +77,7 @@ Selecting a peer requires the chat user to have peer access permissions and the 
 | `/fast` | Toggle fast mode when supported |
 | `/launch` | Select or apply launch profile when supported |
 | `/launch_profiles` | Select or apply launch profile when supported |
-| `/mirror` | Control CLI mirroring; Telegram opens an inline mode picker when no mode is provided |
+| `/mirror` | Toggle session mirroring with `off` or `on`; Telegram opens inline buttons when no mode is provided |
 | `/notify` | Control completion notifications |
 | `/voice` | Show or change voice transcription settings |
 

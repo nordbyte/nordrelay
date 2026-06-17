@@ -53,24 +53,33 @@ describe("channel peer session helpers", () => {
     expect(parseRemoteSessionChoice(remoteSessionChoiceValue("peer-a", "thread-2"))).toEqual({ peerId: "peer-a", threadId: "thread-2" });
   });
 
-  it("stores remote mirror mode locally so persistent subscriptions can resume", async () => {
+  it("stores remote mirror toggle locally so persistent subscriptions can resume", async () => {
     const preferencesStore = new BotPreferencesStore(tempWorkspace());
     preferencesStore.update("discord:g:c", { targetPeerId: "peer-a" });
+    const requests: Array<{ payload: PeerWebProxyPayload; sourceContextKey?: string }> = [];
     const response = await renderTargetPeerMirrorPreference({
       source: "discord",
       contextKey: "discord:g:c",
-      argument: "full",
+      argument: "on",
       preferencesStore,
-      remoteClient: fakeClient({
-        "/api/chat/mirror": {
-          mode: "full",
-          minInterval: 1200,
-          response: { plain: "CLI mirroring: full", html: "<b>CLI mirroring:</b> <code>full</code>" },
-        },
-      }),
+      remoteClient: fakeClient({}, requests),
     });
-    expect(response?.mode).toBe("full");
-    expect(preferencesStore.get("discord:g:c").mirrorMode).toBe("full");
+    expect(response?.mode).toBe("final");
+    expect(response?.response.plain).toContain("CLI mirroring: on");
+    expect(preferencesStore.get("discord:g:c").mirrorMode).toBe("final");
+    expect(requests).toHaveLength(0);
+
+    const disabled = await renderTargetPeerMirrorPreference({
+      source: "discord",
+      contextKey: "discord:g:c",
+      argument: "off",
+      preferencesStore,
+      remoteClient: fakeClient({}, requests),
+    });
+    expect(disabled?.mode).toBe("off");
+    expect(disabled?.response.plain).toContain("CLI mirroring: off");
+    expect(preferencesStore.get("discord:g:c").mirrorMode).toBe("off");
+    expect(requests).toHaveLength(0);
   });
 
   it("returns the last agent message for the selected remote thread", async () => {

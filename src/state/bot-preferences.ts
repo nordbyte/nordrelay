@@ -2,6 +2,7 @@ import type { ChannelContextKey } from "../channels/shared/context-key.js";
 import { createDocumentStore, type DocumentStore, type StateBackendKind } from "./state-backend.js";
 
 export type ChannelMirrorMode = "off" | "status" | "final" | "full";
+export type ChannelMirrorToggleMode = "off" | "on";
 export type ChannelNotifyMode = "off" | "minimal" | "all";
 export type TelegramMirrorMode = ChannelMirrorMode;
 export type TelegramNotifyMode = ChannelNotifyMode;
@@ -112,10 +113,32 @@ function normalizePayload(payload: PersistedPreferences | undefined): PersistedP
 
 export function parseMirrorMode(value: string | undefined, fallback: TelegramMirrorMode): TelegramMirrorMode {
   const normalized = value?.trim().toLowerCase();
+  if (normalized === "on") {
+    return "final";
+  }
   if (normalized === "off" || normalized === "status" || normalized === "final" || normalized === "full") {
     return normalized;
   }
   return fallback;
+}
+
+export function parseMirrorToggleMode(value: string | undefined): ChannelMirrorMode | null {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "off") {
+    return "off";
+  }
+  if (normalized === "on") {
+    return "final";
+  }
+  return null;
+}
+
+export function normalizeMirrorRuntimeMode(mode: ChannelMirrorMode | undefined): ChannelMirrorMode {
+  return mode === "off" ? "off" : "final";
+}
+
+export function mirrorToggleMode(mode: ChannelMirrorMode | undefined): ChannelMirrorToggleMode {
+  return normalizeMirrorRuntimeMode(mode) === "off" ? "off" : "on";
 }
 
 export function parseNotifyMode(value: string | undefined, fallback: TelegramNotifyMode): TelegramNotifyMode {

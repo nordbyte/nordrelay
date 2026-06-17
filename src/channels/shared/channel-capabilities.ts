@@ -131,7 +131,7 @@ export const CHANNEL_ACTIONS: ChannelActionDefinition[] = [
   {
     key: "cli-final-mirror",
     label: "CLI final mirror",
-    description: "Mirror final CLI answers and generated artifact summaries to the channel.",
+    description: "Mirror prompts, live answers, final replies, and generated artifact summaries to the channel.",
     requiredCapabilities: ["text"],
   },
   {

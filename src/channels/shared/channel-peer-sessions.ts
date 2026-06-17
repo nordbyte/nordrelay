@@ -3,7 +3,13 @@ import { escapeHTML } from "../../core/format.js";
 import { RemoteRelayClient } from "../../peers/peer-client.js";
 import { PeerStore } from "../../peers/peer-store.js";
 import type { PeerWebProxyPayload } from "../../peers/peer-types.js";
-import type { BotPreferencesStore, ChannelMirrorMode } from "../../state/bot-preferences.js";
+import {
+  mirrorToggleMode,
+  normalizeMirrorRuntimeMode,
+  parseMirrorToggleMode,
+  type BotPreferencesStore,
+  type ChannelMirrorMode,
+} from "../../state/bot-preferences.js";
 import type { LastAgentMessageOptions, LastAgentMessageResult } from "./last-agent-message.js";
 import { cleanAgentMessage, formatLastAgentMessages } from "./last-agent-message.js";
 import type { WebActivityActor } from "../../web/web-state.js";
@@ -135,22 +141,48 @@ export async function renderTargetPeerMirrorPreference(
   }
   assertTargetPeerAllowed(options, targetPeerId);
   const argument = options.argument.trim();
-  const result = await peerProxy(options, targetPeerId, {
-    method: argument ? "POST" : "GET",
-    path: "/api/chat/mirror",
-    body: argument ? { argument } : undefined,
-  });
-  const parsed = parseMirrorResult(result);
   const peerLabel = selectedTargetPeerLabel(targetPeerId);
-  options.preferencesStore.update(options.contextKey, { mirrorMode: parsed.mode });
+  if (argument) {
+    const parsedMode = parseMirrorToggleMode(argument);
+    if (!parsedMode) {
+      const currentMode = normalizeMirrorRuntimeMode(options.preferencesStore.get(options.contextKey).mirrorMode ?? "final");
+      return {
+        mode: currentMode,
+        peerId: targetPeerId,
+        peerLabel,
+        response: renderTargetPeerMirrorResponse(peerLabel, currentMode, true),
+      };
+    }
+    options.preferencesStore.update(options.contextKey, { mirrorMode: parsedMode });
+  }
+  const mode = normalizeMirrorRuntimeMode(options.preferencesStore.get(options.contextKey).mirrorMode ?? "final");
   return {
-    mode: parsed.mode,
+    mode,
     peerId: targetPeerId,
     peerLabel,
-    response: {
-      plain: [`Remote peer: ${peerLabel}`, parsed.response.plain].join("\n"),
-      html: [`<b>Remote peer:</b> <code>${escapeHTML(peerLabel)}</code>`, parsed.response.html].join("\n"),
-    },
+    response: renderTargetPeerMirrorResponse(peerLabel, mode),
+  };
+}
+
+function renderTargetPeerMirrorResponse(peerLabel: string, mode: ChannelMirrorMode, usage = false): ChannelActionResponse {
+  if (usage) {
+    return {
+      plain: [`Remote peer: ${peerLabel}`, "Usage: /mirror [off|on]"].join("\n"),
+      html: [`<b>Remote peer:</b> <code>${escapeHTML(peerLabel)}</code>`, "Usage: <code>/mirror [off|on]</code>"].join("\n"),
+    };
+  }
+  const toggleMode = mirrorToggleMode(mode);
+  return {
+    plain: [
+      `Remote peer: ${peerLabel}`,
+      `CLI mirroring: ${toggleMode}`,
+      "Modes: off, on",
+    ].join("\n"),
+    html: [
+      `<b>Remote peer:</b> <code>${escapeHTML(peerLabel)}</code>`,
+      `<b>CLI mirroring:</b> <code>${escapeHTML(toggleMode)}</code>`,
+      "<b>Modes:</b> <code>off</code>, <code>on</code>",
+    ].join("\n"),
   };
 }
 
@@ -267,24 +299,6 @@ function parseSessionInfoResult(value: unknown): AgentSessionInfo {
     throw new Error("Remote peer returned an invalid session response.");
   }
   return session as AgentSessionInfo;
-}
-
-function parseMirrorResult(value: unknown): { mode: ChannelMirrorMode; minInterval: number; response: ChannelActionResponse } {
-  if (!value || typeof value !== "object") {
-    throw new Error("Remote peer returned an invalid mirror response.");
-  }
-  const record = value as { mode?: unknown; minInterval?: unknown; response?: { plain?: unknown; html?: unknown } };
-  if (record.mode !== "off" && record.mode !== "status" && record.mode !== "final" && record.mode !== "full") {
-    throw new Error("Remote peer returned an invalid mirror mode.");
-  }
-  return {
-    mode: record.mode,
-    minInterval: typeof record.minInterval === "number" ? record.minInterval : 0,
-    response: {
-      plain: typeof record.response?.plain === "string" ? record.response.plain : `CLI mirroring: ${record.mode}`,
-      html: typeof record.response?.html === "string" ? record.response.html : `<b>CLI mirroring:</b> <code>${escapeHTML(record.mode)}</code>`,
-    },
-  };
 }
 
 function agentMessagesFromDetail(value: unknown, count: number): string[] {

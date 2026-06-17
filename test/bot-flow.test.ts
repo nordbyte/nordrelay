@@ -817,11 +817,11 @@ describe("bot flow integration", () => {
     const bot = createBot(createConfig(), registry as any);
     const api = installFakeApi(bot);
 
-    await bot.handleUpdate(messageUpdate("/mirror full") as any);
+    await bot.handleUpdate(messageUpdate("/mirror on") as any);
     await bot.handleUpdate(messageUpdate("/notify all") as any);
     await bot.handleUpdate(messageUpdate("/notify quiet 22-7") as any);
 
-    expect(api.sentMessages.some((message) => message.text.includes("CLI mirroring:") && message.text.includes("full"))).toBe(true);
+    expect(api.sentMessages.some((message) => message.text.includes("CLI mirroring:") && message.text.includes("on"))).toBe(true);
     expect(api.sentMessages.some((message) => message.text.includes("Notifications:") && message.text.includes("all"))).toBe(true);
     expect(api.sentMessages.at(-1)?.text).toContain("22-07");
   });
@@ -834,15 +834,15 @@ describe("bot flow integration", () => {
     await bot.handleUpdate(messageUpdate("/mirror") as any);
 
     expect(api.sentMessages.at(-1)?.text).toContain("CLI mirroring:");
-    expect(findInlineButton(api.sentMessages.at(-1)?.options, (button) => button.text === "Status ✓").callback_data).toBe("mirror_status");
-    const finalButton = findInlineButton(api.sentMessages.at(-1)?.options, (button) => button.callback_data === "mirror_final");
+    expect(findInlineButton(api.sentMessages.at(-1)?.options, (button) => button.text === "On ✓").callback_data).toBe("mirror_on");
+    const offButton = findInlineButton(api.sentMessages.at(-1)?.options, (button) => button.callback_data === "mirror_off");
 
-    await bot.handleUpdate(callbackUpdate(finalButton.callback_data) as any);
+    await bot.handleUpdate(callbackUpdate(offButton.callback_data) as any);
 
-    expect(api.answeredCallbacks.at(-1)).toBe("Mirror final");
+    expect(api.answeredCallbacks.at(-1)).toBe("Mirror off");
     expect(api.editedMessages.at(-1)?.text).toContain("CLI mirroring:");
-    expect(api.editedMessages.at(-1)?.text).toContain("final");
-    expect(findInlineButton(api.editedMessages.at(-1)?.options, (button) => button.text === "Final ✓").callback_data).toBe("mirror_final");
+    expect(api.editedMessages.at(-1)?.text).toContain("off");
+    expect(findInlineButton(api.editedMessages.at(-1)?.options, (button) => button.text === "Off ✓").callback_data).toBe("mirror_off");
   });
 
   it("renders log messages as normal text while highlighting warning levels", async () => {

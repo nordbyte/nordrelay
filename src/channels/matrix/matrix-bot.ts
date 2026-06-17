@@ -49,6 +49,7 @@ import type { ConnectorConfig } from "../../core/config.js";
 import { isMatrixContextKey, parseMatrixContextKey, type ChannelContextKey } from "../shared/context-key.js";
 import { friendlyErrorText } from "../../core/error-messages.js";
 import { spawnConnectorRestart, spawnSelfUpdate } from "../../support/operations.js";
+import { normalizeMirrorRuntimeMode } from "../../state/bot-preferences.js";
 import { toPromptEnvelope, webChatAttachmentsForStagedFiles, type PromptEnvelope } from "../../state/prompt-store.js";
 import { resolveArtifactDeliveryPolicy, type ArtifactDeliveryMode } from "../../artifacts/artifact-delivery.js";
 import { redactText } from "../../core/redaction.js";
@@ -346,7 +347,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
       contextKey: request.contextKey,
       prompt: envelope,
       remoteClient,
-      mirrorMode: () => preferencesStore.get(request.contextKey).mirrorMode ?? config.matrixMirrorMode,
+      mirrorMode: () => normalizeMirrorRuntimeMode(preferencesStore.get(request.contextKey).mirrorMode ?? config.matrixMirrorMode),
       canUsePeer: (peerId) => userStore.canUsePeer(request.authUser, peerId),
       editMinIntervalMs: EDIT_DEBOUNCE_MS,
       typingIntervalMs: TYPING_INTERVAL_MS,
@@ -492,7 +493,7 @@ export function createMatrixBridge(config: ConnectorConfig, registry: SessionReg
     states: externalMirrors,
     typingIntervalMs: TYPING_INTERVAL_MS,
     minUpdateMs: () => config.matrixMirrorMinUpdateMs,
-    mirrorMode: (contextKey) => preferencesStore.get(contextKey).mirrorMode ?? config.matrixMirrorMode,
+    mirrorMode: (contextKey) => normalizeMirrorRuntimeMode(preferencesStore.get(contextKey).mirrorMode ?? config.matrixMirrorMode),
     queueLength: (contextKey) => promptStore.list(contextKey).length,
     activityActor: (snapshot) => ({ channel: "cli", label: `${snapshot.agentLabel} CLI` }),
     appendActivity: (input) => {

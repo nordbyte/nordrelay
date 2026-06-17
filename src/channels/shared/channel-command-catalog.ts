@@ -68,7 +68,7 @@ export const CHANNEL_COMMANDS: readonly ChannelCommandDefinition[] = [
   { name: "model", description: "View and change model", discordDescription: "Select or show models", discordOptions: [textOption("value", "Model id")] },
   { name: "effort", description: "Set reasoning effort", discordDescription: "Select reasoning effort", discordOptions: [textOption("value", "Reasoning value")] },
   { name: "reasoning", description: "Set reasoning effort", discordDescription: "Select reasoning effort", discordOptions: [textOption("value", "Reasoning value")] },
-  { name: "mirror", description: "Control CLI mirroring", discordDescription: "Set mirror mode", discordOptions: [textOption("value", "off/status/final/full")] },
+  { name: "mirror", description: "Control CLI mirroring", discordDescription: "Set mirror mode", discordOptions: [textOption("value", "off/on")] },
   { name: "notify", description: "Control notifications", discordDescription: "Set notification mode", discordOptions: [textOption("value", "off/minimal/all")] },
   { name: "auth", description: "Check auth status", discordDescription: "Show selected agent auth status" },
   { name: "login", description: "Start authentication", discordDescription: "Start selected agent login" },

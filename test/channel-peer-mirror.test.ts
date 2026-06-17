@@ -47,7 +47,7 @@ describe("ChannelPeerMirrorController", () => {
     rmSync(workspace, { recursive: true, force: true });
   });
 
-  it("mirrors remote active session status updates for status mode", async () => {
+  it("treats legacy status mode as on for remote active session updates", async () => {
     const preferences = new BotPreferencesStore(workspace);
     preferences.update("123", { targetPeerId: "peer-1", mirrorMode: "status" });
     const client = new FakeRemoteClient();
@@ -92,14 +92,14 @@ describe("ChannelPeerMirrorController", () => {
     await flushAsync();
 
     expect(typing).toBeGreaterThan(0);
-    expect(sent.at(-1)).toContain("Remote info");
+    expect(sent.at(-1)).toContain("<b>Working on</b>");
     expect(sent.at(-1)).toContain("target prompt");
     expect(sent.at(-1)).not.toContain("wrong prompt");
 
     client.emit({ type: "active_sessions_update", active: { updatedAt: new Date().toISOString(), sessions: [] } });
     await flushAsync();
 
-    expect(edited.at(-1)).toContain("Codex CLI task finished.");
+    expect(edited).toHaveLength(0);
   });
 
   it("uses the persisted remote target thread for peer typing and status updates", async () => {

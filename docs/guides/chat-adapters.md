@@ -64,13 +64,11 @@ Use `/target local` or `/target <peer-id>` when you want to switch directly with
 
 ## Mirroring
 
-Mirror mode controls how activity from an external CLI session is sent into chat:
+Mirror mode controls whether activity from the selected session is sent into chat:
 
-- `off`: no CLI mirroring
-- `status`: status and completion summaries
-- `final`: user prompt and final answer
-- `full`: streaming output, tool/status events, and final answer
+- `off`: do not send activity from this session into the chat
+- `on`: send the prompt, live assistant text updates, and the final assistant answer, matching the WebUI chat behavior
 
-On Telegram, sending only `/mirror` opens inline buttons for `off`, `status`, `final`, and `full`.
+On Telegram, sending only `/mirror` opens inline buttons for `off` and `on`.
 
 Mirroring can run in multiple channels at once, for example a CLI prompt mirrored to Telegram and Discord.

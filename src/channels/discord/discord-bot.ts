@@ -72,6 +72,7 @@ import { discordRateLimiter, getDiscordRateLimitMetrics } from "./discord-rate-l
 import { registerDiscordBridgeEvents } from "./discord-events.js";
 import { friendlyErrorText } from "../../core/error-messages.js";
 import { spawnConnectorRestart, spawnSelfUpdate } from "../../support/operations.js";
+import { normalizeMirrorRuntimeMode } from "../../state/bot-preferences.js";
 import { toPromptEnvelope, webChatAttachmentsForStagedFiles, type PromptEnvelope } from "../../state/prompt-store.js";
 import { resolveArtifactDeliveryPolicy, type ArtifactDeliveryMode } from "../../artifacts/artifact-delivery.js";
 import { redactText } from "../../core/redaction.js";
@@ -373,7 +374,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
       contextKey: request.contextKey,
       prompt: envelope,
       remoteClient,
-      mirrorMode: () => preferencesStore.get(request.contextKey).mirrorMode ?? config.discordMirrorMode,
+      mirrorMode: () => normalizeMirrorRuntimeMode(preferencesStore.get(request.contextKey).mirrorMode ?? config.discordMirrorMode),
       canUsePeer: (peerId) => userStore.canUsePeer(request.authUser, peerId),
       editMinIntervalMs: EDIT_DEBOUNCE_MS,
       typingIntervalMs: TYPING_INTERVAL_MS,
@@ -521,7 +522,7 @@ export function createDiscordBridge(config: ConnectorConfig, registry: SessionRe
     states: externalMirrors,
     typingIntervalMs: TYPING_INTERVAL_MS,
     minUpdateMs: () => config.discordMirrorMinUpdateMs,
-    mirrorMode: (contextKey) => preferencesStore.get(contextKey).mirrorMode ?? config.discordMirrorMode,
+    mirrorMode: (contextKey) => normalizeMirrorRuntimeMode(preferencesStore.get(contextKey).mirrorMode ?? config.discordMirrorMode),
     queueLength: (contextKey) => promptStore.list(contextKey).length,
     activityActor: (snapshot) => ({ channel: "cli", label: `${snapshot.agentLabel} CLI` }),
     appendActivity: (input) => {
