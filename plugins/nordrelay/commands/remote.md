@@ -1,12 +1,15 @@
 ---
-description: Start, stop, or inspect the NordRelay bot process.
+description: Start, stop, restart, inspect, or troubleshoot the local NordRelay process.
 ---
 
 # /nordrelay:remote
 
-Start the NordRelay bot process.
+Manage the local NordRelay process.
 
-This command is now only a process-manager shortcut. The Telegram bot itself provides the full remote controls: `/start`, `/new`, `/session`, `/sessions`, `/sync`, `/pinned`, `/pin`, `/unpin`, `/attach`, `/handback`, `/model`, `/reasoning`, `/fast`, `/launch_profiles`, `/retry`, `/queue`, `/cancel`, `/clearqueue`, `/artifacts`, `/abort`, `/stop`, `/tasks`, `/progress`, `/status`, `/health`, `/version`, `/logs`, `/diagnostics`, `/restart`, `/update`, voice messages, photos, documents, media groups, artifacts, and login.
+This command is a process-manager shortcut. NordRelay provides full session control through its
+login-protected WebUI and enabled Telegram, Discord, Slack, and Matrix adapters, including trusted
+peer-node routing. This Codex command starts, stops, restarts, inspects, or troubleshoots the local
+runtime; it does not replace those control surfaces.
 
 Codex plugin commands are namespaced by the plugin id in current plugin-aware command surfaces. The unnamespaced `/remote` command is not available in current Codex TUI builds.
 
@@ -21,7 +24,9 @@ Codex plugin commands are namespaced by the plugin id in current plugin-aware co
 ## Workflow
 
 1. Locate the plugin root containing `.codex-plugin/plugin.json` with `"name": "nordrelay"`. In a source checkout this is usually `<repo>/plugins/nordrelay`.
-2. Check whether `TELEGRAM_BOT_TOKEN` is available from the environment or from the NordRelay env file, and whether a NordRelay admin user exists.
+2. Check that the NordRelay env file exists and that the credentials required by the enabled
+   control surfaces are configured. `TELEGRAM_BOT_TOKEN` is required only when Telegram is enabled.
+   A NordRelay admin user is required before the WebUI or chat adapters can control sessions.
 3. Run the connector command from the plugin root:
 
 ```bash

@@ -1,31 +1,34 @@
 {
   "name": "nordrelay",
-  "version": "0.5.2",
-  "description": "Run a remote-control bridge for coding agents. Current adapters connect Codex, Pi, Hermes, and OpenClaw sessions to Telegram with streaming replies, multi-session controls, attachments, voice input, model selection, thread browsing, and handback.",
+  "version": "0.9.22",
+  "description": "Start, stop, restart, troubleshoot, and inspect NordRelay, a secure remote control plane for coding agents.",
   "author": {
     "name": "Ricardo",
     "url": "https://github.com/nordbyte"
   },
-  "homepage": "https://github.com/nordbyte",
+  "homepage": "https://nordrelay.io/",
   "repository": "https://github.com/nordbyte/nordrelay",
   "license": "MIT",
   "keywords": [
     "coding-agents",
-    "messaging",
     "remote-control",
     "codex",
     "pi",
     "hermes",
     "openclaw",
+    "claude-code",
     "telegram",
-    "bot",
-    "app-server"
+    "discord",
+    "slack",
+    "matrix",
+    "webui",
+    "peer-federation"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "NordRelay",
-    "shortDescription": "Remote-control bridge for coding agents",
-    "longDescription": "Starts NordRelay, a messaging bridge for coding agents. The current runtime connects Codex, Pi, Hermes, and OpenClaw sessions to Telegram: messages become agent turns, replies and tool activity stream back to Telegram, each chat or forum topic has its own session, and commands provide thread browsing, model and reasoning controls, launch profiles, attachments, voice transcription, artifacts, login, abort, retry, and CLI handback.",
+    "shortDescription": "Control the local NordRelay runtime",
+    "longDescription": "Start, stop, restart, troubleshoot, and inspect the local NordRelay runtime from Codex. NordRelay connects Codex, Pi, Hermes, OpenClaw, and Claude Code to its WebUI, Telegram, Discord, Slack, Matrix, and trusted peer nodes. Full session control remains in those NordRelay surfaces; this Codex plugin manages the local process.",
     "developerName": "Ricardo",
     "category": "Productivity",
     "capabilities": [
@@ -33,19 +36,14 @@
       "Read",
       "Write"
     ],
-    "websiteURL": "https://github.com/nordbyte",
-    "privacyPolicyURL": "https://github.com/nordbyte/nordrelay",
-    "termsOfServiceURL": "https://github.com/nordbyte/nordrelay",
+    "websiteURL": "https://nordrelay.io/",
     "defaultPrompt": [
-      "Start NordRelay remote control",
-      "Show NordRelay status",
-      "Stop NordRelay",
-      "Show Telegram session browser",
-      "Select agent model"
+      "Start NordRelay and verify its status.",
+      "Show NordRelay status and recent errors.",
+      "Troubleshoot why NordRelay is not running."
     ],
     "brandColor": "#229ED9",
     "composerIcon": "./assets/nordrelay.svg",
-    "logo": "./assets/nordrelay.svg",
-    "screenshots": []
+    "logo": "./assets/nordrelay.svg"
   }
 }

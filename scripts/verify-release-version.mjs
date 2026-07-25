@@ -2,6 +2,8 @@
 import { readFileSync } from "node:fs";
 import process from "node:process";
 
+import { validateCodexPluginManifest } from "./check-codex-plugin.mjs";
+
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const packageVersion = String(pkg.version ?? "").trim();
 const expectedTag = `v${packageVersion}`;
@@ -20,6 +22,11 @@ const requestedVersion = firstNonEmpty(
 
 if (!packageVersion) {
   fail("package.json does not define a version.");
+}
+
+const pluginErrors = validateCodexPluginManifest();
+if (pluginErrors.length > 0) {
+  fail(`Codex plugin manifest is not release-ready:\n- ${pluginErrors.join("\n- ")}`);
 }
 
 if (eventName === "release" || releaseTag) {
