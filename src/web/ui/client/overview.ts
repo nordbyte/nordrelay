@@ -221,16 +221,21 @@ async function fetchActiveSessionsFromTarget(target){
   }
 }
 function sortActiveSessions(items){return (items||[]).slice().sort((left,right)=>activeSessionDurationMs(right)-activeSessionDurationMs(left))}
+function activeSessionsErrorsFromResults(results){
+  return results
+    .filter(result=>result.error&&!isTransientPeerRefreshError(result.error))
+    .map(result=>({target:result.target.label,error:String(result.error?.message||result.error)}));
+}
 async function loadActiveSessionsForSelectedTarget(){
   const targets=activeSessionsFetchTargets();
   if((state.activeSessionsTarget||'local')!=='all')return {sessions:sortActiveSessions(await fetchActiveSessionsFromTarget(targets[0])),errors:[]};
   const results=await Promise.all(targets.map(target=>fetchActiveSessionsFromTarget(target).then(sessions=>({target,sessions,error:null})).catch(error=>({target,sessions:[],error}))));
-  return {sessions:sortActiveSessions(results.flatMap(result=>result.sessions)),errors:results.filter(result=>result.error).map(result=>({target:result.target.label,error:String(result.error?.message||result.error)}))};
+  return {sessions:sortActiveSessions(results.flatMap(result=>result.sessions)),errors:activeSessionsErrorsFromResults(results)};
 }
 async function loadActiveSessionsForChatTabs(){
   const targets=chatTabActiveSessionsFetchTargets();
   const results=await Promise.all(targets.map(target=>fetchActiveSessionsFromTarget(target).then(sessions=>({target,sessions,error:null})).catch(error=>({target,sessions:[],error}))));
-  return {sessions:sortActiveSessions(results.flatMap(result=>result.sessions)),errors:results.filter(result=>result.error).map(result=>({target:result.target.label,error:String(result.error?.message||result.error)}))};
+  return {sessions:sortActiveSessions(results.flatMap(result=>result.sessions)),errors:activeSessionsErrorsFromResults(results)};
 }
 async function loadActiveSessions(){
   const box=document.getElementById('activeSessions');
@@ -277,7 +282,21 @@ function stopActiveSessionsRefresh(){
 function activeSessionDurationMs(s){const started=Date.parse(s.startedAt||'');if(Number.isFinite(started))return Math.max(0,Date.now()-started);return Number.isFinite(Number(s.durationMs))?Number(s.durationMs):0}
 function isTransientPeerRefreshError(error){
   const message=String(error?.message||error||'').toLowerCase();
-  return message.includes('timed out')||message.includes('unreachable')||message.includes('failed to fetch')||message.includes('network');
+  return [
+    'timed out',
+    'timeout',
+    'unreachable',
+    'failed to fetch',
+    'network',
+    'cooling down',
+    'ehostunreach',
+    'enetunreach',
+    'econnrefused',
+    'enotfound',
+    'etimedout',
+    'eai_again',
+    'socket hang up',
+  ].some(fragment=>message.includes(fragment));
 }
 function activeSessionDurationHtml(s){const started=Date.parse(s.startedAt||'');const attrs=Number.isFinite(started)?' data-active-duration-started="'+attr(String(started))+'"':'';return '<span class="active-session-duration"'+attrs+'>'+esc(fmtDuration(activeSessionDurationMs(s)))+'</span>'}
 function updateActiveSessionDurationCounters(){document.querySelectorAll('[data-active-duration-started]').forEach(el=>{const started=Number(el.dataset.activeDurationStarted);if(Number.isFinite(started))el.textContent=fmtDuration(Math.max(0,Date.now()-started))})}

@@ -713,6 +713,35 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator("#globalPeerSessionsList")).toContainText("peer-thread-1");
   });
 
+  test("omits unreachable peers from the all-nodes active session list", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
+    let unreachableRequests = 0;
+    await page.route("**/api/peers/peer-ubuntu/proxy", async (route) => {
+      const payload = route.request().postDataJSON() as { path?: string };
+      if (payload.path !== "/api/active-sessions") {
+        await route.continue();
+        return;
+      }
+      unreachableRequests += 1;
+      await route.fulfill({
+        status: 502,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "connect EHOSTUNREACH 192.168.178.75:31979" }),
+      });
+    });
+
+    await page.goto(mock.baseUrl);
+    await page.locator("#activeSessionsNode").click();
+    await page.locator('[data-control-option="activeSessionsNode"][data-control-value="all"]').click();
+
+    await expect.poll(() => unreachableRequests).toBeGreaterThan(0);
+    await expect(page.locator("#activeSessionsCount")).toHaveText("(1)");
+    await expect(page.locator("#activeSessions")).toContainText("Run active smoke test");
+    await expect(page.locator("#activeSessions")).not.toContainText("Ubuntu Workstation");
+    await expect(page.locator("#activeSessions")).not.toContainText("EHOSTUNREACH");
+    await expect(page.locator("#activeSessions .active-session-error")).toHaveCount(0);
+  });
+
   test("keeps newly created peer invite pairing details visible and copyable", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     const createdInvitation = {
