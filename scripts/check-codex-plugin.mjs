@@ -241,7 +241,8 @@ function rejectUnknownKeys(value, allowed, label, errors) {
 }
 
 if (isMainScript()) {
-  const errors = validateCodexPluginManifest();
+  const root = process.argv[2] ? path.resolve(process.argv[2]) : DEFAULT_ROOT;
+  const errors = validateCodexPluginManifest(root);
   if (errors.length > 0) {
     console.error(`Codex plugin manifest check failed with ${errors.length} issue(s):`);
     for (const error of errors) {

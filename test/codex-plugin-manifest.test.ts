@@ -1,11 +1,11 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { validateCodexPluginManifest } from "../scripts/check-codex-plugin.mjs";
-
+const manifestCheckPath = path.resolve("scripts", "check-codex-plugin.mjs");
 const temporaryRoots: string[] = [];
 const currentPackage = JSON.parse(readFileSync("package.json", "utf8")) as Record<string, unknown>;
 const currentManifest = JSON.parse(
@@ -20,7 +20,10 @@ describe("Codex plugin manifest", () => {
   });
 
   it("keeps the checked-in manifest release-ready", () => {
-    expect(validateCodexPluginManifest()).toEqual([]);
+    const result = runManifestCheck(path.resolve());
+
+    expect(result.status, outputOf(result)).toBe(0);
+    expect(result.stdout).toContain("Codex plugin manifest check passed.");
   });
 
   it("rejects version drift, excess prompts, and missing assets", () => {
@@ -34,11 +37,13 @@ describe("Codex plugin manifest", () => {
       },
     });
 
-    expect(validateCodexPluginManifest(root)).toEqual(expect.arrayContaining([
-      expect.stringContaining("does not match package.json version"),
-      expect.stringContaining("between 1 and 3"),
-      expect.stringContaining("does not exist"),
-    ]));
+    const result = runManifestCheck(root);
+    const output = outputOf(result);
+
+    expect(result.status, output).toBe(1);
+    expect(output).toContain("does not match package.json version");
+    expect(output).toContain("between 1 and 3");
+    expect(output).toContain("does not exist");
   });
 
   it("rejects incomplete discovery metadata and empty screenshots", () => {
@@ -51,13 +56,25 @@ describe("Codex plugin manifest", () => {
       },
     });
 
-    expect(validateCodexPluginManifest(root)).toEqual(expect.arrayContaining([
-      expect.stringContaining('keywords must include "claude-code"'),
-      expect.stringContaining('keywords must include "matrix"'),
-      expect.stringContaining("screenshots must be omitted"),
-    ]));
+    const result = runManifestCheck(root);
+    const output = outputOf(result);
+
+    expect(result.status, output).toBe(1);
+    expect(output).toContain('keywords must include "claude-code"');
+    expect(output).toContain('keywords must include "matrix"');
+    expect(output).toContain("screenshots must be omitted");
   });
 });
+
+function runManifestCheck(root: string) {
+  return spawnSync(process.execPath, [manifestCheckPath, root], {
+    encoding: "utf8",
+  });
+}
+
+function outputOf(result: ReturnType<typeof runManifestCheck>): string {
+  return [result.stdout, result.stderr, result.error?.message].filter(Boolean).join("\n");
+}
 
 function createFixture(manifest: Record<string, unknown>): string {
   const root = mkdtempSync(path.join(tmpdir(), "nordrelay-codex-plugin-"));
