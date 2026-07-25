@@ -272,7 +272,7 @@ function syncActiveSessionsRefresh(){if(shouldRefreshActiveSessions())startActiv
 function startActiveSessionsRefresh(){
   if(state.currentPage==='overview')startActiveSessionDurationCounter();
   if(state.activeSessionsTimer)return;
-  state.activeSessionsTimer=setInterval(()=>{if(shouldRefreshActiveSessions()){if(!document.hidden)safe(loadActiveSessions)}else stopActiveSessionsRefresh()},5000);
+  state.activeSessionsTimer=setInterval(()=>{if(shouldRefreshActiveSessions())safe(loadActiveSessions);else stopActiveSessionsRefresh()},5000);
 }
 function stopActiveSessionsRefresh(){
   if(state.activeSessionsTimer)clearInterval(state.activeSessionsTimer);
@@ -302,10 +302,91 @@ function activeSessionDurationHtml(s){const started=Date.parse(s.startedAt||'');
 function updateActiveSessionDurationCounters(){document.querySelectorAll('[data-active-duration-started]').forEach(el=>{const started=Number(el.dataset.activeDurationStarted);if(Number.isFinite(started))el.textContent=fmtDuration(Math.max(0,Date.now()-started))})}
 function startActiveSessionDurationCounter(){updateActiveSessionDurationCounters();if(state.activeSessionDurationTimer)return;state.activeSessionDurationTimer=setInterval(()=>{if(state.currentPage!=='overview'){stopActiveSessionDurationCounter();return}updateActiveSessionDurationCounters()},1000)}
 function stopActiveSessionDurationCounter(){if(state.activeSessionDurationTimer)clearInterval(state.activeSessionDurationTimer);state.activeSessionDurationTimer=null}
+const DASHBOARD_DOCUMENT_TITLE='NordRelay Dashboard';
+const ACTIVE_SESSION_FAVICON_SIZE=64;
+let activeSessionFaviconImagePromise:Promise<HTMLImageElement>|null=null;
+let activeSessionFaviconRenderId=0;
+let activeSessionFaviconCount=-1;
+function activeSessionFaviconLinks(){return Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]'))}
+function restoreDashboardFavicon(){
+  activeSessionFaviconLinks().forEach(link=>{
+    if(link.dataset.activeSessionFavicon!=='true')return;
+    const href=link.dataset.activeSessionHref||'';
+    const type=link.dataset.activeSessionType||'';
+    const sizes=link.dataset.activeSessionSizes||'';
+    if(href)link.setAttribute('href',href);else link.removeAttribute('href');
+    if(type)link.setAttribute('type',type);else link.removeAttribute('type');
+    if(sizes)link.setAttribute('sizes',sizes);else link.removeAttribute('sizes');
+    delete link.dataset.activeSessionFavicon;
+    delete link.dataset.activeSessionHref;
+    delete link.dataset.activeSessionType;
+    delete link.dataset.activeSessionSizes;
+  });
+}
+function loadActiveSessionFaviconImage(){
+  if(activeSessionFaviconImagePromise)return activeSessionFaviconImagePromise;
+  activeSessionFaviconImagePromise=new Promise((resolve,reject)=>{
+    const image=new Image();
+    image.onload=()=>resolve(image);
+    image.onerror=()=>reject(new Error('Dashboard favicon could not be loaded.'));
+    image.src='/assets/favicon.png';
+  });
+  return activeSessionFaviconImagePromise;
+}
+function applyActiveSessionFavicon(dataUrl){
+  activeSessionFaviconLinks().forEach(link=>{
+    if(link.dataset.activeSessionFavicon!=='true'){
+      link.dataset.activeSessionFavicon='true';
+      link.dataset.activeSessionHref=link.getAttribute('href')||'';
+      link.dataset.activeSessionType=link.getAttribute('type')||'';
+      link.dataset.activeSessionSizes=link.getAttribute('sizes')||'';
+    }
+    link.setAttribute('href',dataUrl);
+    link.setAttribute('type','image/png');
+    link.setAttribute('sizes',ACTIVE_SESSION_FAVICON_SIZE+'x'+ACTIVE_SESSION_FAVICON_SIZE);
+  });
+}
+async function renderActiveSessionFavicon(count){
+  const renderId=++activeSessionFaviconRenderId;
+  if(count<1){restoreDashboardFavicon();return}
+  try{
+    const image=await loadActiveSessionFaviconImage();
+    if(renderId!==activeSessionFaviconRenderId)return;
+    const canvas=document.createElement('canvas');
+    canvas.width=ACTIVE_SESSION_FAVICON_SIZE;
+    canvas.height=ACTIVE_SESSION_FAVICON_SIZE;
+    const context=canvas.getContext('2d');
+    if(!context){restoreDashboardFavicon();return}
+    context.drawImage(image,0,0,ACTIVE_SESSION_FAVICON_SIZE,ACTIVE_SESSION_FAVICON_SIZE);
+    const label=count>99?'99+':String(count);
+    context.beginPath();
+    context.arc(46,46,17,0,Math.PI*2);
+    context.fillStyle='#d92d20';
+    context.fill();
+    context.lineWidth=3;
+    context.strokeStyle='#ffffff';
+    context.stroke();
+    context.fillStyle='#ffffff';
+    context.font='700 '+(label.length===1?26:label.length===2?21:15)+'px system-ui, sans-serif';
+    context.textAlign='center';
+    context.textBaseline='middle';
+    context.fillText(label,46,47);
+    applyActiveSessionFavicon(canvas.toDataURL('image/png'));
+  }catch{
+    if(renderId===activeSessionFaviconRenderId)restoreDashboardFavicon();
+  }
+}
+function updateActiveSessionDocumentChrome(count){
+  document.title=count>0?'('+count+') '+DASHBOARD_DOCUMENT_TITLE:DASHBOARD_DOCUMENT_TITLE;
+  if(count===activeSessionFaviconCount)return;
+  activeSessionFaviconCount=count;
+  void renderActiveSessionFavicon(count);
+}
 function updateActiveSessionsCount(items:WebuiActiveSession[]|number|undefined=undefined){
   const sessions=Array.isArray(items)?items:(Array.isArray(state.activeSessions?.sessions)?state.activeSessions.sessions:[]);
   const count=sessions.length;
   const approvalRequired=sessions.some(session=>Boolean(session?.approvalRequired));
+  updateActiveSessionDocumentChrome(count);
   const heading=document.getElementById('activeSessionsCount');
   if(heading)heading.textContent='('+count+')';
   const badge=document.getElementById('overviewActiveBadge');

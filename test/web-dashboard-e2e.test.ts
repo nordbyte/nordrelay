@@ -728,6 +728,12 @@ describe("web dashboard browser-flow assets", () => {
     expect(pageSource).not.toContain("Current Session");
     expect(js).toContain("function renderActiveSessions");
     expect(js).toContain("function updateActiveSessionsCount");
+    expect(js).toContain("function updateActiveSessionDocumentChrome");
+    expect(js).toContain("function renderActiveSessionFavicon");
+    expect(js).toContain("function restoreDashboardFavicon");
+    expect(js).toContain("canvas.toDataURL('image/png')");
+    expect(js).toContain("'('+count+') '+DASHBOARD_DOCUMENT_TITLE");
+    expect(js).not.toContain("if(!document.hidden)safe(loadActiveSessions)");
     expect(js).toContain("nordrelayActiveSessionsTarget");
     expect(js).toContain("function activeSessionsTargetItems");
     expect(js).toContain("compactControlMenu('activeSessionsNode',''");

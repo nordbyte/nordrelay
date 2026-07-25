@@ -248,6 +248,38 @@ test.describe("NordRelay WebUI", () => {
     await expect(page.locator('#diagnostics [data-diagnostics-tab-panel="versions"]')).toContainText("CLI Versions");
   });
 
+  test("shows active session counts in the document title and favicon", async ({ page }) => {
+    test.skip(test.info().project.name === "mobile-chromium", "browser chrome behavior is viewport-independent");
+    let sessions = activeSessions().sessions;
+    await page.route("**/api/active-sessions", async (route) => {
+      await route.fulfill({ json: { updatedAt: now(), sessions } });
+    });
+
+    await page.goto(mock.baseUrl);
+
+    await expect(page).toHaveTitle("(1) NordRelay Dashboard");
+    await expect(page.locator('link[rel~="icon"]').first()).toHaveAttribute("href", /^data:image\/png;base64,/);
+
+    sessions = [];
+    await navigateDashboard(page, "Chat");
+
+    await expect(page).toHaveTitle("NordRelay Dashboard");
+    await expect(page.locator('link[rel~="icon"]').nth(0)).toHaveAttribute("href", "/favicon.ico");
+    await expect(page.locator('link[rel~="icon"]').nth(1)).toHaveAttribute("href", "/assets/favicon.png");
+
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    });
+    await expect.poll(() => page.evaluate(() => document.hidden)).toBe(true);
+    sessions = [
+      ...activeSessions().sessions,
+      { ...activeSessions().sessions[0], id: "web:dashboard:codex-thread-2", threadId: "codex-thread-2" },
+    ];
+
+    await expect(page).toHaveTitle("(2) NordRelay Dashboard", { timeout: 10_000 });
+    await expect(page.locator('link[rel~="icon"]').first()).toHaveAttribute("href", /^data:image\/png;base64,/);
+  });
+
   test("sends prompts through the typed API client and shows queued feedback", async ({ page }) => {
     test.skip(test.info().project.name === "mobile-chromium", "covered by the desktop interaction flow");
     await page.goto(mock.baseUrl);
